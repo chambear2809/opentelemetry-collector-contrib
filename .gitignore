@@ -35,6 +35,8 @@ dist/
 # Miscellaneous files
 *.sw[op]
 *.DS_Store
+__pycache__/
+*.py[cod]
 __debug_bin*
 
 # Coverage

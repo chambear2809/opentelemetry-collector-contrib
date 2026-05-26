@@ -16,6 +16,8 @@ import (
 	"go.opentelemetry.io/collector/scraper/scraperhelper"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/connection"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/scraper/interfacesscraper"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/scraper/systemscraper"
 )
 
 func newTestDeviceConfig(host string, port int, auth connection.AuthConfig) DeviceConfig {
@@ -29,8 +31,9 @@ func newTestDeviceConfig(host string, port int, auth connection.AuthConfig) Devi
 
 func validTestDevice() DeviceConfig {
 	return newTestDeviceConfig("192.168.1.1", 22, connection.AuthConfig{
-		Username: "admin",
-		Password: configopaque.String("password"),
+		Username:           "admin",
+		Password:           configopaque.String("password"),
+		InsecureSkipVerify: true,
 	})
 }
 
@@ -63,8 +66,9 @@ func TestConfigValidate(t *testing.T) {
 				},
 				Devices: []DeviceConfig{
 					newTestDeviceConfig("192.168.1.1", 22, connection.AuthConfig{
-						Username: "admin",
-						KeyFile:  "/path/to/key",
+						Username:           "admin",
+						KeyFile:            "/path/to/key",
+						InsecureSkipVerify: true,
 					}),
 				},
 				Scrapers: map[component.Type]component.Config{
@@ -72,6 +76,46 @@ func TestConfigValidate(t *testing.T) {
 				},
 			},
 			expectedErr: "",
+		},
+		{
+			name: "valid config with known_hosts_file",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				Devices: []DeviceConfig{
+					newTestDeviceConfig("192.168.1.1", 22, connection.AuthConfig{
+						Username:       "admin",
+						Password:       configopaque.String("password"),
+						KnownHostsFile: "/etc/otelcol/known_hosts",
+					}),
+				},
+				Scrapers: map[component.Type]component.Config{
+					component.MustNewType("system"): nil,
+				},
+			},
+			expectedErr: "",
+		},
+		{
+			name: "missing host key verification",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				Devices: []DeviceConfig{
+					newTestDeviceConfig("192.168.1.1", 22, connection.AuthConfig{
+						Username: "admin",
+						Password: configopaque.String("password"),
+						// neither KnownHostsFile nor InsecureSkipVerify set
+					}),
+				},
+				Scrapers: map[component.Type]component.Config{
+					component.MustNewType("system"): nil,
+				},
+			},
+			expectedErr: "known_hosts_file or devices[0].auth.insecure_skip_verify must be set",
 		},
 		{
 			name: "empty device host",
@@ -82,8 +126,9 @@ func TestConfigValidate(t *testing.T) {
 				},
 				Devices: []DeviceConfig{
 					newTestDeviceConfig("", 22, connection.AuthConfig{
-						Username: "admin",
-						Password: configopaque.String("password"),
+						Username:           "admin",
+						Password:           configopaque.String("password"),
+						InsecureSkipVerify: true,
 					}),
 				},
 				Scrapers: map[component.Type]component.Config{
@@ -93,7 +138,7 @@ func TestConfigValidate(t *testing.T) {
 			expectedErr: "devices[0].host cannot be empty",
 		},
 		{
-			name: "missing port",
+			name: "zero port",
 			config: &Config{
 				ControllerConfig: scraperhelper.ControllerConfig{
 					Timeout:            30 * time.Second,
@@ -101,15 +146,56 @@ func TestConfigValidate(t *testing.T) {
 				},
 				Devices: []DeviceConfig{
 					newTestDeviceConfig("192.168.1.1", 0, connection.AuthConfig{
-						Username: "admin",
-						Password: configopaque.String("password"),
+						Username:           "admin",
+						Password:           configopaque.String("password"),
+						InsecureSkipVerify: true,
 					}),
 				},
 				Scrapers: map[component.Type]component.Config{
 					component.MustNewType("system"): nil,
 				},
 			},
-			expectedErr: "devices[0].port cannot be empty",
+			expectedErr: "devices[0].port must be between 1 and 65535",
+		},
+		{
+			name: "negative port",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				Devices: []DeviceConfig{
+					newTestDeviceConfig("192.168.1.1", -1, connection.AuthConfig{
+						Username:           "admin",
+						Password:           configopaque.String("password"),
+						InsecureSkipVerify: true,
+					}),
+				},
+				Scrapers: map[component.Type]component.Config{
+					component.MustNewType("system"): nil,
+				},
+			},
+			expectedErr: "devices[0].port must be between 1 and 65535",
+		},
+		{
+			name: "port above maximum",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				Devices: []DeviceConfig{
+					newTestDeviceConfig("192.168.1.1", 65536, connection.AuthConfig{
+						Username:           "admin",
+						Password:           configopaque.String("password"),
+						InsecureSkipVerify: true,
+					}),
+				},
+				Scrapers: map[component.Type]component.Config{
+					component.MustNewType("system"): nil,
+				},
+			},
+			expectedErr: "devices[0].port must be between 1 and 65535",
 		},
 		{
 			name: "missing username",
@@ -120,8 +206,9 @@ func TestConfigValidate(t *testing.T) {
 				},
 				Devices: []DeviceConfig{
 					newTestDeviceConfig("192.168.1.1", 22, connection.AuthConfig{
-						Username: "",
-						Password: configopaque.String("password"),
+						Username:           "",
+						Password:           configopaque.String("password"),
+						InsecureSkipVerify: true,
 					}),
 				},
 				Scrapers: map[component.Type]component.Config{
@@ -139,7 +226,8 @@ func TestConfigValidate(t *testing.T) {
 				},
 				Devices: []DeviceConfig{
 					newTestDeviceConfig("192.168.1.1", 22, connection.AuthConfig{
-						Username: "admin",
+						Username:           "admin",
+						InsecureSkipVerify: true,
 					}),
 				},
 				Scrapers: map[component.Type]component.Config{
@@ -160,7 +248,423 @@ func TestConfigValidate(t *testing.T) {
 					component.MustNewType("system"): nil,
 				},
 			},
-			expectedErr: "must specify at least one device",
+			expectedErr: "must specify at least one SSH device, Meraki target, Intersight target, Catalyst Center target, Nexus Dashboard target, or ACI target",
+		},
+		{
+			name: "valid meraki organization target",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				Meraki: MerakiConfig{
+					Auth: MerakiAuthConfig{APIKey: configopaque.String("meraki-key")},
+					Organizations: []MerakiOrganizationConfig{{
+						OrganizationID: "123456",
+						ProductTypes:   []string{"switch", "wireless"},
+						Tags:           []string{"prod"},
+						TagsFilterType: "withAnyTags",
+					}},
+				},
+			},
+			expectedErr: "",
+		},
+		{
+			name: "valid meraki serial target",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				Meraki: MerakiConfig{
+					Auth:    MerakiAuthConfig{APIKey: configopaque.String("meraki-key")},
+					BaseURL: "https://api.meraki.com/api/v1",
+					Devices: []MerakiDeviceConfig{{
+						OrganizationID: "123456",
+						Serial:         "Q234-ABCD-5678",
+					}},
+				},
+			},
+			expectedErr: "",
+		},
+		{
+			name: "valid mixed ssh and meraki",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				Devices: []DeviceConfig{validTestDevice()},
+				Meraki: MerakiConfig{
+					Auth: MerakiAuthConfig{APIKey: configopaque.String("meraki-key")},
+					Organizations: []MerakiOrganizationConfig{{
+						OrganizationID: "123456",
+					}},
+				},
+				Scrapers: map[component.Type]component.Config{
+					component.MustNewType("system"): nil,
+				},
+			},
+			expectedErr: "",
+		},
+		{
+			name: "valid intersight target",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				Intersight: IntersightConfig{
+					Enabled: true,
+					Auth: IntersightAuthConfig{
+						KeyID:  "api-key-id",
+						KeyPEM: configopaque.String("pem"),
+					},
+					Endpoint:          "https://intersight.com",
+					PageSize:          100,
+					MaxRetries:        3,
+					EventLookback:     time.Hour,
+					TelemetryLookback: 30 * time.Minute,
+					Inventory:         defaultIntersightGroupConfig(10),
+				},
+			},
+			expectedErr: "",
+		},
+		{
+			name: "missing intersight key id",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				Intersight: IntersightConfig{
+					Enabled: true,
+					Auth: IntersightAuthConfig{
+						KeyPEM: configopaque.String("pem"),
+					},
+				},
+			},
+			expectedErr: "intersight.auth.key_id must be provided",
+		},
+		{
+			name: "missing intersight private key",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				Intersight: IntersightConfig{
+					Enabled: true,
+					Auth: IntersightAuthConfig{
+						KeyID: "api-key-id",
+					},
+				},
+			},
+			expectedErr: "intersight.auth.key_file or intersight.auth.key_pem must be provided",
+		},
+		{
+			name: "invalid intersight endpoint",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				Intersight: IntersightConfig{
+					Enabled: true,
+					Auth: IntersightAuthConfig{
+						KeyID:  "api-key-id",
+						KeyPEM: configopaque.String("pem"),
+					},
+					Endpoint: "://bad",
+				},
+			},
+			expectedErr: "intersight.endpoint must be a valid absolute URL",
+		},
+		{
+			name: "invalid intersight group cap",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				Intersight: IntersightConfig{
+					Enabled: true,
+					Auth: IntersightAuthConfig{
+						KeyID:  "api-key-id",
+						KeyPEM: configopaque.String("pem"),
+					},
+					Endpoint:  "https://intersight.com",
+					Inventory: IntersightGroupConfig{Enabled: true, MaxResults: -1},
+				},
+			},
+			expectedErr: "intersight.inventory.max_results must not be negative",
+		},
+		{
+			name: "valid catalyst center target with basic auth",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				CatalystCenter: CatalystCenterConfig{
+					Enabled:  true,
+					Endpoint: "https://catalyst-center.example.com",
+					Auth: CatalystCenterAuthConfig{
+						Mode:     "basic",
+						Username: "admin",
+						Password: configopaque.String("password"),
+					},
+					PageSize:   500,
+					MaxRetries: 3,
+					Lookback:   time.Hour,
+					Targets: CatalystCenterTargetFilters{
+						DeviceDetails: []CatalystCenterDeviceDetailTarget{{Identifier: "MACADDRESS", SearchBy: "00:11:22:33:44:55"}},
+					},
+					Inventory: defaultCatalystCenterGroupConfig(10),
+				},
+			},
+			expectedErr: "",
+		},
+		{
+			name: "valid catalyst center target with aes credentials",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				CatalystCenter: CatalystCenterConfig{
+					Enabled:  true,
+					Endpoint: "https://catalyst-center.example.com",
+					Auth: CatalystCenterAuthConfig{
+						Mode:           "aes",
+						AESCredentials: configopaque.String("opaque-ciphertext"),
+					},
+				},
+			},
+			expectedErr: "",
+		},
+		{
+			name: "missing catalyst center endpoint",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				CatalystCenter: CatalystCenterConfig{
+					Enabled: true,
+					Auth: CatalystCenterAuthConfig{
+						Username: "admin",
+						Password: configopaque.String("password"),
+					},
+				},
+			},
+			expectedErr: "catalyst_center.endpoint must be provided",
+		},
+		{
+			name: "missing catalyst center basic auth password",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				CatalystCenter: CatalystCenterConfig{
+					Enabled:  true,
+					Endpoint: "https://catalyst-center.example.com",
+					Auth: CatalystCenterAuthConfig{
+						Mode:     "basic",
+						Username: "admin",
+					},
+				},
+			},
+			expectedErr: "catalyst_center.auth.password must be provided for basic auth",
+		},
+		{
+			name: "invalid catalyst center page size",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				CatalystCenter: CatalystCenterConfig{
+					Enabled:  true,
+					Endpoint: "https://catalyst-center.example.com",
+					Auth: CatalystCenterAuthConfig{
+						Username: "admin",
+						Password: configopaque.String("password"),
+					},
+					PageSize: 501,
+				},
+			},
+			expectedErr: "catalyst_center.page_size must be between 1 and 500 when set",
+		},
+		{
+			name: "invalid catalyst center device detail search key",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				CatalystCenter: CatalystCenterConfig{
+					Enabled:  true,
+					Endpoint: "https://catalyst-center.example.com",
+					Auth: CatalystCenterAuthConfig{
+						Username: "admin",
+						Password: configopaque.String("password"),
+					},
+					Targets: CatalystCenterTargetFilters{
+						DeviceDetails: []CatalystCenterDeviceDetailTarget{{Identifier: "hostname", SearchBy: "switch-1"}},
+					},
+				},
+			},
+			expectedErr: "identifier must be macAddress, nwDeviceName, or uuid",
+		},
+		{
+			name: "valid nexus dashboard api key target",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				NexusDashboard: NexusDashboardConfig{
+					Enabled:  true,
+					Endpoint: "https://nd.example.com",
+					Auth: ControllerAuthConfig{
+						Mode:     "api_key",
+						Username: "admin",
+						APIKey:   configopaque.String("nd-api-key"),
+					},
+					PageSize:      100,
+					MaxRetries:    3,
+					EventLookback: time.Hour,
+					NDFC:          defaultNexusControllerGroupConfig(100),
+				},
+			},
+			expectedErr: "",
+		},
+		{
+			name: "valid aci target",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				ACI: ACIConfig{
+					Enabled: true,
+					Controllers: []ACIControllerConfig{{
+						Endpoint: "https://apic.example.com",
+						Name:     "apic-1",
+					}},
+					Auth: ControllerAuthConfig{
+						Username: "admin",
+						Password: configopaque.String("password"),
+					},
+					PageSize:      100,
+					MaxRetries:    3,
+					EventLookback: time.Hour,
+				},
+			},
+			expectedErr: "",
+		},
+		{
+			name: "missing nexus dashboard api key username",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				NexusDashboard: NexusDashboardConfig{
+					Enabled:  true,
+					Endpoint: "https://nd.example.com",
+					Auth: ControllerAuthConfig{
+						Mode:   "api_key",
+						APIKey: configopaque.String("nd-api-key"),
+					},
+				},
+			},
+			expectedErr: "nexus_dashboard.auth.username must be provided for api_key auth",
+		},
+		{
+			name: "missing aci controller",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				ACI: ACIConfig{
+					Enabled: true,
+					Auth: ControllerAuthConfig{
+						Username: "admin",
+						Password: configopaque.String("password"),
+					},
+				},
+			},
+			expectedErr: "aci.controllers must include at least one APIC endpoint",
+		},
+		{
+			name: "invalid aci group cap",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				ACI: ACIConfig{
+					Enabled: true,
+					Controllers: []ACIControllerConfig{{
+						Endpoint: "https://apic.example.com",
+					}},
+					Auth: ControllerAuthConfig{
+						Username: "admin",
+						Password: configopaque.String("password"),
+					},
+					Faults: NexusControllerGroupConfig{Enabled: true, MaxResults: -1},
+				},
+			},
+			expectedErr: "aci.faults.max_results must not be negative",
+		},
+		{
+			name: "missing meraki api key",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				Meraki: MerakiConfig{
+					Organizations: []MerakiOrganizationConfig{{OrganizationID: "123456"}},
+				},
+			},
+			expectedErr: "meraki.auth.api_key must be provided",
+		},
+		{
+			name: "invalid meraki base url",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				Meraki: MerakiConfig{
+					Auth:          MerakiAuthConfig{APIKey: configopaque.String("meraki-key")},
+					BaseURL:       "://not-a-url",
+					Organizations: []MerakiOrganizationConfig{{OrganizationID: "123456"}},
+				},
+			},
+			expectedErr: "meraki.base_url must be a valid absolute URL",
+		},
+		{
+			name: "invalid meraki tags filter",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				Meraki: MerakiConfig{
+					Auth: MerakiAuthConfig{APIKey: configopaque.String("meraki-key")},
+					Organizations: []MerakiOrganizationConfig{{
+						OrganizationID: "123456",
+						TagsFilterType: "all",
+					}},
+				},
+			},
+			expectedErr: "tags_filter_type must be withAnyTags or withAllTags",
 		},
 		{
 			name: "no scrapers configured",
@@ -173,6 +677,34 @@ func TestConfigValidate(t *testing.T) {
 				Scrapers: map[component.Type]component.Config{},
 			},
 			expectedErr: "must specify at least one scraper",
+		},
+		{
+			name: "negative timeout",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            -1 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				Devices: []DeviceConfig{validTestDevice()},
+				Scrapers: map[component.Type]component.Config{
+					component.MustNewType("system"): nil,
+				},
+			},
+			expectedErr: "timeout must not be negative",
+		},
+		{
+			name: "zero collection interval",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 0,
+				},
+				Devices: []DeviceConfig{validTestDevice()},
+				Scrapers: map[component.Type]component.Config{
+					component.MustNewType("system"): nil,
+				},
+			},
+			expectedErr: "collection_interval must be positive",
 		},
 	}
 
@@ -201,9 +733,139 @@ func TestConfigUnmarshal(t *testing.T) {
 
 	require.NoError(t, sub.Unmarshal(cfg))
 	require.Len(t, cfg.Devices, 2)
+	assert.Equal(t, "enable-password", string(cfg.Devices[0].Auth.EnablePassword))
+	assert.Equal(t, []string{"device-1", "edge-1"}, cfg.DeviceSelection.Include.HostNames)
+	assert.Equal(t, []string{"host-1"}, cfg.DeviceSelection.Include.HostIDs)
+	assert.Equal(t, []string{"192.168.1.1"}, cfg.DeviceSelection.Include.HostIPs)
+	assert.Equal(t, []string{"Q234-ABCD-0001", "SERIAL-1", "FOC1234", "ACI-SERIAL-1"}, cfg.DeviceSelection.Include.Serials)
+	assert.Equal(t, []string{"device-uuid-1", "101"}, cfg.DeviceSelection.Include.DeviceIDs)
+	assert.Equal(t, []string{"lab-disabled"}, cfg.DeviceSelection.Exclude.HostNames)
+	assert.Equal(t, []string{"host-disabled"}, cfg.DeviceSelection.Exclude.HostIDs)
+	assert.Equal(t, []string{"192.168.1.254"}, cfg.DeviceSelection.Exclude.HostIPs)
+	assert.Equal(t, []string{"Q234-ABCD-9999"}, cfg.DeviceSelection.Exclude.Serials)
+	assert.Equal(t, []string{"device-disabled"}, cfg.DeviceSelection.Exclude.DeviceIDs)
+	assert.Equal(t, "https://api.meraki.com/api/v1", cfg.Meraki.BaseURL)
+	assert.Equal(t, "meraki-key", string(cfg.Meraki.Auth.APIKey))
+	require.Len(t, cfg.Meraki.Organizations, 1)
+	assert.Equal(t, "123456", cfg.Meraki.Organizations[0].OrganizationID)
+	assert.Equal(t, []string{"N_1"}, cfg.Meraki.Organizations[0].NetworkIDs)
+	assert.Equal(t, []string{"Q234-ABCD-0001"}, cfg.Meraki.Organizations[0].Serials)
+	assert.Equal(t, []string{"switch", "wireless"}, cfg.Meraki.Organizations[0].ProductTypes)
+	assert.Equal(t, []string{"prod"}, cfg.Meraki.Organizations[0].Tags)
+	assert.Equal(t, "withAnyTags", cfg.Meraki.Organizations[0].TagsFilterType)
+	require.Len(t, cfg.Meraki.Devices, 1)
+	assert.Equal(t, "Q234-ABCD-0002", cfg.Meraki.Devices[0].Serial)
+	assert.True(t, cfg.Intersight.Enabled)
+	assert.Equal(t, "intersight-key", cfg.Intersight.Auth.KeyID)
+	assert.Equal(t, "/etc/otelcol/intersight.pem", cfg.Intersight.Auth.KeyFile)
+	assert.Equal(t, "https://intersight.example.com", cfg.Intersight.Endpoint)
+	assert.Equal(t, "ciscoosreceiver-test", cfg.Intersight.UserAgent)
+	assert.Equal(t, 50, cfg.Intersight.PageSize)
+	assert.Equal(t, 2, cfg.Intersight.MaxRetries)
+	assert.Equal(t, 12*time.Hour, cfg.Intersight.EventLookback)
+	assert.Equal(t, 15*time.Minute, cfg.Intersight.TelemetryLookback)
+	assert.Equal(t, []string{"SERIAL-1"}, cfg.Intersight.Targets.Serials)
+	assert.Equal(t, []string{"moid-1"}, cfg.Intersight.Targets.MoIDs)
+	assert.False(t, cfg.Intersight.Telemetry.Enabled)
+	assert.Equal(t, 25, cfg.Intersight.Telemetry.MaxResults)
+	assert.True(t, cfg.Intersight.Storage.Enabled)
+	assert.Equal(t, 75, cfg.Intersight.Storage.MaxResults)
+	assert.True(t, cfg.CatalystCenter.Enabled)
+	assert.Equal(t, "https://catalyst-center.example.com", cfg.CatalystCenter.Endpoint)
+	assert.Equal(t, "ciscoosreceiver-test", cfg.CatalystCenter.UserAgent)
+	assert.Equal(t, 250, cfg.CatalystCenter.PageSize)
+	assert.Equal(t, 2, cfg.CatalystCenter.MaxRetries)
+	assert.Equal(t, 6*time.Hour, cfg.CatalystCenter.Lookback)
+	assert.Equal(t, "basic", cfg.CatalystCenter.Auth.Mode)
+	assert.Equal(t, "admin", cfg.CatalystCenter.Auth.Username)
+	assert.Equal(t, "password", string(cfg.CatalystCenter.Auth.Password))
+	require.Len(t, cfg.CatalystCenter.Targets.DeviceDetails, 1)
+	assert.Equal(t, "uuid", cfg.CatalystCenter.Targets.DeviceDetails[0].Identifier)
+	assert.Equal(t, "device-uuid-1", cfg.CatalystCenter.Targets.DeviceDetails[0].SearchBy)
+	assert.Equal(t, []string{"00:11:22:33:44:55"}, cfg.CatalystCenter.Targets.ClientMACs)
+	assert.True(t, cfg.CatalystCenter.Topology.Enabled)
+	assert.Equal(t, 500, cfg.CatalystCenter.Topology.MaxResults)
+	assert.True(t, cfg.CatalystCenter.Issues.Enabled)
+	assert.Equal(t, 100, cfg.CatalystCenter.Issues.MaxResults)
+	assert.True(t, cfg.NexusDashboard.Enabled)
+	assert.Equal(t, "https://nexus-dashboard.example.com", cfg.NexusDashboard.Endpoint)
+	assert.Equal(t, "api_key", cfg.NexusDashboard.Auth.Mode)
+	assert.Equal(t, "admin", cfg.NexusDashboard.Auth.Username)
+	assert.Equal(t, "nd-api-key", string(cfg.NexusDashboard.Auth.APIKey))
+	assert.Equal(t, 75, cfg.NexusDashboard.PageSize)
+	assert.Equal(t, 2, cfg.NexusDashboard.MaxRetries)
+	assert.Equal(t, 8*time.Hour, cfg.NexusDashboard.EventLookback)
+	assert.Equal(t, 20*time.Minute, cfg.NexusDashboard.TelemetryLookback)
+	assert.Equal(t, []string{"fabric-a"}, cfg.NexusDashboard.Targets.Fabrics)
+	assert.Equal(t, []string{"N9K-SERIAL-1"}, cfg.NexusDashboard.Targets.SwitchSerials)
+	assert.Equal(t, []string{"101"}, cfg.NexusDashboard.Targets.SwitchIDs)
+	assert.Equal(t, 250, cfg.NexusDashboard.NDFC.MaxResults)
+	assert.Equal(t, 150, cfg.NexusDashboard.Insights.MaxResults)
+	assert.Equal(t, 200, cfg.NexusDashboard.Performance.MaxResults)
+	assert.True(t, cfg.ACI.Enabled)
+	require.Len(t, cfg.ACI.Controllers, 2)
+	assert.Equal(t, "https://apic1.example.com", cfg.ACI.Controllers[0].Endpoint)
+	assert.Equal(t, "apic-1", cfg.ACI.Controllers[0].Name)
+	assert.Equal(t, "admin", cfg.ACI.Auth.Username)
+	assert.Equal(t, "password", string(cfg.ACI.Auth.Password))
+	assert.Equal(t, "local", cfg.ACI.Auth.Domain)
+	assert.Equal(t, 80, cfg.ACI.PageSize)
+	assert.Equal(t, 2, cfg.ACI.MaxRetries)
+	assert.Equal(t, 10*time.Hour, cfg.ACI.EventLookback)
+	assert.Equal(t, 25*time.Minute, cfg.ACI.StatsLookback)
+	assert.Equal(t, []string{"101"}, cfg.ACI.Targets.NodeIDs)
+	assert.Equal(t, []string{"prod"}, cfg.ACI.Targets.Tenants)
+	assert.Equal(t, 300, cfg.ACI.Faults.MaxResults)
+	assert.Equal(t, 400, cfg.ACI.Endpoints.MaxResults)
+	assert.Equal(t, 500, cfg.ACI.Tenants.MaxResults)
 	assert.Len(t, cfg.Scrapers, 2)
 	assert.Contains(t, cfg.Scrapers, component.MustNewType("system"))
 	assert.Contains(t, cfg.Scrapers, component.MustNewType("interfaces"))
+
+	systemCfg, ok := cfg.Scrapers[component.MustNewType("system")].(*systemscraper.Config)
+	require.True(t, ok)
+	assert.True(t, systemCfg.ProtocolTraffic.Enabled)
+	assert.True(t, systemCfg.ControlPlane.Enabled)
+	assert.Equal(t, 5, systemCfg.ControlPlane.ProcessTopN)
+	assert.True(t, systemCfg.ControlPlane.Commands.PuntRates)
+	assert.Equal(t, []string{"default", "Mgmt-vrf"}, systemCfg.RoutingForwarding.VRFs)
+	assert.Equal(t, 2, systemCfg.RoutingForwarding.MaxVRFs)
+	assert.True(t, systemCfg.RoutingForwarding.Commands.RouteSummary)
+	assert.True(t, systemCfg.RoutingForwarding.Commands.ARP)
+	assert.True(t, systemCfg.RouterDataplane.Commands.QFPUtilization)
+	assert.True(t, systemCfg.RouterDataplane.Commands.QFPDrops)
+	assert.True(t, systemCfg.RouterDataplane.Commands.QoSDrops)
+	assert.True(t, systemCfg.RouterDataplane.Commands.CryptoDrops)
+	assert.Equal(t, 64, systemCfg.HardwareHealth.MaxComponents)
+	assert.True(t, systemCfg.HardwareHealth.Commands.Environment)
+	assert.Equal(t, []string{"default"}, systemCfg.RoutingNeighbors.VRFs)
+	assert.Equal(t, 128, systemCfg.RoutingNeighbors.MaxNeighbors)
+	assert.True(t, systemCfg.RoutingNeighbors.Commands.BGP)
+	assert.Equal(t, 128, systemCfg.Fabric.MaxPeers)
+	assert.Equal(t, 512, systemCfg.Fabric.MaxVNIs)
+	assert.True(t, systemCfg.Fabric.Commands.NVEPeers)
+	assert.True(t, systemCfg.Fabric.Commands.NVEVNIs)
+	assert.True(t, systemCfg.Fabric.Commands.EVPNRoutes)
+
+	interfaceCfg, ok := cfg.Scrapers[component.MustNewType("interfaces")].(*interfacesscraper.Config)
+	require.True(t, ok)
+	assert.True(t, interfaceCfg.Rates.Enabled)
+	assert.True(t, interfaceCfg.Counters.Enabled)
+	assert.Equal(t, []string{"*error*", "*drop*", "pause_*"}, interfaceCfg.Counters.Include)
+	assert.Equal(t, 25, interfaceCfg.Counters.MaxPerInterface)
+	assert.True(t, interfaceCfg.Counters.Commands.FlowControl)
+	assert.True(t, interfaceCfg.Counters.Commands.QoSPolicy)
+	assert.True(t, interfaceCfg.L2Topology.Enabled)
+	assert.Equal(t, []string{"Gi*", "Eth*"}, interfaceCfg.L2Topology.Include)
+	assert.Equal(t, []string{"*0/48"}, interfaceCfg.L2Topology.Exclude)
+	assert.Equal(t, 32, interfaceCfg.L2Topology.MaxInterfaces)
+	assert.Equal(t, 64, interfaceCfg.L2Topology.MaxVLANs)
+	assert.True(t, interfaceCfg.L2Topology.Commands.VPC)
+	assert.True(t, interfaceCfg.L2Topology.Commands.LLDP)
+	assert.True(t, interfaceCfg.L2Topology.Commands.CDP)
+	assert.True(t, interfaceCfg.Transceiver.Enabled)
+	assert.Equal(t, []string{"Te*", "Eth*"}, interfaceCfg.Transceiver.Include)
+	assert.Equal(t, 16, interfaceCfg.Transceiver.MaxInterfaces)
 }
 
 func TestConfigUnmarshalNil(t *testing.T) {

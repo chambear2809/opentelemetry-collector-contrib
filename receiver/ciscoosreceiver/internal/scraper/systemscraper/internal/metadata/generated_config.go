@@ -3,9 +3,308 @@
 package metadata
 
 import (
+	"fmt"
+
 	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/filter"
 )
+
+// CiscoAdjacencyEntriesMetricAttributeKey specifies the key of an attribute for the cisco.adjacency.entries metric.
+type CiscoAdjacencyEntriesMetricAttributeKey string
+
+const (
+	CiscoAdjacencyEntriesMetricAttributeKeyCiscoRoutingVrf     CiscoAdjacencyEntriesMetricAttributeKey = "cisco.routing.vrf"
+	CiscoAdjacencyEntriesMetricAttributeKeyCiscoAdjacencyState CiscoAdjacencyEntriesMetricAttributeKey = "cisco.adjacency.state"
+)
+
+// CiscoAdjacencyEntriesMetricConfig provides config for the cisco.adjacency.entries metric.
+type CiscoAdjacencyEntriesMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                    `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoAdjacencyEntriesMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoAdjacencyEntriesMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoAdjacencyEntriesMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoAdjacencyEntriesMetricAttributeKeyCiscoRoutingVrf, CiscoAdjacencyEntriesMetricAttributeKeyCiscoAdjacencyState:
+		default:
+			return fmt.Errorf("metric cisco.adjacency.entries doesn't have an attribute %v, valid attributes: [cisco.routing.vrf, cisco.adjacency.state]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoArpEntriesMetricAttributeKey specifies the key of an attribute for the cisco.arp.entries metric.
+type CiscoArpEntriesMetricAttributeKey string
+
+const (
+	CiscoArpEntriesMetricAttributeKeyCiscoRoutingVrf CiscoArpEntriesMetricAttributeKey = "cisco.routing.vrf"
+	CiscoArpEntriesMetricAttributeKeyAddressFamily   CiscoArpEntriesMetricAttributeKey = "address.family"
+)
+
+// CiscoArpEntriesMetricConfig provides config for the cisco.arp.entries metric.
+type CiscoArpEntriesMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                              `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoArpEntriesMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoArpEntriesMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoArpEntriesMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoArpEntriesMetricAttributeKeyCiscoRoutingVrf, CiscoArpEntriesMetricAttributeKeyAddressFamily:
+		default:
+			return fmt.Errorf("metric cisco.arp.entries doesn't have an attribute %v, valid attributes: [cisco.routing.vrf, address.family]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoControlPlaneCPUProcessUtilizationMetricAttributeKey specifies the key of an attribute for the cisco.control_plane.cpu.process.utilization metric.
+type CiscoControlPlaneCPUProcessUtilizationMetricAttributeKey string
+
+const (
+	CiscoControlPlaneCPUProcessUtilizationMetricAttributeKeyCiscoProcessName CiscoControlPlaneCPUProcessUtilizationMetricAttributeKey = "cisco.process.name"
+	CiscoControlPlaneCPUProcessUtilizationMetricAttributeKeyCiscoProcessPid  CiscoControlPlaneCPUProcessUtilizationMetricAttributeKey = "cisco.process.pid"
+	CiscoControlPlaneCPUProcessUtilizationMetricAttributeKeyCiscoCPUWindow   CiscoControlPlaneCPUProcessUtilizationMetricAttributeKey = "cisco.cpu.window"
+)
+
+// CiscoControlPlaneCPUProcessUtilizationMetricConfig provides config for the cisco.control_plane.cpu.process.utilization metric.
+type CiscoControlPlaneCPUProcessUtilizationMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                                     `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoControlPlaneCPUProcessUtilizationMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoControlPlaneCPUProcessUtilizationMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoControlPlaneCPUProcessUtilizationMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoControlPlaneCPUProcessUtilizationMetricAttributeKeyCiscoProcessName, CiscoControlPlaneCPUProcessUtilizationMetricAttributeKeyCiscoProcessPid, CiscoControlPlaneCPUProcessUtilizationMetricAttributeKeyCiscoCPUWindow:
+		default:
+			return fmt.Errorf("metric cisco.control_plane.cpu.process.utilization doesn't have an attribute %v, valid attributes: [cisco.process.name, cisco.process.pid, cisco.cpu.window]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoControlPlaneDroppedMetricAttributeKey specifies the key of an attribute for the cisco.control_plane.dropped metric.
+type CiscoControlPlaneDroppedMetricAttributeKey string
+
+const (
+	CiscoControlPlaneDroppedMetricAttributeKeyCiscoControlPlaneSource     CiscoControlPlaneDroppedMetricAttributeKey = "cisco.control_plane.source"
+	CiscoControlPlaneDroppedMetricAttributeKeyCiscoControlPlaneClass      CiscoControlPlaneDroppedMetricAttributeKey = "cisco.control_plane.class"
+	CiscoControlPlaneDroppedMetricAttributeKeyCiscoControlPlaneDropReason CiscoControlPlaneDroppedMetricAttributeKey = "cisco.control_plane.drop.reason"
+)
+
+// CiscoControlPlaneDroppedMetricConfig provides config for the cisco.control_plane.dropped metric.
+type CiscoControlPlaneDroppedMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                       `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoControlPlaneDroppedMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoControlPlaneDroppedMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoControlPlaneDroppedMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoControlPlaneDroppedMetricAttributeKeyCiscoControlPlaneSource, CiscoControlPlaneDroppedMetricAttributeKeyCiscoControlPlaneClass, CiscoControlPlaneDroppedMetricAttributeKeyCiscoControlPlaneDropReason:
+		default:
+			return fmt.Errorf("metric cisco.control_plane.dropped doesn't have an attribute %v, valid attributes: [cisco.control_plane.source, cisco.control_plane.class, cisco.control_plane.drop.reason]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoControlPlanePacketsMetricAttributeKey specifies the key of an attribute for the cisco.control_plane.packets metric.
+type CiscoControlPlanePacketsMetricAttributeKey string
+
+const (
+	CiscoControlPlanePacketsMetricAttributeKeyCiscoControlPlaneSource CiscoControlPlanePacketsMetricAttributeKey = "cisco.control_plane.source"
+	CiscoControlPlanePacketsMetricAttributeKeyCiscoControlPlaneClass  CiscoControlPlanePacketsMetricAttributeKey = "cisco.control_plane.class"
+	CiscoControlPlanePacketsMetricAttributeKeyNetworkIoDirection      CiscoControlPlanePacketsMetricAttributeKey = "network.io.direction"
+)
+
+// CiscoControlPlanePacketsMetricConfig provides config for the cisco.control_plane.packets metric.
+type CiscoControlPlanePacketsMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                       `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoControlPlanePacketsMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoControlPlanePacketsMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoControlPlanePacketsMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoControlPlanePacketsMetricAttributeKeyCiscoControlPlaneSource, CiscoControlPlanePacketsMetricAttributeKeyCiscoControlPlaneClass, CiscoControlPlanePacketsMetricAttributeKeyNetworkIoDirection:
+		default:
+			return fmt.Errorf("metric cisco.control_plane.packets doesn't have an attribute %v, valid attributes: [cisco.control_plane.source, cisco.control_plane.class, network.io.direction]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoControlPlanePuntRateMetricAttributeKey specifies the key of an attribute for the cisco.control_plane.punt.rate metric.
+type CiscoControlPlanePuntRateMetricAttributeKey string
+
+const (
+	CiscoControlPlanePuntRateMetricAttributeKeyCiscoControlPlanePuntQueue CiscoControlPlanePuntRateMetricAttributeKey = "cisco.control_plane.punt.queue"
+	CiscoControlPlanePuntRateMetricAttributeKeyNetworkInterfaceName       CiscoControlPlanePuntRateMetricAttributeKey = "network.interface.name"
+)
+
+// CiscoControlPlanePuntRateMetricConfig provides config for the cisco.control_plane.punt.rate metric.
+type CiscoControlPlanePuntRateMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                        `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoControlPlanePuntRateMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoControlPlanePuntRateMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoControlPlanePuntRateMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoControlPlanePuntRateMetricAttributeKeyCiscoControlPlanePuntQueue, CiscoControlPlanePuntRateMetricAttributeKeyNetworkInterfaceName:
+		default:
+			return fmt.Errorf("metric cisco.control_plane.punt.rate doesn't have an attribute %v, valid attributes: [cisco.control_plane.punt.queue, network.interface.name]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
 
 // CiscoDeviceUpMetricConfig provides config for the cisco.device.up metric.
 type CiscoDeviceUpMetricConfig struct {
@@ -14,6 +313,1088 @@ type CiscoDeviceUpMetricConfig struct {
 }
 
 func (ms *CiscoDeviceUpMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+// CiscoEvpnRoutesMetricAttributeKey specifies the key of an attribute for the cisco.evpn.routes metric.
+type CiscoEvpnRoutesMetricAttributeKey string
+
+const (
+	CiscoEvpnRoutesMetricAttributeKeyCiscoRoutingVrf    CiscoEvpnRoutesMetricAttributeKey = "cisco.routing.vrf"
+	CiscoEvpnRoutesMetricAttributeKeyCiscoEvpnRouteType CiscoEvpnRoutesMetricAttributeKey = "cisco.evpn.route.type"
+)
+
+// CiscoEvpnRoutesMetricConfig provides config for the cisco.evpn.routes metric.
+type CiscoEvpnRoutesMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                              `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoEvpnRoutesMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoEvpnRoutesMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoEvpnRoutesMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoEvpnRoutesMetricAttributeKeyCiscoRoutingVrf, CiscoEvpnRoutesMetricAttributeKeyCiscoEvpnRouteType:
+		default:
+			return fmt.Errorf("metric cisco.evpn.routes doesn't have an attribute %v, valid attributes: [cisco.routing.vrf, cisco.evpn.route.type]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoForwardingDropsMetricAttributeKey specifies the key of an attribute for the cisco.forwarding.drops metric.
+type CiscoForwardingDropsMetricAttributeKey string
+
+const (
+	CiscoForwardingDropsMetricAttributeKeyCiscoRoutingVrf           CiscoForwardingDropsMetricAttributeKey = "cisco.routing.vrf"
+	CiscoForwardingDropsMetricAttributeKeyCiscoForwardingDropReason CiscoForwardingDropsMetricAttributeKey = "cisco.forwarding.drop.reason"
+)
+
+// CiscoForwardingDropsMetricConfig provides config for the cisco.forwarding.drops metric.
+type CiscoForwardingDropsMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                   `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoForwardingDropsMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoForwardingDropsMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoForwardingDropsMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoForwardingDropsMetricAttributeKeyCiscoRoutingVrf, CiscoForwardingDropsMetricAttributeKeyCiscoForwardingDropReason:
+		default:
+			return fmt.Errorf("metric cisco.forwarding.drops doesn't have an attribute %v, valid attributes: [cisco.routing.vrf, cisco.forwarding.drop.reason]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoForwardingFibEntriesMetricAttributeKey specifies the key of an attribute for the cisco.forwarding.fib.entries metric.
+type CiscoForwardingFibEntriesMetricAttributeKey string
+
+const (
+	CiscoForwardingFibEntriesMetricAttributeKeyCiscoRoutingVrf CiscoForwardingFibEntriesMetricAttributeKey = "cisco.routing.vrf"
+	CiscoForwardingFibEntriesMetricAttributeKeyAddressFamily   CiscoForwardingFibEntriesMetricAttributeKey = "address.family"
+)
+
+// CiscoForwardingFibEntriesMetricConfig provides config for the cisco.forwarding.fib.entries metric.
+type CiscoForwardingFibEntriesMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                        `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoForwardingFibEntriesMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoForwardingFibEntriesMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoForwardingFibEntriesMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoForwardingFibEntriesMetricAttributeKeyCiscoRoutingVrf, CiscoForwardingFibEntriesMetricAttributeKeyAddressFamily:
+		default:
+			return fmt.Errorf("metric cisco.forwarding.fib.entries doesn't have an attribute %v, valid attributes: [cisco.routing.vrf, address.family]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoHardwareStatusMetricAttributeKey specifies the key of an attribute for the cisco.hardware.status metric.
+type CiscoHardwareStatusMetricAttributeKey string
+
+const (
+	CiscoHardwareStatusMetricAttributeKeyCiscoHardwareComponent CiscoHardwareStatusMetricAttributeKey = "cisco.hardware.component"
+	CiscoHardwareStatusMetricAttributeKeyCiscoHardwareName      CiscoHardwareStatusMetricAttributeKey = "cisco.hardware.name"
+	CiscoHardwareStatusMetricAttributeKeyCiscoHardwareSlot      CiscoHardwareStatusMetricAttributeKey = "cisco.hardware.slot"
+	CiscoHardwareStatusMetricAttributeKeyCiscoHardwareState     CiscoHardwareStatusMetricAttributeKey = "cisco.hardware.state"
+)
+
+// CiscoHardwareStatusMetricConfig provides config for the cisco.hardware.status metric.
+type CiscoHardwareStatusMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                  `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoHardwareStatusMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoHardwareStatusMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoHardwareStatusMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoHardwareStatusMetricAttributeKeyCiscoHardwareComponent, CiscoHardwareStatusMetricAttributeKeyCiscoHardwareName, CiscoHardwareStatusMetricAttributeKeyCiscoHardwareSlot, CiscoHardwareStatusMetricAttributeKeyCiscoHardwareState:
+		default:
+			return fmt.Errorf("metric cisco.hardware.status doesn't have an attribute %v, valid attributes: [cisco.hardware.component, cisco.hardware.name, cisco.hardware.slot, cisco.hardware.state]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoHardwareTemperatureMetricAttributeKey specifies the key of an attribute for the cisco.hardware.temperature metric.
+type CiscoHardwareTemperatureMetricAttributeKey string
+
+const (
+	CiscoHardwareTemperatureMetricAttributeKeyCiscoHardwareName  CiscoHardwareTemperatureMetricAttributeKey = "cisco.hardware.name"
+	CiscoHardwareTemperatureMetricAttributeKeyCiscoHardwareSlot  CiscoHardwareTemperatureMetricAttributeKey = "cisco.hardware.slot"
+	CiscoHardwareTemperatureMetricAttributeKeyCiscoHardwareState CiscoHardwareTemperatureMetricAttributeKey = "cisco.hardware.state"
+)
+
+// CiscoHardwareTemperatureMetricConfig provides config for the cisco.hardware.temperature metric.
+type CiscoHardwareTemperatureMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                       `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoHardwareTemperatureMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoHardwareTemperatureMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoHardwareTemperatureMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoHardwareTemperatureMetricAttributeKeyCiscoHardwareName, CiscoHardwareTemperatureMetricAttributeKeyCiscoHardwareSlot, CiscoHardwareTemperatureMetricAttributeKeyCiscoHardwareState:
+		default:
+			return fmt.Errorf("metric cisco.hardware.temperature doesn't have an attribute %v, valid attributes: [cisco.hardware.name, cisco.hardware.slot, cisco.hardware.state]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoNvePeerStatusMetricAttributeKey specifies the key of an attribute for the cisco.nve.peer.status metric.
+type CiscoNvePeerStatusMetricAttributeKey string
+
+const (
+	CiscoNvePeerStatusMetricAttributeKeyNetworkPeerAddress CiscoNvePeerStatusMetricAttributeKey = "network.peer.address"
+	CiscoNvePeerStatusMetricAttributeKeyCiscoNveState      CiscoNvePeerStatusMetricAttributeKey = "cisco.nve.state"
+)
+
+// CiscoNvePeerStatusMetricConfig provides config for the cisco.nve.peer.status metric.
+type CiscoNvePeerStatusMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                 `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoNvePeerStatusMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoNvePeerStatusMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoNvePeerStatusMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoNvePeerStatusMetricAttributeKeyNetworkPeerAddress, CiscoNvePeerStatusMetricAttributeKeyCiscoNveState:
+		default:
+			return fmt.Errorf("metric cisco.nve.peer.status doesn't have an attribute %v, valid attributes: [network.peer.address, cisco.nve.state]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoNveVniStatusMetricAttributeKey specifies the key of an attribute for the cisco.nve.vni.status metric.
+type CiscoNveVniStatusMetricAttributeKey string
+
+const (
+	CiscoNveVniStatusMetricAttributeKeyCiscoNveVni     CiscoNveVniStatusMetricAttributeKey = "cisco.nve.vni"
+	CiscoNveVniStatusMetricAttributeKeyCiscoNveVniType CiscoNveVniStatusMetricAttributeKey = "cisco.nve.vni.type"
+	CiscoNveVniStatusMetricAttributeKeyCiscoNveState   CiscoNveVniStatusMetricAttributeKey = "cisco.nve.state"
+)
+
+// CiscoNveVniStatusMetricConfig provides config for the cisco.nve.vni.status metric.
+type CiscoNveVniStatusMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoNveVniStatusMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoNveVniStatusMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoNveVniStatusMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoNveVniStatusMetricAttributeKeyCiscoNveVni, CiscoNveVniStatusMetricAttributeKeyCiscoNveVniType, CiscoNveVniStatusMetricAttributeKeyCiscoNveState:
+		default:
+			return fmt.Errorf("metric cisco.nve.vni.status doesn't have an attribute %v, valid attributes: [cisco.nve.vni, cisco.nve.vni.type, cisco.nve.state]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoProtocolDroppedMetricAttributeKey specifies the key of an attribute for the cisco.protocol.dropped metric.
+type CiscoProtocolDroppedMetricAttributeKey string
+
+const (
+	CiscoProtocolDroppedMetricAttributeKeyCiscoProtocolDropReason CiscoProtocolDroppedMetricAttributeKey = "cisco.protocol.drop.reason"
+	CiscoProtocolDroppedMetricAttributeKeyCiscoProtocolName       CiscoProtocolDroppedMetricAttributeKey = "cisco.protocol.name"
+)
+
+// CiscoProtocolDroppedMetricConfig provides config for the cisco.protocol.dropped metric.
+type CiscoProtocolDroppedMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                   `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoProtocolDroppedMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoProtocolDroppedMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoProtocolDroppedMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoProtocolDroppedMetricAttributeKeyCiscoProtocolDropReason, CiscoProtocolDroppedMetricAttributeKeyCiscoProtocolName:
+		default:
+			return fmt.Errorf("metric cisco.protocol.dropped doesn't have an attribute %v, valid attributes: [cisco.protocol.drop.reason, cisco.protocol.name]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoProtocolErrorsMetricAttributeKey specifies the key of an attribute for the cisco.protocol.errors metric.
+type CiscoProtocolErrorsMetricAttributeKey string
+
+const (
+	CiscoProtocolErrorsMetricAttributeKeyCiscoProtocolErrorType CiscoProtocolErrorsMetricAttributeKey = "cisco.protocol.error.type"
+	CiscoProtocolErrorsMetricAttributeKeyCiscoProtocolName      CiscoProtocolErrorsMetricAttributeKey = "cisco.protocol.name"
+)
+
+// CiscoProtocolErrorsMetricConfig provides config for the cisco.protocol.errors metric.
+type CiscoProtocolErrorsMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                  `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoProtocolErrorsMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoProtocolErrorsMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoProtocolErrorsMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoProtocolErrorsMetricAttributeKeyCiscoProtocolErrorType, CiscoProtocolErrorsMetricAttributeKeyCiscoProtocolName:
+		default:
+			return fmt.Errorf("metric cisco.protocol.errors doesn't have an attribute %v, valid attributes: [cisco.protocol.error.type, cisco.protocol.name]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoProtocolPacketsMetricAttributeKey specifies the key of an attribute for the cisco.protocol.packets metric.
+type CiscoProtocolPacketsMetricAttributeKey string
+
+const (
+	CiscoProtocolPacketsMetricAttributeKeyCiscoProtocolMessageType CiscoProtocolPacketsMetricAttributeKey = "cisco.protocol.message.type"
+	CiscoProtocolPacketsMetricAttributeKeyCiscoProtocolName        CiscoProtocolPacketsMetricAttributeKey = "cisco.protocol.name"
+	CiscoProtocolPacketsMetricAttributeKeyNetworkIoDirection       CiscoProtocolPacketsMetricAttributeKey = "network.io.direction"
+)
+
+// CiscoProtocolPacketsMetricConfig provides config for the cisco.protocol.packets metric.
+type CiscoProtocolPacketsMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                   `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoProtocolPacketsMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoProtocolPacketsMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoProtocolPacketsMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoProtocolPacketsMetricAttributeKeyCiscoProtocolMessageType, CiscoProtocolPacketsMetricAttributeKeyCiscoProtocolName, CiscoProtocolPacketsMetricAttributeKeyNetworkIoDirection:
+		default:
+			return fmt.Errorf("metric cisco.protocol.packets doesn't have an attribute %v, valid attributes: [cisco.protocol.message.type, cisco.protocol.name, network.io.direction]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoQfpDatapathIoMetricAttributeKey specifies the key of an attribute for the cisco.qfp.datapath.io metric.
+type CiscoQfpDatapathIoMetricAttributeKey string
+
+const (
+	CiscoQfpDatapathIoMetricAttributeKeyNetworkIoDirection   CiscoQfpDatapathIoMetricAttributeKey = "network.io.direction"
+	CiscoQfpDatapathIoMetricAttributeKeyCiscoQfpTrafficClass CiscoQfpDatapathIoMetricAttributeKey = "cisco.qfp.traffic.class"
+	CiscoQfpDatapathIoMetricAttributeKeyCiscoCPUWindow       CiscoQfpDatapathIoMetricAttributeKey = "cisco.cpu.window"
+)
+
+// CiscoQfpDatapathIoMetricConfig provides config for the cisco.qfp.datapath.io metric.
+type CiscoQfpDatapathIoMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                 `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoQfpDatapathIoMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoQfpDatapathIoMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoQfpDatapathIoMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoQfpDatapathIoMetricAttributeKeyNetworkIoDirection, CiscoQfpDatapathIoMetricAttributeKeyCiscoQfpTrafficClass, CiscoQfpDatapathIoMetricAttributeKeyCiscoCPUWindow:
+		default:
+			return fmt.Errorf("metric cisco.qfp.datapath.io doesn't have an attribute %v, valid attributes: [network.io.direction, cisco.qfp.traffic.class, cisco.cpu.window]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoQfpDatapathPacketRateMetricAttributeKey specifies the key of an attribute for the cisco.qfp.datapath.packet.rate metric.
+type CiscoQfpDatapathPacketRateMetricAttributeKey string
+
+const (
+	CiscoQfpDatapathPacketRateMetricAttributeKeyNetworkIoDirection   CiscoQfpDatapathPacketRateMetricAttributeKey = "network.io.direction"
+	CiscoQfpDatapathPacketRateMetricAttributeKeyCiscoQfpTrafficClass CiscoQfpDatapathPacketRateMetricAttributeKey = "cisco.qfp.traffic.class"
+	CiscoQfpDatapathPacketRateMetricAttributeKeyCiscoCPUWindow       CiscoQfpDatapathPacketRateMetricAttributeKey = "cisco.cpu.window"
+)
+
+// CiscoQfpDatapathPacketRateMetricConfig provides config for the cisco.qfp.datapath.packet.rate metric.
+type CiscoQfpDatapathPacketRateMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                         `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoQfpDatapathPacketRateMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoQfpDatapathPacketRateMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoQfpDatapathPacketRateMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoQfpDatapathPacketRateMetricAttributeKeyNetworkIoDirection, CiscoQfpDatapathPacketRateMetricAttributeKeyCiscoQfpTrafficClass, CiscoQfpDatapathPacketRateMetricAttributeKeyCiscoCPUWindow:
+		default:
+			return fmt.Errorf("metric cisco.qfp.datapath.packet.rate doesn't have an attribute %v, valid attributes: [network.io.direction, cisco.qfp.traffic.class, cisco.cpu.window]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoQfpDatapathUtilizationMetricAttributeKey specifies the key of an attribute for the cisco.qfp.datapath.utilization metric.
+type CiscoQfpDatapathUtilizationMetricAttributeKey string
+
+const (
+	CiscoQfpDatapathUtilizationMetricAttributeKeyCiscoQfpLoadType CiscoQfpDatapathUtilizationMetricAttributeKey = "cisco.qfp.load.type"
+	CiscoQfpDatapathUtilizationMetricAttributeKeyCiscoCPUWindow   CiscoQfpDatapathUtilizationMetricAttributeKey = "cisco.cpu.window"
+)
+
+// CiscoQfpDatapathUtilizationMetricConfig provides config for the cisco.qfp.datapath.utilization metric.
+type CiscoQfpDatapathUtilizationMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                          `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoQfpDatapathUtilizationMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoQfpDatapathUtilizationMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoQfpDatapathUtilizationMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoQfpDatapathUtilizationMetricAttributeKeyCiscoQfpLoadType, CiscoQfpDatapathUtilizationMetricAttributeKeyCiscoCPUWindow:
+		default:
+			return fmt.Errorf("metric cisco.qfp.datapath.utilization doesn't have an attribute %v, valid attributes: [cisco.qfp.load.type, cisco.cpu.window]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoQfpDropBytesMetricAttributeKey specifies the key of an attribute for the cisco.qfp.drop.bytes metric.
+type CiscoQfpDropBytesMetricAttributeKey string
+
+const (
+	CiscoQfpDropBytesMetricAttributeKeyCiscoQfpDropSource        CiscoQfpDropBytesMetricAttributeKey = "cisco.qfp.drop.source"
+	CiscoQfpDropBytesMetricAttributeKeyCiscoForwardingDropReason CiscoQfpDropBytesMetricAttributeKey = "cisco.forwarding.drop.reason"
+)
+
+// CiscoQfpDropBytesMetricConfig provides config for the cisco.qfp.drop.bytes metric.
+type CiscoQfpDropBytesMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoQfpDropBytesMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoQfpDropBytesMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoQfpDropBytesMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoQfpDropBytesMetricAttributeKeyCiscoQfpDropSource, CiscoQfpDropBytesMetricAttributeKeyCiscoForwardingDropReason:
+		default:
+			return fmt.Errorf("metric cisco.qfp.drop.bytes doesn't have an attribute %v, valid attributes: [cisco.qfp.drop.source, cisco.forwarding.drop.reason]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoQfpDropsMetricAttributeKey specifies the key of an attribute for the cisco.qfp.drops metric.
+type CiscoQfpDropsMetricAttributeKey string
+
+const (
+	CiscoQfpDropsMetricAttributeKeyCiscoQfpDropSource        CiscoQfpDropsMetricAttributeKey = "cisco.qfp.drop.source"
+	CiscoQfpDropsMetricAttributeKeyCiscoForwardingDropReason CiscoQfpDropsMetricAttributeKey = "cisco.forwarding.drop.reason"
+)
+
+// CiscoQfpDropsMetricConfig provides config for the cisco.qfp.drops metric.
+type CiscoQfpDropsMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                            `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoQfpDropsMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoQfpDropsMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoQfpDropsMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoQfpDropsMetricAttributeKeyCiscoQfpDropSource, CiscoQfpDropsMetricAttributeKeyCiscoForwardingDropReason:
+		default:
+			return fmt.Errorf("metric cisco.qfp.drops doesn't have an attribute %v, valid attributes: [cisco.qfp.drop.source, cisco.forwarding.drop.reason]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoQfpInterfaceDropsMetricAttributeKey specifies the key of an attribute for the cisco.qfp.interface.drops metric.
+type CiscoQfpInterfaceDropsMetricAttributeKey string
+
+const (
+	CiscoQfpInterfaceDropsMetricAttributeKeyNetworkInterfaceName CiscoQfpInterfaceDropsMetricAttributeKey = "network.interface.name"
+	CiscoQfpInterfaceDropsMetricAttributeKeyNetworkIoDirection   CiscoQfpInterfaceDropsMetricAttributeKey = "network.io.direction"
+)
+
+// CiscoQfpInterfaceDropsMetricConfig provides config for the cisco.qfp.interface.drops metric.
+type CiscoQfpInterfaceDropsMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                     `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoQfpInterfaceDropsMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoQfpInterfaceDropsMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoQfpInterfaceDropsMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoQfpInterfaceDropsMetricAttributeKeyNetworkInterfaceName, CiscoQfpInterfaceDropsMetricAttributeKeyNetworkIoDirection:
+		default:
+			return fmt.Errorf("metric cisco.qfp.interface.drops doesn't have an attribute %v, valid attributes: [network.interface.name, network.io.direction]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoRoutingNeighborPrefixesMetricAttributeKey specifies the key of an attribute for the cisco.routing.neighbor.prefixes metric.
+type CiscoRoutingNeighborPrefixesMetricAttributeKey string
+
+const (
+	CiscoRoutingNeighborPrefixesMetricAttributeKeyCiscoRoutingProtocol CiscoRoutingNeighborPrefixesMetricAttributeKey = "cisco.routing.protocol"
+	CiscoRoutingNeighborPrefixesMetricAttributeKeyCiscoRoutingVrf      CiscoRoutingNeighborPrefixesMetricAttributeKey = "cisco.routing.vrf"
+	CiscoRoutingNeighborPrefixesMetricAttributeKeyNetworkPeerAddress   CiscoRoutingNeighborPrefixesMetricAttributeKey = "network.peer.address"
+	CiscoRoutingNeighborPrefixesMetricAttributeKeyAddressFamily        CiscoRoutingNeighborPrefixesMetricAttributeKey = "address.family"
+)
+
+// CiscoRoutingNeighborPrefixesMetricConfig provides config for the cisco.routing.neighbor.prefixes metric.
+type CiscoRoutingNeighborPrefixesMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                           `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoRoutingNeighborPrefixesMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoRoutingNeighborPrefixesMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoRoutingNeighborPrefixesMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoRoutingNeighborPrefixesMetricAttributeKeyCiscoRoutingProtocol, CiscoRoutingNeighborPrefixesMetricAttributeKeyCiscoRoutingVrf, CiscoRoutingNeighborPrefixesMetricAttributeKeyNetworkPeerAddress, CiscoRoutingNeighborPrefixesMetricAttributeKeyAddressFamily:
+		default:
+			return fmt.Errorf("metric cisco.routing.neighbor.prefixes doesn't have an attribute %v, valid attributes: [cisco.routing.protocol, cisco.routing.vrf, network.peer.address, address.family]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoRoutingNeighborStateMetricAttributeKey specifies the key of an attribute for the cisco.routing.neighbor.state metric.
+type CiscoRoutingNeighborStateMetricAttributeKey string
+
+const (
+	CiscoRoutingNeighborStateMetricAttributeKeyCiscoRoutingProtocol      CiscoRoutingNeighborStateMetricAttributeKey = "cisco.routing.protocol"
+	CiscoRoutingNeighborStateMetricAttributeKeyCiscoRoutingVrf           CiscoRoutingNeighborStateMetricAttributeKey = "cisco.routing.vrf"
+	CiscoRoutingNeighborStateMetricAttributeKeyNetworkPeerAddress        CiscoRoutingNeighborStateMetricAttributeKey = "network.peer.address"
+	CiscoRoutingNeighborStateMetricAttributeKeyCiscoRoutingNeighborState CiscoRoutingNeighborStateMetricAttributeKey = "cisco.routing.neighbor.state"
+	CiscoRoutingNeighborStateMetricAttributeKeyAddressFamily             CiscoRoutingNeighborStateMetricAttributeKey = "address.family"
+)
+
+// CiscoRoutingNeighborStateMetricConfig provides config for the cisco.routing.neighbor.state metric.
+type CiscoRoutingNeighborStateMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                        `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoRoutingNeighborStateMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoRoutingNeighborStateMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoRoutingNeighborStateMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoRoutingNeighborStateMetricAttributeKeyCiscoRoutingProtocol, CiscoRoutingNeighborStateMetricAttributeKeyCiscoRoutingVrf, CiscoRoutingNeighborStateMetricAttributeKeyNetworkPeerAddress, CiscoRoutingNeighborStateMetricAttributeKeyCiscoRoutingNeighborState, CiscoRoutingNeighborStateMetricAttributeKeyAddressFamily:
+		default:
+			return fmt.Errorf("metric cisco.routing.neighbor.state doesn't have an attribute %v, valid attributes: [cisco.routing.protocol, cisco.routing.vrf, network.peer.address, cisco.routing.neighbor.state, address.family]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoRoutingRoutesMetricAttributeKey specifies the key of an attribute for the cisco.routing.routes metric.
+type CiscoRoutingRoutesMetricAttributeKey string
+
+const (
+	CiscoRoutingRoutesMetricAttributeKeyCiscoRoutingVrf  CiscoRoutingRoutesMetricAttributeKey = "cisco.routing.vrf"
+	CiscoRoutingRoutesMetricAttributeKeyCiscoRouteSource CiscoRoutingRoutesMetricAttributeKey = "cisco.route.source"
+	CiscoRoutingRoutesMetricAttributeKeyAddressFamily    CiscoRoutingRoutesMetricAttributeKey = "address.family"
+)
+
+// CiscoRoutingRoutesMetricConfig provides config for the cisco.routing.routes metric.
+type CiscoRoutingRoutesMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                 `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoRoutingRoutesMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoRoutingRoutesMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoRoutingRoutesMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoRoutingRoutesMetricAttributeKeyCiscoRoutingVrf, CiscoRoutingRoutesMetricAttributeKeyCiscoRouteSource, CiscoRoutingRoutesMetricAttributeKeyAddressFamily:
+		default:
+			return fmt.Errorf("metric cisco.routing.routes doesn't have an attribute %v, valid attributes: [cisco.routing.vrf, cisco.route.source, address.family]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoScrapeCommandDurationMetricAttributeKey specifies the key of an attribute for the cisco.scrape.command.duration metric.
+type CiscoScrapeCommandDurationMetricAttributeKey string
+
+const (
+	CiscoScrapeCommandDurationMetricAttributeKeyCiscoScrapeCommandFamily  CiscoScrapeCommandDurationMetricAttributeKey = "cisco.scrape.command.family"
+	CiscoScrapeCommandDurationMetricAttributeKeyCiscoScrapeCommandOutcome CiscoScrapeCommandDurationMetricAttributeKey = "cisco.scrape.command.outcome"
+)
+
+// CiscoScrapeCommandDurationMetricConfig provides config for the cisco.scrape.command.duration metric.
+type CiscoScrapeCommandDurationMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                         `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoScrapeCommandDurationMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoScrapeCommandDurationMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoScrapeCommandDurationMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoScrapeCommandDurationMetricAttributeKeyCiscoScrapeCommandFamily, CiscoScrapeCommandDurationMetricAttributeKeyCiscoScrapeCommandOutcome:
+		default:
+			return fmt.Errorf("metric cisco.scrape.command.duration doesn't have an attribute %v, valid attributes: [cisco.scrape.command.family, cisco.scrape.command.outcome]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoScrapeCommandErrorsMetricAttributeKey specifies the key of an attribute for the cisco.scrape.command.errors metric.
+type CiscoScrapeCommandErrorsMetricAttributeKey string
+
+const (
+	CiscoScrapeCommandErrorsMetricAttributeKeyCiscoScrapeCommandFamily CiscoScrapeCommandErrorsMetricAttributeKey = "cisco.scrape.command.family"
+	CiscoScrapeCommandErrorsMetricAttributeKeyCiscoScrapeErrorType     CiscoScrapeCommandErrorsMetricAttributeKey = "cisco.scrape.error.type"
+)
+
+// CiscoScrapeCommandErrorsMetricConfig provides config for the cisco.scrape.command.errors metric.
+type CiscoScrapeCommandErrorsMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                       `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoScrapeCommandErrorsMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoScrapeCommandErrorsMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoScrapeCommandErrorsMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoScrapeCommandErrorsMetricAttributeKeyCiscoScrapeCommandFamily, CiscoScrapeCommandErrorsMetricAttributeKeyCiscoScrapeErrorType:
+		default:
+			return fmt.Errorf("metric cisco.scrape.command.errors doesn't have an attribute %v, valid attributes: [cisco.scrape.command.family, cisco.scrape.error.type]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoScrapePartialSuccessMetricConfig provides config for the cisco.scrape.partial_success metric.
+type CiscoScrapePartialSuccessMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+}
+
+func (ms *CiscoScrapePartialSuccessMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+// CiscoSSHReconnectsMetricConfig provides config for the cisco.ssh.reconnects metric.
+type CiscoSSHReconnectsMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+}
+
+func (ms *CiscoSSHReconnectsMetricConfig) Unmarshal(parser *confmap.Conf) error {
 	if parser == nil {
 		return nil
 	}
@@ -67,22 +1448,216 @@ func (ms *SystemMemoryUtilizationMetricConfig) Unmarshal(parser *confmap.Conf) e
 	return nil
 }
 
+// SystemUptimeMetricConfig provides config for the system.uptime metric.
+type SystemUptimeMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+}
+
+func (ms *SystemUptimeMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
 // MetricsConfig provides config for system metrics.
 type MetricsConfig struct {
-	CiscoDeviceUp           CiscoDeviceUpMetricConfig           `mapstructure:"cisco.device.up"`
-	SystemCPUUtilization    SystemCPUUtilizationMetricConfig    `mapstructure:"system.cpu.utilization"`
-	SystemMemoryUtilization SystemMemoryUtilizationMetricConfig `mapstructure:"system.memory.utilization"`
+	CiscoAdjacencyEntries                  CiscoAdjacencyEntriesMetricConfig                  `mapstructure:"cisco.adjacency.entries"`
+	CiscoArpEntries                        CiscoArpEntriesMetricConfig                        `mapstructure:"cisco.arp.entries"`
+	CiscoControlPlaneCPUProcessUtilization CiscoControlPlaneCPUProcessUtilizationMetricConfig `mapstructure:"cisco.control_plane.cpu.process.utilization"`
+	CiscoControlPlaneDropped               CiscoControlPlaneDroppedMetricConfig               `mapstructure:"cisco.control_plane.dropped"`
+	CiscoControlPlanePackets               CiscoControlPlanePacketsMetricConfig               `mapstructure:"cisco.control_plane.packets"`
+	CiscoControlPlanePuntRate              CiscoControlPlanePuntRateMetricConfig              `mapstructure:"cisco.control_plane.punt.rate"`
+	CiscoDeviceUp                          CiscoDeviceUpMetricConfig                          `mapstructure:"cisco.device.up"`
+	CiscoEvpnRoutes                        CiscoEvpnRoutesMetricConfig                        `mapstructure:"cisco.evpn.routes"`
+	CiscoForwardingDrops                   CiscoForwardingDropsMetricConfig                   `mapstructure:"cisco.forwarding.drops"`
+	CiscoForwardingFibEntries              CiscoForwardingFibEntriesMetricConfig              `mapstructure:"cisco.forwarding.fib.entries"`
+	CiscoHardwareStatus                    CiscoHardwareStatusMetricConfig                    `mapstructure:"cisco.hardware.status"`
+	CiscoHardwareTemperature               CiscoHardwareTemperatureMetricConfig               `mapstructure:"cisco.hardware.temperature"`
+	CiscoNvePeerStatus                     CiscoNvePeerStatusMetricConfig                     `mapstructure:"cisco.nve.peer.status"`
+	CiscoNveVniStatus                      CiscoNveVniStatusMetricConfig                      `mapstructure:"cisco.nve.vni.status"`
+	CiscoProtocolDropped                   CiscoProtocolDroppedMetricConfig                   `mapstructure:"cisco.protocol.dropped"`
+	CiscoProtocolErrors                    CiscoProtocolErrorsMetricConfig                    `mapstructure:"cisco.protocol.errors"`
+	CiscoProtocolPackets                   CiscoProtocolPacketsMetricConfig                   `mapstructure:"cisco.protocol.packets"`
+	CiscoQfpDatapathIo                     CiscoQfpDatapathIoMetricConfig                     `mapstructure:"cisco.qfp.datapath.io"`
+	CiscoQfpDatapathPacketRate             CiscoQfpDatapathPacketRateMetricConfig             `mapstructure:"cisco.qfp.datapath.packet.rate"`
+	CiscoQfpDatapathUtilization            CiscoQfpDatapathUtilizationMetricConfig            `mapstructure:"cisco.qfp.datapath.utilization"`
+	CiscoQfpDropBytes                      CiscoQfpDropBytesMetricConfig                      `mapstructure:"cisco.qfp.drop.bytes"`
+	CiscoQfpDrops                          CiscoQfpDropsMetricConfig                          `mapstructure:"cisco.qfp.drops"`
+	CiscoQfpInterfaceDrops                 CiscoQfpInterfaceDropsMetricConfig                 `mapstructure:"cisco.qfp.interface.drops"`
+	CiscoRoutingNeighborPrefixes           CiscoRoutingNeighborPrefixesMetricConfig           `mapstructure:"cisco.routing.neighbor.prefixes"`
+	CiscoRoutingNeighborState              CiscoRoutingNeighborStateMetricConfig              `mapstructure:"cisco.routing.neighbor.state"`
+	CiscoRoutingRoutes                     CiscoRoutingRoutesMetricConfig                     `mapstructure:"cisco.routing.routes"`
+	CiscoScrapeCommandDuration             CiscoScrapeCommandDurationMetricConfig             `mapstructure:"cisco.scrape.command.duration"`
+	CiscoScrapeCommandErrors               CiscoScrapeCommandErrorsMetricConfig               `mapstructure:"cisco.scrape.command.errors"`
+	CiscoScrapePartialSuccess              CiscoScrapePartialSuccessMetricConfig              `mapstructure:"cisco.scrape.partial_success"`
+	CiscoSSHReconnects                     CiscoSSHReconnectsMetricConfig                     `mapstructure:"cisco.ssh.reconnects"`
+	SystemCPUUtilization                   SystemCPUUtilizationMetricConfig                   `mapstructure:"system.cpu.utilization"`
+	SystemMemoryUtilization                SystemMemoryUtilizationMetricConfig                `mapstructure:"system.memory.utilization"`
+	SystemUptime                           SystemUptimeMetricConfig                           `mapstructure:"system.uptime"`
 }
 
 func DefaultMetricsConfig() MetricsConfig {
 	return MetricsConfig{
+		CiscoAdjacencyEntries: CiscoAdjacencyEntriesMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoAdjacencyEntriesMetricAttributeKey{CiscoAdjacencyEntriesMetricAttributeKeyCiscoRoutingVrf, CiscoAdjacencyEntriesMetricAttributeKeyCiscoAdjacencyState},
+		},
+		CiscoArpEntries: CiscoArpEntriesMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoArpEntriesMetricAttributeKey{CiscoArpEntriesMetricAttributeKeyCiscoRoutingVrf, CiscoArpEntriesMetricAttributeKeyAddressFamily},
+		},
+		CiscoControlPlaneCPUProcessUtilization: CiscoControlPlaneCPUProcessUtilizationMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoControlPlaneCPUProcessUtilizationMetricAttributeKey{CiscoControlPlaneCPUProcessUtilizationMetricAttributeKeyCiscoProcessName, CiscoControlPlaneCPUProcessUtilizationMetricAttributeKeyCiscoProcessPid, CiscoControlPlaneCPUProcessUtilizationMetricAttributeKeyCiscoCPUWindow},
+		},
+		CiscoControlPlaneDropped: CiscoControlPlaneDroppedMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategySum,
+			EnabledAttributes:   []CiscoControlPlaneDroppedMetricAttributeKey{CiscoControlPlaneDroppedMetricAttributeKeyCiscoControlPlaneSource, CiscoControlPlaneDroppedMetricAttributeKeyCiscoControlPlaneClass, CiscoControlPlaneDroppedMetricAttributeKeyCiscoControlPlaneDropReason},
+		},
+		CiscoControlPlanePackets: CiscoControlPlanePacketsMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategySum,
+			EnabledAttributes:   []CiscoControlPlanePacketsMetricAttributeKey{CiscoControlPlanePacketsMetricAttributeKeyCiscoControlPlaneSource, CiscoControlPlanePacketsMetricAttributeKeyCiscoControlPlaneClass, CiscoControlPlanePacketsMetricAttributeKeyNetworkIoDirection},
+		},
+		CiscoControlPlanePuntRate: CiscoControlPlanePuntRateMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoControlPlanePuntRateMetricAttributeKey{CiscoControlPlanePuntRateMetricAttributeKeyCiscoControlPlanePuntQueue, CiscoControlPlanePuntRateMetricAttributeKeyNetworkInterfaceName},
+		},
 		CiscoDeviceUp: CiscoDeviceUpMetricConfig{
+			Enabled: true,
+		},
+		CiscoEvpnRoutes: CiscoEvpnRoutesMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoEvpnRoutesMetricAttributeKey{CiscoEvpnRoutesMetricAttributeKeyCiscoRoutingVrf, CiscoEvpnRoutesMetricAttributeKeyCiscoEvpnRouteType},
+		},
+		CiscoForwardingDrops: CiscoForwardingDropsMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategySum,
+			EnabledAttributes:   []CiscoForwardingDropsMetricAttributeKey{CiscoForwardingDropsMetricAttributeKeyCiscoRoutingVrf, CiscoForwardingDropsMetricAttributeKeyCiscoForwardingDropReason},
+		},
+		CiscoForwardingFibEntries: CiscoForwardingFibEntriesMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoForwardingFibEntriesMetricAttributeKey{CiscoForwardingFibEntriesMetricAttributeKeyCiscoRoutingVrf, CiscoForwardingFibEntriesMetricAttributeKeyAddressFamily},
+		},
+		CiscoHardwareStatus: CiscoHardwareStatusMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoHardwareStatusMetricAttributeKey{CiscoHardwareStatusMetricAttributeKeyCiscoHardwareComponent, CiscoHardwareStatusMetricAttributeKeyCiscoHardwareName, CiscoHardwareStatusMetricAttributeKeyCiscoHardwareSlot, CiscoHardwareStatusMetricAttributeKeyCiscoHardwareState},
+		},
+		CiscoHardwareTemperature: CiscoHardwareTemperatureMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoHardwareTemperatureMetricAttributeKey{CiscoHardwareTemperatureMetricAttributeKeyCiscoHardwareName, CiscoHardwareTemperatureMetricAttributeKeyCiscoHardwareSlot, CiscoHardwareTemperatureMetricAttributeKeyCiscoHardwareState},
+		},
+		CiscoNvePeerStatus: CiscoNvePeerStatusMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoNvePeerStatusMetricAttributeKey{CiscoNvePeerStatusMetricAttributeKeyNetworkPeerAddress, CiscoNvePeerStatusMetricAttributeKeyCiscoNveState},
+		},
+		CiscoNveVniStatus: CiscoNveVniStatusMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoNveVniStatusMetricAttributeKey{CiscoNveVniStatusMetricAttributeKeyCiscoNveVni, CiscoNveVniStatusMetricAttributeKeyCiscoNveVniType, CiscoNveVniStatusMetricAttributeKeyCiscoNveState},
+		},
+		CiscoProtocolDropped: CiscoProtocolDroppedMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategySum,
+			EnabledAttributes:   []CiscoProtocolDroppedMetricAttributeKey{CiscoProtocolDroppedMetricAttributeKeyCiscoProtocolDropReason, CiscoProtocolDroppedMetricAttributeKeyCiscoProtocolName},
+		},
+		CiscoProtocolErrors: CiscoProtocolErrorsMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategySum,
+			EnabledAttributes:   []CiscoProtocolErrorsMetricAttributeKey{CiscoProtocolErrorsMetricAttributeKeyCiscoProtocolErrorType, CiscoProtocolErrorsMetricAttributeKeyCiscoProtocolName},
+		},
+		CiscoProtocolPackets: CiscoProtocolPacketsMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategySum,
+			EnabledAttributes:   []CiscoProtocolPacketsMetricAttributeKey{CiscoProtocolPacketsMetricAttributeKeyCiscoProtocolMessageType, CiscoProtocolPacketsMetricAttributeKeyCiscoProtocolName, CiscoProtocolPacketsMetricAttributeKeyNetworkIoDirection},
+		},
+		CiscoQfpDatapathIo: CiscoQfpDatapathIoMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoQfpDatapathIoMetricAttributeKey{CiscoQfpDatapathIoMetricAttributeKeyNetworkIoDirection, CiscoQfpDatapathIoMetricAttributeKeyCiscoQfpTrafficClass, CiscoQfpDatapathIoMetricAttributeKeyCiscoCPUWindow},
+		},
+		CiscoQfpDatapathPacketRate: CiscoQfpDatapathPacketRateMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoQfpDatapathPacketRateMetricAttributeKey{CiscoQfpDatapathPacketRateMetricAttributeKeyNetworkIoDirection, CiscoQfpDatapathPacketRateMetricAttributeKeyCiscoQfpTrafficClass, CiscoQfpDatapathPacketRateMetricAttributeKeyCiscoCPUWindow},
+		},
+		CiscoQfpDatapathUtilization: CiscoQfpDatapathUtilizationMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoQfpDatapathUtilizationMetricAttributeKey{CiscoQfpDatapathUtilizationMetricAttributeKeyCiscoQfpLoadType, CiscoQfpDatapathUtilizationMetricAttributeKeyCiscoCPUWindow},
+		},
+		CiscoQfpDropBytes: CiscoQfpDropBytesMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategySum,
+			EnabledAttributes:   []CiscoQfpDropBytesMetricAttributeKey{CiscoQfpDropBytesMetricAttributeKeyCiscoQfpDropSource, CiscoQfpDropBytesMetricAttributeKeyCiscoForwardingDropReason},
+		},
+		CiscoQfpDrops: CiscoQfpDropsMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategySum,
+			EnabledAttributes:   []CiscoQfpDropsMetricAttributeKey{CiscoQfpDropsMetricAttributeKeyCiscoQfpDropSource, CiscoQfpDropsMetricAttributeKeyCiscoForwardingDropReason},
+		},
+		CiscoQfpInterfaceDrops: CiscoQfpInterfaceDropsMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategySum,
+			EnabledAttributes:   []CiscoQfpInterfaceDropsMetricAttributeKey{CiscoQfpInterfaceDropsMetricAttributeKeyNetworkInterfaceName, CiscoQfpInterfaceDropsMetricAttributeKeyNetworkIoDirection},
+		},
+		CiscoRoutingNeighborPrefixes: CiscoRoutingNeighborPrefixesMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoRoutingNeighborPrefixesMetricAttributeKey{CiscoRoutingNeighborPrefixesMetricAttributeKeyCiscoRoutingProtocol, CiscoRoutingNeighborPrefixesMetricAttributeKeyCiscoRoutingVrf, CiscoRoutingNeighborPrefixesMetricAttributeKeyNetworkPeerAddress, CiscoRoutingNeighborPrefixesMetricAttributeKeyAddressFamily},
+		},
+		CiscoRoutingNeighborState: CiscoRoutingNeighborStateMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoRoutingNeighborStateMetricAttributeKey{CiscoRoutingNeighborStateMetricAttributeKeyCiscoRoutingProtocol, CiscoRoutingNeighborStateMetricAttributeKeyCiscoRoutingVrf, CiscoRoutingNeighborStateMetricAttributeKeyNetworkPeerAddress, CiscoRoutingNeighborStateMetricAttributeKeyCiscoRoutingNeighborState, CiscoRoutingNeighborStateMetricAttributeKeyAddressFamily},
+		},
+		CiscoRoutingRoutes: CiscoRoutingRoutesMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoRoutingRoutesMetricAttributeKey{CiscoRoutingRoutesMetricAttributeKeyCiscoRoutingVrf, CiscoRoutingRoutesMetricAttributeKeyCiscoRouteSource, CiscoRoutingRoutesMetricAttributeKeyAddressFamily},
+		},
+		CiscoScrapeCommandDuration: CiscoScrapeCommandDurationMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoScrapeCommandDurationMetricAttributeKey{CiscoScrapeCommandDurationMetricAttributeKeyCiscoScrapeCommandFamily, CiscoScrapeCommandDurationMetricAttributeKeyCiscoScrapeCommandOutcome},
+		},
+		CiscoScrapeCommandErrors: CiscoScrapeCommandErrorsMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategySum,
+			EnabledAttributes:   []CiscoScrapeCommandErrorsMetricAttributeKey{CiscoScrapeCommandErrorsMetricAttributeKeyCiscoScrapeCommandFamily, CiscoScrapeCommandErrorsMetricAttributeKeyCiscoScrapeErrorType},
+		},
+		CiscoScrapePartialSuccess: CiscoScrapePartialSuccessMetricConfig{
+			Enabled: true,
+		},
+		CiscoSSHReconnects: CiscoSSHReconnectsMetricConfig{
 			Enabled: true,
 		},
 		SystemCPUUtilization: SystemCPUUtilizationMetricConfig{
 			Enabled: true,
 		},
 		SystemMemoryUtilization: SystemMemoryUtilizationMetricConfig{
+			Enabled: true,
+		},
+		SystemUptime: SystemUptimeMetricConfig{
 			Enabled: true,
 		},
 	}
@@ -116,20 +1691,36 @@ func (rac *ResourceAttributeConfig) Unmarshal(parser *confmap.Conf) error {
 
 // ResourceAttributesConfig provides config for system resource attributes.
 type ResourceAttributesConfig struct {
-	HostIP ResourceAttributeConfig `mapstructure:"host.ip"`
-	HwType ResourceAttributeConfig `mapstructure:"hw.type"`
-	OsName ResourceAttributeConfig `mapstructure:"os.name"`
+	HostID    ResourceAttributeConfig `mapstructure:"host.id"`
+	HostIP    ResourceAttributeConfig `mapstructure:"host.ip"`
+	HostName  ResourceAttributeConfig `mapstructure:"host.name"`
+	HostType  ResourceAttributeConfig `mapstructure:"host.type"`
+	HwType    ResourceAttributeConfig `mapstructure:"hw.type"`
+	OsName    ResourceAttributeConfig `mapstructure:"os.name"`
+	OsVersion ResourceAttributeConfig `mapstructure:"os.version"`
 }
 
 func DefaultResourceAttributesConfig() ResourceAttributesConfig {
 	return ResourceAttributesConfig{
+		HostID: ResourceAttributeConfig{
+			Enabled: true,
+		},
 		HostIP: ResourceAttributeConfig{
+			Enabled: true,
+		},
+		HostName: ResourceAttributeConfig{
+			Enabled: true,
+		},
+		HostType: ResourceAttributeConfig{
 			Enabled: true,
 		},
 		HwType: ResourceAttributeConfig{
 			Enabled: true,
 		},
 		OsName: ResourceAttributeConfig{
+			Enabled: true,
+		},
+		OsVersion: ResourceAttributeConfig{
 			Enabled: true,
 		},
 	}

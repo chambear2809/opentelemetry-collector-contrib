@@ -31,6 +31,16 @@ func TestCreateDefaultConfig(t *testing.T) {
 
 	// Verify default metrics are enabled
 	assert.True(t, config.Metrics.CiscoDeviceUp.Enabled)
+	assert.False(t, config.ProtocolTraffic.Enabled)
+	assert.False(t, config.ControlPlane.Enabled)
+	assert.Equal(t, 10, config.ControlPlane.ProcessTopN)
+	assert.False(t, config.ControlPlane.Commands.anyEnabled())
+	assert.False(t, config.RoutingForwarding.Enabled)
+	assert.Equal(t, []string{"default"}, config.RoutingForwarding.VRFs)
+	assert.Equal(t, 16, config.RoutingForwarding.MaxVRFs)
+	assert.False(t, config.RoutingForwarding.Commands.anyEnabled())
+	assert.False(t, config.RouterDataplane.Enabled)
+	assert.False(t, config.RouterDataplane.Commands.anyEnabled())
 }
 
 func TestFactory_CreateScraperMethod(t *testing.T) {
@@ -181,4 +191,58 @@ func TestCreateDefaultConfig_MetricsEnabled(t *testing.T) {
 	// Verify all default metrics are enabled
 	metrics := cfg.Metrics
 	assert.True(t, metrics.CiscoDeviceUp.Enabled)
+}
+
+func TestTroubleshootingGroupCommandDefaults(t *testing.T) {
+	controlPlane := defaultControlPlaneConfig()
+	assert.False(t, controlPlane.emitsMetrics())
+	assert.False(t, controlPlane.commandEnabled("control_cpu_processes"))
+
+	controlPlane.Enabled = true
+	assert.True(t, controlPlane.emitsMetrics())
+	assert.True(t, controlPlane.commandEnabled("control_cpu_processes"))
+	assert.True(t, controlPlane.commandEnabled("control_copp"))
+	assert.True(t, controlPlane.commandEnabled("control_punt_rates"))
+
+	controlPlane = defaultControlPlaneConfig()
+	controlPlane.Commands.PuntRates = true
+	assert.True(t, controlPlane.emitsMetrics())
+	assert.True(t, controlPlane.commandEnabled("control_punt_rates"))
+	assert.False(t, controlPlane.commandEnabled("control_copp"))
+
+	routing := defaultRoutingForwardingConfig()
+	assert.False(t, routing.emitsMetrics())
+	assert.False(t, routing.commandEnabled("routing_route_summary"))
+
+	routing.Enabled = true
+	assert.True(t, routing.commandEnabled("routing_route_summary"))
+	assert.True(t, routing.commandEnabled("routing_arp"))
+	assert.True(t, routing.commandEnabled("routing_cef_fib"))
+	assert.True(t, routing.commandEnabled("routing_adjacency"))
+	assert.True(t, routing.commandEnabled("routing_forwarding_drops"))
+
+	routing = defaultRoutingForwardingConfig()
+	routing.Commands.All = true
+	assert.True(t, routing.commandEnabled("routing_forwarding_drops"))
+
+	routerDataplane := defaultRouterDataplaneConfig()
+	assert.False(t, routerDataplane.emitsMetrics())
+	assert.False(t, routerDataplane.commandEnabled("router_qfp_utilization"))
+
+	routerDataplane.Enabled = true
+	assert.True(t, routerDataplane.emitsMetrics())
+	assert.True(t, routerDataplane.commandEnabled("router_qfp_utilization"))
+	assert.True(t, routerDataplane.commandEnabled("router_qfp_drops"))
+	assert.True(t, routerDataplane.commandEnabled("router_interface_drops"))
+	assert.True(t, routerDataplane.commandEnabled("router_qos_drops"))
+	assert.True(t, routerDataplane.commandEnabled("router_crypto_drops"))
+	assert.True(t, routerDataplane.commandEnabled("router_nat_drops"))
+	assert.True(t, routerDataplane.commandEnabled("router_punt_drops"))
+	assert.True(t, routerDataplane.commandEnabled("router_ip_drops"))
+
+	routerDataplane = defaultRouterDataplaneConfig()
+	routerDataplane.Commands.QFPDrops = true
+	assert.True(t, routerDataplane.emitsMetrics())
+	assert.True(t, routerDataplane.commandEnabled("router_qfp_drops"))
+	assert.False(t, routerDataplane.commandEnabled("router_qfp_utilization"))
 }

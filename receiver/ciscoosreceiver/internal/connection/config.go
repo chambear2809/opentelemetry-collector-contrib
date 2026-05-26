@@ -28,7 +28,14 @@ type HostInfo struct {
 
 // AuthConfig represents authentication configuration
 type AuthConfig struct {
-	Username string              `mapstructure:"username"`
-	Password configopaque.String `mapstructure:"password"`
-	KeyFile  string              `mapstructure:"key_file"`
+	Username       string              `mapstructure:"username"`
+	Password       configopaque.String `mapstructure:"password"`
+	EnablePassword configopaque.String `mapstructure:"enable_password"`
+	KeyFile        string              `mapstructure:"key_file"`
+	// KnownHostsFile is the path to a known_hosts file used for SSH host key verification.
+	// Either KnownHostsFile or InsecureSkipVerify must be set.
+	KnownHostsFile string `mapstructure:"known_hosts_file"`
+	// InsecureSkipVerify disables SSH host key verification. Dangerous in production;
+	// only use in isolated lab environments. Either this or KnownHostsFile is required.
+	InsecureSkipVerify bool `mapstructure:"insecure_skip_verify"`
 }

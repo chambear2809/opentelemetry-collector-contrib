@@ -33,6 +33,16 @@ func TestCreateDefaultConfig(t *testing.T) {
 	assert.True(t, config.Metrics.SystemNetworkIo.Enabled)
 	assert.True(t, config.Metrics.SystemNetworkErrors.Enabled)
 	assert.True(t, config.Metrics.SystemNetworkInterfaceStatus.Enabled)
+	assert.False(t, config.Rates.Enabled)
+	assert.False(t, config.Counters.Enabled)
+	assert.Equal(t, 100, config.Counters.MaxPerInterface)
+	assert.False(t, config.Counters.Commands.anyEnabled())
+	assert.False(t, config.L2Topology.Enabled)
+	assert.Equal(t, 256, config.L2Topology.MaxInterfaces)
+	assert.Equal(t, 128, config.L2Topology.MaxVLANs)
+	assert.False(t, config.L2Topology.Commands.anyEnabled())
+	assert.False(t, config.Transceiver.Enabled)
+	assert.Equal(t, 256, config.Transceiver.MaxInterfaces)
 }
 
 func TestFactory_ConfigWithDevice(t *testing.T) {
@@ -86,6 +96,65 @@ func TestConfig_DisableMetrics(t *testing.T) {
 	assert.False(t, config.Metrics.SystemNetworkErrors.Enabled)
 	// Others should still be enabled
 	assert.True(t, config.Metrics.SystemNetworkInterfaceStatus.Enabled)
+}
+
+func TestCounterCollectionConfig_CommandDefaults(t *testing.T) {
+	config := defaultCounterCollectionConfig()
+	assert.False(t, config.emitsCounters())
+	assert.False(t, config.commandEnabled("interface_counters"))
+
+	config.Enabled = true
+	assert.True(t, config.emitsCounters())
+	assert.True(t, config.commandEnabled("interface_counters"))
+	assert.True(t, config.commandEnabled("interface_error_counters"))
+	assert.False(t, config.commandEnabled("interface_flowcontrol"))
+
+	config = defaultCounterCollectionConfig()
+	config.Commands.FlowControl = true
+	assert.True(t, config.emitsCounters())
+	assert.True(t, config.commandEnabled("interface_flowcontrol"))
+	assert.False(t, config.commandEnabled("interface_queueing"))
+
+	config.Commands.All = true
+	assert.True(t, config.commandEnabled("interface_queueing"))
+	assert.True(t, config.commandEnabled("interface_platform_queue_stats"))
+}
+
+func TestTroubleshootingGroupCommandDefaults(t *testing.T) {
+	l2 := defaultL2TopologyConfig()
+	assert.False(t, l2.emitsMetrics())
+	assert.False(t, l2.commandEnabled("l2_stp"))
+
+	l2.Enabled = true
+	assert.True(t, l2.emitsMetrics())
+	assert.True(t, l2.commandEnabled("l2_stp"))
+	assert.True(t, l2.commandEnabled("l2_port_channel"))
+	assert.True(t, l2.commandEnabled("l2_lacp"))
+	assert.True(t, l2.commandEnabled("l2_err_disabled"))
+	assert.True(t, l2.commandEnabled("l2_vpc"))
+
+	l2 = defaultL2TopologyConfig()
+	l2.Commands.STP = true
+	assert.True(t, l2.emitsMetrics())
+	assert.True(t, l2.commandEnabled("l2_stp"))
+	assert.False(t, l2.commandEnabled("l2_port_channel"))
+
+	l2.Commands.All = true
+	assert.True(t, l2.commandEnabled("l2_vpc"))
+
+	transceiver := defaultTransceiverConfig()
+	assert.False(t, transceiver.Enabled)
+	assert.Equal(t, 256, transceiver.MaxInterfaces)
+}
+
+func TestCounterNameAllowed(t *testing.T) {
+	assert.True(t, counterNameAllowed("pause_input", nil, nil))
+	assert.True(t, counterNameAllowed("pause_input", []string{"pause_*"}, nil))
+	assert.False(t, counterNameAllowed("crc", []string{"pause_*"}, nil))
+	assert.False(t, counterNameAllowed("pause_input", nil, []string{"pause_*"}))
+	assert.True(t, counterNameAllowed("pause_input", []string{"pause_*"}, []string{"pause_output"}))
+	assert.True(t, counterNameAllowed("Gi1/0/1", []string{"Gi*"}, nil))
+	assert.False(t, counterNameAllowed("Gi1/0/48", []string{"Gi*"}, []string{"*0/48"}))
 }
 
 func TestDeviceConfig_Structure(t *testing.T) {

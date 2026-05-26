@@ -1,0 +1,9 @@
+change_type: enhancement
+component: receiver/cisco_os
+note: Add Cisco Catalyst Center Assurance API polling support.
+issues: [0]
+subtext: |
+  Catalyst Center support uses the documented token flow, Basic or AES credential passthrough authentication, bounded
+  offset/limit pagination, API health metrics, inventory and interface metrics, network/client/site health metrics,
+  physical topology summaries, assurance issue aggregation, and configured device/client detail lookups.
+change_logs: [user]

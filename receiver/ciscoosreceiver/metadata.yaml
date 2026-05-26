@@ -3,14 +3,15 @@ type: cisco_os
 deprecated_type: ciscoos
 
 description: |
-  The Cisco OS Receiver is a modular receiver that collects metrics from Cisco network devices via SSH connections. It
-  supports multiple scrapers for comprehensive network monitoring and provides native OpenTelemetry OTLP metrics
-  generation.
+  The Cisco OS Receiver is a modular receiver that collects metrics from Cisco network devices via SSH connections,
+  Cisco Meraki Dashboard APIs, Cisco Intersight APIs, Cisco Catalyst Center Assurance APIs, Nexus Dashboard/NDFC APIs,
+  and Cisco APIC APIs. It supports metrics for device, cloud, controller, and infrastructure health plus logs for
+  operational evidence such as faults, anomalies, advisories, audits, deployments, workflows, and tech-support status.
 
 status:
   class: receiver
   stability:
-    alpha: [metrics]
+    alpha: [metrics, logs]
   distributions: [contrib]
   codeowners:
     active: [dmitryax]

@@ -26,7 +26,148 @@ func TestMetricsBuilderConfig(t *testing.T) {
 			name: "all_set",
 			want: MetricsBuilderConfig{
 				Metrics: MetricsConfig{
+					CiscoAdjacencyEntries: CiscoAdjacencyEntriesMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoAdjacencyEntriesMetricAttributeKey{CiscoAdjacencyEntriesMetricAttributeKeyCiscoRoutingVrf, CiscoAdjacencyEntriesMetricAttributeKeyCiscoAdjacencyState},
+					},
+					CiscoArpEntries: CiscoArpEntriesMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoArpEntriesMetricAttributeKey{CiscoArpEntriesMetricAttributeKeyCiscoRoutingVrf, CiscoArpEntriesMetricAttributeKeyAddressFamily},
+					},
+					CiscoControlPlaneCPUProcessUtilization: CiscoControlPlaneCPUProcessUtilizationMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoControlPlaneCPUProcessUtilizationMetricAttributeKey{CiscoControlPlaneCPUProcessUtilizationMetricAttributeKeyCiscoProcessName, CiscoControlPlaneCPUProcessUtilizationMetricAttributeKeyCiscoProcessPid, CiscoControlPlaneCPUProcessUtilizationMetricAttributeKeyCiscoCPUWindow},
+					},
+					CiscoControlPlaneDropped: CiscoControlPlaneDroppedMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategySum,
+						EnabledAttributes:   []CiscoControlPlaneDroppedMetricAttributeKey{CiscoControlPlaneDroppedMetricAttributeKeyCiscoControlPlaneSource, CiscoControlPlaneDroppedMetricAttributeKeyCiscoControlPlaneClass, CiscoControlPlaneDroppedMetricAttributeKeyCiscoControlPlaneDropReason},
+					},
+					CiscoControlPlanePackets: CiscoControlPlanePacketsMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategySum,
+						EnabledAttributes:   []CiscoControlPlanePacketsMetricAttributeKey{CiscoControlPlanePacketsMetricAttributeKeyCiscoControlPlaneSource, CiscoControlPlanePacketsMetricAttributeKeyCiscoControlPlaneClass, CiscoControlPlanePacketsMetricAttributeKeyNetworkIoDirection},
+					},
+					CiscoControlPlanePuntRate: CiscoControlPlanePuntRateMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoControlPlanePuntRateMetricAttributeKey{CiscoControlPlanePuntRateMetricAttributeKeyCiscoControlPlanePuntQueue, CiscoControlPlanePuntRateMetricAttributeKeyNetworkInterfaceName},
+					},
 					CiscoDeviceUp: CiscoDeviceUpMetricConfig{
+						Enabled: true,
+					},
+					CiscoEvpnRoutes: CiscoEvpnRoutesMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoEvpnRoutesMetricAttributeKey{CiscoEvpnRoutesMetricAttributeKeyCiscoRoutingVrf, CiscoEvpnRoutesMetricAttributeKeyCiscoEvpnRouteType},
+					},
+					CiscoForwardingDrops: CiscoForwardingDropsMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategySum,
+						EnabledAttributes:   []CiscoForwardingDropsMetricAttributeKey{CiscoForwardingDropsMetricAttributeKeyCiscoRoutingVrf, CiscoForwardingDropsMetricAttributeKeyCiscoForwardingDropReason},
+					},
+					CiscoForwardingFibEntries: CiscoForwardingFibEntriesMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoForwardingFibEntriesMetricAttributeKey{CiscoForwardingFibEntriesMetricAttributeKeyCiscoRoutingVrf, CiscoForwardingFibEntriesMetricAttributeKeyAddressFamily},
+					},
+					CiscoHardwareStatus: CiscoHardwareStatusMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoHardwareStatusMetricAttributeKey{CiscoHardwareStatusMetricAttributeKeyCiscoHardwareComponent, CiscoHardwareStatusMetricAttributeKeyCiscoHardwareName, CiscoHardwareStatusMetricAttributeKeyCiscoHardwareSlot, CiscoHardwareStatusMetricAttributeKeyCiscoHardwareState},
+					},
+					CiscoHardwareTemperature: CiscoHardwareTemperatureMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoHardwareTemperatureMetricAttributeKey{CiscoHardwareTemperatureMetricAttributeKeyCiscoHardwareName, CiscoHardwareTemperatureMetricAttributeKeyCiscoHardwareSlot, CiscoHardwareTemperatureMetricAttributeKeyCiscoHardwareState},
+					},
+					CiscoNvePeerStatus: CiscoNvePeerStatusMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoNvePeerStatusMetricAttributeKey{CiscoNvePeerStatusMetricAttributeKeyNetworkPeerAddress, CiscoNvePeerStatusMetricAttributeKeyCiscoNveState},
+					},
+					CiscoNveVniStatus: CiscoNveVniStatusMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoNveVniStatusMetricAttributeKey{CiscoNveVniStatusMetricAttributeKeyCiscoNveVni, CiscoNveVniStatusMetricAttributeKeyCiscoNveVniType, CiscoNveVniStatusMetricAttributeKeyCiscoNveState},
+					},
+					CiscoProtocolDropped: CiscoProtocolDroppedMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategySum,
+						EnabledAttributes:   []CiscoProtocolDroppedMetricAttributeKey{CiscoProtocolDroppedMetricAttributeKeyCiscoProtocolDropReason, CiscoProtocolDroppedMetricAttributeKeyCiscoProtocolName},
+					},
+					CiscoProtocolErrors: CiscoProtocolErrorsMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategySum,
+						EnabledAttributes:   []CiscoProtocolErrorsMetricAttributeKey{CiscoProtocolErrorsMetricAttributeKeyCiscoProtocolErrorType, CiscoProtocolErrorsMetricAttributeKeyCiscoProtocolName},
+					},
+					CiscoProtocolPackets: CiscoProtocolPacketsMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategySum,
+						EnabledAttributes:   []CiscoProtocolPacketsMetricAttributeKey{CiscoProtocolPacketsMetricAttributeKeyCiscoProtocolMessageType, CiscoProtocolPacketsMetricAttributeKeyCiscoProtocolName, CiscoProtocolPacketsMetricAttributeKeyNetworkIoDirection},
+					},
+					CiscoQfpDatapathIo: CiscoQfpDatapathIoMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoQfpDatapathIoMetricAttributeKey{CiscoQfpDatapathIoMetricAttributeKeyNetworkIoDirection, CiscoQfpDatapathIoMetricAttributeKeyCiscoQfpTrafficClass, CiscoQfpDatapathIoMetricAttributeKeyCiscoCPUWindow},
+					},
+					CiscoQfpDatapathPacketRate: CiscoQfpDatapathPacketRateMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoQfpDatapathPacketRateMetricAttributeKey{CiscoQfpDatapathPacketRateMetricAttributeKeyNetworkIoDirection, CiscoQfpDatapathPacketRateMetricAttributeKeyCiscoQfpTrafficClass, CiscoQfpDatapathPacketRateMetricAttributeKeyCiscoCPUWindow},
+					},
+					CiscoQfpDatapathUtilization: CiscoQfpDatapathUtilizationMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoQfpDatapathUtilizationMetricAttributeKey{CiscoQfpDatapathUtilizationMetricAttributeKeyCiscoQfpLoadType, CiscoQfpDatapathUtilizationMetricAttributeKeyCiscoCPUWindow},
+					},
+					CiscoQfpDropBytes: CiscoQfpDropBytesMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategySum,
+						EnabledAttributes:   []CiscoQfpDropBytesMetricAttributeKey{CiscoQfpDropBytesMetricAttributeKeyCiscoQfpDropSource, CiscoQfpDropBytesMetricAttributeKeyCiscoForwardingDropReason},
+					},
+					CiscoQfpDrops: CiscoQfpDropsMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategySum,
+						EnabledAttributes:   []CiscoQfpDropsMetricAttributeKey{CiscoQfpDropsMetricAttributeKeyCiscoQfpDropSource, CiscoQfpDropsMetricAttributeKeyCiscoForwardingDropReason},
+					},
+					CiscoQfpInterfaceDrops: CiscoQfpInterfaceDropsMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategySum,
+						EnabledAttributes:   []CiscoQfpInterfaceDropsMetricAttributeKey{CiscoQfpInterfaceDropsMetricAttributeKeyNetworkInterfaceName, CiscoQfpInterfaceDropsMetricAttributeKeyNetworkIoDirection},
+					},
+					CiscoRoutingNeighborPrefixes: CiscoRoutingNeighborPrefixesMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoRoutingNeighborPrefixesMetricAttributeKey{CiscoRoutingNeighborPrefixesMetricAttributeKeyCiscoRoutingProtocol, CiscoRoutingNeighborPrefixesMetricAttributeKeyCiscoRoutingVrf, CiscoRoutingNeighborPrefixesMetricAttributeKeyNetworkPeerAddress, CiscoRoutingNeighborPrefixesMetricAttributeKeyAddressFamily},
+					},
+					CiscoRoutingNeighborState: CiscoRoutingNeighborStateMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoRoutingNeighborStateMetricAttributeKey{CiscoRoutingNeighborStateMetricAttributeKeyCiscoRoutingProtocol, CiscoRoutingNeighborStateMetricAttributeKeyCiscoRoutingVrf, CiscoRoutingNeighborStateMetricAttributeKeyNetworkPeerAddress, CiscoRoutingNeighborStateMetricAttributeKeyCiscoRoutingNeighborState, CiscoRoutingNeighborStateMetricAttributeKeyAddressFamily},
+					},
+					CiscoRoutingRoutes: CiscoRoutingRoutesMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoRoutingRoutesMetricAttributeKey{CiscoRoutingRoutesMetricAttributeKeyCiscoRoutingVrf, CiscoRoutingRoutesMetricAttributeKeyCiscoRouteSource, CiscoRoutingRoutesMetricAttributeKeyAddressFamily},
+					},
+					CiscoScrapeCommandDuration: CiscoScrapeCommandDurationMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoScrapeCommandDurationMetricAttributeKey{CiscoScrapeCommandDurationMetricAttributeKeyCiscoScrapeCommandFamily, CiscoScrapeCommandDurationMetricAttributeKeyCiscoScrapeCommandOutcome},
+					},
+					CiscoScrapeCommandErrors: CiscoScrapeCommandErrorsMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategySum,
+						EnabledAttributes:   []CiscoScrapeCommandErrorsMetricAttributeKey{CiscoScrapeCommandErrorsMetricAttributeKeyCiscoScrapeCommandFamily, CiscoScrapeCommandErrorsMetricAttributeKeyCiscoScrapeErrorType},
+					},
+					CiscoScrapePartialSuccess: CiscoScrapePartialSuccessMetricConfig{
+						Enabled: true,
+					},
+					CiscoSSHReconnects: CiscoSSHReconnectsMetricConfig{
 						Enabled: true,
 					},
 					SystemCPUUtilization: SystemCPUUtilizationMetricConfig{
@@ -35,11 +176,18 @@ func TestMetricsBuilderConfig(t *testing.T) {
 					SystemMemoryUtilization: SystemMemoryUtilizationMetricConfig{
 						Enabled: true,
 					},
+					SystemUptime: SystemUptimeMetricConfig{
+						Enabled: true,
+					},
 				},
 				ResourceAttributes: ResourceAttributesConfig{
-					HostIP: ResourceAttributeConfig{Enabled: true},
-					HwType: ResourceAttributeConfig{Enabled: true},
-					OsName: ResourceAttributeConfig{Enabled: true},
+					HostID:    ResourceAttributeConfig{Enabled: true},
+					HostIP:    ResourceAttributeConfig{Enabled: true},
+					HostName:  ResourceAttributeConfig{Enabled: true},
+					HostType:  ResourceAttributeConfig{Enabled: true},
+					HwType:    ResourceAttributeConfig{Enabled: true},
+					OsName:    ResourceAttributeConfig{Enabled: true},
+					OsVersion: ResourceAttributeConfig{Enabled: true},
 				},
 			},
 		},
@@ -47,7 +195,148 @@ func TestMetricsBuilderConfig(t *testing.T) {
 			name: "none_set",
 			want: MetricsBuilderConfig{
 				Metrics: MetricsConfig{
+					CiscoAdjacencyEntries: CiscoAdjacencyEntriesMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoAdjacencyEntriesMetricAttributeKey{CiscoAdjacencyEntriesMetricAttributeKeyCiscoRoutingVrf, CiscoAdjacencyEntriesMetricAttributeKeyCiscoAdjacencyState},
+					},
+					CiscoArpEntries: CiscoArpEntriesMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoArpEntriesMetricAttributeKey{CiscoArpEntriesMetricAttributeKeyCiscoRoutingVrf, CiscoArpEntriesMetricAttributeKeyAddressFamily},
+					},
+					CiscoControlPlaneCPUProcessUtilization: CiscoControlPlaneCPUProcessUtilizationMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoControlPlaneCPUProcessUtilizationMetricAttributeKey{CiscoControlPlaneCPUProcessUtilizationMetricAttributeKeyCiscoProcessName, CiscoControlPlaneCPUProcessUtilizationMetricAttributeKeyCiscoProcessPid, CiscoControlPlaneCPUProcessUtilizationMetricAttributeKeyCiscoCPUWindow},
+					},
+					CiscoControlPlaneDropped: CiscoControlPlaneDroppedMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategySum,
+						EnabledAttributes:   []CiscoControlPlaneDroppedMetricAttributeKey{CiscoControlPlaneDroppedMetricAttributeKeyCiscoControlPlaneSource, CiscoControlPlaneDroppedMetricAttributeKeyCiscoControlPlaneClass, CiscoControlPlaneDroppedMetricAttributeKeyCiscoControlPlaneDropReason},
+					},
+					CiscoControlPlanePackets: CiscoControlPlanePacketsMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategySum,
+						EnabledAttributes:   []CiscoControlPlanePacketsMetricAttributeKey{CiscoControlPlanePacketsMetricAttributeKeyCiscoControlPlaneSource, CiscoControlPlanePacketsMetricAttributeKeyCiscoControlPlaneClass, CiscoControlPlanePacketsMetricAttributeKeyNetworkIoDirection},
+					},
+					CiscoControlPlanePuntRate: CiscoControlPlanePuntRateMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoControlPlanePuntRateMetricAttributeKey{CiscoControlPlanePuntRateMetricAttributeKeyCiscoControlPlanePuntQueue, CiscoControlPlanePuntRateMetricAttributeKeyNetworkInterfaceName},
+					},
 					CiscoDeviceUp: CiscoDeviceUpMetricConfig{
+						Enabled: false,
+					},
+					CiscoEvpnRoutes: CiscoEvpnRoutesMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoEvpnRoutesMetricAttributeKey{CiscoEvpnRoutesMetricAttributeKeyCiscoRoutingVrf, CiscoEvpnRoutesMetricAttributeKeyCiscoEvpnRouteType},
+					},
+					CiscoForwardingDrops: CiscoForwardingDropsMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategySum,
+						EnabledAttributes:   []CiscoForwardingDropsMetricAttributeKey{CiscoForwardingDropsMetricAttributeKeyCiscoRoutingVrf, CiscoForwardingDropsMetricAttributeKeyCiscoForwardingDropReason},
+					},
+					CiscoForwardingFibEntries: CiscoForwardingFibEntriesMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoForwardingFibEntriesMetricAttributeKey{CiscoForwardingFibEntriesMetricAttributeKeyCiscoRoutingVrf, CiscoForwardingFibEntriesMetricAttributeKeyAddressFamily},
+					},
+					CiscoHardwareStatus: CiscoHardwareStatusMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoHardwareStatusMetricAttributeKey{CiscoHardwareStatusMetricAttributeKeyCiscoHardwareComponent, CiscoHardwareStatusMetricAttributeKeyCiscoHardwareName, CiscoHardwareStatusMetricAttributeKeyCiscoHardwareSlot, CiscoHardwareStatusMetricAttributeKeyCiscoHardwareState},
+					},
+					CiscoHardwareTemperature: CiscoHardwareTemperatureMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoHardwareTemperatureMetricAttributeKey{CiscoHardwareTemperatureMetricAttributeKeyCiscoHardwareName, CiscoHardwareTemperatureMetricAttributeKeyCiscoHardwareSlot, CiscoHardwareTemperatureMetricAttributeKeyCiscoHardwareState},
+					},
+					CiscoNvePeerStatus: CiscoNvePeerStatusMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoNvePeerStatusMetricAttributeKey{CiscoNvePeerStatusMetricAttributeKeyNetworkPeerAddress, CiscoNvePeerStatusMetricAttributeKeyCiscoNveState},
+					},
+					CiscoNveVniStatus: CiscoNveVniStatusMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoNveVniStatusMetricAttributeKey{CiscoNveVniStatusMetricAttributeKeyCiscoNveVni, CiscoNveVniStatusMetricAttributeKeyCiscoNveVniType, CiscoNveVniStatusMetricAttributeKeyCiscoNveState},
+					},
+					CiscoProtocolDropped: CiscoProtocolDroppedMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategySum,
+						EnabledAttributes:   []CiscoProtocolDroppedMetricAttributeKey{CiscoProtocolDroppedMetricAttributeKeyCiscoProtocolDropReason, CiscoProtocolDroppedMetricAttributeKeyCiscoProtocolName},
+					},
+					CiscoProtocolErrors: CiscoProtocolErrorsMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategySum,
+						EnabledAttributes:   []CiscoProtocolErrorsMetricAttributeKey{CiscoProtocolErrorsMetricAttributeKeyCiscoProtocolErrorType, CiscoProtocolErrorsMetricAttributeKeyCiscoProtocolName},
+					},
+					CiscoProtocolPackets: CiscoProtocolPacketsMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategySum,
+						EnabledAttributes:   []CiscoProtocolPacketsMetricAttributeKey{CiscoProtocolPacketsMetricAttributeKeyCiscoProtocolMessageType, CiscoProtocolPacketsMetricAttributeKeyCiscoProtocolName, CiscoProtocolPacketsMetricAttributeKeyNetworkIoDirection},
+					},
+					CiscoQfpDatapathIo: CiscoQfpDatapathIoMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoQfpDatapathIoMetricAttributeKey{CiscoQfpDatapathIoMetricAttributeKeyNetworkIoDirection, CiscoQfpDatapathIoMetricAttributeKeyCiscoQfpTrafficClass, CiscoQfpDatapathIoMetricAttributeKeyCiscoCPUWindow},
+					},
+					CiscoQfpDatapathPacketRate: CiscoQfpDatapathPacketRateMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoQfpDatapathPacketRateMetricAttributeKey{CiscoQfpDatapathPacketRateMetricAttributeKeyNetworkIoDirection, CiscoQfpDatapathPacketRateMetricAttributeKeyCiscoQfpTrafficClass, CiscoQfpDatapathPacketRateMetricAttributeKeyCiscoCPUWindow},
+					},
+					CiscoQfpDatapathUtilization: CiscoQfpDatapathUtilizationMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoQfpDatapathUtilizationMetricAttributeKey{CiscoQfpDatapathUtilizationMetricAttributeKeyCiscoQfpLoadType, CiscoQfpDatapathUtilizationMetricAttributeKeyCiscoCPUWindow},
+					},
+					CiscoQfpDropBytes: CiscoQfpDropBytesMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategySum,
+						EnabledAttributes:   []CiscoQfpDropBytesMetricAttributeKey{CiscoQfpDropBytesMetricAttributeKeyCiscoQfpDropSource, CiscoQfpDropBytesMetricAttributeKeyCiscoForwardingDropReason},
+					},
+					CiscoQfpDrops: CiscoQfpDropsMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategySum,
+						EnabledAttributes:   []CiscoQfpDropsMetricAttributeKey{CiscoQfpDropsMetricAttributeKeyCiscoQfpDropSource, CiscoQfpDropsMetricAttributeKeyCiscoForwardingDropReason},
+					},
+					CiscoQfpInterfaceDrops: CiscoQfpInterfaceDropsMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategySum,
+						EnabledAttributes:   []CiscoQfpInterfaceDropsMetricAttributeKey{CiscoQfpInterfaceDropsMetricAttributeKeyNetworkInterfaceName, CiscoQfpInterfaceDropsMetricAttributeKeyNetworkIoDirection},
+					},
+					CiscoRoutingNeighborPrefixes: CiscoRoutingNeighborPrefixesMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoRoutingNeighborPrefixesMetricAttributeKey{CiscoRoutingNeighborPrefixesMetricAttributeKeyCiscoRoutingProtocol, CiscoRoutingNeighborPrefixesMetricAttributeKeyCiscoRoutingVrf, CiscoRoutingNeighborPrefixesMetricAttributeKeyNetworkPeerAddress, CiscoRoutingNeighborPrefixesMetricAttributeKeyAddressFamily},
+					},
+					CiscoRoutingNeighborState: CiscoRoutingNeighborStateMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoRoutingNeighborStateMetricAttributeKey{CiscoRoutingNeighborStateMetricAttributeKeyCiscoRoutingProtocol, CiscoRoutingNeighborStateMetricAttributeKeyCiscoRoutingVrf, CiscoRoutingNeighborStateMetricAttributeKeyNetworkPeerAddress, CiscoRoutingNeighborStateMetricAttributeKeyCiscoRoutingNeighborState, CiscoRoutingNeighborStateMetricAttributeKeyAddressFamily},
+					},
+					CiscoRoutingRoutes: CiscoRoutingRoutesMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoRoutingRoutesMetricAttributeKey{CiscoRoutingRoutesMetricAttributeKeyCiscoRoutingVrf, CiscoRoutingRoutesMetricAttributeKeyCiscoRouteSource, CiscoRoutingRoutesMetricAttributeKeyAddressFamily},
+					},
+					CiscoScrapeCommandDuration: CiscoScrapeCommandDurationMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoScrapeCommandDurationMetricAttributeKey{CiscoScrapeCommandDurationMetricAttributeKeyCiscoScrapeCommandFamily, CiscoScrapeCommandDurationMetricAttributeKeyCiscoScrapeCommandOutcome},
+					},
+					CiscoScrapeCommandErrors: CiscoScrapeCommandErrorsMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategySum,
+						EnabledAttributes:   []CiscoScrapeCommandErrorsMetricAttributeKey{CiscoScrapeCommandErrorsMetricAttributeKeyCiscoScrapeCommandFamily, CiscoScrapeCommandErrorsMetricAttributeKeyCiscoScrapeErrorType},
+					},
+					CiscoScrapePartialSuccess: CiscoScrapePartialSuccessMetricConfig{
+						Enabled: false,
+					},
+					CiscoSSHReconnects: CiscoSSHReconnectsMetricConfig{
 						Enabled: false,
 					},
 					SystemCPUUtilization: SystemCPUUtilizationMetricConfig{
@@ -56,11 +345,18 @@ func TestMetricsBuilderConfig(t *testing.T) {
 					SystemMemoryUtilization: SystemMemoryUtilizationMetricConfig{
 						Enabled: false,
 					},
+					SystemUptime: SystemUptimeMetricConfig{
+						Enabled: false,
+					},
 				},
 				ResourceAttributes: ResourceAttributesConfig{
-					HostIP: ResourceAttributeConfig{Enabled: false},
-					HwType: ResourceAttributeConfig{Enabled: false},
-					OsName: ResourceAttributeConfig{Enabled: false},
+					HostID:    ResourceAttributeConfig{Enabled: false},
+					HostIP:    ResourceAttributeConfig{Enabled: false},
+					HostName:  ResourceAttributeConfig{Enabled: false},
+					HostType:  ResourceAttributeConfig{Enabled: false},
+					HwType:    ResourceAttributeConfig{Enabled: false},
+					OsName:    ResourceAttributeConfig{Enabled: false},
+					OsVersion: ResourceAttributeConfig{Enabled: false},
 				},
 			},
 		},
@@ -68,7 +364,7 @@ func TestMetricsBuilderConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := loadMetricsBuilderConfig(t, tt.name)
-			diff := cmp.Diff(tt.want, cfg, cmpopts.IgnoreUnexported(CiscoDeviceUpMetricConfig{}, SystemCPUUtilizationMetricConfig{}, SystemMemoryUtilizationMetricConfig{}, ResourceAttributeConfig{}))
+			diff := cmp.Diff(tt.want, cfg, cmpopts.IgnoreUnexported(CiscoAdjacencyEntriesMetricConfig{}, CiscoArpEntriesMetricConfig{}, CiscoControlPlaneCPUProcessUtilizationMetricConfig{}, CiscoControlPlaneDroppedMetricConfig{}, CiscoControlPlanePacketsMetricConfig{}, CiscoControlPlanePuntRateMetricConfig{}, CiscoDeviceUpMetricConfig{}, CiscoEvpnRoutesMetricConfig{}, CiscoForwardingDropsMetricConfig{}, CiscoForwardingFibEntriesMetricConfig{}, CiscoHardwareStatusMetricConfig{}, CiscoHardwareTemperatureMetricConfig{}, CiscoNvePeerStatusMetricConfig{}, CiscoNveVniStatusMetricConfig{}, CiscoProtocolDroppedMetricConfig{}, CiscoProtocolErrorsMetricConfig{}, CiscoProtocolPacketsMetricConfig{}, CiscoQfpDatapathIoMetricConfig{}, CiscoQfpDatapathPacketRateMetricConfig{}, CiscoQfpDatapathUtilizationMetricConfig{}, CiscoQfpDropBytesMetricConfig{}, CiscoQfpDropsMetricConfig{}, CiscoQfpInterfaceDropsMetricConfig{}, CiscoRoutingNeighborPrefixesMetricConfig{}, CiscoRoutingNeighborStateMetricConfig{}, CiscoRoutingRoutesMetricConfig{}, CiscoScrapeCommandDurationMetricConfig{}, CiscoScrapeCommandErrorsMetricConfig{}, CiscoScrapePartialSuccessMetricConfig{}, CiscoSSHReconnectsMetricConfig{}, SystemCPUUtilizationMetricConfig{}, SystemMemoryUtilizationMetricConfig{}, SystemUptimeMetricConfig{}, ResourceAttributeConfig{}))
 			require.Emptyf(t, diff, "Config mismatch (-expected +actual):\n%s", diff)
 		})
 	}
@@ -96,17 +392,25 @@ func TestResourceAttributesConfig(t *testing.T) {
 		{
 			name: "all_set",
 			want: ResourceAttributesConfig{
-				HostIP: ResourceAttributeConfig{Enabled: true},
-				HwType: ResourceAttributeConfig{Enabled: true},
-				OsName: ResourceAttributeConfig{Enabled: true},
+				HostID:    ResourceAttributeConfig{Enabled: true},
+				HostIP:    ResourceAttributeConfig{Enabled: true},
+				HostName:  ResourceAttributeConfig{Enabled: true},
+				HostType:  ResourceAttributeConfig{Enabled: true},
+				HwType:    ResourceAttributeConfig{Enabled: true},
+				OsName:    ResourceAttributeConfig{Enabled: true},
+				OsVersion: ResourceAttributeConfig{Enabled: true},
 			},
 		},
 		{
 			name: "none_set",
 			want: ResourceAttributesConfig{
-				HostIP: ResourceAttributeConfig{Enabled: false},
-				HwType: ResourceAttributeConfig{Enabled: false},
-				OsName: ResourceAttributeConfig{Enabled: false},
+				HostID:    ResourceAttributeConfig{Enabled: false},
+				HostIP:    ResourceAttributeConfig{Enabled: false},
+				HostName:  ResourceAttributeConfig{Enabled: false},
+				HostType:  ResourceAttributeConfig{Enabled: false},
+				HwType:    ResourceAttributeConfig{Enabled: false},
+				OsName:    ResourceAttributeConfig{Enabled: false},
+				OsVersion: ResourceAttributeConfig{Enabled: false},
 			},
 		},
 	}

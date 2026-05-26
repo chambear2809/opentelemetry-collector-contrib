@@ -1,0 +1,7 @@
+change_type: enhancement
+component: receiver/cisco_os
+note: Add Meraki Dashboard API polling support with organization and serial-scoped targets.
+issues: [0]
+subtext: |
+  Meraki support polls organization-wide Dashboard API endpoints, emits one resource per serial where possible, and adds Meraki-specific API, uplink, switch, wireless, VPN, power, and appliance metrics plus an importable Splunk Observability dashboard group while preserving existing SSH behavior.
+change_logs: [user]

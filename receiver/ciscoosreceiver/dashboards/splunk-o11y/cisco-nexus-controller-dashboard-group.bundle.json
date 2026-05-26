@@ -1,0 +1,403 @@
+{
+  "schema": "com.cisco.opentelemetry.ciscoosreceiver.splunk-o11y.dashboard-bundle/v1",
+  "group": {
+    "name": "Cisco Nexus Controller Receiver",
+    "description": "Dashboard group for API-first Nexus Dashboard, NDFC, Insights, Orchestrator, Data Broker, and Cisco ACI/APIC metrics emitted by the Cisco OS receiver."
+  },
+  "default_time_range_ms": 3600000,
+  "default_tags": [
+    "ciscoosreceiver",
+    "nexus-dashboard",
+    "ndfc",
+    "aci",
+    "itops",
+    "netops"
+  ],
+  "default_filters": {
+    "variables": [
+      {"property": "host.name", "alias": "Device", "description": "Nexus or ACI device/resource name.", "applyIfExists": true},
+      {"property": "cisco.switch.serial", "alias": "Switch Serial", "description": "Nexus or ACI switch serial number.", "applyIfExists": true},
+      {"property": "ndfc.switch.id", "alias": "NDFC Switch ID", "description": "NDFC switch identifier.", "applyIfExists": true},
+      {"property": "aci.node.id", "alias": "ACI Node", "description": "ACI node identifier.", "applyIfExists": true},
+      {"property": "cisco.fabric.name", "alias": "Fabric", "description": "Fabric name.", "applyIfExists": true},
+      {"property": "cisco.site.name", "alias": "Site", "description": "Site name.", "applyIfExists": true},
+      {"property": "network.interface.name", "alias": "Interface", "description": "Network interface name.", "applyIfExists": true}
+    ]
+  },
+  "dashboards": [
+    {
+      "name": "00 Controller API Trust And Coverage",
+      "description": "Value: proves whether Nexus Dashboard and APIC API polling is trustworthy before operators interpret fabric or tenant symptoms.",
+      "value": "Use this page first when API data is missing, stale, or partially successful. It separates controller API health from network impact.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains API trust and service coverage. Interpretation: partial success, unavailable services, or API errors mean downstream fabric charts may be incomplete.",
+          "markdown": "## Value Provided\nStart here for API-first Nexus troubleshooting. Confirm controller reachability, API latency, partial scrape state, app availability, and object-family coverage before treating downstream fabric or tenant gaps as real network symptoms.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "Nexus Dashboard API Errors",
+          "description": "Value: surfaces Nexus Dashboard API failures. Interpretation: non-zero values by operation explain missing NDFC, Insights, NDO, or Data Broker data.",
+          "signalflow": "data('nexus_dashboard.api.request.errors').sum(by=['nexus_dashboard.api.operation', 'http.response.status_code']).publish(label='ND API errors')",
+          "legend_dimension": "nexus_dashboard.api.operation"
+        },
+        {
+          "name": "Nexus Dashboard API Duration",
+          "description": "Value: tracks Nexus Dashboard API request latency by operation. Interpretation: high duration without errors points to slow controller/app responses that can make incident data appear stale.",
+          "signalflow": "data('nexus_dashboard.api.request.duration').mean(by=['nexus_dashboard.api.operation', 'nexus_dashboard.api.outcome', 'http.response.status_code']).publish(label='ND API duration')",
+          "legend_dimension": "nexus_dashboard.api.operation"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Nexus Dashboard Partial Scrape",
+          "description": "Value: shows whether one or more endpoint families failed or were skipped. Interpretation: 1 means controller coverage is incomplete.",
+          "signalflow": "data('nexus_dashboard.scrape.partial_success').mean(by=['host.name', 'cisco.controller.endpoint']).publish(label='ND partial scrape')",
+          "legend_dimension": "cisco.controller.endpoint"
+        },
+        {
+          "name": "Unavailable Nexus Dashboard Services",
+          "description": "Value: shows ND app/API endpoints that are unavailable, unauthorized, disabled, or not installed. Interpretation: validate installed services and permissions.",
+          "signalflow": "data('nexus_dashboard.service.unavailable').sum(by=['nexus_dashboard.product', 'nexus_dashboard.group', 'http.response.status_code']).publish(label='Unavailable services')",
+          "legend_dimension": "nexus_dashboard.product"
+        },
+        {
+          "name": "Nexus Dashboard Endpoint Failures And Skips",
+          "description": "Value: identifies failed or intentionally skipped ND/NDFC/Insights/NDO/Data Broker endpoint families. Interpretation: use this to separate missing permissions or uninstalled apps from healthy empty results.",
+          "signalflow": "data('nexus_dashboard.api.endpoint.error').sum(by=['nexus_dashboard.product', 'nexus_dashboard.group', 'nexus_dashboard.api.operation']).publish(label='Endpoint errors'); data('nexus_dashboard.service.skipped').sum(by=['nexus_dashboard.product', 'nexus_dashboard.group', 'nexus_dashboard.api.operation']).publish(label='Skipped endpoints')",
+          "legend_dimension": "nexus_dashboard.group"
+        },
+        {
+          "name": "APIC API Errors",
+          "description": "Value: surfaces APIC API failures. Interpretation: non-zero values by controller and operation explain missing ACI class data.",
+          "signalflow": "data('aci.api.request.errors').sum(by=['aci.controller.name', 'aci.api.operation', 'http.response.status_code']).publish(label='APIC API errors')",
+          "legend_dimension": "aci.api.operation"
+        },
+        {
+          "name": "APIC API Duration",
+          "description": "Value: tracks APIC API request latency. Interpretation: rising duration with low error count points to controller pressure or slow class queries before data loss.",
+          "signalflow": "data('aci.api.request.duration').mean(by=['aci.controller.name', 'aci.api.operation', 'aci.api.outcome']).publish(label='APIC API duration')",
+          "legend_dimension": "aci.api.operation"
+        },
+        {
+          "name": "APIC Endpoint Errors And Rate Limits",
+          "description": "Value: shows APIC class-query failures and API rate-limit evidence. Interpretation: non-zero values explain missing fabric, tenant, endpoint, or topology objects.",
+          "signalflow": "data('aci.api.endpoint.error').sum(by=['aci.controller.name', 'aci.api.operation', 'aci.class']).publish(label='APIC endpoint errors'); data('aci.api.rate_limited').sum(by=['aci.controller.name', 'aci.api.operation']).publish(label='APIC rate limited')",
+          "legend_dimension": "aci.api.operation"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "APIC Partial Scrape",
+          "description": "Value: shows whether one or more APIC class-query families failed. Interpretation: 1 means ACI coverage is incomplete.",
+          "signalflow": "data('aci.scrape.partial_success').mean(by=['host.name']).publish(label='ACI partial scrape')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "APIC Controller Availability",
+          "description": "Value: shows whether each configured APIC was reachable for the scrape. Interpretation: 0 means the controller API path is unavailable.",
+          "signalflow": "data('aci.controller.up').mean(by=['aci.controller.name', 'cisco.controller.endpoint']).publish(label='APIC up')",
+          "legend_dimension": "aci.controller.name"
+        },
+        {
+          "name": "Collected Object Families",
+          "description": "Value: proves which controller object families are actually present in telemetry. Interpretation: sudden drops by family indicate API gaps, target filters, or product/service coverage changes.",
+          "signalflow": "data('nexus_dashboard.resource.count').sum(by=['nexus_dashboard.product', 'nexus_dashboard.group', 'nexus_dashboard.status']).publish(label='ND objects'); data('aci.resource.count').sum(by=['aci.group', 'aci.class', 'aci.status']).publish(label='ACI objects')",
+          "legend_dimension": "nexus_dashboard.group"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Last Successful Scrape Timestamp",
+          "description": "Value: exposes the last successful scrape timestamp from each controller path. Interpretation: stale or flat timestamps mean dashboards are looking at old evidence.",
+          "signalflow": "data('nexus_dashboard.scrape.last_success').max(by=['host.name', 'cisco.controller.endpoint']).publish(label='ND last success'); data('aci.scrape.last_success').max(by=['host.name']).publish(label='ACI last success')",
+          "legend_dimension": "host.name"
+        }
+      ]
+    },
+    {
+      "name": "01 Nexus Dashboard Platform And NDFC Fabric",
+      "description": "Value: correlates ND platform health, NDFC fabric/switch health, deployment/compliance state, and interface symptoms.",
+      "value": "Use this page when the affected domain is an NDFC-managed Nexus fabric, switch, or interface.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Nexus Dashboard Platform Service Health",
+          "description": "Value: shows ND node, app, feature, license, and storage health. Interpretation: degraded platform services can explain missing NDFC or Insights data before switch symptoms appear.",
+          "signalflow": "data('nexus_dashboard.service.health').mean(by=['host.name', 'nd.node.name', 'nd.service.name', 'nd.status']).publish(label='Service health')",
+          "legend_dimension": "nd.service.name"
+        },
+        {
+          "name": "Nexus Dashboard Platform Resource Pressure",
+          "description": "Value: correlates ND CPU, memory, and storage pressure with API slowness or unavailable services. Interpretation: sustained high utilization points to controller/platform capacity issues.",
+          "signalflow": "data('system.cpu.utilization', filter=filter('cisco.controller.type', 'nexus_dashboard')).mean(by=['host.name']).scale(100).publish(label='CPU %'); data('system.memory.utilization', filter=filter('cisco.controller.type', 'nexus_dashboard')).mean(by=['host.name']).scale(100).publish(label='Memory %'); data('nexus_dashboard.storage.utilization').mean(by=['host.name']).scale(100).publish(label='Storage %')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "NDFC Fabric Health",
+          "description": "Value: tracks NDFC fabric, site, or switch health scores. Interpretation: lower scores or degraded statuses identify where to drill in.",
+          "signalflow": "data('nexus_dashboard.fabric.health').mean(by=['cisco.fabric.name', 'host.name', 'cisco.switch.serial']).publish(label='Fabric health')",
+          "legend_dimension": "cisco.fabric.name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Nexus Switch Availability From Controller",
+          "description": "Value: shows switch reachability as reported by NDFC/ND APIs. Interpretation: 0 indicates the controller sees the switch as unavailable or unhealthy.",
+          "signalflow": "data('cisco.device.up', filter=filter('cisco.controller.type', 'nexus_dashboard')).mean(by=['host.name', 'cisco.switch.serial', 'cisco.fabric.name']).publish(label='Switch up')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "NDFC Deployment Status",
+          "description": "Value: surfaces policy, image, or change-control deployment state. Interpretation: failed or degraded state is a change-correlation anchor.",
+          "signalflow": "data('nexus_dashboard.deployment.status').mean(by=['host.name', 'cisco.fabric.name', 'nexus_dashboard.status']).publish(label='Deployment status')",
+          "legend_dimension": "nexus_dashboard.status"
+        },
+        {
+          "name": "NDFC Config Compliance",
+          "description": "Value: tracks NDFC configuration compliance by switch/fabric. Interpretation: falling compliance after a change is a strong candidate for policy drift or failed deployment.",
+          "signalflow": "data('nexus_dashboard.config.compliance').mean(by=['host.name', 'cisco.fabric.name', 'cisco.switch.serial']).scale(100).publish(label='Compliance %')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "NDFC Endpoint And vPC Inventory",
+          "description": "Value: correlates endpoint scale and vPC peer inventory with switch/fabric health. Interpretation: sudden changes can identify mobility churn, vPC impact, or fabric discovery gaps.",
+          "signalflow": "data('nexus_dashboard.endpoint.count').sum(by=['host.name', 'cisco.fabric.name']).publish(label='Endpoints'); data('nexus_dashboard.vpc.peer.count').sum(by=['host.name', 'cisco.fabric.name']).publish(label='vPC peers')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "NDFC Interface Status",
+          "description": "Value: shows controller-reported interface status by Nexus switch. Interpretation: down or flapping interfaces near degraded fabrics should be correlated with traffic and deployment state.",
+          "signalflow": "data('system.network.interface.status', filter=filter('cisco.controller.type', 'nexus_dashboard')).mean(by=['host.name', 'network.interface.name']).publish(label='Interface status')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "name": "NDFC Interface Traffic",
+          "description": "Value: shows controller-reported interface traffic rates. Interpretation: use with interface status and fabric health to identify saturated or silent links.",
+          "signalflow": "data('cisco.interface.io.rate', filter=filter('cisco.controller.type', 'nexus_dashboard')).mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Interface rate')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "NDFC Resource Status By Family",
+          "description": "Value: groups NDFC resource status by product group and object type. Interpretation: degraded object families narrow whether the issue is inventory, policy, interface, endpoint, or telemetry sync.",
+          "signalflow": "data('nexus_dashboard.resource.status', filter=filter('nexus_dashboard.group', 'ndfc')).mean(by=['nexus_dashboard.resource.type', 'nexus_dashboard.status', 'nexus_dashboard.severity', 'host.name']).publish(label='NDFC resource status')",
+          "legend_dimension": "nexus_dashboard.resource.type"
+        }
+      ]
+    },
+    {
+      "name": "02 Insights Root Cause And Advisories",
+      "description": "Value: summarizes Nexus Dashboard Insights anomalies, advisories, scores, and root-cause confidence.",
+      "value": "Use this page during triage and autopsy when Insights has anomaly or root-cause evidence for a fabric, site, switch, or endpoint.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "name": "Insights Anomaly Count",
+          "description": "Value: counts active anomalies and advisories by severity/category. Interpretation: prioritize critical and high-confidence evidence.",
+          "signalflow": "data('nexus_dashboard.insights.anomaly.count').sum(by=['nexus_dashboard.insights.severity', 'nexus_dashboard.insights.category', 'cisco.fabric.name', 'cisco.site.name']).publish(label='Anomalies')",
+          "legend_dimension": "nexus_dashboard.insights.severity"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Active Insights Evidence",
+          "description": "Value: lists currently active anomalies and advisories with affected site/fabric context. Interpretation: start with critical/high severity entries that share a site or fabric with the incident.",
+          "signalflow": "data('nexus_dashboard.insights.anomaly.active').sum(by=['nexus_dashboard.insights.severity', 'nexus_dashboard.insights.category', 'cisco.fabric.name', 'cisco.site.name', 'host.name']).publish(label='Active evidence')",
+          "legend_dimension": "nexus_dashboard.insights.severity"
+        },
+        {
+          "name": "Insights Score",
+          "description": "Value: shows Insights health or anomaly scores. Interpretation: falling site/fabric scores narrow the affected domain.",
+          "signalflow": "data('nexus_dashboard.insights.score').mean(by=['cisco.site.name', 'cisco.fabric.name', 'nexus_dashboard.insights.category']).publish(label='Insights score')",
+          "legend_dimension": "cisco.fabric.name"
+        },
+        {
+          "name": "Root-Cause Confidence",
+          "description": "Value: shows root-cause confidence where Insights exposes it. Interpretation: high confidence is stronger evidence during incident reconstruction.",
+          "signalflow": "data('nexus_dashboard.insights.confidence').mean(by=['cisco.site.name', 'cisco.fabric.name', 'nexus_dashboard.insights.category']).publish(label='Confidence')",
+          "legend_dimension": "nexus_dashboard.insights.category"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Insights Status By Category",
+          "description": "Value: shows anomaly, advisory, flow, compliance, and recommendation status. Interpretation: unresolved or degraded categories become the incident evidence queue.",
+          "signalflow": "data('nexus_dashboard.insights.status').mean(by=['nexus_dashboard.insights.category', 'nexus_dashboard.status', 'cisco.fabric.name', 'cisco.site.name']).publish(label='Insights status')",
+          "legend_dimension": "nexus_dashboard.status"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Insights Resource Status",
+          "description": "Value: groups Insights resource status by object type and severity. Interpretation: use this when anomaly counts are low but resource health still indicates advisory, flow, or compliance evidence.",
+          "signalflow": "data('nexus_dashboard.resource.status', filter=filter('nexus_dashboard.group', 'insights')).mean(by=['nexus_dashboard.resource.type', 'nexus_dashboard.status', 'nexus_dashboard.severity', 'host.name']).publish(label='Insights resource status')",
+          "legend_dimension": "nexus_dashboard.resource.type"
+        }
+      ]
+    },
+    {
+      "name": "03 Orchestrator And Data Broker Operations",
+      "description": "Value: tracks multi-site deployment drift and packet-visibility control-plane state.",
+      "value": "Use this page when a network change, multi-site template, or packet-capture visibility path may explain the incident.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "NDO Deployment Status",
+          "description": "Value: shows NDO/OneManage deployment, schema, template, and site sync state. Interpretation: failed/degraded state is change evidence.",
+          "signalflow": "data('nexus_dashboard.orchestrator.deployment.status').mean(by=['nexus_dashboard.ndo.site', 'nexus_dashboard.ndo.schema', 'nexus_dashboard.status']).publish(label='NDO status')",
+          "legend_dimension": "nexus_dashboard.status"
+        },
+        {
+          "name": "NDO Deployment Count",
+          "description": "Value: counts NDO/OneManage deployments by site/schema. Interpretation: deployment count changes near an incident establish change timing and blast radius.",
+          "signalflow": "data('nexus_dashboard.orchestrator.deployment.count').sum(by=['nexus_dashboard.ndo.site', 'nexus_dashboard.ndo.schema']).publish(label='Deployments')",
+          "legend_dimension": "nexus_dashboard.ndo.site"
+        },
+        {
+          "name": "NDO Policy Deltas",
+          "description": "Value: tracks policy deltas. Interpretation: non-zero deltas can indicate undeployed or divergent policy.",
+          "signalflow": "data('nexus_dashboard.orchestrator.policy_delta.count').sum(by=['nexus_dashboard.ndo.site', 'nexus_dashboard.ndo.schema']).publish(label='Policy deltas')",
+          "legend_dimension": "nexus_dashboard.ndo.site"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "NDO Resource Status",
+          "description": "Value: groups Orchestrator/OneManage resource health by object type and status. Interpretation: failed schemas, sites, or templates identify where policy is divergent.",
+          "signalflow": "data('nexus_dashboard.resource.status', filter=filter('nexus_dashboard.group', 'orchestrator')).mean(by=['nexus_dashboard.resource.type', 'nexus_dashboard.status', 'nexus_dashboard.severity', 'host.name']).publish(label='NDO resource status')",
+          "legend_dimension": "nexus_dashboard.resource.type"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Data Broker Status",
+          "description": "Value: shows Data Broker broker, TAP, SPAN, rule, filter, or session state. Interpretation: degraded state can explain missing packet evidence.",
+          "signalflow": "data('nexus_dashboard.data_broker.status').mean(by=['nexus_dashboard.databroker.session', 'nexus_dashboard.databroker.rule', 'nexus_dashboard.status']).publish(label='Data Broker status')",
+          "legend_dimension": "nexus_dashboard.status"
+        },
+        {
+          "name": "Data Broker Rule And Session Counts",
+          "description": "Value: tracks TAP/SPAN/filter/rule/session inventory exposed by Data Broker. Interpretation: sudden drops explain why expected packet evidence is absent.",
+          "signalflow": "data('nexus_dashboard.data_broker.rule.count').sum(by=['nexus_dashboard.databroker.rule', 'nexus_dashboard.status']).publish(label='Rules'); data('nexus_dashboard.data_broker.session.count').sum(by=['nexus_dashboard.databroker.session', 'nexus_dashboard.status']).publish(label='Sessions')",
+          "legend_dimension": "nexus_dashboard.status"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Orchestrator And Data Broker Service Coverage",
+          "description": "Value: shows unavailable Orchestrator/OneManage and Data Broker endpoints. Interpretation: use this before assuming policy or packet-visibility objects are truly absent.",
+          "signalflow": "data('nexus_dashboard.service.unavailable', filter=filter('nexus_dashboard.group', 'orchestrator')).sum(by=['nexus_dashboard.product', 'nexus_dashboard.group', 'http.response.status_code']).publish(label='NDO unavailable'); data('nexus_dashboard.service.unavailable', filter=filter('nexus_dashboard.group', 'data_broker')).sum(by=['nexus_dashboard.product', 'nexus_dashboard.group', 'http.response.status_code']).publish(label='Data Broker unavailable')",
+          "legend_dimension": "nexus_dashboard.group"
+        }
+      ]
+    },
+    {
+      "name": "04 ACI Fabric Tenant Endpoint Impact",
+      "description": "Value: correlates APIC fabric health, active faults, tenant policy, endpoint presence, interface state, and topology.",
+      "value": "Use this page when the affected domain is an ACI fabric, tenant, EPG, L3Out, or workload endpoint.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "ACI Node Availability",
+          "description": "Value: shows APIC-reported leaf, spine, and controller availability. Interpretation: 0 on an affected node is immediate fabric impact, not just an API visibility issue.",
+          "signalflow": "data('cisco.device.up', filter=filter('cisco.controller.type', 'apic')).mean(by=['host.name', 'aci.node.id', 'cisco.switch.role', 'cisco.switch.serial']).publish(label='ACI node up')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "ACI Node Resource Pressure",
+          "description": "Value: correlates APIC-reported CPU and memory pressure with faults, endpoint churn, and interface symptoms. Interpretation: sustained high values can explain delayed control-plane convergence.",
+          "signalflow": "data('system.cpu.utilization', filter=filter('cisco.controller.type', 'apic')).mean(by=['host.name', 'aci.node.id']).scale(100).publish(label='CPU %'); data('system.memory.utilization', filter=filter('cisco.controller.type', 'apic')).mean(by=['host.name', 'aci.node.id']).scale(100).publish(label='Memory %')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "ACI Active Faults",
+          "description": "Value: summarizes active APIC faults. Interpretation: critical and major faults by code/domain usually explain the fastest path to root cause.",
+          "signalflow": "data('aci.fault.count').sum(by=['aci.fault.severity', 'aci.fault.code', 'aci.fault.domain', 'aci.fault.type']).publish(label='Faults')",
+          "legend_dimension": "aci.fault.severity"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "ACI Active Fault Detail",
+          "description": "Value: lists active faults with affected host and code context. Interpretation: sort by critical/major severity and correlate the host with node, interface, tenant, and topology panels.",
+          "signalflow": "data('aci.fault.active').sum(by=['host.name', 'aci.fault.severity', 'aci.fault.code', 'aci.fault.domain', 'aci.fault.type']).publish(label='Active fault')",
+          "legend_dimension": "aci.fault.code"
+        },
+        {
+          "name": "ACI Fabric Health",
+          "description": "Value: tracks APIC-reported fabric, pod, node, or tenant health. Interpretation: lower scores narrow the impacted domain.",
+          "signalflow": "data('aci.fabric.health').mean(by=['aci.controller.name', 'aci.node.id', 'host.name']).publish(label='ACI health')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "ACI Tenant And Policy Status",
+          "description": "Value: shows tenant, VRF, bridge-domain, EPG, app profile, contract, and L3Out inventory/status. Interpretation: object-count changes or degraded statuses explain workload impact.",
+          "signalflow": "data('aci.tenant.object.count').sum(by=['aci.tenant', 'aci.vrf', 'aci.bd', 'aci.epg']).publish(label='Tenant objects'); data('aci.tenant.status').mean(by=['aci.tenant', 'aci.vrf', 'aci.bd', 'aci.epg', 'aci.status']).publish(label='Tenant status')",
+          "legend_dimension": "aci.tenant"
+        },
+        {
+          "name": "ACI Resource Inventory By Domain",
+          "description": "Value: tracks APIC object inventory by collection group, class, status, and severity. Interpretation: changes show whether the incident aligns with faults, tenants, endpoints, topology, or stats visibility.",
+          "signalflow": "data('aci.resource.count').sum(by=['aci.group', 'aci.class', 'aci.status', 'aci.severity']).publish(label='ACI resources')",
+          "legend_dimension": "aci.group"
+        },
+        {
+          "name": "ACI Endpoint Count",
+          "description": "Value: tracks endpoint presence by tenant and EPG. Interpretation: sudden drops or churn can identify workload impact.",
+          "signalflow": "data('aci.endpoint.count').sum(by=['aci.tenant', 'aci.epg']).publish(label='Endpoint count'); data('aci.endpoint.present').sum(by=['aci.tenant', 'aci.epg']).publish(label='Endpoint presence')",
+          "legend_dimension": "aci.epg"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "ACI Endpoint Detail",
+          "description": "Value: lists observed endpoint MAC/IP/DN records within receiver caps. Interpretation: use this to confirm whether a specific workload endpoint is still learned and where it appears in APIC.",
+          "signalflow": "data('aci.endpoint.present').sum(by=['aci.endpoint.mac', 'aci.endpoint.ip', 'aci.endpoint.dn']).publish(label='Endpoint present')",
+          "legend_dimension": "aci.endpoint.ip"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "ACI Interface Status",
+          "description": "Value: shows APIC interface status. Interpretation: down interfaces near affected endpoints should be investigated with faults and topology.",
+          "signalflow": "data('system.network.interface.status', filter=filter('cisco.controller.type', 'apic')).mean(by=['host.name', 'network.interface.name']).publish(label='Interface status')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "name": "ACI Interface Traffic And Drops",
+          "description": "Value: correlates optional APIC interface traffic, packet, and drop-rate counters. Interpretation: traffic silence, packet spikes, or drops near affected nodes explain workload impact.",
+          "signalflow": "data('cisco.interface.io.rate', filter=filter('cisco.controller.type', 'apic')).mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Interface rate'); data('system.network.packets', filter=filter('cisco.controller.type', 'apic')).mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Packets'); data('cisco.interface.drop.rate', filter=filter('cisco.controller.type', 'apic')).mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Drops')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "ACI Topology Neighbors",
+          "description": "Value: shows APIC-discovered LLDP/CDP/topology neighbors by local node/interface. Interpretation: missing or changed neighbors identify the physical or logical path tied to endpoint impact.",
+          "signalflow": "data('cisco.topology.neighbor.info', filter=filter('cisco.controller.type', 'apic')).sum(by=['host.name', 'network.interface.name', 'network.peer.name', 'network.protocol.name']).publish(label='Neighbor')",
+          "legend_dimension": "network.peer.name"
+        }
+      ]
+    }
+  ]
+}

@@ -12,6 +12,99 @@ metrics:
     enabled: false
 ```
 
+### cisco.adjacency.entries
+
+The number of Cisco adjacency entries
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {entry} | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.routing.vrf | Cisco VRF name | Any Str | Recommended | - |
+| cisco.adjacency.state | Cisco adjacency state | Any Str | Recommended | - |
+
+### cisco.arp.entries
+
+The number of Cisco ARP entries
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {entry} | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.routing.vrf | Cisco VRF name | Any Str | Recommended | - |
+| address.family | Network address family | Any Str | Recommended | - |
+
+### cisco.control_plane.cpu.process.utilization
+
+CPU utilization by Cisco control-plane process
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Double | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.process.name | Cisco process name | Any Str | Recommended | - |
+| cisco.process.pid | Cisco process identifier | Any Str | Recommended | - |
+| cisco.cpu.window | CPU utilization averaging window | Any Str | Recommended | - |
+
+### cisco.control_plane.dropped
+
+The number of Cisco control-plane packets dropped
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| {packet} | Sum | Int | Cumulative | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.control_plane.source | Cisco control-plane command or subsystem source | Any Str | Recommended | - |
+| cisco.control_plane.class | Cisco control-plane policy class or queue name | Any Str | Recommended | - |
+| cisco.control_plane.drop.reason | Reason control-plane packets were dropped | Any Str | Recommended | - |
+
+### cisco.control_plane.packets
+
+The number of Cisco control-plane packets processed
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| {packet} | Sum | Int | Cumulative | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.control_plane.source | Cisco control-plane command or subsystem source | Any Str | Recommended | - |
+| cisco.control_plane.class | Cisco control-plane policy class or queue name | Any Str | Recommended | - |
+| network.io.direction | Direction of flow of bytes/operations (receive or transmit) | Str: ``receive``, ``transmit`` | Recommended | - |
+
+### cisco.control_plane.punt.rate
+
+Device-reported Cisco control-plane punt packet rate
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {packet}/s | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.control_plane.punt.queue | Cisco punt queue name or identifier | Any Str | Recommended | - |
+| network.interface.name | The name of the network interface | Any Str | Recommended | - |
+
 ### cisco.device.up
 
 Device availability (1 = up, 0 = down)
@@ -19,6 +112,350 @@ Device availability (1 = up, 0 = down)
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
 | 1 | Gauge | Int | Development |
+
+### cisco.evpn.routes
+
+The number of Cisco EVPN routes
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {route} | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.routing.vrf | Cisco VRF name | Any Str | Recommended | - |
+| cisco.evpn.route.type | Cisco EVPN route type | Any Str | Recommended | - |
+
+### cisco.forwarding.drops
+
+The number of Cisco forwarding packets dropped
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| {packet} | Sum | Int | Cumulative | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.routing.vrf | Cisco VRF name | Any Str | Recommended | - |
+| cisco.forwarding.drop.reason | Reason forwarding packets were dropped | Any Str | Recommended | - |
+
+### cisco.forwarding.fib.entries
+
+The number of Cisco forwarding information base entries
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {entry} | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.routing.vrf | Cisco VRF name | Any Str | Recommended | - |
+| address.family | Network address family | Any Str | Recommended | - |
+
+### cisco.hardware.status
+
+Cisco hardware component status (-1 = unknown, 0 = critical, 1 = ok, 2 = warning)
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.hardware.component | Cisco hardware component type | Any Str | Recommended | - |
+| cisco.hardware.name | Cisco hardware component name | Any Str | Recommended | - |
+| cisco.hardware.slot | Cisco hardware component slot | Any Str | Recommended | - |
+| cisco.hardware.state | Cisco hardware component state | Any Str | Recommended | - |
+
+### cisco.hardware.temperature
+
+Cisco hardware temperature sensor reading
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| Cel | Gauge | Double | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.hardware.name | Cisco hardware component name | Any Str | Recommended | - |
+| cisco.hardware.slot | Cisco hardware component slot | Any Str | Recommended | - |
+| cisco.hardware.state | Cisco hardware component state | Any Str | Recommended | - |
+
+### cisco.nve.peer.status
+
+Cisco NVE peer status (1 = up, 0 = not up)
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| network.peer.address | Peer network address | Any Str | Recommended | - |
+| cisco.nve.state | Cisco NVE peer or VNI state | Any Str | Recommended | - |
+
+### cisco.nve.vni.status
+
+Cisco NVE VNI status (1 = up, 0 = not up)
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.nve.vni | Cisco VXLAN network identifier | Any Str | Recommended | - |
+| cisco.nve.vni.type | Cisco VXLAN VNI type | Any Str | Recommended | - |
+| cisco.nve.state | Cisco NVE peer or VNI state | Any Str | Recommended | - |
+
+### cisco.protocol.dropped
+
+The number of Cisco network protocol packets dropped
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| {packet} | Sum | Int | Cumulative | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.protocol.drop.reason | Reason a Cisco protocol packet was dropped | Any Str | Recommended | - |
+| cisco.protocol.name | Cisco protocol name | Any Str | Recommended | - |
+
+### cisco.protocol.errors
+
+The number of Cisco network protocol errors
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| {error} | Sum | Int | Cumulative | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.protocol.error.type | Cisco protocol error type | Any Str | Recommended | - |
+| cisco.protocol.name | Cisco protocol name | Any Str | Recommended | - |
+
+### cisco.protocol.packets
+
+The number of packets or messages processed by a Cisco network protocol
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| {packet} | Sum | Int | Cumulative | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.protocol.message.type | Cisco protocol message or packet type | Any Str | Recommended | - |
+| cisco.protocol.name | Cisco protocol name | Any Str | Recommended | - |
+| network.io.direction | Direction of flow of bytes/operations (receive or transmit) | Str: ``receive``, ``transmit`` | Recommended | - |
+
+### cisco.qfp.datapath.io
+
+Device-reported Cisco QFP datapath traffic rate
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| bit/s | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| network.io.direction | Direction of flow of bytes/operations (receive or transmit) | Str: ``receive``, ``transmit`` | Recommended | - |
+| cisco.qfp.traffic.class | Cisco QFP datapath traffic class | Any Str | Recommended | - |
+| cisco.cpu.window | CPU utilization averaging window | Any Str | Recommended | - |
+
+### cisco.qfp.datapath.packet.rate
+
+Device-reported Cisco QFP datapath packet rate
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {packet}/s | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| network.io.direction | Direction of flow of bytes/operations (receive or transmit) | Str: ``receive``, ``transmit`` | Recommended | - |
+| cisco.qfp.traffic.class | Cisco QFP datapath traffic class | Any Str | Recommended | - |
+| cisco.cpu.window | CPU utilization averaging window | Any Str | Recommended | - |
+
+### cisco.qfp.datapath.utilization
+
+Cisco QFP datapath utilization
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Double | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.qfp.load.type | Cisco QFP datapath load type | Any Str | Recommended | - |
+| cisco.cpu.window | CPU utilization averaging window | Any Str | Recommended | - |
+
+### cisco.qfp.drop.bytes
+
+The number of Cisco QFP dropped octets
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| By | Sum | Int | Cumulative | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.qfp.drop.source | Cisco QFP drop command family or feature source | Any Str | Recommended | - |
+| cisco.forwarding.drop.reason | Reason forwarding packets were dropped | Any Str | Recommended | - |
+
+### cisco.qfp.drops
+
+The number of Cisco QFP packets dropped
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| {packet} | Sum | Int | Cumulative | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.qfp.drop.source | Cisco QFP drop command family or feature source | Any Str | Recommended | - |
+| cisco.forwarding.drop.reason | Reason forwarding packets were dropped | Any Str | Recommended | - |
+
+### cisco.qfp.interface.drops
+
+The number of Cisco QFP packets dropped by interface and direction
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| {packet} | Sum | Int | Cumulative | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| network.interface.name | The name of the network interface | Any Str | Recommended | - |
+| network.io.direction | Direction of flow of bytes/operations (receive or transmit) | Str: ``receive``, ``transmit`` | Recommended | - |
+
+### cisco.routing.neighbor.prefixes
+
+The number of routing prefixes associated with a Cisco routing protocol neighbor
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {prefix} | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.routing.protocol | Cisco routing protocol name | Any Str | Recommended | - |
+| cisco.routing.vrf | Cisco VRF name | Any Str | Recommended | - |
+| network.peer.address | Peer network address | Any Str | Recommended | - |
+| address.family | Network address family | Any Str | Recommended | - |
+
+### cisco.routing.neighbor.state
+
+Cisco routing protocol neighbor state (1 = established or full, 0 = not established)
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.routing.protocol | Cisco routing protocol name | Any Str | Recommended | - |
+| cisco.routing.vrf | Cisco VRF name | Any Str | Recommended | - |
+| network.peer.address | Peer network address | Any Str | Recommended | - |
+| cisco.routing.neighbor.state | Cisco routing protocol neighbor state | Any Str | Recommended | - |
+| address.family | Network address family | Any Str | Recommended | - |
+
+### cisco.routing.routes
+
+The number of Cisco routing table routes
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {route} | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.routing.vrf | Cisco VRF name | Any Str | Recommended | - |
+| cisco.route.source | Cisco route source or table category | Any Str | Recommended | - |
+| address.family | Network address family | Any Str | Recommended | - |
+
+### cisco.scrape.command.duration
+
+Cisco receiver command execution duration
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| s | Gauge | Double | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.scrape.command.family | Cisco receiver command family | Any Str | Recommended | - |
+| cisco.scrape.command.outcome | Cisco receiver command execution outcome | Any Str | Recommended | - |
+
+### cisco.scrape.command.errors
+
+Cisco receiver command execution errors
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| {error} | Sum | Int | Cumulative | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.scrape.command.family | Cisco receiver command family | Any Str | Recommended | - |
+| cisco.scrape.error.type | Cisco receiver command error type | Any Str | Recommended | - |
+
+### cisco.scrape.partial_success
+
+Cisco receiver scrape partial success status (1 = partial success, 0 = complete success)
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+### cisco.ssh.reconnects
+
+The number of successful Cisco SSH reconnects by the receiver
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| {reconnect} | Sum | Int | Cumulative | true | Development |
 
 ### system.cpu.utilization
 
@@ -36,10 +473,22 @@ Percentage of memory bytes in use.
 | ---- | ----------- | ---------- | --------- |
 | 1 | Gauge | Double | Development |
 
+### system.uptime
+
+The time the Cisco device has been running
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| s | Gauge | Int | Development |
+
 ## Resource Attributes
 
 | Name | Description | Values | Enabled | Semantic Convention | Stability |
 | ---- | ----------- | ------ | ------- | ------------------- | --------- |
+| host.id | Unique identifier for the Cisco network device | Any Str | true | - | - |
 | host.ip | The IP address of the Cisco network device | Any Str | true | - | - |
+| host.name | The configured or device-reported host name of the Cisco network device | Any Str | true | - | - |
+| host.type | The Cisco network device model or platform type | Any Str | true | - | - |
 | hw.type | Type of the physical hardware component | Any Str | true | - | - |
 | os.name | The operating system type of the Cisco device | Any Str | true | - | - |
+| os.version | The operating system version of the Cisco device | Any Str | true | - | - |

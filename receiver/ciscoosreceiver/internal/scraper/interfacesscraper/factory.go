@@ -25,6 +25,10 @@ func NewFactory() scraper.Factory {
 func createDefaultConfig() component.Config {
 	return &Config{
 		MetricsBuilderConfig: metadata.NewDefaultMetricsBuilderConfig(),
+		Rates:                defaultRateCollectionConfig(),
+		Counters:             defaultCounterCollectionConfig(),
+		L2Topology:           defaultL2TopologyConfig(),
+		Transceiver:          defaultTransceiverConfig(),
 	}
 }
 

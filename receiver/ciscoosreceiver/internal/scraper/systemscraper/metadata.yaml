@@ -9,8 +9,20 @@ status:
     active: []
 
 resource_attributes:
+  host.id:
+    description: Unique identifier for the Cisco network device
+    type: string
+    enabled: true
   host.ip:
     description: The IP address of the Cisco network device
+    type: string
+    enabled: true
+  host.name:
+    description: The configured or device-reported host name of the Cisco network device
+    type: string
+    enabled: true
+  host.type:
+    description: The Cisco network device model or platform type
     type: string
     enabled: true
   hw.type:
@@ -21,8 +33,178 @@ resource_attributes:
     description: The operating system type of the Cisco device
     type: string
     enabled: true
+  os.version:
+    description: The operating system version of the Cisco device
+    type: string
+    enabled: true
+
+attributes:
+  address.family:
+    description: Network address family
+    type: string
+  cisco.adjacency.state:
+    description: Cisco adjacency state
+    type: string
+  cisco.control_plane.class:
+    description: Cisco control-plane policy class or queue name
+    type: string
+  cisco.control_plane.drop.reason:
+    description: Reason control-plane packets were dropped
+    type: string
+  cisco.control_plane.punt.queue:
+    description: Cisco punt queue name or identifier
+    type: string
+  cisco.control_plane.source:
+    description: Cisco control-plane command or subsystem source
+    type: string
+  cisco.cpu.window:
+    description: CPU utilization averaging window
+    type: string
+  cisco.evpn.route.type:
+    description: Cisco EVPN route type
+    type: string
+  cisco.forwarding.drop.reason:
+    description: Reason forwarding packets were dropped
+    type: string
+  cisco.hardware.component:
+    description: Cisco hardware component type
+    type: string
+  cisco.hardware.name:
+    description: Cisco hardware component name
+    type: string
+  cisco.hardware.slot:
+    description: Cisco hardware component slot
+    type: string
+  cisco.hardware.state:
+    description: Cisco hardware component state
+    type: string
+  cisco.nve.state:
+    description: Cisco NVE peer or VNI state
+    type: string
+  cisco.nve.vni:
+    description: Cisco VXLAN network identifier
+    type: string
+  cisco.nve.vni.type:
+    description: Cisco VXLAN VNI type
+    type: string
+  cisco.process.name:
+    description: Cisco process name
+    type: string
+  cisco.process.pid:
+    description: Cisco process identifier
+    type: string
+  cisco.protocol.drop.reason:
+    description: Reason a Cisco protocol packet was dropped
+    type: string
+  cisco.protocol.error.type:
+    description: Cisco protocol error type
+    type: string
+  cisco.protocol.message.type:
+    description: Cisco protocol message or packet type
+    type: string
+  cisco.protocol.name:
+    description: Cisco protocol name
+    type: string
+  cisco.qfp.drop.source:
+    description: Cisco QFP drop command family or feature source
+    type: string
+  cisco.qfp.load.type:
+    description: Cisco QFP datapath load type
+    type: string
+  cisco.qfp.traffic.class:
+    description: Cisco QFP datapath traffic class
+    type: string
+  cisco.route.source:
+    description: Cisco route source or table category
+    type: string
+  cisco.routing.neighbor.state:
+    description: Cisco routing protocol neighbor state
+    type: string
+  cisco.routing.protocol:
+    description: Cisco routing protocol name
+    type: string
+  cisco.routing.vrf:
+    description: Cisco VRF name
+    type: string
+  cisco.scrape.command.family:
+    description: Cisco receiver command family
+    type: string
+  cisco.scrape.command.outcome:
+    description: Cisco receiver command execution outcome
+    type: string
+  cisco.scrape.error.type:
+    description: Cisco receiver command error type
+    type: string
+  network.interface.name:
+    description: The name of the network interface
+    type: string
+  network.io.direction:
+    description: Direction of flow of bytes/operations (receive or transmit)
+    type: string
+    enum: [receive, transmit]
+  network.peer.address:
+    description: Peer network address
+    type: string
 
 metrics:
+  cisco.adjacency.entries:
+    enabled: true
+    description: The number of Cisco adjacency entries
+    stability: development
+    unit: "{entry}"
+    gauge:
+      value_type: int
+    attributes: [cisco.routing.vrf, cisco.adjacency.state]
+
+  cisco.arp.entries:
+    enabled: true
+    description: The number of Cisco ARP entries
+    stability: development
+    unit: "{entry}"
+    gauge:
+      value_type: int
+    attributes: [cisco.routing.vrf, address.family]
+
+  cisco.control_plane.cpu.process.utilization:
+    enabled: true
+    description: CPU utilization by Cisco control-plane process
+    stability: development
+    unit: "1"
+    gauge:
+      value_type: double
+    attributes: [cisco.process.name, cisco.process.pid, cisco.cpu.window]
+
+  cisco.control_plane.dropped:
+    enabled: true
+    description: The number of Cisco control-plane packets dropped
+    stability: development
+    unit: "{packet}"
+    sum:
+      value_type: int
+      monotonic: true
+      aggregation_temporality: cumulative
+    attributes: [cisco.control_plane.source, cisco.control_plane.class, cisco.control_plane.drop.reason]
+
+  cisco.control_plane.packets:
+    enabled: true
+    description: The number of Cisco control-plane packets processed
+    stability: development
+    unit: "{packet}"
+    sum:
+      value_type: int
+      monotonic: true
+      aggregation_temporality: cumulative
+    attributes: [cisco.control_plane.source, cisco.control_plane.class, network.io.direction]
+
+  cisco.control_plane.punt.rate:
+    enabled: true
+    description: Device-reported Cisco control-plane punt packet rate
+    stability: development
+    unit: "{packet}/s"
+    gauge:
+      value_type: int
+    attributes: [cisco.control_plane.punt.queue, network.interface.name]
+
   cisco.device.up:
     enabled: true
     description: Device availability (1 = up, 0 = down)
@@ -30,6 +212,229 @@ metrics:
     unit: "1"
     gauge:
       value_type: int
+
+  cisco.evpn.routes:
+    enabled: true
+    description: The number of Cisco EVPN routes
+    stability: development
+    unit: "{route}"
+    gauge:
+      value_type: int
+    attributes: [cisco.routing.vrf, cisco.evpn.route.type]
+
+  cisco.forwarding.drops:
+    enabled: true
+    description: The number of Cisco forwarding packets dropped
+    stability: development
+    unit: "{packet}"
+    sum:
+      value_type: int
+      monotonic: true
+      aggregation_temporality: cumulative
+    attributes: [cisco.routing.vrf, cisco.forwarding.drop.reason]
+
+  cisco.forwarding.fib.entries:
+    enabled: true
+    description: The number of Cisco forwarding information base entries
+    stability: development
+    unit: "{entry}"
+    gauge:
+      value_type: int
+    attributes: [cisco.routing.vrf, address.family]
+
+  cisco.hardware.status:
+    enabled: true
+    description: Cisco hardware component status (-1 = unknown, 0 = critical, 1 = ok, 2 = warning)
+    stability: development
+    unit: "1"
+    gauge:
+      value_type: int
+    attributes: [cisco.hardware.component, cisco.hardware.name, cisco.hardware.slot, cisco.hardware.state]
+
+  cisco.hardware.temperature:
+    enabled: true
+    description: Cisco hardware temperature sensor reading
+    stability: development
+    unit: Cel
+    gauge:
+      value_type: double
+    attributes: [cisco.hardware.name, cisco.hardware.slot, cisco.hardware.state]
+
+  cisco.nve.peer.status:
+    enabled: true
+    description: Cisco NVE peer status (1 = up, 0 = not up)
+    stability: development
+    unit: "1"
+    gauge:
+      value_type: int
+    attributes: [network.peer.address, cisco.nve.state]
+
+  cisco.nve.vni.status:
+    enabled: true
+    description: Cisco NVE VNI status (1 = up, 0 = not up)
+    stability: development
+    unit: "1"
+    gauge:
+      value_type: int
+    attributes: [cisco.nve.vni, cisco.nve.vni.type, cisco.nve.state]
+
+  cisco.protocol.dropped:
+    enabled: true
+    description: The number of Cisco network protocol packets dropped
+    stability: development
+    unit: "{packet}"
+    sum:
+      value_type: int
+      monotonic: true
+      aggregation_temporality: cumulative
+    attributes: [cisco.protocol.drop.reason, cisco.protocol.name]
+
+  cisco.protocol.errors:
+    enabled: true
+    description: The number of Cisco network protocol errors
+    stability: development
+    unit: "{error}"
+    sum:
+      value_type: int
+      monotonic: true
+      aggregation_temporality: cumulative
+    attributes: [cisco.protocol.error.type, cisco.protocol.name]
+
+  cisco.protocol.packets:
+    enabled: true
+    description: The number of packets or messages processed by a Cisco network protocol
+    stability: development
+    unit: "{packet}"
+    sum:
+      value_type: int
+      monotonic: true
+      aggregation_temporality: cumulative
+    attributes: [cisco.protocol.message.type, cisco.protocol.name, network.io.direction]
+
+  cisco.qfp.datapath.io:
+    enabled: true
+    description: Device-reported Cisco QFP datapath traffic rate
+    stability: development
+    unit: "bit/s"
+    gauge:
+      value_type: int
+    attributes: [network.io.direction, cisco.qfp.traffic.class, cisco.cpu.window]
+
+  cisco.qfp.datapath.packet.rate:
+    enabled: true
+    description: Device-reported Cisco QFP datapath packet rate
+    stability: development
+    unit: "{packet}/s"
+    gauge:
+      value_type: int
+    attributes: [network.io.direction, cisco.qfp.traffic.class, cisco.cpu.window]
+
+  cisco.qfp.datapath.utilization:
+    enabled: true
+    description: Cisco QFP datapath utilization
+    stability: development
+    unit: "1"
+    gauge:
+      value_type: double
+    attributes: [cisco.qfp.load.type, cisco.cpu.window]
+
+  cisco.qfp.drop.bytes:
+    enabled: true
+    description: The number of Cisco QFP dropped octets
+    stability: development
+    unit: "By"
+    sum:
+      value_type: int
+      monotonic: true
+      aggregation_temporality: cumulative
+    attributes: [cisco.qfp.drop.source, cisco.forwarding.drop.reason]
+
+  cisco.qfp.drops:
+    enabled: true
+    description: The number of Cisco QFP packets dropped
+    stability: development
+    unit: "{packet}"
+    sum:
+      value_type: int
+      monotonic: true
+      aggregation_temporality: cumulative
+    attributes: [cisco.qfp.drop.source, cisco.forwarding.drop.reason]
+
+  cisco.qfp.interface.drops:
+    enabled: true
+    description: The number of Cisco QFP packets dropped by interface and direction
+    stability: development
+    unit: "{packet}"
+    sum:
+      value_type: int
+      monotonic: true
+      aggregation_temporality: cumulative
+    attributes: [network.interface.name, network.io.direction]
+
+  cisco.routing.neighbor.prefixes:
+    enabled: true
+    description: The number of routing prefixes associated with a Cisco routing protocol neighbor
+    stability: development
+    unit: "{prefix}"
+    gauge:
+      value_type: int
+    attributes: [cisco.routing.protocol, cisco.routing.vrf, network.peer.address, address.family]
+
+  cisco.routing.neighbor.state:
+    enabled: true
+    description: Cisco routing protocol neighbor state (1 = established or full, 0 = not established)
+    stability: development
+    unit: "1"
+    gauge:
+      value_type: int
+    attributes: [cisco.routing.protocol, cisco.routing.vrf, network.peer.address, cisco.routing.neighbor.state, address.family]
+
+  cisco.routing.routes:
+    enabled: true
+    description: The number of Cisco routing table routes
+    stability: development
+    unit: "{route}"
+    gauge:
+      value_type: int
+    attributes: [cisco.routing.vrf, cisco.route.source, address.family]
+
+  cisco.scrape.command.duration:
+    enabled: true
+    description: Cisco receiver command execution duration
+    stability: development
+    unit: s
+    gauge:
+      value_type: double
+    attributes: [cisco.scrape.command.family, cisco.scrape.command.outcome]
+
+  cisco.scrape.command.errors:
+    enabled: true
+    description: Cisco receiver command execution errors
+    stability: development
+    unit: "{error}"
+    sum:
+      value_type: int
+      monotonic: true
+      aggregation_temporality: cumulative
+    attributes: [cisco.scrape.command.family, cisco.scrape.error.type]
+
+  cisco.scrape.partial_success:
+    enabled: true
+    description: Cisco receiver scrape partial success status (1 = partial success, 0 = complete success)
+    stability: development
+    unit: "1"
+    gauge:
+      value_type: int
+
+  cisco.ssh.reconnects:
+    enabled: true
+    description: The number of successful Cisco SSH reconnects by the receiver
+    stability: development
+    unit: "{reconnect}"
+    sum:
+      value_type: int
+      monotonic: true
+      aggregation_temporality: cumulative
 
   system.cpu.utilization:
     enabled: true
@@ -46,6 +451,14 @@ metrics:
     unit: "1"
     gauge:
       value_type: double
+
+  system.uptime:
+    enabled: true
+    description: The time the Cisco device has been running
+    stability: development
+    unit: s
+    gauge:
+      value_type: int
 
 # TODO: Update the scraper to support test mode or mock SSH connections
 tests:

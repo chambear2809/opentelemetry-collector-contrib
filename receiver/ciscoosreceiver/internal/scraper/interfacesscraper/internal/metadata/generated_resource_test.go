@@ -13,28 +13,47 @@ func TestResourceBuilder(t *testing.T) {
 		t.Run(tt, func(t *testing.T) {
 			cfg := loadResourceAttributesConfig(t, tt)
 			rb := NewResourceBuilder(cfg)
+			rb.SetHostID("host.id-val")
 			rb.SetHostIP("host.ip-val")
+			rb.SetHostName("host.name-val")
+			rb.SetHostType("host.type-val")
 			rb.SetHwType("hw.type-val")
 			rb.SetOsName("os.name-val")
+			rb.SetOsVersion("os.version-val")
 
 			res := rb.Emit()
 			assert.Equal(t, 0, rb.Emit().Attributes().Len()) // Second call should return empty Resource
 
 			switch tt {
 			case "default":
-				assert.Equal(t, 3, res.Attributes().Len())
+				assert.Equal(t, 7, res.Attributes().Len())
 			case "all_set":
-				assert.Equal(t, 3, res.Attributes().Len())
+				assert.Equal(t, 7, res.Attributes().Len())
 			case "none_set":
 				assert.Equal(t, 0, res.Attributes().Len())
 				return
 			default:
 				assert.Failf(t, "unexpected test case: %s", tt)
 			}
+			hostIDAttrVal, ok := res.Attributes().Get("host.id")
+			assert.True(t, ok)
+			if ok {
+				assert.Equal(t, "host.id-val", hostIDAttrVal.Str())
+			}
 			hostIPAttrVal, ok := res.Attributes().Get("host.ip")
 			assert.True(t, ok)
 			if ok {
 				assert.Equal(t, "host.ip-val", hostIPAttrVal.Str())
+			}
+			hostNameAttrVal, ok := res.Attributes().Get("host.name")
+			assert.True(t, ok)
+			if ok {
+				assert.Equal(t, "host.name-val", hostNameAttrVal.Str())
+			}
+			hostTypeAttrVal, ok := res.Attributes().Get("host.type")
+			assert.True(t, ok)
+			if ok {
+				assert.Equal(t, "host.type-val", hostTypeAttrVal.Str())
 			}
 			hwTypeAttrVal, ok := res.Attributes().Get("hw.type")
 			assert.True(t, ok)
@@ -45,6 +64,11 @@ func TestResourceBuilder(t *testing.T) {
 			assert.True(t, ok)
 			if ok {
 				assert.Equal(t, "os.name-val", osNameAttrVal.Str())
+			}
+			osVersionAttrVal, ok := res.Attributes().Get("os.version")
+			assert.True(t, ok)
+			if ok {
+				assert.Equal(t, "os.version-val", osVersionAttrVal.Str())
 			}
 		})
 	}

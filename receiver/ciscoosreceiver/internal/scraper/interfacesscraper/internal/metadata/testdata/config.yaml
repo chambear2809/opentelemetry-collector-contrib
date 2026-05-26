@@ -1,6 +1,85 @@
 default:
 all_set:
   metrics:
+    cisco.interface.admin.status:
+      enabled: true
+      attributes: ["network.interface.description","network.interface.mac","network.interface.name","network.interface.speed"]
+    cisco.interface.counter:
+      enabled: true
+      attributes: ["cisco.interface.counter.name","network.interface.description","network.interface.mac","network.interface.name","network.interface.speed"]
+    cisco.interface.errdisabled:
+      enabled: true
+      attributes: ["network.interface.name","cisco.errdisabled.reason"]
+    cisco.interface.io.rate:
+      enabled: true
+      attributes: ["network.io.direction","network.interface.description","network.interface.mac","network.interface.name","network.interface.speed"]
+    cisco.interface.packet.rate:
+      enabled: true
+      attributes: ["network.io.direction","network.interface.description","network.interface.mac","network.interface.name","network.interface.speed"]
+    cisco.interface.pause.frames:
+      enabled: true
+      attributes: ["network.interface.name","network.io.direction","cisco.pause.type","cisco.qos.priority"]
+    cisco.interface.qos.policy.bytes:
+      enabled: true
+      attributes: ["network.interface.name","network.io.direction","cisco.qos.class","cisco.qos.action","cisco.qos.drop.reason","cisco.qos.source"]
+    cisco.interface.qos.policy.packets:
+      enabled: true
+      attributes: ["network.interface.name","network.io.direction","cisco.qos.class","cisco.qos.action","cisco.qos.drop.reason","cisco.qos.source"]
+    cisco.interface.qos.queue.bytes:
+      enabled: true
+      attributes: ["network.interface.name","network.io.direction","cisco.qos.queue","cisco.qos.group","cisco.qos.action","cisco.qos.drop.reason","cisco.qos.source"]
+    cisco.interface.qos.queue.packets:
+      enabled: true
+      attributes: ["network.interface.name","network.io.direction","cisco.qos.queue","cisco.qos.group","cisco.qos.action","cisco.qos.drop.reason","cisco.qos.source"]
+    cisco.interface.speed:
+      enabled: true
+      attributes: ["network.interface.description","network.interface.mac","network.interface.name"]
+    cisco.interface.utilization:
+      enabled: true
+      attributes: ["network.io.direction","network.interface.description","network.interface.mac","network.interface.name"]
+    cisco.l2.stp.blocked_ports:
+      enabled: true
+      attributes: ["cisco.l2.vlan","network.interface.name"]
+    cisco.l2.stp.instances:
+      enabled: true
+      attributes: ["cisco.l2.stp.state"]
+    cisco.l2.stp.topology_changes:
+      enabled: true
+      attributes: ["cisco.l2.vlan","network.interface.name"]
+    cisco.lacp.errors:
+      enabled: true
+      attributes: ["network.interface.name","cisco.lacp.error.type"]
+    cisco.lacp.packets:
+      enabled: true
+      attributes: ["network.interface.name","cisco.lacp.packet.type","network.io.direction"]
+    cisco.port_channel.member.status:
+      enabled: true
+      attributes: ["cisco.port_channel.name","network.interface.name","cisco.port_channel.state"]
+    cisco.port_channel.status:
+      enabled: true
+      attributes: ["cisco.port_channel.name","cisco.port_channel.state"]
+    cisco.scrape.command.duration:
+      enabled: true
+      attributes: ["cisco.scrape.command.family","cisco.scrape.command.outcome"]
+    cisco.scrape.command.errors:
+      enabled: true
+      attributes: ["cisco.scrape.command.family","cisco.scrape.error.type"]
+    cisco.scrape.partial_success:
+      enabled: true
+    cisco.ssh.reconnects:
+      enabled: true
+    cisco.topology.neighbor.info:
+      enabled: true
+      attributes: ["cisco.topology.protocol","network.interface.name","cisco.topology.neighbor.name","cisco.topology.neighbor.interface","cisco.topology.neighbor.platform","cisco.topology.neighbor.address"]
+    cisco.transceiver.sensor:
+      enabled: true
+      attributes: ["network.interface.name","cisco.transceiver.sensor","cisco.transceiver.lane","cisco.transceiver.sensor.unit"]
+    cisco.vpc.consistency.failures:
+      enabled: true
+      attributes: ["cisco.vpc.check"]
+    cisco.vpc.status:
+      enabled: true
+      attributes: ["cisco.vpc.domain","cisco.vpc.peer","cisco.vpc.state"]
     system.network.errors:
       enabled: true
       attributes: ["network.io.direction","network.interface.description","network.interface.mac","network.interface.name","network.interface.speed"]
@@ -12,19 +91,106 @@ all_set:
       attributes: ["network.io.direction","network.interface.description","network.interface.mac","network.interface.name","network.interface.speed"]
     system.network.packet.count:
       enabled: true
-      attributes: ["network.packet.type","network.interface.description","network.interface.mac","network.interface.name","network.interface.speed"]
+      attributes: ["network.io.direction","network.packet.type","network.interface.description","network.interface.mac","network.interface.name","network.interface.speed"]
     system.network.packet.dropped:
       enabled: true
       attributes: ["network.io.direction","network.interface.description","network.interface.mac","network.interface.name","network.interface.speed"]
   resource_attributes:
+    host.id:
+      enabled: true
     host.ip:
+      enabled: true
+    host.name:
+      enabled: true
+    host.type:
       enabled: true
     hw.type:
       enabled: true
     os.name:
+      enabled: true
+    os.version:
       enabled: true
 reaggregate_set:
   metrics:
+    cisco.interface.admin.status:
+      enabled: true
+      attributes: []
+    cisco.interface.counter:
+      enabled: true
+      attributes: []
+    cisco.interface.errdisabled:
+      enabled: true
+      attributes: []
+    cisco.interface.io.rate:
+      enabled: true
+      attributes: []
+    cisco.interface.packet.rate:
+      enabled: true
+      attributes: []
+    cisco.interface.pause.frames:
+      enabled: true
+      attributes: []
+    cisco.interface.qos.policy.bytes:
+      enabled: true
+      attributes: []
+    cisco.interface.qos.policy.packets:
+      enabled: true
+      attributes: []
+    cisco.interface.qos.queue.bytes:
+      enabled: true
+      attributes: []
+    cisco.interface.qos.queue.packets:
+      enabled: true
+      attributes: []
+    cisco.interface.speed:
+      enabled: true
+      attributes: []
+    cisco.interface.utilization:
+      enabled: true
+      attributes: []
+    cisco.l2.stp.blocked_ports:
+      enabled: true
+      attributes: []
+    cisco.l2.stp.instances:
+      enabled: true
+      attributes: []
+    cisco.l2.stp.topology_changes:
+      enabled: true
+      attributes: []
+    cisco.lacp.errors:
+      enabled: true
+      attributes: []
+    cisco.lacp.packets:
+      enabled: true
+      attributes: []
+    cisco.port_channel.member.status:
+      enabled: true
+      attributes: []
+    cisco.port_channel.status:
+      enabled: true
+      attributes: []
+    cisco.scrape.command.duration:
+      enabled: true
+      attributes: []
+    cisco.scrape.command.errors:
+      enabled: true
+      attributes: []
+    cisco.scrape.partial_success:
+      enabled: true
+    cisco.ssh.reconnects:
+      enabled: true
+    cisco.topology.neighbor.info:
+      enabled: true
+      attributes: []
+    cisco.transceiver.sensor:
+      enabled: true
+      attributes: []
+    cisco.vpc.consistency.failures:
+      enabled: true
+      attributes: []
+    cisco.vpc.status:
+      enabled: true
+      attributes: []
     system.network.errors:
       enabled: true
       attributes: []
@@ -41,14 +207,101 @@ reaggregate_set:
       enabled: true
       attributes: []
   resource_attributes:
+    host.id:
+      enabled: true
     host.ip:
+      enabled: true
+    host.name:
+      enabled: true
+    host.type:
       enabled: true
     hw.type:
       enabled: true
     os.name:
       enabled: true
+    os.version:
+      enabled: true
 none_set:
   metrics:
+    cisco.interface.admin.status:
+      enabled: false
+      attributes: ["network.interface.description","network.interface.mac","network.interface.name","network.interface.speed"]
+    cisco.interface.counter:
+      enabled: false
+      attributes: ["cisco.interface.counter.name","network.interface.description","network.interface.mac","network.interface.name","network.interface.speed"]
+    cisco.interface.errdisabled:
+      enabled: false
+      attributes: ["network.interface.name","cisco.errdisabled.reason"]
+    cisco.interface.io.rate:
+      enabled: false
+      attributes: ["network.io.direction","network.interface.description","network.interface.mac","network.interface.name","network.interface.speed"]
+    cisco.interface.packet.rate:
+      enabled: false
+      attributes: ["network.io.direction","network.interface.description","network.interface.mac","network.interface.name","network.interface.speed"]
+    cisco.interface.pause.frames:
+      enabled: false
+      attributes: ["network.interface.name","network.io.direction","cisco.pause.type","cisco.qos.priority"]
+    cisco.interface.qos.policy.bytes:
+      enabled: false
+      attributes: ["network.interface.name","network.io.direction","cisco.qos.class","cisco.qos.action","cisco.qos.drop.reason","cisco.qos.source"]
+    cisco.interface.qos.policy.packets:
+      enabled: false
+      attributes: ["network.interface.name","network.io.direction","cisco.qos.class","cisco.qos.action","cisco.qos.drop.reason","cisco.qos.source"]
+    cisco.interface.qos.queue.bytes:
+      enabled: false
+      attributes: ["network.interface.name","network.io.direction","cisco.qos.queue","cisco.qos.group","cisco.qos.action","cisco.qos.drop.reason","cisco.qos.source"]
+    cisco.interface.qos.queue.packets:
+      enabled: false
+      attributes: ["network.interface.name","network.io.direction","cisco.qos.queue","cisco.qos.group","cisco.qos.action","cisco.qos.drop.reason","cisco.qos.source"]
+    cisco.interface.speed:
+      enabled: false
+      attributes: ["network.interface.description","network.interface.mac","network.interface.name"]
+    cisco.interface.utilization:
+      enabled: false
+      attributes: ["network.io.direction","network.interface.description","network.interface.mac","network.interface.name"]
+    cisco.l2.stp.blocked_ports:
+      enabled: false
+      attributes: ["cisco.l2.vlan","network.interface.name"]
+    cisco.l2.stp.instances:
+      enabled: false
+      attributes: ["cisco.l2.stp.state"]
+    cisco.l2.stp.topology_changes:
+      enabled: false
+      attributes: ["cisco.l2.vlan","network.interface.name"]
+    cisco.lacp.errors:
+      enabled: false
+      attributes: ["network.interface.name","cisco.lacp.error.type"]
+    cisco.lacp.packets:
+      enabled: false
+      attributes: ["network.interface.name","cisco.lacp.packet.type","network.io.direction"]
+    cisco.port_channel.member.status:
+      enabled: false
+      attributes: ["cisco.port_channel.name","network.interface.name","cisco.port_channel.state"]
+    cisco.port_channel.status:
+      enabled: false
+      attributes: ["cisco.port_channel.name","cisco.port_channel.state"]
+    cisco.scrape.command.duration:
+      enabled: false
+      attributes: ["cisco.scrape.command.family","cisco.scrape.command.outcome"]
+    cisco.scrape.command.errors:
+      enabled: false
+      attributes: ["cisco.scrape.command.family","cisco.scrape.error.type"]
+    cisco.scrape.partial_success:
+      enabled: false
+    cisco.ssh.reconnects:
+      enabled: false
+    cisco.topology.neighbor.info:
+      enabled: false
+      attributes: ["cisco.topology.protocol","network.interface.name","cisco.topology.neighbor.name","cisco.topology.neighbor.interface","cisco.topology.neighbor.platform","cisco.topology.neighbor.address"]
+    cisco.transceiver.sensor:
+      enabled: false
+      attributes: ["network.interface.name","cisco.transceiver.sensor","cisco.transceiver.lane","cisco.transceiver.sensor.unit"]
+    cisco.vpc.consistency.failures:
+      enabled: false
+      attributes: ["cisco.vpc.check"]
+    cisco.vpc.status:
+      enabled: false
+      attributes: ["cisco.vpc.domain","cisco.vpc.peer","cisco.vpc.state"]
     system.network.errors:
       enabled: false
       attributes: ["network.io.direction","network.interface.description","network.interface.mac","network.interface.name","network.interface.speed"]
@@ -60,20 +313,40 @@ none_set:
       attributes: ["network.io.direction","network.interface.description","network.interface.mac","network.interface.name","network.interface.speed"]
     system.network.packet.count:
       enabled: false
-      attributes: ["network.packet.type","network.interface.description","network.interface.mac","network.interface.name","network.interface.speed"]
+      attributes: ["network.io.direction","network.packet.type","network.interface.description","network.interface.mac","network.interface.name","network.interface.speed"]
     system.network.packet.dropped:
       enabled: false
       attributes: ["network.io.direction","network.interface.description","network.interface.mac","network.interface.name","network.interface.speed"]
   resource_attributes:
+    host.id:
+      enabled: false
     host.ip:
+      enabled: false
+    host.name:
+      enabled: false
+    host.type:
       enabled: false
     hw.type:
       enabled: false
     os.name:
+      enabled: false
+    os.version:
       enabled: false
 filter_set_include:
   resource_attributes:
+    host.id:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
     host.ip:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
+    host.name:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
+    host.type:
       enabled: true
       metrics_include:
         - regexp: ".*"
@@ -82,15 +355,31 @@ filter_set_include:
       metrics_include:
         - regexp: ".*"
     os.name:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
+    os.version:
       enabled: true
       metrics_include:
         - regexp: ".*"
 filter_set_exclude:
   resource_attributes:
+    host.id:
+      enabled: true
+      metrics_exclude:
+        - strict: "host.id-val"
     host.ip:
       enabled: true
       metrics_exclude:
         - strict: "host.ip-val"
+    host.name:
+      enabled: true
+      metrics_exclude:
+        - strict: "host.name-val"
+    host.type:
+      enabled: true
+      metrics_exclude:
+        - strict: "host.type-val"
     hw.type:
       enabled: true
       metrics_exclude:
@@ -99,3 +388,7 @@ filter_set_exclude:
       enabled: true
       metrics_exclude:
         - strict: "os.name-val"
+    os.version:
+      enabled: true
+      metrics_exclude:
+        - strict: "os.version-val"

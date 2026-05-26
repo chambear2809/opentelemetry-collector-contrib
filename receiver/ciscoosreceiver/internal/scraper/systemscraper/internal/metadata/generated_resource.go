@@ -21,10 +21,31 @@ func NewResourceBuilder(rac ResourceAttributesConfig) *ResourceBuilder {
 	}
 }
 
+// SetHostID sets provided value as "host.id" attribute.
+func (rb *ResourceBuilder) SetHostID(val string) {
+	if rb.config.HostID.Enabled {
+		rb.res.Attributes().PutStr("host.id", val)
+	}
+}
+
 // SetHostIP sets provided value as "host.ip" attribute.
 func (rb *ResourceBuilder) SetHostIP(val string) {
 	if rb.config.HostIP.Enabled {
 		rb.res.Attributes().PutStr("host.ip", val)
+	}
+}
+
+// SetHostName sets provided value as "host.name" attribute.
+func (rb *ResourceBuilder) SetHostName(val string) {
+	if rb.config.HostName.Enabled {
+		rb.res.Attributes().PutStr("host.name", val)
+	}
+}
+
+// SetHostType sets provided value as "host.type" attribute.
+func (rb *ResourceBuilder) SetHostType(val string) {
+	if rb.config.HostType.Enabled {
+		rb.res.Attributes().PutStr("host.type", val)
 	}
 }
 
@@ -39,6 +60,13 @@ func (rb *ResourceBuilder) SetHwType(val string) {
 func (rb *ResourceBuilder) SetOsName(val string) {
 	if rb.config.OsName.Enabled {
 		rb.res.Attributes().PutStr("os.name", val)
+	}
+}
+
+// SetOsVersion sets provided value as "os.version" attribute.
+func (rb *ResourceBuilder) SetOsVersion(val string) {
+	if rb.config.OsVersion.Enabled {
+		rb.res.Attributes().PutStr("os.version", val)
 	}
 }
 

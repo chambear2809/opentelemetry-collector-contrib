@@ -4,13 +4,16 @@
 package connection
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,6 +21,20 @@ import (
 	"go.uber.org/zap"
 	cryptossh "golang.org/x/crypto/ssh"
 )
+
+func withFailingDialer(t *testing.T) *string {
+	t.Helper()
+	var capturedAddress string
+	previousDialer := dialSSH
+	dialSSH = func(_ context.Context, _, address string, _ *cryptossh.ClientConfig) (*cryptossh.Client, error) {
+		capturedAddress = address
+		return nil, errors.New("mock dial failure")
+	}
+	t.Cleanup(func() {
+		dialSSH = previousDialer
+	})
+	return &capturedAddress
+}
 
 // Helper function to create DeviceConfig for tests
 func createTestDeviceConfig(hostName, hostIP string, hostPort int, username, password, keyFile string) DeviceConfig {
@@ -30,9 +47,10 @@ func createTestDeviceConfig(hostName, hostIP string, hostPort int, username, pas
 			},
 		},
 		Auth: AuthConfig{
-			Username: username,
-			Password: configopaque.String(password),
-			KeyFile:  keyFile,
+			Username:           username,
+			Password:           configopaque.String(password),
+			KeyFile:            keyFile,
+			InsecureSkipVerify: true,
 		},
 	}
 }
@@ -238,7 +256,7 @@ func TestEstablishDeviceConnection_NoAuthProvided(t *testing.T) {
 
 	// Test with no password and no key file
 	deviceConfig := createTestDeviceConfig("test-device", "192.168.1.1", 22, "testuser", "", "")
-	_, err := EstablishDeviceConnection(t.Context(), deviceConfig, logger)
+	_, err := EstablishDeviceConnection(t.Context(), deviceConfig, 30*time.Second, logger)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no authentication method provided")
@@ -249,19 +267,20 @@ func TestEstablishDeviceConnection_InvalidKeyFile(t *testing.T) {
 
 	// Test with invalid key file path
 	deviceConfig := createTestDeviceConfig("test-device", "192.168.1.1", 22, "testuser", "", "/nonexistent/path/to/key")
-	_, err := EstablishDeviceConnection(t.Context(), deviceConfig, logger)
+	_, err := EstablishDeviceConnection(t.Context(), deviceConfig, 30*time.Second, logger)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load SSH key")
 }
 
 func TestEstablishDeviceConnection_PasswordAuth(t *testing.T) {
+	withFailingDialer(t)
 	logger := zap.NewNop()
 
 	// Test with password authentication
 	// This will fail to connect (no SSH server), but we verify the auth methods are built correctly
 	deviceConfig := createTestDeviceConfig("test-device", "192.168.1.1", 22, "testuser", "testpass", "")
-	_, err := EstablishDeviceConnection(t.Context(), deviceConfig, logger)
+	_, err := EstablishDeviceConnection(t.Context(), deviceConfig, 30*time.Second, logger)
 
 	// Should fail due to SSH connection failure, not auth method building
 	require.Error(t, err)
@@ -270,6 +289,7 @@ func TestEstablishDeviceConnection_PasswordAuth(t *testing.T) {
 }
 
 func TestEstablishDeviceConnection_KeyFileAuth(t *testing.T) {
+	withFailingDialer(t)
 	// Create temporary SSH key file
 	tmpDir := t.TempDir()
 	keyFile := filepath.Join(tmpDir, "test_key")
@@ -294,7 +314,7 @@ func TestEstablishDeviceConnection_KeyFileAuth(t *testing.T) {
 	// Test with key file authentication
 	// This will fail to connect (no SSH server), but we verify the auth methods are built correctly
 	deviceConfig := createTestDeviceConfig("test-device", "192.168.1.1", 22, "testuser", "", keyFile)
-	_, err = EstablishDeviceConnection(t.Context(), deviceConfig, logger)
+	_, err = EstablishDeviceConnection(t.Context(), deviceConfig, 30*time.Second, logger)
 
 	// Should fail due to SSH connection failure, not auth method building
 	require.Error(t, err)
@@ -304,6 +324,7 @@ func TestEstablishDeviceConnection_KeyFileAuth(t *testing.T) {
 }
 
 func TestEstablishDeviceConnection_BothPasswordAndKey(t *testing.T) {
+	withFailingDialer(t)
 	// Create temporary SSH key file
 	tmpDir := t.TempDir()
 	keyFile := filepath.Join(tmpDir, "test_key")
@@ -327,7 +348,7 @@ func TestEstablishDeviceConnection_BothPasswordAndKey(t *testing.T) {
 
 	// Test with both password and key file authentication
 	deviceConfig := createTestDeviceConfig("test-device", "192.168.1.1", 22, "testuser", "testpass", keyFile)
-	_, err = EstablishDeviceConnection(t.Context(), deviceConfig, logger)
+	_, err = EstablishDeviceConnection(t.Context(), deviceConfig, 30*time.Second, logger)
 
 	// Should fail due to SSH connection failure, not auth method building
 	require.Error(t, err)
@@ -339,11 +360,12 @@ func TestEstablishDeviceConnection_BothPasswordAndKey(t *testing.T) {
 // Edge case tests
 
 func TestEstablishDeviceConnection_EmptyHostName(t *testing.T) {
+	withFailingDialer(t)
 	logger := zap.NewNop()
 
 	// Host name is optional, empty string should be valid
 	deviceConfig := createTestDeviceConfig("", "192.168.1.1", 22, "testuser", "testpass", "")
-	_, err := EstablishDeviceConnection(t.Context(), deviceConfig, logger)
+	_, err := EstablishDeviceConnection(t.Context(), deviceConfig, 30*time.Second, logger)
 
 	// Should fail due to SSH connection, not validation
 	require.Error(t, err)
@@ -351,6 +373,7 @@ func TestEstablishDeviceConnection_EmptyHostName(t *testing.T) {
 }
 
 func TestEstablishDeviceConnection_PortBoundaries(t *testing.T) {
+	withFailingDialer(t)
 	logger := zap.NewNop()
 
 	tests := []struct {
@@ -374,7 +397,7 @@ func TestEstablishDeviceConnection_PortBoundaries(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			deviceConfig := createTestDeviceConfig("test-device", "192.168.1.1", tt.port, "testuser", "testpass", "")
-			_, err := EstablishDeviceConnection(t.Context(), deviceConfig, logger)
+			_, err := EstablishDeviceConnection(t.Context(), deviceConfig, 30*time.Second, logger)
 			// Should fail with connection error, not validation error
 			if err != nil {
 				assert.NotContains(t, err.Error(), "is required")
@@ -384,23 +407,26 @@ func TestEstablishDeviceConnection_PortBoundaries(t *testing.T) {
 }
 
 func TestEstablishDeviceConnection_IPv6Address(t *testing.T) {
+	capturedAddress := withFailingDialer(t)
 	logger := zap.NewNop()
 
 	// Test with IPv6 address
 	deviceConfig := createTestDeviceConfig("test-device", "2001:db8::1", 22, "testuser", "testpass", "")
-	_, err := EstablishDeviceConnection(t.Context(), deviceConfig, logger)
+	_, err := EstablishDeviceConnection(t.Context(), deviceConfig, 30*time.Second, logger)
 
 	// Should fail due to SSH connection, not validation
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "device.host.ip is required")
+	assert.Equal(t, "[2001:db8::1]:22", *capturedAddress)
 }
 
 func TestEstablishDeviceConnection_SpecialCharactersInPassword(t *testing.T) {
+	withFailingDialer(t)
 	logger := zap.NewNop()
 
 	// Test with special characters in password
 	deviceConfig := createTestDeviceConfig("test-device", "192.168.1.1", 22, "testuser", "p@$$w0rd!#%&*()[]{}|<>?/\\\"'`~", "")
-	_, err := EstablishDeviceConnection(t.Context(), deviceConfig, logger)
+	_, err := EstablishDeviceConnection(t.Context(), deviceConfig, 30*time.Second, logger)
 
 	// Should fail due to SSH connection, not validation
 	require.Error(t, err)
@@ -408,18 +434,21 @@ func TestEstablishDeviceConnection_SpecialCharactersInPassword(t *testing.T) {
 }
 
 func TestEstablishDeviceConnection_NonStandardPort(t *testing.T) {
+	capturedAddress := withFailingDialer(t)
 	logger := zap.NewNop()
 
 	// Test with non-standard SSH port
 	deviceConfig := createTestDeviceConfig("test-device", "192.168.1.1", 2222, "testuser", "testpass", "")
-	_, err := EstablishDeviceConnection(t.Context(), deviceConfig, logger)
+	_, err := EstablishDeviceConnection(t.Context(), deviceConfig, 30*time.Second, logger)
 
 	// Should fail due to SSH connection, not validation
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "device.host.port is required")
+	assert.Equal(t, "192.168.1.1:2222", *capturedAddress)
 }
 
 func TestEstablishDeviceConnection_AllFieldsPopulated(t *testing.T) {
+	withFailingDialer(t)
 	// Create temporary SSH key file
 	tmpDir := t.TempDir()
 	keyFile := filepath.Join(tmpDir, "test_key")
@@ -443,7 +472,7 @@ func TestEstablishDeviceConnection_AllFieldsPopulated(t *testing.T) {
 
 	// Test with all fields populated including optional host name
 	deviceConfig := createTestDeviceConfig("cisco-switch-01", "192.168.1.1", 22, "admin", "password123", keyFile)
-	_, err = EstablishDeviceConnection(t.Context(), deviceConfig, logger)
+	_, err = EstablishDeviceConnection(t.Context(), deviceConfig, 30*time.Second, logger)
 
 	// Should fail due to SSH connection, but all validation passed
 	require.Error(t, err)

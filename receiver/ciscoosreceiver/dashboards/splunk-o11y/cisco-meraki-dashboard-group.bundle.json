@@ -1,0 +1,536 @@
+{
+  "schema": "com.cisco.opentelemetry.ciscoosreceiver.splunk-o11y.dashboard-bundle/v1",
+  "group": {
+    "name": "Cisco Meraki Receiver",
+    "description": "Dashboard group for Meraki Dashboard API metrics emitted by the Cisco OS receiver. It includes focused pages for fleet/API health, WAN/VPN, wireless experience, and switching/physical troubleshooting."
+  },
+  "default_time_range_ms": 3600000,
+  "default_tags": [
+    "ciscoosreceiver",
+    "meraki",
+    "network",
+    "itops",
+    "netops"
+  ],
+  "default_filters": {
+    "variables": [
+      {"property": "host.name", "alias": "Device", "description": "Meraki device or network name.", "applyIfExists": true},
+      {"property": "meraki.device.serial", "alias": "Meraki Serial", "description": "Meraki device serial number.", "applyIfExists": true},
+      {"property": "meraki.network.id", "alias": "Meraki Network", "description": "Meraki network identifier.", "applyIfExists": true},
+      {"property": "network.interface.name", "alias": "Interface", "description": "Network interface name.", "applyIfExists": true},
+      {"property": "meraki.device.product_type", "alias": "Product Type", "description": "Meraki product family.", "applyIfExists": true}
+    ]
+  },
+  "dashboards": [
+    {
+      "name": "00 Meraki Fleet And API Health",
+      "description": "Value: gives ITOps and NetOps a first-response page for Meraki telemetry trust, device availability, Dashboard API behavior, partial scrape evidence, and fleet-level device health.",
+      "value": "Use this page before interpreting Meraki device, WAN, wireless, or switch symptoms. It proves whether the Dashboard API polling path is healthy, whether rate limits or endpoint errors are distorting visibility, and which serials or product families are reporting degraded state.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to use the Meraki fleet dashboard as the incident starting point. Interpretation: start here when Meraki telemetry is missing, stale, partially successful, or when the affected product family is not yet known.",
+          "markdown": "## Value Provided\nUse this dashboard as the first Splunk Observability page for Meraki incidents. It separates collection trust from device symptoms: API errors, rate limits, and partial scrapes explain telemetry gaps, while device status and reachability identify the affected serials, product families, and networks.\n\nChart style follows the Cisco OS receiver dashboards. Current state and exceptions are list charts with sparklines so the affected serial is easy to find. API request duration, error counts, rate-limit events, and memory pressure stay as time-series charts because timing and slope explain whether a Dashboard API issue preceded the incident.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Meraki Device Reachability",
+          "description": "Value: identifies Meraki devices that Dashboard reports as reachable or not reachable before deeper analysis begins. Interpretation: each row is a device; 1 means up and 0 means down. Use product type and network dimensions to scope the outage.",
+          "signalflow": "data('cisco.device.up', filter=filter('os.name', 'Meraki')).mean(by=['host.name', 'host.id', 'meraki.device.product_type', 'meraki.network.id']).publish(label='Device up')",
+          "legend_dimension": "host.name",
+          "publish_label_options": [
+            {
+              "label": "Device up",
+              "displayName": "Device up",
+              "paletteIndex": 13
+            }
+          ]
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Dashboard Device Status",
+          "description": "Value: preserves the Dashboard status vocabulary instead of hiding alerting or dormant states behind only up/down. Interpretation: rows are grouped by serial and status; online is healthy, alerting needs attention, dormant/offline usually means the device is not currently useful for live troubleshooting.",
+          "signalflow": "data('meraki.device.status').mean(by=['host.name', 'host.id', 'meraki.device.status', 'meraki.device.product_type', 'meraki.network.id']).publish(label='Device status')",
+          "legend_dimension": "meraki.device.status",
+          "publish_label_options": [
+            {
+              "label": "Device status",
+              "displayName": "Device status",
+              "paletteIndex": 5
+            }
+          ]
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Meraki Partial Scrapes",
+          "description": "Value: prevents false conclusions from endpoint-specific failures when the receiver reached the Meraki API but one endpoint family failed. Interpretation: 1 means at least one Meraki endpoint family failed during the scrape; inspect API errors by operation next.",
+          "signalflow": "data('cisco.scrape.partial_success', filter=filter('os.name', 'Meraki')).mean(by=['meraki.organization.id']).publish(label='Partial scrape')",
+          "legend_dimension": "meraki.organization.id",
+          "publish_label_options": [
+            {
+              "label": "Partial scrape",
+              "displayName": "Partial scrape",
+              "paletteIndex": 8
+            }
+          ]
+        },
+        {
+          "name": "Dashboard API Request Duration",
+          "description": "Value: shows whether Dashboard API latency is creating stale or delayed visibility. Interpretation: spikes by operation indicate the endpoint family causing scrape latency; sustained high duration can precede partial scrapes.",
+          "signalflow": "data('meraki.api.request.duration').mean(by=['meraki.organization.id', 'meraki.api.operation', 'meraki.api.outcome']).publish(label='API duration')",
+          "legend_dimension": "meraki.api.operation",
+          "publish_label_options": [
+            {
+              "label": "API duration",
+              "displayName": "API duration",
+              "valueUnit": "Second",
+              "paletteIndex": 2
+            }
+          ]
+        },
+        {
+          "name": "Dashboard API Errors And Rate Limits",
+          "description": "Value: separates Meraki API health problems from real network problems. Interpretation: API errors show failed endpoint requests; rate-limited requests mean the receiver hit Dashboard API throttling and may need lower target volume or longer collection intervals.",
+          "signalflow": "data('meraki.api.request.errors').sum(by=['meraki.organization.id', 'meraki.api.operation', 'http.response.status_code']).publish(label='API errors'); data('meraki.api.request.rate_limited').sum(by=['meraki.organization.id', 'meraki.api.operation']).publish(label='Rate limited')",
+          "legend_dimension": "meraki.api.operation",
+          "publish_label_options": [
+            {
+              "label": "API errors",
+              "displayName": "API errors",
+              "paletteIndex": 8
+            },
+            {
+              "label": "Rate limited",
+              "displayName": "Rate limited",
+              "paletteIndex": 10
+            }
+          ]
+        },
+        {
+          "name": "Meraki Memory Utilization",
+          "description": "Value: finds Meraki devices reporting memory pressure through Dashboard API history. Interpretation: values are percentages by device; sustained high memory may explain instability, degraded service, or delayed control behavior.",
+          "signalflow": "data('system.memory.utilization', filter=filter('os.name', 'Meraki')).mean(by=['host.name', 'host.id', 'meraki.device.product_type']).scale(100).publish(label='Memory %')",
+          "legend_dimension": "host.name",
+          "publish_label_options": [
+            {
+              "label": "Memory %",
+              "displayName": "Memory %",
+              "valueSuffix": "%",
+              "paletteIndex": 4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 Meraki WAN VPN And Appliance",
+      "description": "Value: connects Meraki appliance health, WAN uplink state, loss, latency, cellular signal, and VPN peer status into one troubleshooting page.",
+      "value": "Use this page when users report branch reachability, Internet edge, cellular backup, Auto VPN, or third-party VPN symptoms. It puts uplink state and quality beside VPN peer state and appliance performance so operators can tell whether the issue is transport, tunnel, or device pressure.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains the WAN and VPN troubleshooting workflow. Interpretation: read this panel first to understand how uplink, cellular, VPN, and appliance score panels should be correlated.",
+          "markdown": "## Value Provided\nUse this dashboard for Meraki MX and WAN incidents. It is organized around the question operators ask first: is the branch transport down, degraded, cellular-backed, or is the tunnel itself unhealthy?\n\nUplink and VPN reachability are list charts because current state and the affected interface or peer matter first. Loss, latency, jitter, MOS, usage, cellular signal, and appliance performance are time-series charts because the incident timeline explains whether the transport degraded before tunnels or applications failed.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "WAN Uplink Status",
+          "description": "Value: identifies failed or inactive WAN uplinks by device and interface. Interpretation: 1 means active/ready/online; 0 means the uplink is not usable. Correlate down rows with loss, latency, and cellular signal.",
+          "signalflow": "data('meraki.uplink.status').mean(by=['host.name', 'host.id', 'meraki.uplink.interface', 'meraki.uplink.status', 'meraki.uplink.provider']).publish(label='Uplink active')",
+          "legend_dimension": "meraki.uplink.interface",
+          "publish_label_options": [
+            {
+              "label": "Uplink active",
+              "displayName": "Uplink active",
+              "paletteIndex": 13
+            }
+          ]
+        },
+        {
+          "name": "WAN Loss And Latency",
+          "description": "Value: shows WAN quality degradation before a link is fully down. Interpretation: rising loss percentage or latency by uplink points to ISP, path, or last-mile issues even when status remains active.",
+          "signalflow": "data('meraki.uplink.loss').mean(by=['host.name', 'host.id', 'meraki.uplink.interface']).publish(label='Loss %'); data('meraki.uplink.latency').mean(by=['host.name', 'host.id', 'meraki.uplink.interface']).publish(label='Latency ms')",
+          "legend_dimension": "meraki.uplink.interface",
+          "publish_label_options": [
+            {
+              "label": "Loss %",
+              "displayName": "Loss %",
+              "valueSuffix": "%",
+              "paletteIndex": 8
+            },
+            {
+              "label": "Latency ms",
+              "displayName": "Latency ms",
+              "valueSuffix": " ms",
+              "paletteIndex": 2
+            }
+          ]
+        },
+        {
+          "name": "Cellular Signal Quality",
+          "description": "Value: explains whether a cellular uplink is degraded because of RF signal quality. Interpretation: RSRP and RSRQ are usually negative values; worsening values before loss or latency increases point to cellular coverage or antenna issues.",
+          "signalflow": "data('meraki.uplink.cellular.signal.rsrp').mean(by=['host.name', 'host.id', 'meraki.uplink.interface', 'meraki.uplink.provider']).publish(label='RSRP dBm'); data('meraki.uplink.cellular.signal.rsrq').mean(by=['host.name', 'host.id', 'meraki.uplink.interface', 'meraki.uplink.provider']).publish(label='RSRQ dB')",
+          "legend_dimension": "host.name",
+          "publish_label_options": [
+            {
+              "label": "RSRP dBm",
+              "displayName": "RSRP dBm",
+              "valueSuffix": " dBm",
+              "paletteIndex": 4
+            },
+            {
+              "label": "RSRQ dB",
+              "displayName": "RSRQ dB",
+              "valueSuffix": " dB",
+              "paletteIndex": 6
+            }
+          ]
+        },
+        {
+          "name": "Appliance Performance Score",
+          "description": "Value: surfaces Meraki appliance performance pressure that can mimic WAN or VPN degradation. Interpretation: falling score near an incident suggests device pressure; correlate with memory and API status to avoid blaming transport alone.",
+          "signalflow": "data('meraki.appliance.performance.score').mean(by=['host.name', 'host.id']).publish(label='Performance score')",
+          "legend_dimension": "host.name",
+          "publish_label_options": [
+            {
+              "label": "Performance score",
+              "displayName": "Performance score",
+              "paletteIndex": 5
+            }
+          ]
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "VPN Peer Reachability",
+          "description": "Value: identifies Auto VPN or third-party VPN peers that are unreachable. Interpretation: 1 means reachable; 0 means unreachable. Use peer type, peer name, and network ID to decide whether the issue is Meraki-to-Meraki or third-party VPN.",
+          "signalflow": "data('meraki.vpn.peer.status').mean(by=['host.name', 'meraki.vpn.peer.type', 'meraki.vpn.peer.name', 'meraki.vpn.peer.network_id', 'meraki.vpn.peer.reachability']).publish(label='VPN peer reachable')",
+          "legend_dimension": "meraki.vpn.peer.name",
+          "publish_label_options": [
+            {
+              "label": "VPN peer reachable",
+              "displayName": "VPN peer reachable",
+              "paletteIndex": 13
+            }
+          ]
+        },
+        {
+          "name": "VPN Peer Quality",
+          "description": "Value: shows tunnel quality after reachability has been established. Interpretation: rising latency, loss, or jitter and falling MOS by sender/receiver uplink points to transport degradation affecting VPN user experience.",
+          "signalflow": "data('meraki.vpn.peer.latency').mean(by=['host.name', 'meraki.vpn.peer.name', 'meraki.vpn.sender.uplink', 'meraki.vpn.receiver.uplink']).publish(label='VPN latency ms'); data('meraki.vpn.peer.loss').mean(by=['host.name', 'meraki.vpn.peer.name', 'meraki.vpn.sender.uplink', 'meraki.vpn.receiver.uplink']).publish(label='VPN loss %'); data('meraki.vpn.peer.jitter').mean(by=['host.name', 'meraki.vpn.peer.name', 'meraki.vpn.sender.uplink', 'meraki.vpn.receiver.uplink']).publish(label='VPN jitter ms'); data('meraki.vpn.peer.mos').mean(by=['host.name', 'meraki.vpn.peer.name', 'meraki.vpn.sender.uplink', 'meraki.vpn.receiver.uplink']).publish(label='VPN MOS')",
+          "legend_dimension": "meraki.vpn.peer.name",
+          "publish_label_options": [
+            {
+              "label": "VPN latency ms",
+              "displayName": "VPN latency ms",
+              "valueSuffix": " ms",
+              "paletteIndex": 2
+            },
+            {
+              "label": "VPN loss %",
+              "displayName": "VPN loss %",
+              "valueSuffix": "%",
+              "paletteIndex": 8
+            },
+            {
+              "label": "VPN jitter ms",
+              "displayName": "VPN jitter ms",
+              "valueSuffix": " ms",
+              "paletteIndex": 6
+            },
+            {
+              "label": "VPN MOS",
+              "displayName": "VPN MOS",
+              "paletteIndex": 13
+            }
+          ]
+        },
+        {
+          "name": "VPN Peer Usage",
+          "description": "Value: shows recent VPN traffic volume by direction so operators can distinguish idle tunnels from loaded tunnels. Interpretation: usage is windowed Meraki data in kilobytes, not a cumulative counter; compare receive and transmit direction for asymmetric traffic.",
+          "signalflow": "data('meraki.vpn.peer.usage').sum(by=['host.name', 'meraki.vpn.peer.name', 'network.io.direction']).publish(label='VPN usage KBy')",
+          "legend_dimension": "meraki.vpn.peer.name",
+          "publish_label_options": [
+            {
+              "label": "VPN usage KBy",
+              "displayName": "VPN usage KBy",
+              "valueSuffix": " KBy",
+              "paletteIndex": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 Meraki Wireless Experience",
+      "description": "Value: focuses on AP client load, RF channel utilization, packet loss, SSID broadcast state, and wireless quality symptoms from the Dashboard API.",
+      "value": "Use this page when users report Wi-Fi connectivity, slow wireless performance, SSID availability, or RF congestion. It keeps client counts, channel utilization, packet loss, and SSID broadcast state together so operators can tell whether impact is load, RF noise, packet loss, or configuration/broadcast state.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains the wireless troubleshooting workflow. Interpretation: use client counts to find loaded APs, channel utilization to validate RF pressure, packet loss to find quality impact, and SSID status to catch broadcast/configuration failures.",
+          "markdown": "## Value Provided\nUse this dashboard for Meraki wireless incidents. It answers four questions quickly: which APs have clients, which bands are congested, whether packets are being lost, and whether the expected SSIDs are enabled, advertised, and broadcasting.\n\nCurrent SSID state is a list chart so the affected BSSID or SSID is visible immediately. Client counts, channel utilization, and loss are time-series charts because the incident timeline matters: congestion and packet loss that start before complaints point to RF or load, while SSID state changes point to configuration or AP behavior.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "Wireless Clients By AP And Status",
+          "description": "Value: identifies APs carrying clients and distinguishes online client load from other client states. Interpretation: sudden drops can indicate AP or SSID impact; sudden spikes can explain channel pressure or localized performance issues.",
+          "signalflow": "data('meraki.wireless.client.count').sum(by=['host.name', 'host.id', 'meraki.wireless.client.status', 'meraki.network.id']).publish(label='Wireless clients')",
+          "legend_dimension": "host.name",
+          "publish_label_options": [
+            {
+              "label": "Wireless clients",
+              "displayName": "Wireless clients",
+              "valueSuffix": " clients",
+              "paletteIndex": 1
+            }
+          ]
+        },
+        {
+          "name": "Channel Utilization By Band",
+          "description": "Value: separates Wi-Fi airtime pressure from non-Wi-Fi interference. Interpretation: high total utilization with high non-Wi-Fi percentage suggests interference; high Wi-Fi percentage suggests client/load contention.",
+          "signalflow": "data('meraki.wireless.channel_utilization').mean(by=['host.name', 'host.id', 'meraki.wireless.band', 'meraki.wireless.utilization.type']).publish(label='Channel utilization %')",
+          "legend_dimension": "meraki.wireless.band",
+          "publish_label_options": [
+            {
+              "label": "Channel utilization %",
+              "displayName": "Channel utilization %",
+              "valueSuffix": "%",
+              "paletteIndex": 4
+            }
+          ]
+        },
+        {
+          "name": "Wireless Packet Loss Percentage",
+          "description": "Value: shows wireless quality impact by AP and direction. Interpretation: sustained loss percentage before user complaints points to RF quality, roaming, client mix, or AP-side issues rather than only WAN or application causes.",
+          "signalflow": "data('meraki.wireless.packet.loss_percentage').mean(by=['host.name', 'host.id', 'network.io.direction']).publish(label='Wireless loss %')",
+          "legend_dimension": "host.name",
+          "publish_label_options": [
+            {
+              "label": "Wireless loss %",
+              "displayName": "Wireless loss %",
+              "valueSuffix": "%",
+              "paletteIndex": 8
+            }
+          ]
+        },
+        {
+          "name": "Wireless Packet Volume And Loss",
+          "description": "Value: correlates lost packets with total packet volume to avoid overreacting to tiny samples. Interpretation: high lost packets with high total volume is broad impact; high loss percentage with low total volume may be isolated or low-sample noise.",
+          "signalflow": "data('meraki.wireless.packet.count').sum(by=['host.name', 'host.id', 'network.io.direction']).publish(label='Packets'); data('meraki.wireless.packet.loss').sum(by=['host.name', 'host.id', 'network.io.direction']).publish(label='Lost packets')",
+          "legend_dimension": "host.name",
+          "publish_label_options": [
+            {
+              "label": "Packets",
+              "displayName": "Packets",
+              "paletteIndex": 3
+            },
+            {
+              "label": "Lost packets",
+              "displayName": "Lost packets",
+              "paletteIndex": 8
+            }
+          ]
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "SSID Broadcast Status",
+          "description": "Value: catches SSIDs that are disabled, not advertised, or not broadcasting on a radio. Interpretation: 1 means enabled, advertised, and broadcasting; 0 means clients may not be able to discover or join that BSS.",
+          "signalflow": "data('meraki.wireless.ssid.status').mean(by=['host.name', 'host.id', 'meraki.wireless.ssid.name', 'meraki.wireless.bssid', 'meraki.wireless.band']).publish(label='SSID broadcasting')",
+          "legend_dimension": "meraki.wireless.ssid.name",
+          "publish_label_options": [
+            {
+              "label": "SSID broadcasting",
+              "displayName": "SSID broadcasting",
+              "paletteIndex": 13
+            }
+          ]
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "AP Device Status",
+          "description": "Value: verifies whether a wireless symptom is caused by AP device status rather than RF or client load. Interpretation: online APs can still have RF issues; offline, dormant, or alerting APs should be handled before analyzing client experience.",
+          "signalflow": "data('meraki.device.status', filter=filter('meraki.device.product_type', 'wireless')).mean(by=['host.name', 'host.id', 'meraki.device.status', 'meraki.network.id']).publish(label='AP status')",
+          "legend_dimension": "host.name",
+          "publish_label_options": [
+            {
+              "label": "AP status",
+              "displayName": "AP status",
+              "paletteIndex": 5
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 Meraki Switching And Physical",
+      "description": "Value: focuses on Meraki switch port state, admin state, speed, utilization, port alerts, PoE allocation, topology neighbors, power modules, and transceiver sensors.",
+      "value": "Use this page when the suspected failure domain is a Meraki switch, access port, uplink, PoE device, topology edge, or physical component. It combines reused interface metrics with Meraki-specific port alerts, power module state, and Dashboard topology/optics signals.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains the switching and physical troubleshooting workflow. Interpretation: start with link/admin state, then correlate speed, utilization, port alerts, PoE, topology, power, and transceiver evidence.",
+          "markdown": "## Value Provided\nUse this dashboard for Meraki switching, access-layer, and physical-path incidents. It keeps current port state and exception lists next to traffic, utilization, PoE, topology, power, and transceiver evidence so operators can move from affected serial and port to likely cause.\n\nState metrics are list charts to find down ports, disabled ports, PoE allocation changes, power module problems, and topology edges quickly. Traffic, utilization, usage, and sensor values stay as time-series charts because timing shows whether saturation, physical drift, or power state changed before user impact.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Switch Port Operational Status",
+          "description": "Value: identifies switch ports that are not operationally connected. Interpretation: 1 means up/connected; 0 means down or disconnected. Compare with admin status to distinguish intentional shutdown from link failure.",
+          "signalflow": "data('system.network.interface.status', filter=filter('os.name', 'Meraki')).mean(by=['host.name', 'host.id', 'network.interface.name', 'network.interface.speed']).publish(label='Port up')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Port up",
+              "displayName": "Port up",
+              "paletteIndex": 13
+            }
+          ]
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Switch Port Admin Status",
+          "description": "Value: distinguishes administratively disabled ports from failed ports. Interpretation: 1 means enabled; 0 means disabled. A disabled port with down operational state is likely intended, while enabled/down needs investigation.",
+          "signalflow": "data('cisco.interface.admin.status', filter=filter('os.name', 'Meraki')).mean(by=['host.name', 'host.id', 'network.interface.name']).publish(label='Admin enabled')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Admin enabled",
+              "displayName": "Admin enabled",
+              "paletteIndex": 5
+            }
+          ]
+        },
+        {
+          "name": "Interface Rate And Utilization",
+          "description": "Value: identifies saturated Meraki switch ports and asymmetric direction pressure. Interpretation: utilization is percent of reported speed; rate is bit/s. Sustained high utilization before loss or alerts suggests capacity pressure.",
+          "signalflow": "data('cisco.interface.io.rate', filter=filter('os.name', 'Meraki')).mean(by=['host.name', 'host.id', 'network.interface.name', 'network.io.direction']).publish(label='Interface bit/s'); data('cisco.interface.utilization', filter=filter('os.name', 'Meraki')).mean(by=['host.name', 'host.id', 'network.interface.name', 'network.io.direction']).scale(100).publish(label='Utilization %')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Interface bit/s",
+              "displayName": "Interface bit/s",
+              "valueUnit": "Bit",
+              "paletteIndex": 2
+            },
+            {
+              "label": "Utilization %",
+              "displayName": "Utilization %",
+              "valueSuffix": "%",
+              "paletteIndex": 4
+            }
+          ]
+        },
+        {
+          "name": "Windowed Switch Port Usage",
+          "description": "Value: shows Meraki Dashboard port usage windows without treating them as cumulative counters. Interpretation: compare receive/transmit direction for sudden traffic shifts or silence on important ports.",
+          "signalflow": "data('meraki.switch.port.usage').sum(by=['host.name', 'host.id', 'network.interface.name', 'network.io.direction']).publish(label='Port usage KBy')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Port usage KBy",
+              "displayName": "Port usage KBy",
+              "valueSuffix": " KBy",
+              "paletteIndex": 3
+            }
+          ]
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Switch Port Alerts",
+          "description": "Value: surfaces Dashboard port warnings and errors such as PoE overload, CRC issues, or authentication progress. Interpretation: each row is an alert reason by port; non-zero rows should be correlated with status, utilization, and client impact.",
+          "signalflow": "data('meraki.switch.port.alert').sum(by=['host.name', 'host.id', 'network.interface.name', 'meraki.switch.port.alert.severity', 'meraki.switch.port.alert.reason']).publish(label='Port alerts')",
+          "legend_dimension": "meraki.switch.port.alert.reason",
+          "publish_label_options": [
+            {
+              "label": "Port alerts",
+              "displayName": "Port alerts",
+              "paletteIndex": 8
+            }
+          ]
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "PoE Allocation",
+          "description": "Value: shows whether PoE is allocated on switch ports that may power APs, cameras, phones, or other edge devices. Interpretation: loss of allocation near a device outage points to power budget, cabling, or port power behavior.",
+          "signalflow": "data('meraki.switch.port.poe.allocated').mean(by=['host.name', 'host.id', 'network.interface.name']).publish(label='PoE allocated')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "PoE allocated",
+              "displayName": "PoE allocated",
+              "paletteIndex": 6
+            }
+          ]
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Power Module Status",
+          "description": "Value: identifies Meraki device power modules that are not connected or not powering. Interpretation: 1 means connected/powering/present; 0 means not connected or otherwise unhealthy. Use slot, model, and module serial to locate the hardware.",
+          "signalflow": "data('meraki.power.module.status').mean(by=['host.name', 'host.id', 'meraki.power.slot', 'meraki.power.module.status', 'meraki.power.module.model']).publish(label='Power module healthy')",
+          "legend_dimension": "meraki.power.slot",
+          "publish_label_options": [
+            {
+              "label": "Power module healthy",
+              "displayName": "Power module healthy",
+              "paletteIndex": 13
+            }
+          ]
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Topology Neighbors",
+          "description": "Value: shows CDP/LLDP neighbor information from Meraki Dashboard topology discovery. Interpretation: each row is an observed neighbor on a switch port; missing or changed neighbors explain cabling, uplink, or topology drift.",
+          "signalflow": "data('cisco.topology.neighbor.info', filter=filter('os.name', 'Meraki')).mean(by=['host.name', 'host.id', 'network.interface.name', 'cisco.topology.protocol', 'cisco.topology.neighbor.name', 'cisco.topology.neighbor.interface']).publish(label='Neighbor observed')",
+          "legend_dimension": "cisco.topology.neighbor.name",
+          "publish_label_options": [
+            {
+              "label": "Neighbor observed",
+              "displayName": "Neighbor observed",
+              "paletteIndex": 1
+            }
+          ]
+        },
+        {
+          "name": "Transceiver Sensors",
+          "description": "Value: links Meraki appliance or switch physical-path symptoms to optic power, temperature, voltage, or bias current. Interpretation: drift in RX/TX power, rising temperature, voltage instability, or bias changes before errors suggests optics, cabling, or environmental root cause.",
+          "signalflow": "data('cisco.transceiver.sensor', filter=filter('os.name', 'Meraki')).mean(by=['host.name', 'host.id', 'network.interface.name', 'cisco.transceiver.sensor', 'cisco.transceiver.lane']).publish(label='Transceiver sensor')",
+          "legend_dimension": "cisco.transceiver.sensor",
+          "publish_label_options": [
+            {
+              "label": "Transceiver sensor",
+              "displayName": "Transceiver sensor",
+              "paletteIndex": 2
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

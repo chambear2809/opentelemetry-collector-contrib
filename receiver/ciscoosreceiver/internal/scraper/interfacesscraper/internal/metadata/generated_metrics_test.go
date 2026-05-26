@@ -67,6 +67,31 @@ func TestMetricsBuilder(t *testing.T) {
 			settings.Logger = zap.New(observedZapCore)
 			mb := NewMetricsBuilder(loadMetricsBuilderConfig(t, tt.name), settings, WithStartTime(start))
 			aggMap := make(map[string]string) // contains the aggregation strategies for each metric name
+			aggMap["cisco.interface.admin.status"] = mb.metricCiscoInterfaceAdminStatus.config.AggregationStrategy
+			aggMap["cisco.interface.counter"] = mb.metricCiscoInterfaceCounter.config.AggregationStrategy
+			aggMap["cisco.interface.errdisabled"] = mb.metricCiscoInterfaceErrdisabled.config.AggregationStrategy
+			aggMap["cisco.interface.io.rate"] = mb.metricCiscoInterfaceIoRate.config.AggregationStrategy
+			aggMap["cisco.interface.packet.rate"] = mb.metricCiscoInterfacePacketRate.config.AggregationStrategy
+			aggMap["cisco.interface.pause.frames"] = mb.metricCiscoInterfacePauseFrames.config.AggregationStrategy
+			aggMap["cisco.interface.qos.policy.bytes"] = mb.metricCiscoInterfaceQosPolicyBytes.config.AggregationStrategy
+			aggMap["cisco.interface.qos.policy.packets"] = mb.metricCiscoInterfaceQosPolicyPackets.config.AggregationStrategy
+			aggMap["cisco.interface.qos.queue.bytes"] = mb.metricCiscoInterfaceQosQueueBytes.config.AggregationStrategy
+			aggMap["cisco.interface.qos.queue.packets"] = mb.metricCiscoInterfaceQosQueuePackets.config.AggregationStrategy
+			aggMap["cisco.interface.speed"] = mb.metricCiscoInterfaceSpeed.config.AggregationStrategy
+			aggMap["cisco.interface.utilization"] = mb.metricCiscoInterfaceUtilization.config.AggregationStrategy
+			aggMap["cisco.l2.stp.blocked_ports"] = mb.metricCiscoL2StpBlockedPorts.config.AggregationStrategy
+			aggMap["cisco.l2.stp.instances"] = mb.metricCiscoL2StpInstances.config.AggregationStrategy
+			aggMap["cisco.l2.stp.topology_changes"] = mb.metricCiscoL2StpTopologyChanges.config.AggregationStrategy
+			aggMap["cisco.lacp.errors"] = mb.metricCiscoLacpErrors.config.AggregationStrategy
+			aggMap["cisco.lacp.packets"] = mb.metricCiscoLacpPackets.config.AggregationStrategy
+			aggMap["cisco.port_channel.member.status"] = mb.metricCiscoPortChannelMemberStatus.config.AggregationStrategy
+			aggMap["cisco.port_channel.status"] = mb.metricCiscoPortChannelStatus.config.AggregationStrategy
+			aggMap["cisco.scrape.command.duration"] = mb.metricCiscoScrapeCommandDuration.config.AggregationStrategy
+			aggMap["cisco.scrape.command.errors"] = mb.metricCiscoScrapeCommandErrors.config.AggregationStrategy
+			aggMap["cisco.topology.neighbor.info"] = mb.metricCiscoTopologyNeighborInfo.config.AggregationStrategy
+			aggMap["cisco.transceiver.sensor"] = mb.metricCiscoTransceiverSensor.config.AggregationStrategy
+			aggMap["cisco.vpc.consistency.failures"] = mb.metricCiscoVpcConsistencyFailures.config.AggregationStrategy
+			aggMap["cisco.vpc.status"] = mb.metricCiscoVpcStatus.config.AggregationStrategy
 			aggMap["system.network.errors"] = mb.metricSystemNetworkErrors.config.AggregationStrategy
 			aggMap["system.network.interface.status"] = mb.metricSystemNetworkInterfaceStatus.config.AggregationStrategy
 			aggMap["system.network.io"] = mb.metricSystemNetworkIo.config.AggregationStrategy
@@ -80,6 +105,189 @@ func TestMetricsBuilder(t *testing.T) {
 
 			defaultMetricsCount := 0
 			allMetricsCount := 0
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoInterfaceAdminStatusDataPoint(ts, 1, "network.interface.description-val", "network.interface.mac-val", "network.interface.name-val", "network.interface.speed-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoInterfaceAdminStatusDataPoint(ts, 3, "network.interface.description-val-2", "network.interface.mac-val-2", "network.interface.name-val-2", "network.interface.speed-val-2")
+			}
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoInterfaceCounterDataPoint(ts, 1, "cisco.interface.counter.name-val", "network.interface.description-val", "network.interface.mac-val", "network.interface.name-val", "network.interface.speed-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoInterfaceCounterDataPoint(ts, 3, "cisco.interface.counter.name-val-2", "network.interface.description-val-2", "network.interface.mac-val-2", "network.interface.name-val-2", "network.interface.speed-val-2")
+			}
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoInterfaceErrdisabledDataPoint(ts, 1, "network.interface.name-val", "cisco.errdisabled.reason-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoInterfaceErrdisabledDataPoint(ts, 3, "network.interface.name-val-2", "cisco.errdisabled.reason-val-2")
+			}
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoInterfaceIoRateDataPoint(ts, 1, AttributeNetworkIoDirectionReceive, "network.interface.description-val", "network.interface.mac-val", "network.interface.name-val", "network.interface.speed-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoInterfaceIoRateDataPoint(ts, 3, AttributeNetworkIoDirectionTransmit, "network.interface.description-val-2", "network.interface.mac-val-2", "network.interface.name-val-2", "network.interface.speed-val-2")
+			}
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoInterfacePacketRateDataPoint(ts, 1, AttributeNetworkIoDirectionReceive, "network.interface.description-val", "network.interface.mac-val", "network.interface.name-val", "network.interface.speed-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoInterfacePacketRateDataPoint(ts, 3, AttributeNetworkIoDirectionTransmit, "network.interface.description-val-2", "network.interface.mac-val-2", "network.interface.name-val-2", "network.interface.speed-val-2")
+			}
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoInterfacePauseFramesDataPoint(ts, 1, "network.interface.name-val", AttributeNetworkIoDirectionReceive, "cisco.pause.type-val", "cisco.qos.priority-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoInterfacePauseFramesDataPoint(ts, 3, "network.interface.name-val-2", AttributeNetworkIoDirectionTransmit, "cisco.pause.type-val-2", "cisco.qos.priority-val-2")
+			}
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoInterfaceQosPolicyBytesDataPoint(ts, 1, "network.interface.name-val", AttributeNetworkIoDirectionReceive, "cisco.qos.class-val", "cisco.qos.action-val", "cisco.qos.drop.reason-val", "cisco.qos.source-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoInterfaceQosPolicyBytesDataPoint(ts, 3, "network.interface.name-val-2", AttributeNetworkIoDirectionTransmit, "cisco.qos.class-val-2", "cisco.qos.action-val-2", "cisco.qos.drop.reason-val-2", "cisco.qos.source-val-2")
+			}
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoInterfaceQosPolicyPacketsDataPoint(ts, 1, "network.interface.name-val", AttributeNetworkIoDirectionReceive, "cisco.qos.class-val", "cisco.qos.action-val", "cisco.qos.drop.reason-val", "cisco.qos.source-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoInterfaceQosPolicyPacketsDataPoint(ts, 3, "network.interface.name-val-2", AttributeNetworkIoDirectionTransmit, "cisco.qos.class-val-2", "cisco.qos.action-val-2", "cisco.qos.drop.reason-val-2", "cisco.qos.source-val-2")
+			}
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoInterfaceQosQueueBytesDataPoint(ts, 1, "network.interface.name-val", AttributeNetworkIoDirectionReceive, "cisco.qos.queue-val", "cisco.qos.group-val", "cisco.qos.action-val", "cisco.qos.drop.reason-val", "cisco.qos.source-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoInterfaceQosQueueBytesDataPoint(ts, 3, "network.interface.name-val-2", AttributeNetworkIoDirectionTransmit, "cisco.qos.queue-val-2", "cisco.qos.group-val-2", "cisco.qos.action-val-2", "cisco.qos.drop.reason-val-2", "cisco.qos.source-val-2")
+			}
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoInterfaceQosQueuePacketsDataPoint(ts, 1, "network.interface.name-val", AttributeNetworkIoDirectionReceive, "cisco.qos.queue-val", "cisco.qos.group-val", "cisco.qos.action-val", "cisco.qos.drop.reason-val", "cisco.qos.source-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoInterfaceQosQueuePacketsDataPoint(ts, 3, "network.interface.name-val-2", AttributeNetworkIoDirectionTransmit, "cisco.qos.queue-val-2", "cisco.qos.group-val-2", "cisco.qos.action-val-2", "cisco.qos.drop.reason-val-2", "cisco.qos.source-val-2")
+			}
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoInterfaceSpeedDataPoint(ts, 1, "network.interface.description-val", "network.interface.mac-val", "network.interface.name-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoInterfaceSpeedDataPoint(ts, 3, "network.interface.description-val-2", "network.interface.mac-val-2", "network.interface.name-val-2")
+			}
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoInterfaceUtilizationDataPoint(ts, 1, AttributeNetworkIoDirectionReceive, "network.interface.description-val", "network.interface.mac-val", "network.interface.name-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoInterfaceUtilizationDataPoint(ts, 3, AttributeNetworkIoDirectionTransmit, "network.interface.description-val-2", "network.interface.mac-val-2", "network.interface.name-val-2")
+			}
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoL2StpBlockedPortsDataPoint(ts, 1, "cisco.l2.vlan-val", "network.interface.name-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoL2StpBlockedPortsDataPoint(ts, 3, "cisco.l2.vlan-val-2", "network.interface.name-val-2")
+			}
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoL2StpInstancesDataPoint(ts, 1, "cisco.l2.stp.state-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoL2StpInstancesDataPoint(ts, 3, "cisco.l2.stp.state-val-2")
+			}
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoL2StpTopologyChangesDataPoint(ts, 1, "cisco.l2.vlan-val", "network.interface.name-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoL2StpTopologyChangesDataPoint(ts, 3, "cisco.l2.vlan-val-2", "network.interface.name-val-2")
+			}
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoLacpErrorsDataPoint(ts, 1, "network.interface.name-val", "cisco.lacp.error.type-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoLacpErrorsDataPoint(ts, 3, "network.interface.name-val-2", "cisco.lacp.error.type-val-2")
+			}
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoLacpPacketsDataPoint(ts, 1, "network.interface.name-val", "cisco.lacp.packet.type-val", AttributeNetworkIoDirectionReceive)
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoLacpPacketsDataPoint(ts, 3, "network.interface.name-val-2", "cisco.lacp.packet.type-val-2", AttributeNetworkIoDirectionTransmit)
+			}
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoPortChannelMemberStatusDataPoint(ts, 1, "cisco.port_channel.name-val", "network.interface.name-val", "cisco.port_channel.state-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoPortChannelMemberStatusDataPoint(ts, 3, "cisco.port_channel.name-val-2", "network.interface.name-val-2", "cisco.port_channel.state-val-2")
+			}
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoPortChannelStatusDataPoint(ts, 1, "cisco.port_channel.name-val", "cisco.port_channel.state-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoPortChannelStatusDataPoint(ts, 3, "cisco.port_channel.name-val-2", "cisco.port_channel.state-val-2")
+			}
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoScrapeCommandDurationDataPoint(ts, 1, "cisco.scrape.command.family-val", "cisco.scrape.command.outcome-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoScrapeCommandDurationDataPoint(ts, 3, "cisco.scrape.command.family-val-2", "cisco.scrape.command.outcome-val-2")
+			}
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoScrapeCommandErrorsDataPoint(ts, 1, "cisco.scrape.command.family-val", "cisco.scrape.error.type-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoScrapeCommandErrorsDataPoint(ts, 3, "cisco.scrape.command.family-val-2", "cisco.scrape.error.type-val-2")
+			}
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoScrapePartialSuccessDataPoint(ts, 1)
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoSSHReconnectsDataPoint(ts, 1)
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoTopologyNeighborInfoDataPoint(ts, 1, "cisco.topology.protocol-val", "network.interface.name-val", "cisco.topology.neighbor.name-val", "cisco.topology.neighbor.interface-val", "cisco.topology.neighbor.platform-val", "cisco.topology.neighbor.address-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoTopologyNeighborInfoDataPoint(ts, 3, "cisco.topology.protocol-val-2", "network.interface.name-val-2", "cisco.topology.neighbor.name-val-2", "cisco.topology.neighbor.interface-val-2", "cisco.topology.neighbor.platform-val-2", "cisco.topology.neighbor.address-val-2")
+			}
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoTransceiverSensorDataPoint(ts, 1, "network.interface.name-val", "cisco.transceiver.sensor-val", "cisco.transceiver.lane-val", "cisco.transceiver.sensor.unit-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoTransceiverSensorDataPoint(ts, 3, "network.interface.name-val-2", "cisco.transceiver.sensor-val-2", "cisco.transceiver.lane-val-2", "cisco.transceiver.sensor.unit-val-2")
+			}
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoVpcConsistencyFailuresDataPoint(ts, 1, "cisco.vpc.check-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoVpcConsistencyFailuresDataPoint(ts, 3, "cisco.vpc.check-val-2")
+			}
+
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoVpcStatusDataPoint(ts, 1, "cisco.vpc.domain-val", "cisco.vpc.peer-val", "cisco.vpc.state-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoVpcStatusDataPoint(ts, 3, "cisco.vpc.domain-val-2", "cisco.vpc.peer-val-2", "cisco.vpc.state-val-2")
+			}
+
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordSystemNetworkErrorsDataPoint(ts, 1, AttributeNetworkIoDirectionReceive, "network.interface.description-val", "network.interface.mac-val", "network.interface.name-val", "network.interface.speed-val")
@@ -100,9 +308,9 @@ func TestMetricsBuilder(t *testing.T) {
 			}
 			defaultMetricsCount++
 			allMetricsCount++
-			mb.RecordSystemNetworkPacketCountDataPoint(ts, 1, AttributeNetworkPacketTypeMulticast, "network.interface.description-val", "network.interface.mac-val", "network.interface.name-val", "network.interface.speed-val")
+			mb.RecordSystemNetworkPacketCountDataPoint(ts, 1, AttributeNetworkIoDirectionReceive, AttributeNetworkPacketTypeUnicast, "network.interface.description-val", "network.interface.mac-val", "network.interface.name-val", "network.interface.speed-val")
 			if tt.name == "reaggregate_set" {
-				mb.RecordSystemNetworkPacketCountDataPoint(ts, 3, AttributeNetworkPacketTypeBroadcast, "network.interface.description-val-2", "network.interface.mac-val-2", "network.interface.name-val-2", "network.interface.speed-val-2")
+				mb.RecordSystemNetworkPacketCountDataPoint(ts, 3, AttributeNetworkIoDirectionTransmit, AttributeNetworkPacketTypeMulticast, "network.interface.description-val-2", "network.interface.mac-val-2", "network.interface.name-val-2", "network.interface.speed-val-2")
 			}
 			defaultMetricsCount++
 			allMetricsCount++
@@ -112,12 +320,41 @@ func TestMetricsBuilder(t *testing.T) {
 			}
 
 			rb := mb.NewResourceBuilder()
+			rb.SetHostID("host.id-val")
 			rb.SetHostIP("host.ip-val")
+			rb.SetHostName("host.name-val")
+			rb.SetHostType("host.type-val")
 			rb.SetHwType("hw.type-val")
 			rb.SetOsName("os.name-val")
+			rb.SetOsVersion("os.version-val")
 			res := rb.Emit()
 			metrics := mb.Emit(WithResource(res))
 			if tt.name == "reaggregate_set" {
+				assert.Empty(t, mb.metricCiscoInterfaceAdminStatus.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoInterfaceCounter.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoInterfaceErrdisabled.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoInterfaceIoRate.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoInterfacePacketRate.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoInterfacePauseFrames.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoInterfaceQosPolicyBytes.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoInterfaceQosPolicyPackets.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoInterfaceQosQueueBytes.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoInterfaceQosQueuePackets.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoInterfaceSpeed.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoInterfaceUtilization.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoL2StpBlockedPorts.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoL2StpInstances.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoL2StpTopologyChanges.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoLacpErrors.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoLacpPackets.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoPortChannelMemberStatus.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoPortChannelStatus.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoScrapeCommandDuration.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoScrapeCommandErrors.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoTopologyNeighborInfo.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoTransceiverSensor.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoVpcConsistencyFailures.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoVpcStatus.aggDataPoints)
 				assert.Empty(t, mb.metricSystemNetworkErrors.aggDataPoints)
 				assert.Empty(t, mb.metricSystemNetworkInterfaceStatus.aggDataPoints)
 				assert.Empty(t, mb.metricSystemNetworkIo.aggDataPoints)
@@ -150,6 +387,1402 @@ func TestMetricsBuilder(t *testing.T) {
 			validatedMetrics := make(map[string]bool)
 			for _, mi := range allMetricsList {
 				switch mi.Name() {
+				case "cisco.interface.admin.status":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.interface.admin.status"], "Found a duplicate in the metrics slice: cisco.interface.admin.status")
+						validatedMetrics["cisco.interface.admin.status"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, int64(1), dp.IntValue())
+						networkInterfaceDescriptionAttrVal, ok := dp.Attributes().Get("network.interface.description")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.description-val", networkInterfaceDescriptionAttrVal.Str())
+						networkInterfaceMacAttrVal, ok := dp.Attributes().Get("network.interface.mac")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.mac-val", networkInterfaceMacAttrVal.Str())
+						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
+						networkInterfaceSpeedAttrVal, ok := dp.Attributes().Get("network.interface.speed")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.speed-val", networkInterfaceSpeedAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.interface.admin.status"], "Found a duplicate in the metrics slice: cisco.interface.admin.status")
+						validatedMetrics["cisco.interface.admin.status"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						switch aggMap["cisco.interface.admin.status"] {
+						case "sum":
+							assert.Equal(t, int64(4), dp.IntValue())
+						case "avg":
+							assert.Equal(t, int64(2), dp.IntValue())
+						case "min":
+							assert.Equal(t, int64(1), dp.IntValue())
+						case "max":
+							assert.Equal(t, int64(3), dp.IntValue())
+						}
+						_, ok := dp.Attributes().Get("network.interface.description")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.interface.mac")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.interface.name")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.interface.speed")
+						assert.False(t, ok)
+					}
+				case "cisco.interface.counter":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.interface.counter"], "Found a duplicate in the metrics slice: cisco.interface.counter")
+						validatedMetrics["cisco.interface.counter"] = true
+						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+						assert.Equal(t, "The value of a Cisco interface-specific counter", mi.Description())
+						assert.Equal(t, "{count}", mi.Unit())
+						assert.True(t, mi.Sum().IsMonotonic())
+						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+						dp := mi.Sum().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, int64(1), dp.IntValue())
+						ciscoInterfaceCounterNameAttrVal, ok := dp.Attributes().Get("cisco.interface.counter.name")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.interface.counter.name-val", ciscoInterfaceCounterNameAttrVal.Str())
+						networkInterfaceDescriptionAttrVal, ok := dp.Attributes().Get("network.interface.description")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.description-val", networkInterfaceDescriptionAttrVal.Str())
+						networkInterfaceMacAttrVal, ok := dp.Attributes().Get("network.interface.mac")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.mac-val", networkInterfaceMacAttrVal.Str())
+						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
+						networkInterfaceSpeedAttrVal, ok := dp.Attributes().Get("network.interface.speed")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.speed-val", networkInterfaceSpeedAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.interface.counter"], "Found a duplicate in the metrics slice: cisco.interface.counter")
+						validatedMetrics["cisco.interface.counter"] = true
+						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+						assert.Equal(t, "The value of a Cisco interface-specific counter", mi.Description())
+						assert.Equal(t, "{count}", mi.Unit())
+						assert.True(t, mi.Sum().IsMonotonic())
+						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+						dp := mi.Sum().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						switch aggMap["cisco.interface.counter"] {
+						case "sum":
+							assert.Equal(t, int64(4), dp.IntValue())
+						case "avg":
+							assert.Equal(t, int64(2), dp.IntValue())
+						case "min":
+							assert.Equal(t, int64(1), dp.IntValue())
+						case "max":
+							assert.Equal(t, int64(3), dp.IntValue())
+						}
+						_, ok := dp.Attributes().Get("cisco.interface.counter.name")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.interface.description")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.interface.mac")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.interface.name")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.interface.speed")
+						assert.False(t, ok)
+					}
+				case "cisco.interface.errdisabled":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.interface.errdisabled"], "Found a duplicate in the metrics slice: cisco.interface.errdisabled")
+						validatedMetrics["cisco.interface.errdisabled"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Cisco interface err-disabled status (1 = err-disabled, 0 = not err-disabled)", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, int64(1), dp.IntValue())
+						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
+						ciscoErrdisabledReasonAttrVal, ok := dp.Attributes().Get("cisco.errdisabled.reason")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.errdisabled.reason-val", ciscoErrdisabledReasonAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.interface.errdisabled"], "Found a duplicate in the metrics slice: cisco.interface.errdisabled")
+						validatedMetrics["cisco.interface.errdisabled"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Cisco interface err-disabled status (1 = err-disabled, 0 = not err-disabled)", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						switch aggMap["cisco.interface.errdisabled"] {
+						case "sum":
+							assert.Equal(t, int64(4), dp.IntValue())
+						case "avg":
+							assert.Equal(t, int64(2), dp.IntValue())
+						case "min":
+							assert.Equal(t, int64(1), dp.IntValue())
+						case "max":
+							assert.Equal(t, int64(3), dp.IntValue())
+						}
+						_, ok := dp.Attributes().Get("network.interface.name")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.errdisabled.reason")
+						assert.False(t, ok)
+					}
+				case "cisco.interface.io.rate":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.interface.io.rate"], "Found a duplicate in the metrics slice: cisco.interface.io.rate")
+						validatedMetrics["cisco.interface.io.rate"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "The device-reported interface traffic rate", mi.Description())
+						assert.Equal(t, "bit/s", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, int64(1), dp.IntValue())
+						networkIoDirectionAttrVal, ok := dp.Attributes().Get("network.io.direction")
+						assert.True(t, ok)
+						assert.Equal(t, "receive", networkIoDirectionAttrVal.Str())
+						networkInterfaceDescriptionAttrVal, ok := dp.Attributes().Get("network.interface.description")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.description-val", networkInterfaceDescriptionAttrVal.Str())
+						networkInterfaceMacAttrVal, ok := dp.Attributes().Get("network.interface.mac")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.mac-val", networkInterfaceMacAttrVal.Str())
+						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
+						networkInterfaceSpeedAttrVal, ok := dp.Attributes().Get("network.interface.speed")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.speed-val", networkInterfaceSpeedAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.interface.io.rate"], "Found a duplicate in the metrics slice: cisco.interface.io.rate")
+						validatedMetrics["cisco.interface.io.rate"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "The device-reported interface traffic rate", mi.Description())
+						assert.Equal(t, "bit/s", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						switch aggMap["cisco.interface.io.rate"] {
+						case "sum":
+							assert.Equal(t, int64(4), dp.IntValue())
+						case "avg":
+							assert.Equal(t, int64(2), dp.IntValue())
+						case "min":
+							assert.Equal(t, int64(1), dp.IntValue())
+						case "max":
+							assert.Equal(t, int64(3), dp.IntValue())
+						}
+						_, ok := dp.Attributes().Get("network.io.direction")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.interface.description")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.interface.mac")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.interface.name")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.interface.speed")
+						assert.False(t, ok)
+					}
+				case "cisco.interface.packet.rate":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.interface.packet.rate"], "Found a duplicate in the metrics slice: cisco.interface.packet.rate")
+						validatedMetrics["cisco.interface.packet.rate"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "The device-reported interface packet rate", mi.Description())
+						assert.Equal(t, "{packet}/s", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, int64(1), dp.IntValue())
+						networkIoDirectionAttrVal, ok := dp.Attributes().Get("network.io.direction")
+						assert.True(t, ok)
+						assert.Equal(t, "receive", networkIoDirectionAttrVal.Str())
+						networkInterfaceDescriptionAttrVal, ok := dp.Attributes().Get("network.interface.description")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.description-val", networkInterfaceDescriptionAttrVal.Str())
+						networkInterfaceMacAttrVal, ok := dp.Attributes().Get("network.interface.mac")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.mac-val", networkInterfaceMacAttrVal.Str())
+						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
+						networkInterfaceSpeedAttrVal, ok := dp.Attributes().Get("network.interface.speed")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.speed-val", networkInterfaceSpeedAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.interface.packet.rate"], "Found a duplicate in the metrics slice: cisco.interface.packet.rate")
+						validatedMetrics["cisco.interface.packet.rate"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "The device-reported interface packet rate", mi.Description())
+						assert.Equal(t, "{packet}/s", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						switch aggMap["cisco.interface.packet.rate"] {
+						case "sum":
+							assert.Equal(t, int64(4), dp.IntValue())
+						case "avg":
+							assert.Equal(t, int64(2), dp.IntValue())
+						case "min":
+							assert.Equal(t, int64(1), dp.IntValue())
+						case "max":
+							assert.Equal(t, int64(3), dp.IntValue())
+						}
+						_, ok := dp.Attributes().Get("network.io.direction")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.interface.description")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.interface.mac")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.interface.name")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.interface.speed")
+						assert.False(t, ok)
+					}
+				case "cisco.interface.pause.frames":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.interface.pause.frames"], "Found a duplicate in the metrics slice: cisco.interface.pause.frames")
+						validatedMetrics["cisco.interface.pause.frames"] = true
+						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+						assert.Equal(t, "The number of Cisco interface pause frames", mi.Description())
+						assert.Equal(t, "{frame}", mi.Unit())
+						assert.True(t, mi.Sum().IsMonotonic())
+						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+						dp := mi.Sum().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, int64(1), dp.IntValue())
+						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
+						networkIoDirectionAttrVal, ok := dp.Attributes().Get("network.io.direction")
+						assert.True(t, ok)
+						assert.Equal(t, "receive", networkIoDirectionAttrVal.Str())
+						ciscoPauseTypeAttrVal, ok := dp.Attributes().Get("cisco.pause.type")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.pause.type-val", ciscoPauseTypeAttrVal.Str())
+						ciscoQosPriorityAttrVal, ok := dp.Attributes().Get("cisco.qos.priority")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.qos.priority-val", ciscoQosPriorityAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.interface.pause.frames"], "Found a duplicate in the metrics slice: cisco.interface.pause.frames")
+						validatedMetrics["cisco.interface.pause.frames"] = true
+						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+						assert.Equal(t, "The number of Cisco interface pause frames", mi.Description())
+						assert.Equal(t, "{frame}", mi.Unit())
+						assert.True(t, mi.Sum().IsMonotonic())
+						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+						dp := mi.Sum().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						switch aggMap["cisco.interface.pause.frames"] {
+						case "sum":
+							assert.Equal(t, int64(4), dp.IntValue())
+						case "avg":
+							assert.Equal(t, int64(2), dp.IntValue())
+						case "min":
+							assert.Equal(t, int64(1), dp.IntValue())
+						case "max":
+							assert.Equal(t, int64(3), dp.IntValue())
+						}
+						_, ok := dp.Attributes().Get("network.interface.name")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.io.direction")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.pause.type")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.qos.priority")
+						assert.False(t, ok)
+					}
+				case "cisco.interface.qos.policy.bytes":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.interface.qos.policy.bytes"], "Found a duplicate in the metrics slice: cisco.interface.qos.policy.bytes")
+						validatedMetrics["cisco.interface.qos.policy.bytes"] = true
+						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+						assert.Equal(t, "The number of bytes matched, transmitted, marked, or dropped by a Cisco interface QoS policy", mi.Description())
+						assert.Equal(t, "By", mi.Unit())
+						assert.True(t, mi.Sum().IsMonotonic())
+						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+						dp := mi.Sum().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, int64(1), dp.IntValue())
+						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
+						networkIoDirectionAttrVal, ok := dp.Attributes().Get("network.io.direction")
+						assert.True(t, ok)
+						assert.Equal(t, "receive", networkIoDirectionAttrVal.Str())
+						ciscoQosClassAttrVal, ok := dp.Attributes().Get("cisco.qos.class")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.qos.class-val", ciscoQosClassAttrVal.Str())
+						ciscoQosActionAttrVal, ok := dp.Attributes().Get("cisco.qos.action")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.qos.action-val", ciscoQosActionAttrVal.Str())
+						ciscoQosDropReasonAttrVal, ok := dp.Attributes().Get("cisco.qos.drop.reason")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.qos.drop.reason-val", ciscoQosDropReasonAttrVal.Str())
+						ciscoQosSourceAttrVal, ok := dp.Attributes().Get("cisco.qos.source")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.qos.source-val", ciscoQosSourceAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.interface.qos.policy.bytes"], "Found a duplicate in the metrics slice: cisco.interface.qos.policy.bytes")
+						validatedMetrics["cisco.interface.qos.policy.bytes"] = true
+						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+						assert.Equal(t, "The number of bytes matched, transmitted, marked, or dropped by a Cisco interface QoS policy", mi.Description())
+						assert.Equal(t, "By", mi.Unit())
+						assert.True(t, mi.Sum().IsMonotonic())
+						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+						dp := mi.Sum().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						switch aggMap["cisco.interface.qos.policy.bytes"] {
+						case "sum":
+							assert.Equal(t, int64(4), dp.IntValue())
+						case "avg":
+							assert.Equal(t, int64(2), dp.IntValue())
+						case "min":
+							assert.Equal(t, int64(1), dp.IntValue())
+						case "max":
+							assert.Equal(t, int64(3), dp.IntValue())
+						}
+						_, ok := dp.Attributes().Get("network.interface.name")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.io.direction")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.qos.class")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.qos.action")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.qos.drop.reason")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.qos.source")
+						assert.False(t, ok)
+					}
+				case "cisco.interface.qos.policy.packets":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.interface.qos.policy.packets"], "Found a duplicate in the metrics slice: cisco.interface.qos.policy.packets")
+						validatedMetrics["cisco.interface.qos.policy.packets"] = true
+						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+						assert.Equal(t, "The number of packets matched, transmitted, marked, or dropped by a Cisco interface QoS policy", mi.Description())
+						assert.Equal(t, "{packet}", mi.Unit())
+						assert.True(t, mi.Sum().IsMonotonic())
+						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+						dp := mi.Sum().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, int64(1), dp.IntValue())
+						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
+						networkIoDirectionAttrVal, ok := dp.Attributes().Get("network.io.direction")
+						assert.True(t, ok)
+						assert.Equal(t, "receive", networkIoDirectionAttrVal.Str())
+						ciscoQosClassAttrVal, ok := dp.Attributes().Get("cisco.qos.class")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.qos.class-val", ciscoQosClassAttrVal.Str())
+						ciscoQosActionAttrVal, ok := dp.Attributes().Get("cisco.qos.action")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.qos.action-val", ciscoQosActionAttrVal.Str())
+						ciscoQosDropReasonAttrVal, ok := dp.Attributes().Get("cisco.qos.drop.reason")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.qos.drop.reason-val", ciscoQosDropReasonAttrVal.Str())
+						ciscoQosSourceAttrVal, ok := dp.Attributes().Get("cisco.qos.source")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.qos.source-val", ciscoQosSourceAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.interface.qos.policy.packets"], "Found a duplicate in the metrics slice: cisco.interface.qos.policy.packets")
+						validatedMetrics["cisco.interface.qos.policy.packets"] = true
+						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+						assert.Equal(t, "The number of packets matched, transmitted, marked, or dropped by a Cisco interface QoS policy", mi.Description())
+						assert.Equal(t, "{packet}", mi.Unit())
+						assert.True(t, mi.Sum().IsMonotonic())
+						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+						dp := mi.Sum().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						switch aggMap["cisco.interface.qos.policy.packets"] {
+						case "sum":
+							assert.Equal(t, int64(4), dp.IntValue())
+						case "avg":
+							assert.Equal(t, int64(2), dp.IntValue())
+						case "min":
+							assert.Equal(t, int64(1), dp.IntValue())
+						case "max":
+							assert.Equal(t, int64(3), dp.IntValue())
+						}
+						_, ok := dp.Attributes().Get("network.interface.name")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.io.direction")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.qos.class")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.qos.action")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.qos.drop.reason")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.qos.source")
+						assert.False(t, ok)
+					}
+				case "cisco.interface.qos.queue.bytes":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.interface.qos.queue.bytes"], "Found a duplicate in the metrics slice: cisco.interface.qos.queue.bytes")
+						validatedMetrics["cisco.interface.qos.queue.bytes"] = true
+						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+						assert.Equal(t, "The number of bytes transmitted, enqueued, or dropped by a Cisco interface QoS queue", mi.Description())
+						assert.Equal(t, "By", mi.Unit())
+						assert.True(t, mi.Sum().IsMonotonic())
+						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+						dp := mi.Sum().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, int64(1), dp.IntValue())
+						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
+						networkIoDirectionAttrVal, ok := dp.Attributes().Get("network.io.direction")
+						assert.True(t, ok)
+						assert.Equal(t, "receive", networkIoDirectionAttrVal.Str())
+						ciscoQosQueueAttrVal, ok := dp.Attributes().Get("cisco.qos.queue")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.qos.queue-val", ciscoQosQueueAttrVal.Str())
+						ciscoQosGroupAttrVal, ok := dp.Attributes().Get("cisco.qos.group")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.qos.group-val", ciscoQosGroupAttrVal.Str())
+						ciscoQosActionAttrVal, ok := dp.Attributes().Get("cisco.qos.action")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.qos.action-val", ciscoQosActionAttrVal.Str())
+						ciscoQosDropReasonAttrVal, ok := dp.Attributes().Get("cisco.qos.drop.reason")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.qos.drop.reason-val", ciscoQosDropReasonAttrVal.Str())
+						ciscoQosSourceAttrVal, ok := dp.Attributes().Get("cisco.qos.source")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.qos.source-val", ciscoQosSourceAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.interface.qos.queue.bytes"], "Found a duplicate in the metrics slice: cisco.interface.qos.queue.bytes")
+						validatedMetrics["cisco.interface.qos.queue.bytes"] = true
+						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+						assert.Equal(t, "The number of bytes transmitted, enqueued, or dropped by a Cisco interface QoS queue", mi.Description())
+						assert.Equal(t, "By", mi.Unit())
+						assert.True(t, mi.Sum().IsMonotonic())
+						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+						dp := mi.Sum().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						switch aggMap["cisco.interface.qos.queue.bytes"] {
+						case "sum":
+							assert.Equal(t, int64(4), dp.IntValue())
+						case "avg":
+							assert.Equal(t, int64(2), dp.IntValue())
+						case "min":
+							assert.Equal(t, int64(1), dp.IntValue())
+						case "max":
+							assert.Equal(t, int64(3), dp.IntValue())
+						}
+						_, ok := dp.Attributes().Get("network.interface.name")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.io.direction")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.qos.queue")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.qos.group")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.qos.action")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.qos.drop.reason")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.qos.source")
+						assert.False(t, ok)
+					}
+				case "cisco.interface.qos.queue.packets":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.interface.qos.queue.packets"], "Found a duplicate in the metrics slice: cisco.interface.qos.queue.packets")
+						validatedMetrics["cisco.interface.qos.queue.packets"] = true
+						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+						assert.Equal(t, "The number of packets transmitted, enqueued, or dropped by a Cisco interface QoS queue", mi.Description())
+						assert.Equal(t, "{packet}", mi.Unit())
+						assert.True(t, mi.Sum().IsMonotonic())
+						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+						dp := mi.Sum().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, int64(1), dp.IntValue())
+						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
+						networkIoDirectionAttrVal, ok := dp.Attributes().Get("network.io.direction")
+						assert.True(t, ok)
+						assert.Equal(t, "receive", networkIoDirectionAttrVal.Str())
+						ciscoQosQueueAttrVal, ok := dp.Attributes().Get("cisco.qos.queue")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.qos.queue-val", ciscoQosQueueAttrVal.Str())
+						ciscoQosGroupAttrVal, ok := dp.Attributes().Get("cisco.qos.group")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.qos.group-val", ciscoQosGroupAttrVal.Str())
+						ciscoQosActionAttrVal, ok := dp.Attributes().Get("cisco.qos.action")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.qos.action-val", ciscoQosActionAttrVal.Str())
+						ciscoQosDropReasonAttrVal, ok := dp.Attributes().Get("cisco.qos.drop.reason")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.qos.drop.reason-val", ciscoQosDropReasonAttrVal.Str())
+						ciscoQosSourceAttrVal, ok := dp.Attributes().Get("cisco.qos.source")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.qos.source-val", ciscoQosSourceAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.interface.qos.queue.packets"], "Found a duplicate in the metrics slice: cisco.interface.qos.queue.packets")
+						validatedMetrics["cisco.interface.qos.queue.packets"] = true
+						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+						assert.Equal(t, "The number of packets transmitted, enqueued, or dropped by a Cisco interface QoS queue", mi.Description())
+						assert.Equal(t, "{packet}", mi.Unit())
+						assert.True(t, mi.Sum().IsMonotonic())
+						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+						dp := mi.Sum().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						switch aggMap["cisco.interface.qos.queue.packets"] {
+						case "sum":
+							assert.Equal(t, int64(4), dp.IntValue())
+						case "avg":
+							assert.Equal(t, int64(2), dp.IntValue())
+						case "min":
+							assert.Equal(t, int64(1), dp.IntValue())
+						case "max":
+							assert.Equal(t, int64(3), dp.IntValue())
+						}
+						_, ok := dp.Attributes().Get("network.interface.name")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.io.direction")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.qos.queue")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.qos.group")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.qos.action")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.qos.drop.reason")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.qos.source")
+						assert.False(t, ok)
+					}
+				case "cisco.interface.speed":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.interface.speed"], "Found a duplicate in the metrics slice: cisco.interface.speed")
+						validatedMetrics["cisco.interface.speed"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "The numeric line speed of a Cisco interface", mi.Description())
+						assert.Equal(t, "bit/s", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, int64(1), dp.IntValue())
+						networkInterfaceDescriptionAttrVal, ok := dp.Attributes().Get("network.interface.description")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.description-val", networkInterfaceDescriptionAttrVal.Str())
+						networkInterfaceMacAttrVal, ok := dp.Attributes().Get("network.interface.mac")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.mac-val", networkInterfaceMacAttrVal.Str())
+						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.interface.speed"], "Found a duplicate in the metrics slice: cisco.interface.speed")
+						validatedMetrics["cisco.interface.speed"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "The numeric line speed of a Cisco interface", mi.Description())
+						assert.Equal(t, "bit/s", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						switch aggMap["cisco.interface.speed"] {
+						case "sum":
+							assert.Equal(t, int64(4), dp.IntValue())
+						case "avg":
+							assert.Equal(t, int64(2), dp.IntValue())
+						case "min":
+							assert.Equal(t, int64(1), dp.IntValue())
+						case "max":
+							assert.Equal(t, int64(3), dp.IntValue())
+						}
+						_, ok := dp.Attributes().Get("network.interface.description")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.interface.mac")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.interface.name")
+						assert.False(t, ok)
+					}
+				case "cisco.interface.utilization":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.interface.utilization"], "Found a duplicate in the metrics slice: cisco.interface.utilization")
+						validatedMetrics["cisco.interface.utilization"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Cisco interface traffic utilization as a ratio of line speed", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+						assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+						networkIoDirectionAttrVal, ok := dp.Attributes().Get("network.io.direction")
+						assert.True(t, ok)
+						assert.Equal(t, "receive", networkIoDirectionAttrVal.Str())
+						networkInterfaceDescriptionAttrVal, ok := dp.Attributes().Get("network.interface.description")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.description-val", networkInterfaceDescriptionAttrVal.Str())
+						networkInterfaceMacAttrVal, ok := dp.Attributes().Get("network.interface.mac")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.mac-val", networkInterfaceMacAttrVal.Str())
+						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.interface.utilization"], "Found a duplicate in the metrics slice: cisco.interface.utilization")
+						validatedMetrics["cisco.interface.utilization"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Cisco interface traffic utilization as a ratio of line speed", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+						switch aggMap["cisco.interface.utilization"] {
+						case "sum":
+							assert.InDelta(t, float64(4), dp.DoubleValue(), 0.01)
+						case "avg":
+							assert.InDelta(t, float64(2), dp.DoubleValue(), 0.01)
+						case "min":
+							assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+						case "max":
+							assert.InDelta(t, float64(3), dp.DoubleValue(), 0.01)
+						}
+						_, ok := dp.Attributes().Get("network.io.direction")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.interface.description")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.interface.mac")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.interface.name")
+						assert.False(t, ok)
+					}
+				case "cisco.l2.stp.blocked_ports":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.l2.stp.blocked_ports"], "Found a duplicate in the metrics slice: cisco.l2.stp.blocked_ports")
+						validatedMetrics["cisco.l2.stp.blocked_ports"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "The number of Cisco spanning-tree blocked ports", mi.Description())
+						assert.Equal(t, "{port}", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, int64(1), dp.IntValue())
+						ciscoL2VlanAttrVal, ok := dp.Attributes().Get("cisco.l2.vlan")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.l2.vlan-val", ciscoL2VlanAttrVal.Str())
+						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.l2.stp.blocked_ports"], "Found a duplicate in the metrics slice: cisco.l2.stp.blocked_ports")
+						validatedMetrics["cisco.l2.stp.blocked_ports"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "The number of Cisco spanning-tree blocked ports", mi.Description())
+						assert.Equal(t, "{port}", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						switch aggMap["cisco.l2.stp.blocked_ports"] {
+						case "sum":
+							assert.Equal(t, int64(4), dp.IntValue())
+						case "avg":
+							assert.Equal(t, int64(2), dp.IntValue())
+						case "min":
+							assert.Equal(t, int64(1), dp.IntValue())
+						case "max":
+							assert.Equal(t, int64(3), dp.IntValue())
+						}
+						_, ok := dp.Attributes().Get("cisco.l2.vlan")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.interface.name")
+						assert.False(t, ok)
+					}
+				case "cisco.l2.stp.instances":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.l2.stp.instances"], "Found a duplicate in the metrics slice: cisco.l2.stp.instances")
+						validatedMetrics["cisco.l2.stp.instances"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "The number of Cisco spanning-tree instances", mi.Description())
+						assert.Equal(t, "{instance}", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, int64(1), dp.IntValue())
+						ciscoL2StpStateAttrVal, ok := dp.Attributes().Get("cisco.l2.stp.state")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.l2.stp.state-val", ciscoL2StpStateAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.l2.stp.instances"], "Found a duplicate in the metrics slice: cisco.l2.stp.instances")
+						validatedMetrics["cisco.l2.stp.instances"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "The number of Cisco spanning-tree instances", mi.Description())
+						assert.Equal(t, "{instance}", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						switch aggMap["cisco.l2.stp.instances"] {
+						case "sum":
+							assert.Equal(t, int64(4), dp.IntValue())
+						case "avg":
+							assert.Equal(t, int64(2), dp.IntValue())
+						case "min":
+							assert.Equal(t, int64(1), dp.IntValue())
+						case "max":
+							assert.Equal(t, int64(3), dp.IntValue())
+						}
+						_, ok := dp.Attributes().Get("cisco.l2.stp.state")
+						assert.False(t, ok)
+					}
+				case "cisco.l2.stp.topology_changes":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.l2.stp.topology_changes"], "Found a duplicate in the metrics slice: cisco.l2.stp.topology_changes")
+						validatedMetrics["cisco.l2.stp.topology_changes"] = true
+						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+						assert.Equal(t, "The number of Cisco spanning-tree topology changes", mi.Description())
+						assert.Equal(t, "{change}", mi.Unit())
+						assert.True(t, mi.Sum().IsMonotonic())
+						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+						dp := mi.Sum().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, int64(1), dp.IntValue())
+						ciscoL2VlanAttrVal, ok := dp.Attributes().Get("cisco.l2.vlan")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.l2.vlan-val", ciscoL2VlanAttrVal.Str())
+						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.l2.stp.topology_changes"], "Found a duplicate in the metrics slice: cisco.l2.stp.topology_changes")
+						validatedMetrics["cisco.l2.stp.topology_changes"] = true
+						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+						assert.Equal(t, "The number of Cisco spanning-tree topology changes", mi.Description())
+						assert.Equal(t, "{change}", mi.Unit())
+						assert.True(t, mi.Sum().IsMonotonic())
+						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+						dp := mi.Sum().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						switch aggMap["cisco.l2.stp.topology_changes"] {
+						case "sum":
+							assert.Equal(t, int64(4), dp.IntValue())
+						case "avg":
+							assert.Equal(t, int64(2), dp.IntValue())
+						case "min":
+							assert.Equal(t, int64(1), dp.IntValue())
+						case "max":
+							assert.Equal(t, int64(3), dp.IntValue())
+						}
+						_, ok := dp.Attributes().Get("cisco.l2.vlan")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.interface.name")
+						assert.False(t, ok)
+					}
+				case "cisco.lacp.errors":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.lacp.errors"], "Found a duplicate in the metrics slice: cisco.lacp.errors")
+						validatedMetrics["cisco.lacp.errors"] = true
+						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+						assert.Equal(t, "The number of Cisco LACP errors", mi.Description())
+						assert.Equal(t, "{error}", mi.Unit())
+						assert.True(t, mi.Sum().IsMonotonic())
+						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+						dp := mi.Sum().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, int64(1), dp.IntValue())
+						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
+						ciscoLacpErrorTypeAttrVal, ok := dp.Attributes().Get("cisco.lacp.error.type")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.lacp.error.type-val", ciscoLacpErrorTypeAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.lacp.errors"], "Found a duplicate in the metrics slice: cisco.lacp.errors")
+						validatedMetrics["cisco.lacp.errors"] = true
+						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+						assert.Equal(t, "The number of Cisco LACP errors", mi.Description())
+						assert.Equal(t, "{error}", mi.Unit())
+						assert.True(t, mi.Sum().IsMonotonic())
+						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+						dp := mi.Sum().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						switch aggMap["cisco.lacp.errors"] {
+						case "sum":
+							assert.Equal(t, int64(4), dp.IntValue())
+						case "avg":
+							assert.Equal(t, int64(2), dp.IntValue())
+						case "min":
+							assert.Equal(t, int64(1), dp.IntValue())
+						case "max":
+							assert.Equal(t, int64(3), dp.IntValue())
+						}
+						_, ok := dp.Attributes().Get("network.interface.name")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.lacp.error.type")
+						assert.False(t, ok)
+					}
+				case "cisco.lacp.packets":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.lacp.packets"], "Found a duplicate in the metrics slice: cisco.lacp.packets")
+						validatedMetrics["cisco.lacp.packets"] = true
+						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+						assert.Equal(t, "The number of Cisco LACP packets", mi.Description())
+						assert.Equal(t, "{packet}", mi.Unit())
+						assert.True(t, mi.Sum().IsMonotonic())
+						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+						dp := mi.Sum().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, int64(1), dp.IntValue())
+						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
+						ciscoLacpPacketTypeAttrVal, ok := dp.Attributes().Get("cisco.lacp.packet.type")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.lacp.packet.type-val", ciscoLacpPacketTypeAttrVal.Str())
+						networkIoDirectionAttrVal, ok := dp.Attributes().Get("network.io.direction")
+						assert.True(t, ok)
+						assert.Equal(t, "receive", networkIoDirectionAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.lacp.packets"], "Found a duplicate in the metrics slice: cisco.lacp.packets")
+						validatedMetrics["cisco.lacp.packets"] = true
+						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+						assert.Equal(t, "The number of Cisco LACP packets", mi.Description())
+						assert.Equal(t, "{packet}", mi.Unit())
+						assert.True(t, mi.Sum().IsMonotonic())
+						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+						dp := mi.Sum().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						switch aggMap["cisco.lacp.packets"] {
+						case "sum":
+							assert.Equal(t, int64(4), dp.IntValue())
+						case "avg":
+							assert.Equal(t, int64(2), dp.IntValue())
+						case "min":
+							assert.Equal(t, int64(1), dp.IntValue())
+						case "max":
+							assert.Equal(t, int64(3), dp.IntValue())
+						}
+						_, ok := dp.Attributes().Get("network.interface.name")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.lacp.packet.type")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.io.direction")
+						assert.False(t, ok)
+					}
+				case "cisco.port_channel.member.status":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.port_channel.member.status"], "Found a duplicate in the metrics slice: cisco.port_channel.member.status")
+						validatedMetrics["cisco.port_channel.member.status"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Cisco port-channel member status (1 = bundled or up, 0 = not bundled)", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, int64(1), dp.IntValue())
+						ciscoPortChannelNameAttrVal, ok := dp.Attributes().Get("cisco.port_channel.name")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.port_channel.name-val", ciscoPortChannelNameAttrVal.Str())
+						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
+						ciscoPortChannelStateAttrVal, ok := dp.Attributes().Get("cisco.port_channel.state")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.port_channel.state-val", ciscoPortChannelStateAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.port_channel.member.status"], "Found a duplicate in the metrics slice: cisco.port_channel.member.status")
+						validatedMetrics["cisco.port_channel.member.status"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Cisco port-channel member status (1 = bundled or up, 0 = not bundled)", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						switch aggMap["cisco.port_channel.member.status"] {
+						case "sum":
+							assert.Equal(t, int64(4), dp.IntValue())
+						case "avg":
+							assert.Equal(t, int64(2), dp.IntValue())
+						case "min":
+							assert.Equal(t, int64(1), dp.IntValue())
+						case "max":
+							assert.Equal(t, int64(3), dp.IntValue())
+						}
+						_, ok := dp.Attributes().Get("cisco.port_channel.name")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.interface.name")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.port_channel.state")
+						assert.False(t, ok)
+					}
+				case "cisco.port_channel.status":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.port_channel.status"], "Found a duplicate in the metrics slice: cisco.port_channel.status")
+						validatedMetrics["cisco.port_channel.status"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Cisco port-channel status (1 = up, 0 = down or suspended)", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, int64(1), dp.IntValue())
+						ciscoPortChannelNameAttrVal, ok := dp.Attributes().Get("cisco.port_channel.name")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.port_channel.name-val", ciscoPortChannelNameAttrVal.Str())
+						ciscoPortChannelStateAttrVal, ok := dp.Attributes().Get("cisco.port_channel.state")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.port_channel.state-val", ciscoPortChannelStateAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.port_channel.status"], "Found a duplicate in the metrics slice: cisco.port_channel.status")
+						validatedMetrics["cisco.port_channel.status"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Cisco port-channel status (1 = up, 0 = down or suspended)", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						switch aggMap["cisco.port_channel.status"] {
+						case "sum":
+							assert.Equal(t, int64(4), dp.IntValue())
+						case "avg":
+							assert.Equal(t, int64(2), dp.IntValue())
+						case "min":
+							assert.Equal(t, int64(1), dp.IntValue())
+						case "max":
+							assert.Equal(t, int64(3), dp.IntValue())
+						}
+						_, ok := dp.Attributes().Get("cisco.port_channel.name")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.port_channel.state")
+						assert.False(t, ok)
+					}
+				case "cisco.scrape.command.duration":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.scrape.command.duration"], "Found a duplicate in the metrics slice: cisco.scrape.command.duration")
+						validatedMetrics["cisco.scrape.command.duration"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Cisco receiver command execution duration", mi.Description())
+						assert.Equal(t, "s", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+						assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+						ciscoScrapeCommandFamilyAttrVal, ok := dp.Attributes().Get("cisco.scrape.command.family")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.scrape.command.family-val", ciscoScrapeCommandFamilyAttrVal.Str())
+						ciscoScrapeCommandOutcomeAttrVal, ok := dp.Attributes().Get("cisco.scrape.command.outcome")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.scrape.command.outcome-val", ciscoScrapeCommandOutcomeAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.scrape.command.duration"], "Found a duplicate in the metrics slice: cisco.scrape.command.duration")
+						validatedMetrics["cisco.scrape.command.duration"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Cisco receiver command execution duration", mi.Description())
+						assert.Equal(t, "s", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+						switch aggMap["cisco.scrape.command.duration"] {
+						case "sum":
+							assert.InDelta(t, float64(4), dp.DoubleValue(), 0.01)
+						case "avg":
+							assert.InDelta(t, float64(2), dp.DoubleValue(), 0.01)
+						case "min":
+							assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+						case "max":
+							assert.InDelta(t, float64(3), dp.DoubleValue(), 0.01)
+						}
+						_, ok := dp.Attributes().Get("cisco.scrape.command.family")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.scrape.command.outcome")
+						assert.False(t, ok)
+					}
+				case "cisco.scrape.command.errors":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.scrape.command.errors"], "Found a duplicate in the metrics slice: cisco.scrape.command.errors")
+						validatedMetrics["cisco.scrape.command.errors"] = true
+						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+						assert.Equal(t, "Cisco receiver command execution errors", mi.Description())
+						assert.Equal(t, "{error}", mi.Unit())
+						assert.True(t, mi.Sum().IsMonotonic())
+						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+						dp := mi.Sum().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, int64(1), dp.IntValue())
+						ciscoScrapeCommandFamilyAttrVal, ok := dp.Attributes().Get("cisco.scrape.command.family")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.scrape.command.family-val", ciscoScrapeCommandFamilyAttrVal.Str())
+						ciscoScrapeErrorTypeAttrVal, ok := dp.Attributes().Get("cisco.scrape.error.type")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.scrape.error.type-val", ciscoScrapeErrorTypeAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.scrape.command.errors"], "Found a duplicate in the metrics slice: cisco.scrape.command.errors")
+						validatedMetrics["cisco.scrape.command.errors"] = true
+						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+						assert.Equal(t, "Cisco receiver command execution errors", mi.Description())
+						assert.Equal(t, "{error}", mi.Unit())
+						assert.True(t, mi.Sum().IsMonotonic())
+						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+						dp := mi.Sum().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						switch aggMap["cisco.scrape.command.errors"] {
+						case "sum":
+							assert.Equal(t, int64(4), dp.IntValue())
+						case "avg":
+							assert.Equal(t, int64(2), dp.IntValue())
+						case "min":
+							assert.Equal(t, int64(1), dp.IntValue())
+						case "max":
+							assert.Equal(t, int64(3), dp.IntValue())
+						}
+						_, ok := dp.Attributes().Get("cisco.scrape.command.family")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.scrape.error.type")
+						assert.False(t, ok)
+					}
+				case "cisco.scrape.partial_success":
+					assert.False(t, validatedMetrics["cisco.scrape.partial_success"], "Found a duplicate in the metrics slice: cisco.scrape.partial_success")
+					validatedMetrics["cisco.scrape.partial_success"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Cisco receiver scrape partial success status (1 = partial success, 0 = complete success)", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.ssh.reconnects":
+					assert.False(t, validatedMetrics["cisco.ssh.reconnects"], "Found a duplicate in the metrics slice: cisco.ssh.reconnects")
+					validatedMetrics["cisco.ssh.reconnects"] = true
+					assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+					assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+					assert.Equal(t, "The number of successful Cisco SSH reconnects by the receiver", mi.Description())
+					assert.Equal(t, "{reconnect}", mi.Unit())
+					assert.True(t, mi.Sum().IsMonotonic())
+					assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+					dp := mi.Sum().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.topology.neighbor.info":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.topology.neighbor.info"], "Found a duplicate in the metrics slice: cisco.topology.neighbor.info")
+						validatedMetrics["cisco.topology.neighbor.info"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Cisco LLDP or CDP topology neighbor edge information", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, int64(1), dp.IntValue())
+						ciscoTopologyProtocolAttrVal, ok := dp.Attributes().Get("cisco.topology.protocol")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.topology.protocol-val", ciscoTopologyProtocolAttrVal.Str())
+						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
+						ciscoTopologyNeighborNameAttrVal, ok := dp.Attributes().Get("cisco.topology.neighbor.name")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.topology.neighbor.name-val", ciscoTopologyNeighborNameAttrVal.Str())
+						ciscoTopologyNeighborInterfaceAttrVal, ok := dp.Attributes().Get("cisco.topology.neighbor.interface")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.topology.neighbor.interface-val", ciscoTopologyNeighborInterfaceAttrVal.Str())
+						ciscoTopologyNeighborPlatformAttrVal, ok := dp.Attributes().Get("cisco.topology.neighbor.platform")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.topology.neighbor.platform-val", ciscoTopologyNeighborPlatformAttrVal.Str())
+						ciscoTopologyNeighborAddressAttrVal, ok := dp.Attributes().Get("cisco.topology.neighbor.address")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.topology.neighbor.address-val", ciscoTopologyNeighborAddressAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.topology.neighbor.info"], "Found a duplicate in the metrics slice: cisco.topology.neighbor.info")
+						validatedMetrics["cisco.topology.neighbor.info"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Cisco LLDP or CDP topology neighbor edge information", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						switch aggMap["cisco.topology.neighbor.info"] {
+						case "sum":
+							assert.Equal(t, int64(4), dp.IntValue())
+						case "avg":
+							assert.Equal(t, int64(2), dp.IntValue())
+						case "min":
+							assert.Equal(t, int64(1), dp.IntValue())
+						case "max":
+							assert.Equal(t, int64(3), dp.IntValue())
+						}
+						_, ok := dp.Attributes().Get("cisco.topology.protocol")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.interface.name")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.topology.neighbor.name")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.topology.neighbor.interface")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.topology.neighbor.platform")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.topology.neighbor.address")
+						assert.False(t, ok)
+					}
+				case "cisco.transceiver.sensor":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.transceiver.sensor"], "Found a duplicate in the metrics slice: cisco.transceiver.sensor")
+						validatedMetrics["cisco.transceiver.sensor"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Cisco transceiver digital optical monitoring sensor value. The physical unit varies by sensor type and is carried in the cisco.transceiver.sensor.unit attribute (Cel, V, mA, dBm, or 1 when unitless).", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+						assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
+						assert.True(t, ok)
+						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
+						ciscoTransceiverSensorAttrVal, ok := dp.Attributes().Get("cisco.transceiver.sensor")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.transceiver.sensor-val", ciscoTransceiverSensorAttrVal.Str())
+						ciscoTransceiverLaneAttrVal, ok := dp.Attributes().Get("cisco.transceiver.lane")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.transceiver.lane-val", ciscoTransceiverLaneAttrVal.Str())
+						ciscoTransceiverSensorUnitAttrVal, ok := dp.Attributes().Get("cisco.transceiver.sensor.unit")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.transceiver.sensor.unit-val", ciscoTransceiverSensorUnitAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.transceiver.sensor"], "Found a duplicate in the metrics slice: cisco.transceiver.sensor")
+						validatedMetrics["cisco.transceiver.sensor"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Cisco transceiver digital optical monitoring sensor value. The physical unit varies by sensor type and is carried in the cisco.transceiver.sensor.unit attribute (Cel, V, mA, dBm, or 1 when unitless).", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+						switch aggMap["cisco.transceiver.sensor"] {
+						case "sum":
+							assert.InDelta(t, float64(4), dp.DoubleValue(), 0.01)
+						case "avg":
+							assert.InDelta(t, float64(2), dp.DoubleValue(), 0.01)
+						case "min":
+							assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+						case "max":
+							assert.InDelta(t, float64(3), dp.DoubleValue(), 0.01)
+						}
+						_, ok := dp.Attributes().Get("network.interface.name")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.transceiver.sensor")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.transceiver.lane")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.transceiver.sensor.unit")
+						assert.False(t, ok)
+					}
+				case "cisco.vpc.consistency.failures":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.vpc.consistency.failures"], "Found a duplicate in the metrics slice: cisco.vpc.consistency.failures")
+						validatedMetrics["cisco.vpc.consistency.failures"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "The number of Cisco vPC consistency failures", mi.Description())
+						assert.Equal(t, "{failure}", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, int64(1), dp.IntValue())
+						ciscoVpcCheckAttrVal, ok := dp.Attributes().Get("cisco.vpc.check")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.vpc.check-val", ciscoVpcCheckAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.vpc.consistency.failures"], "Found a duplicate in the metrics slice: cisco.vpc.consistency.failures")
+						validatedMetrics["cisco.vpc.consistency.failures"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "The number of Cisco vPC consistency failures", mi.Description())
+						assert.Equal(t, "{failure}", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						switch aggMap["cisco.vpc.consistency.failures"] {
+						case "sum":
+							assert.Equal(t, int64(4), dp.IntValue())
+						case "avg":
+							assert.Equal(t, int64(2), dp.IntValue())
+						case "min":
+							assert.Equal(t, int64(1), dp.IntValue())
+						case "max":
+							assert.Equal(t, int64(3), dp.IntValue())
+						}
+						_, ok := dp.Attributes().Get("cisco.vpc.check")
+						assert.False(t, ok)
+					}
+				case "cisco.vpc.status":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.vpc.status"], "Found a duplicate in the metrics slice: cisco.vpc.status")
+						validatedMetrics["cisco.vpc.status"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Cisco vPC peer or member status (1 = up or consistent, 0 = down or inconsistent)", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, int64(1), dp.IntValue())
+						ciscoVpcDomainAttrVal, ok := dp.Attributes().Get("cisco.vpc.domain")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.vpc.domain-val", ciscoVpcDomainAttrVal.Str())
+						ciscoVpcPeerAttrVal, ok := dp.Attributes().Get("cisco.vpc.peer")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.vpc.peer-val", ciscoVpcPeerAttrVal.Str())
+						ciscoVpcStateAttrVal, ok := dp.Attributes().Get("cisco.vpc.state")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.vpc.state-val", ciscoVpcStateAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.vpc.status"], "Found a duplicate in the metrics slice: cisco.vpc.status")
+						validatedMetrics["cisco.vpc.status"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Cisco vPC peer or member status (1 = up or consistent, 0 = down or inconsistent)", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						switch aggMap["cisco.vpc.status"] {
+						case "sum":
+							assert.Equal(t, int64(4), dp.IntValue())
+						case "avg":
+							assert.Equal(t, int64(2), dp.IntValue())
+						case "min":
+							assert.Equal(t, int64(1), dp.IntValue())
+						case "max":
+							assert.Equal(t, int64(3), dp.IntValue())
+						}
+						_, ok := dp.Attributes().Get("cisco.vpc.domain")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.vpc.peer")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.vpc.state")
+						assert.False(t, ok)
+					}
 				case "system.network.errors":
 					if tt.name != "reaggregate_set" {
 						assert.False(t, validatedMetrics["system.network.errors"], "Found a duplicate in the metrics slice: system.network.errors")
@@ -157,7 +1790,7 @@ func TestMetricsBuilder(t *testing.T) {
 						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
 						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
 						assert.Equal(t, "The number of errors encountered", mi.Description())
-						assert.Equal(t, "{errors}", mi.Unit())
+						assert.Equal(t, "{error}", mi.Unit())
 						assert.True(t, mi.Sum().IsMonotonic())
 						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
 						dp := mi.Sum().DataPoints().At(0)
@@ -186,7 +1819,7 @@ func TestMetricsBuilder(t *testing.T) {
 						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
 						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
 						assert.Equal(t, "The number of errors encountered", mi.Description())
-						assert.Equal(t, "{errors}", mi.Unit())
+						assert.Equal(t, "{error}", mi.Unit())
 						assert.True(t, mi.Sum().IsMonotonic())
 						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
 						dp := mi.Sum().DataPoints().At(0)
@@ -340,7 +1973,7 @@ func TestMetricsBuilder(t *testing.T) {
 						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
 						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
 						assert.Equal(t, "The number of packets transmitted or received, categorized by type", mi.Description())
-						assert.Equal(t, "{packets}", mi.Unit())
+						assert.Equal(t, "{packet}", mi.Unit())
 						assert.True(t, mi.Sum().IsMonotonic())
 						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
 						dp := mi.Sum().DataPoints().At(0)
@@ -348,9 +1981,12 @@ func TestMetricsBuilder(t *testing.T) {
 						assert.Equal(t, ts, dp.Timestamp())
 						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
 						assert.Equal(t, int64(1), dp.IntValue())
+						networkIoDirectionAttrVal, ok := dp.Attributes().Get("network.io.direction")
+						assert.True(t, ok)
+						assert.Equal(t, "receive", networkIoDirectionAttrVal.Str())
 						networkPacketTypeAttrVal, ok := dp.Attributes().Get("network.packet.type")
 						assert.True(t, ok)
-						assert.Equal(t, "multicast", networkPacketTypeAttrVal.Str())
+						assert.Equal(t, "unicast", networkPacketTypeAttrVal.Str())
 						networkInterfaceDescriptionAttrVal, ok := dp.Attributes().Get("network.interface.description")
 						assert.True(t, ok)
 						assert.Equal(t, "network.interface.description-val", networkInterfaceDescriptionAttrVal.Str())
@@ -369,7 +2005,7 @@ func TestMetricsBuilder(t *testing.T) {
 						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
 						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
 						assert.Equal(t, "The number of packets transmitted or received, categorized by type", mi.Description())
-						assert.Equal(t, "{packets}", mi.Unit())
+						assert.Equal(t, "{packet}", mi.Unit())
 						assert.True(t, mi.Sum().IsMonotonic())
 						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
 						dp := mi.Sum().DataPoints().At(0)
@@ -386,7 +2022,9 @@ func TestMetricsBuilder(t *testing.T) {
 						case "max":
 							assert.Equal(t, int64(3), dp.IntValue())
 						}
-						_, ok := dp.Attributes().Get("network.packet.type")
+						_, ok := dp.Attributes().Get("network.io.direction")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.packet.type")
 						assert.False(t, ok)
 						_, ok = dp.Attributes().Get("network.interface.description")
 						assert.False(t, ok)
@@ -404,7 +2042,7 @@ func TestMetricsBuilder(t *testing.T) {
 						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
 						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
 						assert.Equal(t, "The number of packets dropped", mi.Description())
-						assert.Equal(t, "{packets}", mi.Unit())
+						assert.Equal(t, "{packet}", mi.Unit())
 						assert.True(t, mi.Sum().IsMonotonic())
 						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
 						dp := mi.Sum().DataPoints().At(0)
@@ -433,7 +2071,7 @@ func TestMetricsBuilder(t *testing.T) {
 						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
 						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
 						assert.Equal(t, "The number of packets dropped", mi.Description())
-						assert.Equal(t, "{packets}", mi.Unit())
+						assert.Equal(t, "{packet}", mi.Unit())
 						assert.True(t, mi.Sum().IsMonotonic())
 						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
 						dp := mi.Sum().DataPoints().At(0)

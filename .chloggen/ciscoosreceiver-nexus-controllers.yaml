@@ -1,0 +1,7 @@
+change_type: enhancement
+component: receiver/cisco_os
+note: Add API-first Nexus Dashboard, NDFC, and Cisco ACI troubleshooting support.
+issues: [0]
+subtext: |
+  Nexus controller support adds Nexus Dashboard API-key and username/password auth, NDFC/Insights/Orchestrator/Data Broker endpoint coverage, APIC aaaLogin polling, controller API health metrics, bounded fabric/switch/interface/tenant/endpoint metrics, high-cardinality operational logs, and a Splunk Observability dashboard bundle for NetOps and ITOps troubleshooting.
+change_logs: [user]
