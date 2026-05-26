@@ -1,0 +1,7 @@
+change_type: enhancement
+component: receiver/cisco_os
+note: Add native Cisco Intersight metrics and logs support.
+issues: [0]
+subtext: |
+  Intersight support uses API-key HTTP signature auth, curated REST and telemetry GroupBy polling, bounded metrics for API health, inventory, alarms, advisories, HCL, workflows, tech-support, UCS, storage, HyperFlex, Kubernetes, virtualization, and performance telemetry, plus logs for event-shaped operational evidence.
+change_logs: [user]

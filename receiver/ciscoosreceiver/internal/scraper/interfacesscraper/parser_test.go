@@ -64,28 +64,38 @@ TenGigabitEthernet1/0/1 is down, line protocol is down (notconnect)
 	assert.Equal(t, "GigabitEthernet0/0", gig0.Name)
 	assert.Equal(t, "aabb.ccdd.ee01", gig0.MACAddress)
 	assert.Equal(t, "Uplink to Core", gig0.Description)
+	assert.Equal(t, StatusUp, gig0.AdminStatus)
 	assert.Equal(t, StatusUp, gig0.OperStatus)
-	assert.Equal(t, float64(9876543), gig0.InputBytes)
-	assert.Equal(t, float64(1234567), gig0.OutputBytes)
-	assert.Equal(t, float64(10), gig0.InputErrors)
-	assert.Equal(t, float64(5), gig0.OutputErrors)
-	assert.Equal(t, float64(0), gig0.InputDrops)
-	assert.Equal(t, float64(5), gig0.OutputDrops)
-	assert.Equal(t, float64(150), gig0.InputBroadcast)
-	assert.Equal(t, float64(75), gig0.InputMulticast)
+	assert.Equal(t, int64(9876543), gig0.InputBytes)
+	assert.Equal(t, int64(1234567), gig0.OutputBytes)
+	assert.Equal(t, int64(10), gig0.InputErrors)
+	assert.Equal(t, int64(5), gig0.OutputErrors)
+	assert.Equal(t, int64(0), gig0.InputDrops)
+	assert.Equal(t, int64(5), gig0.OutputDrops)
+	assert.Equal(t, int64(150), gig0.InputBroadcast)
+	assert.Equal(t, int64(75), gig0.InputMulticast)
+	assert.Equal(t, int64(12345), gig0.InputPackets)
+	assert.Equal(t, int64(20), gig0.OutputPackets)
+	assert.Equal(t, int64(1000), gig0.InputRateBits)
+	assert.Equal(t, int64(2), gig0.InputRatePackets)
+	assert.Equal(t, int64(2000), gig0.OutputRateBits)
+	assert.Equal(t, int64(3), gig0.OutputRatePackets)
 	assert.Equal(t, "1000 Mb/s", gig0.SpeedString)
+	assert.Equal(t, int64(1), gig0.Counters["interface_resets"])
+	assert.Equal(t, int64(0), gig0.Counters["crc"])
 
 	// Verify TenGigabitEthernet1/0/1
 	ten1 := interfaces[1]
 	assert.Equal(t, "TenGigabitEthernet1/0/1", ten1.Name)
 	assert.Equal(t, "1122.3344.5566", ten1.MACAddress)
+	assert.Equal(t, StatusUp, ten1.AdminStatus)
 	assert.Equal(t, StatusDown, ten1.OperStatus)
-	assert.Equal(t, float64(5000), ten1.InputBytes)
-	assert.Equal(t, float64(3000), ten1.OutputBytes)
-	assert.Equal(t, float64(5), ten1.InputErrors)
-	assert.Equal(t, float64(3), ten1.OutputErrors)
-	assert.Equal(t, float64(2), ten1.InputDrops)
-	assert.Equal(t, float64(10), ten1.OutputDrops)
+	assert.Equal(t, int64(5000), ten1.InputBytes)
+	assert.Equal(t, int64(3000), ten1.OutputBytes)
+	assert.Equal(t, int64(5), ten1.InputErrors)
+	assert.Equal(t, int64(3), ten1.OutputErrors)
+	assert.Equal(t, int64(2), ten1.InputDrops)
+	assert.Equal(t, int64(10), ten1.OutputDrops)
 }
 
 func TestParseInterfaces_NXOS(t *testing.T) {
@@ -151,21 +161,200 @@ admin state is up,
 	assert.Equal(t, "Ethernet1/1", eth1.Name)
 	assert.Equal(t, "2233.4455.6677", eth1.MACAddress)
 	assert.Equal(t, "Server Connection", eth1.Description)
+	assert.Equal(t, StatusUp, eth1.AdminStatus)
 	assert.Equal(t, StatusUp, eth1.OperStatus)
-	assert.Equal(t, float64(987654321), eth1.InputBytes)
-	assert.Equal(t, float64(123456789), eth1.OutputBytes)
-	assert.Equal(t, float64(9999), eth1.InputMulticast)
-	assert.Equal(t, float64(7777), eth1.InputBroadcast)
+	assert.Equal(t, int64(987654321), eth1.InputBytes)
+	assert.Equal(t, int64(123456789), eth1.OutputBytes)
+	assert.Equal(t, int64(9999), eth1.InputMulticast)
+	assert.Equal(t, int64(7777), eth1.InputBroadcast)
+	assert.Equal(t, int64(54321), eth1.InputUnicast)
+	assert.Equal(t, int64(5555), eth1.OutputMulticast)
+	assert.Equal(t, int64(3333), eth1.OutputBroadcast)
+	assert.Equal(t, int64(16), eth1.InputRateBits)
+	assert.Equal(t, int64(24), eth1.OutputRateBits)
+	assert.Equal(t, int64(1), eth1.Counters["interface_resets"])
 
 	// Verify mgmt0
 	mgmt := interfaces[1]
 	assert.Equal(t, "mgmt0", mgmt.Name)
 	assert.Equal(t, "aabb.ccdd.eeff", mgmt.MACAddress)
+	assert.Equal(t, StatusUp, mgmt.AdminStatus)
 	assert.Equal(t, StatusUp, mgmt.OperStatus)
-	assert.Equal(t, float64(850000), mgmt.InputBytes)
-	assert.Equal(t, float64(475000), mgmt.OutputBytes)
-	assert.Equal(t, float64(500), mgmt.InputMulticast)
-	assert.Equal(t, float64(200), mgmt.InputBroadcast)
+	assert.Equal(t, int64(850000), mgmt.InputBytes)
+	assert.Equal(t, int64(475000), mgmt.OutputBytes)
+	assert.Equal(t, int64(500), mgmt.InputMulticast)
+	assert.Equal(t, int64(200), mgmt.InputBroadcast)
+	assert.Equal(t, int64(800), mgmt.OutputUnicast)
+	assert.Equal(t, int64(100), mgmt.OutputMulticast)
+	assert.Equal(t, int64(50), mgmt.OutputBroadcast)
+}
+
+func TestParseInterfaceCounterTablesAndMerge(t *testing.T) {
+	output := `
+Port            InOctets    InUcastPkts    InMcastPkts    InBcastPkts
+Gi1/0/1              520              2              3              4
+
+Port           OutOctets   OutUcastPkts   OutMcastPkts   OutBcastPkts
+Gi1/0/1             1040              5              6              7
+
+Port        Align-Err    FCS-Err   Xmit-Err    Rcv-Err UnderSize OutDiscards
+Gi1/0/1             1          2          3          4         5           6
+
+Port         Single-Col  Multi-Col   Late-Col  Exces-Col  Carri-Sen       Runts
+Gi1/0/1               7          8          9         10         11          12
+
+Port          Giants SQETest-Err Deferred-Tx IntMacTx-Er IntMacRx-Er Symbol-Err
+Gi1/0/1           13          14          15          16          17         18
+
+Port         InDiscards
+Gi1/0/1              19
+
+Port         Stomped-CRC
+Gi1/0/1              20
+`
+
+	logger := zaptest.NewLogger(t)
+	counters := parseInterfaceCounterTables(output, logger)
+	interfaces := mergeInterfaceCounterTables([]*Interface{NewInterface("GigabitEthernet1/0/1")}, counters)
+
+	require.Len(t, interfaces, 1)
+	intf := interfaces[0]
+	assert.Equal(t, int64(520), intf.InputBytes)
+	assert.Equal(t, int64(1040), intf.OutputBytes)
+	assert.Equal(t, int64(2), intf.InputUnicast)
+	assert.Equal(t, int64(3), intf.InputMulticast)
+	assert.Equal(t, int64(4), intf.InputBroadcast)
+	assert.Equal(t, int64(5), intf.OutputUnicast)
+	assert.Equal(t, int64(6), intf.OutputMulticast)
+	assert.Equal(t, int64(7), intf.OutputBroadcast)
+	assert.Equal(t, int64(2), intf.Counters["fcs_errors"])
+	assert.Equal(t, int64(3), intf.OutputErrors)
+	assert.Equal(t, int64(4), intf.InputErrors)
+	assert.Equal(t, int64(6), intf.OutputDrops)
+	assert.Equal(t, int64(10), intf.Counters["excess_collisions"])
+	assert.Equal(t, int64(12), intf.Counters["runts"])
+	assert.Equal(t, int64(13), intf.Counters["giants"])
+	assert.Equal(t, int64(16), intf.Counters["internal_mac_transmit_errors"])
+	assert.Equal(t, int64(17), intf.Counters["internal_mac_receive_errors"])
+	assert.Equal(t, int64(18), intf.Counters["symbol_errors"])
+	assert.Equal(t, int64(19), intf.InputDrops)
+	assert.Equal(t, int64(20), intf.Counters["stomped_crc"])
+	assert.True(t, intf.HasInputPacketTypes)
+	assert.True(t, intf.HasOutputPacketTypes)
+}
+
+func TestParseInterfaces_NXOSWrappedPhysicalCounters(t *testing.T) {
+	output := `
+Ethernet1/1 is up
+admin state is up, Dedicated Interface
+  Hardware: 100/1000/10000/25000 Ethernet, address: 00d7.8f86.2bbe (bia 00d7.8f86.2bbe)
+  MTU 1500 bytes, BW 10000000 Kbit, DLY 10 usec
+  full-duplex, 10 Gb/s, media type is 10G
+  0 interface resets
+  RX
+    3 unicast packets  3087 multicast packets  0 broadcast packets
+    3097 input packets  244636 bytes
+    7 jumbo packets  0 storm suppression bytes
+    0 runts  7 giants
+    7 CRC
+    0 no buffer
+    7 input error
+    0 short frame  1 overrun   2 underrun  3 ignored
+    0 watchdog  4 bad etype drop  5 bad proto drop  6 if down drop
+    8 input with dribble  9 input discard
+    10 Rx pause
+    11 Stomped CRC
+  TX
+    908 unicast packets  323 multicast packets  3 broadcast packets
+    1234 output packets  113342 bytes
+    12 jumbo packets
+    13 output error  14 collision  15 deferred  16 late collision
+    17 lost carrier  18 no carrier  19 babble  20 output discard
+    21 Tx pause
+`
+
+	logger := zaptest.NewLogger(t)
+	interfaces := parseInterfaces(output, logger)
+
+	require.Len(t, interfaces, 1)
+	intf := interfaces[0]
+	assert.Equal(t, int64(7), intf.Counters["crc"])
+	assert.Equal(t, int64(7), intf.InputErrors)
+	assert.Equal(t, int64(7), intf.Counters["giants"])
+	assert.Equal(t, int64(9), intf.InputDrops)
+	assert.Equal(t, int64(10), intf.Counters["pause_input"])
+	assert.Equal(t, int64(11), intf.Counters["stomped_crc"])
+	assert.Equal(t, int64(13), intf.OutputErrors)
+	assert.Equal(t, int64(20), intf.OutputDrops)
+	assert.Equal(t, int64(21), intf.Counters["pause_output"])
+}
+
+func TestParseInterfaces_NXOSCompactRxTxCounters(t *testing.T) {
+	output := `
+Ethernet2/5 is up
+admin state is up, Dedicated Interface
+  Hardware: 10/100/1000 Ethernet, address: 0018.bad8.3ffd (bia 0019.076c.4db0)
+  MTU 1500 bytes, BW 1000000 Kbit, DLY 10 usec,
+  auto-duplex, auto-speed
+  1 minute input rate 64 bits/sec, 4 packets/sec
+  1 minute output rate 32 bits/sec, 2 packets/sec
+  Rx
+    78681 input packets 15607 unicast packets 20178 multicast packets
+    42896 broadcast packets 7 jumbo packets 8 storm suppression packets
+    24189392 bytes
+  Tx
+    20647 output packets 246 multicast packets
+    24 broadcast packets 7370904 bytes
+    2 input error 3 short frame 4 watchdog
+    5 no buffer 6 runt 7 CRC 8 ecc
+    9 overrun  10 underrun 11 ignored 12 bad etype drop
+    13 bad proto drop 14 if down drop 15 input with dribble
+    16 input discard
+    17 output error 18 collision 19 deferred
+    20 late collision 21 lost carrier 22 no carrier
+    23 babble
+    24 Rx pause 25 Tx pause
+  26 interface resets
+`
+
+	logger := zaptest.NewLogger(t)
+	interfaces := parseInterfaces(output, logger)
+
+	require.Len(t, interfaces, 1)
+	intf := interfaces[0]
+	assert.Equal(t, "Ethernet2/5", intf.Name)
+	assert.Equal(t, StatusUp, intf.OperStatus)
+	assert.Equal(t, int64(78681), intf.InputPackets)
+	assert.Equal(t, int64(15607), intf.InputUnicast)
+	assert.Equal(t, int64(20178), intf.InputMulticast)
+	assert.Equal(t, int64(42896), intf.InputBroadcast)
+	assert.Equal(t, int64(24189392), intf.InputBytes)
+	assert.Equal(t, int64(20647), intf.OutputPackets)
+	assert.Equal(t, int64(246), intf.OutputMulticast)
+	assert.Equal(t, int64(24), intf.OutputBroadcast)
+	assert.Equal(t, int64(7370904), intf.OutputBytes)
+	assert.Equal(t, int64(64), intf.InputRateBits)
+	assert.Equal(t, int64(4), intf.InputRatePackets)
+	assert.Equal(t, int64(32), intf.OutputRateBits)
+	assert.Equal(t, int64(2), intf.OutputRatePackets)
+	assert.Equal(t, int64(7), intf.Counters["input_jumbo_packets"])
+	assert.Equal(t, int64(8), intf.Counters["input_storm_suppression_packets"])
+	assert.Zero(t, intf.OutputUnicast)
+	assert.Equal(t, int64(2), intf.InputErrors)
+	assert.Equal(t, int64(16), intf.InputDrops)
+	assert.Equal(t, int64(17), intf.OutputErrors)
+	assert.Equal(t, int64(6), intf.Counters["runts"])
+	assert.Equal(t, int64(7), intf.Counters["crc"])
+	assert.Equal(t, int64(8), intf.Counters["ecc"])
+	assert.Equal(t, int64(12), intf.Counters["bad_etype_drops"])
+	assert.Equal(t, int64(13), intf.Counters["bad_proto_drops"])
+	assert.Equal(t, int64(14), intf.Counters["if_down_drops"])
+	assert.Equal(t, int64(15), intf.Counters["input_dribble"])
+	assert.Equal(t, int64(20), intf.Counters["late_collision"])
+	assert.Equal(t, int64(23), intf.Counters["babbles"])
+	assert.Equal(t, int64(24), intf.Counters["pause_input"])
+	assert.Equal(t, int64(25), intf.Counters["pause_output"])
+	assert.Equal(t, int64(26), intf.Counters["interface_resets"])
 }
 
 func TestParseInterfaces_VirtualInterfaces(t *testing.T) {
@@ -203,8 +392,8 @@ Vlan100 is up, line protocol is up
 	assert.Equal(t, "Loopback0", loopback.Name)
 	assert.Empty(t, loopback.MACAddress, "loopback should have no MAC")
 	assert.Equal(t, StatusUp, loopback.OperStatus)
-	assert.Equal(t, float64(10000), loopback.InputBytes)
-	assert.Equal(t, float64(10000), loopback.OutputBytes)
+	assert.Equal(t, int64(10000), loopback.InputBytes)
+	assert.Equal(t, int64(10000), loopback.OutputBytes)
 
 	// Verify Vlan100
 	vlan := interfaces[1]
@@ -212,14 +401,14 @@ Vlan100 is up, line protocol is up
 	assert.Equal(t, "0011.2233.4455", vlan.MACAddress)
 	assert.Equal(t, "Management VLAN", vlan.Description)
 	assert.Equal(t, StatusUp, vlan.OperStatus)
-	assert.Equal(t, float64(50000), vlan.InputBytes)
-	assert.Equal(t, float64(40000), vlan.OutputBytes)
-	assert.Equal(t, float64(2), vlan.InputErrors)
-	assert.Equal(t, float64(1), vlan.OutputErrors)
-	assert.Equal(t, float64(1), vlan.InputDrops)
-	assert.Equal(t, float64(2), vlan.OutputDrops)
-	assert.Equal(t, float64(30), vlan.InputBroadcast)
-	assert.Equal(t, float64(15), vlan.InputMulticast)
+	assert.Equal(t, int64(50000), vlan.InputBytes)
+	assert.Equal(t, int64(40000), vlan.OutputBytes)
+	assert.Equal(t, int64(2), vlan.InputErrors)
+	assert.Equal(t, int64(1), vlan.OutputErrors)
+	assert.Equal(t, int64(1), vlan.InputDrops)
+	assert.Equal(t, int64(2), vlan.OutputDrops)
+	assert.Equal(t, int64(30), vlan.InputBroadcast)
+	assert.Equal(t, int64(15), vlan.InputMulticast)
 }
 
 func TestParseInterfaces_AdminDown(t *testing.T) {
@@ -242,9 +431,30 @@ GigabitEthernet0/1 is administratively down, line protocol is down
 	iface := interfaces[0]
 	assert.Equal(t, "GigabitEthernet0/1", iface.Name)
 	assert.Equal(t, "1111.2222.3333", iface.MACAddress)
+	assert.Equal(t, StatusDown, iface.AdminStatus)
 	assert.Equal(t, StatusDown, iface.OperStatus)
-	assert.Equal(t, float64(0), iface.InputBytes)
-	assert.Equal(t, float64(0), iface.OutputBytes)
+	assert.Equal(t, int64(0), iface.InputBytes)
+	assert.Equal(t, int64(0), iface.OutputBytes)
+}
+
+func TestParseInterfaces_AdminUpOperDown(t *testing.T) {
+	output := `
+GigabitEthernet0/2 is up, line protocol is down (notconnect)
+  Hardware is iGbE, address is 1111.2222.4444 (bia 1111.2222.4444)
+  MTU 1500 bytes, BW 1000000 Kbit/sec
+  0 packets input, 0 bytes
+  0 packets output, 0 bytes
+`
+
+	logger := zaptest.NewLogger(t)
+	interfaces := parseInterfaces(output, logger)
+
+	require.Len(t, interfaces, 1, "should parse 1 interface")
+
+	iface := interfaces[0]
+	assert.Equal(t, "GigabitEthernet0/2", iface.Name)
+	assert.Equal(t, StatusUp, iface.AdminStatus)
+	assert.Equal(t, StatusDown, iface.OperStatus)
 }
 
 func TestParseSimpleInterfaces(t *testing.T) {
@@ -272,6 +482,48 @@ Loopback0              1.1.1.1         YES NVRAM  up                    up
 
 	assert.Equal(t, "Loopback0", interfaces[3].Name)
 	assert.Equal(t, StatusUp, interfaces[3].OperStatus)
+}
+
+func TestParseSimpleInterfacesNXOSBrief(t *testing.T) {
+	output := `
+--------------------------------------------------------------------------------
+Port   VRF          Status IP Address                              Speed    MTU
+--------------------------------------------------------------------------------
+mgmt0  --           up     10.250.15.51                            1000    1500
+--------------------------------------------------------------------------------
+Ethernet        VLAN    Type Mode   Status  Reason                 Speed     Port
+Interface                                                                    Ch #
+--------------------------------------------------------------------------------
+Eth1/1          1       eth  access down    XCVR not inserted        auto(D) --
+Eth1/15         --      eth  routed up      none                     400G(D) --
+
+--------------------------------------------------------------------------------
+Interface     Status     Description
+--------------------------------------------------------------------------------
+Lo0           up         --
+Lo1           up         --
+
+-------------------------------------------------------------------------------
+Interface Secondary VLAN(Type)                    Status Reason
+-------------------------------------------------------------------------------
+Vlan1     --                                      down   Administratively down`
+
+	logger := zaptest.NewLogger(t)
+	interfaces := parseSimpleInterfaces(output, logger)
+
+	require.Len(t, interfaces, 6)
+	assert.Equal(t, "mgmt0", interfaces[0].Name)
+	assert.Equal(t, StatusUp, interfaces[0].OperStatus)
+	assert.Equal(t, "Eth1/1", interfaces[1].Name)
+	assert.Equal(t, StatusDown, interfaces[1].OperStatus)
+	assert.Equal(t, "Eth1/15", interfaces[2].Name)
+	assert.Equal(t, StatusUp, interfaces[2].OperStatus)
+	assert.Equal(t, "Lo0", interfaces[3].Name)
+	assert.Equal(t, StatusUp, interfaces[3].OperStatus)
+	assert.Equal(t, "Lo1", interfaces[4].Name)
+	assert.Equal(t, StatusUp, interfaces[4].OperStatus)
+	assert.Equal(t, "Vlan1", interfaces[5].Name)
+	assert.Equal(t, StatusDown, interfaces[5].OperStatus)
 }
 
 func TestParseStatus(t *testing.T) {
@@ -325,6 +577,44 @@ func TestFormatSpeed(t *testing.T) {
 	}
 }
 
+func TestParseLineSpeed(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    string
+		unit     string
+		expected int64
+	}{
+		{name: "ten gig", value: "10", unit: "Gb/s", expected: 10_000_000_000},
+		{name: "twenty five gig decimal", value: "25", unit: "Gb/s", expected: 25_000_000_000},
+		{name: "megabit", value: "1000", unit: "Mb/s", expected: 1_000_000_000},
+		{name: "unknown", value: "auto", unit: "Gb/s", expected: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, parseLineSpeed(tt.value, tt.unit))
+		})
+	}
+}
+
+func TestParseInterfacesSkipsUnavailableRates(t *testing.T) {
+	output := `GigabitEthernet0/0 is up, line protocol is up
+  Hardware is iGbE, address is aabb.ccdd.ee01
+  Full-duplex, 1000 Mb/s, media type is RJ45
+  5 minute input rate - bits/sec, - packets/sec
+  5 minute output rate - bits/sec, - packets/sec
+     1 packets input, 100 bytes
+     0 input errors, 0 CRC, 0 frame, 0 overrun, 0 ignored
+     2 packets output, 200 bytes
+     0 output errors, 0 collisions, 0 interface resets`
+
+	interfaces := parseInterfaces(output, zaptest.NewLogger(t))
+
+	require.Len(t, interfaces, 1)
+	assert.False(t, interfaces[0].HasInputRate)
+	assert.False(t, interfaces[0].HasOutputRate)
+}
+
 func TestStr2Float64(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -347,6 +637,10 @@ func TestStr2Float64(t *testing.T) {
 	}
 }
 
+func TestStr2Int64PreservesLargeCounters(t *testing.T) {
+	assert.Equal(t, int64(9007199254740993), str2int64("9,007,199,254,740,993"))
+}
+
 func TestInterface_GetOperStatusInt(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -364,6 +658,11 @@ func TestInterface_GetOperStatusInt(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestInterface_GetAdminStatusInt(t *testing.T) {
+	assert.Equal(t, int64(1), (&Interface{AdminStatus: StatusUp}).GetAdminStatusInt())
+	assert.Equal(t, int64(0), (&Interface{AdminStatus: StatusDown}).GetAdminStatusInt())
 }
 
 func TestInterface_Validate(t *testing.T) {
@@ -395,6 +694,9 @@ func TestInterface_Validate(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 			if tt.name == "invalid status gets normalized" {
 				assert.Equal(t, StatusDown, tt.iface.OperStatus)
+			}
+			if tt.expected {
+				assert.NotEmpty(t, tt.iface.AdminStatus)
 			}
 		})
 	}

@@ -1,0 +1,6 @@
+change_type: enhancement
+component: receiver/cisco_os
+note: Add Cisco OS receiver metadata, uptime, interface capacity, scrape health, hardware, routing neighbor, fabric, topology neighbor, and structured QoS metrics.
+issues: [0]
+subtext:
+change_logs: [user]

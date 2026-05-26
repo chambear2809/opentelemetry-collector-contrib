@@ -1,0 +1,408 @@
+{
+  "schema": "com.cisco.opentelemetry.ciscoosreceiver.splunk-o11y.dashboard-bundle/v1",
+  "group": {
+    "name": "Cisco Intersight Receiver",
+    "description": "Dashboard group for Cisco Intersight metrics and logs emitted by the Cisco OS receiver. It includes focused pages for API trust, incident evidence, network counters, utilization, physical health, storage, HyperFlex, Kubernetes, and virtualization troubleshooting."
+  },
+  "default_time_range_ms": 3600000,
+  "default_tags": [
+    "ciscoosreceiver",
+    "intersight",
+    "ucs",
+    "itops",
+    "netops"
+  ],
+  "default_filters": {
+    "variables": [
+      {"property": "host.name", "alias": "Device", "description": "Intersight host or resource name.", "applyIfExists": true},
+      {"property": "intersight.serial", "alias": "Serial", "description": "Intersight device serial number.", "applyIfExists": true},
+      {"property": "intersight.moid", "alias": "Moid", "description": "Intersight managed object ID.", "applyIfExists": true},
+      {"property": "intersight.resource.type", "alias": "Resource Type", "description": "Intersight resource type.", "applyIfExists": true},
+      {"property": "network.interface.name", "alias": "Interface", "description": "Network interface name.", "applyIfExists": true}
+    ]
+  },
+  "dashboards": [
+    {
+      "name": "00 Intersight Fleet And API Health",
+      "description": "Value: gives ITOps and NetOps a first-response page for Intersight API health, scrape trust, managed resource inventory, and target reachability.",
+      "value": "Use this page before interpreting UCS, HyperFlex, storage, Kubernetes, virtualization, or advisory symptoms. It proves whether native Intersight polling is healthy and which managed objects are reporting degraded state.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to use the Intersight fleet dashboard as the incident starting point. Interpretation: start here when Intersight telemetry is missing, stale, partially successful, or when the affected resource family is not yet known.",
+          "markdown": "## Value Provided\nUse this dashboard as the first Splunk Observability page for Intersight incidents. It separates collection trust from infrastructure symptoms: API errors, rate limits, request duration, and partial scrapes explain visibility gaps, while resource status and reachability identify affected UCS, HyperFlex, storage, Kubernetes, virtualization, and firmware domains.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Intersight Managed Resource Reachability",
+          "description": "Value: identifies managed resources that Intersight reports as reachable or not reachable. Interpretation: 1 means up and 0 means down; group by resource type and host to scope the affected domain.",
+          "signalflow": "data('cisco.device.up', filter=filter('os.name', 'Intersight')).mean(by=['host.name', 'host.id', 'intersight.resource.type']).publish(label='Device up')",
+          "legend_dimension": "host.name",
+          "publish_label_options": [
+            {
+              "label": "Device up",
+              "displayName": "Device up",
+              "paletteIndex": 13
+            }
+          ]
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Intersight Resource Status",
+          "description": "Value: preserves Intersight status vocabulary across inventory families. Interpretation: higher encoded values represent warning, critical, failed, or disconnected states; use the original status and resource type dimensions for drilldown.",
+          "signalflow": "data('intersight.resource.status').mean(by=['host.name', 'host.id', 'intersight.resource.type', 'intersight.status']).publish(label='Resource status')",
+          "legend_dimension": "intersight.status",
+          "publish_label_options": [
+            {
+              "label": "Resource status",
+              "displayName": "Resource status",
+              "paletteIndex": 5
+            }
+          ]
+        },
+        {
+          "name": "Intersight Resource Count",
+          "description": "Value: shows managed object coverage by resource type, status, and severity. Interpretation: sudden count drops can indicate API filter, permission, or connectivity changes; rising warning/critical counts point to fleet health issues.",
+          "signalflow": "data('intersight.resource.count').sum(by=['intersight.resource.type', 'intersight.status', 'intersight.severity']).publish(label='Resources')",
+          "legend_dimension": "intersight.resource.type"
+        },
+        {
+          "name": "Intersight API Request Duration",
+          "description": "Value: detects slow Intersight API operations. Interpretation: rising duration by operation can precede partial scrapes or stale dashboards.",
+          "signalflow": "data('intersight.api.request.duration').mean(by=['intersight.api.operation', 'intersight.api.outcome']).publish(label='Request duration')",
+          "legend_dimension": "intersight.api.operation"
+        },
+        {
+          "name": "Intersight API Errors",
+          "description": "Value: surfaces API signing, permission, endpoint, and transient failures. Interpretation: non-zero values by operation explain missing resource families.",
+          "signalflow": "data('intersight.api.request.errors').sum(by=['intersight.api.operation', 'http.response.status_code']).publish(label='API errors')",
+          "legend_dimension": "intersight.api.operation"
+        },
+        {
+          "name": "Intersight Rate Limits",
+          "description": "Value: shows HTTP 429s from Intersight. Interpretation: repeated rate limits mean collection scope, interval, or group caps may need tuning.",
+          "signalflow": "data('intersight.api.rate_limited').sum(by=['intersight.api.operation']).publish(label='Rate limited')",
+          "legend_dimension": "intersight.api.operation"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Intersight Partial Scrape",
+          "description": "Value: proves whether one or more endpoint families failed during a scrape. Interpretation: 1 means partial success and dashboards should be read with that context.",
+          "signalflow": "data('intersight.scrape.partial_success').mean(by=['host.name']).publish(label='Partial scrape')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Intersight Last Successful Scrape",
+          "description": "Value: detects stale Intersight telemetry. Interpretation: flat or old timestamps indicate the receiver stopped completing scrapes.",
+          "signalflow": "data('intersight.scrape.last_success').max(by=['host.name']).publish(label='Last success')",
+          "legend_dimension": "host.name"
+        }
+      ]
+    },
+    {
+      "name": "01 Intersight Incident Evidence",
+      "description": "Value: gives operators one page for active alarms, advisory exposure, HCL/compliance, workflow/task failures, and tech-support status.",
+      "value": "Use this page during triage and autopsy when the question is what Intersight knew about an incident: active alarms, advisory exposure, compatibility state, failed workflows and tasks, and tech-support bundle progress.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to use Intersight incident evidence. Interpretation: metrics summarize bounded state, while related logs carry high-cardinality descriptions, failure reasons, affected object details, and audit payloads.",
+          "markdown": "## Value Provided\nUse this dashboard when an incident needs management-plane evidence. Metrics provide compact counts and encoded states. Intersight logs provide the original alarm, advisory, audit, workflow, task, and tech-support records for detailed investigation in Splunk Log Observer or search.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "Active Alarm Count",
+          "description": "Value: summarizes active Intersight alarms. Interpretation: critical/fatal rows should be investigated first and correlated with host, serial, and resource type.",
+          "signalflow": "data('intersight.alarm.count').sum(by=['intersight.severity', 'intersight.status', 'intersight.resource.type', 'intersight.acknowledge']).publish(label='Alarms')",
+          "legend_dimension": "intersight.severity"
+        },
+        {
+          "name": "Advisory Exposure",
+          "description": "Value: shows advisory and security advisory exposure. Interpretation: rising high-severity exposure after a firmware or inventory change should feed remediation planning.",
+          "signalflow": "data('intersight.advisory.count').sum(by=['intersight.severity', 'intersight.status', 'intersight.resource.type']).publish(label='Advisories')",
+          "legend_dimension": "intersight.severity"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "HCL And Compliance Status",
+          "description": "Value: identifies unsupported or degraded hardware/software combinations. Interpretation: statuses above healthy should be checked before upgrades, remediation, or support handoff.",
+          "signalflow": "data('intersight.hcl.status').mean(by=['host.name', 'host.id', 'intersight.status']).publish(label='HCL status')",
+          "legend_dimension": "intersight.status"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Workflow Status",
+          "description": "Value: surfaces failed or stalled Intersight workflows. Interpretation: a failed workflow often explains a maintenance or policy-change symptom.",
+          "signalflow": "data('intersight.workflow.status').mean(by=['host.name', 'intersight.status', 'intersight.resource.type']).publish(label='Workflow status')",
+          "legend_dimension": "intersight.status"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Task Status",
+          "description": "Value: pinpoints the failed step behind a workflow. Interpretation: use task logs for failure reason and affected object details.",
+          "signalflow": "data('intersight.task.status').mean(by=['host.name', 'intersight.status', 'intersight.resource.type']).publish(label='Task status')",
+          "legend_dimension": "intersight.status"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Tech Support Status",
+          "description": "Value: tracks support bundle collection or upload progress. Interpretation: failed or stuck bundle state can delay TAC handoff.",
+          "signalflow": "data('intersight.techsupport.status').mean(by=['host.name', 'intersight.status', 'intersight.resource.type']).publish(label='Tech-support status')",
+          "legend_dimension": "intersight.status"
+        }
+      ]
+    },
+    {
+      "name": "02 AI Pod UCS HyperFlex Storage",
+      "description": "Value: correlates UCS/FI, HyperFlex, storage, virtualization, and telemetry GroupBy signals around AI pod host, serial, cluster, namespace, and workload investigations.",
+      "value": "Use this page when AI, Kubernetes, accelerator, or workload symptoms need infrastructure correlation. It connects Intersight UCS, HyperFlex, storage, VM, and telemetry performance signals with affected hosts and clusters.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains the AI pod infrastructure page. Interpretation: correlate host, serial, and cluster dimensions with Cisco OS, Meraki, Kubernetes, accelerator, and workload dashboards to reconstruct blast radius.",
+          "markdown": "## Value Provided\nUse this dashboard to connect AI pod symptoms to managed infrastructure. It shows UCS thermal, power, fan, voltage, current, memory/ECC, PSU, optics, network, storage, HyperFlex, and VM evidence. Pair these charts with Kubernetes, accelerator, and fabric dashboards using host, serial, cluster, namespace, and workload dimensions.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "UCS Power Thermal Fan Voltage",
+          "description": "Value: shows physical telemetry around power, cooling, and electrical sensors. Interpretation: thermal, fan, voltage, current, or power-state anomalies can explain host instability or workload throttling.",
+          "signalflow": "data('intersight.ucs.host.power').mean(by=['host.name']).publish(label='Power'); data('intersight.ucs.host.power_state').mean(by=['host.name']).publish(label='Power state'); data('intersight.ucs.temperature').mean(by=['host.name']).publish(label='Temperature'); data('intersight.ucs.fan.speed').mean(by=['host.name']).publish(label='Fan speed'); data('intersight.ucs.fan.speed_ratio').mean(by=['host.name']).publish(label='Fan ratio'); data('intersight.ucs.voltage').mean(by=['host.name']).publish(label='Voltage'); data('intersight.ucs.current').mean(by=['host.name']).publish(label='Current')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "UCS Network Throughput And Errors",
+          "description": "Value: correlates host network telemetry with fabric symptoms. Interpretation: traffic spikes, sudden silence, errors, drops, utilization, or speed mismatches should be compared with interface, QoS, and Kubernetes workload charts.",
+          "signalflow": "data('intersight.ucs.network.receive').sum(by=['host.name']).publish(label='Receive bytes'); data('intersight.ucs.network.transmit').sum(by=['host.name']).publish(label='Transmit bytes'); data('intersight.ucs.network.receive.errors').sum(by=['host.name']).publish(label='Receive errors'); data('intersight.ucs.network.transmit.errors').sum(by=['host.name']).publish(label='Transmit errors'); data('intersight.ucs.network.receive.drops').sum(by=['host.name']).publish(label='Receive drops'); data('intersight.ucs.network.transmit.drops').sum(by=['host.name']).publish(label='Transmit drops'); data('intersight.ucs.network.utilization').max(by=['host.name']).publish(label='Utilization'); data('intersight.ucs.network.speed').max(by=['host.name']).publish(label='Speed')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "UCS Memory And ECC",
+          "description": "Value: shows host memory usage and DIMM health. Interpretation: memory pressure or ECC growth can explain workload instability, kernel errors, or upcoming DIMM replacement.",
+          "signalflow": "data('system.memory.utilization').mean(by=['host.name']).publish(label='Memory utilization'); data('intersight.ucs.memory.used').mean(by=['host.name']).publish(label='Used'); data('intersight.ucs.memory.free').mean(by=['host.name']).publish(label='Free'); data('intersight.ucs.memory.ecc.correctable').sum(by=['host.name']).publish(label='Correctable ECC'); data('intersight.ucs.memory.ecc.uncorrectable').sum(by=['host.name']).publish(label='Uncorrectable ECC')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "UCS PSU And Optics",
+          "description": "Value: shows power-supply load and optical signal power. Interpretation: PSU utilization, output power, or optical signal drift can point to physical-layer causes before higher-level symptoms.",
+          "signalflow": "data('intersight.ucs.power_supply.output_power').mean(by=['host.name']).publish(label='PSU output'); data('intersight.ucs.power_supply.utilization').max(by=['host.name']).publish(label='PSU utilization'); data('intersight.ucs.signal_power.receive').mean(by=['host.name']).publish(label='Rx optical power'); data('intersight.ucs.signal_power.transmit').mean(by=['host.name']).publish(label='Tx optical power')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Storage Media Health",
+          "description": "Value: surfaces disk media errors, predictive failures, life remaining, and temperature. Interpretation: predictive failures and low life-left should be triaged before they become workload-impacting.",
+          "signalflow": "data('intersight.storage.media_error.count').sum(by=['host.name', 'host.id']).publish(label='Media errors'); data('intersight.storage.predictive_failure.count').sum(by=['host.name', 'host.id']).publish(label='Predictive failures'); data('intersight.storage.life_left').mean(by=['host.name', 'host.id']).publish(label='Life left'); data('intersight.storage.temperature').mean(by=['host.name', 'host.id']).publish(label='Temperature')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "HyperFlex IOPS",
+          "description": "Value: shows read and write IOPS for HyperFlex clusters. Interpretation: IOPS spikes or imbalance should be compared with latency and workload timelines.",
+          "signalflow": "data('intersight.hyperflex.read.iops').sum(by=['host.name']).publish(label='Read IOPS'); data('intersight.hyperflex.write.iops').sum(by=['host.name']).publish(label='Write IOPS')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "HyperFlex Latency",
+          "description": "Value: shows read and write latency for HyperFlex clusters. Interpretation: latency spikes during workload slowdown usually need storage and fabric correlation.",
+          "signalflow": "data('intersight.hyperflex.read.latency').max(by=['host.name']).publish(label='Read latency'); data('intersight.hyperflex.write.latency').max(by=['host.name']).publish(label='Write latency')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "VM Footprint",
+          "description": "Value: shows VM count and VM sizing from Intersight. Interpretation: use host, cluster, and VM resource dimensions to correlate workload concentration with infrastructure symptoms.",
+          "signalflow": "data('intersight.virtual_machine.count').sum(by=['host.name']).publish(label='VM count'); data('intersight.virtual_machine.cpu.count').sum(by=['host.name']).publish(label='VM vCPU'); data('intersight.virtual_machine.memory').sum(by=['host.name']).publish(label='VM memory')",
+          "legend_dimension": "host.name"
+        }
+      ]
+    },
+    {
+      "name": "03 UCS Network Counters And Utilization",
+      "description": "Value: gives NetOps packet, byte, drop, error, pause-frame, link-state, and utilization evidence for UCS/FI-facing interfaces.",
+      "value": "Use this page when the symptom smells like saturation, physical path instability, congestion, packet loss, or a workload talking through a bad host or fabric interface.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains the network counter page. Interpretation: start with link state and utilization, then follow bytes/packets, errors, drops/discards, pause frames, and reset/signal-loss counters to isolate physical, congestion, or fabric symptoms.",
+          "markdown": "## Value Provided\nUse this page for network-first troubleshooting. It focuses on counters and utilization instead of inventory: link state, operational speed, bandwidth utilization, byte and packet volume, CRC/discard/no-buffer errors, RX/TX drops, pause frames, link failures, signal losses, and interface resets. Pair these panels with Cisco OS interface, QoS, PFC, and transceiver dashboards when the affected host or fabric path is known.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Link Status By Host",
+          "description": "Value: shows whether interfaces were up during the telemetry interval. Interpretation: down or flapping links should be investigated before higher-layer symptoms.",
+          "signalflow": "data('intersight.ucs.network.link.status').mean(by=['host.name']).publish(label='Link status')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Utilization And Operational Speed",
+          "description": "Value: shows interface saturation and negotiated speed. Interpretation: high utilization at a lower-than-expected speed is a strong clue for link negotiation, cabling, or policy issues.",
+          "signalflow": "data('intersight.ucs.network.utilization').max(by=['host.name']).publish(label='Utilization'); data('intersight.ucs.network.speed').max(by=['host.name']).publish(label='Speed')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Bytes And Packets",
+          "description": "Value: shows traffic volume in both byte and packet terms. Interpretation: packet-heavy traffic with lower byte volume can stress buffers and CPU differently than bulk throughput.",
+          "signalflow": "data('intersight.ucs.network.receive').sum(by=['host.name']).publish(label='RX bytes'); data('intersight.ucs.network.transmit').sum(by=['host.name']).publish(label='TX bytes'); data('intersight.ucs.network.receive.packets').sum(by=['host.name']).publish(label='RX packets'); data('intersight.ucs.network.transmit.packets').sum(by=['host.name']).publish(label='TX packets')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Drops Discards And No Buffer",
+          "description": "Value: surfaces packet loss and buffer pressure. Interpretation: drops with no-buffer or discards point to congestion, queuing, or host/fabric pressure even when links stay up.",
+          "signalflow": "data('intersight.ucs.network.receive.drops').sum(by=['host.name']).publish(label='RX drops'); data('intersight.ucs.network.transmit.drops').sum(by=['host.name']).publish(label='TX drops'); data('intersight.ucs.network.receive.discards').sum(by=['host.name']).publish(label='RX discards'); data('intersight.ucs.network.transmit.discards').sum(by=['host.name']).publish(label='TX discards'); data('intersight.ucs.network.receive.no_buffer').sum(by=['host.name']).publish(label='RX no buffer')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "CRC Link Failures Signal Losses Resets",
+          "description": "Value: isolates physical-layer and interface instability. Interpretation: CRC, signal loss, link failure, or reset growth usually means cabling, optics, NIC, FI port, or transceiver investigation.",
+          "signalflow": "data('intersight.ucs.network.receive.crc_errors').sum(by=['host.name']).publish(label='RX CRC'); data('intersight.ucs.network.link_failures').sum(by=['host.name']).publish(label='Link failures'); data('intersight.ucs.network.signal_losses').sum(by=['host.name']).publish(label='Signal losses'); data('intersight.ucs.network.interface_resets').sum(by=['host.name']).publish(label='Interface resets')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Receive And Transmit Error Totals",
+          "description": "Value: shows high-level RX/TX error totals. Interpretation: use this panel to find affected hosts quickly, then drill into CRC, discard, drop, no-buffer, and signal-loss panels.",
+          "signalflow": "data('intersight.ucs.network.receive.errors').sum(by=['host.name']).publish(label='RX errors'); data('intersight.ucs.network.transmit.errors').sum(by=['host.name']).publish(label='TX errors')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Pause Frames",
+          "description": "Value: shows flow-control activity. Interpretation: pause-frame growth during workload slowdown points toward congestion, backpressure, or lossless network tuning issues.",
+          "signalflow": "data('intersight.ucs.network.receive.pause_frames').sum(by=['host.name']).publish(label='RX pause'); data('intersight.ucs.network.transmit.pause_frames').sum(by=['host.name']).publish(label='TX pause')",
+          "legend_dimension": "host.name"
+        }
+      ]
+    },
+    {
+      "name": "04 UCS Compute Power Thermal And Memory",
+      "description": "Value: gives ITOps host utilization, memory, ECC, power, PSU, fan, temperature, voltage/current, and optics evidence for UCS troubleshooting.",
+      "value": "Use this page when workloads are slow, unstable, throttled, power constrained, or showing host hardware symptoms.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains the compute and physical health page. Interpretation: compare CPU/memory pressure with power, thermal, PSU, fan, ECC, and optics evidence to separate workload pressure from hardware health.",
+          "markdown": "## Value Provided\nUse this page to troubleshoot host-side instability and capacity. It pairs CPU and memory utilization with physical telemetry: host power and energy, fan speed, thermal thresholds, voltage/current, PSU utilization/status, fan/status sensors, memory ECC/status, and optical signal power. This makes the dashboard useful for both live triage and post-incident autopsy.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "CPU And Memory Utilization",
+          "description": "Value: shows compute pressure. Interpretation: high user/system CPU or memory utilization explains workload slowness before hardware faults are suspected.",
+          "signalflow": "data('system.cpu.utilization').max(by=['host.name']).publish(label='CPU user'); data('intersight.ucs.cpu.system.utilization').max(by=['host.name']).publish(label='CPU system'); data('intersight.ucs.cpu.idle.utilization').min(by=['host.name']).publish(label='CPU idle'); data('system.memory.utilization').max(by=['host.name']).publish(label='Memory utilization')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Memory Bytes And ECC",
+          "description": "Value: shows memory composition and error growth. Interpretation: low free memory or rising ECC counters points to pressure or failing DIMMs.",
+          "signalflow": "data('intersight.ucs.memory.used').mean(by=['host.name']).publish(label='Used'); data('intersight.ucs.memory.free').mean(by=['host.name']).publish(label='Free'); data('intersight.ucs.memory.cached').mean(by=['host.name']).publish(label='Cached'); data('intersight.ucs.memory.ecc.correctable').sum(by=['host.name']).publish(label='Correctable ECC'); data('intersight.ucs.memory.ecc.uncorrectable').sum(by=['host.name']).publish(label='Uncorrectable ECC')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Hardware Sensor Status",
+          "description": "Value: lists fan, PSU, memory, and temperature sensor status. Interpretation: failed status values should be investigated alongside alarms and service events.",
+          "signalflow": "data('intersight.ucs.fan.status').mean(by=['host.name']).publish(label='Fan status'); data('intersight.ucs.power_supply.status').mean(by=['host.name']).publish(label='PSU status'); data('intersight.ucs.memory.status').mean(by=['host.name']).publish(label='Memory status'); data('intersight.ucs.temperature.status').mean(by=['host.name']).publish(label='Temperature status')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Thermal Headroom",
+          "description": "Value: compares temperature against high and low critical thresholds. Interpretation: rising temperatures close to thresholds can explain throttling, alarms, or shutdown behavior.",
+          "signalflow": "data('intersight.ucs.temperature').mean(by=['host.name']).publish(label='Temperature'); data('intersight.ucs.temperature.limit_high_critical').max(by=['host.name']).publish(label='High critical'); data('intersight.ucs.temperature.limit_low_critical').min(by=['host.name']).publish(label='Low critical')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Power Energy Voltage Current",
+          "description": "Value: shows host power draw, power state, energy, voltage, and current. Interpretation: power draw or electrical anomalies can explain instability, throttling, or chassis-level alarms.",
+          "signalflow": "data('intersight.ucs.host.power').mean(by=['host.name']).publish(label='Power'); data('intersight.ucs.host.power_state').mean(by=['host.name']).publish(label='Power state'); data('intersight.ucs.host.energy').sum(by=['host.name']).publish(label='Energy'); data('intersight.ucs.voltage').mean(by=['host.name']).publish(label='Voltage'); data('intersight.ucs.current').mean(by=['host.name']).publish(label='Current')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Fan And PSU Load",
+          "description": "Value: shows fan speed, fan ratio, PSU output power, and PSU utilization. Interpretation: fan ramps or high PSU utilization during workload changes can point to cooling or power capacity issues.",
+          "signalflow": "data('intersight.ucs.fan.speed').mean(by=['host.name']).publish(label='Fan RPM'); data('intersight.ucs.fan.speed_ratio').mean(by=['host.name']).publish(label='Fan ratio'); data('intersight.ucs.power_supply.output_power').mean(by=['host.name']).publish(label='PSU output'); data('intersight.ucs.power_supply.utilization').max(by=['host.name']).publish(label='PSU utilization')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Optical Signal Power",
+          "description": "Value: shows transceiver receive and transmit signal power. Interpretation: drifting or weak dBm values should be correlated with CRC, signal-loss, and link-failure counters.",
+          "signalflow": "data('intersight.ucs.signal_power.receive').mean(by=['host.name']).publish(label='Rx optical power'); data('intersight.ucs.signal_power.transmit').mean(by=['host.name']).publish(label='Tx optical power')",
+          "legend_dimension": "host.name"
+        }
+      ]
+    },
+    {
+      "name": "05 Storage HyperFlex And VM Impact",
+      "description": "Value: connects storage media health, rebuild progress, HyperFlex performance, faults, and VM footprint to workload impact.",
+      "value": "Use this page when the incident may involve disk degradation, storage rebuilds, HyperFlex latency, VM concentration, or infrastructure faults.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains the storage and virtualization impact page. Interpretation: use storage media counters and HyperFlex performance together so disk health, rebuilds, and latency are not investigated in isolation.",
+          "markdown": "## Value Provided\nUse this page when workload symptoms might be storage-backed. It combines media errors, predictive failures, life left, drive temperature, power-on hours, rebuild rate, storage status, HyperFlex IOPS/latency, fault counts, and VM footprint so operators can connect infrastructure health to workload concentration.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Storage Status",
+          "description": "Value: lists storage controller, disk, and virtual-drive status. Interpretation: unhealthy status should be checked before reading capacity and performance charts as normal.",
+          "signalflow": "data('intersight.storage.status').mean(by=['host.name', 'host.id', 'intersight.status']).publish(label='Storage status')",
+          "legend_dimension": "intersight.status"
+        },
+        {
+          "name": "Disk Errors Predictive Failure And Life",
+          "description": "Value: shows media errors, predictive failures, and SSD life left. Interpretation: predictive failures or low life-left are actionable before they cause a larger incident.",
+          "signalflow": "data('intersight.storage.media_error.count').sum(by=['host.name', 'host.id']).publish(label='Media errors'); data('intersight.storage.predictive_failure.count').sum(by=['host.name', 'host.id']).publish(label='Predictive failures'); data('intersight.storage.life_left').min(by=['host.name', 'host.id']).publish(label='Life left')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Disk Temperature Age And Rebuild",
+          "description": "Value: shows disk temperature, age, and rebuild rate. Interpretation: high temperature, high power-on hours, or rebuild progress can explain degraded performance windows.",
+          "signalflow": "data('intersight.storage.temperature').max(by=['host.name', 'host.id']).publish(label='Temperature'); data('intersight.storage.power_on.hours').max(by=['host.name', 'host.id']).publish(label='Power-on hours'); data('intersight.storage.rebuild.rate').max(by=['host.name', 'host.id']).publish(label='Rebuild rate')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "HyperFlex IOPS And Latency",
+          "description": "Value: shows storage load and latency together. Interpretation: rising latency with high IOPS points to pressure, while latency without IOPS can point to path or backend problems.",
+          "signalflow": "data('intersight.hyperflex.read.iops').sum(by=['host.name']).publish(label='Read IOPS'); data('intersight.hyperflex.write.iops').sum(by=['host.name']).publish(label='Write IOPS'); data('intersight.hyperflex.read.latency').max(by=['host.name']).publish(label='Read latency'); data('intersight.hyperflex.write.latency').max(by=['host.name']).publish(label='Write latency')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Faults And HyperFlex Status",
+          "description": "Value: correlates summarized faults with HyperFlex status. Interpretation: storage or cluster faults can explain latency or VM impact even when media counters look quiet.",
+          "signalflow": "data('intersight.fault.count').sum(by=['host.name', 'intersight.platform']).publish(label='Faults'); data('intersight.hyperflex.status').mean(by=['host.name', 'intersight.status']).publish(label='HyperFlex status')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "VM Footprint And Power State",
+          "description": "Value: shows VM count, vCPU, memory, and VM power state. Interpretation: workload concentration helps scope blast radius when a host, cluster, or storage path is unhealthy.",
+          "signalflow": "data('intersight.virtual_machine.count').sum(by=['host.name']).publish(label='VM count'); data('intersight.virtual_machine.cpu.count').sum(by=['host.name']).publish(label='VM vCPU'); data('intersight.virtual_machine.memory').sum(by=['host.name']).publish(label='VM memory'); data('intersight.virtual_machine.power_state').mean(by=['host.name', 'intersight.status']).publish(label='VM power state')",
+          "legend_dimension": "host.name"
+        }
+      ]
+    }
+  ]
+}

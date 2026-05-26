@@ -7,54 +7,122 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
+	"strconv"
 	"time"
 
 	"go.uber.org/zap"
 	cryptossh "golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 )
 
+type sshDialer func(ctx context.Context, network, address string, config *cryptossh.ClientConfig) (*cryptossh.Client, error)
+
+var dialSSH sshDialer = func(ctx context.Context, network, address string, config *cryptossh.ClientConfig) (*cryptossh.Client, error) {
+	type dialResult struct {
+		conn *cryptossh.Client
+		err  error
+	}
+	ch := make(chan dialResult, 1)
+	go func() {
+		conn, err := cryptossh.Dial(network, address, config)
+		ch <- dialResult{conn, err}
+	}()
+	select {
+	case r := <-ch:
+		return r.conn, r.err
+	case <-ctx.Done():
+		// The dial goroutine is still running. When it completes, close any
+		// connection it returns so we don't leak an open SSH socket.
+		go func() {
+			if r := <-ch; r.conn != nil {
+				r.conn.Close()
+			}
+		}()
+		return nil, ctx.Err()
+	}
+}
+
 // EstablishDeviceConnection creates a device connection using the provided DeviceConfig.
-func EstablishDeviceConnection(ctx context.Context, device DeviceConfig, logger *zap.Logger) (*RPCClient, error) {
+func EstablishDeviceConnection(ctx context.Context, device DeviceConfig, timeout time.Duration, logger *zap.Logger) (*RPCClient, error) {
 	authMethods, err := buildAuthMethods(device.Auth, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build auth methods: %w", err)
 	}
 
+	hostKeyCallback, err := buildHostKeyCallback(device.Auth, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build host key callback: %w", err)
+	}
+
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+
 	sshConfig := &cryptossh.ClientConfig{
 		User:            device.Auth.Username,
 		Auth:            authMethods,
-		HostKeyCallback: cryptossh.InsecureIgnoreHostKey(), // #nosec G106 - Insecure for lab/demo only
-		Timeout:         10 * time.Second,
+		HostKeyCallback: hostKeyCallback,
+		Timeout:         timeout,
 	}
 
-	address := fmt.Sprintf("%s:%d", device.Device.Host.IP, device.Device.Host.Port)
+	address := net.JoinHostPort(device.Device.Host.IP, strconv.Itoa(device.Device.Host.Port))
 
-	conn, err := cryptossh.Dial("tcp", address, sshConfig)
+	conn, err := dialSSH(ctx, "tcp", address, sshConfig)
 	if err != nil {
 		return nil, fmt.Errorf("SSH connection failed to %s: %w", address, err)
 	}
 
 	sshClient := &Client{
-		Target:     address,
-		Username:   device.Auth.Username,
-		Connection: conn,
-		Logger:     logger,
+		Target:         address,
+		Username:       device.Auth.Username,
+		EnablePassword: string(device.Auth.EnablePassword),
+		Connection:     conn,
+		Logger:         logger,
+		network:        "tcp",
+		address:        address,
+		config:         sshConfig,
 	}
 
-	osType, err := sshClient.DetectOSType(ctx)
+	// Disable CLI pagination once per connection so all subsequent show
+	// commands return full output without interactive page prompts.
+	if disablePagingErr := sshClient.DisablePaging(ctx); disablePagingErr != nil {
+		logger.Warn("Failed to disable CLI pagination; output may be truncated", zap.Error(disablePagingErr))
+	}
+
+	deviceMetadata, err := sshClient.DetectDeviceMetadata(ctx)
 	if err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("OS detection failed: %w", err)
 	}
 
 	rpcClient := &RPCClient{
-		SSHClient: sshClient,
-		OSType:    osType,
-		Logger:    logger,
+		SSHClient:      sshClient,
+		OSType:         deviceMetadata.OSType,
+		DeviceMetadata: deviceMetadata,
+		Timeout:        timeout,
+		Logger:         logger,
 	}
 
 	return rpcClient, nil
+}
+
+// buildHostKeyCallback returns an SSH HostKeyCallback based on the auth config.
+// Requires either KnownHostsFile or InsecureSkipVerify to be set.
+func buildHostKeyCallback(auth AuthConfig, logger *zap.Logger) (cryptossh.HostKeyCallback, error) {
+	if auth.KnownHostsFile != "" {
+		cb, err := knownhosts.New(auth.KnownHostsFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load known_hosts file %s: %w", auth.KnownHostsFile, err)
+		}
+		return cb, nil
+	}
+	if auth.InsecureSkipVerify {
+		logger.Warn("SSH host key verification is disabled (insecure_skip_verify=true); this is insecure outside of isolated lab environments")
+		return cryptossh.InsecureIgnoreHostKey(), nil // #nosec G106
+	}
+	return nil, errors.New("SSH host key verification is not configured: set auth.known_hosts_file or set auth.insecure_skip_verify: true (lab only)")
 }
 
 // buildAuthMethods builds SSH authentication methods from the provided auth config.

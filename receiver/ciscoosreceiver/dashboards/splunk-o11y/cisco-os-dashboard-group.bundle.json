@@ -1,0 +1,1489 @@
+{
+  "schema": "com.cisco.opentelemetry.ciscoosreceiver.splunk-o11y.dashboard-bundle/v1",
+  "group": {
+    "name": "Cisco OS Receiver",
+    "description": "Dashboard group for Cisco OS receiver metrics in Splunk Observability Cloud. It includes an overview landing page plus focused pages for telemetry health, interfaces, routing/fabric/redundancy, AI/RDMA/QoS congestion, hardware/optics, secure networking, and campus networking troubleshooting."
+  },
+  "default_time_range_ms": 3600000,
+  "default_tags": [
+    "ciscoosreceiver",
+    "network",
+    "itops",
+    "netops"
+  ],
+  "default_filters": {
+    "variables": [
+      {"property": "host.name", "alias": "Device", "description": "Cisco device host name.", "applyIfExists": true},
+      {"property": "network.interface.name", "alias": "Interface", "description": "Network interface name.", "applyIfExists": true},
+      {"property": "cisco.fabric.name", "alias": "Fabric", "description": "Cisco fabric name.", "applyIfExists": true},
+      {"property": "cisco.site.name", "alias": "Site", "description": "Cisco site name.", "applyIfExists": true},
+      {"property": "host.id", "alias": "Host ID", "description": "Stable Cisco host identifier.", "applyIfExists": true},
+      {"property": "cisco.switch.serial", "alias": "Switch Serial", "description": "Cisco switch serial number.", "applyIfExists": true}
+    ]
+  },
+  "dashboards": [
+    {
+      "name": "00 Overview Troubleshooting Workflow",
+      "description": "Value: gives ITOps and NetOps a single landing page for Cisco OS receiver metrics, from telemetry trust through interface, routing, fabric, AI/RDMA, QoS, optics, and hardware troubleshooting.",
+      "value": "A high-density operational landing page for live troubleshooting and incident autopsy. It prioritizes chart styles by the question each metric answers: list charts for current state and exceptions, time-series charts for rates, utilization, drops, marks, counts, churn, temperature, and capacity signals.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to use the overview dashboard as the incident starting point. Interpretation: start here when the failure domain is unknown, then jump to a focused page when the symptom points at a device, interface, routing, redundancy, AI/RDMA, QoS, optics, or hardware issue.",
+          "markdown": "## Value Provided\nUse this overview dashboard as the first Splunk Observability view during Cisco network incidents and post-incident autopsy. It is intentionally organized as a workflow: prove telemetry is trustworthy, isolate link and interface symptoms, confirm routing/fabric/redundancy state, then inspect AI/RDMA, QoS, optics, and hardware evidence.\n\nChart style is intentional. Current binary state is shown as list charts with sparklines so failed devices, interfaces, peers, VNIs, and members are easy to spot without reading flat 1/0 lines. Rates, utilization, drops, marks, temperatures, counts, and churn stay as time-series charts because timing and slope are the most useful troubleshooting evidence. Single-value cards are avoided because these metrics are multi-device and multi-interface by nature.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "Text",
+          "name": "1. Telemetry Trust And Device Health",
+          "description": "Value: separates the single dashboard into an incident workflow section. Interpretation: use this header to move through related charts together instead of reading every panel as an isolated signal.",
+          "markdown": "### 1. Telemetry Trust And Device Health\nStart here before trusting downstream network conclusions. Confirm the device is reachable, the scrape is complete, command families are not failing, and device pressure or reloads did not distort the evidence.",
+          "width": 12,
+          "height": 1
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Device Reachability By Host",
+          "description": "Value: identifies devices that stopped responding to collection before deeper analysis begins. Interpretation: each row is a device; 1 means reachable and 0 means unreachable. Use the sparkline to spot flapping reachability.",
+          "signalflow": "data('cisco.device.up').mean(by=['host.name']).publish(label='Device up')",
+          "legend_dimension": "host.name",
+          "publish_label_options": [
+            {
+              "label": "Device up",
+              "displayName": "Device up",
+              "paletteIndex": 13
+            }
+          ]
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Scrape Partial Success",
+          "description": "Value: prevents false conclusions from incomplete telemetry when only some command families failed. Interpretation: each row is a device; 1 means at least one command family failed during collection. Check command duration and errors next.",
+          "signalflow": "data('cisco.scrape.partial_success').mean(by=['host.name']).publish(label='Partial scrape')",
+          "legend_dimension": "host.name",
+          "publish_label_options": [
+            {
+              "label": "Partial scrape",
+              "displayName": "Partial scrape",
+              "paletteIndex": 8
+            }
+          ]
+        },
+        {
+          "name": "Command Duration By Family",
+          "description": "Value: isolates slow command families that explain stale, partial, or missing data. Interpretation: higher values show longer CLI command execution by device and command family; spikes identify the scraper area causing latency.",
+          "signalflow": "data('cisco.scrape.command.duration').mean(by=['host.name', 'cisco.scrape.command.family']).publish(label='Command duration')",
+          "legend_dimension": "cisco.scrape.command.family",
+          "publish_label_options": [
+            {
+              "label": "Command duration",
+              "displayName": "Command duration",
+              "valueUnit": "Second",
+              "paletteIndex": 1
+            }
+          ]
+        },
+        {
+          "name": "SSH Reconnects And Command Errors",
+          "description": "Value: separates network/session instability from parser or command-family failures. Interpretation: rising reconnects suggest SSH/session path issues; rising command errors by family suggest unsupported commands, privilege gaps, or device CLI failures.",
+          "signalflow": "data('cisco.ssh.reconnects').rate().sum(by=['host.name']).publish(label='SSH reconnects/sec'); data('cisco.scrape.command.errors').rate().sum(by=['host.name', 'cisco.scrape.command.family']).publish(label='Command errors/sec')",
+          "legend_dimension": "host.name",
+          "publish_label_options": [
+            {
+              "label": "SSH reconnects/sec",
+              "displayName": "SSH reconnects/sec",
+              "paletteIndex": 4
+            },
+            {
+              "label": "Command errors/sec",
+              "displayName": "Command errors/sec",
+              "paletteIndex": 8
+            }
+          ]
+        },
+        {
+          "name": "CPU And Memory Pressure",
+          "description": "Value: finds device resource exhaustion that can precede control-plane instability and packet loss. Interpretation: values are percentages by device; sustained high CPU or memory during an incident points to device pressure rather than only a link issue.",
+          "signalflow": "data('system.cpu.utilization', filter=filter('hw.type', 'network')).mean(by=['host.name']).scale(100).publish(label='CPU %'); data('system.memory.utilization', filter=filter('hw.type', 'network')).mean(by=['host.name']).scale(100).publish(label='Memory %')",
+          "legend_dimension": "host.name",
+          "publish_label_options": [
+            {
+              "label": "CPU %",
+              "displayName": "CPU %",
+              "valueSuffix": "%",
+              "paletteIndex": 5
+            },
+            {
+              "label": "Memory %",
+              "displayName": "Memory %",
+              "valueSuffix": "%",
+              "paletteIndex": 10
+            }
+          ]
+        },
+        {
+          "name": "Reload Evidence",
+          "description": "Value: confirms whether a reboot or reload occurred near the outage window. Interpretation: uptime should climb steadily; a sharp drop means the device restarted and should anchor the incident timeline.",
+          "signalflow": "data('system.uptime', filter=filter('hw.type', 'network')).mean(by=['host.name']).publish(label='Uptime seconds')",
+          "legend_dimension": "host.name",
+          "publish_label_options": [
+            {
+              "label": "Uptime seconds",
+              "displayName": "Uptime seconds",
+              "valueUnit": "Second",
+              "paletteIndex": 2
+            }
+          ]
+        },
+        {
+          "type": "Text",
+          "name": "2. Interface And Link Symptoms",
+          "description": "Value: separates the single dashboard into an incident workflow section. Interpretation: use this header to move through related charts together instead of reading every panel as an isolated signal.",
+          "markdown": "### 2. Interface And Link Symptoms\nSeparate intentional shutdown, operational failure, saturation, silence, packet-rate pressure, speed downgrade, errors, and drops on service-carrying links.",
+          "width": 12,
+          "height": 1
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Admin State Compared To Oper State",
+          "description": "Value: distinguishes intentionally disabled interfaces from enabled interfaces that failed. Interpretation: Admin enabled=1 means the port should be active; Oper up=0 means the link is down. The important exception is admin 1 with oper 0.",
+          "signalflow": "data('cisco.interface.admin.status').mean(by=['host.name', 'network.interface.name']).publish(label='Admin enabled'); data('system.network.interface.status', filter=filter('hw.type', 'network')).mean(by=['host.name', 'network.interface.name']).publish(label='Oper up')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Admin enabled",
+              "displayName": "Admin enabled",
+              "paletteIndex": 13
+            },
+            {
+              "label": "Oper up",
+              "displayName": "Oper up",
+              "paletteIndex": 1
+            }
+          ]
+        },
+        {
+          "name": "Interface Utilization",
+          "description": "Value: identifies saturated links and asymmetric congestion by direction. Interpretation: values are percent utilization by device, interface, and direction; sustained high utilization before impact suggests capacity pressure.",
+          "signalflow": "data('cisco.interface.utilization').mean(by=['host.name', 'network.interface.name', 'network.io.direction']).scale(100).publish(label='Utilization %')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Utilization %",
+              "displayName": "Utilization %",
+              "valueSuffix": "%",
+              "paletteIndex": 5
+            }
+          ]
+        },
+        {
+          "name": "Interface Traffic Rate",
+          "description": "Value: finds sudden silence, traffic shifts, or burst growth on critical ports. Interpretation: bytes/sec is shown by interface and direction; drops to zero or sudden directional shifts are strong incident markers.",
+          "signalflow": "data('system.network.io', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Bytes/sec')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Bytes/sec",
+              "displayName": "Bytes/sec",
+              "valueUnit": "Byte",
+              "paletteIndex": 2
+            }
+          ]
+        },
+        {
+          "name": "Interface Packet Rate",
+          "description": "Value: differentiates packet-rate pressure from byte-rate saturation. Interpretation: high packets/sec with modest byte/sec can indicate small-packet storms, control traffic, or workload patterns stressing forwarding paths.",
+          "signalflow": "data('cisco.interface.packet.rate').mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Packets/sec')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Packets/sec",
+              "displayName": "Packets/sec",
+              "paletteIndex": 6
+            }
+          ]
+        },
+        {
+          "name": "Interface Errors And Drops",
+          "description": "Value: highlights packet-loss symptoms that correlate with application latency, retransmits, or failover events. Interpretation: non-zero sustained errors/sec or drops/sec on clean links is actionable; compare timing with utilization and optics.",
+          "signalflow": "data('system.network.errors', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Errors/sec'); data('system.network.packet.dropped', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Drops/sec')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Errors/sec",
+              "displayName": "Errors/sec",
+              "paletteIndex": 8
+            },
+            {
+              "label": "Drops/sec",
+              "displayName": "Drops/sec",
+              "paletteIndex": 4
+            }
+          ]
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Interface Speed",
+          "description": "Value: exposes speed downgrade or missing speed data that makes utilization misleading. Interpretation: each row is a current interface speed; unexpected lower speed explains apparent saturation and should be checked against physical/link settings.",
+          "signalflow": "data('cisco.interface.speed').mean(by=['host.name', 'network.interface.name']).publish(label='Speed bit/s')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Speed bit/s",
+              "displayName": "Speed bit/s",
+              "valueUnit": "Bit",
+              "paletteIndex": 10
+            }
+          ]
+        },
+        {
+          "type": "Text",
+          "name": "3. Routing Fabric And Redundancy",
+          "description": "Value: separates the single dashboard into an incident workflow section. Interpretation: use this header to move through related charts together instead of reading every panel as an isolated signal.",
+          "markdown": "### 3. Routing Fabric And Redundancy\nValidate whether control-plane, forwarding-plane, overlay, L2, and redundant path state changed before or during impact.",
+          "width": 12,
+          "height": 1
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Routing Neighbor State",
+          "description": "Value: identifies BGP, OSPF, EIGRP, or ISIS adjacencies that dropped or flapped. Interpretation: each row is a neighbor; 1 means established/up and 0 means down or not established. Use the sparkline to see flaps.",
+          "signalflow": "data('cisco.routing.neighbor.state').mean(by=['host.name', 'cisco.routing.protocol', 'cisco.routing.vrf', 'network.peer.address']).publish(label='Neighbor up')",
+          "legend_dimension": "network.peer.address",
+          "publish_label_options": [
+            {
+              "label": "Neighbor up",
+              "displayName": "Neighbor up",
+              "paletteIndex": 13
+            }
+          ]
+        },
+        {
+          "name": "Route, ARP, Adjacency, And FIB Counts",
+          "description": "Value: compares routing inventory with forwarding inventory to spot control-plane or forwarding-plane divergence. Interpretation: counts should move coherently; route/FIB divergence or ARP/adjacency collapse narrows root cause.",
+          "signalflow": "data('cisco.routing.routes').mean(by=['host.name', 'cisco.routing.vrf']).publish(label='Routes'); data('cisco.arp.entries').mean(by=['host.name', 'cisco.routing.vrf']).publish(label='ARP entries'); data('cisco.adjacency.entries').mean(by=['host.name', 'cisco.routing.vrf']).publish(label='Adjacencies'); data('cisco.forwarding.fib.entries').mean(by=['host.name', 'cisco.routing.vrf']).publish(label='FIB entries')",
+          "legend_dimension": "cisco.routing.vrf",
+          "publish_label_options": [
+            {
+              "label": "Routes",
+              "displayName": "Routes",
+              "paletteIndex": 1
+            },
+            {
+              "label": "ARP entries",
+              "displayName": "ARP entries",
+              "paletteIndex": 6
+            },
+            {
+              "label": "Adjacencies",
+              "displayName": "Adjacencies",
+              "paletteIndex": 10
+            },
+            {
+              "label": "FIB entries",
+              "displayName": "FIB entries",
+              "paletteIndex": 13
+            }
+          ]
+        },
+        {
+          "name": "Forwarding And QFP Drops",
+          "description": "Value: surfaces data-plane drop reasons after route convergence or policy changes. Interpretation: watch rate by reason/source/interface; new or rising rates identify where packets are being discarded.",
+          "signalflow": "data('cisco.forwarding.drops').rate().sum(by=['host.name', 'cisco.routing.vrf', 'cisco.forwarding.drop.reason']).publish(label='Forwarding drops/sec'); data('cisco.qfp.drops').rate().sum(by=['host.name', 'cisco.qfp.drop.source', 'cisco.forwarding.drop.reason']).publish(label='QFP drops/sec'); data('cisco.qfp.interface.drops').rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='QFP interface drops/sec')",
+          "legend_dimension": "cisco.forwarding.drop.reason",
+          "publish_label_options": [
+            {
+              "label": "Forwarding drops/sec",
+              "displayName": "Forwarding drops/sec",
+              "paletteIndex": 8
+            },
+            {
+              "label": "QFP drops/sec",
+              "displayName": "QFP drops/sec",
+              "paletteIndex": 4
+            },
+            {
+              "label": "QFP interface drops/sec",
+              "displayName": "QFP interface drops/sec",
+              "paletteIndex": 5
+            }
+          ]
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "VXLAN NVE And VNI Status",
+          "description": "Value: shows overlay reachability and tenant segment health on NX-OS fabrics. Interpretation: each row is an NVE peer or VNI; 1 means up and 0 means down. Correlate down rows with EVPN route count changes.",
+          "signalflow": "data('cisco.nve.peer.status').mean(by=['host.name', 'network.peer.address', 'cisco.nve.state']).publish(label='NVE peer up'); data('cisco.nve.vni.status').mean(by=['host.name', 'cisco.nve.vni', 'cisco.nve.vni.type', 'cisco.nve.state']).publish(label='VNI up')",
+          "legend_dimension": "cisco.nve.vni",
+          "publish_label_options": [
+            {
+              "label": "NVE peer up",
+              "displayName": "NVE peer up",
+              "paletteIndex": 13
+            },
+            {
+              "label": "VNI up",
+              "displayName": "VNI up",
+              "paletteIndex": 1
+            }
+          ]
+        },
+        {
+          "name": "EVPN Route Counts",
+          "description": "Value: detects overlay route churn or tenant route loss. Interpretation: drops by VRF or route type suggest tenant reachability loss; unexpected growth can indicate route leaks or churn.",
+          "signalflow": "data('cisco.evpn.routes').mean(by=['host.name', 'cisco.routing.vrf', 'cisco.evpn.route.type']).publish(label='EVPN routes')",
+          "legend_dimension": "cisco.evpn.route.type",
+          "publish_label_options": [
+            {
+              "label": "EVPN routes",
+              "displayName": "EVPN routes",
+              "paletteIndex": 2
+            }
+          ]
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Redundant AI Path Health",
+          "description": "Value: shows whether port-channel members or vPC peers degraded capacity while the aggregate path still looked available. Interpretation: port-channel and member status should be 1, vPC status should be 1, and consistency failures should be 0; any opposite value can create hot links and AI collective slowdown.",
+          "signalflow": "data('cisco.port_channel.status').mean(by=['host.name', 'cisco.port_channel.name', 'cisco.port_channel.state']).publish(label='Port-channel up'); data('cisco.port_channel.member.status').mean(by=['host.name', 'cisco.port_channel.name', 'network.interface.name', 'cisco.port_channel.state']).publish(label='Member up'); data('cisco.vpc.status').mean(by=['host.name', 'cisco.vpc.domain', 'cisco.vpc.peer', 'cisco.vpc.state']).publish(label='vPC up'); data('cisco.vpc.consistency.failures').mean(by=['host.name', 'cisco.vpc.check']).publish(label='vPC consistency failures')",
+          "legend_dimension": "cisco.port_channel.name",
+          "publish_label_options": [
+            {
+              "label": "Port-channel up",
+              "displayName": "Port-channel up",
+              "paletteIndex": 13
+            },
+            {
+              "label": "Member up",
+              "displayName": "Member up",
+              "paletteIndex": 1
+            },
+            {
+              "label": "vPC up",
+              "displayName": "vPC up",
+              "paletteIndex": 2
+            },
+            {
+              "label": "vPC consistency failures",
+              "displayName": "vPC consistency failures",
+              "paletteIndex": 8
+            }
+          ]
+        },
+        {
+          "name": "LACP Errors And Packets",
+          "description": "Value: identifies negotiation instability before traffic visibly fails. Interpretation: errors/sec should normally be zero; packet changes without corresponding health can indicate negotiation or peer issues.",
+          "signalflow": "data('cisco.lacp.errors').rate().sum(by=['host.name', 'network.interface.name', 'cisco.lacp.error.type']).publish(label='LACP errors/sec'); data('cisco.lacp.packets').rate().sum(by=['host.name', 'network.interface.name', 'cisco.lacp.packet.type', 'network.io.direction']).publish(label='LACP packets/sec')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "LACP errors/sec",
+              "displayName": "LACP errors/sec",
+              "paletteIndex": 8
+            },
+            {
+              "label": "LACP packets/sec",
+              "displayName": "LACP packets/sec",
+              "paletteIndex": 2
+            }
+          ]
+        },
+        {
+          "name": "STP Topology Changes",
+          "description": "Value: catches topology churn that can reroute or blackhole traffic. Interpretation: bursts of topology changes mark L2 instability; correlate the timing with port-channel, vPC, routing, and interface symptoms.",
+          "signalflow": "data('cisco.l2.stp.topology_changes').rate().sum(by=['host.name']).publish(label='STP topology changes/sec')",
+          "legend_dimension": "host.name",
+          "publish_label_options": [
+            {
+              "label": "STP topology changes/sec",
+              "displayName": "STP topology changes/sec",
+              "paletteIndex": 4
+            }
+          ]
+        },
+        {
+          "type": "Text",
+          "name": "4. AI RDMA QoS Physical Evidence",
+          "description": "Value: separates the single dashboard into an incident workflow section. Interpretation: use this header to move through related charts together instead of reading every panel as an isolated signal.",
+          "markdown": "### 4. AI RDMA QoS Physical Evidence\nFor AI, storage, and RDMA/RoCEv2 workloads, correlate congestion feedback, lossless backpressure, queue drops, watchdog intervention, optics drift, thermal pressure, and hardware state.",
+          "width": 12,
+          "height": 1
+        },
+        {
+          "name": "RoCEv2 Congestion Control Loop",
+          "description": "Value: shows the switch-side RDMA/RoCEv2 control loop from ECN marking to PFC backpressure to drops or PFC watchdog intervention. Interpretation: ECN marks should normally appear before PFC or drops; PFC without ECN can indicate threshold, classification, or microburst issues, while queue drops or watchdog activity mean congestion control failed or a queue became stuck.",
+          "signalflow": "data('cisco.interface.qos.policy.packets', filter=filter('cisco.qos.action', 'mark')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'cisco.qos.class', 'cisco.qos.drop.reason']).publish(label='ECN marks/sec'); data('cisco.interface.pause.frames', filter=filter('cisco.pause.type', 'pfc')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'cisco.qos.priority']).publish(label='PFC pause/sec'); data('cisco.interface.qos.queue.packets', filter=filter('cisco.qos.action', 'drop')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'cisco.qos.group', 'cisco.qos.drop.reason']).publish(label='Queue drops/sec'); data('cisco.interface.qos.queue.packets', filter=filter('cisco.qos.source', 'pfc_watchdog')).rate().sum(by=['host.name', 'network.interface.name', 'cisco.qos.group', 'cisco.qos.action']).publish(label='PFC watchdog/sec')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "ECN marks/sec",
+              "displayName": "ECN marks/sec",
+              "paletteIndex": 2
+            },
+            {
+              "label": "PFC pause/sec",
+              "displayName": "PFC pause/sec",
+              "paletteIndex": 4
+            },
+            {
+              "label": "Queue drops/sec",
+              "displayName": "Queue drops/sec",
+              "paletteIndex": 8
+            },
+            {
+              "label": "PFC watchdog/sec",
+              "displayName": "PFC watchdog/sec",
+              "paletteIndex": 6
+            }
+          ]
+        },
+        {
+          "name": "PFC And Flow-Control Pause Pressure",
+          "description": "Value: identifies lossless Ethernet backpressure before packet loss is obvious to applications. Interpretation: rising receive pause frames usually means the local interface is asking its peer to slow down; rising transmit pause frames means the peer is congested. Persistent PFC on GPU-facing or spine-facing links is a strong workload-impact signal.",
+          "signalflow": "data('cisco.interface.pause.frames').rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'cisco.pause.type', 'cisco.qos.priority']).publish(label='Pause frames/sec')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Pause frames/sec",
+              "displayName": "Pause frames/sec",
+              "paletteIndex": 4
+            }
+          ]
+        },
+        {
+          "name": "ECN And WRED Congestion Feedback",
+          "description": "Value: shows whether the fabric is signaling congestion to RoCEv2 endpoints before drops occur. Interpretation: ECN mark rates mean congestion feedback is active; WRED or tail-drop rates mean congestion has crossed into loss. Marks without drops can be healthy congestion control, while marks plus drops point to under-sized buffers, hot spots, or traffic imbalance.",
+          "signalflow": "data('cisco.interface.qos.policy.packets', filter=filter('cisco.qos.action', 'mark')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'cisco.qos.class', 'cisco.qos.drop.reason']).publish(label='ECN marks/sec'); data('cisco.interface.qos.policy.packets', filter=filter('cisco.qos.action', 'drop')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'cisco.qos.class', 'cisco.qos.drop.reason']).publish(label='Policy drops/sec')",
+          "legend_dimension": "cisco.qos.class",
+          "publish_label_options": [
+            {
+              "label": "ECN marks/sec",
+              "displayName": "ECN marks/sec",
+              "paletteIndex": 2
+            },
+            {
+              "label": "Policy drops/sec",
+              "displayName": "Policy drops/sec",
+              "paletteIndex": 8
+            }
+          ]
+        },
+        {
+          "name": "Lossless Queue Drops And Drains",
+          "description": "Value: pinpoints the queue, QoS group, direction, and drop reason affecting AI/RDMA traffic. Interpretation: lossless queues should not show sustained packet drops; drain activity implies protection or recovery behavior, and drop activity means loss that can stall RDMA/NCCL-style workloads.",
+          "signalflow": "data('cisco.interface.qos.queue.packets').rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'cisco.qos.queue', 'cisco.qos.group', 'cisco.qos.action', 'cisco.qos.drop.reason']).publish(label='Queue packets/sec')",
+          "legend_dimension": "cisco.qos.group",
+          "publish_label_options": [
+            {
+              "label": "Queue packets/sec",
+              "displayName": "Queue packets/sec",
+              "paletteIndex": 6
+            }
+          ]
+        },
+        {
+          "name": "Optical Power Drift",
+          "description": "Value: links GPU path errors or retransmission symptoms to RX/TX optical power drift. Interpretation: falling RX power or rising TX power before errors and pause frames suggests optics, cabling, or environmental root cause rather than workload imbalance.",
+          "signalflow": "data('cisco.transceiver.sensor', filter=filter('cisco.transceiver.sensor', 'rx_power')).mean(by=['host.name', 'network.interface.name', 'cisco.transceiver.lane']).publish(label='RX optical power dBm'); data('cisco.transceiver.sensor', filter=filter('cisco.transceiver.sensor', 'tx_power')).mean(by=['host.name', 'network.interface.name', 'cisco.transceiver.lane']).publish(label='TX optical power dBm')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "RX optical power dBm",
+              "displayName": "RX optical power dBm",
+              "paletteIndex": 3
+            },
+            {
+              "label": "TX optical power dBm",
+              "displayName": "TX optical power dBm",
+              "paletteIndex": 1
+            }
+          ]
+        },
+        {
+          "name": "Hardware Temperature",
+          "description": "Value: identifies thermal pressure tied to slots, components, or chassis-wide events. Interpretation: rising temperature before errors or reloads suggests physical/environmental cause.",
+          "signalflow": "data('cisco.hardware.temperature').mean(by=['host.name', 'cisco.hardware.name', 'cisco.hardware.slot']).publish(label='Temperature C')",
+          "legend_dimension": "cisco.hardware.name",
+          "publish_label_options": [
+            {
+              "label": "Temperature C",
+              "displayName": "Temperature C",
+              "valueSuffix": " C",
+              "paletteIndex": 5
+            }
+          ]
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Hardware Component Status",
+          "description": "Value: surfaces fan, PSU, module, chassis, and inventory states that can precede device failure. Interpretation: use the Cisco state label first; numeric values are -1 unknown, 0 critical, 1 ok, and 2 warning.",
+          "signalflow": "data('cisco.hardware.status').mean(by=['host.name', 'cisco.hardware.component', 'cisco.hardware.name', 'cisco.hardware.slot', 'cisco.hardware.state']).publish(label='Hardware status')",
+          "legend_dimension": "cisco.hardware.name",
+          "publish_label_options": [
+            {
+              "label": "Hardware status",
+              "displayName": "Hardware status",
+              "paletteIndex": 13
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 Telemetry And Device Health",
+      "description": "Value: proves whether the device, receiver, SSH session, command family, or device resource pressure explains missing or misleading telemetry.",
+      "value": "Use this page when metrics are missing, stale, partial, or suspicious. It separates receiver collection problems from real device health and reload events.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains the operational purpose of this dashboard page. Interpretation: read this panel first to understand which troubleshooting question this page is designed to answer.",
+          "markdown": "## Value Provided\nUse this page when telemetry is missing, stale, or suspicious. It separates device reachability, receiver partial scrapes, slow command families, SSH reconnects, command errors, CPU/memory pressure, and reload evidence.\n\nState signals use list charts with sparklines so failed or flapping devices are visible at a glance. Timing-sensitive evidence stays as time-series so operators can reconstruct what happened first.",
+          "width": 12,
+          "height": 1
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Device Reachability By Host",
+          "description": "Value: identifies devices that stopped responding to collection before deeper analysis begins. Interpretation: each row is a device; 1 means reachable and 0 means unreachable. Use the sparkline to spot flapping reachability.",
+          "signalflow": "data('cisco.device.up').mean(by=['host.name']).publish(label='Device up')",
+          "legend_dimension": "host.name",
+          "publish_label_options": [
+            {
+              "label": "Device up",
+              "displayName": "Device up",
+              "paletteIndex": 13
+            }
+          ]
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Scrape Partial Success",
+          "description": "Value: prevents false conclusions from incomplete telemetry when only some command families failed. Interpretation: each row is a device; 1 means at least one command family failed during collection. Check command duration and errors next.",
+          "signalflow": "data('cisco.scrape.partial_success').mean(by=['host.name']).publish(label='Partial scrape')",
+          "legend_dimension": "host.name",
+          "publish_label_options": [
+            {
+              "label": "Partial scrape",
+              "displayName": "Partial scrape",
+              "paletteIndex": 8
+            }
+          ]
+        },
+        {
+          "name": "Command Duration By Family",
+          "description": "Value: isolates slow command families that explain stale, partial, or missing data. Interpretation: higher values show longer CLI command execution by device and command family; spikes identify the scraper area causing latency.",
+          "signalflow": "data('cisco.scrape.command.duration').mean(by=['host.name', 'cisco.scrape.command.family']).publish(label='Command duration')",
+          "legend_dimension": "cisco.scrape.command.family",
+          "publish_label_options": [
+            {
+              "label": "Command duration",
+              "displayName": "Command duration",
+              "valueUnit": "Second",
+              "paletteIndex": 1
+            }
+          ]
+        },
+        {
+          "name": "SSH Reconnects And Command Errors",
+          "description": "Value: separates network/session instability from parser or command-family failures. Interpretation: rising reconnects suggest SSH/session path issues; rising command errors by family suggest unsupported commands, privilege gaps, or device CLI failures.",
+          "signalflow": "data('cisco.ssh.reconnects').rate().sum(by=['host.name']).publish(label='SSH reconnects/sec'); data('cisco.scrape.command.errors').rate().sum(by=['host.name', 'cisco.scrape.command.family']).publish(label='Command errors/sec')",
+          "legend_dimension": "host.name",
+          "publish_label_options": [
+            {
+              "label": "SSH reconnects/sec",
+              "displayName": "SSH reconnects/sec",
+              "paletteIndex": 4
+            },
+            {
+              "label": "Command errors/sec",
+              "displayName": "Command errors/sec",
+              "paletteIndex": 8
+            }
+          ]
+        },
+        {
+          "name": "CPU And Memory Pressure",
+          "description": "Value: finds device resource exhaustion that can precede control-plane instability and packet loss. Interpretation: values are percentages by device; sustained high CPU or memory during an incident points to device pressure rather than only a link issue.",
+          "signalflow": "data('system.cpu.utilization', filter=filter('hw.type', 'network')).mean(by=['host.name']).scale(100).publish(label='CPU %'); data('system.memory.utilization', filter=filter('hw.type', 'network')).mean(by=['host.name']).scale(100).publish(label='Memory %')",
+          "legend_dimension": "host.name",
+          "publish_label_options": [
+            {
+              "label": "CPU %",
+              "displayName": "CPU %",
+              "valueSuffix": "%",
+              "paletteIndex": 5
+            },
+            {
+              "label": "Memory %",
+              "displayName": "Memory %",
+              "valueSuffix": "%",
+              "paletteIndex": 10
+            }
+          ]
+        },
+        {
+          "name": "Reload Evidence",
+          "description": "Value: confirms whether a reboot or reload occurred near the outage window. Interpretation: uptime should climb steadily; a sharp drop means the device restarted and should anchor the incident timeline.",
+          "signalflow": "data('system.uptime', filter=filter('hw.type', 'network')).mean(by=['host.name']).publish(label='Uptime seconds')",
+          "legend_dimension": "host.name",
+          "publish_label_options": [
+            {
+              "label": "Uptime seconds",
+              "displayName": "Uptime seconds",
+              "valueUnit": "Second",
+              "paletteIndex": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 Interfaces And Link Health",
+      "description": "Value: isolates link state, saturation, traffic silence, packet-rate pressure, errors, drops, and speed downgrade on Cisco interfaces.",
+      "value": "Use this page when the symptom points to an interface, uplink, access port, port-channel member, WAN handoff, or AI fabric path.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains the operational purpose of this dashboard page. Interpretation: read this panel first to understand which troubleshooting question this page is designed to answer.",
+          "markdown": "## Value Provided\nUse this page for link-level triage. It separates intentional administrative shutdown from operational failure, then correlates utilization, byte rate, packet rate, errors, drops, and speed.\n\nStart with admin versus oper state, then move to utilization and traffic rate. Use errors/drops and speed to decide whether the issue is physical, capacity-driven, or configuration-related.",
+          "width": 12,
+          "height": 1
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Admin State Compared To Oper State",
+          "description": "Value: distinguishes intentionally disabled interfaces from enabled interfaces that failed. Interpretation: Admin enabled=1 means the port should be active; Oper up=0 means the link is down. The important exception is admin 1 with oper 0.",
+          "signalflow": "data('cisco.interface.admin.status').mean(by=['host.name', 'network.interface.name']).publish(label='Admin enabled'); data('system.network.interface.status', filter=filter('hw.type', 'network')).mean(by=['host.name', 'network.interface.name']).publish(label='Oper up')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Admin enabled",
+              "displayName": "Admin enabled",
+              "paletteIndex": 13
+            },
+            {
+              "label": "Oper up",
+              "displayName": "Oper up",
+              "paletteIndex": 1
+            }
+          ]
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Interface Speed",
+          "description": "Value: exposes speed downgrade or missing speed data that makes utilization misleading. Interpretation: each row is a current interface speed; unexpected lower speed explains apparent saturation and should be checked against physical/link settings.",
+          "signalflow": "data('cisco.interface.speed').mean(by=['host.name', 'network.interface.name']).publish(label='Speed bit/s')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Speed bit/s",
+              "displayName": "Speed bit/s",
+              "valueUnit": "Bit",
+              "paletteIndex": 10
+            }
+          ]
+        },
+        {
+          "name": "Interface Utilization",
+          "description": "Value: identifies saturated links and asymmetric congestion by direction. Interpretation: values are percent utilization by device, interface, and direction; sustained high utilization before impact suggests capacity pressure.",
+          "signalflow": "data('cisco.interface.utilization').mean(by=['host.name', 'network.interface.name', 'network.io.direction']).scale(100).publish(label='Utilization %')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Utilization %",
+              "displayName": "Utilization %",
+              "valueSuffix": "%",
+              "paletteIndex": 5
+            }
+          ]
+        },
+        {
+          "name": "Interface Traffic Rate",
+          "description": "Value: finds sudden silence, traffic shifts, or burst growth on critical ports. Interpretation: bytes/sec is shown by interface and direction; drops to zero or sudden directional shifts are strong incident markers.",
+          "signalflow": "data('system.network.io', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Bytes/sec')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Bytes/sec",
+              "displayName": "Bytes/sec",
+              "valueUnit": "Byte",
+              "paletteIndex": 2
+            }
+          ]
+        },
+        {
+          "name": "Interface Packet Rate",
+          "description": "Value: differentiates packet-rate pressure from byte-rate saturation. Interpretation: high packets/sec with modest byte/sec can indicate small-packet storms, control traffic, or workload patterns stressing forwarding paths.",
+          "signalflow": "data('cisco.interface.packet.rate').mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Packets/sec')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Packets/sec",
+              "displayName": "Packets/sec",
+              "paletteIndex": 6
+            }
+          ]
+        },
+        {
+          "name": "Interface Errors And Drops",
+          "description": "Value: highlights packet-loss symptoms that correlate with application latency, retransmits, or failover events. Interpretation: non-zero sustained errors/sec or drops/sec on clean links is actionable; compare timing with utilization and optics.",
+          "signalflow": "data('system.network.errors', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Errors/sec'); data('system.network.packet.dropped', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Drops/sec')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Errors/sec",
+              "displayName": "Errors/sec",
+              "paletteIndex": 8
+            },
+            {
+              "label": "Drops/sec",
+              "displayName": "Drops/sec",
+              "paletteIndex": 4
+            }
+          ]
+        },
+        {
+          "name": "Err-Disabled Ports",
+          "description": "Value: identifies ports disabled by platform protection features and their reason. Interpretation: each row is an interface and reason; 1 means err-disabled and should be treated as an active fault.",
+          "signalflow": "data('cisco.interface.errdisabled').mean(by=['host.name', 'network.interface.name', 'cisco.errdisabled.reason']).publish(label='Err-disabled')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Err-disabled",
+              "displayName": "Err-disabled",
+              "paletteIndex": 8
+            }
+          ],
+          "type": "List",
+          "secondary_visualization": "Sparkline"
+        }
+      ]
+    },
+    {
+      "name": "03 Routing Fabric And Redundancy",
+      "description": "Value: correlates routing neighbor health, route/FIB inventory, forwarding drops, VXLAN/EVPN overlay state, LACP, vPC, port-channel, and STP symptoms.",
+      "value": "Use this page when traffic shifted, tenant reachability failed, redundancy degraded, or the control plane and forwarding plane might disagree.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains the operational purpose of this dashboard page. Interpretation: read this panel first to understand which troubleshooting question this page is designed to answer.",
+          "markdown": "## Value Provided\nUse this page to answer whether the control plane, forwarding plane, overlay, or redundant path changed during the incident. It combines neighbor state, route/FIB inventory, forwarding drops, VXLAN/EVPN state, port-channel/vPC state, LACP, STP, and topology inventory.\n\nState and membership signals are list charts because operators need to find the failed peer, VNI, member, or neighbor first. Drops, route counts, LACP errors, and STP churn remain time-series because timing matters.",
+          "width": 12,
+          "height": 1
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Routing Neighbor State",
+          "description": "Value: identifies BGP, OSPF, EIGRP, or ISIS adjacencies that dropped or flapped. Interpretation: each row is a neighbor; 1 means established/up and 0 means down or not established. Use the sparkline to see flaps.",
+          "signalflow": "data('cisco.routing.neighbor.state').mean(by=['host.name', 'cisco.routing.protocol', 'cisco.routing.vrf', 'network.peer.address']).publish(label='Neighbor up')",
+          "legend_dimension": "network.peer.address",
+          "publish_label_options": [
+            {
+              "label": "Neighbor up",
+              "displayName": "Neighbor up",
+              "paletteIndex": 13
+            }
+          ]
+        },
+        {
+          "name": "Routing Neighbor Prefixes",
+          "description": "Value: detects route withdrawals, leaks, and prefix explosions by peer and address family. Interpretation: sudden drops indicate lost reachability; sudden growth can indicate leaks or unexpected advertisements.",
+          "signalflow": "data('cisco.routing.neighbor.prefixes').mean(by=['host.name', 'cisco.routing.protocol', 'cisco.routing.vrf', 'network.peer.address', 'address.family']).publish(label='Prefixes')",
+          "legend_dimension": "network.peer.address",
+          "publish_label_options": [
+            {
+              "label": "Prefixes",
+              "displayName": "Prefixes",
+              "paletteIndex": 2
+            }
+          ]
+        },
+        {
+          "name": "Route, ARP, Adjacency, And FIB Counts",
+          "description": "Value: compares routing inventory with forwarding inventory to spot control-plane or forwarding-plane divergence. Interpretation: counts should move coherently; route/FIB divergence or ARP/adjacency collapse narrows root cause.",
+          "signalflow": "data('cisco.routing.routes').mean(by=['host.name', 'cisco.routing.vrf']).publish(label='Routes'); data('cisco.arp.entries').mean(by=['host.name', 'cisco.routing.vrf']).publish(label='ARP entries'); data('cisco.adjacency.entries').mean(by=['host.name', 'cisco.routing.vrf']).publish(label='Adjacencies'); data('cisco.forwarding.fib.entries').mean(by=['host.name', 'cisco.routing.vrf']).publish(label='FIB entries')",
+          "legend_dimension": "cisco.routing.vrf",
+          "publish_label_options": [
+            {
+              "label": "Routes",
+              "displayName": "Routes",
+              "paletteIndex": 1
+            },
+            {
+              "label": "ARP entries",
+              "displayName": "ARP entries",
+              "paletteIndex": 6
+            },
+            {
+              "label": "Adjacencies",
+              "displayName": "Adjacencies",
+              "paletteIndex": 10
+            },
+            {
+              "label": "FIB entries",
+              "displayName": "FIB entries",
+              "paletteIndex": 13
+            }
+          ]
+        },
+        {
+          "name": "Forwarding And QFP Drops",
+          "description": "Value: surfaces data-plane drop reasons after route convergence or policy changes. Interpretation: watch rate by reason/source/interface; new or rising rates identify where packets are being discarded.",
+          "signalflow": "data('cisco.forwarding.drops').rate().sum(by=['host.name', 'cisco.routing.vrf', 'cisco.forwarding.drop.reason']).publish(label='Forwarding drops/sec'); data('cisco.qfp.drops').rate().sum(by=['host.name', 'cisco.qfp.drop.source', 'cisco.forwarding.drop.reason']).publish(label='QFP drops/sec'); data('cisco.qfp.interface.drops').rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='QFP interface drops/sec')",
+          "legend_dimension": "cisco.forwarding.drop.reason",
+          "publish_label_options": [
+            {
+              "label": "Forwarding drops/sec",
+              "displayName": "Forwarding drops/sec",
+              "paletteIndex": 8
+            },
+            {
+              "label": "QFP drops/sec",
+              "displayName": "QFP drops/sec",
+              "paletteIndex": 4
+            },
+            {
+              "label": "QFP interface drops/sec",
+              "displayName": "QFP interface drops/sec",
+              "paletteIndex": 5
+            }
+          ]
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "VXLAN NVE And VNI Status",
+          "description": "Value: shows overlay reachability and tenant segment health on NX-OS fabrics. Interpretation: each row is an NVE peer or VNI; 1 means up and 0 means down. Correlate down rows with EVPN route count changes.",
+          "signalflow": "data('cisco.nve.peer.status').mean(by=['host.name', 'network.peer.address', 'cisco.nve.state']).publish(label='NVE peer up'); data('cisco.nve.vni.status').mean(by=['host.name', 'cisco.nve.vni', 'cisco.nve.vni.type', 'cisco.nve.state']).publish(label='VNI up')",
+          "legend_dimension": "cisco.nve.vni",
+          "publish_label_options": [
+            {
+              "label": "NVE peer up",
+              "displayName": "NVE peer up",
+              "paletteIndex": 13
+            },
+            {
+              "label": "VNI up",
+              "displayName": "VNI up",
+              "paletteIndex": 1
+            }
+          ]
+        },
+        {
+          "name": "EVPN Route Counts",
+          "description": "Value: detects overlay route churn or tenant route loss. Interpretation: drops by VRF or route type suggest tenant reachability loss; unexpected growth can indicate route leaks or churn.",
+          "signalflow": "data('cisco.evpn.routes').mean(by=['host.name', 'cisco.routing.vrf', 'cisco.evpn.route.type']).publish(label='EVPN routes')",
+          "legend_dimension": "cisco.evpn.route.type",
+          "publish_label_options": [
+            {
+              "label": "EVPN routes",
+              "displayName": "EVPN routes",
+              "paletteIndex": 2
+            }
+          ]
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Port-Channel And vPC Health",
+          "description": "Value: shows whether port-channel members or vPC peers degraded capacity while the aggregate path still looked available. Interpretation: port-channel and member status should be 1, vPC status should be 1, and consistency failures should be 0; any opposite value can create hot links and AI collective slowdown.",
+          "signalflow": "data('cisco.port_channel.status').mean(by=['host.name', 'cisco.port_channel.name', 'cisco.port_channel.state']).publish(label='Port-channel up'); data('cisco.port_channel.member.status').mean(by=['host.name', 'cisco.port_channel.name', 'network.interface.name', 'cisco.port_channel.state']).publish(label='Member up'); data('cisco.vpc.status').mean(by=['host.name', 'cisco.vpc.domain', 'cisco.vpc.peer', 'cisco.vpc.state']).publish(label='vPC up'); data('cisco.vpc.consistency.failures').mean(by=['host.name', 'cisco.vpc.check']).publish(label='vPC consistency failures')",
+          "legend_dimension": "cisco.port_channel.name",
+          "publish_label_options": [
+            {
+              "label": "Port-channel up",
+              "displayName": "Port-channel up",
+              "paletteIndex": 13
+            },
+            {
+              "label": "Member up",
+              "displayName": "Member up",
+              "paletteIndex": 1
+            },
+            {
+              "label": "vPC up",
+              "displayName": "vPC up",
+              "paletteIndex": 2
+            },
+            {
+              "label": "vPC consistency failures",
+              "displayName": "vPC consistency failures",
+              "paletteIndex": 8
+            }
+          ]
+        },
+        {
+          "name": "LACP Errors And Packets",
+          "description": "Value: identifies negotiation instability before traffic visibly fails. Interpretation: errors/sec should normally be zero; packet changes without corresponding health can indicate negotiation or peer issues.",
+          "signalflow": "data('cisco.lacp.errors').rate().sum(by=['host.name', 'network.interface.name', 'cisco.lacp.error.type']).publish(label='LACP errors/sec'); data('cisco.lacp.packets').rate().sum(by=['host.name', 'network.interface.name', 'cisco.lacp.packet.type', 'network.io.direction']).publish(label='LACP packets/sec')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "LACP errors/sec",
+              "displayName": "LACP errors/sec",
+              "paletteIndex": 8
+            },
+            {
+              "label": "LACP packets/sec",
+              "displayName": "LACP packets/sec",
+              "paletteIndex": 2
+            }
+          ]
+        },
+        {
+          "name": "STP Topology Changes",
+          "description": "Value: catches topology churn that can reroute or blackhole traffic. Interpretation: bursts of topology changes mark L2 instability; correlate the timing with port-channel, vPC, routing, and interface symptoms.",
+          "signalflow": "data('cisco.l2.stp.topology_changes').rate().sum(by=['host.name']).publish(label='STP topology changes/sec')",
+          "legend_dimension": "host.name",
+          "publish_label_options": [
+            {
+              "label": "STP topology changes/sec",
+              "displayName": "STP topology changes/sec",
+              "paletteIndex": 4
+            }
+          ]
+        },
+        {
+          "name": "Topology Neighbor Inventory",
+          "description": "Value: detects unexpected CDP/LLDP neighbor changes that can explain path shifts or cabling mistakes. Interpretation: each row is an observed neighbor edge; disappearance or unexpected new edges indicate cabling or topology drift.",
+          "signalflow": "data('cisco.topology.neighbor.info').mean(by=['host.name', 'network.interface.name', 'cisco.topology.protocol', 'cisco.topology.neighbor.name', 'cisco.topology.neighbor.interface', 'cisco.topology.neighbor.address']).publish(label='Neighbor seen')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Neighbor seen",
+              "displayName": "Neighbor seen",
+              "paletteIndex": 1
+            }
+          ],
+          "type": "List",
+          "secondary_visualization": "Sparkline"
+        }
+      ]
+    },
+    {
+      "name": "04 AI RDMA And QoS Congestion",
+      "description": "Value: focuses on switch-side RDMA/RoCEv2 and AI-fabric congestion evidence: ECN, PFC, PFC watchdog, queue drops, link pressure, and path health.",
+      "value": "Use this page when GPU training, inference, storage, or east-west RDMA/RoCEv2 traffic slows down while links still appear up.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains the operational purpose of this dashboard page. Interpretation: read this panel first to understand which troubleshooting question this page is designed to answer.",
+          "markdown": "## Value Provided\nUse this page for AI and RDMA/RoCEv2 fabric troubleshooting. It follows the switch-side congestion-control loop: ECN marks should provide early congestion feedback, PFC pause frames show backpressure, queue drops indicate loss, and PFC watchdog activity indicates severe protection or recovery behavior.\n\nThe receiver sees the switch side of RoCEv2. Pair this page with host/NIC telemetry for CNP, retransmits, retry or timeout errors, RNR NAKs, QP errors, RDMA CM failures, MTU, and DSCP/PCP/traffic-class mapping.",
+          "width": 12,
+          "height": 1
+        },
+        {
+          "name": "RoCEv2 Congestion Control Loop",
+          "description": "Value: shows the switch-side RDMA/RoCEv2 control loop from ECN marking to PFC backpressure to drops or PFC watchdog intervention. Interpretation: ECN marks should normally appear before PFC or drops; PFC without ECN can indicate threshold, classification, or microburst issues, while queue drops or watchdog activity mean congestion control failed or a queue became stuck.",
+          "signalflow": "data('cisco.interface.qos.policy.packets', filter=filter('cisco.qos.action', 'mark')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'cisco.qos.class', 'cisco.qos.drop.reason']).publish(label='ECN marks/sec'); data('cisco.interface.pause.frames', filter=filter('cisco.pause.type', 'pfc')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'cisco.qos.priority']).publish(label='PFC pause/sec'); data('cisco.interface.qos.queue.packets', filter=filter('cisco.qos.action', 'drop')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'cisco.qos.group', 'cisco.qos.drop.reason']).publish(label='Queue drops/sec'); data('cisco.interface.qos.queue.packets', filter=filter('cisco.qos.source', 'pfc_watchdog')).rate().sum(by=['host.name', 'network.interface.name', 'cisco.qos.group', 'cisco.qos.action']).publish(label='PFC watchdog/sec')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "ECN marks/sec",
+              "displayName": "ECN marks/sec",
+              "paletteIndex": 2
+            },
+            {
+              "label": "PFC pause/sec",
+              "displayName": "PFC pause/sec",
+              "paletteIndex": 4
+            },
+            {
+              "label": "Queue drops/sec",
+              "displayName": "Queue drops/sec",
+              "paletteIndex": 8
+            },
+            {
+              "label": "PFC watchdog/sec",
+              "displayName": "PFC watchdog/sec",
+              "paletteIndex": 6
+            }
+          ]
+        },
+        {
+          "name": "PFC And Flow-Control Pause Pressure",
+          "description": "Value: identifies lossless Ethernet backpressure before packet loss is obvious to applications. Interpretation: rising receive pause frames usually means the local interface is asking its peer to slow down; rising transmit pause frames means the peer is congested. Persistent PFC on GPU-facing or spine-facing links is a strong workload-impact signal.",
+          "signalflow": "data('cisco.interface.pause.frames').rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'cisco.pause.type', 'cisco.qos.priority']).publish(label='Pause frames/sec')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Pause frames/sec",
+              "displayName": "Pause frames/sec",
+              "paletteIndex": 4
+            }
+          ]
+        },
+        {
+          "name": "PFC Watchdog Intervention",
+          "description": "Value: surfaces queue-stuck or pause-storm mitigation events that can protect the fabric while dropping or draining AI/RDMA workload traffic. Interpretation: any non-zero PFC watchdog event, drain, or drop rate is severe; group by interface and QoS group to find the affected lossless class.",
+          "signalflow": "data('cisco.interface.qos.queue.packets', filter=filter('cisco.qos.source', 'pfc_watchdog')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'cisco.qos.group', 'cisco.qos.action', 'cisco.qos.drop.reason']).publish(label='PFC watchdog packets/sec')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "PFC watchdog packets/sec",
+              "displayName": "PFC watchdog packets/sec",
+              "paletteIndex": 8
+            }
+          ]
+        },
+        {
+          "name": "ECN And WRED Congestion Feedback",
+          "description": "Value: shows whether the fabric is signaling congestion to RoCEv2 endpoints before drops occur. Interpretation: ECN mark rates mean congestion feedback is active; WRED or tail-drop rates mean congestion has crossed into loss. Marks without drops can be healthy congestion control, while marks plus drops point to under-sized buffers, hot spots, or traffic imbalance.",
+          "signalflow": "data('cisco.interface.qos.policy.packets', filter=filter('cisco.qos.action', 'mark')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'cisco.qos.class', 'cisco.qos.drop.reason']).publish(label='ECN marks/sec'); data('cisco.interface.qos.policy.packets', filter=filter('cisco.qos.action', 'drop')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'cisco.qos.class', 'cisco.qos.drop.reason']).publish(label='Policy drops/sec')",
+          "legend_dimension": "cisco.qos.class",
+          "publish_label_options": [
+            {
+              "label": "ECN marks/sec",
+              "displayName": "ECN marks/sec",
+              "paletteIndex": 2
+            },
+            {
+              "label": "Policy drops/sec",
+              "displayName": "Policy drops/sec",
+              "paletteIndex": 8
+            }
+          ]
+        },
+        {
+          "name": "Lossless Queue Drops And Drains",
+          "description": "Value: pinpoints the queue, QoS group, direction, and drop reason affecting AI/RDMA traffic. Interpretation: lossless queues should not show sustained packet drops; drain activity implies protection or recovery behavior, and drop activity means loss that can stall RDMA/NCCL-style workloads.",
+          "signalflow": "data('cisco.interface.qos.queue.packets').rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'cisco.qos.queue', 'cisco.qos.group', 'cisco.qos.action', 'cisco.qos.drop.reason']).publish(label='Queue packets/sec')",
+          "legend_dimension": "cisco.qos.group",
+          "publish_label_options": [
+            {
+              "label": "Queue packets/sec",
+              "displayName": "Queue packets/sec",
+              "paletteIndex": 6
+            }
+          ]
+        },
+        {
+          "name": "AI Fabric Interface Utilization",
+          "description": "Value: identifies saturated links and asymmetric congestion by direction. Interpretation: values are percent utilization by device, interface, and direction; sustained high utilization before impact suggests capacity pressure.",
+          "signalflow": "data('cisco.interface.utilization').mean(by=['host.name', 'network.interface.name', 'network.io.direction']).scale(100).publish(label='Utilization %')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Utilization %",
+              "displayName": "Utilization %",
+              "valueSuffix": "%",
+              "paletteIndex": 5
+            }
+          ]
+        },
+        {
+          "name": "AI Fabric Packet Rate",
+          "description": "Value: differentiates packet-rate pressure from byte-rate saturation. Interpretation: high packets/sec with modest byte/sec can indicate small-packet storms, control traffic, or workload patterns stressing forwarding paths.",
+          "signalflow": "data('cisco.interface.packet.rate').mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Packets/sec')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Packets/sec",
+              "displayName": "Packets/sec",
+              "paletteIndex": 6
+            }
+          ]
+        },
+        {
+          "name": "AI Path Errors And Packet Drops",
+          "description": "Value: highlights packet-loss symptoms that correlate with application latency, retransmits, or failover events. Interpretation: non-zero sustained errors/sec or drops/sec on clean links is actionable; compare timing with utilization and optics.",
+          "signalflow": "data('system.network.errors', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Errors/sec'); data('system.network.packet.dropped', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Drops/sec')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Errors/sec",
+              "displayName": "Errors/sec",
+              "paletteIndex": 8
+            },
+            {
+              "label": "Drops/sec",
+              "displayName": "Drops/sec",
+              "paletteIndex": 4
+            }
+          ]
+        },
+        {
+          "name": "Optical Power Drift",
+          "description": "Value: links GPU path errors or retransmission symptoms to RX/TX optical power drift. Interpretation: falling RX power or rising TX power before errors and pause frames suggests optics, cabling, or environmental root cause rather than workload imbalance.",
+          "signalflow": "data('cisco.transceiver.sensor', filter=filter('cisco.transceiver.sensor', 'rx_power')).mean(by=['host.name', 'network.interface.name', 'cisco.transceiver.lane']).publish(label='RX optical power dBm'); data('cisco.transceiver.sensor', filter=filter('cisco.transceiver.sensor', 'tx_power')).mean(by=['host.name', 'network.interface.name', 'cisco.transceiver.lane']).publish(label='TX optical power dBm')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "RX optical power dBm",
+              "displayName": "RX optical power dBm",
+              "paletteIndex": 3
+            },
+            {
+              "label": "TX optical power dBm",
+              "displayName": "TX optical power dBm",
+              "paletteIndex": 1
+            }
+          ]
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Redundant AI Path Health",
+          "description": "Value: shows whether port-channel members or vPC peers degraded capacity while the aggregate path still looked available. Interpretation: port-channel and member status should be 1, vPC status should be 1, and consistency failures should be 0; any opposite value can create hot links and AI collective slowdown.",
+          "signalflow": "data('cisco.port_channel.status').mean(by=['host.name', 'cisco.port_channel.name', 'cisco.port_channel.state']).publish(label='Port-channel up'); data('cisco.port_channel.member.status').mean(by=['host.name', 'cisco.port_channel.name', 'network.interface.name', 'cisco.port_channel.state']).publish(label='Member up'); data('cisco.vpc.status').mean(by=['host.name', 'cisco.vpc.domain', 'cisco.vpc.peer', 'cisco.vpc.state']).publish(label='vPC up'); data('cisco.vpc.consistency.failures').mean(by=['host.name', 'cisco.vpc.check']).publish(label='vPC consistency failures')",
+          "legend_dimension": "cisco.port_channel.name",
+          "publish_label_options": [
+            {
+              "label": "Port-channel up",
+              "displayName": "Port-channel up",
+              "paletteIndex": 13
+            },
+            {
+              "label": "Member up",
+              "displayName": "Member up",
+              "paletteIndex": 1
+            },
+            {
+              "label": "vPC up",
+              "displayName": "vPC up",
+              "paletteIndex": 2
+            },
+            {
+              "label": "vPC consistency failures",
+              "displayName": "vPC consistency failures",
+              "paletteIndex": 8
+            }
+          ]
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "AI Fabric NVE And VNI Status",
+          "description": "Value: shows overlay reachability and tenant segment health on NX-OS fabrics. Interpretation: each row is an NVE peer or VNI; 1 means up and 0 means down. Correlate down rows with EVPN route count changes.",
+          "signalflow": "data('cisco.nve.peer.status').mean(by=['host.name', 'network.peer.address', 'cisco.nve.state']).publish(label='NVE peer up'); data('cisco.nve.vni.status').mean(by=['host.name', 'cisco.nve.vni', 'cisco.nve.vni.type', 'cisco.nve.state']).publish(label='VNI up')",
+          "legend_dimension": "cisco.nve.vni",
+          "publish_label_options": [
+            {
+              "label": "NVE peer up",
+              "displayName": "NVE peer up",
+              "paletteIndex": 13
+            },
+            {
+              "label": "VNI up",
+              "displayName": "VNI up",
+              "paletteIndex": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 Hardware Optics And Physical Health",
+      "description": "Value: connects hardware component state, thermal pressure, optics power, transceiver temperature, voltage, and bias current to packet loss or device instability.",
+      "value": "Use this page when packet loss, pauses, errors, or reloads may be physical: optics, cabling, modules, fans, PSUs, chassis, or thermal conditions.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains the operational purpose of this dashboard page. Interpretation: read this panel first to understand which troubleshooting question this page is designed to answer.",
+          "markdown": "## Value Provided\nUse this page when symptoms point to physical infrastructure. It shows hardware component state, chassis/module temperature, optical power drift, transceiver temperature, voltage, and bias current.\n\nKeep optical power, temperature, voltage, and current in separate charts because they use different units. Correlate changes here with interface errors, queue drops, PFC pauses, and reload evidence in the overview or focused interface/AI pages.",
+          "width": 12,
+          "height": 1
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Hardware Component Status",
+          "description": "Value: surfaces fan, PSU, module, chassis, and inventory states that can precede device failure. Interpretation: use the Cisco state label first; numeric values are -1 unknown, 0 critical, 1 ok, and 2 warning.",
+          "signalflow": "data('cisco.hardware.status').mean(by=['host.name', 'cisco.hardware.component', 'cisco.hardware.name', 'cisco.hardware.slot', 'cisco.hardware.state']).publish(label='Hardware status')",
+          "legend_dimension": "cisco.hardware.name",
+          "publish_label_options": [
+            {
+              "label": "Hardware status",
+              "displayName": "Hardware status",
+              "paletteIndex": 13
+            }
+          ]
+        },
+        {
+          "name": "Hardware Temperature",
+          "description": "Value: identifies thermal pressure tied to slots, components, or chassis-wide events. Interpretation: rising temperature before errors or reloads suggests physical/environmental cause.",
+          "signalflow": "data('cisco.hardware.temperature').mean(by=['host.name', 'cisco.hardware.name', 'cisco.hardware.slot']).publish(label='Temperature C')",
+          "legend_dimension": "cisco.hardware.name",
+          "publish_label_options": [
+            {
+              "label": "Temperature C",
+              "displayName": "Temperature C",
+              "valueSuffix": " C",
+              "paletteIndex": 5
+            }
+          ]
+        },
+        {
+          "name": "Optical Power Drift",
+          "description": "Value: links GPU path errors or retransmission symptoms to RX/TX optical power drift. Interpretation: falling RX power or rising TX power before errors and pause frames suggests optics, cabling, or environmental root cause rather than workload imbalance.",
+          "signalflow": "data('cisco.transceiver.sensor', filter=filter('cisco.transceiver.sensor', 'rx_power')).mean(by=['host.name', 'network.interface.name', 'cisco.transceiver.lane']).publish(label='RX optical power dBm'); data('cisco.transceiver.sensor', filter=filter('cisco.transceiver.sensor', 'tx_power')).mean(by=['host.name', 'network.interface.name', 'cisco.transceiver.lane']).publish(label='TX optical power dBm')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "RX optical power dBm",
+              "displayName": "RX optical power dBm",
+              "paletteIndex": 3
+            },
+            {
+              "label": "TX optical power dBm",
+              "displayName": "TX optical power dBm",
+              "paletteIndex": 1
+            }
+          ]
+        },
+        {
+          "name": "Transceiver Temperature",
+          "description": "Value: finds hot optics before they become interface errors or link instability. Interpretation: rising transceiver temperature before errors, drops, or optical power changes points to physical or environmental cause.",
+          "signalflow": "data('cisco.transceiver.sensor', filter=filter('cisco.transceiver.sensor', 'temperature')).mean(by=['host.name', 'network.interface.name', 'cisco.transceiver.lane']).publish(label='Transceiver temperature C')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Transceiver temperature C",
+              "displayName": "Transceiver temperature C",
+              "valueSuffix": "C",
+              "paletteIndex": 8
+            }
+          ]
+        },
+        {
+          "name": "Transceiver Voltage",
+          "description": "Value: detects optic voltage drift that can accompany module or platform issues. Interpretation: sudden deviation or instability on one interface or lane should be correlated with optical power and errors.",
+          "signalflow": "data('cisco.transceiver.sensor', filter=filter('cisco.transceiver.sensor', 'voltage')).mean(by=['host.name', 'network.interface.name', 'cisco.transceiver.lane']).publish(label='Transceiver voltage V')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Transceiver voltage V",
+              "displayName": "Transceiver voltage V",
+              "valueSuffix": "V",
+              "paletteIndex": 2
+            }
+          ]
+        },
+        {
+          "name": "Transceiver Bias Current",
+          "description": "Value: detects laser bias drift that can indicate optic aging or cabling stress before hard failures. Interpretation: bias current moving with falling RX power or rising TX power points to optical path degradation.",
+          "signalflow": "data('cisco.transceiver.sensor', filter=filter('cisco.transceiver.sensor', 'current')).mean(by=['host.name', 'network.interface.name', 'cisco.transceiver.lane']).publish(label='Bias current mA')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Bias current mA",
+              "displayName": "Bias current mA",
+              "valueSuffix": "mA",
+              "paletteIndex": 6
+            }
+          ]
+        },
+        {
+          "name": "Physical Path Errors And Drops",
+          "description": "Value: highlights packet-loss symptoms that correlate with application latency, retransmits, or failover events. Interpretation: non-zero sustained errors/sec or drops/sec on clean links is actionable; compare timing with utilization and optics.",
+          "signalflow": "data('system.network.errors', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Errors/sec'); data('system.network.packet.dropped', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Drops/sec')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Errors/sec",
+              "displayName": "Errors/sec",
+              "paletteIndex": 8
+            },
+            {
+              "label": "Drops/sec",
+              "displayName": "Drops/sec",
+              "paletteIndex": 4
+            }
+          ]
+        },
+        {
+          "name": "Reload Evidence",
+          "description": "Value: confirms whether a reboot or reload occurred near the outage window. Interpretation: uptime should climb steadily; a sharp drop means the device restarted and should anchor the incident timeline.",
+          "signalflow": "data('system.uptime', filter=filter('hw.type', 'network')).mean(by=['host.name']).publish(label='Uptime seconds')",
+          "legend_dimension": "host.name",
+          "publish_label_options": [
+            {
+              "label": "Uptime seconds",
+              "displayName": "Uptime seconds",
+              "valueUnit": "Second",
+              "paletteIndex": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 Secure Networking",
+      "description": "Value: combines Cisco OS edge datapath, control-plane protection, protocol/drop evidence, and Meraki MX WAN/VPN signals for secure networking troubleshooting.",
+      "value": "Use this page when branch, Internet edge, firewall-adjacent, VPN, NAT, crypto, WAN, or secure access symptoms need both device datapath and cloud-managed MX evidence.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains the secure networking troubleshooting workflow. Interpretation: correlate transport and VPN health with edge datapath utilization, QFP drops, control-plane protection, and protocol errors to decide whether the issue is carrier, tunnel, policy, device pressure, or forwarding.",
+          "markdown": "## Value Provided\nUse this page for secure networking and branch-edge incidents. It combines Cisco OS edge/router telemetry with Meraki MX signals: WAN uplink state, loss, latency, cellular signal, VPN reachability and quality, appliance performance, QFP datapath utilization, crypto/NAT/QoS/punt/IP drop families, forwarding drops, control-plane protection, punt pressure, and protocol errors.\n\nRead it left to right during triage: prove transport and VPN quality, check edge forwarding pressure, inspect drops by feature or reason, then use control-plane and protocol panels to separate policy/protection behavior from device overload or carrier path degradation.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Secure Edge Device And Uplink State",
+          "description": "Value: shows whether secure edge devices and WAN uplinks are reachable before deeper datapath analysis. Interpretation: Cisco OS device up should be 1, Meraki appliance status should be healthy/online, and active uplinks should remain usable during the incident.",
+          "signalflow": "data('cisco.device.up').mean(by=['host.name']).publish(label='Cisco OS device up'); data('meraki.device.status', filter=filter('meraki.device.product_type', 'appliance')).mean(by=['host.name', 'host.id', 'meraki.device.status']).publish(label='MX status'); data('meraki.uplink.status').mean(by=['host.name', 'host.id', 'meraki.uplink.interface', 'meraki.uplink.status', 'meraki.uplink.provider']).publish(label='MX uplink active')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "WAN Loss Latency And VPN Quality",
+          "description": "Value: correlates carrier path quality with VPN tunnel experience. Interpretation: WAN loss/latency that starts before VPN loss, jitter, or MOS degradation points to transport; VPN degradation without WAN degradation points to tunnel, peer, or policy issues.",
+          "signalflow": "data('meraki.uplink.loss').mean(by=['host.name', 'host.id', 'meraki.uplink.interface']).publish(label='WAN loss %'); data('meraki.uplink.latency').mean(by=['host.name', 'host.id', 'meraki.uplink.interface']).publish(label='WAN latency ms'); data('meraki.vpn.peer.loss').mean(by=['host.name', 'meraki.vpn.peer.name', 'meraki.vpn.sender.uplink', 'meraki.vpn.receiver.uplink']).publish(label='VPN loss %'); data('meraki.vpn.peer.latency').mean(by=['host.name', 'meraki.vpn.peer.name', 'meraki.vpn.sender.uplink', 'meraki.vpn.receiver.uplink']).publish(label='VPN latency ms'); data('meraki.vpn.peer.jitter').mean(by=['host.name', 'meraki.vpn.peer.name']).publish(label='VPN jitter ms'); data('meraki.vpn.peer.mos').mean(by=['host.name', 'meraki.vpn.peer.name']).publish(label='VPN MOS')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "VPN Peer Reachability",
+          "description": "Value: identifies Auto VPN or third-party VPN peers that are unreachable. Interpretation: 1 means reachable; 0 means unreachable. Use peer type/name/network ID to scope the branch or partner tunnel.",
+          "signalflow": "data('meraki.vpn.peer.status').mean(by=['host.name', 'meraki.vpn.peer.type', 'meraki.vpn.peer.name', 'meraki.vpn.peer.network_id', 'meraki.vpn.peer.reachability']).publish(label='VPN peer reachable')",
+          "legend_dimension": "meraki.vpn.peer.name"
+        },
+        {
+          "name": "Edge Datapath Utilization And Traffic",
+          "description": "Value: shows whether the secure edge datapath is approaching capacity. Interpretation: high QFP load, high packet rate, or falling Meraki appliance score during user impact points to device pressure rather than only carrier quality.",
+          "signalflow": "data('cisco.qfp.datapath.utilization').max(by=['host.name', 'cisco.qfp.load.type', 'cisco.cpu.window']).scale(100).publish(label='QFP utilization %'); data('cisco.qfp.datapath.io').mean(by=['host.name', 'network.io.direction', 'cisco.qfp.traffic.class']).publish(label='QFP bit/s'); data('cisco.qfp.datapath.packet.rate').mean(by=['host.name', 'network.io.direction', 'cisco.qfp.traffic.class']).publish(label='QFP packets/s'); data('meraki.appliance.performance.score').mean(by=['host.name', 'host.id']).publish(label='MX performance score')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Security Path Drops By Feature And Reason",
+          "description": "Value: reveals crypto, NAT, QoS, punt, IP, and forwarding drop reasons that interface counters alone can miss. Interpretation: drops by source/reason tell whether the secure path is losing traffic because of policy, feature handling, lookup, resource, or datapath behavior.",
+          "signalflow": "data('cisco.qfp.drops').rate().sum(by=['host.name', 'cisco.qfp.drop.source', 'cisco.forwarding.drop.reason']).publish(label='QFP drops/sec'); data('cisco.qfp.drop.bytes').rate().sum(by=['host.name', 'cisco.qfp.drop.source', 'cisco.forwarding.drop.reason']).publish(label='QFP dropped bytes/sec'); data('cisco.forwarding.drops').rate().sum(by=['host.name', 'cisco.routing.vrf', 'cisco.forwarding.drop.reason']).publish(label='Forwarding drops/sec')",
+          "legend_dimension": "cisco.forwarding.drop.reason"
+        },
+        {
+          "name": "Interface And QFP Drop Locality",
+          "description": "Value: ties datapath drops back to the interface and direction carrying affected traffic. Interpretation: if QFP interface drops line up with interface errors or packet drops, start at that edge handoff or secure-zone interface.",
+          "signalflow": "data('cisco.qfp.interface.drops').rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='QFP interface drops/sec'); data('system.network.errors', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Interface errors/sec'); data('system.network.packet.dropped', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Interface drops/sec')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "name": "Control Plane Protection And Punt Pressure",
+          "description": "Value: shows whether protection policy or punt traffic is affecting the secure edge. Interpretation: rising control-plane drops can be healthy protection or policy impact; high punt rates mean traffic is leaving hardware forwarding and stressing CPU paths.",
+          "signalflow": "data('cisco.control_plane.packets').rate().sum(by=['host.name', 'cisco.control_plane.source', 'cisco.control_plane.class', 'network.io.direction']).publish(label='Control-plane packets/sec'); data('cisco.control_plane.dropped').rate().sum(by=['host.name', 'cisco.control_plane.source', 'cisco.control_plane.class', 'cisco.control_plane.drop.reason']).publish(label='Control-plane drops/sec'); data('cisco.control_plane.punt.rate').mean(by=['host.name', 'cisco.control_plane.punt.queue', 'network.interface.name']).publish(label='Punt packets/sec')",
+          "legend_dimension": "cisco.control_plane.class"
+        },
+        {
+          "name": "Protocol Errors And Drops",
+          "description": "Value: surfaces protocol-level traffic the device is rejecting or failing to process. Interpretation: ICMP, TCP, UDP, routing, or IP error/drop spikes help distinguish malformed traffic, scanning, routing instability, or application path failures.",
+          "signalflow": "data('cisco.protocol.errors').rate().sum(by=['host.name', 'cisco.protocol.name', 'cisco.protocol.error.type']).publish(label='Protocol errors/sec'); data('cisco.protocol.dropped').rate().sum(by=['host.name', 'cisco.protocol.name', 'cisco.protocol.drop.reason']).publish(label='Protocol drops/sec'); data('cisco.protocol.packets').rate().sum(by=['host.name', 'cisco.protocol.name', 'cisco.protocol.message.type', 'network.io.direction']).publish(label='Protocol packets/sec')",
+          "legend_dimension": "cisco.protocol.name"
+        },
+        {
+          "name": "Cellular Backup Signal",
+          "description": "Value: explains whether backup cellular quality is driving secure edge degradation. Interpretation: worsening RSRP/RSRQ before loss or tunnel degradation points to cellular coverage, antenna, provider, or failover-path issues.",
+          "signalflow": "data('meraki.uplink.cellular.signal.rsrp').mean(by=['host.name', 'host.id', 'meraki.uplink.interface', 'meraki.uplink.provider']).publish(label='RSRP dBm'); data('meraki.uplink.cellular.signal.rsrq').mean(by=['host.name', 'host.id', 'meraki.uplink.interface', 'meraki.uplink.provider']).publish(label='RSRQ dB')",
+          "legend_dimension": "host.name"
+        }
+      ]
+    },
+    {
+      "name": "07 Campus Networking",
+      "description": "Value: combines Cisco OS switch/L2/physical telemetry with Meraki switching and wireless experience for campus troubleshooting.",
+      "value": "Use this page when the incident involves access switches, APs, SSIDs, clients, PoE, topology, L2 stability, uplinks, or campus physical paths.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains the campus networking workflow. Interpretation: combine switch port state, utilization, L2 stability, topology, PoE, Meraki port alerts, AP/client load, RF utilization, SSID state, wireless loss, optics, and power-module signals to move from user symptom to affected access path.",
+          "markdown": "## Value Provided\nUse this page for campus networking incidents across access switching and wireless. It blends Cisco OS switch telemetry with Meraki switching and wireless signals: port admin/oper state, utilization, byte/packet volume, errors/drops, err-disabled ports, Meraki port alerts, PoE allocation, AP status, client count, channel utilization, wireless packet loss, SSID broadcast status, L2/STP churn, port-channel/LACP/vPC health, topology neighbors, optics, and power modules.\n\nStart with device and access-port state, then check utilization and packet loss. If the issue is wireless, move to AP status, clients, RF utilization, packet loss, and SSID status. If the issue is wired or building-wide, inspect L2 stability, topology, PoE, power, and optics.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Campus Device AP And Switch Health",
+          "description": "Value: shows whether campus switches and APs are reachable before interpreting access symptoms. Interpretation: down Cisco OS devices, offline Meraki switches, or offline APs define the failure domain quickly.",
+          "signalflow": "data('cisco.device.up').mean(by=['host.name']).publish(label='Cisco OS device up'); data('meraki.device.status', filter=filter('meraki.device.product_type', 'switch')).mean(by=['host.name', 'host.id', 'meraki.device.status']).publish(label='Meraki switch status'); data('meraki.device.status', filter=filter('meraki.device.product_type', 'wireless')).mean(by=['host.name', 'host.id', 'meraki.device.status']).publish(label='AP status')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Access Port Admin Versus Oper State",
+          "description": "Value: separates intentionally disabled ports from failed links across Cisco OS and Meraki switching. Interpretation: admin enabled with oper down needs physical, endpoint, PoE, or access-policy investigation.",
+          "signalflow": "data('cisco.interface.admin.status').mean(by=['host.name', 'network.interface.name']).publish(label='Cisco admin enabled'); data('system.network.interface.status', filter=filter('hw.type', 'network')).mean(by=['host.name', 'network.interface.name']).publish(label='Cisco oper up'); data('cisco.interface.admin.status', filter=filter('os.name', 'Meraki')).mean(by=['host.name', 'host.id', 'network.interface.name']).publish(label='Meraki admin enabled'); data('system.network.interface.status', filter=filter('os.name', 'Meraki')).mean(by=['host.name', 'host.id', 'network.interface.name']).publish(label='Meraki port up')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "name": "Campus Utilization Traffic And Packet Rate",
+          "description": "Value: shows wired campus saturation, sudden silence, and packet-rate pressure. Interpretation: sustained high utilization, high packet rate, or asymmetric traffic can explain user impact even when links stay up.",
+          "signalflow": "data('cisco.interface.utilization').mean(by=['host.name', 'network.interface.name', 'network.io.direction']).scale(100).publish(label='Cisco utilization %'); data('system.network.io', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Cisco bytes/sec'); data('cisco.interface.packet.rate').mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Cisco packets/sec'); data('cisco.interface.utilization', filter=filter('os.name', 'Meraki')).mean(by=['host.name', 'host.id', 'network.interface.name', 'network.io.direction']).scale(100).publish(label='Meraki utilization %'); data('meraki.switch.port.usage').sum(by=['host.name', 'host.id', 'network.interface.name', 'network.io.direction']).publish(label='Meraki usage KBy')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "name": "Campus Errors Drops And Port Alerts",
+          "description": "Value: combines Cisco interface loss symptoms with Meraki Dashboard port alerts. Interpretation: interface errors or drops plus port alerts point to cabling, endpoint, PoE, CRC, or policy issues on a specific access path.",
+          "signalflow": "data('system.network.errors', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Cisco errors/sec'); data('system.network.packet.dropped', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Cisco drops/sec'); data('cisco.interface.errdisabled').mean(by=['host.name', 'network.interface.name', 'cisco.errdisabled.reason']).publish(label='Err-disabled'); data('meraki.switch.port.alert').sum(by=['host.name', 'host.id', 'network.interface.name', 'meraki.switch.port.alert.severity', 'meraki.switch.port.alert.reason']).publish(label='Meraki port alerts')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "name": "Wireless Clients RF Utilization And Loss",
+          "description": "Value: correlates AP client load, RF airtime pressure, and packet loss. Interpretation: high client load plus high channel utilization or loss points to RF/load; loss without RF pressure can indicate AP, client, roaming, or upstream path symptoms.",
+          "signalflow": "data('meraki.wireless.client.count').sum(by=['host.name', 'host.id', 'meraki.wireless.client.status', 'meraki.network.id']).publish(label='Wireless clients'); data('meraki.wireless.channel_utilization').mean(by=['host.name', 'host.id', 'meraki.wireless.band', 'meraki.wireless.utilization.type']).publish(label='Channel utilization %'); data('meraki.wireless.packet.loss_percentage').mean(by=['host.name', 'host.id', 'network.io.direction']).publish(label='Wireless loss %')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "SSID Broadcast Status",
+          "description": "Value: catches SSIDs that are disabled, not advertised, or not broadcasting. Interpretation: 1 means enabled, advertised, and broadcasting; 0 means clients may not discover or join that BSS.",
+          "signalflow": "data('meraki.wireless.ssid.status').mean(by=['host.name', 'host.id', 'meraki.wireless.ssid.name', 'meraki.wireless.bssid', 'meraki.wireless.band']).publish(label='SSID broadcasting')",
+          "legend_dimension": "meraki.wireless.ssid.name"
+        },
+        {
+          "name": "Campus L2 Stability And Redundancy",
+          "description": "Value: shows spanning-tree churn, blocked ports, port-channel health, LACP negotiation, and vPC health. Interpretation: churn, member loss, LACP errors, or vPC inconsistency can create intermittent campus outages while some paths remain up.",
+          "signalflow": "data('cisco.l2.stp.topology_changes').rate().sum(by=['host.name', 'cisco.l2.vlan', 'network.interface.name']).publish(label='STP changes/sec'); data('cisco.l2.stp.blocked_ports').mean(by=['host.name', 'cisco.l2.vlan', 'network.interface.name']).publish(label='STP blocked ports'); data('cisco.port_channel.member.status').mean(by=['host.name', 'cisco.port_channel.name', 'network.interface.name', 'cisco.port_channel.state']).publish(label='Port-channel member up'); data('cisco.lacp.errors').rate().sum(by=['host.name', 'network.interface.name', 'cisco.lacp.error.type']).publish(label='LACP errors/sec'); data('cisco.vpc.consistency.failures').mean(by=['host.name', 'cisco.vpc.check']).publish(label='vPC consistency failures')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Campus Topology Neighbors",
+          "description": "Value: shows LLDP/CDP neighbor evidence so operators can spot wrong connections or missing neighbors. Interpretation: use local interface, neighbor name, neighbor interface, and protocol to confirm the physical campus path.",
+          "signalflow": "data('cisco.topology.neighbor.info').mean(by=['host.name', 'network.interface.name', 'cisco.topology.protocol', 'cisco.topology.neighbor.name', 'cisco.topology.neighbor.interface', 'cisco.topology.neighbor.address']).publish(label='Neighbor seen')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "name": "PoE Power Modules And Physical Access Path",
+          "description": "Value: ties endpoint power and physical health to campus symptoms. Interpretation: PoE allocation changes, failed power modules, optical drift, or hot optics explain phones, APs, cameras, or uplinks failing without a routing incident.",
+          "signalflow": "data('meraki.switch.port.poe.allocated').mean(by=['host.name', 'host.id', 'network.interface.name']).publish(label='PoE allocated W'); data('meraki.power.module.status').mean(by=['host.name', 'host.id', 'meraki.power.slot', 'meraki.power.module.status']).publish(label='Power module status'); data('cisco.transceiver.sensor', filter=filter('cisco.transceiver.sensor', 'rx_power')).mean(by=['host.name', 'network.interface.name', 'cisco.transceiver.lane']).publish(label='RX optical power dBm'); data('cisco.transceiver.sensor', filter=filter('cisco.transceiver.sensor', 'temperature')).mean(by=['host.name', 'network.interface.name', 'cisco.transceiver.lane']).publish(label='Optic temperature C')",
+          "legend_dimension": "network.interface.name"
+        }
+      ]
+    }
+  ]
+}

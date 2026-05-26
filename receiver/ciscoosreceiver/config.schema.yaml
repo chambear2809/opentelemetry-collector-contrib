@@ -11,6 +11,424 @@ $defs:
         type: string
       port:
         type: integer
+  device_selection_match_config:
+    description: DeviceSelectionMatchConfig defines one side of the shared device selector.
+    type: object
+    properties:
+      device_ids:
+        type: array
+        items:
+          type: string
+      host_ids:
+        type: array
+        items:
+          type: string
+      host_ips:
+        type: array
+        items:
+          type: string
+      host_names:
+        type: array
+        items:
+          type: string
+      serials:
+        type: array
+        items:
+          type: string
+  device_selection_config:
+    description: DeviceSelectionConfig defines shared device include/exclude filters across Cisco providers.
+    type: object
+    properties:
+      exclude:
+        $ref: device_selection_match_config
+      include:
+        $ref: device_selection_match_config
+  meraki_auth_config:
+    description: MerakiAuthConfig represents Meraki Dashboard API authentication settings.
+    type: object
+    properties:
+      api_key:
+        type: string
+  meraki_device_config:
+    description: MerakiDeviceConfig represents a serial-scoped Meraki polling target.
+    type: object
+    properties:
+      organization_id:
+        type: string
+      serial:
+        type: string
+  meraki_organization_config:
+    description: MerakiOrganizationConfig represents an organization-level Meraki polling target.
+    type: object
+    properties:
+      network_ids:
+        type: array
+        items:
+          type: string
+      organization_id:
+        type: string
+      product_types:
+        type: array
+        items:
+          type: string
+      serials:
+        type: array
+        items:
+          type: string
+      tags:
+        type: array
+        items:
+          type: string
+      tags_filter_type:
+        type: string
+  meraki_config:
+    description: MerakiConfig defines Meraki Dashboard API polling settings.
+    type: object
+    properties:
+      auth:
+        $ref: meraki_auth_config
+      base_url:
+        type: string
+      devices:
+        type: array
+        items:
+          $ref: meraki_device_config
+      organizations:
+        type: array
+        items:
+          $ref: meraki_organization_config
+      user_agent:
+        type: string
+  intersight_auth_config:
+    description: IntersightAuthConfig represents Cisco Intersight API key authentication.
+    type: object
+    properties:
+      key_file:
+        type: string
+      key_id:
+        type: string
+      key_pem:
+        type: string
+  intersight_target_filters:
+    description: IntersightTargetFilters limits Intersight collection to known resources.
+    type: object
+    properties:
+      moids:
+        type: array
+        items:
+          type: string
+      serials:
+        type: array
+        items:
+          type: string
+  intersight_group_config:
+    description: IntersightGroupConfig controls a curated Intersight collection group.
+    type: object
+    properties:
+      enabled:
+        type: boolean
+      max_results:
+        type: integer
+  intersight_config:
+    description: IntersightConfig defines native Cisco Intersight API polling settings.
+    type: object
+    properties:
+      audit:
+        $ref: intersight_group_config
+      auth:
+        $ref: intersight_auth_config
+      enabled:
+        type: boolean
+      endpoint:
+        type: string
+      equipment:
+        $ref: intersight_group_config
+      event_lookback:
+        type: string
+      firmware:
+        $ref: intersight_group_config
+      hyperflex:
+        $ref: intersight_group_config
+      insecure_skip_verify:
+        type: boolean
+      inventory:
+        $ref: intersight_group_config
+      kubernetes:
+        $ref: intersight_group_config
+      max_retries:
+        type: integer
+      network:
+        $ref: intersight_group_config
+      page_size:
+        type: integer
+      storage:
+        $ref: intersight_group_config
+      targets:
+        $ref: intersight_target_filters
+      telemetry:
+        $ref: intersight_group_config
+      telemetry_lookback:
+        type: string
+      user_agent:
+        type: string
+      virtualization:
+        $ref: intersight_group_config
+  catalyst_center_auth_config:
+    description: CatalystCenterAuthConfig represents Catalyst Center API token authentication settings.
+    type: object
+    properties:
+      aes_credentials:
+        type: string
+      mode:
+        type: string
+      password:
+        type: string
+      username:
+        type: string
+  catalyst_center_device_detail_target:
+    description: CatalystCenterDeviceDetailTarget identifies a device-detail lookup.
+    type: object
+    properties:
+      identifier:
+        type: string
+      search_by:
+        type: string
+  catalyst_center_target_filters:
+    description: CatalystCenterTargetFilters limits Catalyst Center detail collection to known resources.
+    type: object
+    properties:
+      client_macs:
+        type: array
+        items:
+          type: string
+      device_details:
+        type: array
+        items:
+          $ref: catalyst_center_device_detail_target
+  catalyst_center_group_config:
+    description: CatalystCenterGroupConfig controls a curated Catalyst Center collection group.
+    type: object
+    properties:
+      enabled:
+        type: boolean
+      max_results:
+        type: integer
+  catalyst_center_config:
+    description: CatalystCenterConfig defines native Catalyst Center API polling settings.
+    type: object
+    properties:
+      auth:
+        $ref: catalyst_center_auth_config
+      details:
+        $ref: catalyst_center_group_config
+      enabled:
+        type: boolean
+      endpoint:
+        type: string
+      health:
+        $ref: catalyst_center_group_config
+      insecure_skip_verify:
+        type: boolean
+      interfaces:
+        $ref: catalyst_center_group_config
+      inventory:
+        $ref: catalyst_center_group_config
+      issues:
+        $ref: catalyst_center_group_config
+      lookback:
+        type: string
+      max_retries:
+        type: integer
+      page_size:
+        type: integer
+      targets:
+        $ref: catalyst_center_target_filters
+      topology:
+        $ref: catalyst_center_group_config
+      user_agent:
+        type: string
+  controller_auth_config:
+    description: ControllerAuthConfig represents username/password or API-key authentication for Nexus controllers.
+    type: object
+    properties:
+      api_key:
+        type: string
+      domain:
+        type: string
+      mode:
+        type: string
+      password:
+        type: string
+      username:
+        type: string
+  nexus_controller_group_config:
+    description: NexusControllerGroupConfig controls a curated controller collection group.
+    type: object
+    properties:
+      enabled:
+        type: boolean
+      max_results:
+        type: integer
+  nexus_dashboard_target_filters:
+    description: NexusDashboardTargetFilters limits Nexus Dashboard collection to relevant fabrics, switches, and services.
+    type: object
+    properties:
+      fabrics:
+        type: array
+        items:
+          type: string
+      interface_names:
+        type: array
+        items:
+          type: string
+      service_names:
+        type: array
+        items:
+          type: string
+      sites:
+        type: array
+        items:
+          type: string
+      switch_ids:
+        type: array
+        items:
+          type: string
+      switch_serials:
+        type: array
+        items:
+          type: string
+  nexus_dashboard_config:
+    description: NexusDashboardConfig defines Nexus Dashboard, NDFC, Insights, NDO, OneManage, and Data Broker polling settings.
+    type: object
+    properties:
+      auth:
+        $ref: controller_auth_config
+      data_broker:
+        $ref: nexus_controller_group_config
+      enabled:
+        type: boolean
+      endpoint:
+        type: string
+      event_lookback:
+        type: string
+      insecure_skip_verify:
+        type: boolean
+      insights:
+        $ref: nexus_controller_group_config
+      max_retries:
+        type: integer
+      ndfc:
+        $ref: nexus_controller_group_config
+      orchestrator:
+        $ref: nexus_controller_group_config
+      page_size:
+        type: integer
+      performance:
+        $ref: nexus_controller_group_config
+      platform:
+        $ref: nexus_controller_group_config
+      service_discovery:
+        type: boolean
+      targets:
+        $ref: nexus_dashboard_target_filters
+      telemetry_lookback:
+        type: string
+      user_agent:
+        type: string
+  aci_controller_config:
+    description: ACIControllerConfig represents a single APIC controller endpoint.
+    type: object
+    properties:
+      endpoint:
+        type: string
+      name:
+        type: string
+  aci_target_filters:
+    description: ACITargetFilters limits APIC collection to relevant nodes, tenants, and objects.
+    type: object
+    properties:
+      bridge_domains:
+        type: array
+        items:
+          type: string
+      epgs:
+        type: array
+        items:
+          type: string
+      fabrics:
+        type: array
+        items:
+          type: string
+      interface_names:
+        type: array
+        items:
+          type: string
+      node_ids:
+        type: array
+        items:
+          type: string
+      serials:
+        type: array
+        items:
+          type: string
+      sites:
+        type: array
+        items:
+          type: string
+      tenants:
+        type: array
+        items:
+          type: string
+      vrfs:
+        type: array
+        items:
+          type: string
+  aci_config:
+    description: ACIConfig defines APIC API polling settings.
+    type: object
+    properties:
+      audit:
+        $ref: nexus_controller_group_config
+      auth:
+        $ref: controller_auth_config
+      controller_health:
+        $ref: nexus_controller_group_config
+      controllers:
+        type: array
+        items:
+          $ref: aci_controller_config
+      enabled:
+        type: boolean
+      endpoints:
+        $ref: nexus_controller_group_config
+      event_lookback:
+        type: string
+      events:
+        $ref: nexus_controller_group_config
+      fabric:
+        $ref: nexus_controller_group_config
+      faults:
+        $ref: nexus_controller_group_config
+      insecure_skip_verify:
+        type: boolean
+      max_retries:
+        type: integer
+      nodes:
+        $ref: nexus_controller_group_config
+      page_size:
+        type: integer
+      stats:
+        $ref: nexus_controller_group_config
+      stats_lookback:
+        type: string
+      targets:
+        $ref: aci_target_filters
+      tenants:
+        $ref: nexus_controller_group_config
+      topology:
+        $ref: nexus_controller_group_config
+      user_agent:
+        type: string
 description: Config defines configuration for Cisco OS receiver.
 type: object
 properties:
@@ -19,5 +437,17 @@ properties:
     type: array
     items:
       $ref: device_config
+  device_selection:
+    $ref: device_selection_config
+  meraki:
+    $ref: meraki_config
+  intersight:
+    $ref: intersight_config
+  catalyst_center:
+    $ref: catalyst_center_config
+  nexus_dashboard:
+    $ref: nexus_dashboard_config
+  aci:
+    $ref: aci_config
 allOf:
   - $ref: go.opentelemetry.io/collector/scraper/scraperhelper.controller_config

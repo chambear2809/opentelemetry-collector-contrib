@@ -9,8 +9,20 @@ status:
     active: []
 
 resource_attributes:
+  host.id:
+    description: Unique identifier for the Cisco network device
+    type: string
+    enabled: true
   host.ip:
     description: The IP address of the Cisco network device
+    type: string
+    enabled: true
+  host.name:
+    description: The configured or device-reported host name of the Cisco network device
+    type: string
+    enabled: true
+  host.type:
+    description: The Cisco network device model or platform type
     type: string
     enabled: true
   hw.type:
@@ -21,8 +33,105 @@ resource_attributes:
     description: The operating system type of the Cisco device
     type: string
     enabled: true
+  os.version:
+    description: The operating system version of the Cisco device
+    type: string
+    enabled: true
 
 attributes:
+  cisco.errdisabled.reason:
+    description: Cisco err-disabled reason
+    type: string
+  cisco.interface.counter.name:
+    description: Cisco interface counter name
+    type: string
+  cisco.l2.stp.state:
+    description: Cisco spanning-tree state
+    type: string
+  cisco.l2.vlan:
+    description: Cisco VLAN identifier
+    type: string
+  cisco.lacp.error.type:
+    description: Cisco LACP error type
+    type: string
+  cisco.lacp.packet.type:
+    description: Cisco LACP packet type
+    type: string
+  cisco.pause.type:
+    description: Cisco pause frame type
+    type: string
+  cisco.port_channel.name:
+    description: Cisco port-channel interface name
+    type: string
+  cisco.port_channel.state:
+    description: Cisco port-channel or member state
+    type: string
+  cisco.qos.action:
+    description: Cisco QoS action
+    type: string
+  cisco.qos.class:
+    description: Cisco QoS policy class
+    type: string
+  cisco.qos.drop.reason:
+    description: Cisco QoS drop reason
+    type: string
+  cisco.qos.group:
+    description: Cisco QoS group
+    type: string
+  cisco.qos.priority:
+    description: Cisco QoS priority or class of service
+    type: string
+  cisco.qos.queue:
+    description: Cisco QoS queue identifier
+    type: string
+  cisco.qos.source:
+    description: Cisco QoS command or subsystem source
+    type: string
+  cisco.scrape.command.family:
+    description: Cisco receiver command family
+    type: string
+  cisco.scrape.command.outcome:
+    description: Cisco receiver command execution outcome
+    type: string
+  cisco.scrape.error.type:
+    description: Cisco receiver command error type
+    type: string
+  cisco.topology.neighbor.address:
+    description: Cisco topology neighbor management address
+    type: string
+  cisco.topology.neighbor.interface:
+    description: Cisco topology neighbor interface identifier
+    type: string
+  cisco.topology.neighbor.name:
+    description: Cisco topology neighbor system name or device ID
+    type: string
+  cisco.topology.neighbor.platform:
+    description: Cisco topology neighbor platform
+    type: string
+  cisco.topology.protocol:
+    description: Cisco topology discovery protocol
+    type: string
+  cisco.transceiver.lane:
+    description: Cisco transceiver lane identifier
+    type: string
+  cisco.transceiver.sensor:
+    description: Cisco transceiver DOM sensor name
+    type: string
+  cisco.transceiver.sensor.unit:
+    description: Cisco transceiver DOM sensor unit
+    type: string
+  cisco.vpc.check:
+    description: Cisco vPC consistency check name
+    type: string
+  cisco.vpc.domain:
+    description: Cisco vPC domain identifier
+    type: string
+  cisco.vpc.peer:
+    description: Cisco vPC peer or vPC identifier
+    type: string
+  cisco.vpc.state:
+    description: Cisco vPC state
+    type: string
   network.interface.description:
     description: The description/alias of the network interface
     type: string
@@ -40,16 +149,279 @@ attributes:
     type: string
     enum: [receive, transmit]
   network.packet.type:
-    description: Type of packet (multicast or broadcast)
+    description: Type of packet
     type: string
-    enum: [multicast, broadcast]
+    enum: [unicast, multicast, broadcast]
 
 metrics:
+  cisco.interface.admin.status:
+    enabled: true
+    stability: development
+    description: Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)
+    unit: "1"
+    gauge:
+      value_type: int
+    attributes: [network.interface.description, network.interface.mac, network.interface.name, network.interface.speed]
+
+  cisco.interface.counter:
+    enabled: true
+    stability: development
+    description: The value of a Cisco interface-specific counter
+    unit: "{count}"
+    sum:
+      value_type: int
+      monotonic: true
+      aggregation_temporality: cumulative
+    attributes: [cisco.interface.counter.name, network.interface.description, network.interface.mac, network.interface.name, network.interface.speed]
+
+  cisco.interface.errdisabled:
+    enabled: true
+    stability: development
+    description: Cisco interface err-disabled status (1 = err-disabled, 0 = not err-disabled)
+    unit: "1"
+    gauge:
+      value_type: int
+    attributes: [network.interface.name, cisco.errdisabled.reason]
+
+  cisco.interface.io.rate:
+    enabled: true
+    stability: development
+    description: The device-reported interface traffic rate
+    unit: "bit/s"
+    gauge:
+      value_type: int
+    attributes: [network.io.direction, network.interface.description, network.interface.mac, network.interface.name, network.interface.speed]
+
+  cisco.interface.packet.rate:
+    enabled: true
+    stability: development
+    description: The device-reported interface packet rate
+    unit: "{packet}/s"
+    gauge:
+      value_type: int
+    attributes: [network.io.direction, network.interface.description, network.interface.mac, network.interface.name, network.interface.speed]
+
+  cisco.interface.pause.frames:
+    enabled: true
+    stability: development
+    description: The number of Cisco interface pause frames
+    unit: "{frame}"
+    sum:
+      value_type: int
+      monotonic: true
+      aggregation_temporality: cumulative
+    attributes: [network.interface.name, network.io.direction, cisco.pause.type, cisco.qos.priority]
+
+  cisco.interface.qos.policy.bytes:
+    enabled: true
+    stability: development
+    description: The number of bytes matched, transmitted, marked, or dropped by a Cisco interface QoS policy
+    unit: By
+    sum:
+      value_type: int
+      monotonic: true
+      aggregation_temporality: cumulative
+    attributes: [network.interface.name, network.io.direction, cisco.qos.class, cisco.qos.action, cisco.qos.drop.reason, cisco.qos.source]
+
+  cisco.interface.qos.policy.packets:
+    enabled: true
+    stability: development
+    description: The number of packets matched, transmitted, marked, or dropped by a Cisco interface QoS policy
+    unit: "{packet}"
+    sum:
+      value_type: int
+      monotonic: true
+      aggregation_temporality: cumulative
+    attributes: [network.interface.name, network.io.direction, cisco.qos.class, cisco.qos.action, cisco.qos.drop.reason, cisco.qos.source]
+
+  cisco.interface.qos.queue.bytes:
+    enabled: true
+    stability: development
+    description: The number of bytes transmitted, enqueued, or dropped by a Cisco interface QoS queue
+    unit: By
+    sum:
+      value_type: int
+      monotonic: true
+      aggregation_temporality: cumulative
+    attributes: [network.interface.name, network.io.direction, cisco.qos.queue, cisco.qos.group, cisco.qos.action, cisco.qos.drop.reason, cisco.qos.source]
+
+  cisco.interface.qos.queue.packets:
+    enabled: true
+    stability: development
+    description: The number of packets transmitted, enqueued, or dropped by a Cisco interface QoS queue
+    unit: "{packet}"
+    sum:
+      value_type: int
+      monotonic: true
+      aggregation_temporality: cumulative
+    attributes: [network.interface.name, network.io.direction, cisco.qos.queue, cisco.qos.group, cisco.qos.action, cisco.qos.drop.reason, cisco.qos.source]
+
+  cisco.interface.speed:
+    enabled: true
+    stability: development
+    description: The numeric line speed of a Cisco interface
+    unit: "bit/s"
+    gauge:
+      value_type: int
+    attributes: [network.interface.description, network.interface.mac, network.interface.name]
+
+  cisco.interface.utilization:
+    enabled: true
+    stability: development
+    description: Cisco interface traffic utilization as a ratio of line speed
+    unit: "1"
+    gauge:
+      value_type: double
+    attributes: [network.io.direction, network.interface.description, network.interface.mac, network.interface.name]
+
+  cisco.l2.stp.blocked_ports:
+    enabled: true
+    stability: development
+    description: The number of Cisco spanning-tree blocked ports
+    unit: "{port}"
+    gauge:
+      value_type: int
+    attributes: [cisco.l2.vlan, network.interface.name]
+
+  cisco.l2.stp.instances:
+    enabled: true
+    stability: development
+    description: The number of Cisco spanning-tree instances
+    unit: "{instance}"
+    gauge:
+      value_type: int
+    attributes: [cisco.l2.stp.state]
+
+  cisco.l2.stp.topology_changes:
+    enabled: true
+    stability: development
+    description: The number of Cisco spanning-tree topology changes
+    unit: "{change}"
+    sum:
+      value_type: int
+      monotonic: true
+      aggregation_temporality: cumulative
+    attributes: [cisco.l2.vlan, network.interface.name]
+
+  cisco.lacp.errors:
+    enabled: true
+    stability: development
+    description: The number of Cisco LACP errors
+    unit: "{error}"
+    sum:
+      value_type: int
+      monotonic: true
+      aggregation_temporality: cumulative
+    attributes: [network.interface.name, cisco.lacp.error.type]
+
+  cisco.lacp.packets:
+    enabled: true
+    stability: development
+    description: The number of Cisco LACP packets
+    unit: "{packet}"
+    sum:
+      value_type: int
+      monotonic: true
+      aggregation_temporality: cumulative
+    attributes: [network.interface.name, cisco.lacp.packet.type, network.io.direction]
+
+  cisco.port_channel.member.status:
+    enabled: true
+    stability: development
+    description: Cisco port-channel member status (1 = bundled or up, 0 = not bundled)
+    unit: "1"
+    gauge:
+      value_type: int
+    attributes: [cisco.port_channel.name, network.interface.name, cisco.port_channel.state]
+
+  cisco.port_channel.status:
+    enabled: true
+    stability: development
+    description: Cisco port-channel status (1 = up, 0 = down or suspended)
+    unit: "1"
+    gauge:
+      value_type: int
+    attributes: [cisco.port_channel.name, cisco.port_channel.state]
+
+  cisco.scrape.command.duration:
+    enabled: true
+    stability: development
+    description: Cisco receiver command execution duration
+    unit: s
+    gauge:
+      value_type: double
+    attributes: [cisco.scrape.command.family, cisco.scrape.command.outcome]
+
+  cisco.scrape.command.errors:
+    enabled: true
+    stability: development
+    description: Cisco receiver command execution errors
+    unit: "{error}"
+    sum:
+      value_type: int
+      monotonic: true
+      aggregation_temporality: cumulative
+    attributes: [cisco.scrape.command.family, cisco.scrape.error.type]
+
+  cisco.scrape.partial_success:
+    enabled: true
+    stability: development
+    description: Cisco receiver scrape partial success status (1 = partial success, 0 = complete success)
+    unit: "1"
+    gauge:
+      value_type: int
+
+  cisco.ssh.reconnects:
+    enabled: true
+    stability: development
+    description: The number of successful Cisco SSH reconnects by the receiver
+    unit: "{reconnect}"
+    sum:
+      value_type: int
+      monotonic: true
+      aggregation_temporality: cumulative
+
+  cisco.topology.neighbor.info:
+    enabled: true
+    stability: development
+    description: Cisco LLDP or CDP topology neighbor edge information
+    unit: "1"
+    gauge:
+      value_type: int
+    attributes: [cisco.topology.protocol, network.interface.name, cisco.topology.neighbor.name, cisco.topology.neighbor.interface, cisco.topology.neighbor.platform, cisco.topology.neighbor.address]
+
+  cisco.transceiver.sensor:
+    enabled: true
+    stability: development
+    description: "Cisco transceiver digital optical monitoring sensor value. The physical unit varies by sensor type and is carried in the cisco.transceiver.sensor.unit attribute (Cel, V, mA, dBm, or 1 when unitless)."
+    unit: "1"
+    gauge:
+      value_type: double
+    attributes: [network.interface.name, cisco.transceiver.sensor, cisco.transceiver.lane, cisco.transceiver.sensor.unit]
+
+  cisco.vpc.consistency.failures:
+    enabled: true
+    stability: development
+    description: The number of Cisco vPC consistency failures
+    unit: "{failure}"
+    gauge:
+      value_type: int
+    attributes: [cisco.vpc.check]
+
+  cisco.vpc.status:
+    enabled: true
+    stability: development
+    description: Cisco vPC peer or member status (1 = up or consistent, 0 = down or inconsistent)
+    unit: "1"
+    gauge:
+      value_type: int
+    attributes: [cisco.vpc.domain, cisco.vpc.peer, cisco.vpc.state]
+
   system.network.errors:
     enabled: true
     stability: development
     description: The number of errors encountered
-    unit: "{errors}"
+    unit: "{error}"
     sum:
       value_type: int
       monotonic: true
@@ -80,18 +452,18 @@ metrics:
     enabled: true
     stability: development
     description: The number of packets transmitted or received, categorized by type
-    unit: "{packets}"
+    unit: "{packet}"
     sum:
       value_type: int
       monotonic: true
       aggregation_temporality: cumulative
-    attributes: [network.packet.type, network.interface.description, network.interface.mac, network.interface.name, network.interface.speed]
+    attributes: [network.io.direction, network.packet.type, network.interface.description, network.interface.mac, network.interface.name, network.interface.speed]
 
   system.network.packet.dropped:
     enabled: true
     stability: development
     description: The number of packets dropped
-    unit: "{packets}"
+    unit: "{packet}"
     sum:
       value_type: int
       monotonic: true
@@ -99,4 +471,5 @@ metrics:
     attributes: [network.io.direction, network.interface.description, network.interface.mac, network.interface.name, network.interface.speed]
 
 tests:
+  skip_lifecycle: true
   config:

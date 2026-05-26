@@ -3,6 +3,7 @@
 package metadata
 
 import (
+	"slices"
 	"time"
 
 	"go.opentelemetry.io/collector/component"
@@ -19,9 +20,122 @@ const (
 	AggregationStrategyMax = "max"
 )
 
+// AttributeNetworkIoDirection specifies the value network.io.direction attribute.
+type AttributeNetworkIoDirection int
+
+const (
+	_ AttributeNetworkIoDirection = iota
+	AttributeNetworkIoDirectionReceive
+	AttributeNetworkIoDirectionTransmit
+)
+
+// String returns the string representation of the AttributeNetworkIoDirection.
+func (av AttributeNetworkIoDirection) String() string {
+	switch av {
+	case AttributeNetworkIoDirectionReceive:
+		return "receive"
+	case AttributeNetworkIoDirectionTransmit:
+		return "transmit"
+	}
+	return ""
+}
+
+// MapAttributeNetworkIoDirection is a helper map of string to AttributeNetworkIoDirection attribute value.
+var MapAttributeNetworkIoDirection = map[string]AttributeNetworkIoDirection{
+	"receive":  AttributeNetworkIoDirectionReceive,
+	"transmit": AttributeNetworkIoDirectionTransmit,
+}
+
 var MetricsInfo = metricsInfo{
+	CiscoAdjacencyEntries: metricInfo{
+		Name: "cisco.adjacency.entries",
+	},
+	CiscoArpEntries: metricInfo{
+		Name: "cisco.arp.entries",
+	},
+	CiscoControlPlaneCPUProcessUtilization: metricInfo{
+		Name: "cisco.control_plane.cpu.process.utilization",
+	},
+	CiscoControlPlaneDropped: metricInfo{
+		Name: "cisco.control_plane.dropped",
+	},
+	CiscoControlPlanePackets: metricInfo{
+		Name: "cisco.control_plane.packets",
+	},
+	CiscoControlPlanePuntRate: metricInfo{
+		Name: "cisco.control_plane.punt.rate",
+	},
 	CiscoDeviceUp: metricInfo{
 		Name: "cisco.device.up",
+	},
+	CiscoEvpnRoutes: metricInfo{
+		Name: "cisco.evpn.routes",
+	},
+	CiscoForwardingDrops: metricInfo{
+		Name: "cisco.forwarding.drops",
+	},
+	CiscoForwardingFibEntries: metricInfo{
+		Name: "cisco.forwarding.fib.entries",
+	},
+	CiscoHardwareStatus: metricInfo{
+		Name: "cisco.hardware.status",
+	},
+	CiscoHardwareTemperature: metricInfo{
+		Name: "cisco.hardware.temperature",
+	},
+	CiscoNvePeerStatus: metricInfo{
+		Name: "cisco.nve.peer.status",
+	},
+	CiscoNveVniStatus: metricInfo{
+		Name: "cisco.nve.vni.status",
+	},
+	CiscoProtocolDropped: metricInfo{
+		Name: "cisco.protocol.dropped",
+	},
+	CiscoProtocolErrors: metricInfo{
+		Name: "cisco.protocol.errors",
+	},
+	CiscoProtocolPackets: metricInfo{
+		Name: "cisco.protocol.packets",
+	},
+	CiscoQfpDatapathIo: metricInfo{
+		Name: "cisco.qfp.datapath.io",
+	},
+	CiscoQfpDatapathPacketRate: metricInfo{
+		Name: "cisco.qfp.datapath.packet.rate",
+	},
+	CiscoQfpDatapathUtilization: metricInfo{
+		Name: "cisco.qfp.datapath.utilization",
+	},
+	CiscoQfpDropBytes: metricInfo{
+		Name: "cisco.qfp.drop.bytes",
+	},
+	CiscoQfpDrops: metricInfo{
+		Name: "cisco.qfp.drops",
+	},
+	CiscoQfpInterfaceDrops: metricInfo{
+		Name: "cisco.qfp.interface.drops",
+	},
+	CiscoRoutingNeighborPrefixes: metricInfo{
+		Name: "cisco.routing.neighbor.prefixes",
+	},
+	CiscoRoutingNeighborState: metricInfo{
+		Name: "cisco.routing.neighbor.state",
+	},
+	CiscoRoutingRoutes: metricInfo{
+		Name: "cisco.routing.routes",
+	},
+	CiscoScrapeCommandDuration: metricInfo{
+		Name: "cisco.scrape.command.duration",
+	},
+	CiscoScrapeCommandErrors: metricInfo{
+		Name: "cisco.scrape.command.errors",
+	},
+	CiscoScrapePartialSuccess: metricInfo{
+		Name: "cisco.scrape.partial_success",
+	},
+	CiscoSSHReconnects: metricInfo{
+		Name: "cisco.ssh.reconnects",
 	},
 	SystemCPUUtilization: metricInfo{
 		Name: "system.cpu.utilization",
@@ -29,16 +143,614 @@ var MetricsInfo = metricsInfo{
 	SystemMemoryUtilization: metricInfo{
 		Name: "system.memory.utilization",
 	},
+	SystemUptime: metricInfo{
+		Name: "system.uptime",
+	},
 }
 
 type metricsInfo struct {
-	CiscoDeviceUp           metricInfo
-	SystemCPUUtilization    metricInfo
-	SystemMemoryUtilization metricInfo
+	CiscoAdjacencyEntries                  metricInfo
+	CiscoArpEntries                        metricInfo
+	CiscoControlPlaneCPUProcessUtilization metricInfo
+	CiscoControlPlaneDropped               metricInfo
+	CiscoControlPlanePackets               metricInfo
+	CiscoControlPlanePuntRate              metricInfo
+	CiscoDeviceUp                          metricInfo
+	CiscoEvpnRoutes                        metricInfo
+	CiscoForwardingDrops                   metricInfo
+	CiscoForwardingFibEntries              metricInfo
+	CiscoHardwareStatus                    metricInfo
+	CiscoHardwareTemperature               metricInfo
+	CiscoNvePeerStatus                     metricInfo
+	CiscoNveVniStatus                      metricInfo
+	CiscoProtocolDropped                   metricInfo
+	CiscoProtocolErrors                    metricInfo
+	CiscoProtocolPackets                   metricInfo
+	CiscoQfpDatapathIo                     metricInfo
+	CiscoQfpDatapathPacketRate             metricInfo
+	CiscoQfpDatapathUtilization            metricInfo
+	CiscoQfpDropBytes                      metricInfo
+	CiscoQfpDrops                          metricInfo
+	CiscoQfpInterfaceDrops                 metricInfo
+	CiscoRoutingNeighborPrefixes           metricInfo
+	CiscoRoutingNeighborState              metricInfo
+	CiscoRoutingRoutes                     metricInfo
+	CiscoScrapeCommandDuration             metricInfo
+	CiscoScrapeCommandErrors               metricInfo
+	CiscoScrapePartialSuccess              metricInfo
+	CiscoSSHReconnects                     metricInfo
+	SystemCPUUtilization                   metricInfo
+	SystemMemoryUtilization                metricInfo
+	SystemUptime                           metricInfo
 }
 
 type metricInfo struct {
 	Name string
+}
+
+type metricCiscoAdjacencyEntries struct {
+	data          pmetric.Metric                    // data buffer for generated metric.
+	config        CiscoAdjacencyEntriesMetricConfig // metric config provided by user.
+	capacity      int                               // max observed number of data points added to the metric.
+	aggDataPoints []int64                           // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.adjacency.entries metric with initial data.
+func (m *metricCiscoAdjacencyEntries) init() {
+	m.data.SetName("cisco.adjacency.entries")
+	m.data.SetDescription("The number of Cisco adjacency entries")
+	m.data.SetUnit("{entry}")
+	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoAdjacencyEntries) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoRoutingVrfAttributeValue string, ciscoAdjacencyStateAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoAdjacencyEntriesMetricAttributeKeyCiscoRoutingVrf) {
+		dp.Attributes().PutStr("cisco.routing.vrf", ciscoRoutingVrfAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoAdjacencyEntriesMetricAttributeKeyCiscoAdjacencyState) {
+		dp.Attributes().PutStr("cisco.adjacency.state", ciscoAdjacencyStateAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoAdjacencyEntries) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoAdjacencyEntries) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetIntValue(m.data.Gauge().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoAdjacencyEntries(cfg CiscoAdjacencyEntriesMetricConfig) metricCiscoAdjacencyEntries {
+	m := metricCiscoAdjacencyEntries{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoArpEntries struct {
+	data          pmetric.Metric              // data buffer for generated metric.
+	config        CiscoArpEntriesMetricConfig // metric config provided by user.
+	capacity      int                         // max observed number of data points added to the metric.
+	aggDataPoints []int64                     // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.arp.entries metric with initial data.
+func (m *metricCiscoArpEntries) init() {
+	m.data.SetName("cisco.arp.entries")
+	m.data.SetDescription("The number of Cisco ARP entries")
+	m.data.SetUnit("{entry}")
+	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoArpEntries) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoRoutingVrfAttributeValue string, addressFamilyAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoArpEntriesMetricAttributeKeyCiscoRoutingVrf) {
+		dp.Attributes().PutStr("cisco.routing.vrf", ciscoRoutingVrfAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoArpEntriesMetricAttributeKeyAddressFamily) {
+		dp.Attributes().PutStr("address.family", addressFamilyAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoArpEntries) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoArpEntries) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetIntValue(m.data.Gauge().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoArpEntries(cfg CiscoArpEntriesMetricConfig) metricCiscoArpEntries {
+	m := metricCiscoArpEntries{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoControlPlaneCPUProcessUtilization struct {
+	data          pmetric.Metric                                     // data buffer for generated metric.
+	config        CiscoControlPlaneCPUProcessUtilizationMetricConfig // metric config provided by user.
+	capacity      int                                                // max observed number of data points added to the metric.
+	aggDataPoints []float64                                          // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.control_plane.cpu.process.utilization metric with initial data.
+func (m *metricCiscoControlPlaneCPUProcessUtilization) init() {
+	m.data.SetName("cisco.control_plane.cpu.process.utilization")
+	m.data.SetDescription("CPU utilization by Cisco control-plane process")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoControlPlaneCPUProcessUtilization) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64, ciscoProcessNameAttributeValue string, ciscoProcessPidAttributeValue string, ciscoCPUWindowAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoControlPlaneCPUProcessUtilizationMetricAttributeKeyCiscoProcessName) {
+		dp.Attributes().PutStr("cisco.process.name", ciscoProcessNameAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoControlPlaneCPUProcessUtilizationMetricAttributeKeyCiscoProcessPid) {
+		dp.Attributes().PutStr("cisco.process.pid", ciscoProcessPidAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoControlPlaneCPUProcessUtilizationMetricAttributeKeyCiscoCPUWindow) {
+		dp.Attributes().PutStr("cisco.cpu.window", ciscoCPUWindowAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetDoubleValue(dpi.DoubleValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.DoubleValue() > val {
+					dpi.SetDoubleValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.DoubleValue() < val {
+					dpi.SetDoubleValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetDoubleValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoControlPlaneCPUProcessUtilization) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoControlPlaneCPUProcessUtilization) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetDoubleValue(m.data.Gauge().DataPoints().At(i).DoubleValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoControlPlaneCPUProcessUtilization(cfg CiscoControlPlaneCPUProcessUtilizationMetricConfig) metricCiscoControlPlaneCPUProcessUtilization {
+	m := metricCiscoControlPlaneCPUProcessUtilization{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoControlPlaneDropped struct {
+	data          pmetric.Metric                       // data buffer for generated metric.
+	config        CiscoControlPlaneDroppedMetricConfig // metric config provided by user.
+	capacity      int                                  // max observed number of data points added to the metric.
+	aggDataPoints []int64                              // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.control_plane.dropped metric with initial data.
+func (m *metricCiscoControlPlaneDropped) init() {
+	m.data.SetName("cisco.control_plane.dropped")
+	m.data.SetDescription("The number of Cisco control-plane packets dropped")
+	m.data.SetUnit("{packet}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoControlPlaneDropped) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoControlPlaneSourceAttributeValue string, ciscoControlPlaneClassAttributeValue string, ciscoControlPlaneDropReasonAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoControlPlaneDroppedMetricAttributeKeyCiscoControlPlaneSource) {
+		dp.Attributes().PutStr("cisco.control_plane.source", ciscoControlPlaneSourceAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoControlPlaneDroppedMetricAttributeKeyCiscoControlPlaneClass) {
+		dp.Attributes().PutStr("cisco.control_plane.class", ciscoControlPlaneClassAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoControlPlaneDroppedMetricAttributeKeyCiscoControlPlaneDropReason) {
+		dp.Attributes().PutStr("cisco.control_plane.drop.reason", ciscoControlPlaneDropReasonAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Sum().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoControlPlaneDropped) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoControlPlaneDropped) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Sum().DataPoints().At(i).SetIntValue(m.data.Sum().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoControlPlaneDropped(cfg CiscoControlPlaneDroppedMetricConfig) metricCiscoControlPlaneDropped {
+	m := metricCiscoControlPlaneDropped{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoControlPlanePackets struct {
+	data          pmetric.Metric                       // data buffer for generated metric.
+	config        CiscoControlPlanePacketsMetricConfig // metric config provided by user.
+	capacity      int                                  // max observed number of data points added to the metric.
+	aggDataPoints []int64                              // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.control_plane.packets metric with initial data.
+func (m *metricCiscoControlPlanePackets) init() {
+	m.data.SetName("cisco.control_plane.packets")
+	m.data.SetDescription("The number of Cisco control-plane packets processed")
+	m.data.SetUnit("{packet}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoControlPlanePackets) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoControlPlaneSourceAttributeValue string, ciscoControlPlaneClassAttributeValue string, networkIoDirectionAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoControlPlanePacketsMetricAttributeKeyCiscoControlPlaneSource) {
+		dp.Attributes().PutStr("cisco.control_plane.source", ciscoControlPlaneSourceAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoControlPlanePacketsMetricAttributeKeyCiscoControlPlaneClass) {
+		dp.Attributes().PutStr("cisco.control_plane.class", ciscoControlPlaneClassAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoControlPlanePacketsMetricAttributeKeyNetworkIoDirection) {
+		dp.Attributes().PutStr("network.io.direction", networkIoDirectionAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Sum().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoControlPlanePackets) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoControlPlanePackets) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Sum().DataPoints().At(i).SetIntValue(m.data.Sum().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoControlPlanePackets(cfg CiscoControlPlanePacketsMetricConfig) metricCiscoControlPlanePackets {
+	m := metricCiscoControlPlanePackets{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoControlPlanePuntRate struct {
+	data          pmetric.Metric                        // data buffer for generated metric.
+	config        CiscoControlPlanePuntRateMetricConfig // metric config provided by user.
+	capacity      int                                   // max observed number of data points added to the metric.
+	aggDataPoints []int64                               // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.control_plane.punt.rate metric with initial data.
+func (m *metricCiscoControlPlanePuntRate) init() {
+	m.data.SetName("cisco.control_plane.punt.rate")
+	m.data.SetDescription("Device-reported Cisco control-plane punt packet rate")
+	m.data.SetUnit("{packet}/s")
+	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoControlPlanePuntRate) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoControlPlanePuntQueueAttributeValue string, networkInterfaceNameAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoControlPlanePuntRateMetricAttributeKeyCiscoControlPlanePuntQueue) {
+		dp.Attributes().PutStr("cisco.control_plane.punt.queue", ciscoControlPlanePuntQueueAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoControlPlanePuntRateMetricAttributeKeyNetworkInterfaceName) {
+		dp.Attributes().PutStr("network.interface.name", networkInterfaceNameAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoControlPlanePuntRate) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoControlPlanePuntRate) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetIntValue(m.data.Gauge().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoControlPlanePuntRate(cfg CiscoControlPlanePuntRateMetricConfig) metricCiscoControlPlanePuntRate {
+	m := metricCiscoControlPlanePuntRate{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
 }
 
 type metricCiscoDeviceUp struct {
@@ -83,6 +795,2095 @@ func (m *metricCiscoDeviceUp) emit(metrics pmetric.MetricSlice) {
 
 func newMetricCiscoDeviceUp(cfg CiscoDeviceUpMetricConfig) metricCiscoDeviceUp {
 	m := metricCiscoDeviceUp{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoEvpnRoutes struct {
+	data          pmetric.Metric              // data buffer for generated metric.
+	config        CiscoEvpnRoutesMetricConfig // metric config provided by user.
+	capacity      int                         // max observed number of data points added to the metric.
+	aggDataPoints []int64                     // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.evpn.routes metric with initial data.
+func (m *metricCiscoEvpnRoutes) init() {
+	m.data.SetName("cisco.evpn.routes")
+	m.data.SetDescription("The number of Cisco EVPN routes")
+	m.data.SetUnit("{route}")
+	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoEvpnRoutes) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoRoutingVrfAttributeValue string, ciscoEvpnRouteTypeAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoEvpnRoutesMetricAttributeKeyCiscoRoutingVrf) {
+		dp.Attributes().PutStr("cisco.routing.vrf", ciscoRoutingVrfAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoEvpnRoutesMetricAttributeKeyCiscoEvpnRouteType) {
+		dp.Attributes().PutStr("cisco.evpn.route.type", ciscoEvpnRouteTypeAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoEvpnRoutes) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoEvpnRoutes) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetIntValue(m.data.Gauge().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoEvpnRoutes(cfg CiscoEvpnRoutesMetricConfig) metricCiscoEvpnRoutes {
+	m := metricCiscoEvpnRoutes{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoForwardingDrops struct {
+	data          pmetric.Metric                   // data buffer for generated metric.
+	config        CiscoForwardingDropsMetricConfig // metric config provided by user.
+	capacity      int                              // max observed number of data points added to the metric.
+	aggDataPoints []int64                          // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.forwarding.drops metric with initial data.
+func (m *metricCiscoForwardingDrops) init() {
+	m.data.SetName("cisco.forwarding.drops")
+	m.data.SetDescription("The number of Cisco forwarding packets dropped")
+	m.data.SetUnit("{packet}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoForwardingDrops) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoRoutingVrfAttributeValue string, ciscoForwardingDropReasonAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoForwardingDropsMetricAttributeKeyCiscoRoutingVrf) {
+		dp.Attributes().PutStr("cisco.routing.vrf", ciscoRoutingVrfAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoForwardingDropsMetricAttributeKeyCiscoForwardingDropReason) {
+		dp.Attributes().PutStr("cisco.forwarding.drop.reason", ciscoForwardingDropReasonAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Sum().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoForwardingDrops) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoForwardingDrops) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Sum().DataPoints().At(i).SetIntValue(m.data.Sum().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoForwardingDrops(cfg CiscoForwardingDropsMetricConfig) metricCiscoForwardingDrops {
+	m := metricCiscoForwardingDrops{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoForwardingFibEntries struct {
+	data          pmetric.Metric                        // data buffer for generated metric.
+	config        CiscoForwardingFibEntriesMetricConfig // metric config provided by user.
+	capacity      int                                   // max observed number of data points added to the metric.
+	aggDataPoints []int64                               // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.forwarding.fib.entries metric with initial data.
+func (m *metricCiscoForwardingFibEntries) init() {
+	m.data.SetName("cisco.forwarding.fib.entries")
+	m.data.SetDescription("The number of Cisco forwarding information base entries")
+	m.data.SetUnit("{entry}")
+	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoForwardingFibEntries) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoRoutingVrfAttributeValue string, addressFamilyAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoForwardingFibEntriesMetricAttributeKeyCiscoRoutingVrf) {
+		dp.Attributes().PutStr("cisco.routing.vrf", ciscoRoutingVrfAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoForwardingFibEntriesMetricAttributeKeyAddressFamily) {
+		dp.Attributes().PutStr("address.family", addressFamilyAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoForwardingFibEntries) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoForwardingFibEntries) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetIntValue(m.data.Gauge().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoForwardingFibEntries(cfg CiscoForwardingFibEntriesMetricConfig) metricCiscoForwardingFibEntries {
+	m := metricCiscoForwardingFibEntries{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoHardwareStatus struct {
+	data          pmetric.Metric                  // data buffer for generated metric.
+	config        CiscoHardwareStatusMetricConfig // metric config provided by user.
+	capacity      int                             // max observed number of data points added to the metric.
+	aggDataPoints []int64                         // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.hardware.status metric with initial data.
+func (m *metricCiscoHardwareStatus) init() {
+	m.data.SetName("cisco.hardware.status")
+	m.data.SetDescription("Cisco hardware component status (-1 = unknown, 0 = critical, 1 = ok, 2 = warning)")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoHardwareStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoHardwareComponentAttributeValue string, ciscoHardwareNameAttributeValue string, ciscoHardwareSlotAttributeValue string, ciscoHardwareStateAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoHardwareStatusMetricAttributeKeyCiscoHardwareComponent) {
+		dp.Attributes().PutStr("cisco.hardware.component", ciscoHardwareComponentAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoHardwareStatusMetricAttributeKeyCiscoHardwareName) {
+		dp.Attributes().PutStr("cisco.hardware.name", ciscoHardwareNameAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoHardwareStatusMetricAttributeKeyCiscoHardwareSlot) {
+		dp.Attributes().PutStr("cisco.hardware.slot", ciscoHardwareSlotAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoHardwareStatusMetricAttributeKeyCiscoHardwareState) {
+		dp.Attributes().PutStr("cisco.hardware.state", ciscoHardwareStateAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoHardwareStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoHardwareStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetIntValue(m.data.Gauge().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoHardwareStatus(cfg CiscoHardwareStatusMetricConfig) metricCiscoHardwareStatus {
+	m := metricCiscoHardwareStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoHardwareTemperature struct {
+	data          pmetric.Metric                       // data buffer for generated metric.
+	config        CiscoHardwareTemperatureMetricConfig // metric config provided by user.
+	capacity      int                                  // max observed number of data points added to the metric.
+	aggDataPoints []float64                            // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.hardware.temperature metric with initial data.
+func (m *metricCiscoHardwareTemperature) init() {
+	m.data.SetName("cisco.hardware.temperature")
+	m.data.SetDescription("Cisco hardware temperature sensor reading")
+	m.data.SetUnit("Cel")
+	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoHardwareTemperature) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64, ciscoHardwareNameAttributeValue string, ciscoHardwareSlotAttributeValue string, ciscoHardwareStateAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoHardwareTemperatureMetricAttributeKeyCiscoHardwareName) {
+		dp.Attributes().PutStr("cisco.hardware.name", ciscoHardwareNameAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoHardwareTemperatureMetricAttributeKeyCiscoHardwareSlot) {
+		dp.Attributes().PutStr("cisco.hardware.slot", ciscoHardwareSlotAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoHardwareTemperatureMetricAttributeKeyCiscoHardwareState) {
+		dp.Attributes().PutStr("cisco.hardware.state", ciscoHardwareStateAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetDoubleValue(dpi.DoubleValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.DoubleValue() > val {
+					dpi.SetDoubleValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.DoubleValue() < val {
+					dpi.SetDoubleValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetDoubleValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoHardwareTemperature) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoHardwareTemperature) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetDoubleValue(m.data.Gauge().DataPoints().At(i).DoubleValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoHardwareTemperature(cfg CiscoHardwareTemperatureMetricConfig) metricCiscoHardwareTemperature {
+	m := metricCiscoHardwareTemperature{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoNvePeerStatus struct {
+	data          pmetric.Metric                 // data buffer for generated metric.
+	config        CiscoNvePeerStatusMetricConfig // metric config provided by user.
+	capacity      int                            // max observed number of data points added to the metric.
+	aggDataPoints []int64                        // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.nve.peer.status metric with initial data.
+func (m *metricCiscoNvePeerStatus) init() {
+	m.data.SetName("cisco.nve.peer.status")
+	m.data.SetDescription("Cisco NVE peer status (1 = up, 0 = not up)")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoNvePeerStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, networkPeerAddressAttributeValue string, ciscoNveStateAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoNvePeerStatusMetricAttributeKeyNetworkPeerAddress) {
+		dp.Attributes().PutStr("network.peer.address", networkPeerAddressAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoNvePeerStatusMetricAttributeKeyCiscoNveState) {
+		dp.Attributes().PutStr("cisco.nve.state", ciscoNveStateAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoNvePeerStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoNvePeerStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetIntValue(m.data.Gauge().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoNvePeerStatus(cfg CiscoNvePeerStatusMetricConfig) metricCiscoNvePeerStatus {
+	m := metricCiscoNvePeerStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoNveVniStatus struct {
+	data          pmetric.Metric                // data buffer for generated metric.
+	config        CiscoNveVniStatusMetricConfig // metric config provided by user.
+	capacity      int                           // max observed number of data points added to the metric.
+	aggDataPoints []int64                       // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.nve.vni.status metric with initial data.
+func (m *metricCiscoNveVniStatus) init() {
+	m.data.SetName("cisco.nve.vni.status")
+	m.data.SetDescription("Cisco NVE VNI status (1 = up, 0 = not up)")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoNveVniStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoNveVniAttributeValue string, ciscoNveVniTypeAttributeValue string, ciscoNveStateAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoNveVniStatusMetricAttributeKeyCiscoNveVni) {
+		dp.Attributes().PutStr("cisco.nve.vni", ciscoNveVniAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoNveVniStatusMetricAttributeKeyCiscoNveVniType) {
+		dp.Attributes().PutStr("cisco.nve.vni.type", ciscoNveVniTypeAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoNveVniStatusMetricAttributeKeyCiscoNveState) {
+		dp.Attributes().PutStr("cisco.nve.state", ciscoNveStateAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoNveVniStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoNveVniStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetIntValue(m.data.Gauge().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoNveVniStatus(cfg CiscoNveVniStatusMetricConfig) metricCiscoNveVniStatus {
+	m := metricCiscoNveVniStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoProtocolDropped struct {
+	data          pmetric.Metric                   // data buffer for generated metric.
+	config        CiscoProtocolDroppedMetricConfig // metric config provided by user.
+	capacity      int                              // max observed number of data points added to the metric.
+	aggDataPoints []int64                          // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.protocol.dropped metric with initial data.
+func (m *metricCiscoProtocolDropped) init() {
+	m.data.SetName("cisco.protocol.dropped")
+	m.data.SetDescription("The number of Cisco network protocol packets dropped")
+	m.data.SetUnit("{packet}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoProtocolDropped) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoProtocolDropReasonAttributeValue string, ciscoProtocolNameAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoProtocolDroppedMetricAttributeKeyCiscoProtocolDropReason) {
+		dp.Attributes().PutStr("cisco.protocol.drop.reason", ciscoProtocolDropReasonAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoProtocolDroppedMetricAttributeKeyCiscoProtocolName) {
+		dp.Attributes().PutStr("cisco.protocol.name", ciscoProtocolNameAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Sum().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoProtocolDropped) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoProtocolDropped) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Sum().DataPoints().At(i).SetIntValue(m.data.Sum().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoProtocolDropped(cfg CiscoProtocolDroppedMetricConfig) metricCiscoProtocolDropped {
+	m := metricCiscoProtocolDropped{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoProtocolErrors struct {
+	data          pmetric.Metric                  // data buffer for generated metric.
+	config        CiscoProtocolErrorsMetricConfig // metric config provided by user.
+	capacity      int                             // max observed number of data points added to the metric.
+	aggDataPoints []int64                         // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.protocol.errors metric with initial data.
+func (m *metricCiscoProtocolErrors) init() {
+	m.data.SetName("cisco.protocol.errors")
+	m.data.SetDescription("The number of Cisco network protocol errors")
+	m.data.SetUnit("{error}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoProtocolErrors) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoProtocolErrorTypeAttributeValue string, ciscoProtocolNameAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoProtocolErrorsMetricAttributeKeyCiscoProtocolErrorType) {
+		dp.Attributes().PutStr("cisco.protocol.error.type", ciscoProtocolErrorTypeAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoProtocolErrorsMetricAttributeKeyCiscoProtocolName) {
+		dp.Attributes().PutStr("cisco.protocol.name", ciscoProtocolNameAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Sum().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoProtocolErrors) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoProtocolErrors) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Sum().DataPoints().At(i).SetIntValue(m.data.Sum().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoProtocolErrors(cfg CiscoProtocolErrorsMetricConfig) metricCiscoProtocolErrors {
+	m := metricCiscoProtocolErrors{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoProtocolPackets struct {
+	data          pmetric.Metric                   // data buffer for generated metric.
+	config        CiscoProtocolPacketsMetricConfig // metric config provided by user.
+	capacity      int                              // max observed number of data points added to the metric.
+	aggDataPoints []int64                          // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.protocol.packets metric with initial data.
+func (m *metricCiscoProtocolPackets) init() {
+	m.data.SetName("cisco.protocol.packets")
+	m.data.SetDescription("The number of packets or messages processed by a Cisco network protocol")
+	m.data.SetUnit("{packet}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoProtocolPackets) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoProtocolMessageTypeAttributeValue string, ciscoProtocolNameAttributeValue string, networkIoDirectionAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoProtocolPacketsMetricAttributeKeyCiscoProtocolMessageType) {
+		dp.Attributes().PutStr("cisco.protocol.message.type", ciscoProtocolMessageTypeAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoProtocolPacketsMetricAttributeKeyCiscoProtocolName) {
+		dp.Attributes().PutStr("cisco.protocol.name", ciscoProtocolNameAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoProtocolPacketsMetricAttributeKeyNetworkIoDirection) {
+		dp.Attributes().PutStr("network.io.direction", networkIoDirectionAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Sum().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoProtocolPackets) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoProtocolPackets) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Sum().DataPoints().At(i).SetIntValue(m.data.Sum().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoProtocolPackets(cfg CiscoProtocolPacketsMetricConfig) metricCiscoProtocolPackets {
+	m := metricCiscoProtocolPackets{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoQfpDatapathIo struct {
+	data          pmetric.Metric                 // data buffer for generated metric.
+	config        CiscoQfpDatapathIoMetricConfig // metric config provided by user.
+	capacity      int                            // max observed number of data points added to the metric.
+	aggDataPoints []int64                        // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.qfp.datapath.io metric with initial data.
+func (m *metricCiscoQfpDatapathIo) init() {
+	m.data.SetName("cisco.qfp.datapath.io")
+	m.data.SetDescription("Device-reported Cisco QFP datapath traffic rate")
+	m.data.SetUnit("bit/s")
+	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoQfpDatapathIo) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, networkIoDirectionAttributeValue string, ciscoQfpTrafficClassAttributeValue string, ciscoCPUWindowAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoQfpDatapathIoMetricAttributeKeyNetworkIoDirection) {
+		dp.Attributes().PutStr("network.io.direction", networkIoDirectionAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoQfpDatapathIoMetricAttributeKeyCiscoQfpTrafficClass) {
+		dp.Attributes().PutStr("cisco.qfp.traffic.class", ciscoQfpTrafficClassAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoQfpDatapathIoMetricAttributeKeyCiscoCPUWindow) {
+		dp.Attributes().PutStr("cisco.cpu.window", ciscoCPUWindowAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoQfpDatapathIo) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoQfpDatapathIo) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetIntValue(m.data.Gauge().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoQfpDatapathIo(cfg CiscoQfpDatapathIoMetricConfig) metricCiscoQfpDatapathIo {
+	m := metricCiscoQfpDatapathIo{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoQfpDatapathPacketRate struct {
+	data          pmetric.Metric                         // data buffer for generated metric.
+	config        CiscoQfpDatapathPacketRateMetricConfig // metric config provided by user.
+	capacity      int                                    // max observed number of data points added to the metric.
+	aggDataPoints []int64                                // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.qfp.datapath.packet.rate metric with initial data.
+func (m *metricCiscoQfpDatapathPacketRate) init() {
+	m.data.SetName("cisco.qfp.datapath.packet.rate")
+	m.data.SetDescription("Device-reported Cisco QFP datapath packet rate")
+	m.data.SetUnit("{packet}/s")
+	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoQfpDatapathPacketRate) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, networkIoDirectionAttributeValue string, ciscoQfpTrafficClassAttributeValue string, ciscoCPUWindowAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoQfpDatapathPacketRateMetricAttributeKeyNetworkIoDirection) {
+		dp.Attributes().PutStr("network.io.direction", networkIoDirectionAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoQfpDatapathPacketRateMetricAttributeKeyCiscoQfpTrafficClass) {
+		dp.Attributes().PutStr("cisco.qfp.traffic.class", ciscoQfpTrafficClassAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoQfpDatapathPacketRateMetricAttributeKeyCiscoCPUWindow) {
+		dp.Attributes().PutStr("cisco.cpu.window", ciscoCPUWindowAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoQfpDatapathPacketRate) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoQfpDatapathPacketRate) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetIntValue(m.data.Gauge().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoQfpDatapathPacketRate(cfg CiscoQfpDatapathPacketRateMetricConfig) metricCiscoQfpDatapathPacketRate {
+	m := metricCiscoQfpDatapathPacketRate{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoQfpDatapathUtilization struct {
+	data          pmetric.Metric                          // data buffer for generated metric.
+	config        CiscoQfpDatapathUtilizationMetricConfig // metric config provided by user.
+	capacity      int                                     // max observed number of data points added to the metric.
+	aggDataPoints []float64                               // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.qfp.datapath.utilization metric with initial data.
+func (m *metricCiscoQfpDatapathUtilization) init() {
+	m.data.SetName("cisco.qfp.datapath.utilization")
+	m.data.SetDescription("Cisco QFP datapath utilization")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoQfpDatapathUtilization) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64, ciscoQfpLoadTypeAttributeValue string, ciscoCPUWindowAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoQfpDatapathUtilizationMetricAttributeKeyCiscoQfpLoadType) {
+		dp.Attributes().PutStr("cisco.qfp.load.type", ciscoQfpLoadTypeAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoQfpDatapathUtilizationMetricAttributeKeyCiscoCPUWindow) {
+		dp.Attributes().PutStr("cisco.cpu.window", ciscoCPUWindowAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetDoubleValue(dpi.DoubleValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.DoubleValue() > val {
+					dpi.SetDoubleValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.DoubleValue() < val {
+					dpi.SetDoubleValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetDoubleValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoQfpDatapathUtilization) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoQfpDatapathUtilization) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetDoubleValue(m.data.Gauge().DataPoints().At(i).DoubleValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoQfpDatapathUtilization(cfg CiscoQfpDatapathUtilizationMetricConfig) metricCiscoQfpDatapathUtilization {
+	m := metricCiscoQfpDatapathUtilization{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoQfpDropBytes struct {
+	data          pmetric.Metric                // data buffer for generated metric.
+	config        CiscoQfpDropBytesMetricConfig // metric config provided by user.
+	capacity      int                           // max observed number of data points added to the metric.
+	aggDataPoints []int64                       // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.qfp.drop.bytes metric with initial data.
+func (m *metricCiscoQfpDropBytes) init() {
+	m.data.SetName("cisco.qfp.drop.bytes")
+	m.data.SetDescription("The number of Cisco QFP dropped octets")
+	m.data.SetUnit("By")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoQfpDropBytes) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoQfpDropSourceAttributeValue string, ciscoForwardingDropReasonAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoQfpDropBytesMetricAttributeKeyCiscoQfpDropSource) {
+		dp.Attributes().PutStr("cisco.qfp.drop.source", ciscoQfpDropSourceAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoQfpDropBytesMetricAttributeKeyCiscoForwardingDropReason) {
+		dp.Attributes().PutStr("cisco.forwarding.drop.reason", ciscoForwardingDropReasonAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Sum().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoQfpDropBytes) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoQfpDropBytes) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Sum().DataPoints().At(i).SetIntValue(m.data.Sum().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoQfpDropBytes(cfg CiscoQfpDropBytesMetricConfig) metricCiscoQfpDropBytes {
+	m := metricCiscoQfpDropBytes{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoQfpDrops struct {
+	data          pmetric.Metric            // data buffer for generated metric.
+	config        CiscoQfpDropsMetricConfig // metric config provided by user.
+	capacity      int                       // max observed number of data points added to the metric.
+	aggDataPoints []int64                   // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.qfp.drops metric with initial data.
+func (m *metricCiscoQfpDrops) init() {
+	m.data.SetName("cisco.qfp.drops")
+	m.data.SetDescription("The number of Cisco QFP packets dropped")
+	m.data.SetUnit("{packet}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoQfpDrops) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoQfpDropSourceAttributeValue string, ciscoForwardingDropReasonAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoQfpDropsMetricAttributeKeyCiscoQfpDropSource) {
+		dp.Attributes().PutStr("cisco.qfp.drop.source", ciscoQfpDropSourceAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoQfpDropsMetricAttributeKeyCiscoForwardingDropReason) {
+		dp.Attributes().PutStr("cisco.forwarding.drop.reason", ciscoForwardingDropReasonAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Sum().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoQfpDrops) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoQfpDrops) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Sum().DataPoints().At(i).SetIntValue(m.data.Sum().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoQfpDrops(cfg CiscoQfpDropsMetricConfig) metricCiscoQfpDrops {
+	m := metricCiscoQfpDrops{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoQfpInterfaceDrops struct {
+	data          pmetric.Metric                     // data buffer for generated metric.
+	config        CiscoQfpInterfaceDropsMetricConfig // metric config provided by user.
+	capacity      int                                // max observed number of data points added to the metric.
+	aggDataPoints []int64                            // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.qfp.interface.drops metric with initial data.
+func (m *metricCiscoQfpInterfaceDrops) init() {
+	m.data.SetName("cisco.qfp.interface.drops")
+	m.data.SetDescription("The number of Cisco QFP packets dropped by interface and direction")
+	m.data.SetUnit("{packet}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoQfpInterfaceDrops) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, networkInterfaceNameAttributeValue string, networkIoDirectionAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoQfpInterfaceDropsMetricAttributeKeyNetworkInterfaceName) {
+		dp.Attributes().PutStr("network.interface.name", networkInterfaceNameAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoQfpInterfaceDropsMetricAttributeKeyNetworkIoDirection) {
+		dp.Attributes().PutStr("network.io.direction", networkIoDirectionAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Sum().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoQfpInterfaceDrops) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoQfpInterfaceDrops) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Sum().DataPoints().At(i).SetIntValue(m.data.Sum().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoQfpInterfaceDrops(cfg CiscoQfpInterfaceDropsMetricConfig) metricCiscoQfpInterfaceDrops {
+	m := metricCiscoQfpInterfaceDrops{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoRoutingNeighborPrefixes struct {
+	data          pmetric.Metric                           // data buffer for generated metric.
+	config        CiscoRoutingNeighborPrefixesMetricConfig // metric config provided by user.
+	capacity      int                                      // max observed number of data points added to the metric.
+	aggDataPoints []int64                                  // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.routing.neighbor.prefixes metric with initial data.
+func (m *metricCiscoRoutingNeighborPrefixes) init() {
+	m.data.SetName("cisco.routing.neighbor.prefixes")
+	m.data.SetDescription("The number of routing prefixes associated with a Cisco routing protocol neighbor")
+	m.data.SetUnit("{prefix}")
+	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoRoutingNeighborPrefixes) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoRoutingProtocolAttributeValue string, ciscoRoutingVrfAttributeValue string, networkPeerAddressAttributeValue string, addressFamilyAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoRoutingNeighborPrefixesMetricAttributeKeyCiscoRoutingProtocol) {
+		dp.Attributes().PutStr("cisco.routing.protocol", ciscoRoutingProtocolAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoRoutingNeighborPrefixesMetricAttributeKeyCiscoRoutingVrf) {
+		dp.Attributes().PutStr("cisco.routing.vrf", ciscoRoutingVrfAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoRoutingNeighborPrefixesMetricAttributeKeyNetworkPeerAddress) {
+		dp.Attributes().PutStr("network.peer.address", networkPeerAddressAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoRoutingNeighborPrefixesMetricAttributeKeyAddressFamily) {
+		dp.Attributes().PutStr("address.family", addressFamilyAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoRoutingNeighborPrefixes) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoRoutingNeighborPrefixes) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetIntValue(m.data.Gauge().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoRoutingNeighborPrefixes(cfg CiscoRoutingNeighborPrefixesMetricConfig) metricCiscoRoutingNeighborPrefixes {
+	m := metricCiscoRoutingNeighborPrefixes{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoRoutingNeighborState struct {
+	data          pmetric.Metric                        // data buffer for generated metric.
+	config        CiscoRoutingNeighborStateMetricConfig // metric config provided by user.
+	capacity      int                                   // max observed number of data points added to the metric.
+	aggDataPoints []int64                               // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.routing.neighbor.state metric with initial data.
+func (m *metricCiscoRoutingNeighborState) init() {
+	m.data.SetName("cisco.routing.neighbor.state")
+	m.data.SetDescription("Cisco routing protocol neighbor state (1 = established or full, 0 = not established)")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoRoutingNeighborState) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoRoutingProtocolAttributeValue string, ciscoRoutingVrfAttributeValue string, networkPeerAddressAttributeValue string, ciscoRoutingNeighborStateAttributeValue string, addressFamilyAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoRoutingNeighborStateMetricAttributeKeyCiscoRoutingProtocol) {
+		dp.Attributes().PutStr("cisco.routing.protocol", ciscoRoutingProtocolAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoRoutingNeighborStateMetricAttributeKeyCiscoRoutingVrf) {
+		dp.Attributes().PutStr("cisco.routing.vrf", ciscoRoutingVrfAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoRoutingNeighborStateMetricAttributeKeyNetworkPeerAddress) {
+		dp.Attributes().PutStr("network.peer.address", networkPeerAddressAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoRoutingNeighborStateMetricAttributeKeyCiscoRoutingNeighborState) {
+		dp.Attributes().PutStr("cisco.routing.neighbor.state", ciscoRoutingNeighborStateAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoRoutingNeighborStateMetricAttributeKeyAddressFamily) {
+		dp.Attributes().PutStr("address.family", addressFamilyAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoRoutingNeighborState) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoRoutingNeighborState) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetIntValue(m.data.Gauge().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoRoutingNeighborState(cfg CiscoRoutingNeighborStateMetricConfig) metricCiscoRoutingNeighborState {
+	m := metricCiscoRoutingNeighborState{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoRoutingRoutes struct {
+	data          pmetric.Metric                 // data buffer for generated metric.
+	config        CiscoRoutingRoutesMetricConfig // metric config provided by user.
+	capacity      int                            // max observed number of data points added to the metric.
+	aggDataPoints []int64                        // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.routing.routes metric with initial data.
+func (m *metricCiscoRoutingRoutes) init() {
+	m.data.SetName("cisco.routing.routes")
+	m.data.SetDescription("The number of Cisco routing table routes")
+	m.data.SetUnit("{route}")
+	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoRoutingRoutes) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoRoutingVrfAttributeValue string, ciscoRouteSourceAttributeValue string, addressFamilyAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoRoutingRoutesMetricAttributeKeyCiscoRoutingVrf) {
+		dp.Attributes().PutStr("cisco.routing.vrf", ciscoRoutingVrfAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoRoutingRoutesMetricAttributeKeyCiscoRouteSource) {
+		dp.Attributes().PutStr("cisco.route.source", ciscoRouteSourceAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoRoutingRoutesMetricAttributeKeyAddressFamily) {
+		dp.Attributes().PutStr("address.family", addressFamilyAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoRoutingRoutes) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoRoutingRoutes) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetIntValue(m.data.Gauge().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoRoutingRoutes(cfg CiscoRoutingRoutesMetricConfig) metricCiscoRoutingRoutes {
+	m := metricCiscoRoutingRoutes{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoScrapeCommandDuration struct {
+	data          pmetric.Metric                         // data buffer for generated metric.
+	config        CiscoScrapeCommandDurationMetricConfig // metric config provided by user.
+	capacity      int                                    // max observed number of data points added to the metric.
+	aggDataPoints []float64                              // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.scrape.command.duration metric with initial data.
+func (m *metricCiscoScrapeCommandDuration) init() {
+	m.data.SetName("cisco.scrape.command.duration")
+	m.data.SetDescription("Cisco receiver command execution duration")
+	m.data.SetUnit("s")
+	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoScrapeCommandDuration) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64, ciscoScrapeCommandFamilyAttributeValue string, ciscoScrapeCommandOutcomeAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoScrapeCommandDurationMetricAttributeKeyCiscoScrapeCommandFamily) {
+		dp.Attributes().PutStr("cisco.scrape.command.family", ciscoScrapeCommandFamilyAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoScrapeCommandDurationMetricAttributeKeyCiscoScrapeCommandOutcome) {
+		dp.Attributes().PutStr("cisco.scrape.command.outcome", ciscoScrapeCommandOutcomeAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetDoubleValue(dpi.DoubleValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.DoubleValue() > val {
+					dpi.SetDoubleValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.DoubleValue() < val {
+					dpi.SetDoubleValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetDoubleValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoScrapeCommandDuration) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoScrapeCommandDuration) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetDoubleValue(m.data.Gauge().DataPoints().At(i).DoubleValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoScrapeCommandDuration(cfg CiscoScrapeCommandDurationMetricConfig) metricCiscoScrapeCommandDuration {
+	m := metricCiscoScrapeCommandDuration{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoScrapeCommandErrors struct {
+	data          pmetric.Metric                       // data buffer for generated metric.
+	config        CiscoScrapeCommandErrorsMetricConfig // metric config provided by user.
+	capacity      int                                  // max observed number of data points added to the metric.
+	aggDataPoints []int64                              // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.scrape.command.errors metric with initial data.
+func (m *metricCiscoScrapeCommandErrors) init() {
+	m.data.SetName("cisco.scrape.command.errors")
+	m.data.SetDescription("Cisco receiver command execution errors")
+	m.data.SetUnit("{error}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+	m.data.Sum().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoScrapeCommandErrors) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoScrapeCommandFamilyAttributeValue string, ciscoScrapeErrorTypeAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoScrapeCommandErrorsMetricAttributeKeyCiscoScrapeCommandFamily) {
+		dp.Attributes().PutStr("cisco.scrape.command.family", ciscoScrapeCommandFamilyAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoScrapeCommandErrorsMetricAttributeKeyCiscoScrapeErrorType) {
+		dp.Attributes().PutStr("cisco.scrape.error.type", ciscoScrapeErrorTypeAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Sum().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoScrapeCommandErrors) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoScrapeCommandErrors) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Sum().DataPoints().At(i).SetIntValue(m.data.Sum().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoScrapeCommandErrors(cfg CiscoScrapeCommandErrorsMetricConfig) metricCiscoScrapeCommandErrors {
+	m := metricCiscoScrapeCommandErrors{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoScrapePartialSuccess struct {
+	data     pmetric.Metric                        // data buffer for generated metric.
+	config   CiscoScrapePartialSuccessMetricConfig // metric config provided by user.
+	capacity int                                   // max observed number of data points added to the metric.
+}
+
+// init fills cisco.scrape.partial_success metric with initial data.
+func (m *metricCiscoScrapePartialSuccess) init() {
+	m.data.SetName("cisco.scrape.partial_success")
+	m.data.SetDescription("Cisco receiver scrape partial success status (1 = partial success, 0 = complete success)")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoScrapePartialSuccess) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoScrapePartialSuccess) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoScrapePartialSuccess) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoScrapePartialSuccess(cfg CiscoScrapePartialSuccessMetricConfig) metricCiscoScrapePartialSuccess {
+	m := metricCiscoScrapePartialSuccess{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoSSHReconnects struct {
+	data     pmetric.Metric                 // data buffer for generated metric.
+	config   CiscoSSHReconnectsMetricConfig // metric config provided by user.
+	capacity int                            // max observed number of data points added to the metric.
+}
+
+// init fills cisco.ssh.reconnects metric with initial data.
+func (m *metricCiscoSSHReconnects) init() {
+	m.data.SetName("cisco.ssh.reconnects")
+	m.data.SetDescription("The number of successful Cisco SSH reconnects by the receiver")
+	m.data.SetUnit("{reconnect}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoSSHReconnects) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoSSHReconnects) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoSSHReconnects) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoSSHReconnects(cfg CiscoSSHReconnectsMetricConfig) metricCiscoSSHReconnects {
+	m := metricCiscoSSHReconnects{config: cfg}
 
 	if cfg.Enabled {
 		m.data = pmetric.NewMetric()
@@ -191,19 +2992,99 @@ func newMetricSystemMemoryUtilization(cfg SystemMemoryUtilizationMetricConfig) m
 	return m
 }
 
+type metricSystemUptime struct {
+	data     pmetric.Metric           // data buffer for generated metric.
+	config   SystemUptimeMetricConfig // metric config provided by user.
+	capacity int                      // max observed number of data points added to the metric.
+}
+
+// init fills system.uptime metric with initial data.
+func (m *metricSystemUptime) init() {
+	m.data.SetName("system.uptime")
+	m.data.SetDescription("The time the Cisco device has been running")
+	m.data.SetUnit("s")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSystemUptime) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSystemUptime) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSystemUptime) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSystemUptime(cfg SystemUptimeMetricConfig) metricSystemUptime {
+	m := metricSystemUptime{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
 // MetricsBuilder provides an interface for scrapers to report metrics while taking care of all the transformations
 // required to produce metric representation defined in metadata and user config.
 type MetricsBuilder struct {
-	config                         MetricsBuilderConfig // config of the metrics builder.
-	startTime                      pcommon.Timestamp    // start time that will be applied to all recorded data points.
-	metricsCapacity                int                  // maximum observed number of metrics per resource.
-	metricsBuffer                  pmetric.Metrics      // accumulates metrics data before emitting.
-	buildInfo                      component.BuildInfo  // contains version information.
-	resourceAttributeIncludeFilter map[string]filter.Filter
-	resourceAttributeExcludeFilter map[string]filter.Filter
-	metricCiscoDeviceUp            metricCiscoDeviceUp
-	metricSystemCPUUtilization     metricSystemCPUUtilization
-	metricSystemMemoryUtilization  metricSystemMemoryUtilization
+	config                                       MetricsBuilderConfig // config of the metrics builder.
+	startTime                                    pcommon.Timestamp    // start time that will be applied to all recorded data points.
+	metricsCapacity                              int                  // maximum observed number of metrics per resource.
+	metricsBuffer                                pmetric.Metrics      // accumulates metrics data before emitting.
+	buildInfo                                    component.BuildInfo  // contains version information.
+	resourceAttributeIncludeFilter               map[string]filter.Filter
+	resourceAttributeExcludeFilter               map[string]filter.Filter
+	metricCiscoAdjacencyEntries                  metricCiscoAdjacencyEntries
+	metricCiscoArpEntries                        metricCiscoArpEntries
+	metricCiscoControlPlaneCPUProcessUtilization metricCiscoControlPlaneCPUProcessUtilization
+	metricCiscoControlPlaneDropped               metricCiscoControlPlaneDropped
+	metricCiscoControlPlanePackets               metricCiscoControlPlanePackets
+	metricCiscoControlPlanePuntRate              metricCiscoControlPlanePuntRate
+	metricCiscoDeviceUp                          metricCiscoDeviceUp
+	metricCiscoEvpnRoutes                        metricCiscoEvpnRoutes
+	metricCiscoForwardingDrops                   metricCiscoForwardingDrops
+	metricCiscoForwardingFibEntries              metricCiscoForwardingFibEntries
+	metricCiscoHardwareStatus                    metricCiscoHardwareStatus
+	metricCiscoHardwareTemperature               metricCiscoHardwareTemperature
+	metricCiscoNvePeerStatus                     metricCiscoNvePeerStatus
+	metricCiscoNveVniStatus                      metricCiscoNveVniStatus
+	metricCiscoProtocolDropped                   metricCiscoProtocolDropped
+	metricCiscoProtocolErrors                    metricCiscoProtocolErrors
+	metricCiscoProtocolPackets                   metricCiscoProtocolPackets
+	metricCiscoQfpDatapathIo                     metricCiscoQfpDatapathIo
+	metricCiscoQfpDatapathPacketRate             metricCiscoQfpDatapathPacketRate
+	metricCiscoQfpDatapathUtilization            metricCiscoQfpDatapathUtilization
+	metricCiscoQfpDropBytes                      metricCiscoQfpDropBytes
+	metricCiscoQfpDrops                          metricCiscoQfpDrops
+	metricCiscoQfpInterfaceDrops                 metricCiscoQfpInterfaceDrops
+	metricCiscoRoutingNeighborPrefixes           metricCiscoRoutingNeighborPrefixes
+	metricCiscoRoutingNeighborState              metricCiscoRoutingNeighborState
+	metricCiscoRoutingRoutes                     metricCiscoRoutingRoutes
+	metricCiscoScrapeCommandDuration             metricCiscoScrapeCommandDuration
+	metricCiscoScrapeCommandErrors               metricCiscoScrapeCommandErrors
+	metricCiscoScrapePartialSuccess              metricCiscoScrapePartialSuccess
+	metricCiscoSSHReconnects                     metricCiscoSSHReconnects
+	metricSystemCPUUtilization                   metricSystemCPUUtilization
+	metricSystemMemoryUtilization                metricSystemMemoryUtilization
+	metricSystemUptime                           metricSystemUptime
 }
 
 // MetricBuilderOption applies changes to default metrics builder.
@@ -225,21 +3106,69 @@ func WithStartTime(startTime pcommon.Timestamp) MetricBuilderOption {
 }
 func NewMetricsBuilder(mbc MetricsBuilderConfig, settings scraper.Settings, options ...MetricBuilderOption) *MetricsBuilder {
 	mb := &MetricsBuilder{
-		config:                         mbc,
-		startTime:                      pcommon.NewTimestampFromTime(time.Now()),
-		metricsBuffer:                  pmetric.NewMetrics(),
-		buildInfo:                      settings.BuildInfo,
-		metricCiscoDeviceUp:            newMetricCiscoDeviceUp(mbc.Metrics.CiscoDeviceUp),
-		metricSystemCPUUtilization:     newMetricSystemCPUUtilization(mbc.Metrics.SystemCPUUtilization),
-		metricSystemMemoryUtilization:  newMetricSystemMemoryUtilization(mbc.Metrics.SystemMemoryUtilization),
-		resourceAttributeIncludeFilter: make(map[string]filter.Filter),
-		resourceAttributeExcludeFilter: make(map[string]filter.Filter),
+		config:                      mbc,
+		startTime:                   pcommon.NewTimestampFromTime(time.Now()),
+		metricsBuffer:               pmetric.NewMetrics(),
+		buildInfo:                   settings.BuildInfo,
+		metricCiscoAdjacencyEntries: newMetricCiscoAdjacencyEntries(mbc.Metrics.CiscoAdjacencyEntries),
+		metricCiscoArpEntries:       newMetricCiscoArpEntries(mbc.Metrics.CiscoArpEntries),
+		metricCiscoControlPlaneCPUProcessUtilization: newMetricCiscoControlPlaneCPUProcessUtilization(mbc.Metrics.CiscoControlPlaneCPUProcessUtilization),
+		metricCiscoControlPlaneDropped:               newMetricCiscoControlPlaneDropped(mbc.Metrics.CiscoControlPlaneDropped),
+		metricCiscoControlPlanePackets:               newMetricCiscoControlPlanePackets(mbc.Metrics.CiscoControlPlanePackets),
+		metricCiscoControlPlanePuntRate:              newMetricCiscoControlPlanePuntRate(mbc.Metrics.CiscoControlPlanePuntRate),
+		metricCiscoDeviceUp:                          newMetricCiscoDeviceUp(mbc.Metrics.CiscoDeviceUp),
+		metricCiscoEvpnRoutes:                        newMetricCiscoEvpnRoutes(mbc.Metrics.CiscoEvpnRoutes),
+		metricCiscoForwardingDrops:                   newMetricCiscoForwardingDrops(mbc.Metrics.CiscoForwardingDrops),
+		metricCiscoForwardingFibEntries:              newMetricCiscoForwardingFibEntries(mbc.Metrics.CiscoForwardingFibEntries),
+		metricCiscoHardwareStatus:                    newMetricCiscoHardwareStatus(mbc.Metrics.CiscoHardwareStatus),
+		metricCiscoHardwareTemperature:               newMetricCiscoHardwareTemperature(mbc.Metrics.CiscoHardwareTemperature),
+		metricCiscoNvePeerStatus:                     newMetricCiscoNvePeerStatus(mbc.Metrics.CiscoNvePeerStatus),
+		metricCiscoNveVniStatus:                      newMetricCiscoNveVniStatus(mbc.Metrics.CiscoNveVniStatus),
+		metricCiscoProtocolDropped:                   newMetricCiscoProtocolDropped(mbc.Metrics.CiscoProtocolDropped),
+		metricCiscoProtocolErrors:                    newMetricCiscoProtocolErrors(mbc.Metrics.CiscoProtocolErrors),
+		metricCiscoProtocolPackets:                   newMetricCiscoProtocolPackets(mbc.Metrics.CiscoProtocolPackets),
+		metricCiscoQfpDatapathIo:                     newMetricCiscoQfpDatapathIo(mbc.Metrics.CiscoQfpDatapathIo),
+		metricCiscoQfpDatapathPacketRate:             newMetricCiscoQfpDatapathPacketRate(mbc.Metrics.CiscoQfpDatapathPacketRate),
+		metricCiscoQfpDatapathUtilization:            newMetricCiscoQfpDatapathUtilization(mbc.Metrics.CiscoQfpDatapathUtilization),
+		metricCiscoQfpDropBytes:                      newMetricCiscoQfpDropBytes(mbc.Metrics.CiscoQfpDropBytes),
+		metricCiscoQfpDrops:                          newMetricCiscoQfpDrops(mbc.Metrics.CiscoQfpDrops),
+		metricCiscoQfpInterfaceDrops:                 newMetricCiscoQfpInterfaceDrops(mbc.Metrics.CiscoQfpInterfaceDrops),
+		metricCiscoRoutingNeighborPrefixes:           newMetricCiscoRoutingNeighborPrefixes(mbc.Metrics.CiscoRoutingNeighborPrefixes),
+		metricCiscoRoutingNeighborState:              newMetricCiscoRoutingNeighborState(mbc.Metrics.CiscoRoutingNeighborState),
+		metricCiscoRoutingRoutes:                     newMetricCiscoRoutingRoutes(mbc.Metrics.CiscoRoutingRoutes),
+		metricCiscoScrapeCommandDuration:             newMetricCiscoScrapeCommandDuration(mbc.Metrics.CiscoScrapeCommandDuration),
+		metricCiscoScrapeCommandErrors:               newMetricCiscoScrapeCommandErrors(mbc.Metrics.CiscoScrapeCommandErrors),
+		metricCiscoScrapePartialSuccess:              newMetricCiscoScrapePartialSuccess(mbc.Metrics.CiscoScrapePartialSuccess),
+		metricCiscoSSHReconnects:                     newMetricCiscoSSHReconnects(mbc.Metrics.CiscoSSHReconnects),
+		metricSystemCPUUtilization:                   newMetricSystemCPUUtilization(mbc.Metrics.SystemCPUUtilization),
+		metricSystemMemoryUtilization:                newMetricSystemMemoryUtilization(mbc.Metrics.SystemMemoryUtilization),
+		metricSystemUptime:                           newMetricSystemUptime(mbc.Metrics.SystemUptime),
+		resourceAttributeIncludeFilter:               make(map[string]filter.Filter),
+		resourceAttributeExcludeFilter:               make(map[string]filter.Filter),
+	}
+	if mbc.ResourceAttributes.HostID.MetricsInclude != nil {
+		mb.resourceAttributeIncludeFilter["host.id"] = filter.CreateFilter(mbc.ResourceAttributes.HostID.MetricsInclude)
+	}
+	if mbc.ResourceAttributes.HostID.MetricsExclude != nil {
+		mb.resourceAttributeExcludeFilter["host.id"] = filter.CreateFilter(mbc.ResourceAttributes.HostID.MetricsExclude)
 	}
 	if mbc.ResourceAttributes.HostIP.MetricsInclude != nil {
 		mb.resourceAttributeIncludeFilter["host.ip"] = filter.CreateFilter(mbc.ResourceAttributes.HostIP.MetricsInclude)
 	}
 	if mbc.ResourceAttributes.HostIP.MetricsExclude != nil {
 		mb.resourceAttributeExcludeFilter["host.ip"] = filter.CreateFilter(mbc.ResourceAttributes.HostIP.MetricsExclude)
+	}
+	if mbc.ResourceAttributes.HostName.MetricsInclude != nil {
+		mb.resourceAttributeIncludeFilter["host.name"] = filter.CreateFilter(mbc.ResourceAttributes.HostName.MetricsInclude)
+	}
+	if mbc.ResourceAttributes.HostName.MetricsExclude != nil {
+		mb.resourceAttributeExcludeFilter["host.name"] = filter.CreateFilter(mbc.ResourceAttributes.HostName.MetricsExclude)
+	}
+	if mbc.ResourceAttributes.HostType.MetricsInclude != nil {
+		mb.resourceAttributeIncludeFilter["host.type"] = filter.CreateFilter(mbc.ResourceAttributes.HostType.MetricsInclude)
+	}
+	if mbc.ResourceAttributes.HostType.MetricsExclude != nil {
+		mb.resourceAttributeExcludeFilter["host.type"] = filter.CreateFilter(mbc.ResourceAttributes.HostType.MetricsExclude)
 	}
 	if mbc.ResourceAttributes.HwType.MetricsInclude != nil {
 		mb.resourceAttributeIncludeFilter["hw.type"] = filter.CreateFilter(mbc.ResourceAttributes.HwType.MetricsInclude)
@@ -252,6 +3181,12 @@ func NewMetricsBuilder(mbc MetricsBuilderConfig, settings scraper.Settings, opti
 	}
 	if mbc.ResourceAttributes.OsName.MetricsExclude != nil {
 		mb.resourceAttributeExcludeFilter["os.name"] = filter.CreateFilter(mbc.ResourceAttributes.OsName.MetricsExclude)
+	}
+	if mbc.ResourceAttributes.OsVersion.MetricsInclude != nil {
+		mb.resourceAttributeIncludeFilter["os.version"] = filter.CreateFilter(mbc.ResourceAttributes.OsVersion.MetricsInclude)
+	}
+	if mbc.ResourceAttributes.OsVersion.MetricsExclude != nil {
+		mb.resourceAttributeExcludeFilter["os.version"] = filter.CreateFilter(mbc.ResourceAttributes.OsVersion.MetricsExclude)
 	}
 
 	for _, op := range options {
@@ -322,9 +3257,39 @@ func (mb *MetricsBuilder) EmitForResource(options ...ResourceMetricsOption) {
 	ils.Scope().SetName(ScopeName)
 	ils.Scope().SetVersion(mb.buildInfo.Version)
 	ils.Metrics().EnsureCapacity(mb.metricsCapacity)
+	mb.metricCiscoAdjacencyEntries.emit(ils.Metrics())
+	mb.metricCiscoArpEntries.emit(ils.Metrics())
+	mb.metricCiscoControlPlaneCPUProcessUtilization.emit(ils.Metrics())
+	mb.metricCiscoControlPlaneDropped.emit(ils.Metrics())
+	mb.metricCiscoControlPlanePackets.emit(ils.Metrics())
+	mb.metricCiscoControlPlanePuntRate.emit(ils.Metrics())
 	mb.metricCiscoDeviceUp.emit(ils.Metrics())
+	mb.metricCiscoEvpnRoutes.emit(ils.Metrics())
+	mb.metricCiscoForwardingDrops.emit(ils.Metrics())
+	mb.metricCiscoForwardingFibEntries.emit(ils.Metrics())
+	mb.metricCiscoHardwareStatus.emit(ils.Metrics())
+	mb.metricCiscoHardwareTemperature.emit(ils.Metrics())
+	mb.metricCiscoNvePeerStatus.emit(ils.Metrics())
+	mb.metricCiscoNveVniStatus.emit(ils.Metrics())
+	mb.metricCiscoProtocolDropped.emit(ils.Metrics())
+	mb.metricCiscoProtocolErrors.emit(ils.Metrics())
+	mb.metricCiscoProtocolPackets.emit(ils.Metrics())
+	mb.metricCiscoQfpDatapathIo.emit(ils.Metrics())
+	mb.metricCiscoQfpDatapathPacketRate.emit(ils.Metrics())
+	mb.metricCiscoQfpDatapathUtilization.emit(ils.Metrics())
+	mb.metricCiscoQfpDropBytes.emit(ils.Metrics())
+	mb.metricCiscoQfpDrops.emit(ils.Metrics())
+	mb.metricCiscoQfpInterfaceDrops.emit(ils.Metrics())
+	mb.metricCiscoRoutingNeighborPrefixes.emit(ils.Metrics())
+	mb.metricCiscoRoutingNeighborState.emit(ils.Metrics())
+	mb.metricCiscoRoutingRoutes.emit(ils.Metrics())
+	mb.metricCiscoScrapeCommandDuration.emit(ils.Metrics())
+	mb.metricCiscoScrapeCommandErrors.emit(ils.Metrics())
+	mb.metricCiscoScrapePartialSuccess.emit(ils.Metrics())
+	mb.metricCiscoSSHReconnects.emit(ils.Metrics())
 	mb.metricSystemCPUUtilization.emit(ils.Metrics())
 	mb.metricSystemMemoryUtilization.emit(ils.Metrics())
+	mb.metricSystemUptime.emit(ils.Metrics())
 
 	for _, op := range options {
 		op.apply(rm)
@@ -356,9 +3321,154 @@ func (mb *MetricsBuilder) Emit(options ...ResourceMetricsOption) pmetric.Metrics
 	return metrics
 }
 
+// RecordCiscoAdjacencyEntriesDataPoint adds a data point to cisco.adjacency.entries metric.
+func (mb *MetricsBuilder) RecordCiscoAdjacencyEntriesDataPoint(ts pcommon.Timestamp, val int64, ciscoRoutingVrfAttributeValue string, ciscoAdjacencyStateAttributeValue string) {
+	mb.metricCiscoAdjacencyEntries.recordDataPoint(mb.startTime, ts, val, ciscoRoutingVrfAttributeValue, ciscoAdjacencyStateAttributeValue)
+}
+
+// RecordCiscoArpEntriesDataPoint adds a data point to cisco.arp.entries metric.
+func (mb *MetricsBuilder) RecordCiscoArpEntriesDataPoint(ts pcommon.Timestamp, val int64, ciscoRoutingVrfAttributeValue string, addressFamilyAttributeValue string) {
+	mb.metricCiscoArpEntries.recordDataPoint(mb.startTime, ts, val, ciscoRoutingVrfAttributeValue, addressFamilyAttributeValue)
+}
+
+// RecordCiscoControlPlaneCPUProcessUtilizationDataPoint adds a data point to cisco.control_plane.cpu.process.utilization metric.
+func (mb *MetricsBuilder) RecordCiscoControlPlaneCPUProcessUtilizationDataPoint(ts pcommon.Timestamp, val float64, ciscoProcessNameAttributeValue string, ciscoProcessPidAttributeValue string, ciscoCPUWindowAttributeValue string) {
+	mb.metricCiscoControlPlaneCPUProcessUtilization.recordDataPoint(mb.startTime, ts, val, ciscoProcessNameAttributeValue, ciscoProcessPidAttributeValue, ciscoCPUWindowAttributeValue)
+}
+
+// RecordCiscoControlPlaneDroppedDataPoint adds a data point to cisco.control_plane.dropped metric.
+func (mb *MetricsBuilder) RecordCiscoControlPlaneDroppedDataPoint(ts pcommon.Timestamp, val int64, ciscoControlPlaneSourceAttributeValue string, ciscoControlPlaneClassAttributeValue string, ciscoControlPlaneDropReasonAttributeValue string) {
+	mb.metricCiscoControlPlaneDropped.recordDataPoint(mb.startTime, ts, val, ciscoControlPlaneSourceAttributeValue, ciscoControlPlaneClassAttributeValue, ciscoControlPlaneDropReasonAttributeValue)
+}
+
+// RecordCiscoControlPlanePacketsDataPoint adds a data point to cisco.control_plane.packets metric.
+func (mb *MetricsBuilder) RecordCiscoControlPlanePacketsDataPoint(ts pcommon.Timestamp, val int64, ciscoControlPlaneSourceAttributeValue string, ciscoControlPlaneClassAttributeValue string, networkIoDirectionAttributeValue AttributeNetworkIoDirection) {
+	mb.metricCiscoControlPlanePackets.recordDataPoint(mb.startTime, ts, val, ciscoControlPlaneSourceAttributeValue, ciscoControlPlaneClassAttributeValue, networkIoDirectionAttributeValue.String())
+}
+
+// RecordCiscoControlPlanePuntRateDataPoint adds a data point to cisco.control_plane.punt.rate metric.
+func (mb *MetricsBuilder) RecordCiscoControlPlanePuntRateDataPoint(ts pcommon.Timestamp, val int64, ciscoControlPlanePuntQueueAttributeValue string, networkInterfaceNameAttributeValue string) {
+	mb.metricCiscoControlPlanePuntRate.recordDataPoint(mb.startTime, ts, val, ciscoControlPlanePuntQueueAttributeValue, networkInterfaceNameAttributeValue)
+}
+
 // RecordCiscoDeviceUpDataPoint adds a data point to cisco.device.up metric.
 func (mb *MetricsBuilder) RecordCiscoDeviceUpDataPoint(ts pcommon.Timestamp, val int64) {
 	mb.metricCiscoDeviceUp.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoEvpnRoutesDataPoint adds a data point to cisco.evpn.routes metric.
+func (mb *MetricsBuilder) RecordCiscoEvpnRoutesDataPoint(ts pcommon.Timestamp, val int64, ciscoRoutingVrfAttributeValue string, ciscoEvpnRouteTypeAttributeValue string) {
+	mb.metricCiscoEvpnRoutes.recordDataPoint(mb.startTime, ts, val, ciscoRoutingVrfAttributeValue, ciscoEvpnRouteTypeAttributeValue)
+}
+
+// RecordCiscoForwardingDropsDataPoint adds a data point to cisco.forwarding.drops metric.
+func (mb *MetricsBuilder) RecordCiscoForwardingDropsDataPoint(ts pcommon.Timestamp, val int64, ciscoRoutingVrfAttributeValue string, ciscoForwardingDropReasonAttributeValue string) {
+	mb.metricCiscoForwardingDrops.recordDataPoint(mb.startTime, ts, val, ciscoRoutingVrfAttributeValue, ciscoForwardingDropReasonAttributeValue)
+}
+
+// RecordCiscoForwardingFibEntriesDataPoint adds a data point to cisco.forwarding.fib.entries metric.
+func (mb *MetricsBuilder) RecordCiscoForwardingFibEntriesDataPoint(ts pcommon.Timestamp, val int64, ciscoRoutingVrfAttributeValue string, addressFamilyAttributeValue string) {
+	mb.metricCiscoForwardingFibEntries.recordDataPoint(mb.startTime, ts, val, ciscoRoutingVrfAttributeValue, addressFamilyAttributeValue)
+}
+
+// RecordCiscoHardwareStatusDataPoint adds a data point to cisco.hardware.status metric.
+func (mb *MetricsBuilder) RecordCiscoHardwareStatusDataPoint(ts pcommon.Timestamp, val int64, ciscoHardwareComponentAttributeValue string, ciscoHardwareNameAttributeValue string, ciscoHardwareSlotAttributeValue string, ciscoHardwareStateAttributeValue string) {
+	mb.metricCiscoHardwareStatus.recordDataPoint(mb.startTime, ts, val, ciscoHardwareComponentAttributeValue, ciscoHardwareNameAttributeValue, ciscoHardwareSlotAttributeValue, ciscoHardwareStateAttributeValue)
+}
+
+// RecordCiscoHardwareTemperatureDataPoint adds a data point to cisco.hardware.temperature metric.
+func (mb *MetricsBuilder) RecordCiscoHardwareTemperatureDataPoint(ts pcommon.Timestamp, val float64, ciscoHardwareNameAttributeValue string, ciscoHardwareSlotAttributeValue string, ciscoHardwareStateAttributeValue string) {
+	mb.metricCiscoHardwareTemperature.recordDataPoint(mb.startTime, ts, val, ciscoHardwareNameAttributeValue, ciscoHardwareSlotAttributeValue, ciscoHardwareStateAttributeValue)
+}
+
+// RecordCiscoNvePeerStatusDataPoint adds a data point to cisco.nve.peer.status metric.
+func (mb *MetricsBuilder) RecordCiscoNvePeerStatusDataPoint(ts pcommon.Timestamp, val int64, networkPeerAddressAttributeValue string, ciscoNveStateAttributeValue string) {
+	mb.metricCiscoNvePeerStatus.recordDataPoint(mb.startTime, ts, val, networkPeerAddressAttributeValue, ciscoNveStateAttributeValue)
+}
+
+// RecordCiscoNveVniStatusDataPoint adds a data point to cisco.nve.vni.status metric.
+func (mb *MetricsBuilder) RecordCiscoNveVniStatusDataPoint(ts pcommon.Timestamp, val int64, ciscoNveVniAttributeValue string, ciscoNveVniTypeAttributeValue string, ciscoNveStateAttributeValue string) {
+	mb.metricCiscoNveVniStatus.recordDataPoint(mb.startTime, ts, val, ciscoNveVniAttributeValue, ciscoNveVniTypeAttributeValue, ciscoNveStateAttributeValue)
+}
+
+// RecordCiscoProtocolDroppedDataPoint adds a data point to cisco.protocol.dropped metric.
+func (mb *MetricsBuilder) RecordCiscoProtocolDroppedDataPoint(ts pcommon.Timestamp, val int64, ciscoProtocolDropReasonAttributeValue string, ciscoProtocolNameAttributeValue string) {
+	mb.metricCiscoProtocolDropped.recordDataPoint(mb.startTime, ts, val, ciscoProtocolDropReasonAttributeValue, ciscoProtocolNameAttributeValue)
+}
+
+// RecordCiscoProtocolErrorsDataPoint adds a data point to cisco.protocol.errors metric.
+func (mb *MetricsBuilder) RecordCiscoProtocolErrorsDataPoint(ts pcommon.Timestamp, val int64, ciscoProtocolErrorTypeAttributeValue string, ciscoProtocolNameAttributeValue string) {
+	mb.metricCiscoProtocolErrors.recordDataPoint(mb.startTime, ts, val, ciscoProtocolErrorTypeAttributeValue, ciscoProtocolNameAttributeValue)
+}
+
+// RecordCiscoProtocolPacketsDataPoint adds a data point to cisco.protocol.packets metric.
+func (mb *MetricsBuilder) RecordCiscoProtocolPacketsDataPoint(ts pcommon.Timestamp, val int64, ciscoProtocolMessageTypeAttributeValue string, ciscoProtocolNameAttributeValue string, networkIoDirectionAttributeValue AttributeNetworkIoDirection) {
+	mb.metricCiscoProtocolPackets.recordDataPoint(mb.startTime, ts, val, ciscoProtocolMessageTypeAttributeValue, ciscoProtocolNameAttributeValue, networkIoDirectionAttributeValue.String())
+}
+
+// RecordCiscoQfpDatapathIoDataPoint adds a data point to cisco.qfp.datapath.io metric.
+func (mb *MetricsBuilder) RecordCiscoQfpDatapathIoDataPoint(ts pcommon.Timestamp, val int64, networkIoDirectionAttributeValue AttributeNetworkIoDirection, ciscoQfpTrafficClassAttributeValue string, ciscoCPUWindowAttributeValue string) {
+	mb.metricCiscoQfpDatapathIo.recordDataPoint(mb.startTime, ts, val, networkIoDirectionAttributeValue.String(), ciscoQfpTrafficClassAttributeValue, ciscoCPUWindowAttributeValue)
+}
+
+// RecordCiscoQfpDatapathPacketRateDataPoint adds a data point to cisco.qfp.datapath.packet.rate metric.
+func (mb *MetricsBuilder) RecordCiscoQfpDatapathPacketRateDataPoint(ts pcommon.Timestamp, val int64, networkIoDirectionAttributeValue AttributeNetworkIoDirection, ciscoQfpTrafficClassAttributeValue string, ciscoCPUWindowAttributeValue string) {
+	mb.metricCiscoQfpDatapathPacketRate.recordDataPoint(mb.startTime, ts, val, networkIoDirectionAttributeValue.String(), ciscoQfpTrafficClassAttributeValue, ciscoCPUWindowAttributeValue)
+}
+
+// RecordCiscoQfpDatapathUtilizationDataPoint adds a data point to cisco.qfp.datapath.utilization metric.
+func (mb *MetricsBuilder) RecordCiscoQfpDatapathUtilizationDataPoint(ts pcommon.Timestamp, val float64, ciscoQfpLoadTypeAttributeValue string, ciscoCPUWindowAttributeValue string) {
+	mb.metricCiscoQfpDatapathUtilization.recordDataPoint(mb.startTime, ts, val, ciscoQfpLoadTypeAttributeValue, ciscoCPUWindowAttributeValue)
+}
+
+// RecordCiscoQfpDropBytesDataPoint adds a data point to cisco.qfp.drop.bytes metric.
+func (mb *MetricsBuilder) RecordCiscoQfpDropBytesDataPoint(ts pcommon.Timestamp, val int64, ciscoQfpDropSourceAttributeValue string, ciscoForwardingDropReasonAttributeValue string) {
+	mb.metricCiscoQfpDropBytes.recordDataPoint(mb.startTime, ts, val, ciscoQfpDropSourceAttributeValue, ciscoForwardingDropReasonAttributeValue)
+}
+
+// RecordCiscoQfpDropsDataPoint adds a data point to cisco.qfp.drops metric.
+func (mb *MetricsBuilder) RecordCiscoQfpDropsDataPoint(ts pcommon.Timestamp, val int64, ciscoQfpDropSourceAttributeValue string, ciscoForwardingDropReasonAttributeValue string) {
+	mb.metricCiscoQfpDrops.recordDataPoint(mb.startTime, ts, val, ciscoQfpDropSourceAttributeValue, ciscoForwardingDropReasonAttributeValue)
+}
+
+// RecordCiscoQfpInterfaceDropsDataPoint adds a data point to cisco.qfp.interface.drops metric.
+func (mb *MetricsBuilder) RecordCiscoQfpInterfaceDropsDataPoint(ts pcommon.Timestamp, val int64, networkInterfaceNameAttributeValue string, networkIoDirectionAttributeValue AttributeNetworkIoDirection) {
+	mb.metricCiscoQfpInterfaceDrops.recordDataPoint(mb.startTime, ts, val, networkInterfaceNameAttributeValue, networkIoDirectionAttributeValue.String())
+}
+
+// RecordCiscoRoutingNeighborPrefixesDataPoint adds a data point to cisco.routing.neighbor.prefixes metric.
+func (mb *MetricsBuilder) RecordCiscoRoutingNeighborPrefixesDataPoint(ts pcommon.Timestamp, val int64, ciscoRoutingProtocolAttributeValue string, ciscoRoutingVrfAttributeValue string, networkPeerAddressAttributeValue string, addressFamilyAttributeValue string) {
+	mb.metricCiscoRoutingNeighborPrefixes.recordDataPoint(mb.startTime, ts, val, ciscoRoutingProtocolAttributeValue, ciscoRoutingVrfAttributeValue, networkPeerAddressAttributeValue, addressFamilyAttributeValue)
+}
+
+// RecordCiscoRoutingNeighborStateDataPoint adds a data point to cisco.routing.neighbor.state metric.
+func (mb *MetricsBuilder) RecordCiscoRoutingNeighborStateDataPoint(ts pcommon.Timestamp, val int64, ciscoRoutingProtocolAttributeValue string, ciscoRoutingVrfAttributeValue string, networkPeerAddressAttributeValue string, ciscoRoutingNeighborStateAttributeValue string, addressFamilyAttributeValue string) {
+	mb.metricCiscoRoutingNeighborState.recordDataPoint(mb.startTime, ts, val, ciscoRoutingProtocolAttributeValue, ciscoRoutingVrfAttributeValue, networkPeerAddressAttributeValue, ciscoRoutingNeighborStateAttributeValue, addressFamilyAttributeValue)
+}
+
+// RecordCiscoRoutingRoutesDataPoint adds a data point to cisco.routing.routes metric.
+func (mb *MetricsBuilder) RecordCiscoRoutingRoutesDataPoint(ts pcommon.Timestamp, val int64, ciscoRoutingVrfAttributeValue string, ciscoRouteSourceAttributeValue string, addressFamilyAttributeValue string) {
+	mb.metricCiscoRoutingRoutes.recordDataPoint(mb.startTime, ts, val, ciscoRoutingVrfAttributeValue, ciscoRouteSourceAttributeValue, addressFamilyAttributeValue)
+}
+
+// RecordCiscoScrapeCommandDurationDataPoint adds a data point to cisco.scrape.command.duration metric.
+func (mb *MetricsBuilder) RecordCiscoScrapeCommandDurationDataPoint(ts pcommon.Timestamp, val float64, ciscoScrapeCommandFamilyAttributeValue string, ciscoScrapeCommandOutcomeAttributeValue string) {
+	mb.metricCiscoScrapeCommandDuration.recordDataPoint(mb.startTime, ts, val, ciscoScrapeCommandFamilyAttributeValue, ciscoScrapeCommandOutcomeAttributeValue)
+}
+
+// RecordCiscoScrapeCommandErrorsDataPoint adds a data point to cisco.scrape.command.errors metric.
+func (mb *MetricsBuilder) RecordCiscoScrapeCommandErrorsDataPoint(ts pcommon.Timestamp, val int64, ciscoScrapeCommandFamilyAttributeValue string, ciscoScrapeErrorTypeAttributeValue string) {
+	mb.metricCiscoScrapeCommandErrors.recordDataPoint(mb.startTime, ts, val, ciscoScrapeCommandFamilyAttributeValue, ciscoScrapeErrorTypeAttributeValue)
+}
+
+// RecordCiscoScrapePartialSuccessDataPoint adds a data point to cisco.scrape.partial_success metric.
+func (mb *MetricsBuilder) RecordCiscoScrapePartialSuccessDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoScrapePartialSuccess.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoSSHReconnectsDataPoint adds a data point to cisco.ssh.reconnects metric.
+func (mb *MetricsBuilder) RecordCiscoSSHReconnectsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoSSHReconnects.recordDataPoint(mb.startTime, ts, val)
 }
 
 // RecordSystemCPUUtilizationDataPoint adds a data point to system.cpu.utilization metric.
@@ -369,6 +3479,11 @@ func (mb *MetricsBuilder) RecordSystemCPUUtilizationDataPoint(ts pcommon.Timesta
 // RecordSystemMemoryUtilizationDataPoint adds a data point to system.memory.utilization metric.
 func (mb *MetricsBuilder) RecordSystemMemoryUtilizationDataPoint(ts pcommon.Timestamp, val float64) {
 	mb.metricSystemMemoryUtilization.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSystemUptimeDataPoint adds a data point to system.uptime metric.
+func (mb *MetricsBuilder) RecordSystemUptimeDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSystemUptime.recordDataPoint(mb.startTime, ts, val)
 }
 
 // Reset resets metrics builder to its initial state. It should be used when external metrics source is restarted,

@@ -1,0 +1,353 @@
+{
+  "schema": "com.cisco.opentelemetry.ciscoosreceiver.splunk-o11y.dashboard-bundle/v1",
+  "group": {
+    "name": "Cisco Catalyst Center Receiver",
+    "description": "Dashboard group for Cisco Catalyst Center Assurance, inventory, topology, issue, device-detail, and client-detail metrics emitted by the Cisco OS receiver."
+  },
+  "default_time_range_ms": 3600000,
+  "default_tags": [
+    "ciscoosreceiver",
+    "catalyst-center",
+    "assurance",
+    "itops",
+    "netops"
+  ],
+  "default_filters": {
+    "variables": [
+      {"property": "host.name", "alias": "Device", "description": "Catalyst Center device name.", "applyIfExists": true},
+      {"property": "catalyst_center.device.serial", "alias": "Serial", "description": "Catalyst Center device serial number.", "applyIfExists": true},
+      {"property": "catalyst_center.device.id", "alias": "Device ID", "description": "Catalyst Center device identifier.", "applyIfExists": true},
+      {"property": "catalyst_center.site.name", "alias": "Site", "description": "Catalyst Center site name.", "applyIfExists": true},
+      {"property": "network.interface.name", "alias": "Interface", "description": "Network interface name.", "applyIfExists": true}
+    ]
+  },
+  "dashboards": [
+    {
+      "name": "00 Catalyst Center Fleet And API Health",
+      "description": "First-response dashboard for Catalyst Center API trust, scrape completeness, inventory reachability, and collection state.",
+      "value": "Proves whether Catalyst Center polling is healthy before operators trust inventory, health, topology, issue, or client-detail panels.",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to use the Catalyst Center fleet dashboard as the incident starting point. Interpretation: start here when Assurance telemetry is missing, stale, partially successful, or when API errors may be hiding campus state.",
+          "markdown": "## Value Provided\nUse this dashboard as the first Splunk Observability page for Catalyst Center incidents. It separates collection trust from campus symptoms: API request errors, rate limits, partial scrapes, and stale scrape timestamps explain visibility gaps, while device reachability and collection state identify affected sites, device families, and roles.\n\nCurrent state and exceptions are list charts with sparklines so the affected device or site is easy to find. API latency, error counts, rate limits, inventory counts, and scrape freshness stay as time-series charts because timing shows whether management-plane trouble preceded the incident.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Catalyst Center Partial Scrape",
+          "description": "Value: proves whether one or more Catalyst Center endpoint families failed during collection. Interpretation: 1 means the dashboard may be incomplete and should be read alongside API error charts.",
+          "signalflow": "data('catalyst_center.scrape.partial_success').mean(by=['host.name', 'catalyst_center.endpoint']).publish(label='Partial scrape')",
+          "legend_dimension": "catalyst_center.endpoint",
+          "publish_label_options": [
+            {
+              "label": "Partial scrape",
+              "displayName": "Partial scrape",
+              "paletteIndex": 5
+            }
+          ]
+        },
+        {
+          "name": "API Request Errors",
+          "description": "Value: surfaces failed Catalyst Center API calls by operation and HTTP status. Interpretation: non-zero values explain missing inventory, health, topology, issue, or detail data.",
+          "signalflow": "data('catalyst_center.api.request.errors').sum(by=['catalyst_center.api.operation', 'http.response.status_code', 'catalyst_center.api.outcome']).publish(label='API errors')",
+          "legend_dimension": "catalyst_center.api.operation",
+          "publish_label_options": [
+            {
+              "label": "API errors",
+              "displayName": "API errors",
+              "paletteIndex": 5
+            }
+          ]
+        },
+        {
+          "name": "API Request Duration",
+          "description": "Value: detects slow Catalyst Center API operations. Interpretation: rising duration by operation can precede partial scrapes, stale dashboards, or delayed Assurance evidence.",
+          "signalflow": "data('catalyst_center.api.request.duration').mean(by=['catalyst_center.api.operation', 'catalyst_center.api.outcome']).publish(label='API duration')",
+          "legend_dimension": "catalyst_center.api.operation",
+          "publish_label_options": [
+            {
+              "label": "API duration",
+              "displayName": "API duration",
+              "paletteIndex": 2
+            }
+          ]
+        },
+        {
+          "name": "API Rate Limits",
+          "description": "Value: confirms whether Catalyst Center returned 429 responses. Interpretation: repeated rate limits mean polling volume, page size, or enabled groups may need tuning.",
+          "signalflow": "data('catalyst_center.api.rate_limited').sum(by=['catalyst_center.api.operation', 'http.response.status_code']).publish(label='Rate limited')",
+          "legend_dimension": "catalyst_center.api.operation"
+        },
+        {
+          "name": "Last Successful Scrape",
+          "description": "Value: shows scrape freshness for Catalyst Center collection. Interpretation: flat or stale timestamps mean API polling stopped even if old metric values remain visible.",
+          "signalflow": "data('catalyst_center.scrape.last_success').max(by=['host.name', 'catalyst_center.endpoint']).publish(label='Last success')",
+          "legend_dimension": "catalyst_center.endpoint"
+        },
+        {
+          "name": "Inventory Device Count",
+          "description": "Value: tracks the Catalyst Center inventory size seen by the receiver. Interpretation: sudden drops indicate inventory API failures, permission changes, or account scope changes.",
+          "signalflow": "data('catalyst_center.inventory.device.count').mean(by=['host.name', 'catalyst_center.endpoint']).publish(label='Inventory devices')",
+          "legend_dimension": "catalyst_center.endpoint"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Device Reachability",
+          "description": "Value: identifies network devices Catalyst Center reports as reachable or unreachable. Interpretation: each row is a device; 1 means reachable and 0 means unreachable.",
+          "signalflow": "data('cisco.device.up', filter=filter('os.name', 'Catalyst Center')).mean(by=['host.name', 'host.id', 'catalyst_center.device.family', 'catalyst_center.device.role', 'catalyst_center.site.name']).publish(label='Device up')",
+          "legend_dimension": "host.name",
+          "publish_label_options": [
+            {
+              "label": "Device up",
+              "displayName": "Device up",
+              "paletteIndex": 13
+            }
+          ]
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Device Collection Status",
+          "description": "Value: preserves Catalyst Center collection state for each managed device. Interpretation: degraded or unmanaged states explain why Assurance views may not match live device behavior.",
+          "signalflow": "data('catalyst_center.device.collection.status').mean(by=['host.name', 'host.id', 'catalyst_center.status', 'catalyst_center.device.family', 'catalyst_center.site.name']).publish(label='Collection status')",
+          "legend_dimension": "catalyst_center.status",
+          "publish_label_options": [
+            {
+              "label": "Collection status",
+              "displayName": "Collection status",
+              "paletteIndex": 5
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 Assurance Health Sites And Issues",
+      "description": "Campus Assurance dashboard for global network health, site health, client health, and active issues.",
+      "value": "Connects Catalyst Center health scores and Assurance issue rollups to affected sites, device categories, and client populations.",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to use Catalyst Center Assurance health panels. Interpretation: use this page after API trust is proven to identify whether the incident is network-wide, site-scoped, client-facing, or issue-driven.",
+          "markdown": "## Value Provided\nUse this page for Catalyst Center Assurance triage. It puts network health, entity health, site health, client health, and active issue counts together so operators can decide whether the failure is global, site-scoped, device-family-specific, or client-facing.\n\nScores and percentages are time-series charts because trend and timing matter. Issue and health-count charts stay grouped by bounded severity, state, category, site, and entity dimensions so they can be used for detector rollups without leaking high-cardinality issue text into metrics.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "Global Network Health Score",
+          "description": "Value: shows the latest Catalyst Center network health score. Interpretation: a falling score means campus health is degrading before drilling into entity or site panels.",
+          "signalflow": "data('catalyst_center.network.health.score').mean(by=['catalyst_center.health.measured_by']).publish(label='Network health')",
+          "legend_dimension": "catalyst_center.health.measured_by"
+        },
+        {
+          "name": "Network Health Entity Scores",
+          "description": "Value: separates Catalyst Center network health by entity such as access, wireless, or network devices. Interpretation: the lowest entity score usually points to the first focused dashboard to open.",
+          "signalflow": "data('catalyst_center.network.health.entity.score').mean(by=['catalyst_center.health.entity']).publish(label='Entity health')",
+          "legend_dimension": "catalyst_center.health.entity"
+        },
+        {
+          "name": "Network Health Entity Counts",
+          "description": "Value: counts entities by health state. Interpretation: rising bad, fair, no-health, or unmonitored counts indicate where fleet health is shifting.",
+          "signalflow": "data('catalyst_center.network.health.entity.count').sum(by=['catalyst_center.health.entity', 'catalyst_center.health.state']).publish(label='Entity count')",
+          "legend_dimension": "catalyst_center.health.state"
+        },
+        {
+          "name": "Network Health By Device Category",
+          "description": "Value: shows Catalyst Center health score by device category. Interpretation: low category scores help distinguish switching, routing, wireless, or other family impact.",
+          "signalflow": "data('catalyst_center.network.health.category.score').mean(by=['catalyst_center.device.category']).publish(label='Category health')",
+          "legend_dimension": "catalyst_center.device.category"
+        },
+        {
+          "name": "Site Network Device Health",
+          "description": "Value: shows the percentage of healthy network devices by site. Interpretation: low percentages identify the site where infrastructure impact is concentrated.",
+          "signalflow": "data('catalyst_center.site.network_device.health.percentage').mean(by=['catalyst_center.site.name', 'catalyst_center.site.type']).publish(label='Network device health %')",
+          "legend_dimension": "catalyst_center.site.name"
+        },
+        {
+          "name": "Site Client Health",
+          "description": "Value: shows the percentage of healthy clients by site. Interpretation: client health falling while network-device health stays stable suggests experience or access issues instead of device reachability.",
+          "signalflow": "data('catalyst_center.site.client.health.percentage').mean(by=['catalyst_center.site.name', 'catalyst_center.site.type']).publish(label='Client health %')",
+          "legend_dimension": "catalyst_center.site.name"
+        },
+        {
+          "name": "Site Health Counts",
+          "description": "Value: breaks site state into device, client, wireless, AP, switch, router, and issue counts. Interpretation: use the health-state dimension to see whether a site problem is client-heavy, wireless-heavy, or device-heavy.",
+          "signalflow": "data('catalyst_center.site.health.count').sum(by=['catalyst_center.site.name', 'catalyst_center.site.health.state']).publish(label='Site health count')",
+          "legend_dimension": "catalyst_center.site.health.state"
+        },
+        {
+          "name": "Active Assurance Issues",
+          "description": "Value: summarizes active Assurance issues by severity, priority, status, category, and entity type. Interpretation: increasing P1/P2 or high-severity issue counts should anchor incident triage.",
+          "signalflow": "data('catalyst_center.issue.active.count').sum(by=['catalyst_center.issue.severity', 'catalyst_center.issue.priority', 'catalyst_center.issue.status', 'catalyst_center.issue.category', 'catalyst_center.issue.entity_type']).publish(label='Active issues')",
+          "legend_dimension": "catalyst_center.issue.severity"
+        }
+      ]
+    },
+    {
+      "name": "02 Inventory Interfaces And Topology",
+      "description": "Campus inventory, interface, and physical topology dashboard for Catalyst Center device and path investigations.",
+      "value": "Connects device inventory, reachability, interface state, line speed, and physical topology counts so operators can move from affected site to affected path.",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to use Catalyst Center inventory, interface, and topology panels. Interpretation: use this page when a site, device family, interface, or physical topology path is suspected.",
+          "markdown": "## Value Provided\nUse this page for campus inventory and physical-path investigations. It keeps device reachability, uptime, interface state, line speed, and topology counts together so operators can determine whether Catalyst Center sees the device and whether the affected interface or path changed state.\n\nState metrics are list charts to find the affected device or port quickly. Counts and speed stay as time-series charts because trend and sudden inventory shifts often reveal permissions, collection, or topology-discovery changes.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Reachability Status Vocabulary",
+          "description": "Value: preserves the original Catalyst Center reachability status alongside encoded state. Interpretation: use the status dimension to distinguish reachable, unreachable, partial, or unknown states.",
+          "signalflow": "data('catalyst_center.device.reachability.status').mean(by=['host.name', 'host.id', 'catalyst_center.status', 'catalyst_center.device.family', 'catalyst_center.device.role', 'catalyst_center.site.name']).publish(label='Reachability status')",
+          "legend_dimension": "catalyst_center.status",
+          "publish_label_options": [
+            {
+              "label": "Reachability status",
+              "displayName": "Reachability status",
+              "paletteIndex": 5
+            }
+          ]
+        },
+        {
+          "name": "Device Uptime",
+          "description": "Value: shows uptime reported by Catalyst Center inventory. Interpretation: drops to low values indicate device reloads or inventory changes near the incident window.",
+          "signalflow": "data('catalyst_center.device.uptime').mean(by=['host.name', 'host.id', 'catalyst_center.device.family', 'catalyst_center.site.name']).publish(label='Device uptime')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Device Interface Count",
+          "description": "Value: tracks interface count by device from Catalyst Center inventory. Interpretation: sudden changes can indicate inventory churn, device replacement, or collection gaps.",
+          "signalflow": "data('catalyst_center.device.interface.count').mean(by=['host.name', 'host.id', 'catalyst_center.device.family']).publish(label='Device interface count')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Interface Operational Status",
+          "description": "Value: identifies ports Catalyst Center reports as operationally up or down. Interpretation: rows are grouped by device and interface; 0 on an expected uplink or access port needs drilldown.",
+          "signalflow": "data('system.network.interface.status', filter=filter('os.name', 'Catalyst Center')).mean(by=['host.name', 'host.id', 'network.interface.name', 'network.interface.type', 'catalyst_center.interface.vlan']).publish(label='Interface status')",
+          "legend_dimension": "network.interface.name",
+          "publish_label_options": [
+            {
+              "label": "Interface status",
+              "displayName": "Interface status",
+              "paletteIndex": 13
+            }
+          ]
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Interface Admin Status",
+          "description": "Value: distinguishes intentional admin-down ports from operational failures. Interpretation: admin status up with oper status down points to a physical, peer, or link problem.",
+          "signalflow": "data('cisco.interface.admin.status', filter=filter('os.name', 'Catalyst Center')).mean(by=['host.name', 'host.id', 'network.interface.name', 'network.interface.type', 'catalyst_center.interface.vlan']).publish(label='Admin status')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "name": "Interface Line Speed",
+          "description": "Value: shows line speed reported by Catalyst Center. Interpretation: unexpected downgrades or missing speed values narrow physical-path investigation.",
+          "signalflow": "data('cisco.interface.speed', filter=filter('os.name', 'Catalyst Center')).mean(by=['host.name', 'host.id', 'network.interface.name', 'network.interface.speed']).publish(label='Interface speed')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "name": "Topology Node Count",
+          "description": "Value: tracks physical topology nodes globally and by node type, device family, and role. Interpretation: node-count drops can indicate topology discovery or permission gaps.",
+          "signalflow": "data('catalyst_center.topology.node.count').sum(by=['catalyst_center.topology.scope', 'catalyst_center.topology.node_type', 'catalyst_center.device.family', 'catalyst_center.device.role']).publish(label='Topology nodes')",
+          "legend_dimension": "catalyst_center.topology.node_type"
+        },
+        {
+          "name": "Topology Link Count",
+          "description": "Value: tracks physical topology links globally and by link status. Interpretation: link-count drops or failed statuses can explain missing topology paths during site incidents.",
+          "signalflow": "data('catalyst_center.topology.link.count').sum(by=['catalyst_center.topology.scope', 'catalyst_center.topology.link_status']).publish(label='Topology links')",
+          "legend_dimension": "catalyst_center.topology.link_status"
+        }
+      ]
+    },
+    {
+      "name": "03 Client And Detail Impact",
+      "description": "Client, endpoint-detail, and device-detail dashboard for targeted Catalyst Center investigations.",
+      "value": "Uses optional Catalyst Center device-detail and client-detail targets to connect affected devices and clients to health, signal, issue, CPU, memory, and traffic evidence.",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to use optional Catalyst Center detail panels. Interpretation: use this page after adding targeted device-detail or client-detail filters for the affected devices or MAC addresses.",
+          "markdown": "## Value Provided\nUse this page for targeted Catalyst Center device-detail and client-detail investigations. It is most useful after the receiver is configured with affected device identifiers or client MAC addresses, because those detail APIs are intentionally scoped to avoid broad high-cardinality polling.\n\nClient health, issue count, RSSI, SNR, and client byte volume explain endpoint experience. Device detail health, communication status, CPU, and memory explain whether the network device serving that client was also degraded.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "Client Health Score",
+          "description": "Value: shows Catalyst Center client health by site and score category. Interpretation: low scores by category identify whether the impact is wired, wireless, onboarding, or another client population.",
+          "signalflow": "data('catalyst_center.client.health.score').mean(by=['catalyst_center.site.id', 'catalyst_center.client.score_category']).publish(label='Client health')",
+          "legend_dimension": "catalyst_center.client.score_category"
+        },
+        {
+          "name": "Client Count By Health Category",
+          "description": "Value: tracks total clients by health category. Interpretation: a rising unhealthy client count with stable infrastructure health points to experience-specific impact.",
+          "signalflow": "data('catalyst_center.client.count').sum(by=['catalyst_center.site.id', 'catalyst_center.client.score_category']).publish(label='Client count')",
+          "legend_dimension": "catalyst_center.client.score_category"
+        },
+        {
+          "name": "Unique Client Count",
+          "description": "Value: tracks unique clients by health category. Interpretation: compare with total client count to separate repeated sessions from broad client impact.",
+          "signalflow": "data('catalyst_center.client.unique.count').sum(by=['catalyst_center.site.id', 'catalyst_center.client.score_category']).publish(label='Unique clients')",
+          "legend_dimension": "catalyst_center.client.score_category"
+        },
+        {
+          "name": "Client Detail Health",
+          "description": "Value: shows targeted client-detail health scores by client, type, and reason. Interpretation: low health with a specific reason gives the fastest drilldown for an affected MAC address.",
+          "signalflow": "data('catalyst_center.client.detail.health.score').mean(by=['host.name', 'host.id', 'catalyst_center.client.mac', 'catalyst_center.client.type', 'catalyst_center.client.health_type', 'catalyst_center.client.health_reason']).publish(label='Client detail health')",
+          "legend_dimension": "catalyst_center.client.mac"
+        },
+        {
+          "name": "Client Detail Issues",
+          "description": "Value: shows issue counts for targeted client-detail lookups. Interpretation: non-zero values tell operators to inspect the affected client in Catalyst Center with the same MAC address.",
+          "signalflow": "data('catalyst_center.client.issue.count').sum(by=['host.name', 'host.id', 'catalyst_center.client.mac', 'catalyst_center.client.type', 'catalyst_center.client.connection_status']).publish(label='Client issues')",
+          "legend_dimension": "catalyst_center.client.mac"
+        },
+        {
+          "name": "Wireless Client RSSI And SNR",
+          "description": "Value: overlays targeted wireless RSSI and SNR. Interpretation: weak RSSI or falling SNR near complaint time points to RF, roaming, distance, or interference issues.",
+          "signalflow": "data('catalyst_center.client.wireless.rssi').mean(by=['host.name', 'host.id', 'catalyst_center.client.mac']).publish(label='RSSI'); data('catalyst_center.client.wireless.snr').mean(by=['host.name', 'host.id', 'catalyst_center.client.mac']).publish(label='SNR')",
+          "legend_dimension": "catalyst_center.client.mac"
+        },
+        {
+          "name": "Client Network I/O",
+          "description": "Value: shows targeted client byte volume by direction. Interpretation: sudden silence, spikes, or asymmetric traffic help correlate client experience with access or upstream issues.",
+          "signalflow": "data('catalyst_center.client.network.io').sum(by=['host.name', 'host.id', 'catalyst_center.client.mac', 'network.io.direction']).publish(label='Client bytes')",
+          "legend_dimension": "network.io.direction"
+        },
+        {
+          "name": "Device Detail Health",
+          "description": "Value: shows targeted Catalyst Center device-detail health. Interpretation: low device health near client symptoms means the access, distribution, or wireless device should be inspected first.",
+          "signalflow": "data('catalyst_center.device.detail.health.score').mean(by=['host.name', 'host.id', 'catalyst_center.detail.identifier', 'catalyst_center.device.family', 'catalyst_center.device.role']).publish(label='Device detail health')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Device Detail Communication Status",
+          "description": "Value: shows targeted device-detail communication state. Interpretation: degraded or unreachable state explains why client or site health may be stale or incomplete.",
+          "signalflow": "data('catalyst_center.device.detail.communication.status').mean(by=['host.name', 'host.id', 'catalyst_center.status', 'catalyst_center.detail.identifier']).publish(label='Communication status')",
+          "legend_dimension": "catalyst_center.status"
+        },
+        {
+          "name": "Device CPU And Memory",
+          "description": "Value: overlays CPU and memory from targeted device-detail lookups. Interpretation: device resource pressure near client symptoms points to control-plane or platform load as a contributing factor.",
+          "signalflow": "data('system.cpu.utilization', filter=filter('os.name', 'Catalyst Center')).mean(by=['host.name', 'host.id', 'catalyst_center.detail.identifier']).scale(100).publish(label='CPU %'); data('system.memory.utilization', filter=filter('os.name', 'Catalyst Center')).mean(by=['host.name', 'host.id', 'catalyst_center.detail.identifier']).scale(100).publish(label='Memory %')",
+          "legend_dimension": "host.name"
+        }
+      ]
+    }
+  ]
+}

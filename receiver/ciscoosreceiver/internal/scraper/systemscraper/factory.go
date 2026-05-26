@@ -24,6 +24,13 @@ func NewFactory() scraper.Factory {
 func createDefaultConfig() component.Config {
 	return &Config{
 		MetricsBuilderConfig: metadata.NewDefaultMetricsBuilderConfig(),
+		ProtocolTraffic:      defaultProtocolTrafficConfig(),
+		ControlPlane:         defaultControlPlaneConfig(),
+		RoutingForwarding:    defaultRoutingForwardingConfig(),
+		RouterDataplane:      defaultRouterDataplaneConfig(),
+		HardwareHealth:       defaultHardwareHealthConfig(),
+		RoutingNeighbors:     defaultRoutingNeighborsConfig(),
+		Fabric:               defaultFabricConfig(),
 	}
 }
 

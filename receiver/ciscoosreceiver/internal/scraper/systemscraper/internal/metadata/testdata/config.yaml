@@ -1,52 +1,349 @@
 default:
 all_set:
   metrics:
+    cisco.adjacency.entries:
+      enabled: true
+      attributes: ["cisco.routing.vrf","cisco.adjacency.state"]
+    cisco.arp.entries:
+      enabled: true
+      attributes: ["cisco.routing.vrf","address.family"]
+    cisco.control_plane.cpu.process.utilization:
+      enabled: true
+      attributes: ["cisco.process.name","cisco.process.pid","cisco.cpu.window"]
+    cisco.control_plane.dropped:
+      enabled: true
+      attributes: ["cisco.control_plane.source","cisco.control_plane.class","cisco.control_plane.drop.reason"]
+    cisco.control_plane.packets:
+      enabled: true
+      attributes: ["cisco.control_plane.source","cisco.control_plane.class","network.io.direction"]
+    cisco.control_plane.punt.rate:
+      enabled: true
+      attributes: ["cisco.control_plane.punt.queue","network.interface.name"]
     cisco.device.up:
+      enabled: true
+    cisco.evpn.routes:
+      enabled: true
+      attributes: ["cisco.routing.vrf","cisco.evpn.route.type"]
+    cisco.forwarding.drops:
+      enabled: true
+      attributes: ["cisco.routing.vrf","cisco.forwarding.drop.reason"]
+    cisco.forwarding.fib.entries:
+      enabled: true
+      attributes: ["cisco.routing.vrf","address.family"]
+    cisco.hardware.status:
+      enabled: true
+      attributes: ["cisco.hardware.component","cisco.hardware.name","cisco.hardware.slot","cisco.hardware.state"]
+    cisco.hardware.temperature:
+      enabled: true
+      attributes: ["cisco.hardware.name","cisco.hardware.slot","cisco.hardware.state"]
+    cisco.nve.peer.status:
+      enabled: true
+      attributes: ["network.peer.address","cisco.nve.state"]
+    cisco.nve.vni.status:
+      enabled: true
+      attributes: ["cisco.nve.vni","cisco.nve.vni.type","cisco.nve.state"]
+    cisco.protocol.dropped:
+      enabled: true
+      attributes: ["cisco.protocol.drop.reason","cisco.protocol.name"]
+    cisco.protocol.errors:
+      enabled: true
+      attributes: ["cisco.protocol.error.type","cisco.protocol.name"]
+    cisco.protocol.packets:
+      enabled: true
+      attributes: ["cisco.protocol.message.type","cisco.protocol.name","network.io.direction"]
+    cisco.qfp.datapath.io:
+      enabled: true
+      attributes: ["network.io.direction","cisco.qfp.traffic.class","cisco.cpu.window"]
+    cisco.qfp.datapath.packet.rate:
+      enabled: true
+      attributes: ["network.io.direction","cisco.qfp.traffic.class","cisco.cpu.window"]
+    cisco.qfp.datapath.utilization:
+      enabled: true
+      attributes: ["cisco.qfp.load.type","cisco.cpu.window"]
+    cisco.qfp.drop.bytes:
+      enabled: true
+      attributes: ["cisco.qfp.drop.source","cisco.forwarding.drop.reason"]
+    cisco.qfp.drops:
+      enabled: true
+      attributes: ["cisco.qfp.drop.source","cisco.forwarding.drop.reason"]
+    cisco.qfp.interface.drops:
+      enabled: true
+      attributes: ["network.interface.name","network.io.direction"]
+    cisco.routing.neighbor.prefixes:
+      enabled: true
+      attributes: ["cisco.routing.protocol","cisco.routing.vrf","network.peer.address","address.family"]
+    cisco.routing.neighbor.state:
+      enabled: true
+      attributes: ["cisco.routing.protocol","cisco.routing.vrf","network.peer.address","cisco.routing.neighbor.state","address.family"]
+    cisco.routing.routes:
+      enabled: true
+      attributes: ["cisco.routing.vrf","cisco.route.source","address.family"]
+    cisco.scrape.command.duration:
+      enabled: true
+      attributes: ["cisco.scrape.command.family","cisco.scrape.command.outcome"]
+    cisco.scrape.command.errors:
+      enabled: true
+      attributes: ["cisco.scrape.command.family","cisco.scrape.error.type"]
+    cisco.scrape.partial_success:
+      enabled: true
+    cisco.ssh.reconnects:
       enabled: true
     system.cpu.utilization:
       enabled: true
     system.memory.utilization:
       enabled: true
+    system.uptime:
+      enabled: true
   resource_attributes:
+    host.id:
+      enabled: true
     host.ip:
+      enabled: true
+    host.name:
+      enabled: true
+    host.type:
       enabled: true
     hw.type:
       enabled: true
     os.name:
+      enabled: true
+    os.version:
       enabled: true
 reaggregate_set:
   metrics:
+    cisco.adjacency.entries:
+      enabled: true
+      attributes: []
+    cisco.arp.entries:
+      enabled: true
+      attributes: []
+    cisco.control_plane.cpu.process.utilization:
+      enabled: true
+      attributes: []
+    cisco.control_plane.dropped:
+      enabled: true
+      attributes: []
+    cisco.control_plane.packets:
+      enabled: true
+      attributes: []
+    cisco.control_plane.punt.rate:
+      enabled: true
+      attributes: []
     cisco.device.up:
+      enabled: true
+    cisco.evpn.routes:
+      enabled: true
+      attributes: []
+    cisco.forwarding.drops:
+      enabled: true
+      attributes: []
+    cisco.forwarding.fib.entries:
+      enabled: true
+      attributes: []
+    cisco.hardware.status:
+      enabled: true
+      attributes: []
+    cisco.hardware.temperature:
+      enabled: true
+      attributes: []
+    cisco.nve.peer.status:
+      enabled: true
+      attributes: []
+    cisco.nve.vni.status:
+      enabled: true
+      attributes: []
+    cisco.protocol.dropped:
+      enabled: true
+      attributes: []
+    cisco.protocol.errors:
+      enabled: true
+      attributes: []
+    cisco.protocol.packets:
+      enabled: true
+      attributes: []
+    cisco.qfp.datapath.io:
+      enabled: true
+      attributes: []
+    cisco.qfp.datapath.packet.rate:
+      enabled: true
+      attributes: []
+    cisco.qfp.datapath.utilization:
+      enabled: true
+      attributes: []
+    cisco.qfp.drop.bytes:
+      enabled: true
+      attributes: []
+    cisco.qfp.drops:
+      enabled: true
+      attributes: []
+    cisco.qfp.interface.drops:
+      enabled: true
+      attributes: []
+    cisco.routing.neighbor.prefixes:
+      enabled: true
+      attributes: []
+    cisco.routing.neighbor.state:
+      enabled: true
+      attributes: []
+    cisco.routing.routes:
+      enabled: true
+      attributes: []
+    cisco.scrape.command.duration:
+      enabled: true
+      attributes: []
+    cisco.scrape.command.errors:
+      enabled: true
+      attributes: []
+    cisco.scrape.partial_success:
+      enabled: true
+    cisco.ssh.reconnects:
       enabled: true
     system.cpu.utilization:
       enabled: true
     system.memory.utilization:
       enabled: true
+    system.uptime:
+      enabled: true
   resource_attributes:
+    host.id:
+      enabled: true
     host.ip:
+      enabled: true
+    host.name:
+      enabled: true
+    host.type:
       enabled: true
     hw.type:
       enabled: true
     os.name:
+      enabled: true
+    os.version:
       enabled: true
 none_set:
   metrics:
+    cisco.adjacency.entries:
+      enabled: false
+      attributes: ["cisco.routing.vrf","cisco.adjacency.state"]
+    cisco.arp.entries:
+      enabled: false
+      attributes: ["cisco.routing.vrf","address.family"]
+    cisco.control_plane.cpu.process.utilization:
+      enabled: false
+      attributes: ["cisco.process.name","cisco.process.pid","cisco.cpu.window"]
+    cisco.control_plane.dropped:
+      enabled: false
+      attributes: ["cisco.control_plane.source","cisco.control_plane.class","cisco.control_plane.drop.reason"]
+    cisco.control_plane.packets:
+      enabled: false
+      attributes: ["cisco.control_plane.source","cisco.control_plane.class","network.io.direction"]
+    cisco.control_plane.punt.rate:
+      enabled: false
+      attributes: ["cisco.control_plane.punt.queue","network.interface.name"]
     cisco.device.up:
+      enabled: false
+    cisco.evpn.routes:
+      enabled: false
+      attributes: ["cisco.routing.vrf","cisco.evpn.route.type"]
+    cisco.forwarding.drops:
+      enabled: false
+      attributes: ["cisco.routing.vrf","cisco.forwarding.drop.reason"]
+    cisco.forwarding.fib.entries:
+      enabled: false
+      attributes: ["cisco.routing.vrf","address.family"]
+    cisco.hardware.status:
+      enabled: false
+      attributes: ["cisco.hardware.component","cisco.hardware.name","cisco.hardware.slot","cisco.hardware.state"]
+    cisco.hardware.temperature:
+      enabled: false
+      attributes: ["cisco.hardware.name","cisco.hardware.slot","cisco.hardware.state"]
+    cisco.nve.peer.status:
+      enabled: false
+      attributes: ["network.peer.address","cisco.nve.state"]
+    cisco.nve.vni.status:
+      enabled: false
+      attributes: ["cisco.nve.vni","cisco.nve.vni.type","cisco.nve.state"]
+    cisco.protocol.dropped:
+      enabled: false
+      attributes: ["cisco.protocol.drop.reason","cisco.protocol.name"]
+    cisco.protocol.errors:
+      enabled: false
+      attributes: ["cisco.protocol.error.type","cisco.protocol.name"]
+    cisco.protocol.packets:
+      enabled: false
+      attributes: ["cisco.protocol.message.type","cisco.protocol.name","network.io.direction"]
+    cisco.qfp.datapath.io:
+      enabled: false
+      attributes: ["network.io.direction","cisco.qfp.traffic.class","cisco.cpu.window"]
+    cisco.qfp.datapath.packet.rate:
+      enabled: false
+      attributes: ["network.io.direction","cisco.qfp.traffic.class","cisco.cpu.window"]
+    cisco.qfp.datapath.utilization:
+      enabled: false
+      attributes: ["cisco.qfp.load.type","cisco.cpu.window"]
+    cisco.qfp.drop.bytes:
+      enabled: false
+      attributes: ["cisco.qfp.drop.source","cisco.forwarding.drop.reason"]
+    cisco.qfp.drops:
+      enabled: false
+      attributes: ["cisco.qfp.drop.source","cisco.forwarding.drop.reason"]
+    cisco.qfp.interface.drops:
+      enabled: false
+      attributes: ["network.interface.name","network.io.direction"]
+    cisco.routing.neighbor.prefixes:
+      enabled: false
+      attributes: ["cisco.routing.protocol","cisco.routing.vrf","network.peer.address","address.family"]
+    cisco.routing.neighbor.state:
+      enabled: false
+      attributes: ["cisco.routing.protocol","cisco.routing.vrf","network.peer.address","cisco.routing.neighbor.state","address.family"]
+    cisco.routing.routes:
+      enabled: false
+      attributes: ["cisco.routing.vrf","cisco.route.source","address.family"]
+    cisco.scrape.command.duration:
+      enabled: false
+      attributes: ["cisco.scrape.command.family","cisco.scrape.command.outcome"]
+    cisco.scrape.command.errors:
+      enabled: false
+      attributes: ["cisco.scrape.command.family","cisco.scrape.error.type"]
+    cisco.scrape.partial_success:
+      enabled: false
+    cisco.ssh.reconnects:
       enabled: false
     system.cpu.utilization:
       enabled: false
     system.memory.utilization:
       enabled: false
+    system.uptime:
+      enabled: false
   resource_attributes:
+    host.id:
+      enabled: false
     host.ip:
+      enabled: false
+    host.name:
+      enabled: false
+    host.type:
       enabled: false
     hw.type:
       enabled: false
     os.name:
+      enabled: false
+    os.version:
       enabled: false
 filter_set_include:
   resource_attributes:
+    host.id:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
     host.ip:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
+    host.name:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
+    host.type:
       enabled: true
       metrics_include:
         - regexp: ".*"
@@ -55,15 +352,31 @@ filter_set_include:
       metrics_include:
         - regexp: ".*"
     os.name:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
+    os.version:
       enabled: true
       metrics_include:
         - regexp: ".*"
 filter_set_exclude:
   resource_attributes:
+    host.id:
+      enabled: true
+      metrics_exclude:
+        - strict: "host.id-val"
     host.ip:
       enabled: true
       metrics_exclude:
         - strict: "host.ip-val"
+    host.name:
+      enabled: true
+      metrics_exclude:
+        - strict: "host.name-val"
+    host.type:
+      enabled: true
+      metrics_exclude:
+        - strict: "host.type-val"
     hw.type:
       enabled: true
       metrics_exclude:
@@ -72,3 +385,7 @@ filter_set_exclude:
       enabled: true
       metrics_exclude:
         - strict: "os.name-val"
+    os.version:
+      enabled: true
+      metrics_exclude:
+        - strict: "os.version-val"

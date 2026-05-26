@@ -4,8 +4,211 @@ $defs:
     description: MetricsConfig provides config for system metrics.
     type: object
     properties:
+      cisco.adjacency.entries:
+        description: "CiscoAdjacencyEntriesMetricConfig provides config for the cisco.adjacency.entries metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.arp.entries:
+        description: "CiscoArpEntriesMetricConfig provides config for the cisco.arp.entries metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.control_plane.cpu.process.utilization:
+        description: "CiscoControlPlaneCPUProcessUtilizationMetricConfig provides config for the cisco.control_plane.cpu.process.utilization metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.control_plane.dropped:
+        description: "CiscoControlPlaneDroppedMetricConfig provides config for the cisco.control_plane.dropped metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.control_plane.packets:
+        description: "CiscoControlPlanePacketsMetricConfig provides config for the cisco.control_plane.packets metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.control_plane.punt.rate:
+        description: "CiscoControlPlanePuntRateMetricConfig provides config for the cisco.control_plane.punt.rate metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
       cisco.device.up:
         description: "CiscoDeviceUpMetricConfig provides config for the cisco.device.up metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.evpn.routes:
+        description: "CiscoEvpnRoutesMetricConfig provides config for the cisco.evpn.routes metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.forwarding.drops:
+        description: "CiscoForwardingDropsMetricConfig provides config for the cisco.forwarding.drops metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.forwarding.fib.entries:
+        description: "CiscoForwardingFibEntriesMetricConfig provides config for the cisco.forwarding.fib.entries metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.hardware.status:
+        description: "CiscoHardwareStatusMetricConfig provides config for the cisco.hardware.status metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.hardware.temperature:
+        description: "CiscoHardwareTemperatureMetricConfig provides config for the cisco.hardware.temperature metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.nve.peer.status:
+        description: "CiscoNvePeerStatusMetricConfig provides config for the cisco.nve.peer.status metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.nve.vni.status:
+        description: "CiscoNveVniStatusMetricConfig provides config for the cisco.nve.vni.status metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.protocol.dropped:
+        description: "CiscoProtocolDroppedMetricConfig provides config for the cisco.protocol.dropped metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.protocol.errors:
+        description: "CiscoProtocolErrorsMetricConfig provides config for the cisco.protocol.errors metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.protocol.packets:
+        description: "CiscoProtocolPacketsMetricConfig provides config for the cisco.protocol.packets metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.qfp.datapath.io:
+        description: "CiscoQfpDatapathIoMetricConfig provides config for the cisco.qfp.datapath.io metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.qfp.datapath.packet.rate:
+        description: "CiscoQfpDatapathPacketRateMetricConfig provides config for the cisco.qfp.datapath.packet.rate metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.qfp.datapath.utilization:
+        description: "CiscoQfpDatapathUtilizationMetricConfig provides config for the cisco.qfp.datapath.utilization metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.qfp.drop.bytes:
+        description: "CiscoQfpDropBytesMetricConfig provides config for the cisco.qfp.drop.bytes metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.qfp.drops:
+        description: "CiscoQfpDropsMetricConfig provides config for the cisco.qfp.drops metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.qfp.interface.drops:
+        description: "CiscoQfpInterfaceDropsMetricConfig provides config for the cisco.qfp.interface.drops metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.routing.neighbor.prefixes:
+        description: "CiscoRoutingNeighborPrefixesMetricConfig provides config for the cisco.routing.neighbor.prefixes metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.routing.neighbor.state:
+        description: "CiscoRoutingNeighborStateMetricConfig provides config for the cisco.routing.neighbor.state metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.routing.routes:
+        description: "CiscoRoutingRoutesMetricConfig provides config for the cisco.routing.routes metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.scrape.command.duration:
+        description: "CiscoScrapeCommandDurationMetricConfig provides config for the cisco.scrape.command.duration metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.scrape.command.errors:
+        description: "CiscoScrapeCommandErrorsMetricConfig provides config for the cisco.scrape.command.errors metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.scrape.partial_success:
+        description: "CiscoScrapePartialSuccessMetricConfig provides config for the cisco.scrape.partial_success metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+      cisco.ssh.reconnects:
+        description: "CiscoSSHReconnectsMetricConfig provides config for the cisco.ssh.reconnects metric."
         type: object
         properties:
           enabled:
@@ -25,12 +228,70 @@ $defs:
           enabled:
             type: boolean
             default: true
+      system.uptime:
+        description: "SystemUptimeMetricConfig provides config for the system.uptime metric."
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
   resource_attributes_config:
     description: ResourceAttributesConfig provides config for system resource attributes.
     type: object
     properties:
+      host.id:
+        description: ResourceAttributeConfig provides common config for a host.id resource attribute.
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+          metrics_include:
+            description: "Experimental: MetricsInclude defines a list of filters for attribute values. If the list is not empty, only metrics with matching resource attribute values will be emitted."
+            type: array
+            items:
+              $ref: go.opentelemetry.io/collector/filter.config
+          metrics_exclude:
+            description: "Experimental: MetricsExclude defines a list of filters for attribute values. If the list is not empty, metrics with matching resource attribute values will not be emitted. MetricsInclude has higher priority than MetricsExclude."
+            type: array
+            items:
+              $ref: go.opentelemetry.io/collector/filter.config
       host.ip:
         description: ResourceAttributeConfig provides common config for a host.ip resource attribute.
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+          metrics_include:
+            description: "Experimental: MetricsInclude defines a list of filters for attribute values. If the list is not empty, only metrics with matching resource attribute values will be emitted."
+            type: array
+            items:
+              $ref: go.opentelemetry.io/collector/filter.config
+          metrics_exclude:
+            description: "Experimental: MetricsExclude defines a list of filters for attribute values. If the list is not empty, metrics with matching resource attribute values will not be emitted. MetricsInclude has higher priority than MetricsExclude."
+            type: array
+            items:
+              $ref: go.opentelemetry.io/collector/filter.config
+      host.name:
+        description: ResourceAttributeConfig provides common config for a host.name resource attribute.
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+          metrics_include:
+            description: "Experimental: MetricsInclude defines a list of filters for attribute values. If the list is not empty, only metrics with matching resource attribute values will be emitted."
+            type: array
+            items:
+              $ref: go.opentelemetry.io/collector/filter.config
+          metrics_exclude:
+            description: "Experimental: MetricsExclude defines a list of filters for attribute values. If the list is not empty, metrics with matching resource attribute values will not be emitted. MetricsInclude has higher priority than MetricsExclude."
+            type: array
+            items:
+              $ref: go.opentelemetry.io/collector/filter.config
+      host.type:
+        description: ResourceAttributeConfig provides common config for a host.type resource attribute.
         type: object
         properties:
           enabled:
@@ -65,6 +326,23 @@ $defs:
               $ref: go.opentelemetry.io/collector/filter.config
       os.name:
         description: ResourceAttributeConfig provides common config for a os.name resource attribute.
+        type: object
+        properties:
+          enabled:
+            type: boolean
+            default: true
+          metrics_include:
+            description: "Experimental: MetricsInclude defines a list of filters for attribute values. If the list is not empty, only metrics with matching resource attribute values will be emitted."
+            type: array
+            items:
+              $ref: go.opentelemetry.io/collector/filter.config
+          metrics_exclude:
+            description: "Experimental: MetricsExclude defines a list of filters for attribute values. If the list is not empty, metrics with matching resource attribute values will not be emitted. MetricsInclude has higher priority than MetricsExclude."
+            type: array
+            items:
+              $ref: go.opentelemetry.io/collector/filter.config
+      os.version:
+        description: ResourceAttributeConfig provides common config for a os.version resource attribute.
         type: object
         properties:
           enabled:

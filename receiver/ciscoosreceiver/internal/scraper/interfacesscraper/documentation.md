@@ -12,13 +12,445 @@ metrics:
     enabled: false
 ```
 
+### cisco.interface.admin.status
+
+Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| network.interface.description | The description/alias of the network interface | Any Str | Recommended | - |
+| network.interface.mac | The MAC address of the network interface | Any Str | Recommended | - |
+| network.interface.name | The name of the network interface | Any Str | Recommended | - |
+| network.interface.speed | The configured speed of the network interface | Any Str | Recommended | - |
+
+### cisco.interface.counter
+
+The value of a Cisco interface-specific counter
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| {count} | Sum | Int | Cumulative | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.interface.counter.name | Cisco interface counter name | Any Str | Recommended | - |
+| network.interface.description | The description/alias of the network interface | Any Str | Recommended | - |
+| network.interface.mac | The MAC address of the network interface | Any Str | Recommended | - |
+| network.interface.name | The name of the network interface | Any Str | Recommended | - |
+| network.interface.speed | The configured speed of the network interface | Any Str | Recommended | - |
+
+### cisco.interface.errdisabled
+
+Cisco interface err-disabled status (1 = err-disabled, 0 = not err-disabled)
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| network.interface.name | The name of the network interface | Any Str | Recommended | - |
+| cisco.errdisabled.reason | Cisco err-disabled reason | Any Str | Recommended | - |
+
+### cisco.interface.io.rate
+
+The device-reported interface traffic rate
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| bit/s | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| network.io.direction | Direction of flow of bytes/operations (receive or transmit) | Str: ``receive``, ``transmit`` | Recommended | - |
+| network.interface.description | The description/alias of the network interface | Any Str | Recommended | - |
+| network.interface.mac | The MAC address of the network interface | Any Str | Recommended | - |
+| network.interface.name | The name of the network interface | Any Str | Recommended | - |
+| network.interface.speed | The configured speed of the network interface | Any Str | Recommended | - |
+
+### cisco.interface.packet.rate
+
+The device-reported interface packet rate
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {packet}/s | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| network.io.direction | Direction of flow of bytes/operations (receive or transmit) | Str: ``receive``, ``transmit`` | Recommended | - |
+| network.interface.description | The description/alias of the network interface | Any Str | Recommended | - |
+| network.interface.mac | The MAC address of the network interface | Any Str | Recommended | - |
+| network.interface.name | The name of the network interface | Any Str | Recommended | - |
+| network.interface.speed | The configured speed of the network interface | Any Str | Recommended | - |
+
+### cisco.interface.pause.frames
+
+The number of Cisco interface pause frames
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| {frame} | Sum | Int | Cumulative | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| network.interface.name | The name of the network interface | Any Str | Recommended | - |
+| network.io.direction | Direction of flow of bytes/operations (receive or transmit) | Str: ``receive``, ``transmit`` | Recommended | - |
+| cisco.pause.type | Cisco pause frame type | Any Str | Recommended | - |
+| cisco.qos.priority | Cisco QoS priority or class of service | Any Str | Recommended | - |
+
+### cisco.interface.qos.policy.bytes
+
+The number of bytes matched, transmitted, marked, or dropped by a Cisco interface QoS policy
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| By | Sum | Int | Cumulative | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| network.interface.name | The name of the network interface | Any Str | Recommended | - |
+| network.io.direction | Direction of flow of bytes/operations (receive or transmit) | Str: ``receive``, ``transmit`` | Recommended | - |
+| cisco.qos.class | Cisco QoS policy class | Any Str | Recommended | - |
+| cisco.qos.action | Cisco QoS action | Any Str | Recommended | - |
+| cisco.qos.drop.reason | Cisco QoS drop reason | Any Str | Recommended | - |
+| cisco.qos.source | Cisco QoS command or subsystem source | Any Str | Recommended | - |
+
+### cisco.interface.qos.policy.packets
+
+The number of packets matched, transmitted, marked, or dropped by a Cisco interface QoS policy
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| {packet} | Sum | Int | Cumulative | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| network.interface.name | The name of the network interface | Any Str | Recommended | - |
+| network.io.direction | Direction of flow of bytes/operations (receive or transmit) | Str: ``receive``, ``transmit`` | Recommended | - |
+| cisco.qos.class | Cisco QoS policy class | Any Str | Recommended | - |
+| cisco.qos.action | Cisco QoS action | Any Str | Recommended | - |
+| cisco.qos.drop.reason | Cisco QoS drop reason | Any Str | Recommended | - |
+| cisco.qos.source | Cisco QoS command or subsystem source | Any Str | Recommended | - |
+
+### cisco.interface.qos.queue.bytes
+
+The number of bytes transmitted, enqueued, or dropped by a Cisco interface QoS queue
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| By | Sum | Int | Cumulative | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| network.interface.name | The name of the network interface | Any Str | Recommended | - |
+| network.io.direction | Direction of flow of bytes/operations (receive or transmit) | Str: ``receive``, ``transmit`` | Recommended | - |
+| cisco.qos.queue | Cisco QoS queue identifier | Any Str | Recommended | - |
+| cisco.qos.group | Cisco QoS group | Any Str | Recommended | - |
+| cisco.qos.action | Cisco QoS action | Any Str | Recommended | - |
+| cisco.qos.drop.reason | Cisco QoS drop reason | Any Str | Recommended | - |
+| cisco.qos.source | Cisco QoS command or subsystem source | Any Str | Recommended | - |
+
+### cisco.interface.qos.queue.packets
+
+The number of packets transmitted, enqueued, or dropped by a Cisco interface QoS queue
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| {packet} | Sum | Int | Cumulative | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| network.interface.name | The name of the network interface | Any Str | Recommended | - |
+| network.io.direction | Direction of flow of bytes/operations (receive or transmit) | Str: ``receive``, ``transmit`` | Recommended | - |
+| cisco.qos.queue | Cisco QoS queue identifier | Any Str | Recommended | - |
+| cisco.qos.group | Cisco QoS group | Any Str | Recommended | - |
+| cisco.qos.action | Cisco QoS action | Any Str | Recommended | - |
+| cisco.qos.drop.reason | Cisco QoS drop reason | Any Str | Recommended | - |
+| cisco.qos.source | Cisco QoS command or subsystem source | Any Str | Recommended | - |
+
+### cisco.interface.speed
+
+The numeric line speed of a Cisco interface
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| bit/s | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| network.interface.description | The description/alias of the network interface | Any Str | Recommended | - |
+| network.interface.mac | The MAC address of the network interface | Any Str | Recommended | - |
+| network.interface.name | The name of the network interface | Any Str | Recommended | - |
+
+### cisco.interface.utilization
+
+Cisco interface traffic utilization as a ratio of line speed
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Double | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| network.io.direction | Direction of flow of bytes/operations (receive or transmit) | Str: ``receive``, ``transmit`` | Recommended | - |
+| network.interface.description | The description/alias of the network interface | Any Str | Recommended | - |
+| network.interface.mac | The MAC address of the network interface | Any Str | Recommended | - |
+| network.interface.name | The name of the network interface | Any Str | Recommended | - |
+
+### cisco.l2.stp.blocked_ports
+
+The number of Cisco spanning-tree blocked ports
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {port} | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.l2.vlan | Cisco VLAN identifier | Any Str | Recommended | - |
+| network.interface.name | The name of the network interface | Any Str | Recommended | - |
+
+### cisco.l2.stp.instances
+
+The number of Cisco spanning-tree instances
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {instance} | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.l2.stp.state | Cisco spanning-tree state | Any Str | Recommended | - |
+
+### cisco.l2.stp.topology_changes
+
+The number of Cisco spanning-tree topology changes
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| {change} | Sum | Int | Cumulative | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.l2.vlan | Cisco VLAN identifier | Any Str | Recommended | - |
+| network.interface.name | The name of the network interface | Any Str | Recommended | - |
+
+### cisco.lacp.errors
+
+The number of Cisco LACP errors
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| {error} | Sum | Int | Cumulative | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| network.interface.name | The name of the network interface | Any Str | Recommended | - |
+| cisco.lacp.error.type | Cisco LACP error type | Any Str | Recommended | - |
+
+### cisco.lacp.packets
+
+The number of Cisco LACP packets
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| {packet} | Sum | Int | Cumulative | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| network.interface.name | The name of the network interface | Any Str | Recommended | - |
+| cisco.lacp.packet.type | Cisco LACP packet type | Any Str | Recommended | - |
+| network.io.direction | Direction of flow of bytes/operations (receive or transmit) | Str: ``receive``, ``transmit`` | Recommended | - |
+
+### cisco.port_channel.member.status
+
+Cisco port-channel member status (1 = bundled or up, 0 = not bundled)
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.port_channel.name | Cisco port-channel interface name | Any Str | Recommended | - |
+| network.interface.name | The name of the network interface | Any Str | Recommended | - |
+| cisco.port_channel.state | Cisco port-channel or member state | Any Str | Recommended | - |
+
+### cisco.port_channel.status
+
+Cisco port-channel status (1 = up, 0 = down or suspended)
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.port_channel.name | Cisco port-channel interface name | Any Str | Recommended | - |
+| cisco.port_channel.state | Cisco port-channel or member state | Any Str | Recommended | - |
+
+### cisco.scrape.command.duration
+
+Cisco receiver command execution duration
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| s | Gauge | Double | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.scrape.command.family | Cisco receiver command family | Any Str | Recommended | - |
+| cisco.scrape.command.outcome | Cisco receiver command execution outcome | Any Str | Recommended | - |
+
+### cisco.scrape.command.errors
+
+Cisco receiver command execution errors
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| {error} | Sum | Int | Cumulative | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.scrape.command.family | Cisco receiver command family | Any Str | Recommended | - |
+| cisco.scrape.error.type | Cisco receiver command error type | Any Str | Recommended | - |
+
+### cisco.scrape.partial_success
+
+Cisco receiver scrape partial success status (1 = partial success, 0 = complete success)
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+### cisco.ssh.reconnects
+
+The number of successful Cisco SSH reconnects by the receiver
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| {reconnect} | Sum | Int | Cumulative | true | Development |
+
+### cisco.topology.neighbor.info
+
+Cisco LLDP or CDP topology neighbor edge information
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.topology.protocol | Cisco topology discovery protocol | Any Str | Recommended | - |
+| network.interface.name | The name of the network interface | Any Str | Recommended | - |
+| cisco.topology.neighbor.name | Cisco topology neighbor system name or device ID | Any Str | Recommended | - |
+| cisco.topology.neighbor.interface | Cisco topology neighbor interface identifier | Any Str | Recommended | - |
+| cisco.topology.neighbor.platform | Cisco topology neighbor platform | Any Str | Recommended | - |
+| cisco.topology.neighbor.address | Cisco topology neighbor management address | Any Str | Recommended | - |
+
+### cisco.transceiver.sensor
+
+Cisco transceiver digital optical monitoring sensor value. The physical unit varies by sensor type and is carried in the cisco.transceiver.sensor.unit attribute (Cel, V, mA, dBm, or 1 when unitless).
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Double | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| network.interface.name | The name of the network interface | Any Str | Recommended | - |
+| cisco.transceiver.sensor | Cisco transceiver DOM sensor name | Any Str | Recommended | - |
+| cisco.transceiver.lane | Cisco transceiver lane identifier | Any Str | Recommended | - |
+| cisco.transceiver.sensor.unit | Cisco transceiver DOM sensor unit | Any Str | Recommended | - |
+
+### cisco.vpc.consistency.failures
+
+The number of Cisco vPC consistency failures
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {failure} | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.vpc.check | Cisco vPC consistency check name | Any Str | Recommended | - |
+
+### cisco.vpc.status
+
+Cisco vPC peer or member status (1 = up or consistent, 0 = down or inconsistent)
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.vpc.domain | Cisco vPC domain identifier | Any Str | Recommended | - |
+| cisco.vpc.peer | Cisco vPC peer or vPC identifier | Any Str | Recommended | - |
+| cisco.vpc.state | Cisco vPC state | Any Str | Recommended | - |
+
 ### system.network.errors
 
 The number of errors encountered
 
 | Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
 | ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
-| {errors} | Sum | Int | Cumulative | true | Development |
+| {error} | Sum | Int | Cumulative | true | Development |
 
 #### Attributes
 
@@ -71,13 +503,14 @@ The number of packets transmitted or received, categorized by type
 
 | Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
 | ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
-| {packets} | Sum | Int | Cumulative | true | Development |
+| {packet} | Sum | Int | Cumulative | true | Development |
 
 #### Attributes
 
 | Name | Description | Values | Requirement Level | Semantic Convention |
 | ---- | ----------- | ------ | ----------------- | ------------------- |
-| network.packet.type | Type of packet (multicast or broadcast) | Str: ``multicast``, ``broadcast`` | Recommended | - |
+| network.io.direction | Direction of flow of bytes/operations (receive or transmit) | Str: ``receive``, ``transmit`` | Recommended | - |
+| network.packet.type | Type of packet | Str: ``unicast``, ``multicast``, ``broadcast`` | Recommended | - |
 | network.interface.description | The description/alias of the network interface | Any Str | Recommended | - |
 | network.interface.mac | The MAC address of the network interface | Any Str | Recommended | - |
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
@@ -89,7 +522,7 @@ The number of packets dropped
 
 | Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
 | ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
-| {packets} | Sum | Int | Cumulative | true | Development |
+| {packet} | Sum | Int | Cumulative | true | Development |
 
 #### Attributes
 
@@ -105,6 +538,10 @@ The number of packets dropped
 
 | Name | Description | Values | Enabled | Semantic Convention |
 | ---- | ----------- | ------ | ------- | ------------------- |
+| host.id | Unique identifier for the Cisco network device | Any Str | true | - |
 | host.ip | The IP address of the Cisco network device | Any Str | true | - |
+| host.name | The configured or device-reported host name of the Cisco network device | Any Str | true | - |
+| host.type | The Cisco network device model or platform type | Any Str | true | - |
 | hw.type | Type of the physical hardware component | Any Str | true | - |
 | os.name | The operating system type of the Cisco device | Any Str | true | - |
+| os.version | The operating system version of the Cisco device | Any Str | true | - |
