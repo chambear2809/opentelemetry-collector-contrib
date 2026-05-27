@@ -1,0 +1,757 @@
+{
+  "schema": "com.cisco.opentelemetry.ciscoosreceiver.splunk-o11y.dashboard-bundle/v1",
+  "group": {
+    "name": "Cisco SD-WAN Receiver",
+    "description": "Dashboard group for Cisco Catalyst SD-WAN Manager telemetry emitted by the Cisco OS receiver."
+  },
+  "default_time_range_ms": 3600000,
+  "default_tags": [
+    "ciscoosreceiver",
+    "sdwan",
+    "wan",
+    "itops",
+    "netops"
+  ],
+  "default_filters": {
+    "variables": [
+      {
+        "property": "host.name",
+        "alias": "Device",
+        "description": "SD-WAN device name.",
+        "applyIfExists": true
+      },
+      {
+        "property": "sdwan.system_ip",
+        "alias": "System IP",
+        "description": "SD-WAN system IP.",
+        "applyIfExists": true
+      },
+      {
+        "property": "sdwan.site.id",
+        "alias": "Site ID",
+        "description": "SD-WAN site ID.",
+        "applyIfExists": true
+      },
+      {
+        "property": "sdwan.personality",
+        "alias": "Personality",
+        "description": "SD-WAN device role or personality.",
+        "applyIfExists": true
+      },
+      {
+        "property": "sdwan.tloc.color",
+        "alias": "TLOC Color",
+        "description": "SD-WAN transport color.",
+        "applyIfExists": true
+      },
+      {
+        "property": "sdwan.application",
+        "alias": "Application",
+        "description": "SD-WAN application name.",
+        "applyIfExists": true
+      },
+      {
+        "property": "sdwan.sla_class",
+        "alias": "SLA Class",
+        "description": "SD-WAN SLA class.",
+        "applyIfExists": true
+      },
+      {
+        "property": "network.interface.name",
+        "alias": "Interface",
+        "description": "Network interface name.",
+        "applyIfExists": true
+      }
+    ]
+  },
+  "dashboards": [
+    {
+      "name": "00 SD-WAN Fleet API And Manager Health",
+      "description": "First-response dashboard for SD-WAN Manager API trust, scrape completeness, inventory, and product coverage.",
+      "value": "Proves whether SD-WAN Manager polling is healthy before operators trust inventory, overlay, path, event, or feature-group panels.",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to use the SD-WAN fleet dashboard as the incident starting point. Interpretation: start here when SD-WAN telemetry is missing, stale, partially successful, or when API/feature coverage may be hiding network state.",
+          "markdown": "## Value Provided\nUse this dashboard as the first Splunk Observability page for Catalyst SD-WAN incidents. It separates collection trust from WAN symptoms: API errors, rate limits, unavailable feature groups, skipped target-scoped groups, partial scrapes, and stale timestamps explain visibility gaps before operators trust overlay or app-path evidence.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "SD-WAN Partial Scrape",
+          "description": "Value: proves whether one or more SD-WAN endpoint families failed or were skipped during collection. Interpretation: 1 means the dashboard may be incomplete and should be read alongside API and service coverage charts.",
+          "signalflow": "data('sdwan.scrape.partial_success').mean(by=['host.name', 'cisco.controller.endpoint']).publish(label='Partial scrape')",
+          "legend_dimension": "cisco.controller.endpoint"
+        },
+        {
+          "name": "API Request Errors",
+          "description": "Value: surfaces failed SD-WAN Manager API calls by operation and HTTP status. Interpretation: non-zero values explain missing inventory, overlay, app-route, alarm, event, audit, or feature-group data.",
+          "signalflow": "data('sdwan.api.request.errors').sum(by=['sdwan.api.operation', 'http.response.status_code', 'sdwan.api.outcome']).publish(label='API errors')",
+          "legend_dimension": "sdwan.api.operation"
+        },
+        {
+          "name": "API Request Duration",
+          "description": "Value: detects slow SD-WAN Manager API operations. Interpretation: rising duration by operation can precede partial scrapes, stale dashboards, or delayed incident evidence.",
+          "signalflow": "data('sdwan.api.request.duration').mean(by=['sdwan.api.operation', 'sdwan.api.outcome']).publish(label='API duration')",
+          "legend_dimension": "sdwan.api.operation"
+        },
+        {
+          "name": "Feature Coverage Gaps",
+          "description": "Value: shows unavailable or skipped SD-WAN feature groups. Interpretation: unavailable means endpoint, license, role, permission, or version gap; skipped usually means an opt-in group needs target filters.",
+          "signalflow": "data('sdwan.service.unavailable').sum(by=['sdwan.collection.group', 'sdwan.collection.operation']).publish(label='Unavailable'); data('sdwan.service.skipped').sum(by=['sdwan.collection.group', 'sdwan.skip.reason']).publish(label='Skipped')",
+          "legend_dimension": "sdwan.collection.group"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Device Reachability",
+          "description": "Value: identifies SD-WAN devices reported reachable or unreachable. Interpretation: each row is a device; 1 means up or reachable and 0 means unavailable.",
+          "signalflow": "data('cisco.device.up', filter=filter('cisco.controller.type', 'sdwan_manager')).mean(by=['host.name', 'host.id', 'sdwan.system_ip', 'sdwan.site.id', 'sdwan.personality']).publish(label='Device up')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "API Rate Limits",
+          "description": "Value: surfaces SD-WAN Manager API throttling by operation. Interpretation: non-zero values explain missing or delayed endpoint data even when authentication succeeds.",
+          "signalflow": "data('sdwan.api.rate_limited').sum(by=['sdwan.api.operation', 'http.response.status_code']).publish(label='Rate limited')",
+          "legend_dimension": "sdwan.api.operation"
+        },
+        {
+          "name": "Last Successful Scrape",
+          "description": "Value: shows the most recent successful SD-WAN scrape timestamp by manager. Interpretation: stale timestamps mean downstream dashboards may be showing old network state.",
+          "signalflow": "data('sdwan.scrape.last_success').max(by=['host.name', 'cisco.controller.endpoint']).publish(label='Last success')",
+          "legend_dimension": "cisco.controller.endpoint"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Manager Availability And Status",
+          "description": "Value: shows whether SD-WAN Manager and exposed manager services are healthy. Interpretation: down or degraded rows mean collection and product state should be investigated before WAN symptoms.",
+          "signalflow": "data('sdwan.manager.up').mean(by=['host.name', 'cisco.controller.endpoint']).publish(label='Manager up'); data('sdwan.manager.status').mean(by=['host.name', 'sdwan.status']).publish(label='Manager status'); data('sdwan.manager.endpoint.status').mean(by=['host.name', 'sdwan.manager.endpoint', 'sdwan.status']).publish(label='Endpoint status')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Manager Health And Inventory Scope",
+          "description": "Value: connects manager health score with selected inventory size. Interpretation: falling health or sudden inventory count changes indicate product, permission, or target-scope problems.",
+          "signalflow": "data('sdwan.manager.health.score').mean(by=['host.name']).publish(label='Manager health'); data('sdwan.inventory.device.count').mean(by=['host.name', 'sdwan.personality', 'sdwan.reachability']).publish(label='Inventory devices')",
+          "legend_dimension": "sdwan.personality"
+        }
+      ]
+    },
+    {
+      "name": "01 Control Plane Overlay And Validity",
+      "description": "Overlay health dashboard for SD-WAN device validity, certificates, control connections, and BFD sessions.",
+      "value": "Connects WAN Edge/controller validity, certificate state, control connections, and BFD session health into one overlay triage page.",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how overlay symptoms are organized for SD-WAN incidents. Interpretation: use validity and certificate state first, then control connection and BFD state to decide whether the issue is lifecycle, controller reachability, or transport path health.",
+          "markdown": "## Value Provided\nThis page connects SD-WAN resource status, device validity, certificate validity, control connections, expected versus actual control sessions, and BFD sessions. It helps determine whether application impact is caused by lifecycle/certificate state, controller connectivity, or tunnel/path health.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Resource And Validity Status",
+          "description": "Value: shows encoded device/resource, validity, and certificate state. Interpretation: warning or error states explain path problems even when an interface appears up.",
+          "signalflow": "data('sdwan.resource.status').mean(by=['host.name', 'sdwan.system_ip', 'sdwan.site.id', 'sdwan.personality', 'sdwan.status']).publish(label='Resource status'); data('sdwan.device.validity.status').mean(by=['host.name', 'sdwan.validity']).publish(label='Validity'); data('sdwan.device.certificate.status').mean(by=['host.name', 'sdwan.certificate.validity']).publish(label='Certificate')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Control Connection Status",
+          "description": "Value: shows SD-WAN control connection health by device, peer type, and color. Interpretation: down or degraded rows indicate controller/overlay control-plane loss.",
+          "signalflow": "data('sdwan.control.connection.status').mean(by=['host.name', 'sdwan.system_ip', 'sdwan.peer.type', 'sdwan.local.color', 'sdwan.remote.color', 'sdwan.status']).publish(label='Control status')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Control Expected Versus Actual",
+          "description": "Value: compares expected and actual control connections when exposed by SD-WAN Manager. Interpretation: actual below expected indicates missing controller sessions or partial overlay connectivity.",
+          "signalflow": "data('sdwan.control.expected_connections').mean(by=['host.name', 'sdwan.system_ip']).publish(label='Expected'); data('sdwan.control.actual_connections').mean(by=['host.name', 'sdwan.system_ip']).publish(label='Actual')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "BFD Session Status",
+          "description": "Value: shows tunnel/path health through BFD session state. Interpretation: partial or down BFD sessions can explain application impact even when control connections remain up.",
+          "signalflow": "data('sdwan.bfd.session.status').mean(by=['host.name', 'sdwan.system_ip', 'sdwan.local.color', 'sdwan.remote.color', 'sdwan.remote.system_ip', 'sdwan.status']).publish(label='BFD status')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Control And BFD Session Counts",
+          "description": "Value: counts control and BFD sessions by state. Interpretation: falling healthy counts or rising degraded counts identify overlay scope and path loss faster than row-by-row status alone.",
+          "signalflow": "data('sdwan.control.connection.count').sum(by=['host.name', 'sdwan.peer.type', 'sdwan.local.color', 'sdwan.remote.color', 'sdwan.status']).publish(label='Control connections'); data('sdwan.bfd.session.count').sum(by=['host.name', 'sdwan.local.color', 'sdwan.remote.color', 'sdwan.status']).publish(label='BFD sessions')",
+          "legend_dimension": "sdwan.status"
+        }
+      ]
+    },
+    {
+      "name": "02 Site BFD TLOC Tunnel And Underlay Health",
+      "description": "Site, BFD, TLOC, tunnel, and underlay health dashboard for SD-WAN path triage.",
+      "value": "Shows BFD session state, TLOC color context, tunnel/underlay feature coverage, and path instability evidence for affected sites.",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to use BFD, TLOC, tunnel, and underlay evidence for SD-WAN incidents. Interpretation: use this page when a site or transport color is suspected and compare session state with feature coverage gaps.",
+          "markdown": "## Value Provided\nUse this page to isolate SD-WAN path health by site, system IP, local color, remote color, and remote system IP. BFD status and transition counts show tunnel stability; opt-in tunnel and underlay groups surface product coverage or endpoint gaps when those modules are enabled.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "BFD Session Status By Site And Color",
+          "description": "Value: shows BFD tunnel/path state by device, site, color, and remote peer. Interpretation: down or degraded rows indicate transport path loss even if SD-WAN control plane remains up.",
+          "signalflow": "data('sdwan.bfd.session.status').mean(by=['host.name', 'sdwan.site.id', 'sdwan.system_ip', 'sdwan.local.color', 'sdwan.remote.color', 'sdwan.remote.system_ip', 'sdwan.status']).publish(label='BFD status')",
+          "legend_dimension": "sdwan.status"
+        },
+        {
+          "name": "BFD Transitions And Flaps",
+          "description": "Value: shows BFD instability counters. Interpretation: rising transitions or flaps during the incident window indicate unstable circuits, provider paths, or transport colors.",
+          "signalflow": "data('sdwan.bfd.session.transitions').sum(by=['host.name', 'sdwan.site.id', 'sdwan.local.color', 'sdwan.remote.color']).publish(label='Transitions'); data('sdwan.bfd.session.flap.count').sum(by=['host.name', 'sdwan.site.id', 'sdwan.local.color', 'sdwan.remote.color']).publish(label='Flaps')",
+          "legend_dimension": "sdwan.local.color"
+        },
+        {
+          "name": "Tunnel And Underlay Coverage",
+          "description": "Value: shows whether opt-in tunnel and underlay feature groups are producing data or reporting gaps. Interpretation: unavailable endpoints usually mean feature, license, role, version, or permission gaps rather than clean tunnel health.",
+          "signalflow": "data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'tunnels')).sum(by=['sdwan.collection.group', 'sdwan.collection.operation']).publish(label='Tunnel objects'); data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'underlay')).sum(by=['sdwan.collection.group', 'sdwan.collection.operation']).publish(label='Underlay objects'); data('sdwan.service.unavailable', filter=filter('sdwan.collection.group', 'tunnels') or filter('sdwan.collection.group', 'underlay')).sum(by=['sdwan.collection.group', 'sdwan.collection.operation']).publish(label='Unavailable')",
+          "legend_dimension": "sdwan.collection.group"
+        }
+      ]
+    },
+    {
+      "name": "03 Application Experience SaaS And AI Paths",
+      "description": "Application and AI path dashboard for app-route loss, latency, jitter, SLA state, and transport color selection.",
+      "value": "Focuses on app-route loss, latency, jitter, SLA state, local/remote colors, and AI/model/SaaS application filters.",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to troubleshoot application, SaaS, and AI/model paths. Interpretation: compare app-route latency, jitter, loss, and SLA state by application and color before looking at policy, security, Cloud OnRamp, or data-center fabric evidence.",
+          "markdown": "## Value Provided\nThis page focuses on SD-WAN application experience, including model/API endpoints, SaaS AI assistants, RAG data fetches, and edge-to-cloud inference paths. Use application, SLA class, site, and color filters to determine whether SD-WAN path quality changed during the incident.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "App-Route Latency",
+          "description": "Value: shows SD-WAN application-aware routing latency. Interpretation: rising latency by application, site, or color indicates a degraded path for SaaS, custom app, or AI/model traffic.",
+          "signalflow": "data('sdwan.app_route.latency').mean(by=['host.name', 'sdwan.site.id', 'sdwan.application', 'sdwan.sla_class', 'sdwan.local.color', 'sdwan.remote.color']).publish(label='Latency')",
+          "legend_dimension": "sdwan.application"
+        },
+        {
+          "name": "App-Route Jitter",
+          "description": "Value: shows SD-WAN application-aware routing jitter. Interpretation: jitter spikes indicate unstable WAN paths for latency-sensitive applications and model/API calls.",
+          "signalflow": "data('sdwan.app_route.jitter').mean(by=['host.name', 'sdwan.site.id', 'sdwan.application', 'sdwan.sla_class', 'sdwan.local.color', 'sdwan.remote.color']).publish(label='Jitter')",
+          "legend_dimension": "sdwan.application"
+        },
+        {
+          "name": "App-Route Loss",
+          "description": "Value: shows SD-WAN application-aware routing loss. Interpretation: non-zero or rising loss explains retransmits, failed API calls, poor SaaS experience, or model endpoint errors.",
+          "signalflow": "data('sdwan.app_route.loss').mean(by=['host.name', 'sdwan.site.id', 'sdwan.application', 'sdwan.sla_class', 'sdwan.local.color', 'sdwan.remote.color']).publish(label='Loss')",
+          "legend_dimension": "sdwan.application"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "App SLA Status",
+          "description": "Value: shows encoded SD-WAN app-route SLA state. Interpretation: degraded or failed SLA rows show which app, class, site, or color violated policy.",
+          "signalflow": "data('sdwan.app_route.sla.status').mean(by=['host.name', 'sdwan.site.id', 'sdwan.application', 'sdwan.sla_class', 'sdwan.status']).publish(label='SLA status')",
+          "legend_dimension": "sdwan.application"
+        }
+      ]
+    },
+    {
+      "name": "04 Interfaces Circuits Cellular And Capacity",
+      "description": "WAN/service interface, circuit, cellular, and capacity dashboard for SD-WAN incidents.",
+      "value": "Correlates WAN/service interface state, traffic, errors, drops, circuit pressure, and cellular/failover evidence around an incident window.",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to correlate dataplane symptoms and change evidence. Interpretation: read interface state/traffic/errors/drops beside alarm, event, and audit counts to determine whether physical/circuit symptoms or recent changes explain the incident.",
+          "markdown": "## Value Provided\nThis page ties SD-WAN interface and transport symptoms to event evidence. Use it when a site, application, or color is already suspected and you need to line up interface state, traffic silence or surge, errors, drops, alarms, events, and audit/config changes.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Interface Status",
+          "description": "Value: shows WAN and service interface operational state. Interpretation: admin-up but operational-down rows usually indicate circuit, cable, provider, or failover impact.",
+          "signalflow": "data('system.network.interface.status', filter=filter('cisco.controller.type', 'sdwan_manager')).mean(by=['host.name', 'sdwan.system_ip', 'sdwan.tloc.color', 'sdwan.vpn.id', 'network.interface.name']).publish(label='Interface status'); data('sdwan.transport.interface.status').mean(by=['host.name', 'sdwan.system_ip', 'sdwan.tloc.color', 'network.interface.name', 'sdwan.status']).publish(label='Transport status')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "name": "Interface Traffic",
+          "description": "Value: shows interface receive/transmit traffic volume from SD-WAN Manager. Interpretation: sudden silence, surge, or asymmetry around the incident points to circuit/path or application shift.",
+          "signalflow": "data('system.network.io', filter=filter('cisco.controller.type', 'sdwan_manager')).sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'sdwan.tloc.color']).publish(label='Interface IO')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "name": "Interface Errors And Drops",
+          "description": "Value: shows SD-WAN interface errors and packet drops. Interpretation: new or sustained growth on WAN paths explains app-route loss, failover, or degraded application experience.",
+          "signalflow": "data('system.network.errors', filter=filter('cisco.controller.type', 'sdwan_manager')).sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'sdwan.tloc.color']).publish(label='Errors'); data('system.network.packet.dropped', filter=filter('cisco.controller.type', 'sdwan_manager')).sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'sdwan.tloc.color']).publish(label='Drops')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "name": "Alarms Events And Audit Counts",
+          "description": "Value: summarizes SD-WAN alarm, event, and audit evidence by type, severity, status, site, and policy. Interpretation: spikes during the incident window show control-plane, policy, security, deployment, or operator-change evidence to review in logs.",
+          "signalflow": "data('sdwan.event.count').sum(by=['sdwan.event.type', 'sdwan.severity', 'sdwan.status', 'sdwan.site.id', 'sdwan.policy.name']).publish(label='Events')",
+          "legend_dimension": "sdwan.event.type"
+        }
+      ]
+    },
+    {
+      "name": "05 Policy QoS Security And Service Edge",
+      "description": "Policy, QoS, security, SIG/SSE/Umbrella, firewall, IPS, URL filtering, and service-edge coverage dashboard.",
+      "value": "Shows whether policy, QoS, and security/service-edge opt-in groups are producing evidence or exposing feature/license/API gaps.",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to use policy, QoS, and security/service-edge coverage during an incident. Interpretation: use object counts and unavailable/skipped charts to confirm whether drops or service insertion evidence is available for the affected path.",
+          "markdown": "## Value Provided\nThis page is for SD-WAN policy and security incident evidence. Enable `policy_qos` and `security` when investigating strict SLA drops, ACL/policy drops, QoS queue pressure, SIG/SSE/Umbrella tunnels, ZBFW/UTD/IPS, URL filtering, or inspection-related detours.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "Policy And QoS Objects",
+          "description": "Value: shows object counts from the policy and QoS feature group. Interpretation: zero or missing counts during an investigation usually means the group is disabled, unsupported, or unavailable through the current role/version.",
+          "signalflow": "data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'policy_qos')).sum(by=['sdwan.collection.operation', 'sdwan.status']).publish(label='Policy QoS objects')",
+          "legend_dimension": "sdwan.collection.operation"
+        },
+        {
+          "name": "Security And Service Edge Objects",
+          "description": "Value: shows object counts from SD-WAN security and service-edge feature groups. Interpretation: use this to confirm whether SIG, SSE, Umbrella, firewall, IPS, or URL-filtering evidence exists for the incident window.",
+          "signalflow": "data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'security')).sum(by=['sdwan.collection.operation', 'sdwan.status']).publish(label='Security objects')",
+          "legend_dimension": "sdwan.collection.operation"
+        },
+        {
+          "name": "Policy Security Coverage Gaps",
+          "description": "Value: shows policy/security feature endpoints that were unavailable or skipped. Interpretation: gaps usually indicate license, deployment, version, permission, or missing target scope rather than healthy policy/security state.",
+          "signalflow": "data('sdwan.service.unavailable', filter=filter('sdwan.collection.group', 'policy_qos') or filter('sdwan.collection.group', 'security')).sum(by=['sdwan.collection.group', 'sdwan.collection.operation']).publish(label='Unavailable'); data('sdwan.service.skipped', filter=filter('sdwan.collection.group', 'policy_qos') or filter('sdwan.collection.group', 'security')).sum(by=['sdwan.collection.group', 'sdwan.skip.reason']).publish(label='Skipped')",
+          "legend_dimension": "sdwan.collection.group"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Policy Security Resource Status",
+          "description": "Value: shows health state for policy, QoS, security, and service-edge objects. Interpretation: degraded or failed statuses identify product modules that can change routing, security, or application treatment. Interpretation: list rows encode SD-WAN resource status by collection group, operation, site, and status.",
+          "signalflow": "data('sdwan.resource.status', filter=filter('sdwan.collection.group', 'policy_qos') or filter('sdwan.collection.group', 'security')).mean(by=['sdwan.collection.group', 'sdwan.collection.operation', 'sdwan.site.id', 'sdwan.status']).publish(label='Resource status')",
+          "legend_dimension": "sdwan.collection.group"
+        }
+      ]
+    },
+    {
+      "name": "06 AppQoE Optimization And Flow Evidence",
+      "description": "AppQoE, DRE, TCP optimization, SSL proxy, and flow evidence dashboard.",
+      "value": "Shows AppQoE and flow opt-in coverage so operators can correlate optimization behavior with app-route symptoms.",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how optimization and flow evidence complements app-route metrics. Interpretation: enable AppQoE and flow groups when app-route quality changed but operators need DRE/TCP/SSL proxy or DPI/cflowd context.",
+          "markdown": "## Value Provided\nThis page covers SD-WAN optimization and flow evidence. Enable `appqoe` and `flows` when you need to know whether DRE, TCP optimization, SSL proxy, app-flow, DPI, or cflowd evidence explains an application incident.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "AppQoE Objects",
+          "description": "Value: shows AppQoE, DRE, and optimization object counts. Interpretation: object counts indicate the feature group is returning evidence; unavailable endpoints indicate feature or API coverage gaps.",
+          "signalflow": "data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'appqoe')).sum(by=['sdwan.collection.operation', 'sdwan.status']).publish(label='AppQoE objects')",
+          "legend_dimension": "sdwan.collection.operation"
+        },
+        {
+          "name": "Flow Objects",
+          "description": "Value: shows bounded flow/DPI/cflowd object counts. Interpretation: use counts for evidence coverage and keep raw flow cardinality in logs or downstream flow tooling.",
+          "signalflow": "data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'flows')).sum(by=['sdwan.collection.operation', 'sdwan.status']).publish(label='Flow objects')",
+          "legend_dimension": "sdwan.collection.operation"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "AppQoE And Flow Resource Status",
+          "description": "Value: shows health state for AppQoE and flow evidence objects. Interpretation: degraded statuses explain why optimization or flow attribution may not match user experience. Interpretation: list rows encode SD-WAN resource status by collection group, operation, site, and status.",
+          "signalflow": "data('sdwan.resource.status', filter=filter('sdwan.collection.group', 'appqoe') or filter('sdwan.collection.group', 'flows')).mean(by=['sdwan.collection.group', 'sdwan.collection.operation', 'sdwan.site.id', 'sdwan.status']).publish(label='Resource status')",
+          "legend_dimension": "sdwan.collection.group"
+        }
+      ]
+    },
+    {
+      "name": "07 Cloud OnRamp Multicloud Colocation And Gateways",
+      "description": "Cloud OnRamp SaaS, custom app, multicloud, interconnect, colocation, and gateway coverage dashboard.",
+      "value": "Shows Cloud OnRamp and cloud gateway evidence for SaaS, custom app, multicloud, colocation, and AI cloud path incidents.",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how Cloud OnRamp evidence fits into WAN and AI/cloud troubleshooting. Interpretation: compare Cloud OnRamp coverage with app-route quality and feature gaps when SaaS, model API, or cloud gateway paths degrade.",
+          "markdown": "## Value Provided\nThis page tracks SD-WAN cloud and gateway evidence. Enable `cloud_onramp` to correlate SaaS/custom application vQoE, DIA/gateway state, cloud provider, multicloud, colocation, and interconnect evidence with app-route path metrics.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "Cloud OnRamp Objects",
+          "description": "Value: shows Cloud OnRamp object counts by operation. Interpretation: use object count changes to identify SaaS/custom app or cloud gateway state changes during incidents.",
+          "signalflow": "data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'cloud_onramp')).sum(by=['sdwan.collection.operation', 'sdwan.status']).publish(label='Cloud OnRamp objects')",
+          "legend_dimension": "sdwan.collection.operation"
+        },
+        {
+          "name": "Cloud OnRamp Coverage Gaps",
+          "description": "Value: shows unavailable Cloud OnRamp endpoint families. Interpretation: unavailable endpoints often indicate a feature, license, cloud provider, version, or permission gap.",
+          "signalflow": "data('sdwan.service.unavailable', filter=filter('sdwan.collection.group', 'cloud_onramp')).sum(by=['sdwan.collection.operation']).publish(label='Unavailable')",
+          "legend_dimension": "sdwan.collection.operation"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Cloud OnRamp Resource Status",
+          "description": "Value: shows health state for Cloud OnRamp and cloud-services objects. Interpretation: degraded rows identify cloud gateway or SaaS handoff risk rather than branch transport failure. Interpretation: list rows encode SD-WAN resource status by collection group, operation, site, and status.",
+          "signalflow": "data('sdwan.resource.status', filter=filter('sdwan.collection.group', 'cloud_onramp')).mean(by=['sdwan.collection.group', 'sdwan.collection.operation', 'sdwan.site.id', 'sdwan.status']).publish(label='Resource status')",
+          "legend_dimension": "sdwan.collection.group"
+        }
+      ]
+    },
+    {
+      "name": "08 Routing Branch Services And SD-Routing",
+      "description": "Routing services, branch services, SD-Branch, and SD-Routing coverage dashboard.",
+      "value": "Shows routing, WLAN, voice, NFV/service-hosting, and SD-Routing evidence that can explain branch or service-side incidents.",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how service-side routing and branch services are represented. Interpretation: enable routing and branch service groups when app impact may be caused by VPN/VRF routing, branch WLAN/voice, NFV, or autonomous SD-Routing devices.",
+          "markdown": "## Value Provided\nThis page covers branch and service-side evidence beyond the SD-WAN overlay: BGP, OSPF, EIGRP, OMP detail, routes/FIB, NAT, DHCP, VRRP, multicast, NTP, WLAN, voice, UCSE, VM lifecycle, NFV, SD-Branch, and SD-Routing/autonomous routers.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "Routing Service Objects",
+          "description": "Value: shows routing-service object counts from opt-in collection. Interpretation: changes or gaps help determine whether service-side routing data is available for the affected VPN or site.",
+          "signalflow": "data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'routing_services')).sum(by=['sdwan.collection.operation', 'sdwan.status']).publish(label='Routing objects')",
+          "legend_dimension": "sdwan.collection.operation"
+        },
+        {
+          "name": "Branch Service Objects",
+          "description": "Value: shows branch-service object counts from opt-in collection. Interpretation: use this for WLAN, voice, UCSE, VM, NFV, and SD-Branch evidence availability.",
+          "signalflow": "data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'branch_services')).sum(by=['sdwan.collection.operation', 'sdwan.status']).publish(label='Branch objects')",
+          "legend_dimension": "sdwan.collection.operation"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Routing And Branch Resource Status",
+          "description": "Value: shows health state for routing and branch-service objects. Interpretation: degraded rows point to BGP, routes, WLAN, voice, or branch service ownership. Interpretation: list rows encode SD-WAN resource status by collection group, operation, site, and status.",
+          "signalflow": "data('sdwan.resource.status', filter=filter('sdwan.collection.group', 'routing_services') or filter('sdwan.collection.group', 'branch_services')).mean(by=['sdwan.collection.group', 'sdwan.collection.operation', 'sdwan.site.id', 'sdwan.status']).publish(label='Resource status')",
+          "legend_dimension": "sdwan.collection.group"
+        }
+      ]
+    },
+    {
+      "name": "09 Lifecycle Advisories Energy And Hardware",
+      "description": "Lifecycle, compliance, advisory, reboot/crash, hardware, power, and energy coverage dashboard.",
+      "value": "Correlates device lifecycle, compliance, crash/reboot, certificate, advisory, EoX, hardware, power, and energy evidence with incidents.",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how lifecycle and hardware evidence can explain SD-WAN symptoms. Interpretation: use this page when incidents may be caused by certificate validity, reboot/crash, advisories, EoX, maintenance, environment, SFP, power, thermal, or energy issues.",
+          "markdown": "## Value Provided\nThis page combines lifecycle/compliance and hardware/energy evidence. Enable `lifecycle_compliance` and `hardware_energy` to correlate certificate lifecycle, software inventory, advisories, EoX/EoS, reboots, crash logs, power, thermal, fan, SFP, and energy data.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "Lifecycle Compliance Objects",
+          "description": "Value: shows lifecycle/compliance object counts. Interpretation: count changes or unavailable endpoints reveal whether reboot/crash/advisory/compliance evidence is available.",
+          "signalflow": "data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'lifecycle_compliance')).sum(by=['sdwan.collection.operation', 'sdwan.status']).publish(label='Lifecycle objects')",
+          "legend_dimension": "sdwan.collection.operation"
+        },
+        {
+          "name": "Hardware Energy Objects",
+          "description": "Value: shows hardware and energy object counts. Interpretation: use this to confirm whether environment, SFP, power, thermal, and energy evidence exists for affected devices.",
+          "signalflow": "data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'hardware_energy')).sum(by=['sdwan.collection.operation', 'sdwan.status']).publish(label='Hardware objects')",
+          "legend_dimension": "sdwan.collection.operation"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Lifecycle Hardware Resource Status",
+          "description": "Value: shows health state for lifecycle, compliance, hardware, and energy objects. Interpretation: degraded rows indicate device stability, crash, reboot, environment, or power risk. Interpretation: list rows encode SD-WAN resource status by collection group, operation, site, and status.",
+          "signalflow": "data('sdwan.resource.status', filter=filter('sdwan.collection.group', 'lifecycle_compliance') or filter('sdwan.collection.group', 'hardware_energy')).mean(by=['sdwan.collection.group', 'sdwan.collection.operation', 'sdwan.site.id', 'sdwan.status']).publish(label='Resource status')",
+          "legend_dimension": "sdwan.collection.group"
+        }
+      ]
+    },
+    {
+      "name": "10 Alarms Events Audit And Change Evidence",
+      "description": "Alarm, event, audit, management security, and hardening evidence dashboard.",
+      "value": "Shows active/recent alarms, events, audit records, user/session evidence, and hardening-relevant management-plane changes.",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to use logs and event counts during SD-WAN incident autopsy. Interpretation: line up alarm/event/audit spikes with app, overlay, interface, policy, or security symptoms.",
+          "markdown": "## Value Provided\nThis page is the SD-WAN change and evidence queue. Use event counts with SD-WAN logs to review alarms, audit/config changes, policy deployments, unauthorized login activity, active sessions, validity/certificate changes, and hardening-relevant management-plane events.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "Alarms Events Audit Counts",
+          "description": "Value: summarizes SD-WAN alarm, event, and audit evidence by type, severity, status, site, and policy. Interpretation: spikes show when to pivot into SD-WAN logs for original event bodies.",
+          "signalflow": "data('sdwan.event.count').sum(by=['sdwan.event.type', 'sdwan.severity', 'sdwan.status', 'sdwan.site.id', 'sdwan.policy.name']).publish(label='Events')",
+          "legend_dimension": "sdwan.event.type"
+        },
+        {
+          "name": "Management Security Objects",
+          "description": "Value: shows management-security object counts when the opt-in group is enabled. Interpretation: use this for user/session and hardening evidence availability.",
+          "signalflow": "data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'management_security')).sum(by=['sdwan.collection.operation', 'sdwan.status']).publish(label='Management security objects')",
+          "legend_dimension": "sdwan.collection.operation"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Management Security Resource Status",
+          "description": "Value: shows health state for management security and active session evidence. Interpretation: degraded rows or unusual counts can explain operational access, auth, or administrative risk during incidents. Interpretation: list rows encode SD-WAN resource status by collection group, operation, site, and status.",
+          "signalflow": "data('sdwan.resource.status', filter=filter('sdwan.collection.group', 'management_security')).mean(by=['sdwan.collection.group', 'sdwan.collection.operation', 'sdwan.site.id', 'sdwan.status']).publish(label='Resource status')",
+          "legend_dimension": "sdwan.collection.group"
+        }
+      ]
+    },
+    {
+      "name": "11 Network-Wide Path Insight And Incident Readout",
+      "description": "Network-Wide Path Insight, ThousandEyes agent status, and deep incident readout dashboard.",
+      "value": "Shows NWPI read-only result coverage and ThousandEyes agent correlation for deep SD-WAN path investigations.",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how NWPI and ThousandEyes agent evidence supports deep incident readout. Interpretation: use this page after app-route or interface symptoms identify a path that needs hop, QoS, SLA, anti-replay, security, or external-agent context.",
+          "markdown": "## Value Provided\nThis page is for deep SD-WAN incident readout. Enable `nwpi` for read-only Network-Wide Path Insight task/event/result coverage and `thousandeyes` for SD-WAN Manager-visible ThousandEyes agent status or correlation. Direct ThousandEyes test telemetry remains outside this receiver.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "NWPI Objects",
+          "description": "Value: shows Network-Wide Path Insight object counts. Interpretation: counts indicate read-only NWPI evidence exists for SLA, QoS, WAN loss, security alert, anti-replay, hop, or app readout analysis.",
+          "signalflow": "data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'nwpi')).sum(by=['sdwan.collection.operation', 'sdwan.status']).publish(label='NWPI objects')",
+          "legend_dimension": "sdwan.collection.operation"
+        },
+        {
+          "name": "ThousandEyes Agent Objects",
+          "description": "Value: shows SD-WAN Manager-visible ThousandEyes agent object counts. Interpretation: use this to confirm agent deployment/status evidence is available before correlating with direct ThousandEyes telemetry.",
+          "signalflow": "data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'thousandeyes')).sum(by=['sdwan.collection.operation', 'sdwan.status']).publish(label='ThousandEyes agent objects')",
+          "legend_dimension": "sdwan.collection.operation"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "NWPI And ThousandEyes Resource Status",
+          "description": "Value: shows health state for network-wide path insight and ThousandEyes agent objects. Interpretation: degraded rows identify missing synthetic/user-path evidence rather than true absence of path issues. Interpretation: list rows encode SD-WAN resource status by collection group, operation, site, and status.",
+          "signalflow": "data('sdwan.resource.status', filter=filter('sdwan.collection.group', 'nwpi') or filter('sdwan.collection.group', 'thousandeyes')).mean(by=['sdwan.collection.group', 'sdwan.collection.operation', 'sdwan.site.id', 'sdwan.status']).publish(label='Resource status')",
+          "legend_dimension": "sdwan.collection.group"
+        }
+      ]
+    },
+    {
+      "name": "12 Service Desk End User Impact Triage",
+      "description": "Service-desk-first dashboard for user-visible SD-WAN impact by site, application, SLA class, and likely symptom.",
+      "value": "Answers which users, sites, and applications are likely affected before exposing operators to SD-WAN implementation detail.",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: gives service desk and incident coordinators an end-user-first SD-WAN view. Interpretation: start here when tickets say users cannot reach SaaS, AI assistants, model APIs, internal apps, voice, or branch services; escalate with the site, app, SLA class, and symptom already identified.",
+          "markdown": "## Value Provided\nThis page is intentionally end-user-first. It turns SD-WAN telemetry into service-desk questions: which sites are affected, which applications or AI/model endpoints are degraded, whether the symptom looks like loss, latency, jitter, outage, interface/circuit failure, or recent change, and whether the SD-WAN Manager data itself is trustworthy.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Sites With User-Visible Risk",
+          "description": "Value: shows sites where users may be affected because device, overlay, BFD, or interface state is degraded. Interpretation: rows with down or degraded status are the first sites to validate with user tickets and synthetic checks.",
+          "signalflow": "data('cisco.device.up', filter=filter('cisco.controller.type', 'sdwan_manager')).mean(by=['sdwan.site.id', 'host.name', 'sdwan.system_ip']).publish(label='Device up'); data('sdwan.bfd.session.status').mean(by=['sdwan.site.id', 'host.name', 'sdwan.local.color', 'sdwan.remote.color', 'sdwan.status']).publish(label='BFD status'); data('system.network.interface.status', filter=filter('cisco.controller.type', 'sdwan_manager')).mean(by=['sdwan.site.id', 'host.name', 'network.interface.name', 'sdwan.tloc.color']).publish(label='Interface status')",
+          "legend_dimension": "sdwan.site.id"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Applications With SLA Risk",
+          "description": "Value: shows applications and SLA classes with degraded SD-WAN app-route state. Interpretation: degraded rows identify what users are likely complaining about and which SLA class or transport color is involved.",
+          "signalflow": "data('sdwan.app_route.sla.status').mean(by=['sdwan.site.id', 'sdwan.application', 'sdwan.sla_class', 'sdwan.local.color', 'sdwan.remote.color', 'sdwan.status']).publish(label='App SLA status')",
+          "legend_dimension": "sdwan.application"
+        },
+        {
+          "name": "User Symptom Classifier",
+          "description": "Value: groups likely user symptoms into loss, latency, jitter, interface drops, and interface errors. Interpretation: compare the largest or newest signal during the ticket window to decide whether to route the incident to WAN, provider, policy/security, or application teams.",
+          "signalflow": "data('sdwan.app_route.loss').mean(by=['sdwan.site.id', 'sdwan.application']).publish(label='Loss'); data('sdwan.app_route.latency').mean(by=['sdwan.site.id', 'sdwan.application']).publish(label='Latency'); data('sdwan.app_route.jitter').mean(by=['sdwan.site.id', 'sdwan.application']).publish(label='Jitter'); data('system.network.errors', filter=filter('cisco.controller.type', 'sdwan_manager')).sum(by=['sdwan.site.id', 'network.interface.name']).publish(label='Errors'); data('system.network.packet.dropped', filter=filter('cisco.controller.type', 'sdwan_manager')).sum(by=['sdwan.site.id', 'network.interface.name']).publish(label='Drops')",
+          "legend_dimension": "sdwan.site.id"
+        },
+        {
+          "name": "Recent Change Or Alarm Evidence",
+          "description": "Value: shows alarms, events, and audit records near the user-impact window. Interpretation: spikes around ticket creation suggest a network change, policy deployment, security event, device event, or controller-side alarm may explain the user reports.",
+          "signalflow": "data('sdwan.event.count').sum(by=['sdwan.site.id', 'sdwan.event.type', 'sdwan.severity', 'sdwan.status', 'sdwan.policy.name']).publish(label='Events')",
+          "legend_dimension": "sdwan.event.type"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Can We Trust This User Impact View",
+          "description": "Value: shows whether SD-WAN Manager collection is healthy enough for service desk triage. Interpretation: partial scrape, API errors, unavailable groups, or skipped groups mean the user-impact view may be incomplete.",
+          "signalflow": "data('sdwan.scrape.partial_success').mean(by=['cisco.controller.endpoint']).publish(label='Partial scrape'); data('sdwan.api.request.errors').sum(by=['sdwan.api.operation', 'http.response.status_code']).publish(label='API errors'); data('sdwan.service.unavailable').sum(by=['sdwan.collection.group']).publish(label='Unavailable'); data('sdwan.service.skipped').sum(by=['sdwan.collection.group', 'sdwan.skip.reason']).publish(label='Skipped')",
+          "legend_dimension": "cisco.controller.endpoint"
+        }
+      ]
+    },
+    {
+      "name": "13 Branch And Remote Site Experience",
+      "description": "Branch-experience dashboard for site health, WAN transports, failover, capacity, BFD path stability, and local service impact.",
+      "value": "Shows whether a branch or remote site is having a user experience problem caused by transport, circuit, failover, interface, or overlay instability.",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: gives branch operations and field teams a site-first SD-WAN experience page. Interpretation: use this when a location reports broad slowness, intermittent SaaS, voice quality, payment system failure, guest Wi-Fi issues, or branch outage symptoms.",
+          "markdown": "## Value Provided\nThis page is for branch and remote-site experience. It keeps site availability, WAN Edge reachability, BFD/TLOC path health, interface/circuit state, drops/errors, and branch-service coverage together so operations teams can quickly tell whether the user impact is local site, provider, transport color, or overlay related.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "WAN Edge Availability By Site",
+          "description": "Value: shows WAN Edge device availability by site. Interpretation: down devices usually mean broad branch impact or loss of SD-WAN visibility at that location.",
+          "signalflow": "data('cisco.device.up', filter=filter('cisco.controller.type', 'sdwan_manager')).mean(by=['sdwan.site.id', 'host.name', 'sdwan.system_ip', 'sdwan.personality']).publish(label='WAN Edge up')",
+          "legend_dimension": "sdwan.site.id"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Transport Color Health By Site",
+          "description": "Value: shows BFD path state by site and transport color. Interpretation: a single degraded color points to provider/circuit impact; multiple degraded colors suggest site, device, or controller-side impact.",
+          "signalflow": "data('sdwan.bfd.session.status').mean(by=['sdwan.site.id', 'host.name', 'sdwan.local.color', 'sdwan.remote.color', 'sdwan.remote.system_ip', 'sdwan.status']).publish(label='BFD status')",
+          "legend_dimension": "sdwan.local.color"
+        },
+        {
+          "name": "Circuit Traffic Errors And Drops",
+          "description": "Value: shows circuit/interface traffic, errors, and drops by site and color. Interpretation: traffic silence, spikes, errors, or drops explain branch slowness, app timeouts, or failover.",
+          "signalflow": "data('system.network.io', filter=filter('cisco.controller.type', 'sdwan_manager')).sum(by=['sdwan.site.id', 'network.interface.name', 'sdwan.tloc.color', 'network.io.direction']).publish(label='Traffic'); data('system.network.errors', filter=filter('cisco.controller.type', 'sdwan_manager')).sum(by=['sdwan.site.id', 'network.interface.name', 'sdwan.tloc.color']).publish(label='Errors'); data('system.network.packet.dropped', filter=filter('cisco.controller.type', 'sdwan_manager')).sum(by=['sdwan.site.id', 'network.interface.name', 'sdwan.tloc.color']).publish(label='Drops')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "name": "Branch Services Coverage",
+          "description": "Value: shows whether branch-service opt-in data exists for WLAN, voice, UCSE, VM, NFV, and SD-Branch investigations. Interpretation: missing or unavailable data means branch-service experience requires enabling the group or using another source.",
+          "signalflow": "data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'branch_services')).sum(by=['sdwan.collection.operation', 'sdwan.status']).publish(label='Branch service objects'); data('sdwan.service.unavailable', filter=filter('sdwan.collection.group', 'branch_services')).sum(by=['sdwan.collection.operation']).publish(label='Unavailable')",
+          "legend_dimension": "sdwan.collection.operation"
+        }
+      ]
+    },
+    {
+      "name": "14 SaaS AI And Critical Application Experience",
+      "description": "Application-owner dashboard for SaaS, AI/model API, RAG, edge-to-cloud inference, and other critical application paths.",
+      "value": "Shows application experience by app, site, SLA class, color, Cloud OnRamp coverage, AppQoE coverage, and security/service-edge evidence.",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: gives application owners a path-quality view for SaaS, AI assistants, model APIs, RAG data fetches, and critical business apps. Interpretation: use app, site, SLA class, and color filters to determine whether SD-WAN is contributing to user-facing application errors.",
+          "markdown": "## Value Provided\nThis page is for application and AI service owners. It answers whether a critical app, SaaS service, model API, RAG data path, or edge-to-cloud inference flow is seeing SD-WAN loss, latency, jitter, SLA violation, Cloud OnRamp path issues, AppQoE/optimization behavior, or security/service-edge detours.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "Application Path Quality",
+          "description": "Value: shows latency, jitter, and loss by application, site, SLA class, and color. Interpretation: path quality degradation points to WAN or SD-WAN path contribution to user-visible application errors.",
+          "signalflow": "data('sdwan.app_route.latency').mean(by=['sdwan.application', 'sdwan.site.id', 'sdwan.sla_class', 'sdwan.local.color', 'sdwan.remote.color']).publish(label='Latency'); data('sdwan.app_route.jitter').mean(by=['sdwan.application', 'sdwan.site.id', 'sdwan.sla_class', 'sdwan.local.color', 'sdwan.remote.color']).publish(label='Jitter'); data('sdwan.app_route.loss').mean(by=['sdwan.application', 'sdwan.site.id', 'sdwan.sla_class', 'sdwan.local.color', 'sdwan.remote.color']).publish(label='Loss')",
+          "legend_dimension": "sdwan.application"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Critical App SLA State",
+          "description": "Value: shows app-route SLA state for critical apps. Interpretation: degraded status by app and SLA class gives application owners a direct SD-WAN policy signal to correlate with app errors.",
+          "signalflow": "data('sdwan.app_route.sla.status').mean(by=['sdwan.application', 'sdwan.site.id', 'sdwan.sla_class', 'sdwan.status']).publish(label='SLA status')",
+          "legend_dimension": "sdwan.application"
+        },
+        {
+          "name": "Cloud OnRamp And AppQoE Evidence",
+          "description": "Value: shows whether Cloud OnRamp and AppQoE opt-in groups are producing application-path evidence. Interpretation: use this when SaaS/AI experience depends on DIA gateways, best-path selection, DRE, TCP optimization, or SSL proxy behavior.",
+          "signalflow": "data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'cloud_onramp')).sum(by=['sdwan.collection.operation', 'sdwan.status']).publish(label='Cloud OnRamp'); data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'appqoe')).sum(by=['sdwan.collection.operation', 'sdwan.status']).publish(label='AppQoE')",
+          "legend_dimension": "sdwan.collection.operation"
+        },
+        {
+          "name": "Security Or Policy Detour Evidence",
+          "description": "Value: shows whether policy/QoS and security/service-edge groups are producing evidence for the app path. Interpretation: object counts or gaps help decide whether inspection, SSE/SIG, Umbrella, firewall, IPS, QoS, or policy enforcement may explain app degradation.",
+          "signalflow": "data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'policy_qos')).sum(by=['sdwan.collection.operation', 'sdwan.status']).publish(label='Policy QoS'); data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'security')).sum(by=['sdwan.collection.operation', 'sdwan.status']).publish(label='Security'); data('sdwan.service.unavailable', filter=filter('sdwan.collection.group', 'policy_qos') or filter('sdwan.collection.group', 'security')).sum(by=['sdwan.collection.group', 'sdwan.collection.operation']).publish(label='Unavailable')",
+          "legend_dimension": "sdwan.collection.group"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Critical App Resource Status",
+          "description": "Value: shows app, cloud, policy, and security object health for critical applications. Interpretation: degraded rows identify whether user impact likely belongs to cloud handoff, optimization, policy, or security treatment. Interpretation: list rows encode SD-WAN resource status by collection group, operation, site, and status.",
+          "signalflow": "data('sdwan.resource.status', filter=filter('sdwan.collection.group', 'cloud_onramp') or filter('sdwan.collection.group', 'appqoe') or filter('sdwan.collection.group', 'policy_qos') or filter('sdwan.collection.group', 'security')).mean(by=['sdwan.collection.group', 'sdwan.collection.operation', 'sdwan.site.id', 'sdwan.status']).publish(label='Resource status')",
+          "legend_dimension": "sdwan.collection.group"
+        }
+      ]
+    },
+    {
+      "name": "15 Incident Commander User Impact Summary",
+      "description": "Incident-command dashboard for stakeholder updates about affected sites, apps, symptom direction, data trust, and likely owning team.",
+      "value": "Summarizes user-facing SD-WAN impact in language useful for incident commanders, service owners, and leadership updates.",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: gives incident commanders a concise stakeholder view of SD-WAN user impact. Interpretation: use this page to prepare updates: affected sites, affected apps, symptom type, visibility confidence, and whether ownership points to WAN/provider, SD-WAN overlay, policy/security, or application/cloud.",
+          "markdown": "## Value Provided\nThis page is not for deep packet-path diagnosis. It is for incident command: what is affected, how users feel it, whether SD-WAN telemetry is trustworthy, what changed recently, and which team is most likely to own the next action.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Affected Sites Summary",
+          "description": "Value: lists sites with device, interface, BFD, or SLA degradation. Interpretation: these are the sites to name in stakeholder updates and validate against tickets or synthetic monitors.",
+          "signalflow": "data('cisco.device.up', filter=filter('cisco.controller.type', 'sdwan_manager')).mean(by=['sdwan.site.id']).publish(label='Device up'); data('sdwan.bfd.session.status').mean(by=['sdwan.site.id', 'sdwan.status']).publish(label='BFD status'); data('sdwan.app_route.sla.status').mean(by=['sdwan.site.id', 'sdwan.application', 'sdwan.status']).publish(label='App SLA')",
+          "legend_dimension": "sdwan.site.id"
+        },
+        {
+          "name": "Affected Applications Summary",
+          "description": "Value: summarizes degraded application path quality by app and SLA class. Interpretation: use this to name affected services and whether symptoms are likely latency, jitter, loss, or SLA state.",
+          "signalflow": "data('sdwan.app_route.latency').mean(by=['sdwan.application', 'sdwan.sla_class']).publish(label='Latency'); data('sdwan.app_route.jitter').mean(by=['sdwan.application', 'sdwan.sla_class']).publish(label='Jitter'); data('sdwan.app_route.loss').mean(by=['sdwan.application', 'sdwan.sla_class']).publish(label='Loss'); data('sdwan.app_route.sla.status').mean(by=['sdwan.application', 'sdwan.sla_class', 'sdwan.status']).publish(label='SLA')",
+          "legend_dimension": "sdwan.application"
+        },
+        {
+          "name": "Likely Owning Team Signals",
+          "description": "Value: groups evidence by WAN/interface, overlay/BFD, policy/security, application optimization, and recent change. Interpretation: the strongest signal helps route the bridge to provider/WAN, SD-WAN, security, application, or change owner.",
+          "signalflow": "data('system.network.packet.dropped', filter=filter('cisco.controller.type', 'sdwan_manager')).sum(by=['sdwan.site.id']).publish(label='WAN drops'); data('sdwan.bfd.session.status').mean(by=['sdwan.site.id', 'sdwan.status']).publish(label='Overlay'); data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'policy_qos') or filter('sdwan.collection.group', 'security')).sum(by=['sdwan.collection.group']).publish(label='Policy security'); data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'appqoe') or filter('sdwan.collection.group', 'cloud_onramp')).sum(by=['sdwan.collection.group']).publish(label='App cloud'); data('sdwan.event.count').sum(by=['sdwan.event.type', 'sdwan.severity']).publish(label='Change events')",
+          "legend_dimension": "sdwan.collection.group"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Visibility Confidence",
+          "description": "Value: shows whether SD-WAN data is complete enough for stakeholder updates. Interpretation: partial scrape, API errors, unavailable groups, or skipped target groups should be disclosed as confidence limits.",
+          "signalflow": "data('sdwan.scrape.partial_success').mean(by=['cisco.controller.endpoint']).publish(label='Partial scrape'); data('sdwan.api.request.errors').sum(by=['sdwan.api.operation']).publish(label='API errors'); data('sdwan.service.unavailable').sum(by=['sdwan.collection.group']).publish(label='Unavailable'); data('sdwan.service.skipped').sum(by=['sdwan.collection.group']).publish(label='Skipped')",
+          "legend_dimension": "cisco.controller.endpoint"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Incident Visibility Trust",
+          "description": "Value: shows whether critical incident evidence families are healthy enough to trust. Interpretation: unhealthy rows mean the incident commander should call out visibility gaps while assigning ownership. Interpretation: list rows encode SD-WAN resource status by collection group, operation, site, and status.",
+          "signalflow": "data('sdwan.resource.status', filter=filter('sdwan.collection.group', 'cloud_onramp') or filter('sdwan.collection.group', 'appqoe') or filter('sdwan.collection.group', 'policy_qos') or filter('sdwan.collection.group', 'security') or filter('sdwan.collection.group', 'nwpi')).mean(by=['sdwan.collection.group', 'sdwan.collection.operation', 'sdwan.site.id', 'sdwan.status']).publish(label='Resource status')",
+          "legend_dimension": "sdwan.collection.group"
+        }
+      ]
+    }
+  ]
+}

@@ -32,7 +32,7 @@ func TestCatalystCenterScrapeEmitsAssuranceMetrics(t *testing.T) {
 		],"version":"1.0"}`,
 		"/dna/intent/api/v1/network-health":             `{"version":"1.0","latestHealthScore":95,"measuredBy":"global","monitoredDevices":1,"monitoredHealthyDevices":1,"totalDevices":1,"response":[{"entity":"Access","healthScore":95,"totalCount":1,"goodCount":1}]}`,
 		"/dna/intent/api/v1/client-health":              `{"version":"1.0","response":[{"siteId":"global","scoreDetail":[{"scoreCategory":{"value":"Wired"},"scoreValue":90,"clientCount":12,"clientUniqueCount":10}]}]}`,
-		"/dna/data/api/v1/siteHealthSummaries":          `{"response":[{"id":"site-1","siteName":"Global/Building 1","siteType":"building","networkDeviceGoodHealthPercentage":100,"networkDeviceGoodHealthCount":1,"networkDeviceCount":1,"clientGoodHealthPercentage":90,"clientGoodHealthCount":9,"clientCount":10,"p1IssueCount":1,"issueCount":2}],"page":{"limit":500,"offset":1,"count":1},"version":"1.0"}`,
+		"/dna/data/api/v1/siteHealthSummaries":          `{"response":[{"id":"site-1","siteName":"Global/Building 1","siteType":"building","networkDeviceGoodHealthPercentage":100,"networkDeviceGoodHealthCount":1,"networkDeviceCount":1,"clientGoodHealthPercentage":90,"clientGoodHealthCount":9,"clientCount":10,"wiredClientCount":6,"wirelessClientCount":4,"accessDeviceCount":1,"accessDeviceGoodHealthCount":1,"p1IssueCount":1,"issueCount":2}],"page":{"limit":500,"offset":1,"count":1},"version":"1.0"}`,
 		"/dna/intent/api/v1/topology/physical-topology": `{"response":{"nodes":[{"id":"device-1","label":"edge-1","nodeType":"device","family":"Switches and Hubs","role":"ACCESS"}],"links":[{"id":"link-1","source":"device-1","target":"device-2","linkStatus":"up"}]},"version":"1.0"}`,
 		"/dna/data/api/v1/assuranceIssues/query":        `{"response":[{"issueId":"issue-1","severity":"High","priority":"P1","status":"active","category":"Connectivity","entityType":"network_device","siteId":"site-1","siteName":"Global/Building 1"}],"page":{"limit":500,"offset":1,"count":1},"version":"1.0"}`,
 		"/dna/intent/api/v1/device-detail":              `{"response":{"nwDeviceId":"device-1","nwDeviceName":"edge-1","serialNumber":"FOC1234","managementIpAddr":"10.0.0.1","nwDeviceFamily":"Switches and Hubs","nwDeviceType":"Cisco Catalyst 9300","platformId":"C9300","softwareVersion":"17.12.1","overallHealth":95,"cpu":30,"memory":45,"communicationState":"Reachable"}}`,
@@ -61,6 +61,9 @@ func TestCatalystCenterScrapeEmitsAssuranceMetrics(t *testing.T) {
 		"catalyst_center.network.health.score",
 		"catalyst_center.client.health.score",
 		"catalyst_center.site.network_device.health.percentage",
+		"catalyst_center.site.issue.count",
+		"catalyst_center.site.client.count",
+		"catalyst_center.site.network_device.count",
 		"catalyst_center.topology.node.count",
 		"catalyst_center.issue.active.count",
 		"catalyst_center.device.detail.health.score",
@@ -71,6 +74,11 @@ func TestCatalystCenterScrapeEmitsAssuranceMetrics(t *testing.T) {
 	assert.True(t, hasResourceHostID(md, "FOC1234"))
 	assert.True(t, intMetricValueExists(md, "catalyst_center.scrape.partial_success", 0))
 	assert.True(t, intMetricValueExists(md, "cisco.interface.speed", 1_000_000_000))
+	assert.True(t, intMetricValueExists(md, "catalyst_center.site.issue.count", 2))
+	assert.True(t, intMetricValueExists(md, "catalyst_center.site.client.count", 10))
+	assert.True(t, intMetricValueExists(md, "catalyst_center.site.network_device.count", 1))
+	assert.True(t, hasMetricDatapointAttribute(md, "catalyst_center.site.issue.count", "catalyst_center.issue.priority", "p1"))
+	assert.False(t, hasMetricDatapointAttribute(md, "catalyst_center.site.issue.count", "user.name", "admin"))
 	assert.True(t, catalystCenterRequestExists(*requests, "/dna/data/api/v1/siteHealthSummaries", "limit=20"), "site health must use Catalyst Center's 20 item page cap")
 	assert.True(t, catalystCenterRequestExists(*requests, "/dna/intent/api/v1/device-detail", "identifier=uuid"), "device detail identifier should be canonicalized")
 }

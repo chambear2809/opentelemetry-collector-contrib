@@ -14,25 +14,50 @@
   ],
   "default_filters": {
     "variables": [
-      {"property": "host.name", "alias": "Device", "description": "Nexus switch host name.", "applyIfExists": true},
-      {"property": "host.id", "alias": "Host ID", "description": "Stable Nexus switch identifier.", "applyIfExists": true},
-      {"property": "host.ip", "alias": "Host IP", "description": "Nexus switch management IP.", "applyIfExists": true},
-      {"property": "network.interface.name", "alias": "Interface", "description": "Nexus interface name.", "applyIfExists": true},
-      {"property": "cisco.fabric.name", "alias": "Fabric", "description": "Fabric name when available.", "applyIfExists": true}
+      {
+        "property": "host.name",
+        "alias": "Device",
+        "description": "Nexus switch host name.",
+        "applyIfExists": true
+      },
+      {
+        "property": "host.id",
+        "alias": "Host ID",
+        "description": "Stable Nexus switch identifier.",
+        "applyIfExists": true
+      },
+      {
+        "property": "host.ip",
+        "alias": "Host IP",
+        "description": "Nexus switch management IP.",
+        "applyIfExists": true
+      },
+      {
+        "property": "network.interface.name",
+        "alias": "Interface",
+        "description": "Nexus interface name.",
+        "applyIfExists": true
+      },
+      {
+        "property": "cisco.fabric.name",
+        "alias": "Fabric",
+        "description": "Fabric name when available.",
+        "applyIfExists": true
+      }
     ]
   },
   "dashboards": [
     {
-      "name": "00 Nexus Switch Health And Fabric",
-      "description": "Value: first-response dashboard for Cisco Nexus SSH/NX-OS switch telemetry, interface pressure, VXLAN/EVPN state, L2 redundancy, optics, and hardware evidence.",
-      "value": "Use this dashboard when the affected device is a Nexus switch collected over SSH. It keeps collection trust, interface symptoms, fabric control-plane state, redundancy, and optics in one page.",
+      "name": "00 Nexus Switch Telemetry And Device Health",
+      "description": "Value: first-response dashboard for Nexus SSH collection trust, device reachability, system pressure, and control-plane CPU evidence.",
+      "value": "Use this page before deeper switch triage. It separates collector or device reachability problems from CPU, memory, uptime, and control-plane process pressure.",
       "chart_density": "HIGH",
       "charts": [
         {
           "type": "Text",
           "name": "Value Provided",
-          "description": "Value: explains how to use this Nexus switch dashboard. Interpretation: start with reachability and scrape completeness, then correlate interface, fabric, redundancy, optics, and hardware panels by device and interface.",
-          "markdown": "## Value Provided\nUse this page for SSH/NX-OS switch incidents. Prove collection health first, then move through link pressure, VXLAN/EVPN control-plane state, vPC/LACP/STP, optics, and hardware symptoms.",
+          "description": "Value: explains how to use the Nexus switch health dashboard. Interpretation: start with reachability and partial scrape state, then use CPU, memory, uptime, and process CPU to decide whether the device or collection path is the first failure domain.",
+          "markdown": "## Value Provided\nUse this page first for Nexus switch incidents collected over SSH. It proves whether telemetry is trustworthy and whether the switch itself is busy before operators investigate interfaces, fabric control plane, redundancy, optics, or hardware.",
           "width": 12,
           "height": 2
         },
@@ -53,6 +78,40 @@
           "legend_dimension": "host.name"
         },
         {
+          "name": "System CPU And Memory",
+          "description": "Value: shows device-wide CPU and memory pressure. Interpretation: sustained high utilization means interface or control-plane symptoms may be secondary to system pressure.",
+          "signalflow": "data('system.cpu.utilization', filter=filter('hw.type', 'network')).mean(by=['host.name']).publish(label='CPU'); data('system.memory.utilization', filter=filter('hw.type', 'network')).mean(by=['host.name']).publish(label='Memory')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Device Uptime",
+          "description": "Value: shows recent reload or uptime reset evidence. Interpretation: sudden drops indicate reboot, switchover, or collection reset context for the incident window.",
+          "signalflow": "data('system.uptime', filter=filter('hw.type', 'network')).mean(by=['host.name']).publish(label='Uptime')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Control Plane Process CPU",
+          "description": "Value: identifies which control-plane process family is driving CPU. Interpretation: spikes by process point the operator toward routing, management, telemetry, or platform process ownership.",
+          "signalflow": "data('cisco.control_plane.cpu.process.utilization').mean(by=['host.name', 'process.executable.name']).publish(label='Process CPU')",
+          "legend_dimension": "process.executable.name"
+        }
+      ]
+    },
+    {
+      "name": "01 Nexus Interfaces L2 And QoS Congestion",
+      "description": "Value: interface, packet, QoS, and L2 troubleshooting dashboard for congestion, drops, storms, and policy pressure.",
+      "value": "Use this page when users report slow or lossy service through a Nexus switch. It connects interface utilization, packet mix, drops/errors, QoS queues, policy counters, and L2 churn.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to use interface, L2, and QoS evidence. Interpretation: correlate utilization and packet volume with drops/errors, QoS class or queue bytes, and STP/LACP symptoms to identify the likely owner.",
+          "markdown": "## Value Provided\nThis page focuses on user-impacting link and queue symptoms. It correlates interface traffic, utilization, packet volume, drops, errors, QoS queue bytes, policy bytes, and L2 state so NetOps can separate congestion from physical or topology instability.",
+          "width": 12,
+          "height": 2
+        },
+        {
           "name": "Interface Traffic Rate",
           "description": "Value: shows RX/TX bandwidth pressure by switch interface. Interpretation: sustained increases, silence, or asymmetry point to path changes or congestion.",
           "signalflow": "data('cisco.interface.io.rate').mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Interface rate')",
@@ -65,12 +124,72 @@
           "legend_dimension": "network.interface.name"
         },
         {
+          "name": "Packet Volume By Type",
+          "description": "Value: shows unicast, multicast, and broadcast packet volume by direction. Interpretation: unexpected multicast/broadcast growth can indicate storms, discovery loops, or workload shifts.",
+          "signalflow": "data('system.network.packet.count', filter=filter('hw.type', 'network')).sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'network.packet.type']).publish(label='Packets')",
+          "legend_dimension": "network.packet.type"
+        },
+        {
+          "name": "Interface Errors And Drops",
+          "description": "Value: correlates packet errors and drops by interface. Interpretation: non-zero errors suggest physical or negotiation trouble; drops without errors point toward congestion, buffering, or QoS policy.",
+          "signalflow": "data('system.network.errors', filter=filter('hw.type', 'network')).sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Errors'); data('system.network.packet.dropped', filter=filter('hw.type', 'network')).sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Drops')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "name": "QoS Queue Bytes",
+          "description": "Value: shows byte volume handled by queue or QoS group. Interpretation: high or shifting queue volume identifies the class most affected during congestion.",
+          "signalflow": "data('cisco.interface.qos.queue.bytes').sum(by=['host.name', 'network.interface.name', 'cisco.qos.queue', 'cisco.qos.group', 'cisco.qos.action']).publish(label='Queue bytes')",
+          "legend_dimension": "cisco.qos.queue"
+        },
+        {
+          "name": "QoS Policy Bytes",
+          "description": "Value: shows class-based policy byte volume by action and direction. Interpretation: drops, marks, or class shifts explain why specific traffic classes are slowed or discarded.",
+          "signalflow": "data('cisco.interface.qos.policy.bytes').sum(by=['host.name', 'network.interface.name', 'cisco.qos.class', 'cisco.qos.action', 'network.io.direction']).publish(label='Policy bytes')",
+          "legend_dimension": "cisco.qos.class"
+        },
+        {
+          "name": "LACP Errors",
+          "description": "Value: highlights link aggregation control-plane errors. Interpretation: spikes by interface explain member link removal or bundle instability.",
+          "signalflow": "data('cisco.lacp.errors').sum(by=['host.name', 'network.interface.name', 'cisco.lacp.error.type']).publish(label='LACP errors')",
+          "legend_dimension": "cisco.lacp.error.type"
+        },
+        {
+          "name": "STP Instances And Changes",
+          "description": "Value: shows spanning-tree instance state and topology-change churn. Interpretation: unexpected blocked state or repeated topology changes indicate loop prevention or unstable L2 links.",
+          "signalflow": "data('cisco.l2.stp.instances').sum(by=['host.name', 'cisco.l2.stp.state']).publish(label='STP instances'); data('cisco.l2.stp.topology_changes').sum(by=['host.name', 'network.interface.name']).publish(label='Topology changes')",
+          "legend_dimension": "cisco.l2.stp.state"
+        }
+      ]
+    },
+    {
+      "name": "02 Nexus VXLAN EVPN vPC And Redundancy",
+      "description": "Value: fabric control-plane and redundant-path dashboard for VXLAN, EVPN, vPC, port-channel, and neighbor evidence.",
+      "value": "Use this page when affected traffic depends on VXLAN/EVPN overlays or redundant access/fabric links. It surfaces peer, VNI, route, vPC, port-channel, and topology-neighbor health.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to use fabric and redundancy evidence. Interpretation: unhealthy peer, VNI, vPC, or port-channel rows identify the local failure domain before drilling into interfaces.",
+          "markdown": "## Value Provided\nThis page separates overlay control-plane loss from redundant-path failures. NVE, VNI, EVPN route, vPC, port-channel, and topology-neighbor panels help NetOps identify whether the issue belongs to the fabric, peer, bundle, or local switch.",
+          "width": 12,
+          "height": 2
+        },
+        {
           "type": "List",
           "secondary_visualization": "Sparkline",
           "name": "VXLAN NVE Peer Status",
           "description": "Value: finds failed VXLAN NVE peers. Interpretation: rows below healthy state identify underlay, BGP EVPN, or VTEP reachability issues.",
           "signalflow": "data('cisco.nve.peer.status').mean(by=['host.name', 'network.peer.address']).publish(label='NVE peer status')",
           "legend_dimension": "network.peer.address"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "VXLAN VNI Status",
+          "description": "Value: finds VNI or segment-level VXLAN failures. Interpretation: unhealthy VNI rows point to tenant or segment control-plane issues even when NVE peers appear healthy.",
+          "signalflow": "data('cisco.nve.vni.status').mean(by=['host.name', 'cisco.nve.vni', 'cisco.nve.vrf']).publish(label='VNI status')",
+          "legend_dimension": "cisco.nve.vni"
         },
         {
           "type": "List",
@@ -89,10 +208,44 @@
           "legend_dimension": "cisco.vpc.domain"
         },
         {
-          "name": "LACP Errors",
-          "description": "Value: highlights link aggregation control-plane errors. Interpretation: spikes by interface explain member link removal or bundle instability.",
-          "signalflow": "data('cisco.lacp.errors').sum(by=['host.name', 'network.interface.name', 'cisco.lacp.error.type']).publish(label='LACP errors')",
-          "legend_dimension": "cisco.lacp.error.type"
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "vPC Consistency Failures",
+          "description": "Value: identifies vPC consistency failures by check. Interpretation: non-zero failures explain dual-homed host outages or blackholing risk.",
+          "signalflow": "data('cisco.vpc.consistency.failures').sum(by=['host.name', 'cisco.vpc.domain', 'cisco.vpc.check']).publish(label='Consistency failures')",
+          "legend_dimension": "cisco.vpc.check"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Port Channel Status",
+          "description": "Value: shows port-channel and member link health. Interpretation: down bundles or member loss indicates reduced capacity or broken redundant paths.",
+          "signalflow": "data('cisco.port_channel.status').mean(by=['host.name', 'network.interface.name']).publish(label='Port-channel status'); data('cisco.port_channel.member.status').mean(by=['host.name', 'network.interface.name', 'cisco.port_channel.member']).publish(label='Member status')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Topology Neighbors",
+          "description": "Value: confirms expected LLDP/CDP neighbor visibility. Interpretation: missing or unexpected neighbor rows indicate cabling, peer, or discovery problems.",
+          "signalflow": "data('cisco.topology.neighbor.info').mean(by=['host.name', 'network.interface.name', 'network.peer.name', 'network.protocol.name']).publish(label='Neighbor info')",
+          "legend_dimension": "network.peer.name"
+        }
+      ]
+    },
+    {
+      "name": "03 Nexus Hardware Optics And Capacity",
+      "description": "Value: physical health dashboard for hardware status, temperature, optics, and environmental symptoms.",
+      "value": "Use this page when interface symptoms may be caused by optics, cabling, fans, power supplies, modules, or thermal conditions.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to use hardware and optics evidence. Interpretation: correlate unhealthy component rows or drifting optical power with interface errors, drops, and user-impact windows.",
+          "markdown": "## Value Provided\nThis page keeps physical evidence close to network symptoms. Optics, temperature, module, fan, PSU, and platform health explain CRCs, flaps, unexpected reloads, or degraded device capacity.",
+          "width": 12,
+          "height": 2
         },
         {
           "name": "Transceiver Sensors",
@@ -107,6 +260,24 @@
           "description": "Value: surfaces fan, power, module, platform, and temperature health. Interpretation: unhealthy rows explain device instability or environmental risk.",
           "signalflow": "data('cisco.hardware.status').mean(by=['host.name', 'cisco.hardware.component']).publish(label='Hardware status')",
           "legend_dimension": "cisco.hardware.component"
+        },
+        {
+          "name": "Hardware Temperature",
+          "description": "Value: tracks chassis, module, sensor, or platform temperature where exposed. Interpretation: rising or threshold-adjacent temperature explains throttling, fan alarms, or unstable hardware.",
+          "signalflow": "data('cisco.hardware.temperature').mean(by=['host.name', 'cisco.hardware.component']).publish(label='Temperature')",
+          "legend_dimension": "cisco.hardware.component"
+        },
+        {
+          "name": "Interface Traffic Rate",
+          "description": "Value: shows RX/TX bandwidth pressure by switch interface. Interpretation: sustained increases, silence, or asymmetry point to path changes or congestion.",
+          "signalflow": "data('cisco.interface.io.rate').mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Interface rate')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "name": "Interface Errors And Drops",
+          "description": "Value: gives physical triage immediate packet-loss context. Interpretation: errors rising with optical or temperature drift point toward physical path or hardware ownership.",
+          "signalflow": "data('system.network.errors', filter=filter('hw.type', 'network')).sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Errors'); data('system.network.packet.dropped', filter=filter('hw.type', 'network')).sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Drops')",
+          "legend_dimension": "network.interface.name"
         }
       ]
     }

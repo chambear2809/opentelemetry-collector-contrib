@@ -10,6 +10,12 @@ Every importable bundle includes dashboard-wide `filters.variables` for device, 
 
 The Cisco OS receiver emits some standard OpenTelemetry metric names, including `system.cpu.utilization`, `system.memory.utilization`, `system.uptime`, and `system.network.*`. The importable dashboard filters those generic metrics with `hw.type=network` so host, EC2, or collector-agent telemetry with the same names does not leak into Cisco device charts.
 
+Use receiver-side collection controls before importing every dashboard into a production Splunk Observability Cloud
+organization. The dashboard bundles can reference optional metrics, but users can keep cost predictable by disabling
+unused collection groups, lowering each group's `max_results`, scoping `device_selection` and provider `targets`, and
+setting root-level `metrics.<metric_name>.enabled: false` for metrics they do not want forwarded. See
+[Controlling Metrics And Splunk Observability Cost](metric-control.md) for the full workflow.
+
 ## Recommended Dimensions
 
 Use these dimensions as dashboard variables:
@@ -39,7 +45,14 @@ Use these dimensions as dashboard variables:
 | `catalyst_center.device.role` | Catalyst Center device role selector, such as access, distribution, core, or border. |
 | `catalyst_center.status` | Original Catalyst Center status string for reachability, collection, communication, and detail drilldowns. |
 | `catalyst_center.client.mac` | Targeted Catalyst Center client selector for client-detail investigations. |
-| `cisco.controller.type` | API source selector, such as Nexus Dashboard or APIC. |
+| `sdwan.system_ip` | Catalyst SD-WAN system IP selector. |
+| `sdwan.site.id` | Catalyst SD-WAN site selector. |
+| `sdwan.uuid` | Catalyst SD-WAN device UUID selector. |
+| `sdwan.personality` | Catalyst SD-WAN role selector for Manager, Controller, Validator, WAN Edge, or SD-Routing devices. |
+| `sdwan.tloc.color` | Catalyst SD-WAN transport color selector. |
+| `sdwan.application` | Application selector for app-route, SaaS, and AI/model path views. |
+| `sdwan.sla_class` | SLA class selector for application-aware routing views. |
+| `cisco.controller.type` | API source selector, such as SD-WAN Manager, Nexus Dashboard, or APIC. |
 | `cisco.controller.endpoint` | Controller endpoint selector for API trust views. |
 | `cisco.fabric.name` | Fabric selector for NDFC, Insights, NDO, and ACI workflows. |
 | `cisco.site.name` | Nexus Dashboard site selector. |
@@ -96,11 +109,18 @@ Charts:
 | Storage and HyperFlex health | `intersight.storage.*`, `intersight.hyperflex.*`, and `intersight.fault.count` by cluster, host, and resource type | Disk life, predictive failures, media errors, IOPS, or latency degrade. |
 | Catalyst Center API health | `catalyst_center.api.request.duration`, `catalyst_center.api.request.errors`, `catalyst_center.api.rate_limited`, and `catalyst_center.scrape.partial_success` by operation | Catalyst Center API errors, authorization failures, rate limits, or partial scrape repeat. |
 | Catalyst Center device inventory | `cisco.device.up`, `catalyst_center.device.reachability.status`, `catalyst_center.device.collection.status`, and `catalyst_center.inventory.device.count` by device, family, role, and site | Catalyst Center sees devices as unreachable, unmanaged, or unexpectedly missing. |
-| Catalyst Center Assurance health | `catalyst_center.network.health.score`, `catalyst_center.network.health.entity.score`, `catalyst_center.site.network_device.health.percentage`, and `catalyst_center.site.client.health.percentage` by entity and site | Campus or site health degrades before or during the incident. |
-| Catalyst Center issues and topology | `catalyst_center.issue.active.count`, `catalyst_center.topology.node.count`, and `catalyst_center.topology.link.count` by severity, category, node type, and link status | Assurance issues or topology discovery changes explain campus symptoms. |
+| Catalyst Center Assurance health | `catalyst_center.network.health.score`, `catalyst_center.network.health.entity.score`, `catalyst_center.site.network_device.health.percentage`, `catalyst_center.site.client.health.percentage`, `catalyst_center.site.client.count`, and `catalyst_center.site.network_device.count` by entity and site | Campus or site health degrades and the operator can see how many clients or devices are represented by the score. |
+| Catalyst Center issues and topology | `catalyst_center.issue.active.count`, `catalyst_center.site.issue.count`, `catalyst_center.topology.node.count`, and `catalyst_center.topology.link.count` by severity, priority, category, node type, and link status | Assurance issues or topology discovery changes explain campus symptoms. |
 | Catalyst Center client detail | `catalyst_center.client.detail.health.score`, `catalyst_center.client.issue.count`, `catalyst_center.client.wireless.rssi`, `catalyst_center.client.wireless.snr`, and `catalyst_center.client.network.io` by targeted client MAC | Affected clients show poor health, RF degradation, issue counts, or traffic silence. |
+| SD-WAN API and coverage | `sdwan.api.request.duration`, `sdwan.api.request.errors`, `sdwan.api.rate_limited`, `sdwan.scrape.partial_success`, `sdwan.scrape.last_success`, `sdwan.manager.up`, `sdwan.manager.status`, `sdwan.manager.endpoint.status`, `sdwan.inventory.device.count`, `sdwan.service.unavailable`, and `sdwan.service.skipped` by operation and group | SD-WAN Manager auth, permission, rate-limit, endpoint, feature/license, target-scope, manager, or stale-data gaps distort visibility. |
+| SD-WAN overlay health | `sdwan.resource.status`, `cisco.device.up`, `sdwan.control.connection.status`, `sdwan.control.connection.count`, `sdwan.control.actual_connections`, `sdwan.control.expected_connections`, `sdwan.bfd.session.status`, and `sdwan.bfd.session.count` by system IP, site, personality, and color | WAN Edge, controller, TLOC, or BFD overlay health degrades. |
+| SD-WAN app and AI path quality | `sdwan.app_route.latency`, `sdwan.app_route.jitter`, `sdwan.app_route.loss`, and `sdwan.app_route.sla.status` by site, application, SLA class, and local/remote color | SaaS, model/API, RAG, edge-to-cloud, or custom application paths violate SLA or shift transport. |
+| SD-WAN interfaces and circuits | `system.network.interface.status`, `sdwan.transport.interface.status`, `system.network.io`, `system.network.errors`, `system.network.packet.dropped`, and `cisco.interface.speed` by site, device, interface, VPN, and color | WAN circuit, interface, cellular failover, or capacity pressure aligns with incident impact. |
+| SD-WAN events and change evidence | `sdwan.event.count` plus SD-WAN logs by alarm/event/audit type, severity, user, policy, system IP, and site | Alarms, audit/config changes, policy deployments, or security events appear in the incident window. |
+| SD-WAN end-user impact | `sdwan.app_route.*`, `sdwan.app_route.sla.status`, `sdwan.bfd.session.status`, `system.network.interface.status`, `system.network.errors`, `system.network.packet.dropped`, and `sdwan.event.count` by site, application, SLA class, color, interface, and event type | Service desk, app owners, and incident commanders can see which sites/apps/users are likely affected and what symptom class to escalate. |
 | Nexus Dashboard API health | `nexus_dashboard.api.request.duration`, `nexus_dashboard.api.request.errors`, `nexus_dashboard.api.rate_limited`, and `nexus_dashboard.scrape.partial_success` by operation | Controller API errors, authorization failures, unavailable apps, or partial scrape repeat. |
 | Nexus Dashboard service coverage | `nexus_dashboard.service.unavailable` and `nexus_dashboard.service.skipped` by product and group | NDFC, Insights, NDO, or Data Broker is unavailable, unauthorized, not installed, or missing target filters. |
+| Nexus Dashboard change and event evidence | `nexus_dashboard.audit.record.count` and `nexus_dashboard.event.count` by product, operation, status, and severity | Controller-side changes, events, anomalies, advisories, alerts, or root causes appear near the incident window. |
 | NDFC fabric and switch health | `nexus_dashboard.fabric.health`, `nexus_dashboard.resource.status`, and `cisco.device.up` by fabric, switch, role, and serial | Fabric or leaf/spine health degrades from the controller view. |
 | NDFC config and deployment state | `nexus_dashboard.config.compliance`, `nexus_dashboard.deployment.status`, and NDFC logs | Config drift, failed policy deployment, image/change-control activity, or recent audit evidence appears. |
 | Insights anomalies and root cause | `nexus_dashboard.insights.anomaly.count`, `nexus_dashboard.insights.score`, and `nexus_dashboard.insights.confidence` by site/fabric/severity | Insights points to a root-cause candidate or advisory during the incident window. |
@@ -108,6 +128,7 @@ Charts:
 | Data Broker visibility health | `nexus_dashboard.data_broker.status`, `nexus_dashboard.data_broker.rule.count`, and `nexus_dashboard.data_broker.session.count` | TAP/SPAN/rule/session state prevents packet visibility during troubleshooting. |
 | APIC API health | `aci.api.request.duration`, `aci.api.request.errors`, `aci.controller.up`, and `aci.scrape.partial_success` by controller | APIC access or class-query coverage is degraded. |
 | ACI active faults | `aci.fault.count` and `aci.fault.active` by severity, code, domain, type, node, and DN | Active ACI faults explain fabric, tenant, endpoint, or interface symptoms. |
+| ACI change and event evidence | `aci.audit.record.count` and `aci.event.count` by operation, status, and severity | APIC audit or event activity appears near the fault window without high-cardinality event text in metric labels. |
 | ACI tenant impact | `aci.tenant.status`, `aci.tenant.object.count`, and `aci.fabric.health` by tenant, VRF, BD, EPG, and L3Out | Tenant policy or health changed near affected workloads. |
 | ACI endpoint presence | `aci.endpoint.present` and `aci.endpoint.count` by tenant, EPG, MAC, IP, and node | Workload endpoint disappeared, moved, or churned. |
 | ACI topology and interface symptoms | `system.network.interface.status`, `cisco.interface.io.rate`, and `cisco.topology.neighbor.info` by node/interface/protocol | Leaf/spine interface or adjacency change precedes endpoint impact. |
@@ -123,6 +144,8 @@ Autopsy questions:
 - Did Intersight record an alarm, advisory, HCL change, workflow/task failure, or audit/config-change log before the impact?
 - Did UCS, HyperFlex, storage, Kubernetes, or VM state degrade around the same host, serial, cluster, namespace, or workload?
 - Did Catalyst Center show API partial success, site health degradation, active Assurance issues, topology changes, or poor targeted client health?
+- Did SD-WAN show Manager/API partial success, unreachable WAN Edge devices, control/BFD loss, TLOC color degradation, app-route SLA violations, Cloud OnRamp/vQoE issues, policy/security drops, cellular failover, or audit/config changes for the affected site or application?
+- From the end-user perspective, which sites and applications are affected, what symptom is most visible to users (loss, latency, jitter, outage, drops, errors, or change), and which team should own the next action?
 - Did Nexus Dashboard show NDFC config drift, deployment failure, fabric health degradation, Insights root-cause evidence, NDO policy deltas, or Data Broker visibility changes?
 - Did APIC show active faults, tenant/EPG/contract/L3Out impact, endpoint disappearance, interface state changes, or topology churn for the affected workload?
 
@@ -132,6 +155,7 @@ Switch-side coverage:
 - The receiver does not observe endpoint-only RDMA symptoms such as CNP packets, retransmits, timeout or retry errors, RNR NAKs, QP errors, RDMA CM failures, GID selection, or pod/container RDMA device exposure.
 - For full RoCEv2 autopsy, ingest host/NIC metrics alongside these switch dashboards and correlate by host, interface, DSCP/PCP/traffic class, MTU, and job or Kubernetes node labels.
 - Intersight metrics and logs add the management-plane evidence for UCS, HyperFlex, storage, Kubernetes, and virtualization resources so AI pod dashboards can correlate fabric symptoms with affected host serials, clusters, namespaces, and workloads.
+- SD-WAN app-route and Cloud OnRamp evidence add the WAN/application half of the AI story: whether model API, SaaS AI assistant, RAG data, or edge-to-cloud inference traffic saw path loss, latency, jitter, transport shift, service insertion, or policy/SLA drops.
 
 ## Detector Starting Set
 
@@ -160,6 +184,11 @@ Start with these detectors before adding organization-specific thresholds:
 | Catalyst Center API degraded | `catalyst_center.api.request.errors` or `catalyst_center.scrape.partial_success` | Errors or partial success repeat for 2-3 scrapes. |
 | Catalyst Center site unhealthy | `catalyst_center.site.network_device.health.percentage` or `catalyst_center.site.client.health.percentage` | Site health falls below policy or drops sharply from baseline. |
 | Catalyst Center active issues | `catalyst_center.issue.active.count` | P1/P2 or high-severity issue counts are greater than 0. |
+| SD-WAN API degraded | `sdwan.api.request.errors`, `sdwan.scrape.partial_success`, `sdwan.service.unavailable`, or `sdwan.service.skipped` | Errors, partial success, unavailable feature groups, or missing target scope repeat for 2-3 scrapes. |
+| SD-WAN overlay degraded | `sdwan.control.connection.status`, `sdwan.control.actual_connections`, `sdwan.control.expected_connections`, or `sdwan.bfd.session.status` | Control connections or BFD sessions are down, partial, or below expected count. |
+| SD-WAN app SLA violation | `sdwan.app_route.latency`, `sdwan.app_route.jitter`, `sdwan.app_route.loss`, or `sdwan.app_route.sla.status` | Critical app, SaaS, or AI/model path exceeds SLA thresholds or enters failed/degraded state. |
+| SD-WAN WAN interface issue | `system.network.interface.status`, `sdwan.transport.interface.status`, `system.network.errors`, or `system.network.packet.dropped` | Admin-up WAN interfaces are down, erroring, dropping, or showing sudden traffic silence. |
+| SD-WAN change evidence | `sdwan.event.count` and SD-WAN logs | Critical alarm, audit/config change, policy deployment, or security event appears in the incident window. |
 | Nexus Dashboard API degraded | `nexus_dashboard.api.request.errors` or `nexus_dashboard.scrape.partial_success` | Errors, unavailable services, skipped endpoint families, or partial success repeat. |
 | NDFC fabric unhealthy | `nexus_dashboard.fabric.health` or `nexus_dashboard.resource.status` | Fabric, site, or switch health score/status degrades. |
 | Insights critical anomaly | `nexus_dashboard.insights.anomaly.count` | Critical anomalies or advisories greater than 0. |

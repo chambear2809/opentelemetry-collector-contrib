@@ -645,6 +645,50 @@ func (b *catalystCenterMetricsBuilder) recordSiteHealth(site catalystcenter.Site
 	rb := b.siteResource(site)
 	rb.recordDouble("catalyst_center.site.network_device.health.percentage", "Catalyst Center site network-device good health percentage.", "%", site.NetworkDeviceGoodHealthPercentage, nil)
 	rb.recordDouble("catalyst_center.site.client.health.percentage", "Catalyst Center site client good health percentage.", "%", site.ClientGoodHealthPercentage, nil)
+	for priority, value := range map[string]int64{
+		"p1":  site.P1IssueCount,
+		"p2":  site.P2IssueCount,
+		"p3":  site.P3IssueCount,
+		"p4":  site.P4IssueCount,
+		"all": site.IssueCount,
+	} {
+		rb.recordInt("catalyst_center.site.issue.count", "Catalyst Center site issue count by priority.", "{issue}", value, map[string]string{"catalyst_center.issue.priority": priority})
+	}
+	for clientType, value := range map[string]int64{
+		"all":      site.ClientCount,
+		"wired":    site.WiredClientCount,
+		"wireless": site.WirelessClientCount,
+	} {
+		rb.recordInt("catalyst_center.site.client.count", "Catalyst Center site client count by client type and health state.", "{client}", value, map[string]string{
+			"catalyst_center.client.type":  clientType,
+			"catalyst_center.health.state": "total",
+		})
+	}
+	rb.recordInt("catalyst_center.site.client.count", "Catalyst Center site client count by client type and health state.", "{client}", site.ClientGoodHealthCount, map[string]string{
+		"catalyst_center.client.type":  "all",
+		"catalyst_center.health.state": "good",
+	})
+	for role, counts := range map[string]struct {
+		total int64
+		good  int64
+	}{
+		"all":          {total: site.NetworkDeviceCount, good: site.NetworkDeviceGoodHealthCount},
+		"access":       {total: site.AccessDeviceCount, good: site.AccessDeviceGoodHealthCount},
+		"core":         {total: site.CoreDeviceCount, good: site.CoreDeviceGoodHealthCount},
+		"distribution": {total: site.DistributionDeviceCount, good: site.DistributionDeviceGoodHealthCount},
+		"router":       {total: site.RouterDeviceCount, good: site.RouterDeviceGoodHealthCount},
+		"wireless":     {total: site.WirelessDeviceCount, good: site.WirelessDeviceGoodHealthCount},
+		"ap":           {total: site.APDeviceCount, good: site.APDeviceGoodHealthCount},
+		"wlc":          {total: site.WLCDeviceCount, good: site.WLCDeviceGoodHealthCount},
+		"switch":       {total: site.SwitchDeviceCount, good: site.SwitchDeviceGoodHealthCount},
+	} {
+		for state, value := range map[string]int64{"total": counts.total, "good": counts.good} {
+			rb.recordInt("catalyst_center.site.network_device.count", "Catalyst Center site network device count by role and health state.", "{device}", value, map[string]string{
+				"catalyst_center.device.role":  role,
+				"catalyst_center.health.state": state,
+			})
+		}
+	}
 	for state, value := range map[string]int64{
 		"network_device_total":  site.NetworkDeviceCount,
 		"network_device_good":   site.NetworkDeviceGoodHealthCount,

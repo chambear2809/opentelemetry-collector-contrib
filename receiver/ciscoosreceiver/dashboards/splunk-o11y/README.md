@@ -1,8 +1,8 @@
 # Splunk Observability Cloud Dashboard Import
 
 This directory contains importable Splunk Observability Cloud dashboard groups for the Cisco OS receiver. The bundles
-cover Cisco OS SSH collection, Nexus switch SSH collection, Meraki, Intersight, Catalyst Center, Nexus
-Dashboard/NDFC/Insights/Orchestrator/Data Broker, and ACI/APIC telemetry.
+cover Cisco OS SSH collection, Nexus switch SSH collection, Meraki, Intersight, Catalyst Center, Catalyst SD-WAN,
+Nexus Dashboard/NDFC/Insights/Orchestrator/Data Broker, and ACI/APIC telemetry.
 
 The SSH-focused bundle creates one dashboard group named `Cisco OS Receiver` with an overview dashboard plus focused pages:
 
@@ -46,6 +46,27 @@ The Catalyst Center-focused bundle creates a fourth dashboard group named `Cisco
 | `02 Inventory Interfaces And Topology` | Connects device inventory, reachability, interface state, line speed, and physical topology counts so operators can move from affected site to affected path. |
 | `03 Client And Detail Impact` | Uses optional Catalyst Center device-detail and client-detail targets to connect affected devices and clients to health, signal, issue, CPU, memory, and traffic evidence. |
 
+The Catalyst SD-WAN-focused bundle creates a dashboard group named `Cisco SD-WAN Receiver`:
+
+| Dashboard | Value Provided |
+| --- | --- |
+| `00 SD-WAN Fleet API And Manager Health` | Proves whether SD-WAN Manager polling is healthy before operators trust inventory, overlay, path, event, or feature-group panels. |
+| `01 Control Plane Overlay And Validity` | Connects WAN Edge/controller validity, certificate state, control connections, and BFD session health into one overlay triage page. |
+| `02 Site BFD TLOC Tunnel And Underlay Health` | Shows BFD session state, TLOC color context, tunnel/underlay feature coverage, and path instability evidence for affected sites. |
+| `03 Application Experience SaaS And AI Paths` | Focuses on app-route loss, latency, jitter, SLA state, local/remote colors, and AI/model/SaaS application filters. |
+| `04 Interfaces Circuits Cellular And Capacity` | Correlates WAN/service interface state, traffic, errors, drops, circuit pressure, and cellular/failover evidence around an incident window. |
+| `05 Policy QoS Security And Service Edge` | Shows whether policy, QoS, and security/service-edge opt-in groups are producing evidence or exposing feature/license/API gaps. |
+| `06 AppQoE Optimization And Flow Evidence` | Shows AppQoE and flow opt-in coverage so operators can correlate optimization behavior with app-route symptoms. |
+| `07 Cloud OnRamp Multicloud Colocation And Gateways` | Shows Cloud OnRamp and cloud gateway evidence for SaaS, custom app, multicloud, colocation, and AI cloud path incidents. |
+| `08 Routing Branch Services And SD-Routing` | Shows routing, WLAN, voice, NFV/service-hosting, and SD-Routing evidence that can explain branch or service-side incidents. |
+| `09 Lifecycle Advisories Energy And Hardware` | Correlates device lifecycle, compliance, crash/reboot, certificate, advisory, EoX, hardware, power, and energy evidence with incidents. |
+| `10 Alarms Events Audit And Change Evidence` | Shows active/recent alarms, events, audit records, user/session evidence, and hardening-relevant management-plane changes. |
+| `11 Network-Wide Path Insight And Incident Readout` | Shows NWPI read-only result coverage and ThousandEyes agent correlation for deep SD-WAN path investigations. |
+| `12 Service Desk End User Impact Triage` | Answers which users, sites, and applications are likely affected before exposing operators to SD-WAN implementation detail. |
+| `13 Branch And Remote Site Experience` | Shows whether a branch or remote site is having a user experience problem caused by transport, circuit, failover, interface, or overlay instability. |
+| `14 SaaS AI And Critical Application Experience` | Shows application experience by app, site, SLA class, color, Cloud OnRamp coverage, AppQoE coverage, and security/service-edge evidence. |
+| `15 Incident Commander User Impact Summary` | Summarizes user-facing SD-WAN impact in language useful for incident commanders, service owners, and leadership updates. |
+
 The Nexus controller-focused bundle creates an API-first dashboard group named `Cisco Nexus Controller Receiver`:
 
 | Dashboard | Value Provided |
@@ -60,7 +81,10 @@ The SSH/NX-OS Nexus switch bundle creates a dashboard group named `Cisco Nexus S
 
 | Dashboard | Value Provided |
 | --- | --- |
-| `00 Nexus Switch Health And Fabric` | Focuses on Nexus switch telemetry collected over SSH: reachability, partial scrapes, interface pressure, VXLAN/EVPN, vPC/LACP, optics, and hardware health. |
+| `00 Nexus Switch Telemetry And Device Health` | Proves SSH collection trust, device reachability, system pressure, uptime, and control-plane process CPU before deeper triage. |
+| `01 Nexus Interfaces L2 And QoS Congestion` | Correlates utilization, packet mix, drops, errors, QoS queue/policy counters, LACP, and STP for slow or lossy service. |
+| `02 Nexus VXLAN EVPN vPC And Redundancy` | Focuses on NVE peers, VNIs, EVPN routes, vPC consistency, port-channel state, and topology neighbors. |
+| `03 Nexus Hardware Optics And Capacity` | Connects optics, hardware status, temperature, traffic, errors, and drops to physical switch symptoms. |
 
 The overview dashboard is the first-response page when the failure domain is unknown. The focused pages are for operators who already know which area they are investigating, such as interfaces, routing, AI/RDMA, or optics. Each page includes a `Value Provided` text panel so the operational purpose is visible after import. Each chart description also uses this structure:
 
@@ -90,6 +114,7 @@ python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashb
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-meraki-dashboard-group.bundle.json --dry-run
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-intersight-dashboard-group.bundle.json --dry-run
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-catalyst-center-dashboard-group.bundle.json --dry-run
+python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-sdwan-dashboard-group.bundle.json --dry-run
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-nexus-controller-dashboard-group.bundle.json --dry-run
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-nexus-switch-dashboard-group.bundle.json --dry-run
 ```
@@ -102,6 +127,7 @@ python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashb
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-meraki-dashboard-group.bundle.json
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-intersight-dashboard-group.bundle.json
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-catalyst-center-dashboard-group.bundle.json
+python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-sdwan-dashboard-group.bundle.json
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-nexus-controller-dashboard-group.bundle.json
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-nexus-switch-dashboard-group.bundle.json
 ```
@@ -112,14 +138,15 @@ Use `--prefix "Lab - "` to create a separate copy for testing.
 
 `cisco-os-dashboard-group.bundle.json`, `cisco-nexus-switch-dashboard-group.bundle.json`,
 `cisco-meraki-dashboard-group.bundle.json`, `cisco-intersight-dashboard-group.bundle.json`,
-`cisco-catalyst-center-dashboard-group.bundle.json`, and `cisco-nexus-controller-dashboard-group.bundle.json` are small
+`cisco-catalyst-center-dashboard-group.bundle.json`, `cisco-sdwan-dashboard-group.bundle.json`, and
+`cisco-nexus-controller-dashboard-group.bundle.json` are small
 repo-native bundles. The importer converts them into Splunk Observability Cloud API payloads:
 
 - `POST /v2/dashboardgroup` creates the dashboard group.
 - `POST /v2/chart` creates each chart with SignalFlow.
 - `POST /v2/dashboard` places charts into dashboards in the group.
 
-The importer passes dashboard-wide `filters.variables` from each bundle into every dashboard payload. The bundles include variables for device, interface, fabric/site, and product-specific identifiers such as Meraki serials, Intersight Moids, Catalyst device IDs, NDFC switch IDs, and ACI node IDs. Dry-run mode validates bundle shape, dashboard and chart descriptions, SignalFlow presence, text-panel markdown, duplicate names, and dashboard variables.
+The importer passes dashboard-wide `filters.variables` from each bundle into every dashboard payload. The bundles include variables for device, interface, fabric/site, and product-specific identifiers such as Meraki serials, Intersight Moids, Catalyst device IDs, SD-WAN system IPs/site IDs/applications, NDFC switch IDs, and ACI node IDs. Dry-run mode validates bundle shape, dashboard and chart descriptions, SignalFlow presence, text-panel markdown, duplicate names, and dashboard variables.
 
 This keeps the source reviewable while still making the dashboards importable into a real Splunk Observability organization.
 
@@ -133,6 +160,11 @@ The dashboards expect Cisco OS receiver metrics to be sent to Splunk Observabili
 - AI and RDMA/RoCEv2 workload networks: `counters.commands.priority_flow_control`, `counters.commands.flowcontrol`, `counters.commands.queueing`, `counters.commands.pfc_watchdog`, `counters.commands.qos_policy`, `rates`, `transceiver`, `fabric`, and `l2_topology`.
 - Layer 2 redundancy: `l2_topology`.
 - IOS XE dataplane: `router_dataplane`.
+
+For production Splunk Observability Cloud cost control, enable only the pages' supporting collection groups, set
+provider target filters and group `max_results` caps, and use receiver root `metrics.<metric_name>.enabled: false` for
+metrics that should not be forwarded. The full configuration workflow is in
+[Controlling Metrics And Splunk Observability Cost](../../docs/metric-control.md).
 
 For Nexus switch dashboards, configure at least one NX-OS device through the receiver SSH `devices` list. The compact
 Nexus switch page is most useful when `fabric`, `l2_topology`, `transceiver`, `hardware_health`, and interface `rates`
@@ -151,6 +183,16 @@ For Catalyst Center dashboards, configure `catalyst_center.enabled: true` with a
 read-only Assurance API credentials. Fleet/API, inventory, health, topology, and issue panels populate from the broad
 collection groups. Device-detail and client-detail panels require `catalyst_center.targets.device_details` or
 `catalyst_center.targets.client_macs` because those APIs are intentionally scoped to known affected devices or clients.
+
+For SD-WAN dashboards, configure `sdwan.enabled: true` with a reachable SD-WAN Manager endpoint and read-only API
+credentials. Fleet/API, inventory, control-plane, BFD, app-route, interface, alarm, event, and audit panels populate
+from default collection groups. Advanced product feature panels require explicit opt-in groups such as
+`cloud_onramp`, `security`, `appqoe`, `nwpi`, or `realtime_details`; realtime detail collection also requires target
+filters because those APIs are intended for scoped incident use.
+
+The SD-WAN bundle has two layers. Pages `00` through `11` are engineering and feature-domain views for NetOps and
+ITOps. Pages `12` through `15` are end-user and stakeholder views for service desk, branch operations, application
+owners, AI service owners, and incident commanders.
 
 For Nexus Dashboard/NDFC/Insights/NDO/Data Broker dashboards, configure `nexus_dashboard.enabled: true` with API-key
 auth where possible. Broad controller trust and inventory panels populate with only the ND endpoint; interface and

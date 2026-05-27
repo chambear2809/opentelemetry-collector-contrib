@@ -15,13 +15,48 @@
   ],
   "default_filters": {
     "variables": [
-      {"property": "host.name", "alias": "Device", "description": "Nexus or ACI device/resource name.", "applyIfExists": true},
-      {"property": "cisco.switch.serial", "alias": "Switch Serial", "description": "Nexus or ACI switch serial number.", "applyIfExists": true},
-      {"property": "ndfc.switch.id", "alias": "NDFC Switch ID", "description": "NDFC switch identifier.", "applyIfExists": true},
-      {"property": "aci.node.id", "alias": "ACI Node", "description": "ACI node identifier.", "applyIfExists": true},
-      {"property": "cisco.fabric.name", "alias": "Fabric", "description": "Fabric name.", "applyIfExists": true},
-      {"property": "cisco.site.name", "alias": "Site", "description": "Site name.", "applyIfExists": true},
-      {"property": "network.interface.name", "alias": "Interface", "description": "Network interface name.", "applyIfExists": true}
+      {
+        "property": "host.name",
+        "alias": "Device",
+        "description": "Nexus or ACI device/resource name.",
+        "applyIfExists": true
+      },
+      {
+        "property": "cisco.switch.serial",
+        "alias": "Switch Serial",
+        "description": "Nexus or ACI switch serial number.",
+        "applyIfExists": true
+      },
+      {
+        "property": "ndfc.switch.id",
+        "alias": "NDFC Switch ID",
+        "description": "NDFC switch identifier.",
+        "applyIfExists": true
+      },
+      {
+        "property": "aci.node.id",
+        "alias": "ACI Node",
+        "description": "ACI node identifier.",
+        "applyIfExists": true
+      },
+      {
+        "property": "cisco.fabric.name",
+        "alias": "Fabric",
+        "description": "Fabric name.",
+        "applyIfExists": true
+      },
+      {
+        "property": "cisco.site.name",
+        "alias": "Site",
+        "description": "Site name.",
+        "applyIfExists": true
+      },
+      {
+        "property": "network.interface.name",
+        "alias": "Interface",
+        "description": "Network interface name.",
+        "applyIfExists": true
+      }
     ]
   },
   "dashboards": [
@@ -118,6 +153,12 @@
           "description": "Value: exposes the last successful scrape timestamp from each controller path. Interpretation: stale or flat timestamps mean dashboards are looking at old evidence.",
           "signalflow": "data('nexus_dashboard.scrape.last_success').max(by=['host.name', 'cisco.controller.endpoint']).publish(label='ND last success'); data('aci.scrape.last_success').max(by=['host.name']).publish(label='ACI last success')",
           "legend_dimension": "host.name"
+        },
+        {
+          "name": "Nexus Dashboard Rate Limits",
+          "description": "Value: surfaces Nexus Dashboard API throttling by operation. Interpretation: non-zero rate-limit counts explain stale or missing controller, NDFC, Insights, Orchestrator, or Data Broker panels.",
+          "signalflow": "data('nexus_dashboard.api.rate_limited').sum(by=['nexus_dashboard.api.operation', 'http.response.status_code']).publish(label='ND rate limited')",
+          "legend_dimension": "nexus_dashboard.api.operation"
         }
       ]
     },
@@ -196,6 +237,12 @@
           "description": "Value: groups NDFC resource status by product group and object type. Interpretation: degraded object families narrow whether the issue is inventory, policy, interface, endpoint, or telemetry sync.",
           "signalflow": "data('nexus_dashboard.resource.status', filter=filter('nexus_dashboard.group', 'ndfc')).mean(by=['nexus_dashboard.resource.type', 'nexus_dashboard.status', 'nexus_dashboard.severity', 'host.name']).publish(label='NDFC resource status')",
           "legend_dimension": "nexus_dashboard.resource.type"
+        },
+        {
+          "name": "Nexus Dashboard Audit And Event Counts",
+          "description": "Value: counts bounded audit and event evidence from Nexus Dashboard services. Interpretation: spikes in audits, events, anomalies, advisories, alerts, or root causes during an incident point to change or controller-side ownership.",
+          "signalflow": "data('nexus_dashboard.audit.record.count').sum(by=['nexus_dashboard.product', 'nexus_dashboard.operation', 'nexus_dashboard.status', 'nexus_dashboard.severity']).publish(label='Audit records'); data('nexus_dashboard.event.count').sum(by=['nexus_dashboard.product', 'nexus_dashboard.operation', 'nexus_dashboard.status', 'nexus_dashboard.severity']).publish(label='Events')",
+          "legend_dimension": "nexus_dashboard.operation"
         }
       ]
     },
@@ -396,6 +443,20 @@
           "description": "Value: shows APIC-discovered LLDP/CDP/topology neighbors by local node/interface. Interpretation: missing or changed neighbors identify the physical or logical path tied to endpoint impact.",
           "signalflow": "data('cisco.topology.neighbor.info', filter=filter('cisco.controller.type', 'apic')).sum(by=['host.name', 'network.interface.name', 'network.peer.name', 'network.protocol.name']).publish(label='Neighbor')",
           "legend_dimension": "network.peer.name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "ACI Resource Status",
+          "description": "Value: shows encoded APIC object status across fabric, faults, endpoints, tenants, and topology. Interpretation: unhealthy rows identify the APIC object family and severity behind user or application impact.",
+          "signalflow": "data('aci.resource.status').mean(by=['aci.group', 'aci.resource.type', 'aci.status', 'aci.severity', 'host.name']).publish(label='ACI resource status')",
+          "legend_dimension": "aci.group"
+        },
+        {
+          "name": "ACI Audit And Event Counts",
+          "description": "Value: counts recent APIC audit and event records with bounded labels. Interpretation: audit or event spikes near a fault window provide change evidence without high-cardinality messages or usernames in metrics.",
+          "signalflow": "data('aci.audit.record.count').sum(by=['aci.operation', 'aci.status', 'aci.severity']).publish(label='Audit records'); data('aci.event.count').sum(by=['aci.operation', 'aci.status', 'aci.severity']).publish(label='Events')",
+          "legend_dimension": "aci.operation"
         }
       ]
     }

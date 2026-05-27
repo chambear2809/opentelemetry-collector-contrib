@@ -14,11 +14,36 @@
   ],
   "default_filters": {
     "variables": [
-      {"property": "host.name", "alias": "Device", "description": "Catalyst Center device name.", "applyIfExists": true},
-      {"property": "catalyst_center.device.serial", "alias": "Serial", "description": "Catalyst Center device serial number.", "applyIfExists": true},
-      {"property": "catalyst_center.device.id", "alias": "Device ID", "description": "Catalyst Center device identifier.", "applyIfExists": true},
-      {"property": "catalyst_center.site.name", "alias": "Site", "description": "Catalyst Center site name.", "applyIfExists": true},
-      {"property": "network.interface.name", "alias": "Interface", "description": "Network interface name.", "applyIfExists": true}
+      {
+        "property": "host.name",
+        "alias": "Device",
+        "description": "Catalyst Center device name.",
+        "applyIfExists": true
+      },
+      {
+        "property": "catalyst_center.device.serial",
+        "alias": "Serial",
+        "description": "Catalyst Center device serial number.",
+        "applyIfExists": true
+      },
+      {
+        "property": "catalyst_center.device.id",
+        "alias": "Device ID",
+        "description": "Catalyst Center device identifier.",
+        "applyIfExists": true
+      },
+      {
+        "property": "catalyst_center.site.name",
+        "alias": "Site",
+        "description": "Catalyst Center site name.",
+        "applyIfExists": true
+      },
+      {
+        "property": "network.interface.name",
+        "alias": "Interface",
+        "description": "Network interface name.",
+        "applyIfExists": true
+      }
     ]
   },
   "dashboards": [
@@ -123,6 +148,12 @@
               "paletteIndex": 5
             }
           ]
+        },
+        {
+          "name": "Network Device And Issue Scope",
+          "description": "Value: shows overall device and issue volume in Catalyst Center. Interpretation: sudden device-count changes indicate inventory or permission scope changes; rising issue counts indicate assurance impact.",
+          "signalflow": "data('catalyst_center.network.device.count').sum(by=['catalyst_center.health.state']).publish(label='Network devices'); data('catalyst_center.issue.count').sum(by=['catalyst_center.issue.window']).publish(label='Issues')",
+          "legend_dimension": "catalyst_center.health.state"
         }
       ]
     },
@@ -186,6 +217,18 @@
           "description": "Value: summarizes active Assurance issues by severity, priority, status, category, and entity type. Interpretation: increasing P1/P2 or high-severity issue counts should anchor incident triage.",
           "signalflow": "data('catalyst_center.issue.active.count').sum(by=['catalyst_center.issue.severity', 'catalyst_center.issue.priority', 'catalyst_center.issue.status', 'catalyst_center.issue.category', 'catalyst_center.issue.entity_type']).publish(label='Active issues')",
           "legend_dimension": "catalyst_center.issue.severity"
+        },
+        {
+          "name": "Site Issue Priority",
+          "description": "Value: weights site health by issue priority. Interpretation: P1/P2 growth at a site is higher incident priority than a generic health-score drop with low issue count.",
+          "signalflow": "data('catalyst_center.site.issue.count').sum(by=['catalyst_center.site.name', 'catalyst_center.issue.priority']).publish(label='Site issues')",
+          "legend_dimension": "catalyst_center.issue.priority"
+        },
+        {
+          "name": "Site Clients And Network Devices",
+          "description": "Value: shows how many clients and network devices are represented by each site health row. Interpretation: a low percentage at a large site deserves more attention than the same percentage at a tiny site.",
+          "signalflow": "data('catalyst_center.site.client.count').sum(by=['catalyst_center.site.name', 'catalyst_center.client.type', 'catalyst_center.health.state']).publish(label='Site clients'); data('catalyst_center.site.network_device.count').sum(by=['catalyst_center.site.name', 'catalyst_center.device.role', 'catalyst_center.health.state']).publish(label='Site devices')",
+          "legend_dimension": "catalyst_center.site.name"
         }
       ]
     },
@@ -269,6 +312,12 @@
           "description": "Value: tracks physical topology links globally and by link status. Interpretation: link-count drops or failed statuses can explain missing topology paths during site incidents.",
           "signalflow": "data('catalyst_center.topology.link.count').sum(by=['catalyst_center.topology.scope', 'catalyst_center.topology.link_status']).publish(label='Topology links')",
           "legend_dimension": "catalyst_center.topology.link_status"
+        },
+        {
+          "name": "Interface Inventory Count",
+          "description": "Value: tracks Catalyst Center interface collection scope. Interpretation: sudden count drops indicate inventory, permission, target, or API coverage changes before interface health is trusted.",
+          "signalflow": "data('catalyst_center.interface.count').sum(by=['host.name', 'catalyst_center.endpoint']).publish(label='Interface count')",
+          "legend_dimension": "host.name"
         }
       ]
     },
