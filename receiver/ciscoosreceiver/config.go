@@ -32,6 +32,14 @@ type DeviceConfig struct {
 	Auth connection.AuthConfig `mapstructure:"auth"`
 }
 
+// MetricConfig controls whether a named metric is forwarded by the Cisco OS receiver.
+type MetricConfig struct {
+	// DO NOT USE unkeyed struct initialization
+	_ struct{} `mapstructure:"-"`
+
+	Enabled bool `mapstructure:"enabled"`
+}
+
 // MerakiAuthConfig represents Meraki Dashboard API authentication settings.
 type MerakiAuthConfig struct {
 	// DO NOT USE unkeyed struct initialization
@@ -260,6 +268,138 @@ func (cfg CatalystCenterConfig) hasTarget() bool {
 	return cfg.Enabled
 }
 
+// SDWANAuthConfig represents Catalyst SD-WAN Manager authentication settings.
+type SDWANAuthConfig struct {
+	// DO NOT USE unkeyed struct initialization
+	_ struct{} `mapstructure:"-"`
+
+	Mode        string              `mapstructure:"mode"`
+	Username    string              `mapstructure:"username"`
+	Password    configopaque.String `mapstructure:"password"`
+	BearerToken configopaque.String `mapstructure:"bearer_token"`
+	JSessionID  configopaque.String `mapstructure:"jsession_id"`
+	XSRFToken   configopaque.String `mapstructure:"xsrf_token"`
+}
+
+// SDWANTargetFilters limits SD-WAN collection to known sites, devices, circuits, applications, and services.
+type SDWANTargetFilters struct {
+	// DO NOT USE unkeyed struct initialization
+	_ struct{} `mapstructure:"-"`
+
+	SiteIDs             []string `mapstructure:"site_ids"`
+	SystemIPs           []string `mapstructure:"system_ips"`
+	UUIDs               []string `mapstructure:"uuids"`
+	Serials             []string `mapstructure:"serials"`
+	DeviceTypes         []string `mapstructure:"device_types"`
+	Personalities       []string `mapstructure:"personalities"`
+	Colors              []string `mapstructure:"colors"`
+	InterfaceNames      []string `mapstructure:"interface_names"`
+	VPNIDs              []string `mapstructure:"vpn_ids"`
+	Applications        []string `mapstructure:"applications"`
+	ApplicationFamilies []string `mapstructure:"application_families"`
+	CloudProviders      []string `mapstructure:"cloud_providers"`
+	ServiceTypes        []string `mapstructure:"service_types"`
+}
+
+// SDWANGroupConfig controls a curated Catalyst SD-WAN collection group.
+type SDWANGroupConfig struct {
+	// DO NOT USE unkeyed struct initialization
+	_ struct{} `mapstructure:"-"`
+
+	Enabled    bool `mapstructure:"enabled"`
+	MaxResults int  `mapstructure:"max_results"`
+}
+
+// SDWANConfig defines native Catalyst SD-WAN Manager API polling settings.
+type SDWANConfig struct {
+	// DO NOT USE unkeyed struct initialization
+	_ struct{} `mapstructure:"-"`
+
+	Enabled             bool               `mapstructure:"enabled"`
+	Endpoint            string             `mapstructure:"endpoint"`
+	Auth                SDWANAuthConfig    `mapstructure:"auth"`
+	UserAgent           string             `mapstructure:"user_agent"`
+	PageSize            int                `mapstructure:"page_size"`
+	MaxRetries          int                `mapstructure:"max_retries"`
+	InsecureSkipVerify  bool               `mapstructure:"insecure_skip_verify"`
+	EventLookback       time.Duration      `mapstructure:"event_lookback"`
+	StatisticsLookback  time.Duration      `mapstructure:"statistics_lookback"`
+	RealtimeLookback    time.Duration      `mapstructure:"realtime_lookback"`
+	Targets             SDWANTargetFilters `mapstructure:"targets"`
+	Manager             SDWANGroupConfig   `mapstructure:"manager"`
+	Inventory           SDWANGroupConfig   `mapstructure:"inventory"`
+	ControlPlane        SDWANGroupConfig   `mapstructure:"control_plane"`
+	BFD                 SDWANGroupConfig   `mapstructure:"bfd"`
+	AppRoute            SDWANGroupConfig   `mapstructure:"app_route"`
+	Interfaces          SDWANGroupConfig   `mapstructure:"interfaces"`
+	Alarms              SDWANGroupConfig   `mapstructure:"alarms"`
+	Events              SDWANGroupConfig   `mapstructure:"events"`
+	Audit               SDWANGroupConfig   `mapstructure:"audit"`
+	RealtimeDetails     SDWANGroupConfig   `mapstructure:"realtime_details"`
+	Tunnels             SDWANGroupConfig   `mapstructure:"tunnels"`
+	Flows               SDWANGroupConfig   `mapstructure:"flows"`
+	PolicyQoS           SDWANGroupConfig   `mapstructure:"policy_qos"`
+	Security            SDWANGroupConfig   `mapstructure:"security"`
+	AppQoE              SDWANGroupConfig   `mapstructure:"appqoe"`
+	CloudOnRamp         SDWANGroupConfig   `mapstructure:"cloud_onramp"`
+	NWPI                SDWANGroupConfig   `mapstructure:"nwpi"`
+	Underlay            SDWANGroupConfig   `mapstructure:"underlay"`
+	Cellular            SDWANGroupConfig   `mapstructure:"cellular"`
+	HardwareEnergy      SDWANGroupConfig   `mapstructure:"hardware_energy"`
+	RoutingServices     SDWANGroupConfig   `mapstructure:"routing_services"`
+	BranchServices      SDWANGroupConfig   `mapstructure:"branch_services"`
+	LifecycleCompliance SDWANGroupConfig   `mapstructure:"lifecycle_compliance"`
+	ThousandEyes        SDWANGroupConfig   `mapstructure:"thousandeyes"`
+	ManagementSecurity  SDWANGroupConfig   `mapstructure:"management_security"`
+}
+
+func defaultSDWANGroupConfig(enabled bool, maxResults int) SDWANGroupConfig {
+	return SDWANGroupConfig{
+		Enabled:    enabled,
+		MaxResults: maxResults,
+	}
+}
+
+func defaultSDWANConfig() SDWANConfig {
+	return SDWANConfig{
+		UserAgent:           "opentelemetry-collector-contrib-ciscoosreceiver",
+		PageSize:            500,
+		MaxRetries:          3,
+		EventLookback:       24 * time.Hour,
+		StatisticsLookback:  30 * time.Minute,
+		RealtimeLookback:    5 * time.Minute,
+		Manager:             defaultSDWANGroupConfig(true, 1000),
+		Inventory:           defaultSDWANGroupConfig(true, 5000),
+		ControlPlane:        defaultSDWANGroupConfig(true, 10000),
+		BFD:                 defaultSDWANGroupConfig(true, 10000),
+		AppRoute:            defaultSDWANGroupConfig(true, 10000),
+		Interfaces:          defaultSDWANGroupConfig(true, 10000),
+		Alarms:              defaultSDWANGroupConfig(true, 1000),
+		Events:              defaultSDWANGroupConfig(true, 1000),
+		Audit:               defaultSDWANGroupConfig(true, 1000),
+		RealtimeDetails:     defaultSDWANGroupConfig(false, 1000),
+		Tunnels:             defaultSDWANGroupConfig(false, 10000),
+		Flows:               defaultSDWANGroupConfig(false, 10000),
+		PolicyQoS:           defaultSDWANGroupConfig(false, 10000),
+		Security:            defaultSDWANGroupConfig(false, 10000),
+		AppQoE:              defaultSDWANGroupConfig(false, 10000),
+		CloudOnRamp:         defaultSDWANGroupConfig(false, 10000),
+		NWPI:                defaultSDWANGroupConfig(false, 10000),
+		Underlay:            defaultSDWANGroupConfig(false, 10000),
+		Cellular:            defaultSDWANGroupConfig(false, 10000),
+		HardwareEnergy:      defaultSDWANGroupConfig(false, 10000),
+		RoutingServices:     defaultSDWANGroupConfig(false, 10000),
+		BranchServices:      defaultSDWANGroupConfig(false, 10000),
+		LifecycleCompliance: defaultSDWANGroupConfig(false, 10000),
+		ThousandEyes:        defaultSDWANGroupConfig(false, 1000),
+		ManagementSecurity:  defaultSDWANGroupConfig(false, 1000),
+	}
+}
+
+func (cfg SDWANConfig) hasTarget() bool {
+	return cfg.Enabled || cfg.Endpoint != "" || cfg.Auth.BearerToken != "" || cfg.Auth.Username != "" || cfg.Auth.Password != "" || cfg.Auth.JSessionID != ""
+}
+
 // ControllerAuthConfig represents username/password or API-key authentication for Nexus controllers.
 type ControllerAuthConfig struct {
 	// DO NOT USE unkeyed struct initialization
@@ -432,6 +572,9 @@ type Config struct {
 	// DeviceSelection limits emitted telemetry to shared Cisco device identities.
 	DeviceSelection DeviceSelectionConfig `mapstructure:"device_selection"`
 
+	// Metrics controls per-metric forwarding for cost-sensitive destinations.
+	Metrics map[string]MetricConfig `mapstructure:"metrics"`
+
 	// Meraki contains Meraki Dashboard API polling targets.
 	Meraki MerakiConfig `mapstructure:"meraki"`
 
@@ -440,6 +583,9 @@ type Config struct {
 
 	// CatalystCenter contains Cisco Catalyst Center API polling settings.
 	CatalystCenter CatalystCenterConfig `mapstructure:"catalyst_center"`
+
+	// SDWAN contains Cisco Catalyst SD-WAN Manager API polling settings.
+	SDWAN SDWANConfig `mapstructure:"sdwan"`
 
 	// NexusDashboard contains Nexus Dashboard, NDFC, Insights, NDO, OneManage, and Data Broker API polling settings.
 	NexusDashboard NexusDashboardConfig `mapstructure:"nexus_dashboard"`
@@ -467,12 +613,18 @@ func (cfg *Config) Validate() error {
 		err = multierr.Append(err, errors.New("collection_interval must be positive"))
 	}
 
-	if len(cfg.Devices) == 0 && !cfg.Meraki.hasTargets() && !cfg.Intersight.hasTarget() && !cfg.CatalystCenter.hasTarget() && !cfg.NexusDashboard.hasTarget() && !cfg.ACI.hasTarget() {
-		err = multierr.Append(err, errors.New("must specify at least one SSH device, Meraki target, Intersight target, Catalyst Center target, Nexus Dashboard target, or ACI target"))
+	if len(cfg.Devices) == 0 && !cfg.Meraki.hasTargets() && !cfg.Intersight.hasTarget() && !cfg.CatalystCenter.hasTarget() && !cfg.SDWAN.hasTarget() && !cfg.NexusDashboard.hasTarget() && !cfg.ACI.hasTarget() {
+		err = multierr.Append(err, errors.New("must specify at least one SSH device, Meraki target, Intersight target, Catalyst Center target, SD-WAN target, Nexus Dashboard target, or ACI target"))
 	}
 
 	if len(cfg.Devices) > 0 && len(cfg.Scrapers) == 0 {
 		err = multierr.Append(err, errors.New("must specify at least one scraper"))
+	}
+
+	for name := range cfg.Metrics {
+		if strings.TrimSpace(name) == "" {
+			err = multierr.Append(err, errors.New("metrics keys cannot be empty"))
+		}
 	}
 
 	for i, device := range cfg.Devices {
@@ -496,6 +648,7 @@ func (cfg *Config) Validate() error {
 	err = multierr.Append(err, cfg.validateMeraki())
 	err = multierr.Append(err, cfg.validateIntersight())
 	err = multierr.Append(err, cfg.validateCatalystCenter())
+	err = multierr.Append(err, cfg.validateSDWAN())
 	err = multierr.Append(err, cfg.validateNexusDashboard())
 	err = multierr.Append(err, cfg.validateACI())
 
@@ -672,6 +825,118 @@ func (cfg *Config) validateCatalystCenter() error {
 	return err
 }
 
+func (cfg *Config) validateSDWAN() error {
+	if !cfg.SDWAN.hasTarget() {
+		return nil
+	}
+
+	var err error
+	if cfg.SDWAN.Endpoint == "" {
+		err = multierr.Append(err, errors.New("sdwan.endpoint must be provided"))
+	} else {
+		err = multierr.Append(err, validateHTTPURL("sdwan.endpoint", cfg.SDWAN.Endpoint))
+	}
+
+	switch inferredSDWANAuthMode(cfg.SDWAN.Auth) {
+	case "bearer":
+		if cfg.SDWAN.Auth.BearerToken == "" {
+			err = multierr.Append(err, errors.New("sdwan.auth.bearer_token must be provided for bearer auth"))
+		}
+	case "jwt", "session":
+		if cfg.SDWAN.Auth.Username == "" {
+			err = multierr.Append(err, fmt.Errorf("sdwan.auth.username must be provided for %s auth", inferredSDWANAuthMode(cfg.SDWAN.Auth)))
+		}
+		if cfg.SDWAN.Auth.Password == "" {
+			err = multierr.Append(err, fmt.Errorf("sdwan.auth.password must be provided for %s auth", inferredSDWANAuthMode(cfg.SDWAN.Auth)))
+		}
+	case "cookie":
+		if cfg.SDWAN.Auth.JSessionID == "" {
+			err = multierr.Append(err, errors.New("sdwan.auth.jsession_id must be provided for cookie auth"))
+		}
+		if cfg.SDWAN.Auth.XSRFToken == "" {
+			err = multierr.Append(err, errors.New("sdwan.auth.xsrf_token must be provided for cookie auth"))
+		}
+	default:
+		err = multierr.Append(err, errors.New("sdwan.auth.mode must be auto, jwt, session, bearer, or cookie"))
+	}
+
+	if cfg.SDWAN.PageSize < 0 {
+		err = multierr.Append(err, errors.New("sdwan.page_size must not be negative"))
+	}
+	if cfg.SDWAN.MaxRetries < 0 {
+		err = multierr.Append(err, errors.New("sdwan.max_retries must not be negative"))
+	}
+	if cfg.SDWAN.EventLookback < 0 {
+		err = multierr.Append(err, errors.New("sdwan.event_lookback must not be negative"))
+	}
+	if cfg.SDWAN.StatisticsLookback < 0 {
+		err = multierr.Append(err, errors.New("sdwan.statistics_lookback must not be negative"))
+	}
+	if cfg.SDWAN.RealtimeLookback < 0 {
+		err = multierr.Append(err, errors.New("sdwan.realtime_lookback must not be negative"))
+	}
+	if cfg.SDWAN.RealtimeDetails.Enabled && !cfg.SDWAN.Targets.hasDeviceScope() {
+		err = multierr.Append(err, errors.New("sdwan.realtime_details requires at least one target filter: site_ids, system_ips, uuids, serials, device_types, personalities, colors, interface_names, vpn_ids, applications, or application_families"))
+	}
+
+	for name, values := range map[string][]string{
+		"site_ids":             cfg.SDWAN.Targets.SiteIDs,
+		"system_ips":           cfg.SDWAN.Targets.SystemIPs,
+		"uuids":                cfg.SDWAN.Targets.UUIDs,
+		"serials":              cfg.SDWAN.Targets.Serials,
+		"device_types":         cfg.SDWAN.Targets.DeviceTypes,
+		"personalities":        cfg.SDWAN.Targets.Personalities,
+		"colors":               cfg.SDWAN.Targets.Colors,
+		"interface_names":      cfg.SDWAN.Targets.InterfaceNames,
+		"vpn_ids":              cfg.SDWAN.Targets.VPNIDs,
+		"applications":         cfg.SDWAN.Targets.Applications,
+		"application_families": cfg.SDWAN.Targets.ApplicationFamilies,
+		"cloud_providers":      cfg.SDWAN.Targets.CloudProviders,
+		"service_types":        cfg.SDWAN.Targets.ServiceTypes,
+	} {
+		for i, value := range values {
+			if strings.TrimSpace(value) == "" {
+				err = multierr.Append(err, fmt.Errorf("sdwan.targets.%s[%d] cannot be empty", name, i))
+			}
+		}
+	}
+
+	groups := map[string]SDWANGroupConfig{
+		"manager":              cfg.SDWAN.Manager,
+		"inventory":            cfg.SDWAN.Inventory,
+		"control_plane":        cfg.SDWAN.ControlPlane,
+		"bfd":                  cfg.SDWAN.BFD,
+		"app_route":            cfg.SDWAN.AppRoute,
+		"interfaces":           cfg.SDWAN.Interfaces,
+		"alarms":               cfg.SDWAN.Alarms,
+		"events":               cfg.SDWAN.Events,
+		"audit":                cfg.SDWAN.Audit,
+		"realtime_details":     cfg.SDWAN.RealtimeDetails,
+		"tunnels":              cfg.SDWAN.Tunnels,
+		"flows":                cfg.SDWAN.Flows,
+		"policy_qos":           cfg.SDWAN.PolicyQoS,
+		"security":             cfg.SDWAN.Security,
+		"appqoe":               cfg.SDWAN.AppQoE,
+		"cloud_onramp":         cfg.SDWAN.CloudOnRamp,
+		"nwpi":                 cfg.SDWAN.NWPI,
+		"underlay":             cfg.SDWAN.Underlay,
+		"cellular":             cfg.SDWAN.Cellular,
+		"hardware_energy":      cfg.SDWAN.HardwareEnergy,
+		"routing_services":     cfg.SDWAN.RoutingServices,
+		"branch_services":      cfg.SDWAN.BranchServices,
+		"lifecycle_compliance": cfg.SDWAN.LifecycleCompliance,
+		"thousandeyes":         cfg.SDWAN.ThousandEyes,
+		"management_security":  cfg.SDWAN.ManagementSecurity,
+	}
+	for name, group := range groups {
+		if group.MaxResults < 0 {
+			err = multierr.Append(err, fmt.Errorf("sdwan.%s.max_results must not be negative", name))
+		}
+	}
+
+	return err
+}
+
 func (cfg *Config) validateNexusDashboard() error {
 	if !cfg.NexusDashboard.hasTarget() {
 		return nil
@@ -812,6 +1077,38 @@ func inferredCatalystCenterAuthMode(auth CatalystCenterAuthConfig) string {
 	default:
 		return auth.Mode
 	}
+}
+
+func inferredSDWANAuthMode(auth SDWANAuthConfig) string {
+	switch auth.Mode {
+	case "", "auto":
+		if auth.BearerToken != "" {
+			return "bearer"
+		}
+		if auth.JSessionID != "" || auth.XSRFToken != "" {
+			return "cookie"
+		}
+		if auth.Username != "" || auth.Password != "" {
+			return "jwt"
+		}
+		return ""
+	default:
+		return auth.Mode
+	}
+}
+
+func (targets SDWANTargetFilters) hasDeviceScope() bool {
+	return len(targets.SiteIDs) > 0 ||
+		len(targets.SystemIPs) > 0 ||
+		len(targets.UUIDs) > 0 ||
+		len(targets.Serials) > 0 ||
+		len(targets.DeviceTypes) > 0 ||
+		len(targets.Personalities) > 0 ||
+		len(targets.Colors) > 0 ||
+		len(targets.InterfaceNames) > 0 ||
+		len(targets.VPNIDs) > 0 ||
+		len(targets.Applications) > 0 ||
+		len(targets.ApplicationFamilies) > 0
 }
 
 func validCatalystCenterDeviceIdentifier(value string) bool {

@@ -49,6 +49,7 @@ func createDefaultConfig() component.Config {
 		Meraki:           defaultMerakiConfig(),
 		Intersight:       defaultIntersightConfig(),
 		CatalystCenter:   defaultCatalystCenterConfig(),
+		SDWAN:            defaultSDWANConfig(),
 		NexusDashboard:   defaultNexusDashboardConfig(),
 		ACI:              defaultACIConfig(),
 		Scrapers:         map[component.Type]component.Config{},
@@ -63,6 +64,7 @@ func createMetricsReceiver(
 ) (receiver.Metrics, error) {
 	conf := cfg.(*Config)
 	selector := newDeviceSelectionMatcher(conf.DeviceSelection)
+	consumer = newMetricFilteringConsumer(consumer, conf)
 
 	var receivers []receiver.Metrics
 	for _, device := range conf.Devices {
@@ -142,6 +144,14 @@ func createMetricsReceiver(
 		receivers = append(receivers, rcvr)
 	}
 
+	if conf.SDWAN.hasTarget() {
+		rcvr, err := newSDWANMetricsReceiver(set, conf, consumer)
+		if err != nil {
+			return nil, err
+		}
+		receivers = append(receivers, rcvr)
+	}
+
 	if conf.NexusDashboard.hasTarget() {
 		rcvr, err := newNexusDashboardMetricsReceiver(set, conf, consumer)
 		if err != nil {
@@ -179,6 +189,13 @@ func createLogsReceiver(
 	var receivers []receiver.Logs
 	if conf.Intersight.hasTarget() {
 		rcvr, err := newIntersightLogsReceiver(set, conf, consumer)
+		if err != nil {
+			return nil, err
+		}
+		receivers = append(receivers, rcvr)
+	}
+	if conf.SDWAN.hasTarget() {
+		rcvr, err := newSDWANLogsReceiver(set, conf, consumer)
 		if err != nil {
 			return nil, err
 		}

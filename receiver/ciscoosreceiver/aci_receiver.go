@@ -511,6 +511,19 @@ func (b *aciMetricsBuilder) recordObject(controllerName, controllerEndpoint stri
 		rb.recordInt("aci.resource.status", "ACI managed object status encoded for troubleshooting.", "1", statusCode(status), attrs)
 	}
 	b.addCount("aci.resource.count", attrs)
+	evidenceAttrs := compactAttrs(map[string]string{
+		"aci.group":         endpoint.group,
+		"aci.operation":     endpoint.operation,
+		"aci.resource.type": endpoint.objectType,
+		"aci.status":        firstNonEmpty(status, "present"),
+		"aci.severity":      firstNonEmpty(severity, "unknown"),
+	})
+	switch endpoint.group {
+	case "audit":
+		b.addCount("aci.audit.record.count", evidenceAttrs)
+	case "events":
+		b.addCount("aci.event.count", evidenceAttrs)
+	}
 
 	switch endpoint.group {
 	case "fabric", "nodes", "controllers":
@@ -929,6 +942,10 @@ func aciCountDescription(name string) string {
 	switch name {
 	case "aci.resource.count":
 		return "ACI resources by group, class, resource type, status, and severity."
+	case "aci.audit.record.count":
+		return "Recent APIC audit records by bounded operation, status, and severity attributes."
+	case "aci.event.count":
+		return "Recent APIC event records by bounded operation, status, and severity attributes."
 	case "aci.fault.count":
 		return "Active APIC faults."
 	case "aci.endpoint.count":

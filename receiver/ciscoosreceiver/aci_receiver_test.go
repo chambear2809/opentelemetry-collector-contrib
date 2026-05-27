@@ -35,6 +35,12 @@ func TestACIScrapeEmitsTroubleshootingMetrics(t *testing.T) {
 		"/api/class/fvTenant.json": `{"totalCount":"1","imdata":[
 			{"fvTenant":{"attributes":{"dn":"uni/tn-prod","name":"prod","status":"created"}}}
 		]}`,
+		"/api/class/aaaModLR.json": `{"totalCount":"1","imdata":[
+			{"aaaModLR":{"attributes":{"dn":"uni/tn-prod","severity":"info","status":"modified","user":"operator","descr":"tenant changed"}}}
+		]}`,
+		"/api/class/eventRecord.json": `{"totalCount":"1","imdata":[
+			{"eventRecord":{"attributes":{"dn":"topology/pod-1/node-101","severity":"warning","status":"raised","descr":"link flap"}}}
+		]}`,
 	})
 	defer server.Close()
 
@@ -45,6 +51,8 @@ func TestACIScrapeEmitsTroubleshootingMetrics(t *testing.T) {
 	names := metricNames(md)
 	assert.Contains(t, names, "aci.api.request.duration")
 	assert.Contains(t, names, "aci.resource.info")
+	assert.Contains(t, names, "aci.audit.record.count")
+	assert.Contains(t, names, "aci.event.count")
 	assert.Contains(t, names, "cisco.device.up")
 	assert.Contains(t, names, "aci.fault.active")
 	assert.Contains(t, names, "system.network.interface.status")
@@ -52,6 +60,10 @@ func TestACIScrapeEmitsTroubleshootingMetrics(t *testing.T) {
 	assert.Contains(t, names, "aci.tenant.status")
 	assert.True(t, hasResourceHostID(md, "ACI-SERIAL-1"))
 	assert.True(t, intMetricValueExists(md, "aci.scrape.partial_success", 0))
+	assert.True(t, intMetricValueExists(md, "aci.audit.record.count", 1))
+	assert.True(t, intMetricValueExists(md, "aci.event.count", 1))
+	assert.True(t, hasMetricDatapointAttribute(md, "aci.audit.record.count", "aci.operation", "audit.modifications"))
+	assert.False(t, hasMetricDatapointAttribute(md, "aci.audit.record.count", "user.name", "operator"))
 }
 
 func TestACIScrapeAppliesSharedDeviceSelection(t *testing.T) {

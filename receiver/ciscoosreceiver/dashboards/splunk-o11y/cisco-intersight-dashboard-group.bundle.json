@@ -14,11 +14,36 @@
   ],
   "default_filters": {
     "variables": [
-      {"property": "host.name", "alias": "Device", "description": "Intersight host or resource name.", "applyIfExists": true},
-      {"property": "intersight.serial", "alias": "Serial", "description": "Intersight device serial number.", "applyIfExists": true},
-      {"property": "intersight.moid", "alias": "Moid", "description": "Intersight managed object ID.", "applyIfExists": true},
-      {"property": "intersight.resource.type", "alias": "Resource Type", "description": "Intersight resource type.", "applyIfExists": true},
-      {"property": "network.interface.name", "alias": "Interface", "description": "Network interface name.", "applyIfExists": true}
+      {
+        "property": "host.name",
+        "alias": "Device",
+        "description": "Intersight host or resource name.",
+        "applyIfExists": true
+      },
+      {
+        "property": "intersight.serial",
+        "alias": "Serial",
+        "description": "Intersight device serial number.",
+        "applyIfExists": true
+      },
+      {
+        "property": "intersight.moid",
+        "alias": "Moid",
+        "description": "Intersight managed object ID.",
+        "applyIfExists": true
+      },
+      {
+        "property": "intersight.resource.type",
+        "alias": "Resource Type",
+        "description": "Intersight resource type.",
+        "applyIfExists": true
+      },
+      {
+        "property": "network.interface.name",
+        "alias": "Interface",
+        "description": "Network interface name.",
+        "applyIfExists": true
+      }
     ]
   },
   "dashboards": [
@@ -103,6 +128,14 @@
           "description": "Value: detects stale Intersight telemetry. Interpretation: flat or old timestamps indicate the receiver stopped completing scrapes.",
           "signalflow": "data('intersight.scrape.last_success').max(by=['host.name']).publish(label='Last success')",
           "legend_dimension": "host.name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Target Connection Status",
+          "description": "Value: shows whether Intersight targets remain connected. Interpretation: disconnected targets explain stale server, fabric, Kubernetes, or storage telemetry.",
+          "signalflow": "data('intersight.target.connection_status').mean(by=['host.name', 'intersight.status']).publish(label='Target connection')",
+          "legend_dimension": "host.name"
         }
       ]
     },
@@ -163,6 +196,20 @@
           "description": "Value: tracks support bundle collection or upload progress. Interpretation: failed or stuck bundle state can delay TAC handoff.",
           "signalflow": "data('intersight.techsupport.status').mean(by=['host.name', 'intersight.status', 'intersight.resource.type']).publish(label='Tech-support status')",
           "legend_dimension": "intersight.status"
+        },
+        {
+          "name": "Audit Records",
+          "description": "Value: counts recent Intersight audit/config-change records. Interpretation: changes in the incident window help correlate ownership and likely cause without putting change text into metric dimensions.",
+          "signalflow": "data('intersight.audit.record.count').sum(by=['intersight.audit.user']).publish(label='Audit records')",
+          "legend_dimension": "intersight.audit.user"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Firmware Bundle Status",
+          "description": "Value: shows firmware bundle status for lifecycle and upgrade risk. Interpretation: non-healthy bundle states can explain maintenance windows, upgrade failures, or compatibility issues.",
+          "signalflow": "data('intersight.firmware.bundle.status').mean(by=['host.name', 'intersight.status']).publish(label='Firmware status')",
+          "legend_dimension": "host.name"
         }
       ]
     },
@@ -226,6 +273,14 @@
           "name": "VM Footprint",
           "description": "Value: shows VM count and VM sizing from Intersight. Interpretation: use host, cluster, and VM resource dimensions to correlate workload concentration with infrastructure symptoms.",
           "signalflow": "data('intersight.virtual_machine.count').sum(by=['host.name']).publish(label='VM count'); data('intersight.virtual_machine.cpu.count').sum(by=['host.name']).publish(label='VM vCPU'); data('intersight.virtual_machine.memory').sum(by=['host.name']).publish(label='VM memory')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Kubernetes Cluster Connection Status",
+          "description": "Value: shows Kubernetes cluster connection health from Intersight. Interpretation: disconnected clusters explain missing container or AI workload context.",
+          "signalflow": "data('intersight.kubernetes.cluster.connection_status').mean(by=['host.name', 'intersight.status']).publish(label='Kubernetes connection')",
           "legend_dimension": "host.name"
         }
       ]
@@ -347,6 +402,18 @@
           "description": "Value: shows transceiver receive and transmit signal power. Interpretation: drifting or weak dBm values should be correlated with CRC, signal-loss, and link-failure counters.",
           "signalflow": "data('intersight.ucs.signal_power.receive').mean(by=['host.name']).publish(label='Rx optical power'); data('intersight.ucs.signal_power.transmit').mean(by=['host.name']).publish(label='Tx optical power')",
           "legend_dimension": "host.name"
+        },
+        {
+          "name": "Compute Memory And Threads",
+          "description": "Value: inventories available compute memory and CPU thread capacity. Interpretation: low memory or unexpected thread-count changes explain host sizing, replacement, or workload placement risk.",
+          "signalflow": "data('intersight.compute.available_memory').mean(by=['host.name', 'host.id']).publish(label='Available memory'); data('intersight.compute.thread.count').mean(by=['host.name', 'host.id']).publish(label='Threads')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "UCS Memory Module Size",
+          "description": "Value: shows DIMM/module capacity reported by UCS telemetry. Interpretation: missing or unexpectedly small modules identify capacity, inventory, or hardware replacement issues.",
+          "signalflow": "data('intersight.ucs.memory.module.size').mean(by=['host.name', 'intersight.memory.module']).publish(label='Memory module size')",
+          "legend_dimension": "intersight.memory.module"
         }
       ]
     },

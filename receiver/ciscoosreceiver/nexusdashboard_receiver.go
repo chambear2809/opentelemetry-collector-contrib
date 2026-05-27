@@ -483,6 +483,20 @@ func (b *nexusDashboardMetricsBuilder) recordObject(endpoint nexusDashboardEndpo
 		rb.recordInt("nexus_dashboard.resource.status", "Nexus Dashboard resource status encoded for troubleshooting.", "1", statusCode(status), attrs)
 	}
 	b.addCount("nexus_dashboard.resource.count", attrs)
+	evidenceAttrs := compactAttrs(map[string]string{
+		"nexus_dashboard.product":       endpoint.product,
+		"nexus_dashboard.group":         endpoint.group,
+		"nexus_dashboard.operation":     endpoint.operation,
+		"nexus_dashboard.resource.type": endpoint.objectType,
+		"nexus_dashboard.status":        firstNonEmpty(status, "present"),
+		"nexus_dashboard.severity":      firstNonEmpty(severity, "unknown"),
+	})
+	switch nexusDashboardEvidenceMetric(endpoint) {
+	case "audit":
+		b.addCount("nexus_dashboard.audit.record.count", evidenceAttrs)
+	case "event":
+		b.addCount("nexus_dashboard.event.count", evidenceAttrs)
+	}
 
 	switch endpoint.group {
 	case "platform":
@@ -749,10 +763,13 @@ func nexusDashboardMetricEndpoints() []nexusDashboardEndpoint {
 		{group: "ndfc", product: "ndfc", operation: "ndfc.vpc.pairs", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/vpcpairs", objectType: "ndfc.vpc"},
 		{group: "ndfc", product: "ndfc", operation: "ndfc.endpoints", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/top-down/fabrics/{fabricName}/endpoints", objectType: "ndfc.endpoint", selectorKey: "fabric"},
 		{group: "ndfc", product: "ndfc", operation: "ndfc.policy.deployment", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/switches/{serialNumber}/intent-config", objectType: "ndfc.policy", selectorKey: "serial"},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.audit", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/audit", objectType: "ndfc.audit", query: recentNexusDashboardQuery},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.events", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/events", objectType: "ndfc.event", query: recentNexusDashboardQuery},
 		{group: "performance", product: "ndfc", operation: "ndfc.interface.stats", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/lanSwitches/{switchId}/interfaces", objectType: "ndfc.interface", selectorKey: "switch_id"},
 		{group: "performance", product: "ndfc", operation: "ndfc.telemetry.sync", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/telemetry/sync/status", objectType: "ndfc.telemetry"},
 		{group: "insights", product: "insights", operation: "insights.anomalies", path: "/nexus/insights/api/v1/anomalies", objectType: "insights.anomaly", query: recentNexusDashboardQuery},
 		{group: "insights", product: "insights", operation: "insights.advisories", path: "/nexus/insights/api/v1/advisories", objectType: "insights.advisory", query: recentNexusDashboardQuery},
+		{group: "insights", product: "insights", operation: "insights.root_causes", path: "/nexus/insights/api/v1/rootcauses", objectType: "insights.root_cause", query: recentNexusDashboardQuery},
 		{group: "insights", product: "insights", operation: "insights.sites", path: "/nexus/insights/api/v1/sites", objectType: "insights.site"},
 		{group: "insights", product: "insights", operation: "insights.flow_analyses", path: "/nexus/insights/api/v1/flow/analyses", objectType: "insights.flow"},
 		{group: "insights", product: "insights", operation: "insights.recommendations", path: "/nexus/insights/api/v1/recommendations", objectType: "insights.recommendation"},
@@ -760,6 +777,7 @@ func nexusDashboardMetricEndpoints() []nexusDashboardEndpoint {
 		{group: "orchestrator", product: "orchestrator", operation: "ndo.schemas", path: "/mso/api/v1/schemas", objectType: "ndo.schema"},
 		{group: "orchestrator", product: "orchestrator", operation: "ndo.deployments", path: "/mso/api/v1/tasks", objectType: "ndo.deployment", query: recentNexusDashboardQuery},
 		{group: "orchestrator", product: "orchestrator", operation: "ndo.alerts", path: "/mso/api/v1/alerts", objectType: "ndo.alert", query: recentNexusDashboardQuery},
+		{group: "orchestrator", product: "orchestrator", operation: "ndo.audit", path: "/mso/api/v1/audit", objectType: "ndo.audit", query: recentNexusDashboardQuery},
 		{group: "data_broker", product: "data_broker", operation: "nddb.health", path: "/api/v1/nddb/health", objectType: "nddb.health"},
 		{group: "data_broker", product: "data_broker", operation: "nddb.switches", path: "/api/v1/nddb/switches", objectType: "nddb.switch"},
 		{group: "data_broker", product: "data_broker", operation: "nddb.rules", path: "/api/v1/nddb/rules", objectType: "nddb.rule"},
@@ -879,6 +897,23 @@ func nexusDashboardObjectStatus(obj nexusdashboard.Object) string {
 	)
 }
 
+func nexusDashboardEvidenceMetric(endpoint nexusDashboardEndpointInstance) string {
+	operation := strings.ToLower(endpoint.operation)
+	objectType := strings.ToLower(endpoint.objectType)
+	if strings.Contains(operation, ".audit") || strings.Contains(objectType, ".audit") {
+		return "audit"
+	}
+	for _, needle := range []string{".events", ".anomalies", ".advisories", ".alerts", ".root_causes"} {
+		if strings.Contains(operation, needle) {
+			return "event"
+		}
+	}
+	if strings.Contains(objectType, ".event") || strings.Contains(objectType, ".anomaly") || strings.Contains(objectType, ".advisory") || strings.Contains(objectType, ".alert") || strings.Contains(objectType, ".root_cause") {
+		return "event"
+	}
+	return ""
+}
+
 func recordNexusDashboardNumeric(rb *resourceMetricsBuilder, obj nexusdashboard.Object, key, name, description, unit string, attrs map[string]string, multiplier float64) {
 	value, ok := nexusdashboard.Float64(obj, key)
 	if !ok {
@@ -918,6 +953,10 @@ func nexusDashboardCountDescription(name string) string {
 	switch name {
 	case "nexus_dashboard.resource.count":
 		return "Nexus Dashboard resources by product, group, resource type, status, and severity."
+	case "nexus_dashboard.audit.record.count":
+		return "Nexus Dashboard audit records by bounded product, operation, status, and severity attributes."
+	case "nexus_dashboard.event.count":
+		return "Nexus Dashboard events, anomalies, advisories, alerts, and root causes by bounded product, operation, status, and severity attributes."
 	case "nexus_dashboard.insights.anomaly.count":
 		return "Nexus Dashboard Insights anomalies and advisories."
 	default:

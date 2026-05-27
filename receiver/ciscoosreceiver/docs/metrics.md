@@ -2,13 +2,14 @@
 
 This guide lists every metric emitted by the Cisco OS receiver and explains, in plain language, why someone might monitor it. It is written for operators who may not know Cisco or networking terms yet.
 
-The receiver has two SSH scrapers plus API polling paths for Meraki, Intersight, Catalyst Center, Nexus Dashboard/NDFC, and APIC:
+The receiver has two SSH scrapers plus API polling paths for Meraki, Intersight, Catalyst Center, Catalyst SD-WAN Manager, Nexus Dashboard/NDFC, and APIC:
 
 - `system`: device availability, CPU, memory, protocol, control-plane, routing, forwarding, and router dataplane health.
 - `interfaces`: physical and logical port traffic, errors, packet drops, link status, L2 topology, LACP, vPC, and transceiver sensors.
 - `meraki`: organization-scoped Dashboard API polling for inventory, status, uplinks, switch ports, wireless, VPN, power modules, topology, and transceiver telemetry.
 - `intersight`: signed Intersight API polling for UCS, HyperFlex, storage, Kubernetes, virtualization, alarms, advisories, HCL/compliance, workflows, audit records, and telemetry GroupBy performance.
 - `catalyst_center`: Catalyst Center Assurance API polling for inventory, reachability, interface, network health, client health, site health, topology, issues, device-detail, and client-detail telemetry.
+- `sdwan`: Catalyst SD-WAN Manager polling for Manager API trust, inventory, control plane, BFD, app-route, interfaces, alarms, events, audit, and opt-in product modules such as tunnels, policy/QoS, security, AppQoE, Cloud OnRamp, NWPI, underlay, cellular, hardware/energy, routing services, branch services, lifecycle/compliance, ThousandEyes agent status, and management security.
 - `nexus_dashboard`: API-first polling for Nexus Dashboard platform health, NDFC LAN/NX-OS fabrics, Insights/Analyze anomalies, Orchestrator/OneManage deployment state, Data Broker sessions, and interface performance.
 - `aci`: APIC class-query polling for ACI controller health, fabric nodes, faults, audit/events, tenant objects, endpoint presence, topology, and bounded stats.
 
@@ -36,9 +37,18 @@ Controller/API paths add these correlation attributes when available:
 | `cisco.switch.serial` | Nexus switch serial used to correlate API, SSH, and MDT/YANG telemetry. |
 | `catalyst_center.device.family` | Catalyst Center device family reported by inventory or topology APIs. |
 | `catalyst_center.device.role` | Catalyst Center device role reported by inventory or topology APIs. |
+| `catalyst_center.health.state` | Bounded health-state label such as total or good for site population counts. |
 | `catalyst_center.site.name` | Catalyst Center site name or hierarchy. |
 | `catalyst_center.client.mac` | Targeted Catalyst Center client MAC address. |
+| `sdwan.system_ip` | Catalyst SD-WAN system IP. |
+| `sdwan.uuid` | Catalyst SD-WAN device UUID. |
+| `sdwan.site.id` | Catalyst SD-WAN site ID. |
+| `sdwan.personality` | Catalyst SD-WAN personality, such as Manager, Controller, Validator, WAN Edge, or SD-Routing role. |
+| `sdwan.tloc.color` | Catalyst SD-WAN transport color. |
+| `sdwan.application` | Bounded SD-WAN application name for app-route and AI/SaaS path views. |
 | `aci.node.id` | APIC node ID for ACI switches and controllers. |
+| `aci.operation` | Bounded APIC endpoint family or evidence operation. |
+| `nexus_dashboard.operation` | Bounded Nexus Dashboard endpoint family or evidence operation. |
 | `ndfc.switch.id` | NDFC switch database ID used by some NDFC interface/performance APIs. |
 | `nd.service.name` | Nexus Dashboard service/app name. |
 
@@ -68,10 +78,37 @@ For most users, start with these metrics before enabling the larger troubleshoot
 | `catalyst_center.api.request.errors` | Shows Catalyst Center API request failures, including authorization, endpoint, or rate-limit issues. |
 | `catalyst_center.network.health.score` | Shows global Catalyst Center network health. |
 | `catalyst_center.issue.active.count` | Shows active Catalyst Center Assurance issues grouped by severity, priority, status, category, and entity type. |
+| `sdwan.api.request.errors` | Shows SD-WAN Manager API request failures, including authorization, endpoint, permission, or rate-limit issues. |
+| `sdwan.control.connection.status` | Shows SD-WAN overlay control health. |
+| `sdwan.bfd.session.status` | Shows SD-WAN tunnel/path session health. |
+| `sdwan.app_route.latency` | Shows application-aware routing latency for SaaS, custom apps, and AI/model API paths. |
 | `nexus_dashboard.resource.status` | Shows Nexus Dashboard, NDFC, Insights, Orchestrator, or Data Broker status with API context. |
 | `nexus_dashboard.service.unavailable` | Shows an ND app/API endpoint that is unavailable, unauthorized, or not installed. |
 | `aci.fault.count` | Shows active APIC faults grouped by severity, code, domain, and type. |
 | `aci.tenant.status` | Shows tenant, VRF, bridge-domain, EPG, contract, and L3Out state from APIC. |
+
+## Cost Controls For Splunk Observability Cloud
+
+For the complete configuration workflow, examples, validation steps, and AI-agent checklist, see
+[Controlling Metrics And Splunk Observability Cost](metric-control.md).
+
+The receiver is intentionally configured by collection group first, then by metric name when a deployment needs a
+smaller Splunk Observability footprint. Disable large endpoint families such as `sdwan.flows`,
+`sdwan.policy_qos`, `intersight.telemetry`, `nexus_dashboard.performance`, or `aci.stats` unless those panels are
+needed. Use each group's `max_results` and provider target filters to keep high-cardinality dimensions bounded.
+
+For final per-metric control, set root-level `metrics.<metric_name>.enabled: false`. The receiver removes those
+metrics before they reach the downstream metrics pipeline:
+
+```yaml
+receivers:
+  cisco_os:
+    metrics:
+      sdwan.app_route.loss:
+        enabled: false
+      system.network.errors:
+        enabled: false
+```
 
 ## Meraki API Metrics
 
@@ -231,6 +268,9 @@ without turning every endpoint into a high-cardinality metric series.
 | `catalyst_center.site.network_device.health.percentage` | Gauge, double | `%` | Percent of healthy network devices by site. | Find affected campuses, buildings, or floors. |
 | `catalyst_center.site.client.health.percentage` | Gauge, double | `%` | Percent of healthy clients by site. | Identify client-facing site impact. |
 | `catalyst_center.site.health.count` | Gauge, int | `{item}` | Site health counts for devices, clients, wireless, APs, WLCs, switches, routers, and issues. | Explain whether a site problem is device-heavy, client-heavy, wireless-heavy, or issue-heavy. |
+| `catalyst_center.site.issue.count` | Gauge, int | `{issue}` | Site issue counts by priority. | Weight site health by P1/P2 impact instead of percentage alone. |
+| `catalyst_center.site.client.count` | Gauge, int | `{client}` | Site client population by client type and health state. | Show how many users are represented by a degraded site score. |
+| `catalyst_center.site.network_device.count` | Gauge, int | `{device}` | Site network-device population by role and health state. | Show which access, core, distribution, router, wireless, AP, WLC, or switch populations are affected. |
 | `catalyst_center.topology.node.count` | Gauge, int | `{node}` | Physical topology node count globally and by node attributes. | Detect topology discovery, permission, or inventory shifts. |
 | `catalyst_center.topology.link.count` | Gauge, int | `{link}` | Physical topology link count globally and by link status. | Detect missing, failed, or changed topology links. |
 | `catalyst_center.issue.count` | Gauge, int | `{issue}` | Assurance issue count in the configured lookback window. | Track issue volume around incidents. |
@@ -246,6 +286,55 @@ without turning every endpoint into a high-cardinality metric series.
 Catalyst Center also reuses common Cisco and OpenTelemetry metrics when the Assurance API has matching semantics,
 including `cisco.device.up`, `system.network.interface.status`, `cisco.interface.admin.status`,
 `cisco.interface.speed`, `system.cpu.utilization`, and `system.memory.utilization`.
+
+## Catalyst SD-WAN Metrics And Logs
+
+Catalyst SD-WAN support polls read-only SD-WAN Manager APIs. Default groups are safe for continuous fleet monitoring.
+Realtime and high-cardinality feature areas are opt-in and report `sdwan.service.unavailable` or
+`sdwan.service.skipped` when a feature, license, target filter, or endpoint is not available.
+
+| Metric | Type | Unit | What It Tells You | Why Monitor It |
+| --- | --- | --- | --- | --- |
+| `sdwan.api.request.duration` | Gauge, double | `s` | Duration of each SD-WAN Manager API request by operation and outcome. | Detect slow Manager APIs before trusting SD-WAN telemetry. |
+| `sdwan.api.request.errors` | Gauge, int | `{error}` | API, auth, permission, timeout, or decode failures. | Alert on broken credentials, role gaps, endpoint failures, or rate limits. |
+| `sdwan.api.rate_limited` | Gauge, int | `{request}` | Requests that received HTTP 429. | Confirm the receiver is hitting SD-WAN Manager rate limits. |
+| `sdwan.scrape.partial_success` | Gauge, int | `1` | Whether one or more SD-WAN endpoint families failed or were skipped. | Keep dashboards honest when only part of SD-WAN data was collected. |
+| `sdwan.scrape.last_success` | Gauge, int | `s` | Unix timestamp of the most recent completed SD-WAN scrape. | Detect stale SD-WAN data. |
+| `sdwan.service.unavailable` | Gauge, int | `1` | Feature or endpoint was unavailable, unauthorized, unsupported, or missing. | Distinguish real network symptoms from API/product coverage gaps. |
+| `sdwan.service.skipped` | Gauge, int | `1` | Feature or endpoint was skipped because target scope was missing. | Show when opt-in incident groups need filters or supported targets. |
+| `sdwan.manager.up` | Gauge, int | `1` | SD-WAN Manager collection target is configured and scraping. | Prove the controller target is part of the active pipeline. |
+| `sdwan.manager.status` | Gauge, int | `1` | Encoded SD-WAN Manager status. | Detect Manager or cluster health degradation. |
+| `sdwan.inventory.device.count` | Gauge, int | `{device}` | Device inventory count after target and shared selection. | Detect device scope, permission, or inventory changes. |
+| `sdwan.resource.info` | Gauge, int | `1` | Stable SD-WAN resource identity. | Build inventory and drilldown pages. |
+| `sdwan.resource.status` | Gauge, int | `1` | Encoded SD-WAN resource or opt-in object status. | Find unhealthy devices, tunnels, service objects, or feature resources. |
+| `sdwan.device.reachability.status` | Gauge, int | `1` | Encoded SD-WAN device reachability. | Separate down WAN Edge devices from controller/API failures. |
+| `sdwan.device.validity.status` | Gauge, int | `1` | Encoded device validity state. | Catch validity/certificate lifecycle issues before path failures. |
+| `sdwan.device.certificate.status` | Gauge, int | `1` | Encoded certificate validity state. | Detect expired or invalid device certificates. |
+| `sdwan.control.connection.status` | Gauge, int | `1` | Encoded control connection status. | Detect overlay control-plane failures. |
+| `sdwan.control.connection.count` | Gauge, int | `{item}` | Control connection count grouped by status and path attributes. | Show expected versus degraded control-plane coverage. |
+| `sdwan.control.expected_connections` | Gauge, int | `{connection}` | Expected control connections when exposed. | Compare desired overlay state with actual state. |
+| `sdwan.control.actual_connections` | Gauge, int | `{connection}` | Actual control connections when exposed. | Detect missing vSmart/controller sessions. |
+| `sdwan.bfd.session.status` | Gauge, int | `1` | Encoded BFD session status. | Find partial site or transport failure even when control plane is up. |
+| `sdwan.bfd.session.count` | Gauge, int | `{item}` | BFD session count grouped by status and path attributes. | Spot site-wide or color-specific tunnel loss. |
+| `sdwan.bfd.session.transitions` | Gauge, int | `{transition}` | BFD session transition count. | Detect flapping tunnels. |
+| `sdwan.bfd.session.flap.count` | Gauge, int | `{flap}` | BFD flap count where exposed. | Correlate instability with incident windows. |
+| `sdwan.app_route.latency` | Gauge, double | `ms` | Application-aware routing latency. | Troubleshoot SaaS, AI/model API, and custom app path quality. |
+| `sdwan.app_route.jitter` | Gauge, double | `ms` | Application-aware routing jitter. | Find unstable paths for latency-sensitive applications. |
+| `sdwan.app_route.loss` | Gauge, double | `%` | Application-aware routing loss. | Detect WAN path degradation. |
+| `sdwan.app_route.sla.status` | Gauge, int | `1` | Encoded app-route SLA state. | Show whether an app path is inside policy. |
+| `sdwan.transport.interface.status` | Gauge, int | `1` | SD-WAN transport or service interface state. | Find down WAN circuits or service interfaces. |
+| `sdwan.collection.object.count` | Gauge, int | `{item}` | Object count from opt-in product feature groups. | Validate full product coverage without high-cardinality labels. |
+| `sdwan.event.count` | Gauge, int | `{item}` | Alarm, event, and audit counts grouped by bounded attributes. | Correlate incidents with alarms, config changes, deployments, or security events. |
+
+SD-WAN also reuses common Cisco and OpenTelemetry metrics where semantics match: `cisco.device.up`,
+`system.cpu.utilization`, `system.memory.utilization`, `system.uptime`, `system.network.interface.status`,
+`system.network.io`, `system.network.errors`, `system.network.packet.dropped`, `cisco.interface.admin.status`, and
+`cisco.interface.speed`.
+
+SD-WAN logs are emitted for alarms, events, and audit records. The original API object is preserved in the log body,
+while bounded attributes such as `event.domain=sdwan`, `event.name`, `sdwan.severity`, `sdwan.status`,
+`sdwan.system_ip`, `sdwan.site.id`, `sdwan.uuid`, `sdwan.policy.name`, `user.name`, and `user.email` support incident
+correlation without turning event text into metric dimensions.
 
 ## Nexus Dashboard, NDFC, Insights, Orchestrator, And Data Broker Metrics And Logs
 
@@ -264,6 +353,8 @@ management-plane coverage gaps.
 | `nexus_dashboard.service.unavailable` | Gauge, int | `1` | ND service endpoint unavailable, disabled, unauthorized, or not installed. | Explain why Insights, NDFC, NDO, or Data Broker charts are empty. |
 | `nexus_dashboard.resource.info` | Gauge, int | `1` | Bounded metadata for controller resources. | Build inventory and troubleshooting drilldowns. |
 | `nexus_dashboard.resource.status` | Gauge, int | `1` | Encoded status with the original status string retained as an attribute. | Normalize healthy, degraded, failed, and unknown states across ND services. |
+| `nexus_dashboard.audit.record.count` | Gauge, int | `1` | Recent Nexus Dashboard audit records by bounded product, operation, status, and severity attributes. | Correlate controller-side changes with fabric incidents without high-cardinality labels. |
+| `nexus_dashboard.event.count` | Gauge, int | `1` | Recent events, anomalies, advisories, alerts, and root causes by bounded product, operation, status, and severity attributes. | Surface change and incident evidence as dashboard-friendly counts. |
 | `nexus_dashboard.fabric.health` | Gauge, double | `1` | NDFC fabric, switch, or site health score when exposed by the API. | Find unhealthy fabrics before drilling into switches and interfaces. |
 | `nexus_dashboard.config.compliance` | Gauge, double | `1` | NDFC configuration compliance score. | Detect drift between intended and deployed fabric configuration. |
 | `nexus_dashboard.deployment.status` | Gauge, int | `1` | NDFC deployment, image, or change-control state. | Correlate incidents to pushes, failed deploys, or image activity. |
@@ -286,8 +377,8 @@ as `host.id`, `cisco.switch.serial`, `ndfc.switch.id`, `cisco.fabric.name`, `cis
 ## Cisco ACI/APIC Metrics And Logs
 
 ACI support polls APIC class endpoints directly. This provides controller-side troubleshooting even when SSH to every
-ACI leaf/spine is not practical. Metrics stay bounded around health, state, counts, endpoint presence, and interface
-symptoms; high-cardinality fault, audit, and event evidence is emitted as logs.
+ACI leaf/spine is not practical. Metrics stay bounded around health, state, counts, endpoint presence, interface
+symptoms, and audit/event rollups; high-cardinality fault, audit, and event evidence is emitted as logs.
 
 | Metric | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
@@ -297,6 +388,8 @@ symptoms; high-cardinality fault, audit, and event evidence is emitted as logs.
 | `aci.scrape.partial_success` | Gauge, int | `1` | Whether one or more APIC endpoint families failed during the scrape. | Keep dashboards honest when only part of APIC data was collected. |
 | `aci.resource.info` | Gauge, int | `1` | Bounded metadata for APIC managed objects. | Build inventory and object drilldowns. |
 | `aci.resource.status` | Gauge, int | `1` | Encoded APIC object status with original state attributes. | Normalize state across fabric, tenant, endpoint, and topology classes. |
+| `aci.audit.record.count` | Gauge, int | `1` | Recent APIC audit records by bounded operation, status, and severity attributes. | Correlate APIC-side changes with incidents without high-cardinality labels. |
+| `aci.event.count` | Gauge, int | `1` | Recent APIC event records by bounded operation, status, and severity attributes. | Surface event evidence in dashboards while keeping full event text in logs. |
 | `aci.fabric.health` | Gauge, double | `1` | Fabric, pod, node, or tenant health score where exposed by APIC. | Detect unhealthy ACI domains quickly. |
 | `aci.fault.active` | Gauge, int | `1` | Active APIC fault instance. | Drive fault triage by code, severity, domain, and type. |
 | `aci.fault.count` | Gauge, int | `1` | Active APIC fault counts by bounded attributes. | Build severity and domain rollups. |

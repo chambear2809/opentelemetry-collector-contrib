@@ -248,7 +248,7 @@ func TestConfigValidate(t *testing.T) {
 					component.MustNewType("system"): nil,
 				},
 			},
-			expectedErr: "must specify at least one SSH device, Meraki target, Intersight target, Catalyst Center target, Nexus Dashboard target, or ACI target",
+			expectedErr: "must specify at least one SSH device, Meraki target, Intersight target, Catalyst Center target, SD-WAN target, Nexus Dashboard target, or ACI target",
 		},
 		{
 			name: "valid meraki organization target",
@@ -519,6 +519,121 @@ func TestConfigValidate(t *testing.T) {
 			expectedErr: "identifier must be macAddress, nwDeviceName, or uuid",
 		},
 		{
+			name: "valid sdwan target with jwt auth",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				SDWAN: SDWANConfig{
+					Enabled:  true,
+					Endpoint: "https://sdwan-manager.example.com",
+					Auth: SDWANAuthConfig{
+						Mode:     "jwt",
+						Username: "admin",
+						Password: configopaque.String("password"),
+					},
+					PageSize:           500,
+					MaxRetries:         3,
+					EventLookback:      time.Hour,
+					StatisticsLookback: 30 * time.Minute,
+					RealtimeLookback:   5 * time.Minute,
+					Inventory:          defaultSDWANGroupConfig(true, 10),
+				},
+			},
+			expectedErr: "",
+		},
+		{
+			name: "valid sdwan target with bearer auth",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				SDWAN: SDWANConfig{
+					Enabled:  true,
+					Endpoint: "https://sdwan-manager.example.com",
+					Auth: SDWANAuthConfig{
+						Mode:        "bearer",
+						BearerToken: configopaque.String("token"),
+					},
+				},
+			},
+			expectedErr: "",
+		},
+		{
+			name: "missing sdwan endpoint",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				SDWAN: SDWANConfig{
+					Enabled: true,
+					Auth: SDWANAuthConfig{
+						Username: "admin",
+						Password: configopaque.String("password"),
+					},
+				},
+			},
+			expectedErr: "sdwan.endpoint must be provided",
+		},
+		{
+			name: "missing sdwan jwt password",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				SDWAN: SDWANConfig{
+					Enabled:  true,
+					Endpoint: "https://sdwan-manager.example.com",
+					Auth: SDWANAuthConfig{
+						Mode:     "jwt",
+						Username: "admin",
+					},
+				},
+			},
+			expectedErr: "sdwan.auth.password must be provided for jwt auth",
+		},
+		{
+			name: "sdwan realtime requires targets",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				SDWAN: SDWANConfig{
+					Enabled:  true,
+					Endpoint: "https://sdwan-manager.example.com",
+					Auth: SDWANAuthConfig{
+						Username: "admin",
+						Password: configopaque.String("password"),
+					},
+					RealtimeDetails: SDWANGroupConfig{Enabled: true, MaxResults: 10},
+				},
+			},
+			expectedErr: "sdwan.realtime_details requires at least one target filter",
+		},
+		{
+			name: "invalid sdwan group cap",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				SDWAN: SDWANConfig{
+					Enabled:  true,
+					Endpoint: "https://sdwan-manager.example.com",
+					Auth: SDWANAuthConfig{
+						BearerToken: configopaque.String("token"),
+					},
+					BFD: SDWANGroupConfig{Enabled: true, MaxResults: -1},
+				},
+			},
+			expectedErr: "sdwan.bfd.max_results must not be negative",
+		},
+		{
 			name: "valid nexus dashboard api key target",
 			config: &Config{
 				ControllerConfig: scraperhelper.ControllerConfig{
@@ -620,6 +735,23 @@ func TestConfigValidate(t *testing.T) {
 				},
 			},
 			expectedErr: "aci.faults.max_results must not be negative",
+		},
+		{
+			name: "empty metric filter key",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				Metrics: map[string]MetricConfig{
+					"": {Enabled: false},
+				},
+				Meraki: MerakiConfig{
+					Auth:          MerakiAuthConfig{APIKey: configopaque.String("meraki-key")},
+					Organizations: []MerakiOrganizationConfig{{OrganizationID: "123456"}},
+				},
+			},
+			expectedErr: "metrics keys cannot be empty",
 		},
 		{
 			name: "missing meraki api key",
@@ -744,6 +876,8 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.Equal(t, []string{"192.168.1.254"}, cfg.DeviceSelection.Exclude.HostIPs)
 	assert.Equal(t, []string{"Q234-ABCD-9999"}, cfg.DeviceSelection.Exclude.Serials)
 	assert.Equal(t, []string{"device-disabled"}, cfg.DeviceSelection.Exclude.DeviceIDs)
+	assert.False(t, cfg.Metrics["sdwan.app_route.loss"].Enabled)
+	assert.False(t, cfg.Metrics["system.network.errors"].Enabled)
 	assert.Equal(t, "https://api.meraki.com/api/v1", cfg.Meraki.BaseURL)
 	assert.Equal(t, "meraki-key", string(cfg.Meraki.Auth.APIKey))
 	require.Len(t, cfg.Meraki.Organizations, 1)
@@ -787,6 +921,38 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.Equal(t, 500, cfg.CatalystCenter.Topology.MaxResults)
 	assert.True(t, cfg.CatalystCenter.Issues.Enabled)
 	assert.Equal(t, 100, cfg.CatalystCenter.Issues.MaxResults)
+	assert.True(t, cfg.SDWAN.Enabled)
+	assert.Equal(t, "https://sdwan-manager.example.com", cfg.SDWAN.Endpoint)
+	assert.Equal(t, "ciscoosreceiver-test", cfg.SDWAN.UserAgent)
+	assert.Equal(t, 300, cfg.SDWAN.PageSize)
+	assert.Equal(t, 2, cfg.SDWAN.MaxRetries)
+	assert.Equal(t, 9*time.Hour, cfg.SDWAN.EventLookback)
+	assert.Equal(t, 20*time.Minute, cfg.SDWAN.StatisticsLookback)
+	assert.Equal(t, 3*time.Minute, cfg.SDWAN.RealtimeLookback)
+	assert.Equal(t, "jwt", cfg.SDWAN.Auth.Mode)
+	assert.Equal(t, "admin", cfg.SDWAN.Auth.Username)
+	assert.Equal(t, "password", string(cfg.SDWAN.Auth.Password))
+	assert.Equal(t, []string{"100"}, cfg.SDWAN.Targets.SiteIDs)
+	assert.Equal(t, []string{"10.0.0.1"}, cfg.SDWAN.Targets.SystemIPs)
+	assert.Equal(t, []string{"sdwan-device-uuid-1"}, cfg.SDWAN.Targets.UUIDs)
+	assert.Equal(t, []string{"SDWAN-SERIAL-1"}, cfg.SDWAN.Targets.Serials)
+	assert.Equal(t, []string{"vedge"}, cfg.SDWAN.Targets.DeviceTypes)
+	assert.Equal(t, []string{"vedge"}, cfg.SDWAN.Targets.Personalities)
+	assert.Equal(t, []string{"biz-internet"}, cfg.SDWAN.Targets.Colors)
+	assert.Equal(t, []string{"ge0/0"}, cfg.SDWAN.Targets.InterfaceNames)
+	assert.Equal(t, []string{"0"}, cfg.SDWAN.Targets.VPNIDs)
+	assert.Equal(t, []string{"openai-api"}, cfg.SDWAN.Targets.Applications)
+	assert.Equal(t, []string{"ai"}, cfg.SDWAN.Targets.ApplicationFamilies)
+	assert.Equal(t, []string{"aws"}, cfg.SDWAN.Targets.CloudProviders)
+	assert.Equal(t, []string{"saas"}, cfg.SDWAN.Targets.ServiceTypes)
+	assert.True(t, cfg.SDWAN.ControlPlane.Enabled)
+	assert.Equal(t, 100, cfg.SDWAN.ControlPlane.MaxResults)
+	assert.True(t, cfg.SDWAN.BFD.Enabled)
+	assert.Equal(t, 200, cfg.SDWAN.BFD.MaxResults)
+	assert.True(t, cfg.SDWAN.RealtimeDetails.Enabled)
+	assert.Equal(t, 50, cfg.SDWAN.RealtimeDetails.MaxResults)
+	assert.True(t, cfg.SDWAN.CloudOnRamp.Enabled)
+	assert.Equal(t, 75, cfg.SDWAN.CloudOnRamp.MaxResults)
 	assert.True(t, cfg.NexusDashboard.Enabled)
 	assert.Equal(t, "https://nexus-dashboard.example.com", cfg.NexusDashboard.Endpoint)
 	assert.Equal(t, "api_key", cfg.NexusDashboard.Auth.Mode)

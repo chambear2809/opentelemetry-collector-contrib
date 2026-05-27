@@ -4,8 +4,8 @@ deprecated_type: ciscoos
 
 description: |
   The Cisco OS Receiver is a modular receiver that collects metrics from Cisco network devices via SSH connections,
-  Cisco Meraki Dashboard APIs, Cisco Intersight APIs, Cisco Catalyst Center Assurance APIs, Nexus Dashboard/NDFC APIs,
-  and Cisco APIC APIs. It supports metrics for device, cloud, controller, and infrastructure health plus logs for
+  Cisco Meraki Dashboard APIs, Cisco Intersight APIs, Cisco Catalyst Center Assurance APIs, Cisco Catalyst SD-WAN
+  Manager APIs, Nexus Dashboard/NDFC APIs, and Cisco APIC APIs. It supports metrics for device, cloud, controller, and infrastructure health plus logs for
   operational evidence such as faults, anomalies, advisories, audits, deployments, workflows, and tech-support status.
 
 status:

@@ -14,6 +14,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/catalystcenter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/intersight"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/nexusdashboard"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/sdwan"
 )
 
 // DeviceSelectionConfig defines shared device include/exclude filters across Cisco providers.
@@ -259,6 +260,20 @@ func catalystClientDetailIdentity(mac string, detail catalystcenter.Object) devi
 	}
 }
 
+func sdwanObjectIdentity(obj sdwan.Object) deviceIdentity {
+	serial := sdwanSerial(obj)
+	systemIP := sdwanSystemIP(obj)
+	uuid := sdwan.String(obj, "uuid", "deviceId")
+	siteID := sdwanSiteID(obj)
+	return deviceIdentity{
+		hostNames: []string{sdwanHostName(obj)},
+		hostIDs:   []string{firstNonEmpty(serial, uuid, systemIP, siteID)},
+		hostIPs:   []string{systemIP, sdwan.String(obj, "managementIp", "mgmt-ip", "local-system-ip")},
+		serials:   []string{serial},
+		deviceIDs: []string{uuid, systemIP, siteID, sdwanDeviceModel(obj), sdwanPersonality(obj)},
+	}
+}
+
 func nexusDashboardObjectIdentity(obj nexusdashboard.Object) deviceIdentity {
 	serial := nexusdashboard.String(obj, "serialNumber", "serialNo", "serial", "switchSerialNo", "switchSerial")
 	switchID := nexusdashboard.String(obj, "switchDbId", "switchId", "nodeId", "id", "uuid")
@@ -294,6 +309,8 @@ func deviceIdentityFromResourceAttrs(attrs pcommon.Map) deviceIdentity {
 			attrString(attrs, "meraki.device.serial"),
 			attrString(attrs, "intersight.serial"),
 			attrString(attrs, "catalyst_center.device.serial"),
+			attrString(attrs, "sdwan.chassis_serial"),
+			attrString(attrs, "sdwan.board_serial"),
 			attrString(attrs, "cisco.switch.serial"),
 		},
 		deviceIDs: []string{
@@ -302,6 +319,9 @@ func deviceIdentityFromResourceAttrs(attrs pcommon.Map) deviceIdentity {
 			attrString(attrs, "intersight.device.registration_moid"),
 			attrString(attrs, "catalyst_center.device.id"),
 			attrString(attrs, "catalyst_center.device.instance_uuid"),
+			attrString(attrs, "sdwan.system_ip"),
+			attrString(attrs, "sdwan.uuid"),
+			attrString(attrs, "sdwan.site.id"),
 			attrString(attrs, "ndfc.switch.id"),
 			attrString(attrs, "aci.node.id"),
 			attrString(attrs, "aci.dn"),

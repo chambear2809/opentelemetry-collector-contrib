@@ -2,9 +2,10 @@
 # Cisco OS Receiver
 
 The Cisco OS Receiver is a modular receiver that collects metrics from Cisco network devices via SSH connections,
-Cisco Meraki Dashboard APIs, Cisco Intersight APIs, Cisco Catalyst Center Assurance APIs, Nexus Dashboard/NDFC APIs,
-and Cisco APIC APIs. It supports metrics for device, cloud, controller, and infrastructure health plus logs for
-operational evidence such as faults, anomalies, advisories, audits, deployments, workflows, and tech-support status.
+Cisco Meraki Dashboard APIs, Cisco Intersight APIs, Cisco Catalyst Center Assurance APIs, Cisco Catalyst SD-WAN
+Manager APIs, Nexus Dashboard/NDFC APIs, and Cisco APIC APIs. It supports metrics for device, cloud, controller, and
+infrastructure health plus logs for operational evidence such as faults, anomalies, advisories, audits, deployments,
+workflows, and tech-support status.
 
 
 | Status        |           |
@@ -26,17 +27,19 @@ The following settings are available:
 | Setting | Type | Required | Description |
 |---------|------|----------|-------------|
 | `devices` | list | Yes* | List of Cisco SSH devices to monitor |
-| `device_selection` | map | No | Shared include/exclude selector applied across SSH, Meraki, Intersight, Catalyst Center, Nexus Dashboard, and ACI telemetry |
+| `device_selection` | map | No | Shared include/exclude selector applied across SSH, Meraki, Intersight, Catalyst Center, SD-WAN, Nexus Dashboard, and ACI telemetry |
+| `metrics` | map | No | Per-metric forwarding switches for cost-sensitive destinations such as Splunk Observability Cloud |
 | `meraki` | map | Yes* | Meraki Dashboard API polling targets |
 | `intersight` | map | Yes* | Cisco Intersight API polling target |
 | `catalyst_center` | map | Yes* | Cisco Catalyst Center Assurance API polling target |
+| `sdwan` | map | Yes* | Cisco Catalyst SD-WAN Manager API polling target |
 | `nexus_dashboard` | map | Yes* | Nexus Dashboard platform, NDFC, Insights, Orchestrator, and Data Broker API polling target |
 | `aci` | map | Yes* | Cisco APIC polling targets for ACI fabrics |
 | `collection_interval` | duration | No | How often to collect metrics (default: 60s) |
 | `timeout` | duration | No | SSH connection, command, and cloud API request timeout (default: 30s) |
 | `scrapers` | map | Yes** | Scrapers to enable for SSH devices |
 
-*At least one SSH `devices` entry, one `meraki.organizations` / `meraki.devices` target, an Intersight target, a Catalyst Center target, a Nexus Dashboard target, or an ACI target is required.
+*At least one SSH `devices` entry, one `meraki.organizations` / `meraki.devices` target, an Intersight target, a Catalyst Center target, an SD-WAN target, a Nexus Dashboard target, or an ACI target is required.
 
 **`scrapers` is required only when SSH `devices` are configured.
 
@@ -96,7 +99,42 @@ receivers:
         device_ids: []
 ```
 
-The receiver keeps Splunk-friendly OpenTelemetry resource attributes for filtering: `host.name`, `host.id`, `host.ip`, `hw.type=network`, `network.interface.name`, and product identifiers such as Meraki serial/network ID, Intersight serial/Moid, Catalyst device ID/serial/site, Nexus switch serial/ID, and ACI node/fabric/tenant/EPG attributes. Controller, account, organization, and site aggregate health remains visible unless the corresponding collection group is disabled.
+The receiver keeps Splunk-friendly OpenTelemetry resource attributes for filtering: `host.name`, `host.id`, `host.ip`, `hw.type=network`, `network.interface.name`, and product identifiers such as Meraki serial/network ID, Intersight serial/Moid, Catalyst device ID/serial/site, SD-WAN system IP/UUID/site/application, Nexus switch serial/ID, and ACI node/fabric/tenant/EPG attributes. Controller, account, organization, and site aggregate health remains visible unless the corresponding collection group is disabled.
+
+### Metric Selection And Cost Control
+
+For the full operator and AI-agent workflow, see [Controlling Metrics And Splunk Observability Cost](docs/metric-control.md).
+
+Use collection groups, target filters, and per-metric forwarding together when sending Cisco telemetry to
+cost-sensitive destinations such as Splunk Observability Cloud:
+
+- Collection groups such as `sdwan.interfaces.enabled`, `intersight.telemetry.enabled`, `nexus_dashboard.performance.enabled`, and `aci.stats.enabled` stop whole endpoint families from being polled and emitted.
+- `max_results` caps bound the number of returned objects for each group.
+- `device_selection` and provider-native `targets` keep collection scoped to the devices, sites, applications, interfaces, tenants, or fabrics that matter.
+- Root-level `metrics` entries remove named metrics before the receiver passes data to the next Collector component. Metrics are enabled unless explicitly set to `enabled: false`.
+
+```yaml
+receivers:
+  cisco_os:
+    metrics:
+      sdwan.app_route.loss:
+        enabled: false
+      system.network.errors:
+        enabled: false
+    sdwan:
+      enabled: true
+      endpoint: https://sdwan-manager.example.com
+      auth:
+        username: ${env:SDWAN_USERNAME}
+        password: ${env:SDWAN_PASSWORD}
+      interfaces:
+        enabled: false
+      app_route:
+        max_results: 1000
+      targets:
+        site_ids: ["100"]
+        applications: ["openai-api"]
+```
 
 ### Meraki Configuration
 
@@ -231,6 +269,64 @@ catalyst_center:
     max_results: 500
   details:
     enabled: false
+```
+
+### Catalyst SD-WAN Manager Configuration
+
+Catalyst SD-WAN targets are polled over HTTPS through SD-WAN Manager `/dataservice` APIs. Collection is read-only and
+incident-oriented: fleet-safe groups are enabled by default, while realtime and high-cardinality product areas are
+explicit opt-in groups. The client supports JWT auth for newer managers, session-cookie auth for older deployments,
+externally managed bearer tokens, and externally supplied `JSESSIONID`/XSRF tokens for constrained SSO environments.
+
+| Setting | Type | Required | Description |
+|---------|------|----------|-------------|
+| `sdwan.enabled` | bool | No | Enables native Catalyst SD-WAN Manager collection. |
+| `sdwan.endpoint` | string | Yes | SD-WAN Manager base URL. API requests are rooted at `/dataservice`. |
+| `sdwan.auth.mode` | string | No | `auto`, `jwt`, `session`, `bearer`, or `cookie`. `auto` prefers bearer, then JWT, then session. |
+| `sdwan.auth.username` | string | Yes* | Username for JWT or session login. |
+| `sdwan.auth.password` | string | Yes* | Password for JWT or session login. |
+| `sdwan.auth.bearer_token` | string | Yes** | Externally managed bearer token. |
+| `sdwan.auth.jsession_id` | string | Yes*** | Externally supplied SD-WAN Manager session cookie. |
+| `sdwan.auth.xsrf_token` | string | Yes*** | Externally supplied XSRF token for POST queries. |
+| `sdwan.page_size` | int | No | Generic page/result cap for SD-WAN endpoints. Defaults to `500`. |
+| `sdwan.max_retries` | int | No | Retries for 429 and transient 5xx responses. Defaults to `3`. |
+| `sdwan.event_lookback` | duration | No | Lookback for alarms, events, and audit logs. Defaults to `24h`. |
+| `sdwan.statistics_lookback` | duration | No | Lookback for statistics-style endpoint groups. Defaults to `30m`. |
+| `sdwan.realtime_lookback` | duration | No | Intended realtime incident window. Defaults to `5m`. |
+| `sdwan.targets.*` | lists | No | Optional filters for sites, system IPs, UUIDs, serials, device types, personalities, colors, interfaces, VPNs, applications, cloud providers, and service types. |
+
+*Required for `jwt` or `session` auth.
+
+**Required for `bearer` auth.
+
+***Required for `cookie` auth.
+
+Default enabled groups: `manager`, `inventory`, `control_plane`, `bfd`, `app_route`, `interfaces`, `alarms`, `events`, and `audit`.
+
+Opt-in groups: `realtime_details`, `tunnels`, `flows`, `policy_qos`, `security`, `appqoe`, `cloud_onramp`, `nwpi`,
+`underlay`, `cellular`, `hardware_energy`, `routing_services`, `branch_services`, `lifecycle_compliance`,
+`thousandeyes`, and `management_security`. Each group supports `enabled` and `max_results`. `realtime_details`
+requires target filters because Cisco documents realtime monitoring APIs as CPU intensive.
+
+```yaml
+sdwan:
+  enabled: true
+  endpoint: https://sdwan-manager.example.com
+  auth:
+    mode: auto
+    username: ${env:SDWAN_USERNAME}
+    password: ${env:SDWAN_PASSWORD}
+  targets:
+    site_ids: ["100"]
+    system_ips: ["10.0.0.1"]
+    applications: ["openai-api"]
+    application_families: ["ai"]
+  app_route:
+    max_results: 1000
+  realtime_details:
+    enabled: false
+  cloud_onramp:
+    enabled: true
 ```
 
 ### Nexus Dashboard, NDFC, Insights, Orchestrator, And Data Broker Configuration
@@ -434,13 +530,23 @@ state, NX-OS NVE/EVPN fabric metrics, vPC, LACP counters, and detailed QoS queue
 ### Catalyst Center Metrics
 - API and scrape health: `catalyst_center.api.request.duration`, `catalyst_center.api.request.errors`, `catalyst_center.api.rate_limited`, `catalyst_center.scrape.partial_success`, and `catalyst_center.scrape.last_success`.
 - Inventory and reachability: `catalyst_center.inventory.device.count`, `cisco.device.up`, `catalyst_center.device.reachability.status`, `catalyst_center.device.collection.status`, `catalyst_center.device.interface.count`, `catalyst_center.device.uptime`, and `catalyst_center.interface.count`.
-- Assurance health: `catalyst_center.network.health.score`, `catalyst_center.network.device.count`, `catalyst_center.network.health.entity.*`, `catalyst_center.network.health.category.score`, `catalyst_center.site.network_device.health.percentage`, `catalyst_center.site.client.health.percentage`, and `catalyst_center.site.health.count`.
+- Assurance health: `catalyst_center.network.health.score`, `catalyst_center.network.device.count`, `catalyst_center.network.health.entity.*`, `catalyst_center.network.health.category.score`, `catalyst_center.site.network_device.health.percentage`, `catalyst_center.site.client.health.percentage`, `catalyst_center.site.health.count`, `catalyst_center.site.issue.count`, `catalyst_center.site.client.count`, and `catalyst_center.site.network_device.count`.
 - Topology and issues: `catalyst_center.topology.node.count`, `catalyst_center.topology.link.count`, `catalyst_center.issue.count`, and `catalyst_center.issue.active.count`.
 - Targeted detail: `catalyst_center.device.detail.*`, `system.cpu.utilization`, `system.memory.utilization`, `catalyst_center.client.detail.health.score`, `catalyst_center.client.issue.count`, `catalyst_center.client.wireless.rssi`, `catalyst_center.client.wireless.snr`, and `catalyst_center.client.network.io`.
+
+### Catalyst SD-WAN Metrics And Logs
+- API and scrape health: `sdwan.api.request.duration`, `sdwan.api.request.errors`, `sdwan.api.rate_limited`, `sdwan.scrape.partial_success`, `sdwan.scrape.last_success`, `sdwan.service.unavailable`, and `sdwan.service.skipped`.
+- Manager and inventory: `sdwan.manager.up`, `sdwan.manager.status`, `sdwan.manager.endpoint.status`, `sdwan.inventory.device.count`, `sdwan.resource.info`, `sdwan.resource.status`, `sdwan.device.reachability.status`, `sdwan.device.validity.status`, `sdwan.device.certificate.status`, `cisco.device.up`, `system.cpu.utilization`, `system.memory.utilization`, and `system.uptime`.
+- Overlay and path health: `sdwan.control.connection.status`, `sdwan.control.connection.count`, `sdwan.control.expected_connections`, `sdwan.control.actual_connections`, `sdwan.bfd.session.status`, `sdwan.bfd.session.count`, `sdwan.bfd.session.transitions`, `sdwan.bfd.session.flap.count`, `sdwan.app_route.latency`, `sdwan.app_route.jitter`, `sdwan.app_route.loss`, and `sdwan.app_route.sla.status`.
+- Interface and transport evidence: `system.network.interface.status`, `sdwan.transport.interface.status`, `cisco.interface.admin.status`, `cisco.interface.speed`, `system.network.io`, `system.network.errors`, and `system.network.packet.dropped`.
+- Full-coverage opt-in evidence: advanced groups emit bounded `sdwan.resource.status`, `sdwan.collection.object.count`, `sdwan.service.unavailable`, and `sdwan.service.skipped` signals for realtime details, tunnels, flows, policy/QoS, security, AppQoE, Cloud OnRamp, NWPI, underlay, cellular, hardware/energy, routing services, branch services, lifecycle/compliance, ThousandEyes agent status, and management security endpoint families.
+- Logs: alarms, events, and audit records are emitted as log records with `event.domain=sdwan`, original API object bodies, and bounded correlation attributes such as `sdwan.severity`, `sdwan.status`, `sdwan.system_ip`, `sdwan.site.id`, `sdwan.uuid`, `sdwan.policy.name`, `user.name`, and `user.email`.
+- End-user dashboard views: the SD-WAN Splunk bundle includes service desk, branch/site experience, SaaS/AI critical app experience, and incident commander pages that translate app-route, BFD, interface, event, Cloud OnRamp, AppQoE, policy/security, and telemetry-trust signals into user-impact triage.
 
 ### Nexus Dashboard And ACI API Metrics And Logs
 - Nexus Dashboard API health: `nexus_dashboard.api.request.duration`, `nexus_dashboard.api.request.errors`, `nexus_dashboard.api.rate_limited`, `nexus_dashboard.scrape.partial_success`, `nexus_dashboard.service.unavailable`, and `nexus_dashboard.service.skipped`.
 - NDFC and Nexus switch state: `nexus_dashboard.resource.info`, `nexus_dashboard.resource.status`, `nexus_dashboard.fabric.health`, `nexus_dashboard.config.compliance`, `nexus_dashboard.deployment.status`, `nexus_dashboard.endpoint.count`, `cisco.device.up`, `system.network.interface.status`, `cisco.interface.io.rate`, and `cisco.interface.utilization`.
+- Change and incident evidence: `nexus_dashboard.audit.record.count`, `nexus_dashboard.event.count`, `aci.audit.record.count`, and `aci.event.count` expose bounded audit/event rollups while logs preserve high-cardinality record bodies and user context.
 - Insights, Orchestrator, and Data Broker: `nexus_dashboard.insights.anomaly.*`, `nexus_dashboard.insights.score`, `nexus_dashboard.insights.confidence`, `nexus_dashboard.orchestrator.deployment.status`, `nexus_dashboard.orchestrator.policy_delta.count`, `nexus_dashboard.data_broker.status`, `nexus_dashboard.data_broker.rule.count`, and `nexus_dashboard.data_broker.session.count`.
 - APIC API and ACI fabric health: `aci.api.request.duration`, `aci.api.request.errors`, `aci.controller.up`, `aci.scrape.partial_success`, `aci.resource.info`, `aci.resource.status`, `aci.fabric.health`, `cisco.device.up`, `system.cpu.utilization`, and `system.memory.utilization`.
 - ACI troubleshooting: `aci.fault.active`, `aci.fault.count`, `aci.endpoint.present`, `aci.endpoint.count`, `aci.tenant.status`, `aci.tenant.object.count`, `system.network.interface.status`, `cisco.interface.io.rate`, and `cisco.topology.neighbor.info`.
@@ -604,6 +710,20 @@ receivers:
         moids: []
       telemetry:
         enabled: true
+    sdwan:
+      enabled: true
+      endpoint: ${env:SDWAN_MANAGER_ENDPOINT}
+      auth:
+        mode: auto
+        username: ${env:SDWAN_USERNAME}
+        password: ${env:SDWAN_PASSWORD}
+      targets:
+        site_ids: ["100"]
+        system_ips: ["10.0.0.1"]
+        applications: ["openai-api"]
+        application_families: ["ai"]
+      app_route:
+        max_results: 1000
     nexus_dashboard:
       enabled: true
       endpoint: ${env:NEXUS_DASHBOARD_ENDPOINT}
@@ -708,7 +828,7 @@ service:
 If you run the Splunk Distribution and prefer the `signalfx` exporter for metrics and host metadata sync, configure the
 receiver in the same metrics pipeline and set exporter filters intentionally so Cisco metrics are not dropped by default
 metric filtering. Include the Cisco receiver metrics explicitly, including `cisco.*`, `meraki.*`, `intersight.*`,
-`catalyst_center.*`, `nexus_dashboard.*`, and `aci.*`.
+`catalyst_center.*`, `sdwan.*`, `nexus_dashboard.*`, and `aci.*`.
 
 Importable dashboard groups and sample detector blueprints are in [Splunk O11y Dashboards And Troubleshooting](docs/splunk-o11y.md).
 

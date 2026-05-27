@@ -43,6 +43,12 @@ $defs:
         $ref: device_selection_match_config
       include:
         $ref: device_selection_match_config
+  metric_config:
+    description: MetricConfig controls whether a named metric is forwarded by the Cisco OS receiver.
+    type: object
+    properties:
+      enabled:
+        type: boolean
   meraki_auth_config:
     description: MerakiAuthConfig represents Meraki Dashboard API authentication settings.
     type: object
@@ -247,6 +253,162 @@ $defs:
         $ref: catalyst_center_group_config
       user_agent:
         type: string
+  sdwan_auth_config:
+    description: SDWANAuthConfig represents Catalyst SD-WAN Manager authentication settings.
+    type: object
+    properties:
+      bearer_token:
+        type: string
+      jsession_id:
+        type: string
+      mode:
+        type: string
+      password:
+        type: string
+      username:
+        type: string
+      xsrf_token:
+        type: string
+  sdwan_target_filters:
+    description: SDWANTargetFilters limits SD-WAN collection to known sites, devices, circuits, applications, and services.
+    type: object
+    properties:
+      application_families:
+        type: array
+        items:
+          type: string
+      applications:
+        type: array
+        items:
+          type: string
+      cloud_providers:
+        type: array
+        items:
+          type: string
+      colors:
+        type: array
+        items:
+          type: string
+      device_types:
+        type: array
+        items:
+          type: string
+      interface_names:
+        type: array
+        items:
+          type: string
+      personalities:
+        type: array
+        items:
+          type: string
+      serials:
+        type: array
+        items:
+          type: string
+      service_types:
+        type: array
+        items:
+          type: string
+      site_ids:
+        type: array
+        items:
+          type: string
+      system_ips:
+        type: array
+        items:
+          type: string
+      uuids:
+        type: array
+        items:
+          type: string
+      vpn_ids:
+        type: array
+        items:
+          type: string
+  sdwan_group_config:
+    description: SDWANGroupConfig controls a curated Catalyst SD-WAN collection group.
+    type: object
+    properties:
+      enabled:
+        type: boolean
+      max_results:
+        type: integer
+  sdwan_config:
+    description: SDWANConfig defines native Catalyst SD-WAN Manager API polling settings.
+    type: object
+    properties:
+      alarms:
+        $ref: sdwan_group_config
+      app_route:
+        $ref: sdwan_group_config
+      appqoe:
+        $ref: sdwan_group_config
+      audit:
+        $ref: sdwan_group_config
+      auth:
+        $ref: sdwan_auth_config
+      bfd:
+        $ref: sdwan_group_config
+      branch_services:
+        $ref: sdwan_group_config
+      cellular:
+        $ref: sdwan_group_config
+      cloud_onramp:
+        $ref: sdwan_group_config
+      control_plane:
+        $ref: sdwan_group_config
+      enabled:
+        type: boolean
+      endpoint:
+        type: string
+      event_lookback:
+        type: string
+      events:
+        $ref: sdwan_group_config
+      flows:
+        $ref: sdwan_group_config
+      hardware_energy:
+        $ref: sdwan_group_config
+      insecure_skip_verify:
+        type: boolean
+      interfaces:
+        $ref: sdwan_group_config
+      inventory:
+        $ref: sdwan_group_config
+      lifecycle_compliance:
+        $ref: sdwan_group_config
+      management_security:
+        $ref: sdwan_group_config
+      manager:
+        $ref: sdwan_group_config
+      max_retries:
+        type: integer
+      nwpi:
+        $ref: sdwan_group_config
+      page_size:
+        type: integer
+      policy_qos:
+        $ref: sdwan_group_config
+      realtime_details:
+        $ref: sdwan_group_config
+      realtime_lookback:
+        type: string
+      routing_services:
+        $ref: sdwan_group_config
+      security:
+        $ref: sdwan_group_config
+      statistics_lookback:
+        type: string
+      targets:
+        $ref: sdwan_target_filters
+      thousandeyes:
+        $ref: sdwan_group_config
+      tunnels:
+        $ref: sdwan_group_config
+      underlay:
+        $ref: sdwan_group_config
+      user_agent:
+        type: string
   controller_auth_config:
     description: ControllerAuthConfig represents username/password or API-key authentication for Nexus controllers.
     type: object
@@ -439,12 +601,19 @@ properties:
       $ref: device_config
   device_selection:
     $ref: device_selection_config
+  metrics:
+    description: Metrics controls per-metric forwarding for cost-sensitive destinations.
+    type: object
+    additionalProperties:
+      $ref: metric_config
   meraki:
     $ref: meraki_config
   intersight:
     $ref: intersight_config
   catalyst_center:
     $ref: catalyst_center_config
+  sdwan:
+    $ref: sdwan_config
   nexus_dashboard:
     $ref: nexus_dashboard_config
   aci:

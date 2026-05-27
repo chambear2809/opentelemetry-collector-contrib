@@ -28,6 +28,12 @@ func TestNexusDashboardScrapeEmitsTroubleshootingMetrics(t *testing.T) {
 		"/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/lanSwitches/101/interfaces": `{"interfaces":[
 			{"ifName":"eth1/1","switchDbId":"101","serialNumber":"N9K-SERIAL-1","fabricName":"fabric-a","status":"up","speed":"100000000000","rxRate":1000,"txRate":2000,"rxUtilization":10,"txUtilization":20}
 		]}`,
+		"/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/audit": `{"items":[
+			{"id":"audit-1","userName":"operator","status":"success","serialNumber":"N9K-SERIAL-1","fabricName":"fabric-a"}
+		]}`,
+		"/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/events": `{"items":[
+			{"id":"event-1","status":"active","severity":"critical","serialNumber":"N9K-SERIAL-1","fabricName":"fabric-a"}
+		]}`,
 		"/nexus/insights/api/v1/anomalies": `{"anomalies":[
 			{"id":"anomaly-1","name":"CRC spike","siteName":"site-a","fabricName":"fabric-a","serialNumber":"N9K-SERIAL-1","severity":"critical","status":"active","score":90,"confidence":95}
 		]}`,
@@ -47,6 +53,8 @@ func TestNexusDashboardScrapeEmitsTroubleshootingMetrics(t *testing.T) {
 	names := metricNames(md)
 	assert.Contains(t, names, "nexus_dashboard.api.request.duration")
 	assert.Contains(t, names, "nexus_dashboard.resource.info")
+	assert.Contains(t, names, "nexus_dashboard.audit.record.count")
+	assert.Contains(t, names, "nexus_dashboard.event.count")
 	assert.Contains(t, names, "cisco.device.up")
 	assert.Contains(t, names, "cisco.interface.io.rate")
 	assert.Contains(t, names, "nexus_dashboard.insights.anomaly.active")
@@ -54,6 +62,10 @@ func TestNexusDashboardScrapeEmitsTroubleshootingMetrics(t *testing.T) {
 	assert.Contains(t, names, "nexus_dashboard.data_broker.status")
 	assert.True(t, hasResourceHostID(md, "N9K-SERIAL-1"))
 	assert.True(t, intMetricValueExists(md, "nexus_dashboard.scrape.partial_success", 0))
+	assert.True(t, intMetricValueExists(md, "nexus_dashboard.audit.record.count", 1))
+	assert.True(t, intMetricValueExists(md, "nexus_dashboard.event.count", 1))
+	assert.True(t, hasMetricDatapointAttribute(md, "nexus_dashboard.audit.record.count", "nexus_dashboard.operation", "ndfc.audit"))
+	assert.False(t, hasMetricDatapointAttribute(md, "nexus_dashboard.audit.record.count", "user.name", "operator"))
 }
 
 func TestNexusDashboardScrapeAppliesSharedDeviceSelection(t *testing.T) {
