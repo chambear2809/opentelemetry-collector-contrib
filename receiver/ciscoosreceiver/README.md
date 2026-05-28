@@ -3,9 +3,11 @@
 
 The Cisco OS Receiver is a modular receiver that collects metrics from Cisco network devices via SSH connections,
 Cisco Meraki Dashboard APIs, Cisco Intersight APIs, Cisco Catalyst Center Assurance APIs, Cisco Catalyst SD-WAN
-Manager APIs, Nexus Dashboard/NDFC APIs, and Cisco APIC APIs. It supports metrics for device, cloud, controller, and
-infrastructure health plus logs for operational evidence such as faults, anomalies, advisories, audits, deployments,
-workflows, and tech-support status.
+Manager APIs, Nexus Dashboard/NDFC APIs, Cisco APIC APIs, Cisco Secure Firewall Management Center APIs, Cisco
+Identity Services Engine APIs, and IOS XR gNMI/MDT telemetry. It supports metrics for device, cloud, controller,
+identity, security, core WAN, and infrastructure health plus logs for operational evidence such as faults, anomalies,
+advisories, audits, deployments, workflows, authentication failures, posture, pxGrid session signals, policy changes,
+and Secure Firewall security events.
 
 | Status        |           |
 | ------------- |-----------|
@@ -26,23 +28,32 @@ The following settings are available:
 | Setting | Type | Required | Description |
 |---------|------|----------|-------------|
 | `devices` | list | Yes* | List of Cisco SSH devices to monitor |
-| `device_selection` | map | No | Shared include/exclude selector applied across SSH, Meraki, Intersight, Catalyst Center, SD-WAN, Nexus Dashboard, and ACI telemetry |
+| `device_selection` | map | No | Shared include/exclude selector applied across SSH, Meraki, Intersight, Catalyst Center, Catalyst 9800, SD-WAN, Nexus Dashboard, ACI, FMC, ISE, and IOS XR telemetry |
 | `metrics` | map | No | Per-metric forwarding switches for cost-sensitive destinations such as Splunk Observability Cloud |
 | `meraki` | map | Yes* | Meraki Dashboard API polling targets |
 | `intersight` | map | Yes* | Cisco Intersight API polling target |
 | `catalyst_center` | map | Yes* | Cisco Catalyst Center Assurance API polling target |
+| `catalyst_9800` | map | Yes* | Direct Catalyst 9800 WLC/AP gNMI dial-in and gRPC dial-out telemetry |
 | `sdwan` | map | Yes* | Cisco Catalyst SD-WAN Manager API polling target |
 | `nexus_dashboard` | map | Yes* | Nexus Dashboard platform, NDFC, Insights, Orchestrator, and Data Broker API polling target |
 | `aci` | map | Yes* | Cisco APIC polling targets for ACI fabrics |
+| `fmc` | map | Yes* | Cisco Secure Firewall Management Center REST polling and optional eStreamer event targets |
+| `ise` | map | Yes* | Cisco Identity Services Engine REST/OpenAPI/ERS/MnT polling, pxGrid, and Data Connect targets |
+| `ios_xr` | map | Yes* | IOS XR gNMI dial-in and MDT gRPC dial-out telemetry for ASR 9000 and NCS routers |
 | `collection_interval` | duration | No | How often to collect metrics (default: 60s) |
 | `timeout` | duration | No | SSH connection, command, and cloud API request timeout (default: 30s) |
 | `scrapers` | map | Yes** | Scrapers to enable for SSH devices |
 
-*At least one SSH `devices` entry, one `meraki.organizations` / `meraki.devices` target, an Intersight target, a Catalyst Center target, an SD-WAN target, a Nexus Dashboard target, or an ACI target is required.
+*At least one SSH `devices` entry, one `meraki.organizations` / `meraki.devices` target, an Intersight target, a Catalyst Center target, a Catalyst 9800 target, an SD-WAN target, a Nexus Dashboard target, an ACI target, an FMC target, an ISE target, or an IOS XR target is required.
 
 **`scrapers` is required only when SSH `devices` are configured.
 
 Use the canonical receiver name `cisco_os` in new Collector configs. The deprecated `ciscoos` name remains accepted for existing configs.
+
+For Cisco appliance/controller endpoints that commonly use lab or privately issued TLS certificates, set the corresponding
+`insecure_skip_verify: true` option only when the certificate cannot be verified by a configured CA bundle. Prefer
+`ca_file`/server-name settings where the receiver exposes them. Meraki is intentionally excluded because the Dashboard
+API is Cisco-hosted SaaS with public CA certificates.
 
 ### Device Configuration
 
@@ -78,7 +89,7 @@ Each entry in the `devices` list contains device information and authentication 
 
 Use `device_selection` when one receiver config covers many controllers, organizations, or fabrics but users need to collect only a subset of devices. Empty `include` fields collect all devices. If any `include` field is non-empty, a device must match at least one included host name, host ID, host IP, serial, or provider device ID. `exclude` always wins.
 
-Provider-native targets still apply. The effective scope is the provider target plus this shared selector. For example, Meraki `organizations.serials`, Intersight `targets.serials`, Nexus Dashboard `targets.switch_ids`, and ACI `targets.node_ids` can reduce provider API scope while `device_selection` guarantees emitted OTel metrics and logs are also filtered.
+Provider-native targets still apply. The effective scope is the provider target plus this shared selector. For example, Meraki `organizations.serials`, Intersight `targets.serials`, Nexus Dashboard `targets.switch_ids`, ACI `targets.node_ids`, FMC `targets.serials`, and ISE `targets.network_device_names` can reduce provider API scope while `device_selection` guarantees emitted OTel metrics and logs are also filtered.
 
 ```yaml
 receivers:
@@ -98,7 +109,7 @@ receivers:
         device_ids: []
 ```
 
-The receiver keeps Splunk-friendly OpenTelemetry resource attributes for filtering: `host.name`, `host.id`, `host.ip`, `hw.type=network`, `network.interface.name`, and product identifiers such as Meraki serial/network ID, Intersight serial/Moid, Catalyst device ID/serial/site, SD-WAN system IP/UUID/site/application, Nexus switch serial/ID, and ACI node/fabric/tenant/EPG attributes. Controller, account, organization, and site aggregate health remains visible unless the corresponding collection group is disabled.
+The receiver keeps Splunk-friendly OpenTelemetry resource attributes for filtering: `host.name`, `host.id`, `host.ip`, `hw.type=network`, `network.interface.name`, and product identifiers such as Meraki serial/network ID, Intersight serial/Moid, Catalyst device ID/serial/site, Catalyst 9800 AP/client/SSID/YANG context, SD-WAN system IP/UUID/site/application, Nexus switch serial/ID, ACI node/fabric/tenant/EPG attributes, FMC device/policy/domain identifiers, ISE node/network-device/endpoint/user identifiers, and IOS XR target/node IDs. Controller, account, organization, and site aggregate health remains visible unless the corresponding collection group is disabled.
 
 ### Metric Selection And Cost Control
 
@@ -110,7 +121,7 @@ cost-sensitive destinations such as Splunk Observability Cloud:
 - Collection groups such as `sdwan.interfaces.enabled`, `intersight.telemetry.enabled`, `nexus_dashboard.performance.enabled`, and `aci.stats.enabled` stop whole endpoint families from being polled and emitted.
 - `max_results` caps bound the number of returned objects for each group.
 - `device_selection` and provider-native `targets` keep collection scoped to the devices, sites, applications, interfaces, tenants, or fabrics that matter.
-- Root-level `metrics` entries remove named metrics before the receiver passes data to the next Collector component. Metrics are enabled unless explicitly set to `enabled: false`.
+- Root-level `metrics` entries remove exact metric names or metric-name globs before the receiver passes data to the next Collector component. Metrics are enabled unless explicitly set to `enabled: false`; exact names override matching globs.
 
 ```yaml
 receivers:
@@ -119,6 +130,10 @@ receivers:
       sdwan.app_route.loss:
         enabled: false
       system.network.errors:
+        enabled: false
+      cisco.wlc.client.*:
+        enabled: false
+      cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.*:
         enabled: false
     sdwan:
       enabled: true
@@ -183,6 +198,7 @@ evidence such as audit records, alarms, advisories, workflow/task failures, and 
 | `intersight.auth.key_file` | string | No* | Path to an Intersight private key PEM file. |
 | `intersight.auth.key_pem` | string | No* | Intersight private key PEM inline or from environment expansion. |
 | `intersight.endpoint` | string | No | Intersight API endpoint. Defaults to `https://intersight.com`. |
+| `intersight.insecure_skip_verify` | bool | No | Disables endpoint certificate verification for private or lab endpoints using self-signed certificates. Leave disabled for public Intersight. |
 | `intersight.page_size` | int | No | OData page size for `$top`/`$skip` pagination. Defaults to `100`. |
 | `intersight.max_retries` | int | No | Retries for 429 and transient 5xx responses. Defaults to `3`. |
 | `intersight.event_lookback` | duration | No | Lookback window for audit, advisory, workflow, task, and tech-support records. Defaults to `24h`. |
@@ -229,6 +245,7 @@ explicitly configured device/client detail lookups.
 |---------|------|----------|-------------|
 | `catalyst_center.enabled` | bool | No | Enables native Catalyst Center collection. |
 | `catalyst_center.endpoint` | string | Yes | Catalyst Center base URL. No public sandbox default is used. |
+| `catalyst_center.insecure_skip_verify` | bool | No | Disables Catalyst Center certificate verification for self-signed lab certificates. |
 | `catalyst_center.auth.mode` | string | No | `basic` or `aes`. Defaults to `aes` when `aes_credentials` is set, otherwise `basic`. |
 | `catalyst_center.auth.username` | string | Yes* | Username used for Basic token authentication. |
 | `catalyst_center.auth.password` | string | Yes* | Password used for Basic token authentication. |
@@ -281,6 +298,7 @@ externally managed bearer tokens, and externally supplied `JSESSIONID`/XSRF toke
 |---------|------|----------|-------------|
 | `sdwan.enabled` | bool | No | Enables native Catalyst SD-WAN Manager collection. |
 | `sdwan.endpoint` | string | Yes | SD-WAN Manager base URL. API requests are rooted at `/dataservice`. |
+| `sdwan.insecure_skip_verify` | bool | No | Disables SD-WAN Manager certificate verification for self-signed lab certificates. |
 | `sdwan.auth.mode` | string | No | `auto`, `jwt`, `session`, `bearer`, or `cookie`. `auto` prefers bearer, then JWT, then session. |
 | `sdwan.auth.username` | string | Yes* | Username for JWT or session login. |
 | `sdwan.auth.password` | string | Yes* | Password for JWT or session login. |
@@ -339,6 +357,7 @@ leaf and spine is unavailable.
 |---------|------|----------|-------------|
 | `nexus_dashboard.enabled` | bool | No | Enables Nexus Dashboard API collection. |
 | `nexus_dashboard.endpoint` | string | Yes | Nexus Dashboard base URL. |
+| `nexus_dashboard.insecure_skip_verify` | bool | No | Disables Nexus Dashboard certificate verification for self-signed lab certificates. |
 | `nexus_dashboard.auth.mode` | string | No | `api_key` or `username_password`; inferred from populated credentials when omitted. |
 | `nexus_dashboard.auth.username` | string | Yes | Username for API-key headers or login token auth. |
 | `nexus_dashboard.auth.api_key` | string | Yes* | Nexus Dashboard API key for `api_key` auth. |
@@ -380,6 +399,7 @@ switches is restricted.
 | `aci.auth.domain` | string | No | Optional APIC login domain. |
 | `aci.page_size` | int | No | APIC class query page size. Defaults to `100`. |
 | `aci.max_retries` | int | No | Retries for 429 and transient 5xx responses. Defaults to `3`. |
+| `aci.insecure_skip_verify` | bool | No | Disables APIC certificate verification for self-signed lab certificates. |
 | `aci.event_lookback` | duration | No | Lookback for faults, audits, and events. Defaults to `24h`. |
 | `aci.stats_lookback` | duration | No | Lookback for stats-oriented endpoints. Defaults to `30m`. |
 | `aci.targets.*` | lists | No | Optional filters for sites, fabrics, node IDs, serials, tenants, VRFs, bridge domains, EPGs, and interfaces. |
@@ -398,6 +418,306 @@ Collection groups default to enabled and can be disabled or capped independently
 | `endpoints` | endpoint MAC/IP presence |
 | `tenants` | tenants, VRFs, bridge domains, EPGs, app profiles, contracts, and L3Outs |
 | `topology` | LLDP, CDP, and fabric links |
+
+### Cisco Secure Firewall Management Center Configuration
+
+FMC targets are polled over HTTPS using the documented token flow. The receiver generates an access token from
+`/api/fmc_platform/v1/auth/generatetoken`, refreshes it with `/api/fmc_platform/v1/auth/refreshtoken`, and sends
+`X-auth-access-token` on read-only FMC platform and config REST requests. REST collection covers management and
+control-plane observability for FMC-managed FTD/ASA deployments: controller version/license state, device and chassis
+inventory, interfaces, routing/perimeter signals, health, VPN, HA/failover, policy state, deployment state, and
+audit/config-change evidence.
+
+High-fidelity security events are not treated as REST polling data. Enable `fmc.estreamer` to consume Cisco eStreamer
+fully-qualified events for connection, intrusion, intrusion packet, and file event records. Deployments that already
+forward Secure Firewall syslog can also pair this receiver with the Collector `syslog` receiver; FMC REST remains the
+source of deployment, policy, VPN, HA, and inventory state. Logical aliases such as `malware` and
+`security_intelligence` are accepted, but eStreamer fully-qualified events are ultimately requested through Cisco's
+supported connection/file/intrusion/intrusion-packet event blocks.
+
+| Setting | Type | Required | Description |
+|---------|------|----------|-------------|
+| `fmc.enabled` | bool | No | Enables FMC REST collection. |
+| `fmc.controllers` | list | Yes* | FMC endpoint list, each with `endpoint`, optional `name`, and optional `domain_uuid`. If `domain_uuid` is omitted, the receiver uses the auth response `DOMAIN_UUID` header. |
+| `fmc.auth.username` | string | Yes* | FMC username for token generation. |
+| `fmc.auth.password` | string | Yes* | FMC password for token generation. |
+| `fmc.page_size` | int | No | Offset/limit REST page size. Defaults to `100`. |
+| `fmc.max_retries` | int | No | Retries for 429, token expiry, and transient 5xx responses. Defaults to `3`. |
+| `fmc.event_lookback` | duration | No | Lookback for REST health and deployment evidence where FMC exposes time filters. Defaults to `24h`; audit volume is bounded with `fmc.audit.max_results`. |
+| `fmc.insecure_skip_verify` | bool | No | Disables FMC REST certificate verification for self-signed lab certificates. |
+| `fmc.targets.*` | lists | No | Optional filters for device IDs, serials, names, management IPs, policy IDs/names, and interface names. |
+| `fmc.estreamer.enabled` | bool | No | Enables eStreamer fully-qualified event ingestion. |
+| `fmc.estreamer.targets` | list | No | eStreamer `host:port` targets. If omitted and eStreamer is enabled, targets are derived from `fmc.controllers` using port `8302`. |
+| `fmc.estreamer.tls.cert_file` | string | Yes** | PEM client certificate exported for eStreamer. Convert FMC-generated PKCS#12 files to PEM before use. |
+| `fmc.estreamer.tls.key_file` | string | Yes** | PEM private key for the eStreamer client certificate. |
+| `fmc.estreamer.tls.ca_file` | string | No | Optional FMC/eStreamer CA certificate bundle. |
+| `fmc.estreamer.tls.server_name` | string | No | TLS server name/SNI override for eStreamer targets. |
+| `fmc.estreamer.tls.insecure_skip_verify` | bool | No | Disables eStreamer server certificate verification for self-signed lab certificates. |
+| `fmc.estreamer.event_types` | list | No | Event types to request: `connection`, `intrusion`, `intrusion_packet`, and `file`; aliases include `traffic`, `malware`, and `security_intelligence`. Defaults to all four Cisco FQE blocks. |
+| `fmc.estreamer.lookback` | duration | No | Initial eStreamer event replay window. Defaults to `5m`. |
+| `fmc.estreamer.reconnect_interval` | duration | No | Delay before reconnecting a failed eStreamer session. Defaults to `30s`. |
+
+*Required for FMC REST collection.
+
+**Required when eStreamer is configured.
+
+Collection groups default to enabled and can be disabled or capped independently:
+
+| Group | Coverage |
+|-------|----------|
+| `manager` | FMC REST API reachability, request duration/errors, rate-limit counters, scrape health, domains, server versions, licenses, and upgrade packages |
+| `inventory` | FMC-managed FTD/ASA device records, device groups, chassis records, serials, versions, and management addresses |
+| `interfaces` | FTD all-interface, physical, logical, inline-set, interface-statistics/event, bridge-group, EtherChannel, VNI/VTEP, static-route, and chassis-interface objects |
+| `health` | health alerts, health events, path-monitored interfaces, and per-device aggregate CPU/memory/interface/disk/chassis metrics |
+| `vpn` | site-to-site and remote-access VPN policies, tunnel statuses, summaries, details, and remote-access VPN gateways |
+| `ha` | FMC HA status, FTD HA pairs, monitored HA interfaces, clusters, and failover state |
+| `policy` | policy assignments, access/prefilter/NAT rules, intrusion/file/DNS/SSL/health/platform policies, syslog alerts, security zones, network/port/application objects, SGTs, and security-intelligence lists/feeds |
+| `deployments` | deployable devices, deployment job histories, per-device deployments, and pending changes |
+| `audit` | audit and configuration-change records emitted as logs |
+| `security_events` | eStreamer fully-qualified security event logs |
+
+```yaml
+fmc:
+  enabled: true
+  controllers:
+    - endpoint: https://fmc.example.com
+      name: fmc-prod
+      domain_uuid: ${env:FMC_DOMAIN_UUID}
+  auth:
+    username: ${env:FMC_USERNAME}
+    password: ${env:FMC_PASSWORD}
+  targets:
+    serials: ["FMC-SERIAL-1"]
+    policy_names: ["edge-access-policy"]
+  policy:
+    max_results: 5000
+  estreamer:
+    enabled: true
+    targets:
+      - endpoint: fmc.example.com:8302
+        name: fmc-prod
+    tls:
+      cert_file: /etc/otelcol/fmc-estreamer.crt
+      key_file: /etc/otelcol/fmc-estreamer.key
+      ca_file: /etc/otelcol/fmc-ca.crt
+    event_types: ["connection", "intrusion", "intrusion_packet", "file"]
+```
+
+### Cisco Identity Services Engine Configuration
+
+Cisco ISE targets are polled over HTTPS using read-only ERS, OpenAPI, and MnT/Monitoring APIs. The receiver treats ISE
+as identity and policy evidence beside forwarding devices: RADIUS/TACACS failures, endpoint posture, profiler state,
+network device inventory, TrustSec state, alarms, certificates, licensing, webhooks, and policy objects are emitted as
+bounded metrics plus raw evidence logs.
+
+pxGrid and Data Connect are full-coverage add-ons. pxGrid REST and WebSocket/STOMP subscriptions are opt-in because
+they require pxGrid client credentials or certificates. Data Connect is opt-in because it requires ISE 3.2+ database
+credentials or wallet material and can return high-volume historical records. The receiver never calls CoA, session
+delete, policy mutation, certificate mutation, license mutation, repository mutation, or webhook mutation endpoints.
+
+| Setting | Type | Required | Description |
+|---------|------|----------|-------------|
+| `ise.enabled` | bool | No | Enables Cisco ISE collection. |
+| `ise.endpoint` | string | Yes | Cisco ISE base URL. |
+| `ise.auth.username` | string | Yes | ISE REST/OpenAPI/ERS/MnT username. |
+| `ise.auth.password` | string | Yes | ISE REST/OpenAPI/ERS/MnT password. |
+| `ise.page_size` | int | No | ERS page size. Defaults to Cisco's documented maximum `100`. |
+| `ise.max_retries` | int | No | Retries for 429 and transient 5xx responses. Defaults to `3`. |
+| `ise.ca_file` | string | No | PEM CA bundle used to verify the ISE REST/OpenAPI/ERS/MnT HTTPS certificate. |
+| `ise.server_name` | string | No | TLS server name/SNI override for ISE REST/OpenAPI/ERS/MnT, useful when `ise.endpoint` is an IP but the certificate is issued to a DNS name. |
+| `ise.insecure_skip_verify` | bool | No | Disables ISE REST certificate verification. Use only for isolated labs; prefer `ise.ca_file` plus a matching endpoint or `ise.server_name`. |
+| `ise.event_lookback` | duration | No | Lookback for evidence dedupe. Defaults to `24h`. |
+| `ise.session_lookback` | duration | No | Lookback for session/auth list windows. Defaults to `15m`. |
+| `ise.targets.*` | lists | No | Optional filters for node names, network device names/IPs, endpoint MACs, usernames, policy names, security group names, and pxGrid services. |
+| `ise.pxgrid.*` | map | No | Optional pxGrid endpoint, node name, password or cert/key/CA, `auto_activate`, streaming subscriptions, and result cap. |
+| `ise.pxgrid.ca_file` | string | No | PEM CA bundle used to verify the pxGrid REST/WebSocket certificate. |
+| `ise.pxgrid.server_name` | string | No | TLS server name/SNI override for pxGrid. |
+| `ise.pxgrid.insecure_skip_verify` | bool | No | Disables pxGrid certificate verification for self-signed lab certificates. |
+| `ise.data_connect.*` | map | No | Optional Data Connect host, port, service name, username, password, wallet directory, SSL settings, lookback, row cap, and view overrides. |
+| `ise.data_connect.ssl_verify` | bool | No | Set to `false` only when Data Connect TLS cannot be verified by configured wallet/CA material. Defaults to `true`. |
+
+Collection groups default to enabled for REST-safe APIs and can be disabled or capped independently. `pxgrid` and
+`data_connect` default to disabled.
+
+| Group | Coverage |
+|-------|----------|
+| `deployment` | ISE deployment node/persona/session-service status, node groups, PAN HA, task service, repository, backup/upgrade/patch status, IPsec nodes, LSD settings, and read-only system settings |
+| `network_devices` | ERS network devices, network device groups, nodes, external RADIUS servers, and telemetry info |
+| `endpoints` | ERS/OpenAPI endpoints, endpoint groups, rejected endpoints, endpoint custom attributes, device-type summaries, and 5G subscribers/user equipment |
+| `sessions` | MnT active/posture/profiler counts, active sessions, and auth session lists |
+| `auth_failures` | MnT failure reasons and pxGrid RADIUS failure records |
+| `accounting` | Accounting/session evidence through Data Connect and targeted troubleshooting APIs |
+| `policy` | Network-access/device-admin policy sets, conditions, dictionaries, identity stores, RBAC, MFA/OIDC/Duo sync, guest/portal policy, TACACS objects, alertmanager rules, and authorization profiles |
+| `posture`, `profiler`, `trustsec` | Endpoint posture import/export status, profiling dictionaries/policy, TrustSec settings/rules/matrix/SGT/SGACL/SXP/ACI/workload connections, ANC, and SGT reservations |
+| `alarms`, `certificates`, `licensing`, `webhooks` | OpenAPI/ERS alarm rules/instances/summaries, CSRs/trusted/system certificate evidence, license state, webhook alarm-rule, and delivery evidence |
+| `pxgrid` | pxGrid service lookup/version, session, RADIUS failure, system health, TrustSec, endpoint, pxGrid Cloud/Direct status, and streaming topics |
+| `data_connect` | Allowlisted read-only Data Connect views for RADIUS, TACACS, posture, profiler, policy, network devices, admin/audit, and security evidence |
+
+```yaml
+ise:
+  enabled: true
+  endpoint: https://ise.example.com
+  ca_file: /etc/otelcol/ise-rest-ca.crt
+  server_name: ise.example.com
+  auth:
+    username: ${env:ISE_USERNAME}
+    password: ${env:ISE_PASSWORD}
+  targets:
+    network_device_names: ["edge-switch-1"]
+    endpoint_macs: ["00:11:22:33:44:55"]
+    usernames: ["alice@example.com"]
+  auth_failures:
+    max_results: 1000
+  pxgrid:
+    enabled: true
+    node_name: otel-collector
+    cert_file: /etc/otelcol/pxgrid.crt
+    key_file: /etc/otelcol/pxgrid.key
+    ca_file: /etc/otelcol/ise-ca.crt
+    streaming: true
+  data_connect:
+    enabled: true
+    host: ise.example.com
+    service_name: cpm10
+    username: ${env:ISE_DATACONNECT_USERNAME}
+    password: ${env:ISE_DATACONNECT_PASSWORD}
+    wallet_dir: /etc/otelcol/ise-wallet
+```
+
+### Catalyst 9800 Configuration
+
+Catalyst 9800 support collects direct WLC/AP telemetry from IOS XE wireless controllers through two Cisco-supported
+model-driven telemetry modes: collector-managed gNMI dial-in and WLC-pushed MDT gRPC dial-out. gNMI subscriptions use
+JSON or JSON_IETF; gRPC dial-out reuses the `yang_grpc` receiver path for self-describing KV-GPB, then normalizes the
+same YANG leaves into raw `cisco.catalyst9800.yang.*` metrics and stable `cisco.wlc.*` aliases.
+
+The default path groups are enabled only after `catalyst_9800.enabled: true` and cover AP join/CAPWAP state, RF and
+channel utilization, SSID counters, mobility peer/roam health, HA state, RADIUS summary counters, and controller
+system health. High-cardinality client detail, AP/RRM neighbors, and CAPWAP packet counters are opt-in. The receiver
+does not generate wildcard gNMI subscriptions, enforces per-path minimum sample intervals from the catalog, and checks
+gNMI Capabilities unless `skip_capabilities` is set on a target.
+
+| Setting | Type | Required | Description |
+|---------|------|----------|-------------|
+| `catalyst_9800.enabled` | bool | No | Enables direct Catalyst 9800 telemetry. Defaults to `false`. |
+| `catalyst_9800.path_groups.*.enabled` | bool | No | Enables curated path groups. Safe defaults are `ap`, `rf`, `ssid`, `mobility`, `ha`, `auth_summary`, and `controller_system`; `client_detail`, `capwap_packets`, and `neighbors` default to disabled. |
+| `catalyst_9800.dial_in.targets` | list | No* | gNMI targets with `name`, `endpoint`, `credentials`, optional TLS/client settings, encoding preference, subscription, and path overrides. |
+| `catalyst_9800.dial_in.targets[].tls` | map | No | Standard gRPC client TLS settings, including `ca_file`, `server_name_override`, and `insecure_skip_verify` for self-signed target certificates. |
+| `catalyst_9800.dial_out.enabled` | bool | No* | Enables a Catalyst 9800 MDT gRPC dial-out listener. |
+| `catalyst_9800.dial_out.endpoint` | string | No | gRPC listen endpoint. Defaults to `localhost:57501`; production configs usually set `0.0.0.0:57501` or a specific collector IP. |
+| `catalyst_9800.dial_out.allowed_clients` | list | No | Optional source CIDR allowlist passed to the wrapped `yang_grpc` receiver. |
+| `catalyst_9800.encoding_preference` | list | No | gNMI encoding negotiation order. Defaults to `["json_ietf", "json"]`; `proto` is reserved for gRPC/KV-GPB dial-out. |
+| `catalyst_9800.subscription.mode` | string | No | `once`, `poll`, or `stream`. Defaults to `stream`. |
+| `catalyst_9800.subscription.stream_mode` | string | No | `sample`, `on_change`, or `target_defined`. Native Cisco paths fall back to `sample` for `target_defined`; path catalog entries such as AP join and LLDP can override to on-change. |
+| `catalyst_9800.subscription.sample_interval` | duration | No | Base sample interval. Defaults to `60s`; AP/CAPWAP/common client/hardware/CDP paths enforce `15m`, AP oper/radio data/client traffic/RRM paths enforce `180s`, and radio stats/mobility/HA/auth/controller health paths enforce `60s`. |
+| `catalyst_9800.max_datapoints_per_batch` | int | No | Maximum datapoints forwarded from one decoded telemetry batch. Defaults to `50000`; set lower for cost-sensitive Splunk Observability Cloud pipelines, or `0` to disable the guardrail. |
+| `catalyst_9800.unsupported_path_action` | string | No | `warn`, `error`, or `ignore` when target capabilities do not advertise a configured path module. Defaults to `warn`. |
+| `catalyst_9800.paths.include` / `exclude` | lists | No | Custom concrete YANG paths and excludes. Includes cannot contain wildcards; excludes can match path IDs, groups, exact paths, or globs. |
+
+*At least one dial-in target or `dial_out.enabled: true` is required when Catalyst 9800 is enabled.
+
+```yaml
+catalyst_9800:
+  enabled: true
+  unsupported_path_action: warn
+  path_groups:
+    client_detail:
+      enabled: false
+    neighbors:
+      enabled: false
+    capwap_packets:
+      enabled: false
+  dial_in:
+    targets:
+      - name: campus-wlc-1
+        endpoint: 10.0.0.20:57400
+        credentials:
+          username: ${env:WLC_USERNAME}
+          password: ${env:WLC_PASSWORD}
+        tls:
+          insecure_skip_verify: false
+        subscription:
+          mode: stream
+          stream_mode: sample
+          sample_interval: 60s
+          heartbeat_interval: 60s
+          suppress_redundant: true
+        encoding_preference: [json_ietf, json]
+  dial_out:
+    enabled: true
+    endpoint: 0.0.0.0:57501
+    allowed_clients: ["10.0.0.0/8"]
+```
+
+### IOS XR Configuration
+
+IOS XR support is telemetry-first and opt-in. It targets ASR 9000 and NCS 540/5500/5700 routers through gNMI dial-in
+subscriptions and IOS XR MDT gRPC dial-out. Dial-out reuses the `yang_grpc` receiver path for self-describing
+KV-GPB, while IOS XR normalization adds resource attributes, path/module attributes, metric naming, device selection,
+metric filtering, and self-health metrics.
+
+The receiver follows gNMI Capabilities before subscribing unless `skip_capabilities` is set on a target. Encodings are
+negotiated in configured order (`json_ietf`, `json`, `proto`), unsupported models are pruned or rejected according to
+`unsupported_path_action`, and compact MDT `data_gpb` payloads are diagnosed with
+`cisco.iosxr.receiver.compact_gpb_payloads` because generic compact GPB decoding requires per-model protobufs.
+
+| Setting | Type | Required | Description |
+|---------|------|----------|-------------|
+| `ios_xr.enabled` | bool | No | Enables IOS XR telemetry. Defaults to `false`. |
+| `ios_xr.path_groups.*.enabled` | bool | No | Enables curated path groups. All groups default to disabled. |
+| `ios_xr.dial_in.targets` | list | No* | gNMI targets with `name`, `endpoint`, `credentials`, optional TLS/client settings, encoding preference, subscription, and path overrides. |
+| `ios_xr.dial_in.targets[].tls` | map | No | Standard gRPC client TLS settings, including `ca_file`, `server_name_override`, and `insecure_skip_verify` for self-signed target certificates. |
+| `ios_xr.dial_out.enabled` | bool | No* | Enables an MDT gRPC dial-out listener. |
+| `ios_xr.dial_out.endpoint` | string | No | gRPC listen endpoint. Defaults to `localhost:57500`; production configs usually set `0.0.0.0:57500` or a specific collector IP. |
+| `ios_xr.dial_out.allowed_clients` | list | No | Optional source CIDR allowlist passed to the wrapped `yang_grpc` receiver. |
+| `ios_xr.encoding_preference` | list | No | Encoding negotiation order. Defaults to `["json_ietf", "json", "proto"]`. |
+| `ios_xr.subscription.mode` | string | No | `once`, `poll`, or `stream`. Defaults to `stream`. |
+| `ios_xr.subscription.stream_mode` | string | No | `sample`, `on_change`, or `target_defined`. Native Cisco paths fall back to `sample` for `target_defined` unless capabilities prove support. |
+| `ios_xr.subscription.sample_interval` | duration | No | Sample interval. Defaults to `60s`; high-volume catalog paths enforce safe minimums. |
+| `ios_xr.max_datapoints_per_batch` | int | No | Maximum datapoints forwarded from one decoded telemetry batch. Defaults to `50000`; set lower for cost-sensitive Splunk Observability Cloud pipelines, or `0` to disable the guardrail. |
+| `ios_xr.unsupported_path_action` | string | No | `warn`, `error`, or `ignore` when target capabilities do not advertise a configured path module. Defaults to `warn`. |
+| `ios_xr.paths.include` / `exclude` | lists | No | Custom YANG paths and excludes. Excludes can match path IDs, groups, exact paths, or globs. |
+
+*At least one dial-in target or `dial_out.enabled: true` is required when IOS XR is enabled.
+
+Curated path groups: `system`, `platform`, `environment`, `interfaces`, `optics`, `routing`, `fib`, `bgp`, `isis`,
+`mpls`, `segment_routing`, `qos`, `security_policy`, `bfd`, `topology`, `time_sync`, `asic`, and `telemetry_self`.
+The catalog prefers OpenConfig paths where they cover the domain and uses Cisco native IOS XR models for FIB/CEF, MPLS,
+SRv6, optics, ASIC, and platform gaps. Validate path availability on each target with gNMI Capabilities because support
+varies by platform, line card, and IOS XR release.
+
+```yaml
+ios_xr:
+  enabled: true
+  path_groups:
+    interfaces:
+      enabled: true
+    optics:
+      enabled: true
+    bgp:
+      enabled: true
+  unsupported_path_action: warn
+  dial_in:
+    targets:
+      - name: core-asr9k-1
+        endpoint: 10.0.0.10:57400
+        credentials:
+          username: ${env:XR_USERNAME}
+          password: ${env:XR_PASSWORD}
+        tls:
+          insecure_skip_verify: false
+        subscription:
+          mode: stream
+          stream_mode: sample
+          sample_interval: 60s
+          heartbeat_interval: 60s
+          suppress_redundant: true
+        encoding_preference: [json_ietf, proto]
+  dial_out:
+    enabled: true
+    endpoint: 0.0.0.0:57500
+    allowed_clients: ["10.0.0.0/8"]
+```
 
 ### Scrapers Configuration
 
@@ -550,6 +870,34 @@ state, NX-OS NVE/EVPN fabric metrics, vPC, LACP counters, and detailed QoS queue
 - APIC API and ACI fabric health: `aci.api.request.duration`, `aci.api.request.errors`, `aci.controller.up`, `aci.scrape.partial_success`, `aci.resource.info`, `aci.resource.status`, `aci.fabric.health`, `cisco.device.up`, `system.cpu.utilization`, and `system.memory.utilization`.
 - ACI troubleshooting: `aci.fault.active`, `aci.fault.count`, `aci.endpoint.present`, `aci.endpoint.count`, `aci.tenant.status`, `aci.tenant.object.count`, `system.network.interface.status`, `cisco.interface.io.rate`, and `cisco.topology.neighbor.info`.
 - Logs: Nexus Dashboard logs carry NDFC audit/event, Insights anomaly/root-cause, NDO deployment/audit, and Data Broker event evidence. ACI logs carry faults, audits, and events. Both preserve the original API object body and bounded correlation attributes for fabric, site, switch serial, node ID, tenant, endpoint, and user.
+
+### Secure Firewall Management Center Metrics And Logs
+- FMC API health: `fmc.api.request.duration`, `fmc.api.request.errors`, `fmc.api.rate_limited`, `fmc.manager.up`, `fmc.scrape.partial_success`, and `fmc.scrape.last_success`.
+- Managed firewall state: `fmc.resource.info`, `fmc.resource.status`, `fmc.resource.count`, `cisco.device.up`, and `system.network.interface.status` cover FTD/ASA inventory, chassis, interfaces, routes, and health from FMC REST.
+- Perimeter, segmentation, and VPN evidence: `fmc.policy.object.count`, `fmc.vpn.tunnel.status`, `fmc.ha.status`, and `fmc.health.status` expose bounded policy, object, zone, VPN, failover, and health posture.
+- Deployment and change evidence: `fmc.deployment.status`, `fmc.deployment.pending.count`, and `fmc.audit.record.count` expose deployment backlog, failed jobs, and administrative changes.
+- Logs: FMC REST logs carry health, audit, config-change, and deployment records. eStreamer logs carry connection, intrusion, intrusion packet, and file/malware events with `event.domain=fmc.estreamer`, source/destination addresses, event type, and the original fully-qualified event body.
+
+### Cisco ISE Metrics And Logs
+- API trust: `ise.api.request.duration`, `ise.api.request.errors`, `ise.api.rate_limited`, `ise.api.endpoint.error`, `ise.scrape.partial_success`, `ise.scrape.last_success`, `ise.service.unavailable`, and `ise.service.skipped`.
+- Platform and inventory: `ise.controller.up`, `ise.resource.info`, `ise.resource.status`, `ise.deployment.node.count`, `ise.deployment.node.status`, `ise.network_device.count`, `ise.network_device.status`, `ise.endpoint.count`, and `ise.endpoint.status`.
+- Identity and access evidence: `ise.session.active.count`, `ise.session.count`, `ise.radius.failure.count`, `ise.tacacs.failure.count`, `ise.accounting.session.count`, `ise.endpoint.posture.status`, `ise.endpoint.posture.count`, and `ise.endpoint.profile.count`.
+- Policy and security posture: `ise.policy.object.count`, `ise.policy.status`, `ise.profiler.policy.status`, `ise.trustsec.resource.count`, `ise.trustsec.resource.status`, `ise.alarm.count`, `ise.certificate.expiration`, `ise.license.status`, and `ise.webhook.delivery.count`.
+- pxGrid and Data Connect: `ise.pxgrid.service.status`, `ise.pxgrid.subscription.status`, `ise.pxgrid.message.count`, `ise.dataconnect.query.duration`, `ise.dataconnect.query.rows`, `ise.dataconnect.query.errors`, and `ise.dataconnect.row.count`.
+- Logs: ISE logs preserve raw REST/OpenAPI/ERS/MnT, pxGrid, and Data Connect records with `event.domain=ise`, `event.name`, node, protocol, outcome, failure reason, policy, network device, endpoint MAC, user, session/audit ID, and HTTP status attributes where present.
+
+### Catalyst 9800 Metrics
+- Generic YANG telemetry: numeric leaves are emitted as `cisco.catalyst9800.yang.<module>.<path>.<leaf>`, string and enum leaves use an `_info` metric with the original value on the `value` attribute, known counters are cumulative sums, and other numeric leaves are gauges.
+- Wireless aliases: stable `cisco.wlc.*` metrics cover AP join/failure/disconnect/CAPWAP state, RF utilization/noise/client count/channel changes, SSID client/utilization/traffic/retry counters, client connection/auth/roam/RSSI/SNR, mobility peer/roam/handoff, HA state, RADIUS summary health, and controller CPU/receiver health.
+- Correlation attributes: Catalyst 9800 metrics include `host.name`, `host.id`, `host.ip`, `hw.type=network`, `cisco.os.name=ios_xe`, `cisco.platform.family=catalyst_9800`, `cisco.yang.path`, `cisco.yang.module`, `cisco.telemetry.transport`, AP MAC/name, radio slot, WLAN ID, SSID, client MAC, and mobility peer IP when present.
+- Receiver health: `cisco.catalyst9800.receiver.active_subscriptions`, `cisco.catalyst9800.receiver.updates`, `cisco.catalyst9800.receiver.decode_errors`, `cisco.catalyst9800.receiver.unsupported_paths`, `cisco.catalyst9800.receiver.reconnects`, `cisco.catalyst9800.receiver.dropped_datapoints`, `cisco.catalyst9800.receiver.compact_gpb_payloads`, and `cisco.catalyst9800.receiver.last_success_timestamp` help detect stale or lossy WLC telemetry.
+
+### IOS XR Metrics
+- Generic YANG telemetry: numeric leaves are emitted as `cisco.iosxr.yang.<module>.<path>.<leaf>`, string and enum leaves use an `_info` metric with the original value on the `value` attribute, known counters are cumulative sums, and other numeric leaves are gauges.
+- Core WAN evidence: curated path groups cover system, platform, environment, high-speed interfaces, optics, routing, FIB/CEF, BGP, ISIS, MPLS, SR/SRv6, QoS, security policy, BFD, topology, time sync, ASIC, and telemetry self-health.
+- Correlation attributes: IOS XR metrics include `host.name`, `host.id`, `host.ip`, `hw.type=network`, `cisco.os.name=ios_xr`, `cisco.platform.family`, `cisco.yang.path`, `cisco.yang.module`, `cisco.telemetry.transport`, and normalized interface, VRF, neighbor, node, and location keys where available.
+- Receiver health: `cisco.iosxr.receiver.active_subscriptions`, `cisco.iosxr.receiver.updates`, `cisco.iosxr.receiver.decode_errors`, `cisco.iosxr.receiver.unsupported_paths`, `cisco.iosxr.receiver.reconnects`, `cisco.iosxr.receiver.dropped_datapoints`, `cisco.iosxr.receiver.compact_gpb_payloads`, and `cisco.iosxr.receiver.last_success_timestamp` help detect stale or lossy telemetry.
+- Compact GPB behavior: MDT self-describing KV-GPB is decoded through `yang_grpc`; compact `data_gpb` is counted diagnostically instead of silently dropped.
 
 ### Interface Metrics
 - `system.network.io` - Number of bytes transmitted and received (with `network.io.direction` attribute: `receive` or `transmit`)
@@ -827,7 +1175,8 @@ service:
 If you run the Splunk Distribution and prefer the `signalfx` exporter for metrics and host metadata sync, configure the
 receiver in the same metrics pipeline and set exporter filters intentionally so Cisco metrics are not dropped by default
 metric filtering. Include the Cisco receiver metrics explicitly, including `cisco.*`, `meraki.*`, `intersight.*`,
-`catalyst_center.*`, `sdwan.*`, `nexus_dashboard.*`, and `aci.*`.
+`catalyst_center.*`, `cisco.catalyst9800.*`, `cisco.wlc.*`, `sdwan.*`, `nexus_dashboard.*`, `aci.*`, `ise.*`, and
+`cisco.iosxr.*`.
 
 Importable dashboard groups and sample detector blueprints are in [Splunk O11y Dashboards And Troubleshooting](docs/splunk-o11y.md).
 
@@ -873,4 +1222,26 @@ export CISCOOS_E2E_APIC_NODE_IDS=101
 export CISCOOS_E2E_APIC_TENANTS=prod
 
 go test -tags=e2e -run 'TestE2E(NexusDashboardControllerAPI|ACIControllerAPI)' -count=1 -timeout=3m ./receiver/ciscoosreceiver
+```
+
+IOS XR live telemetry smoke tests are opt-in. Dial-in connects to a router gNMI endpoint and defaults to the
+`interfaces` path group with a one-shot subscription:
+
+```shell
+export CISCOOS_E2E_IOSXR_ENDPOINT=10.0.0.10:57400
+export CISCOOS_E2E_IOSXR_USERNAME=automation
+read -rs CISCOOS_E2E_IOSXR_PASSWORD
+export CISCOOS_E2E_IOSXR_PASSWORD
+export CISCOOS_E2E_IOSXR_TLS_INSECURE=false
+export CISCOOS_E2E_IOSXR_PATH_GROUPS=interfaces,optics,bgp
+
+go test -tags=e2e -run TestE2EIOSXRGNMIDialIn -count=1 -timeout=3m ./receiver/ciscoosreceiver
+```
+
+For MDT gRPC dial-out, configure the IOS XR router subscription to stream to the collector endpoint, then run:
+
+```shell
+export CISCOOS_E2E_IOSXR_DIALOUT_ENDPOINT=0.0.0.0:57500
+
+go test -tags=e2e -run TestE2EIOSXRMDTDialOut -count=1 -timeout=3m ./receiver/ciscoosreceiver
 ```

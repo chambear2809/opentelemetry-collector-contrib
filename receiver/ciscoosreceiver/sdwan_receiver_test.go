@@ -131,6 +131,41 @@ func TestMetricFilterDropsConfiguredMetrics(t *testing.T) {
 	assert.Contains(t, names, "system.network.io")
 }
 
+func TestMetricFilterSupportsGlobPatternsWithExactOverride(t *testing.T) {
+	server, _ := newSDWANFixtureServer(t, map[string]string{
+		"/dataservice/device": `{"data":[
+			{"host-name":"edge-1","system-ip":"10.0.0.1","uuid":"uuid-1","chasisNumber":"SDWAN-SERIAL-1","site-id":"100","personality":"vedge","status":"reachable"}
+		]}`,
+		"/dataservice/device/app-route/statistics": `{"data":[{"latency":12,"jitter":3,"loss":0.1,"local-color":"biz-internet","application":"openai-api","sla-state":"ok"}]}`,
+		"/dataservice/device/interface/synced":     `{"data":[{"ifname":"ge0/0","oper-status":"up","admin-status":"up","rx-bytes":1024,"rx-errors":1,"color":"biz-internet","vpn-id":"0"}]}`,
+		"/dataservice/alarms":                      `{"data":[]}`,
+		"/dataservice/events":                      `{"data":[]}`,
+		"/dataservice/auditlog":                    `{"data":[]}`,
+	}, nil)
+	defer server.Close()
+
+	receiver := newTestSDWANReceiver(t, server.URL, func(cfg *Config) {
+		cfg.SDWAN.Manager.Enabled = false
+		cfg.SDWAN.ControlPlane.Enabled = false
+		cfg.SDWAN.BFD.Enabled = false
+		cfg.Metrics = map[string]MetricConfig{
+			"sdwan.app_route.*":     {Enabled: false},
+			"sdwan.app_route.loss":  {Enabled: true},
+			"system.network.errors": {Enabled: false},
+		}
+	})
+	md, err := receiver.scrape(t.Context())
+	require.NoError(t, err)
+
+	filterMetricsByConfig(md, receiver.config)
+	names := metricNames(md)
+	assert.NotContains(t, names, "sdwan.app_route.latency")
+	assert.NotContains(t, names, "sdwan.app_route.jitter")
+	assert.Contains(t, names, "sdwan.app_route.loss")
+	assert.NotContains(t, names, "system.network.errors")
+	assert.Contains(t, names, "system.network.io")
+}
+
 func TestSDWANLogsPreserveEventBodies(t *testing.T) {
 	server, _ := newSDWANFixtureServer(t, map[string]string{
 		"/dataservice/alarms":   `{"data":[{"id":"alarm-1","severity":"critical","status":"active","system-ip":"10.0.0.1","message":"BFD down"}]}`,

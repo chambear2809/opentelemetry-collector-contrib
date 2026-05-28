@@ -5,6 +5,8 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 
 import (
 	"context"
+	"path"
+	"strings"
 
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -58,5 +60,39 @@ func (cfg *Config) metricEnabled(name string) bool {
 		return true
 	}
 	metric, ok := cfg.Metrics[name]
-	return !ok || metric.Enabled
+	if ok {
+		return metric.Enabled
+	}
+
+	matched := false
+	bestPattern := ""
+	bestPatternEnabled := true
+	for pattern, metric := range cfg.Metrics {
+		if !isMetricNamePattern(pattern) || !metricNamePatternMatches(pattern, name) {
+			continue
+		}
+		if !matched || len(pattern) > len(bestPattern) || (len(pattern) == len(bestPattern) && pattern > bestPattern) {
+			matched = true
+			bestPattern = pattern
+			bestPatternEnabled = metric.Enabled
+		}
+	}
+	if matched {
+		return bestPatternEnabled
+	}
+	return true
+}
+
+func isMetricNamePattern(name string) bool {
+	return strings.ContainsAny(name, "*?[")
+}
+
+func validMetricNamePattern(pattern string) bool {
+	_, err := path.Match(pattern, "")
+	return err == nil
+}
+
+func metricNamePatternMatches(pattern, name string) bool {
+	matches, err := path.Match(pattern, name)
+	return err == nil && matches
 }

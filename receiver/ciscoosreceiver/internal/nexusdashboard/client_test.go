@@ -50,6 +50,30 @@ func TestClientAPIKeyHeadersAndPagination(t *testing.T) {
 	assert.Equal(t, int64(2), requests.Load())
 }
 
+func TestClientSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "admin", r.Header.Get("X-Nd-Username"))
+		assert.Equal(t, "nd-api-key", r.Header.Get("X-Nd-Apikey"))
+		_, _ = w.Write([]byte(`{"items":[]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:           server.URL,
+		AuthMode:           "api_key",
+		Username:           "admin",
+		APIKey:             "nd-api-key",
+		Timeout:            time.Second,
+		MaxRetries:         1,
+		InsecureSkipVerify: true,
+	})
+	require.NoError(t, err)
+
+	got, err := client.List(t.Context(), "fabrics", "/api/v1/manage/fabrics", nil, 0)
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
+
 func TestClientUsernamePasswordLoginToken(t *testing.T) {
 	var logins atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

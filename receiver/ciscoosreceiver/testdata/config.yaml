@@ -83,7 +83,7 @@ ciscoos:
       host_names: ["device-1", "edge-1"]
       host_ids: ["host-1"]
       host_ips: ["192.168.1.1"]
-      serials: ["Q234-ABCD-0001", "SERIAL-1", "FOC1234", "ACI-SERIAL-1"]
+      serials: ["Q234-ABCD-0001", "SERIAL-1", "FOC1234", "ACI-SERIAL-1", "FMC-SERIAL-1"]
       device_ids: ["device-uuid-1", "101"]
     exclude:
       host_names: ["lab-disabled"]
@@ -95,6 +95,10 @@ ciscoos:
     sdwan.app_route.loss:
       enabled: false
     system.network.errors:
+      enabled: false
+    cisco.wlc.client.*:
+      enabled: false
+    cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.*:
       enabled: false
   meraki:
     auth:
@@ -116,6 +120,7 @@ ciscoos:
       key_id: "intersight-key"
       key_file: "/etc/otelcol/intersight.pem"
     endpoint: "https://intersight.example.com"
+    insecure_skip_verify: true
     user_agent: "ciscoosreceiver-test"
     page_size: 50
     max_retries: 2
@@ -133,6 +138,7 @@ ciscoos:
   catalyst_center:
     enabled: true
     endpoint: "https://catalyst-center.example.com"
+    insecure_skip_verify: true
     user_agent: "ciscoosreceiver-test"
     page_size: 250
     max_retries: 2
@@ -155,6 +161,7 @@ ciscoos:
   sdwan:
     enabled: true
     endpoint: "https://sdwan-manager.example.com"
+    insecure_skip_verify: true
     user_agent: "ciscoosreceiver-test"
     page_size: 300
     max_retries: 2
@@ -194,6 +201,7 @@ ciscoos:
   nexus_dashboard:
     enabled: true
     endpoint: "https://nexus-dashboard.example.com"
+    insecure_skip_verify: true
     user_agent: "ciscoosreceiver-test"
     page_size: 75
     max_retries: 2
@@ -230,6 +238,7 @@ ciscoos:
     user_agent: "ciscoosreceiver-test"
     page_size: 80
     max_retries: 2
+    insecure_skip_verify: true
     event_lookback: 10h
     stats_lookback: 25m
     auth:
@@ -254,3 +263,198 @@ ciscoos:
     tenants:
       enabled: true
       max_results: 500
+  ise:
+    enabled: true
+    endpoint: "https://ise.example.com"
+    user_agent: "ciscoosreceiver-test"
+    page_size: 100
+    max_retries: 2
+    event_lookback: 7h
+    session_lookback: 10m
+    max_results: 900
+    ca_file: "/etc/otelcol/ise-rest-ca.crt"
+    server_name: "nyc-ise-01.ciscovalidated.com"
+    insecure_skip_verify: false
+    auth:
+      username: "admin"
+      password: "password"
+    targets:
+      node_names: ["ise-pan-1"]
+      network_device_names: ["edge-switch-1"]
+      network_device_ips: ["192.0.2.10"]
+      endpoint_macs: ["00:11:22:33:44:55"]
+      usernames: ["alice@example.com"]
+      policy_names: ["wired-access"]
+      security_group_names: ["Employees"]
+      pxgrid_services: ["com.cisco.ise.session"]
+    sessions:
+      enabled: true
+      max_results: 750
+    auth_failures:
+      enabled: true
+      max_results: 300
+    trustsec:
+      enabled: true
+      max_results: 200
+    pxgrid:
+      enabled: true
+      node_name: "otel-collector"
+      password: "pxgrid-secret"
+      streaming: true
+      max_results: 250
+      subscriptions:
+        session: true
+        radius_failures: true
+        endpoint: true
+        trustsec: true
+        system_health: true
+    data_connect:
+      enabled: true
+      host: "ise.example.com"
+      port: 2484
+      service_name: "cpm10"
+      username: "dataconnect"
+      password: "db-secret"
+      wallet_dir: "/etc/otelcol/ise-wallet"
+      ssl: true
+      ssl_verify: false
+      lookback: 12h
+      row_limit: 400
+      views:
+        RADIUS_AUTHENTICATIONS_WEEK:
+          enabled: true
+          max_results: 250
+  catalyst_9800:
+    enabled: true
+    max_datapoints_per_batch: 10000
+    path_groups:
+      client_detail:
+        enabled: true
+      neighbors:
+        enabled: false
+      capwap_packets:
+        enabled: false
+    unsupported_path_action: "warn"
+    encoding_preference: ["json_ietf", "json"]
+    subscription:
+      mode: "stream"
+      stream_mode: "sample"
+      sample_interval: 60s
+      heartbeat_interval: 60s
+      suppress_redundant: true
+    dial_in:
+      targets:
+        - name: "campus-wlc-1"
+          endpoint: "10.0.0.20:57400"
+          platform_family: "catalyst_9800"
+          credentials:
+            username: "admin"
+            password: "password"
+          tls:
+            insecure_skip_verify: true
+          paths:
+            include:
+              - "wireless-client-oper:client-oper-data/common-oper-data"
+            exclude:
+              - "neighbors"
+    dial_out:
+      enabled: true
+      endpoint: "0.0.0.0:57501"
+      transport: "tcp"
+      allowed_clients: ["10.0.0.0/8"]
+  ios_xr:
+    enabled: true
+    max_datapoints_per_batch: 12000
+    path_groups:
+      interfaces:
+        enabled: true
+      optics:
+        enabled: true
+      bgp:
+        enabled: true
+    unsupported_path_action: "error"
+    encoding_preference: ["json_ietf", "proto"]
+    subscription:
+      mode: "stream"
+      stream_mode: "sample"
+      sample_interval: 60s
+      heartbeat_interval: 60s
+      suppress_redundant: true
+    dial_in:
+      targets:
+        - name: "core-asr9k-1"
+          endpoint: "10.0.0.10:57400"
+          platform_family: "ASR 9000"
+          credentials:
+            username: "admin"
+            password: "password"
+          tls:
+            insecure_skip_verify: true
+    dial_out:
+      enabled: true
+      endpoint: "0.0.0.0:57500"
+      transport: "tcp"
+      allowed_clients: ["10.0.0.0/8"]
+  fmc:
+    enabled: true
+    controllers:
+      - endpoint: "https://fmc1.example.com"
+        name: "fmc-1"
+        domain_uuid: "domain-uuid-1"
+    user_agent: "ciscoosreceiver-test"
+    page_size: 90
+    max_retries: 2
+    event_lookback: 11h
+    insecure_skip_verify: true
+    auth:
+      username: "admin"
+      password: "password"
+    targets:
+      device_ids: ["fmc-device-uuid-1"]
+      serials: ["FMC-SERIAL-1"]
+      names: ["ftd-edge-1"]
+      management_ips: ["192.0.2.40"]
+      policy_ids: ["policy-uuid-1"]
+      policy_names: ["edge-access-policy"]
+      interface_names: ["GigabitEthernet0/0"]
+    inventory:
+      enabled: true
+      max_results: 250
+    interfaces:
+      enabled: true
+      max_results: 500
+    health:
+      enabled: true
+      max_results: 150
+    vpn:
+      enabled: true
+      max_results: 175
+    ha:
+      enabled: true
+      max_results: 50
+    policy:
+      enabled: true
+      max_results: 300
+    deployments:
+      enabled: true
+      max_results: 125
+    audit:
+      enabled: true
+      max_results: 100
+    security_events:
+      enabled: true
+    estreamer:
+      enabled: true
+      targets:
+        - endpoint: "fmc1.example.com:8302"
+          name: "fmc-1"
+      tls:
+        cert_file: "/etc/otelcol/fmc-estreamer.crt"
+        key_file: "/etc/otelcol/fmc-estreamer.key"
+        ca_file: "/etc/otelcol/fmc-ca.crt"
+        server_name: "fmc1.example.com"
+        insecure_skip_verify: true
+      event_types: ["connection", "intrusion", "intrusion_packet", "file"]
+      lookback: 10m
+      reconnect_interval: 20s
+      max_message_bytes: 1048576

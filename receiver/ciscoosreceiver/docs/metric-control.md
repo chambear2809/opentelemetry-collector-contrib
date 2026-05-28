@@ -8,7 +8,7 @@ The short version:
 2. Disable whole collection groups before disabling individual metrics.
 3. Scope collection with `targets` and `device_selection`.
 4. Cap returned objects with `max_results`.
-5. Use root-level `metrics.<metric_name>.enabled: false` for final per-metric drops.
+5. Use root-level `metrics.<metric_name-or-glob>.enabled: false` for final drops.
 6. Keep logs and metrics decisions separate.
 
 ## Mental Model
@@ -33,14 +33,16 @@ Use the controls in this order. Earlier controls prevent work and reduce emitted
 | Provider `targets` | Scoping to sites, serials, applications, tenants, fabrics, or interfaces | Often reduces provider API query scope and emitted telemetry | Shared SSH device selection |
 | `device_selection` | Applying one shared include/exclude selector across platforms | Filters emitted telemetry by host name, host ID, host IP, serial, or provider device ID | Provider API calls that are not target-aware |
 | `max_results` | Bounding returned objects per collection group | Limits records processed per scrape | The number of datapoint attributes per returned object |
-| Root `metrics` | Removing exact metric names from the metrics pipeline | Drops named metrics before forwarding to downstream components | API calls, SSH commands, logs, or other metrics |
+| Root `metrics` | Removing exact metric names or metric-name globs from the metrics pipeline | Drops matching metrics before forwarding to downstream components | API calls, SSH commands, logs, or other metrics |
 | Downstream processors/exporters | Last-mile policy outside this receiver | Can enforce org-wide filtering | Receiver-side polling cost |
 
 Prefer collection groups when you do not need a domain at all. Use root `metrics` when you want most of a group but need to suppress a few metric names.
 
 ## Root Metric Filter
 
-Root-level `metrics` controls exact metric names. Metrics are enabled unless explicitly disabled.
+Root-level `metrics` controls exact metric names and metric-name globs. Metrics are enabled unless explicitly disabled.
+Exact metric names override matching globs, so a broad drop can keep a specific metric by setting the exact name to
+`enabled: true`.
 
 ```yaml
 receivers:
@@ -52,7 +54,7 @@ receivers:
         enabled: false
 ```
 
-Write metric names exactly as emitted. Dots are part of the metric name, not nested YAML paths. Quoting is optional:
+Write exact metric names as emitted. Dots are part of the metric name, not nested YAML paths. Quoting is optional:
 
 ```yaml
 receivers:
@@ -62,7 +64,24 @@ receivers:
         enabled: false
 ```
 
+Use globs for generated metric families, especially direct YANG telemetry:
+
+```yaml
+receivers:
+  cisco_os:
+    metrics:
+      cisco.wlc.client.*:
+        enabled: false
+      cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.*:
+        enabled: false
+      cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.rib.rib_table_ids.rib_table_id.summary_protos.summary_proto.route_count:
+        enabled: true
+```
+
 This filter applies to metrics from SSH scrapers and API platforms. It does not drop logs. To stop logs, remove the receiver from the logs pipeline or disable the platform groups that produce event logs.
+For IOS XR, root metric filtering runs after YANG paths are normalized into `cisco.iosxr.yang.*` or
+`cisco.iosxr.receiver.*` metric names. For Catalyst 9800, it runs after both `cisco.catalyst9800.yang.*` metrics and
+`cisco.wlc.*` aliases are generated.
 
 ## Collection Groups
 
@@ -141,6 +160,10 @@ Use this table when deciding what to enable.
 | SD-WAN | Manager, inventory, control plane, BFD, app-route, interfaces, alarms, events, audit | realtime details, tunnels, flows, policy/QoS, security, AppQoE, Cloud OnRamp, NWPI, underlay, cellular, hardware/energy, routing services, branch services, lifecycle/compliance, ThousandEyes, management security |
 | Nexus Dashboard | Platform, NDFC, Insights, Orchestrator, Data Broker summaries | performance and broad interface/fabric detail |
 | ACI | Controller health, fabric, nodes, faults, audit, events | stats, endpoints, tenants, topology across large fabrics |
+| FMC | REST manager/version/license state, inventory, health, VPN, HA, deployments, audit, and bounded policy/object state | eStreamer security events, broad object/rule sweeps, per-device interface/routing/chassis detail, health aggregate metrics, and pending-change detail |
+| Catalyst 9800 | Default AP/RF/SSID/mobility/HA/auth/controller groups, safe path minimum sample intervals, and `max_datapoints_per_batch` | client detail, CAPWAP packets, neighbors, broad custom YANG paths, and low sample intervals |
+| IOS XR | A small set of enabled path groups with 60s+ sample intervals, such as interfaces, optics, and BGP, plus `max_datapoints_per_batch` | high-volume routing tables, FIB/CEF, QoS, ASIC, SR/SRv6, and broad native paths |
+| ISE | REST/OpenAPI/ERS/MnT deployment, backup/upgrade status, network devices, endpoints, sessions, auth failures, RBAC/policy/identity stores, posture, profiler, TrustSec, alarms, certificates, licensing, webhooks, pxGrid Cloud/Direct status | pxGrid streaming, broad Data Connect historical views, and high-volume endpoint/session evidence |
 
 ## Common Recipes
 
@@ -248,7 +271,7 @@ Root `metrics` entries do not affect logs. Several controller platforms emit log
 To control logs:
 
 - omit the receiver from the `logs` pipeline,
-- disable collection groups that produce event logs, such as `sdwan.audit`, `aci.events`, or `intersight.audit`,
+- disable collection groups that produce event logs, such as `sdwan.audit`, `aci.events`, `intersight.audit`, `fmc.audit`, or `fmc.security_events`,
 - use a log processor downstream if an organization needs log-specific filtering.
 
 ## Validation Workflow
@@ -258,7 +281,7 @@ Use this workflow after changing metric controls:
 1. Start with a small target scope, such as one site, one serial, one fabric, or one tenant.
 2. Send data to a debug or file exporter in a non-production Collector.
 3. Confirm expected metric names appear.
-4. Confirm disabled metric names do not appear.
+4. Confirm disabled metric names and glob families do not appear.
 5. Confirm dashboards that depend on disabled groups are intentionally empty.
 6. Increase target scope gradually.
 7. Watch API request error, rate-limit, partial-success, and service-skipped metrics.

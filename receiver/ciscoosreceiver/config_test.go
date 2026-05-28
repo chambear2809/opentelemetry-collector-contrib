@@ -248,7 +248,7 @@ func TestConfigValidate(t *testing.T) {
 					component.MustNewType("system"): nil,
 				},
 			},
-			expectedErr: "must specify at least one SSH device, Meraki target, Intersight target, Catalyst Center target, SD-WAN target, Nexus Dashboard target, or ACI target",
+			expectedErr: "must specify at least one SSH device, Meraki target, Intersight target, Catalyst Center target, Catalyst 9800 target, SD-WAN target, Nexus Dashboard target, ACI target, FMC target, ISE target, or IOS XR target",
 		},
 		{
 			name: "valid meraki organization target",
@@ -681,6 +681,110 @@ func TestConfigValidate(t *testing.T) {
 			expectedErr: "",
 		},
 		{
+			name: "valid fmc target",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				FMC: FMCConfig{
+					Enabled: true,
+					Controllers: []FMCControllerConfig{{
+						Endpoint:   "https://fmc.example.com",
+						Name:       "fmc-1",
+						DomainUUID: "domain-uuid-1",
+					}},
+					Auth: ControllerAuthConfig{
+						Username: "admin",
+						Password: configopaque.String("password"),
+					},
+					PageSize:      100,
+					MaxRetries:    3,
+					EventLookback: time.Hour,
+				},
+			},
+			expectedErr: "",
+		},
+		{
+			name: "valid fmc estreamer target",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				FMC: FMCConfig{
+					EStreamer: FMCEStreamerConfig{
+						Enabled: true,
+						Targets: []FMCEStreamerTargetConfig{{
+							Endpoint: "fmc.example.com:8302",
+							Name:     "fmc-1",
+						}},
+						TLS: FMCEStreamerTLSConfig{
+							CertFile: "/etc/otelcol/fmc-estreamer.crt",
+							KeyFile:  "/etc/otelcol/fmc-estreamer.key",
+						},
+						EventTypes: []string{"connection", "intrusion", "intrusion_packet", "file", "malware", "security_intelligence"},
+					},
+				},
+			},
+			expectedErr: "",
+		},
+		{
+			name: "missing fmc controller",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				FMC: FMCConfig{
+					Enabled: true,
+					Auth: ControllerAuthConfig{
+						Username: "admin",
+						Password: configopaque.String("password"),
+					},
+				},
+			},
+			expectedErr: "fmc.controllers must include at least one FMC endpoint",
+		},
+		{
+			name: "missing fmc auth password",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				FMC: FMCConfig{
+					Enabled: true,
+					Controllers: []FMCControllerConfig{{
+						Endpoint: "https://fmc.example.com",
+					}},
+					Auth: ControllerAuthConfig{Username: "admin"},
+				},
+			},
+			expectedErr: "fmc.auth.password must be provided",
+		},
+		{
+			name: "invalid fmc group cap",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				FMC: FMCConfig{
+					Enabled: true,
+					Controllers: []FMCControllerConfig{{
+						Endpoint: "https://fmc.example.com",
+					}},
+					Auth: ControllerAuthConfig{
+						Username: "admin",
+						Password: configopaque.String("password"),
+					},
+					Health: FMCGroupConfig{Enabled: true, MaxResults: -1},
+				},
+			},
+			expectedErr: "fmc.health.max_results must not be negative",
+		},
+		{
 			name: "missing nexus dashboard api key username",
 			config: &Config{
 				ControllerConfig: scraperhelper.ControllerConfig{
@@ -752,6 +856,23 @@ func TestConfigValidate(t *testing.T) {
 				},
 			},
 			expectedErr: "metrics keys cannot be empty",
+		},
+		{
+			name: "invalid metric filter glob",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				Metrics: map[string]MetricConfig{
+					"cisco.iosxr.yang.[": {Enabled: false},
+				},
+				Meraki: MerakiConfig{
+					Auth:          MerakiAuthConfig{APIKey: configopaque.String("meraki-key")},
+					Organizations: []MerakiOrganizationConfig{{OrganizationID: "123456"}},
+				},
+			},
+			expectedErr: "must be a valid metric name glob",
 		},
 		{
 			name: "missing meraki api key",
@@ -869,7 +990,7 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.Equal(t, []string{"device-1", "edge-1"}, cfg.DeviceSelection.Include.HostNames)
 	assert.Equal(t, []string{"host-1"}, cfg.DeviceSelection.Include.HostIDs)
 	assert.Equal(t, []string{"192.168.1.1"}, cfg.DeviceSelection.Include.HostIPs)
-	assert.Equal(t, []string{"Q234-ABCD-0001", "SERIAL-1", "FOC1234", "ACI-SERIAL-1"}, cfg.DeviceSelection.Include.Serials)
+	assert.Equal(t, []string{"Q234-ABCD-0001", "SERIAL-1", "FOC1234", "ACI-SERIAL-1", "FMC-SERIAL-1"}, cfg.DeviceSelection.Include.Serials)
 	assert.Equal(t, []string{"device-uuid-1", "101"}, cfg.DeviceSelection.Include.DeviceIDs)
 	assert.Equal(t, []string{"lab-disabled"}, cfg.DeviceSelection.Exclude.HostNames)
 	assert.Equal(t, []string{"host-disabled"}, cfg.DeviceSelection.Exclude.HostIDs)
@@ -878,6 +999,8 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.Equal(t, []string{"device-disabled"}, cfg.DeviceSelection.Exclude.DeviceIDs)
 	assert.False(t, cfg.Metrics["sdwan.app_route.loss"].Enabled)
 	assert.False(t, cfg.Metrics["system.network.errors"].Enabled)
+	assert.False(t, cfg.Metrics["cisco.wlc.client.*"].Enabled)
+	assert.False(t, cfg.Metrics["cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.*"].Enabled)
 	assert.Equal(t, "https://api.meraki.com/api/v1", cfg.Meraki.BaseURL)
 	assert.Equal(t, "meraki-key", string(cfg.Meraki.Auth.APIKey))
 	require.Len(t, cfg.Meraki.Organizations, 1)
@@ -893,6 +1016,7 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.Equal(t, "intersight-key", cfg.Intersight.Auth.KeyID)
 	assert.Equal(t, "/etc/otelcol/intersight.pem", cfg.Intersight.Auth.KeyFile)
 	assert.Equal(t, "https://intersight.example.com", cfg.Intersight.Endpoint)
+	assert.True(t, cfg.Intersight.InsecureSkipVerify)
 	assert.Equal(t, "ciscoosreceiver-test", cfg.Intersight.UserAgent)
 	assert.Equal(t, 50, cfg.Intersight.PageSize)
 	assert.Equal(t, 2, cfg.Intersight.MaxRetries)
@@ -906,6 +1030,7 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.Equal(t, 75, cfg.Intersight.Storage.MaxResults)
 	assert.True(t, cfg.CatalystCenter.Enabled)
 	assert.Equal(t, "https://catalyst-center.example.com", cfg.CatalystCenter.Endpoint)
+	assert.True(t, cfg.CatalystCenter.InsecureSkipVerify)
 	assert.Equal(t, "ciscoosreceiver-test", cfg.CatalystCenter.UserAgent)
 	assert.Equal(t, 250, cfg.CatalystCenter.PageSize)
 	assert.Equal(t, 2, cfg.CatalystCenter.MaxRetries)
@@ -923,6 +1048,7 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.Equal(t, 100, cfg.CatalystCenter.Issues.MaxResults)
 	assert.True(t, cfg.SDWAN.Enabled)
 	assert.Equal(t, "https://sdwan-manager.example.com", cfg.SDWAN.Endpoint)
+	assert.True(t, cfg.SDWAN.InsecureSkipVerify)
 	assert.Equal(t, "ciscoosreceiver-test", cfg.SDWAN.UserAgent)
 	assert.Equal(t, 300, cfg.SDWAN.PageSize)
 	assert.Equal(t, 2, cfg.SDWAN.MaxRetries)
@@ -955,6 +1081,7 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.Equal(t, 75, cfg.SDWAN.CloudOnRamp.MaxResults)
 	assert.True(t, cfg.NexusDashboard.Enabled)
 	assert.Equal(t, "https://nexus-dashboard.example.com", cfg.NexusDashboard.Endpoint)
+	assert.True(t, cfg.NexusDashboard.InsecureSkipVerify)
 	assert.Equal(t, "api_key", cfg.NexusDashboard.Auth.Mode)
 	assert.Equal(t, "admin", cfg.NexusDashboard.Auth.Username)
 	assert.Equal(t, "nd-api-key", string(cfg.NexusDashboard.Auth.APIKey))
@@ -977,6 +1104,7 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.Equal(t, "local", cfg.ACI.Auth.Domain)
 	assert.Equal(t, 80, cfg.ACI.PageSize)
 	assert.Equal(t, 2, cfg.ACI.MaxRetries)
+	assert.True(t, cfg.ACI.InsecureSkipVerify)
 	assert.Equal(t, 10*time.Hour, cfg.ACI.EventLookback)
 	assert.Equal(t, 25*time.Minute, cfg.ACI.StatsLookback)
 	assert.Equal(t, []string{"101"}, cfg.ACI.Targets.NodeIDs)
@@ -984,6 +1112,119 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.Equal(t, 300, cfg.ACI.Faults.MaxResults)
 	assert.Equal(t, 400, cfg.ACI.Endpoints.MaxResults)
 	assert.Equal(t, 500, cfg.ACI.Tenants.MaxResults)
+	assert.True(t, cfg.FMC.Enabled)
+	require.Len(t, cfg.FMC.Controllers, 1)
+	assert.Equal(t, "https://fmc1.example.com", cfg.FMC.Controllers[0].Endpoint)
+	assert.Equal(t, "fmc-1", cfg.FMC.Controllers[0].Name)
+	assert.Equal(t, "domain-uuid-1", cfg.FMC.Controllers[0].DomainUUID)
+	assert.Equal(t, "admin", cfg.FMC.Auth.Username)
+	assert.Equal(t, "password", string(cfg.FMC.Auth.Password))
+	assert.Equal(t, "ciscoosreceiver-test", cfg.FMC.UserAgent)
+	assert.Equal(t, 90, cfg.FMC.PageSize)
+	assert.Equal(t, 2, cfg.FMC.MaxRetries)
+	assert.Equal(t, 11*time.Hour, cfg.FMC.EventLookback)
+	assert.True(t, cfg.FMC.InsecureSkipVerify)
+	assert.Equal(t, []string{"fmc-device-uuid-1"}, cfg.FMC.Targets.DeviceIDs)
+	assert.Equal(t, []string{"FMC-SERIAL-1"}, cfg.FMC.Targets.Serials)
+	assert.Equal(t, []string{"ftd-edge-1"}, cfg.FMC.Targets.Names)
+	assert.Equal(t, []string{"192.0.2.40"}, cfg.FMC.Targets.ManagementIPs)
+	assert.Equal(t, []string{"policy-uuid-1"}, cfg.FMC.Targets.PolicyIDs)
+	assert.Equal(t, []string{"edge-access-policy"}, cfg.FMC.Targets.PolicyNames)
+	assert.Equal(t, []string{"GigabitEthernet0/0"}, cfg.FMC.Targets.InterfaceNames)
+	assert.Equal(t, 250, cfg.FMC.Inventory.MaxResults)
+	assert.Equal(t, 500, cfg.FMC.Interfaces.MaxResults)
+	assert.Equal(t, 150, cfg.FMC.Health.MaxResults)
+	assert.Equal(t, 175, cfg.FMC.VPN.MaxResults)
+	assert.Equal(t, 50, cfg.FMC.HA.MaxResults)
+	assert.Equal(t, 300, cfg.FMC.Policy.MaxResults)
+	assert.Equal(t, 125, cfg.FMC.Deployments.MaxResults)
+	assert.Equal(t, 100, cfg.FMC.Audit.MaxResults)
+	assert.True(t, cfg.FMC.SecurityEvents.Enabled)
+	assert.True(t, cfg.FMC.EStreamer.Enabled)
+	require.Len(t, cfg.FMC.EStreamer.Targets, 1)
+	assert.Equal(t, "fmc1.example.com:8302", cfg.FMC.EStreamer.Targets[0].Endpoint)
+	assert.Equal(t, "/etc/otelcol/fmc-estreamer.crt", cfg.FMC.EStreamer.TLS.CertFile)
+	assert.True(t, cfg.FMC.EStreamer.TLS.InsecureSkipVerify)
+	assert.Equal(t, []string{"connection", "intrusion", "intrusion_packet", "file"}, cfg.FMC.EStreamer.EventTypes)
+	assert.Equal(t, 10*time.Minute, cfg.FMC.EStreamer.Lookback)
+	assert.Equal(t, 20*time.Second, cfg.FMC.EStreamer.ReconnectInterval)
+	assert.Equal(t, 1048576, cfg.FMC.EStreamer.MaxMessageBytes)
+	assert.True(t, cfg.ISE.Enabled)
+	assert.Equal(t, "https://ise.example.com", cfg.ISE.Endpoint)
+	assert.Equal(t, "admin", cfg.ISE.Auth.Username)
+	assert.Equal(t, "password", string(cfg.ISE.Auth.Password))
+	assert.Equal(t, "ciscoosreceiver-test", cfg.ISE.UserAgent)
+	assert.Equal(t, 100, cfg.ISE.PageSize)
+	assert.Equal(t, 2, cfg.ISE.MaxRetries)
+	assert.Equal(t, 7*time.Hour, cfg.ISE.EventLookback)
+	assert.Equal(t, 10*time.Minute, cfg.ISE.SessionLookback)
+	assert.Equal(t, 900, cfg.ISE.MaxResults)
+	assert.Equal(t, "/etc/otelcol/ise-rest-ca.crt", cfg.ISE.CAFile)
+	assert.Equal(t, "nyc-ise-01.ciscovalidated.com", cfg.ISE.ServerName)
+	assert.False(t, cfg.ISE.InsecureSkipVerify)
+	assert.Equal(t, []string{"ise-pan-1"}, cfg.ISE.Targets.NodeNames)
+	assert.Equal(t, []string{"edge-switch-1"}, cfg.ISE.Targets.NetworkDeviceNames)
+	assert.Equal(t, []string{"192.0.2.10"}, cfg.ISE.Targets.NetworkDeviceIPs)
+	assert.Equal(t, []string{"00:11:22:33:44:55"}, cfg.ISE.Targets.EndpointMACs)
+	assert.Equal(t, []string{"alice@example.com"}, cfg.ISE.Targets.Usernames)
+	assert.Equal(t, []string{"wired-access"}, cfg.ISE.Targets.PolicyNames)
+	assert.Equal(t, []string{"Employees"}, cfg.ISE.Targets.SecurityGroupNames)
+	assert.Equal(t, []string{"com.cisco.ise.session"}, cfg.ISE.Targets.PxGridServices)
+	assert.Equal(t, 750, cfg.ISE.Sessions.MaxResults)
+	assert.Equal(t, 300, cfg.ISE.AuthFailures.MaxResults)
+	assert.Equal(t, 200, cfg.ISE.TrustSec.MaxResults)
+	assert.True(t, cfg.ISE.PxGrid.Enabled)
+	assert.Equal(t, "otel-collector", cfg.ISE.PxGrid.NodeName)
+	assert.Equal(t, "pxgrid-secret", string(cfg.ISE.PxGrid.Password))
+	assert.True(t, cfg.ISE.PxGrid.Streaming)
+	assert.True(t, cfg.ISE.PxGrid.Subscriptions.RadiusFailures)
+	assert.True(t, cfg.ISE.DataConnect.Enabled)
+	assert.Equal(t, "ise.example.com", cfg.ISE.DataConnect.Host)
+	assert.Equal(t, "cpm10", cfg.ISE.DataConnect.ServiceName)
+	assert.Equal(t, "dataconnect", cfg.ISE.DataConnect.Username)
+	assert.Equal(t, "db-secret", string(cfg.ISE.DataConnect.Password))
+	assert.Equal(t, "/etc/otelcol/ise-wallet", cfg.ISE.DataConnect.WalletDir)
+	assert.False(t, cfg.ISE.DataConnect.SSLVerify)
+	assert.Equal(t, 12*time.Hour, cfg.ISE.DataConnect.Lookback)
+	assert.Equal(t, 400, cfg.ISE.DataConnect.RowLimit)
+	assert.Equal(t, 250, cfg.ISE.DataConnect.Views["RADIUS_AUTHENTICATIONS_WEEK"].MaxResults)
+	assert.True(t, cfg.Catalyst9800.Enabled)
+	assert.Equal(t, 10000, cfg.Catalyst9800.MaxDatapointsPerBatch)
+	assert.True(t, cfg.Catalyst9800.PathGroups["client_detail"].Enabled)
+	assert.False(t, cfg.Catalyst9800.PathGroups["neighbors"].Enabled)
+	assert.False(t, cfg.Catalyst9800.PathGroups["capwap_packets"].Enabled)
+	assert.Equal(t, "warn", cfg.Catalyst9800.UnsupportedPathAction)
+	assert.Equal(t, []string{"json_ietf", "json"}, cfg.Catalyst9800.EncodingPreference)
+	assert.Equal(t, time.Minute, cfg.Catalyst9800.Subscription.SampleInterval)
+	require.Len(t, cfg.Catalyst9800.DialIn.Targets, 1)
+	assert.Equal(t, "campus-wlc-1", cfg.Catalyst9800.DialIn.Targets[0].Name)
+	assert.Equal(t, "10.0.0.20:57400", cfg.Catalyst9800.DialIn.Targets[0].Endpoint)
+	assert.True(t, cfg.Catalyst9800.DialIn.Targets[0].TLS.InsecureSkipVerify)
+	assert.Equal(t, "catalyst_9800", cfg.Catalyst9800.DialIn.Targets[0].PlatformFamily)
+	assert.Equal(t, "admin", cfg.Catalyst9800.DialIn.Targets[0].Credentials.Username)
+	assert.Equal(t, "password", string(cfg.Catalyst9800.DialIn.Targets[0].Credentials.Password))
+	assert.Equal(t, []string{"wireless-client-oper:client-oper-data/common-oper-data"}, cfg.Catalyst9800.DialIn.Targets[0].Paths.Include)
+	assert.True(t, cfg.Catalyst9800.DialOut.Enabled)
+	assert.Equal(t, "0.0.0.0:57501", cfg.Catalyst9800.DialOut.ServerConfig.NetAddr.Endpoint)
+	assert.Equal(t, []string{"10.0.0.0/8"}, cfg.Catalyst9800.DialOut.AllowedClients)
+	assert.True(t, cfg.IOSXR.Enabled)
+	assert.Equal(t, 12000, cfg.IOSXR.MaxDatapointsPerBatch)
+	assert.True(t, cfg.IOSXR.PathGroups["interfaces"].Enabled)
+	assert.True(t, cfg.IOSXR.PathGroups["optics"].Enabled)
+	assert.True(t, cfg.IOSXR.PathGroups["bgp"].Enabled)
+	assert.Equal(t, "error", cfg.IOSXR.UnsupportedPathAction)
+	assert.Equal(t, []string{"json_ietf", "proto"}, cfg.IOSXR.EncodingPreference)
+	assert.Equal(t, time.Minute, cfg.IOSXR.Subscription.SampleInterval)
+	require.Len(t, cfg.IOSXR.DialIn.Targets, 1)
+	assert.Equal(t, "core-asr9k-1", cfg.IOSXR.DialIn.Targets[0].Name)
+	assert.Equal(t, "10.0.0.10:57400", cfg.IOSXR.DialIn.Targets[0].Endpoint)
+	assert.True(t, cfg.IOSXR.DialIn.Targets[0].TLS.InsecureSkipVerify)
+	assert.Equal(t, "ASR 9000", cfg.IOSXR.DialIn.Targets[0].PlatformFamily)
+	assert.Equal(t, "admin", cfg.IOSXR.DialIn.Targets[0].Credentials.Username)
+	assert.Equal(t, "password", string(cfg.IOSXR.DialIn.Targets[0].Credentials.Password))
+	assert.True(t, cfg.IOSXR.DialOut.Enabled)
+	assert.Equal(t, "0.0.0.0:57500", cfg.IOSXR.DialOut.ServerConfig.NetAddr.Endpoint)
+	assert.Equal(t, []string{"10.0.0.0/8"}, cfg.IOSXR.DialOut.AllowedClients)
 	assert.Len(t, cfg.Scrapers, 2)
 	assert.Contains(t, cfg.Scrapers, component.MustNewType("system"))
 	assert.Contains(t, cfg.Scrapers, component.MustNewType("interfaces"))

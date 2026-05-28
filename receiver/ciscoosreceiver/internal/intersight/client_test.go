@@ -81,6 +81,29 @@ func TestClientSignsECDSARequestsWithHS2019(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestClientSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/v1/asset/Targets", r.URL.Path)
+		assert.Contains(t, r.Header.Get("Authorization"), `Signature keyId="test-key"`)
+		_, _ = w.Write([]byte(`{"Results":[]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		KeyID:              "test-key",
+		KeyPEM:             testPrivateKeyPEM(t),
+		Endpoint:           server.URL,
+		Timeout:            time.Second,
+		MaxRetries:         1,
+		InsecureSkipVerify: true,
+	})
+	require.NoError(t, err)
+
+	got, err := client.List(t.Context(), "asset.targets", "/api/v1/asset/Targets", nil, 0)
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
+
 func TestClientPaginatesWithTopSkipAndMaxResults(t *testing.T) {
 	var attempts atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

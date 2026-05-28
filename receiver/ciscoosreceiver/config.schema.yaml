@@ -1,4 +1,314 @@
 $defs:
+  aci_config:
+    description: ACIConfig defines APIC API polling settings.
+    type: object
+    properties:
+      audit:
+        $ref: nexus_controller_group_config
+      auth:
+        $ref: controller_auth_config
+      controller_health:
+        $ref: nexus_controller_group_config
+      controllers:
+        type: array
+        items:
+          $ref: aci_controller_config
+      enabled:
+        type: boolean
+      endpoints:
+        $ref: nexus_controller_group_config
+      event_lookback:
+        type: string
+        format: duration
+      events:
+        $ref: nexus_controller_group_config
+      fabric:
+        $ref: nexus_controller_group_config
+      faults:
+        $ref: nexus_controller_group_config
+      insecure_skip_verify:
+        type: boolean
+      max_retries:
+        type: integer
+      nodes:
+        $ref: nexus_controller_group_config
+      page_size:
+        type: integer
+      stats:
+        $ref: nexus_controller_group_config
+      stats_lookback:
+        type: string
+        format: duration
+      targets:
+        $ref: aci_target_filters
+      tenants:
+        $ref: nexus_controller_group_config
+      topology:
+        $ref: nexus_controller_group_config
+      user_agent:
+        type: string
+  aci_controller_config:
+    description: ACIControllerConfig represents a single APIC controller endpoint.
+    type: object
+    properties:
+      endpoint:
+        type: string
+      name:
+        type: string
+  aci_target_filters:
+    description: ACITargetFilters limits APIC collection to relevant nodes, tenants, and objects.
+    type: object
+    properties:
+      bridge_domains:
+        type: array
+        items:
+          type: string
+      epgs:
+        type: array
+        items:
+          type: string
+      fabrics:
+        type: array
+        items:
+          type: string
+      interface_names:
+        type: array
+        items:
+          type: string
+      node_ids:
+        type: array
+        items:
+          type: string
+      serials:
+        type: array
+        items:
+          type: string
+      sites:
+        type: array
+        items:
+          type: string
+      tenants:
+        type: array
+        items:
+          type: string
+      vrfs:
+        type: array
+        items:
+          type: string
+  catalyst_9800_config:
+    description: Catalyst9800Config defines direct Catalyst 9800 WLC telemetry settings.
+    type: object
+    properties:
+      dial_in:
+        $ref: catalyst_9800_dial_in_config
+      dial_out:
+        $ref: catalyst_9800_dial_out_config
+      enabled:
+        type: boolean
+      encoding_preference:
+        type: array
+        items:
+          type: string
+      max_datapoints_per_batch:
+        type: integer
+      path_groups:
+        type: object
+        additionalProperties:
+          $ref: catalyst_9800_path_group_config
+      paths:
+        $ref: catalyst_9800_path_override_config
+      subscription:
+        $ref: catalyst_9800_subscription_config
+      unsupported_path_action:
+        type: string
+  catalyst_9800_credentials_config:
+    description: Catalyst9800CredentialsConfig represents Catalyst 9800 gNMI metadata credentials.
+    type: object
+    properties:
+      password:
+        $ref: go.opentelemetry.io/collector/config/configopaque.string
+      username:
+        type: string
+  catalyst_9800_dial_in_config:
+    description: Catalyst9800DialInConfig defines dynamic Catalyst 9800 gNMI subscriptions initiated by the collector.
+    type: object
+    properties:
+      targets:
+        type: array
+        items:
+          $ref: catalyst_9800_target_config
+  catalyst_9800_dial_out_config:
+    description: Catalyst9800DialOutConfig defines Catalyst 9800 MDT gRPC dial-out server settings.
+    type: object
+    properties:
+      allowed_clients:
+        type: array
+        items:
+          type: string
+      enabled:
+        type: boolean
+      module_paths:
+        type: array
+        items:
+          type: string
+    allOf:
+      - $ref: go.opentelemetry.io/collector/config/configgrpc.server_config
+  catalyst_9800_path_group_config:
+    description: Catalyst9800PathGroupConfig controls a curated Catalyst 9800 telemetry path group.
+    type: object
+    properties:
+      enabled:
+        type: boolean
+  catalyst_9800_path_override_config:
+    description: Catalyst9800PathOverrideConfig provides custom Catalyst 9800 path include/exclude controls.
+    type: object
+    properties:
+      exclude:
+        type: array
+        items:
+          type: string
+      include:
+        type: array
+        items:
+          type: string
+  catalyst_9800_subscription_config:
+    description: Catalyst9800SubscriptionConfig defines Catalyst 9800 gNMI subscription behavior.
+    type: object
+    properties:
+      allow_aggregation:
+        type: boolean
+      heartbeat_interval:
+        type: string
+        format: duration
+      mode:
+        type: string
+      poll_interval:
+        type: string
+        format: duration
+      sample_interval:
+        type: string
+        format: duration
+      stream_mode:
+        type: string
+      suppress_redundant:
+        type: boolean
+      updates_only:
+        type: boolean
+  catalyst_9800_target_config:
+    description: Catalyst9800TargetConfig identifies one Catalyst 9800 gNMI dial-in target.
+    type: object
+    properties:
+      credentials:
+        $ref: catalyst_9800_credentials_config
+      encoding_preference:
+        type: array
+        items:
+          type: string
+      name:
+        type: string
+      path_groups:
+        type: object
+        additionalProperties:
+          $ref: catalyst_9800_path_group_config
+      paths:
+        $ref: catalyst_9800_path_override_config
+      platform_family:
+        type: string
+      skip_capabilities:
+        type: boolean
+      subscription:
+        $ref: catalyst_9800_subscription_config
+    allOf:
+      - $ref: go.opentelemetry.io/collector/config/configgrpc.client_config
+  catalyst_center_auth_config:
+    description: CatalystCenterAuthConfig represents Catalyst Center API token authentication settings.
+    type: object
+    properties:
+      aes_credentials:
+        $ref: go.opentelemetry.io/collector/config/configopaque.string
+      mode:
+        type: string
+      password:
+        $ref: go.opentelemetry.io/collector/config/configopaque.string
+      username:
+        type: string
+  catalyst_center_config:
+    description: CatalystCenterConfig defines native Catalyst Center API polling settings.
+    type: object
+    properties:
+      auth:
+        $ref: catalyst_center_auth_config
+      details:
+        $ref: catalyst_center_group_config
+      enabled:
+        type: boolean
+      endpoint:
+        type: string
+      health:
+        $ref: catalyst_center_group_config
+      insecure_skip_verify:
+        type: boolean
+      interfaces:
+        $ref: catalyst_center_group_config
+      inventory:
+        $ref: catalyst_center_group_config
+      issues:
+        $ref: catalyst_center_group_config
+      lookback:
+        type: string
+        format: duration
+      max_retries:
+        type: integer
+      page_size:
+        type: integer
+      targets:
+        $ref: catalyst_center_target_filters
+      topology:
+        $ref: catalyst_center_group_config
+      user_agent:
+        type: string
+  catalyst_center_device_detail_target:
+    description: CatalystCenterDeviceDetailTarget identifies a device-detail lookup.
+    type: object
+    properties:
+      identifier:
+        type: string
+      search_by:
+        type: string
+  catalyst_center_group_config:
+    description: CatalystCenterGroupConfig controls a curated Catalyst Center collection group.
+    type: object
+    properties:
+      enabled:
+        type: boolean
+      max_results:
+        type: integer
+  catalyst_center_target_filters:
+    description: CatalystCenterTargetFilters limits Catalyst Center detail collection to known resources.
+    type: object
+    properties:
+      client_macs:
+        type: array
+        items:
+          type: string
+      device_details:
+        type: array
+        items:
+          $ref: catalyst_center_device_detail_target
+  controller_auth_config:
+    description: ControllerAuthConfig represents username/password or API-key authentication for Nexus controllers.
+    type: object
+    properties:
+      api_key:
+        $ref: go.opentelemetry.io/collector/config/configopaque.string
+      domain:
+        type: string
+      mode:
+        type: string
+      password:
+        $ref: go.opentelemetry.io/collector/config/configopaque.string
+      username:
+        type: string
   device_config:
     description: DeviceConfig represents configuration for a single Cisco device in the devices list.
     type: object
@@ -11,6 +321,14 @@ $defs:
         type: string
       port:
         type: integer
+  device_selection_config:
+    description: DeviceSelectionConfig defines shared device include/exclude filters across Cisco providers.
+    type: object
+    properties:
+      exclude:
+        $ref: device_selection_match_config
+      include:
+        $ref: device_selection_match_config
   device_selection_match_config:
     description: DeviceSelectionMatchConfig defines one side of the shared device selector.
     type: object
@@ -35,25 +353,572 @@ $defs:
         type: array
         items:
           type: string
-  device_selection_config:
-    description: DeviceSelectionConfig defines shared device include/exclude filters across Cisco providers.
+  fmc_config:
+    description: FMCConfig defines Secure Firewall Management Center REST and eStreamer settings.
     type: object
     properties:
-      exclude:
-        $ref: device_selection_match_config
-      include:
-        $ref: device_selection_match_config
-  metric_config:
-    description: MetricConfig controls whether a named metric is forwarded by the Cisco OS receiver.
+      audit:
+        $ref: fmc_group_config
+      auth:
+        $ref: controller_auth_config
+      controllers:
+        type: array
+        items:
+          $ref: fmc_controller_config
+      deployments:
+        $ref: fmc_group_config
+      enabled:
+        type: boolean
+      estreamer:
+        $ref: fmce_streamer_config
+      event_lookback:
+        type: string
+        format: duration
+      ha:
+        $ref: fmc_group_config
+      health:
+        $ref: fmc_group_config
+      insecure_skip_verify:
+        type: boolean
+      interfaces:
+        $ref: fmc_group_config
+      inventory:
+        $ref: fmc_group_config
+      manager:
+        $ref: fmc_group_config
+      max_retries:
+        type: integer
+      page_size:
+        type: integer
+      policy:
+        $ref: fmc_group_config
+      security_events:
+        $ref: fmc_group_config
+      targets:
+        $ref: fmc_target_filters
+      user_agent:
+        type: string
+      vpn:
+        $ref: fmc_group_config
+  fmc_controller_config:
+    description: FMCControllerConfig represents a single Secure Firewall Management Center endpoint.
+    type: object
+    properties:
+      domain_uuid:
+        type: string
+      endpoint:
+        type: string
+      name:
+        type: string
+  fmc_group_config:
+    description: FMCGroupConfig controls a curated FMC collection group.
     type: object
     properties:
       enabled:
         type: boolean
+      max_results:
+        type: integer
+  fmc_target_filters:
+    description: FMCTargetFilters limits FMC collection to relevant managed firewalls, policies, and interfaces.
+    type: object
+    properties:
+      device_ids:
+        type: array
+        items:
+          type: string
+      interface_names:
+        type: array
+        items:
+          type: string
+      management_ips:
+        type: array
+        items:
+          type: string
+      names:
+        type: array
+        items:
+          type: string
+      policy_ids:
+        type: array
+        items:
+          type: string
+      policy_names:
+        type: array
+        items:
+          type: string
+      serials:
+        type: array
+        items:
+          type: string
+  fmce_streamer_config:
+    description: FMCEStreamerConfig controls high-fidelity Secure Firewall event streaming.
+    type: object
+    properties:
+      enabled:
+        type: boolean
+      event_types:
+        type: array
+        items:
+          type: string
+      lookback:
+        type: string
+        format: duration
+      max_message_bytes:
+        type: integer
+      reconnect_interval:
+        type: string
+        format: duration
+      targets:
+        type: array
+        items:
+          $ref: fmce_streamer_target_config
+      tls:
+        $ref: fmce_streamer_tls_config
+  fmce_streamer_target_config:
+    description: FMCEStreamerTargetConfig represents a single eStreamer endpoint.
+    type: object
+    properties:
+      endpoint:
+        type: string
+      name:
+        type: string
+  fmce_streamer_tls_config:
+    description: FMCEStreamerTLSConfig contains TLS settings for an eStreamer mutual-TLS client.
+    type: object
+    properties:
+      ca_file:
+        type: string
+      cert_file:
+        type: string
+      insecure_skip_verify:
+        type: boolean
+      key_file:
+        type: string
+      server_name:
+        type: string
+  intersight_auth_config:
+    description: IntersightAuthConfig represents Cisco Intersight API key authentication.
+    type: object
+    properties:
+      key_file:
+        type: string
+      key_id:
+        type: string
+      key_pem:
+        $ref: go.opentelemetry.io/collector/config/configopaque.string
+  intersight_config:
+    description: IntersightConfig defines native Cisco Intersight API polling settings.
+    type: object
+    properties:
+      audit:
+        $ref: intersight_group_config
+      auth:
+        $ref: intersight_auth_config
+      enabled:
+        type: boolean
+      endpoint:
+        type: string
+      equipment:
+        $ref: intersight_group_config
+      event_lookback:
+        type: string
+        format: duration
+      events:
+        $ref: intersight_group_config
+      firmware:
+        $ref: intersight_group_config
+      hyperflex:
+        $ref: intersight_group_config
+      insecure_skip_verify:
+        type: boolean
+      inventory:
+        $ref: intersight_group_config
+      kubernetes:
+        $ref: intersight_group_config
+      max_retries:
+        type: integer
+      network:
+        $ref: intersight_group_config
+      page_size:
+        type: integer
+      storage:
+        $ref: intersight_group_config
+      targets:
+        $ref: intersight_target_filters
+      telemetry:
+        $ref: intersight_group_config
+      telemetry_lookback:
+        type: string
+        format: duration
+      user_agent:
+        type: string
+      virtualization:
+        $ref: intersight_group_config
+  intersight_group_config:
+    description: IntersightGroupConfig controls a curated Intersight collection group.
+    type: object
+    properties:
+      enabled:
+        type: boolean
+      max_results:
+        type: integer
+  intersight_target_filters:
+    description: IntersightTargetFilters limits Intersight collection to known resources.
+    type: object
+    properties:
+      moids:
+        type: array
+        items:
+          type: string
+      serials:
+        type: array
+        items:
+          type: string
+  iosxr_config:
+    description: IOSXRConfig defines IOS XR gNMI/MDT telemetry settings.
+    type: object
+    properties:
+      dial_in:
+        $ref: iosxr_dial_in_config
+      dial_out:
+        $ref: iosxr_dial_out_config
+      enabled:
+        type: boolean
+      encoding_preference:
+        type: array
+        items:
+          type: string
+      max_datapoints_per_batch:
+        type: integer
+      path_groups:
+        type: object
+        additionalProperties:
+          $ref: iosxr_path_group_config
+      paths:
+        $ref: iosxr_path_override_config
+      subscription:
+        $ref: iosxr_subscription_config
+      unsupported_path_action:
+        type: string
+  iosxr_credentials_config:
+    description: IOSXRCredentialsConfig represents IOS XR gNMI metadata credentials.
+    type: object
+    properties:
+      password:
+        $ref: go.opentelemetry.io/collector/config/configopaque.string
+      username:
+        type: string
+  iosxr_dial_in_config:
+    description: IOSXRDialInConfig defines dynamic IOS XR gNMI subscriptions initiated by the collector.
+    type: object
+    properties:
+      targets:
+        type: array
+        items:
+          $ref: iosxr_target_config
+  iosxr_dial_out_config:
+    description: IOSXRDialOutConfig defines IOS XR MDT gRPC dial-out server settings.
+    type: object
+    properties:
+      allowed_clients:
+        type: array
+        items:
+          type: string
+      enabled:
+        type: boolean
+      module_paths:
+        type: array
+        items:
+          type: string
+    allOf:
+      - $ref: go.opentelemetry.io/collector/config/configgrpc.server_config
+  iosxr_path_group_config:
+    description: IOSXRPathGroupConfig controls a curated IOS XR telemetry path group.
+    type: object
+    properties:
+      enabled:
+        type: boolean
+  iosxr_path_override_config:
+    description: IOSXRPathOverrideConfig provides custom IOS XR path include/exclude controls.
+    type: object
+    properties:
+      exclude:
+        type: array
+        items:
+          type: string
+      include:
+        type: array
+        items:
+          type: string
+  iosxr_subscription_config:
+    description: IOSXRSubscriptionConfig defines IOS XR gNMI subscription behavior.
+    type: object
+    properties:
+      allow_aggregation:
+        type: boolean
+      heartbeat_interval:
+        type: string
+        format: duration
+      mode:
+        type: string
+      poll_interval:
+        type: string
+        format: duration
+      sample_interval:
+        type: string
+        format: duration
+      stream_mode:
+        type: string
+      suppress_redundant:
+        type: boolean
+      updates_only:
+        type: boolean
+  iosxr_target_config:
+    description: IOSXRTargetConfig identifies one IOS XR gNMI dial-in target.
+    type: object
+    properties:
+      credentials:
+        $ref: iosxr_credentials_config
+      encoding_preference:
+        type: array
+        items:
+          type: string
+      name:
+        type: string
+      path_groups:
+        type: object
+        additionalProperties:
+          $ref: iosxr_path_group_config
+      paths:
+        $ref: iosxr_path_override_config
+      platform_family:
+        type: string
+      skip_capabilities:
+        type: boolean
+      subscription:
+        $ref: iosxr_subscription_config
+    allOf:
+      - $ref: go.opentelemetry.io/collector/config/configgrpc.client_config
+  ise_auth_config:
+    description: ISEAuthConfig represents Cisco ISE REST API authentication settings.
+    type: object
+    properties:
+      password:
+        $ref: go.opentelemetry.io/collector/config/configopaque.string
+      username:
+        type: string
+  ise_config:
+    description: ISEConfig defines Cisco Identity Services Engine REST, pxGrid, and Data Connect polling settings.
+    type: object
+    properties:
+      accounting:
+        $ref: ise_group_config
+      alarms:
+        $ref: ise_group_config
+      auth:
+        $ref: ise_auth_config
+      auth_failures:
+        $ref: ise_group_config
+      ca_file:
+        type: string
+      certificates:
+        $ref: ise_group_config
+      data_connect:
+        $ref: ise_data_connect_config
+      deployment:
+        $ref: ise_group_config
+      enabled:
+        type: boolean
+      endpoint:
+        type: string
+      endpoints:
+        $ref: ise_group_config
+      event_lookback:
+        type: string
+        format: duration
+      insecure_skip_verify:
+        type: boolean
+      licensing:
+        $ref: ise_group_config
+      max_results:
+        type: integer
+      max_retries:
+        type: integer
+      network_devices:
+        $ref: ise_group_config
+      page_size:
+        type: integer
+      policy:
+        $ref: ise_group_config
+      posture:
+        $ref: ise_group_config
+      profiler:
+        $ref: ise_group_config
+      pxgrid:
+        $ref: ise_px_grid_config
+      server_name:
+        type: string
+      session_lookback:
+        type: string
+        format: duration
+      sessions:
+        $ref: ise_group_config
+      targets:
+        $ref: ise_target_filters
+      trustsec:
+        $ref: ise_group_config
+      user_agent:
+        type: string
+      webhooks:
+        $ref: ise_group_config
+  ise_data_connect_config:
+    description: ISEDataConnectConfig controls Cisco ISE Data Connect read-only database access.
+    type: object
+    properties:
+      additional_read_only_views:
+        type: array
+        items:
+          type: string
+      enabled:
+        type: boolean
+      full_views:
+        type: boolean
+      host:
+        type: string
+      lookback:
+        type: string
+        format: duration
+      password:
+        $ref: go.opentelemetry.io/collector/config/configopaque.string
+      port:
+        type: integer
+      row_limit:
+        type: integer
+      service_name:
+        type: string
+      ssl:
+        type: boolean
+      ssl_verify:
+        type: boolean
+      username:
+        type: string
+      views:
+        type: object
+        additionalProperties:
+          $ref: ise_group_config
+      wallet_dir:
+        type: string
+  ise_group_config:
+    description: ISEGroupConfig controls a curated Cisco ISE collection group.
+    type: object
+    properties:
+      enabled:
+        type: boolean
+      max_results:
+        type: integer
+  ise_px_grid_config:
+    description: ISEPxGridConfig controls Cisco ISE pxGrid REST and streaming collection.
+    type: object
+    properties:
+      auto_activate:
+        type: boolean
+      ca_file:
+        type: string
+      cert_file:
+        type: string
+      enabled:
+        type: boolean
+      endpoint:
+        type: string
+      insecure_skip_verify:
+        type: boolean
+      key_file:
+        type: string
+      max_results:
+        type: integer
+      node_name:
+        type: string
+      password:
+        $ref: go.opentelemetry.io/collector/config/configopaque.string
+      server_name:
+        type: string
+      streaming:
+        type: boolean
+      subscriptions:
+        $ref: ise_px_grid_subscription_config
+  ise_px_grid_subscription_config:
+    description: ISEPxGridSubscriptionConfig controls pxGrid streaming topics.
+    type: object
+    properties:
+      endpoint:
+        type: boolean
+      radius_failures:
+        type: boolean
+      session:
+        type: boolean
+      system_health:
+        type: boolean
+      trustsec:
+        type: boolean
+  ise_target_filters:
+    description: ISETargetFilters limits Cisco ISE collection to relevant nodes, users, devices, endpoints, and policies.
+    type: object
+    properties:
+      endpoint_macs:
+        type: array
+        items:
+          type: string
+      network_device_ips:
+        type: array
+        items:
+          type: string
+      network_device_names:
+        type: array
+        items:
+          type: string
+      node_names:
+        type: array
+        items:
+          type: string
+      policy_names:
+        type: array
+        items:
+          type: string
+      pxgrid_services:
+        type: array
+        items:
+          type: string
+      security_group_names:
+        type: array
+        items:
+          type: string
+      usernames:
+        type: array
+        items:
+          type: string
   meraki_auth_config:
     description: MerakiAuthConfig represents Meraki Dashboard API authentication settings.
     type: object
     properties:
       api_key:
+        $ref: go.opentelemetry.io/collector/config/configopaque.string
+  meraki_config:
+    description: MerakiConfig defines Meraki Dashboard API polling settings.
+    type: object
+    properties:
+      auth:
+        $ref: meraki_auth_config
+      base_url:
+        type: string
+      devices:
+        type: array
+        items:
+          $ref: meraki_device_config
+      organizations:
+        type: array
+        items:
+          $ref: meraki_organization_config
+      user_agent:
         type: string
   meraki_device_config:
     description: MerakiDeviceConfig represents a serial-scoped Meraki polling target.
@@ -87,188 +952,191 @@ $defs:
           type: string
       tags_filter_type:
         type: string
-  meraki_config:
-    description: MerakiConfig defines Meraki Dashboard API polling settings.
+  metric_config:
+    description: MetricConfig controls whether a named metric or metric-name glob is forwarded by the Cisco OS receiver.
     type: object
     properties:
-      auth:
-        $ref: meraki_auth_config
-      base_url:
-        type: string
-      devices:
-        type: array
-        items:
-          $ref: meraki_device_config
-      organizations:
-        type: array
-        items:
-          $ref: meraki_organization_config
-      user_agent:
-        type: string
-  intersight_auth_config:
-    description: IntersightAuthConfig represents Cisco Intersight API key authentication.
-    type: object
-    properties:
-      key_file:
-        type: string
-      key_id:
-        type: string
-      key_pem:
-        type: string
-  intersight_target_filters:
-    description: IntersightTargetFilters limits Intersight collection to known resources.
-    type: object
-    properties:
-      moids:
-        type: array
-        items:
-          type: string
-      serials:
-        type: array
-        items:
-          type: string
-  intersight_group_config:
-    description: IntersightGroupConfig controls a curated Intersight collection group.
+      enabled:
+        type: boolean
+  nexus_controller_group_config:
+    description: NexusControllerGroupConfig controls a curated controller collection group.
     type: object
     properties:
       enabled:
         type: boolean
       max_results:
         type: integer
-  intersight_config:
-    description: IntersightConfig defines native Cisco Intersight API polling settings.
+  nexus_dashboard_config:
+    description: NexusDashboardConfig defines Nexus Dashboard, NDFC, Insights, NDO, OneManage, and Data Broker polling settings.
     type: object
     properties:
-      audit:
-        $ref: intersight_group_config
       auth:
-        $ref: intersight_auth_config
+        $ref: controller_auth_config
+      data_broker:
+        $ref: nexus_controller_group_config
       enabled:
         type: boolean
       endpoint:
         type: string
-      equipment:
-        $ref: intersight_group_config
       event_lookback:
         type: string
-      firmware:
-        $ref: intersight_group_config
-      hyperflex:
-        $ref: intersight_group_config
+        format: duration
       insecure_skip_verify:
         type: boolean
-      inventory:
-        $ref: intersight_group_config
-      kubernetes:
-        $ref: intersight_group_config
+      insights:
+        $ref: nexus_controller_group_config
       max_retries:
         type: integer
-      network:
-        $ref: intersight_group_config
+      ndfc:
+        $ref: nexus_controller_group_config
+      orchestrator:
+        $ref: nexus_controller_group_config
       page_size:
         type: integer
-      storage:
-        $ref: intersight_group_config
+      performance:
+        $ref: nexus_controller_group_config
+      platform:
+        $ref: nexus_controller_group_config
+      service_discovery:
+        type: boolean
       targets:
-        $ref: intersight_target_filters
-      telemetry:
-        $ref: intersight_group_config
+        $ref: nexus_dashboard_target_filters
       telemetry_lookback:
         type: string
+        format: duration
       user_agent:
         type: string
-      virtualization:
-        $ref: intersight_group_config
-  catalyst_center_auth_config:
-    description: CatalystCenterAuthConfig represents Catalyst Center API token authentication settings.
+  nexus_dashboard_target_filters:
+    description: NexusDashboardTargetFilters limits Nexus Dashboard collection to relevant fabrics, switches, and services.
     type: object
     properties:
-      aes_credentials:
-        type: string
-      mode:
-        type: string
-      password:
-        type: string
-      username:
-        type: string
-  catalyst_center_device_detail_target:
-    description: CatalystCenterDeviceDetailTarget identifies a device-detail lookup.
-    type: object
-    properties:
-      identifier:
-        type: string
-      search_by:
-        type: string
-  catalyst_center_target_filters:
-    description: CatalystCenterTargetFilters limits Catalyst Center detail collection to known resources.
-    type: object
-    properties:
-      client_macs:
+      fabrics:
         type: array
         items:
           type: string
-      device_details:
+      interface_names:
         type: array
         items:
-          $ref: catalyst_center_device_detail_target
-  catalyst_center_group_config:
-    description: CatalystCenterGroupConfig controls a curated Catalyst Center collection group.
-    type: object
-    properties:
-      enabled:
-        type: boolean
-      max_results:
-        type: integer
-  catalyst_center_config:
-    description: CatalystCenterConfig defines native Catalyst Center API polling settings.
-    type: object
-    properties:
-      auth:
-        $ref: catalyst_center_auth_config
-      details:
-        $ref: catalyst_center_group_config
-      enabled:
-        type: boolean
-      endpoint:
-        type: string
-      health:
-        $ref: catalyst_center_group_config
-      insecure_skip_verify:
-        type: boolean
-      interfaces:
-        $ref: catalyst_center_group_config
-      inventory:
-        $ref: catalyst_center_group_config
-      issues:
-        $ref: catalyst_center_group_config
-      lookback:
-        type: string
-      max_retries:
-        type: integer
-      page_size:
-        type: integer
-      targets:
-        $ref: catalyst_center_target_filters
-      topology:
-        $ref: catalyst_center_group_config
-      user_agent:
-        type: string
+          type: string
+      service_names:
+        type: array
+        items:
+          type: string
+      sites:
+        type: array
+        items:
+          type: string
+      switch_ids:
+        type: array
+        items:
+          type: string
+      switch_serials:
+        type: array
+        items:
+          type: string
   sdwan_auth_config:
     description: SDWANAuthConfig represents Catalyst SD-WAN Manager authentication settings.
     type: object
     properties:
       bearer_token:
-        type: string
+        $ref: go.opentelemetry.io/collector/config/configopaque.string
       jsession_id:
-        type: string
+        $ref: go.opentelemetry.io/collector/config/configopaque.string
       mode:
         type: string
       password:
-        type: string
+        $ref: go.opentelemetry.io/collector/config/configopaque.string
       username:
         type: string
       xsrf_token:
+        $ref: go.opentelemetry.io/collector/config/configopaque.string
+  sdwan_config:
+    description: SDWANConfig defines native Catalyst SD-WAN Manager API polling settings.
+    type: object
+    properties:
+      alarms:
+        $ref: sdwan_group_config
+      app_route:
+        $ref: sdwan_group_config
+      appqoe:
+        $ref: sdwan_group_config
+      audit:
+        $ref: sdwan_group_config
+      auth:
+        $ref: sdwan_auth_config
+      bfd:
+        $ref: sdwan_group_config
+      branch_services:
+        $ref: sdwan_group_config
+      cellular:
+        $ref: sdwan_group_config
+      cloud_onramp:
+        $ref: sdwan_group_config
+      control_plane:
+        $ref: sdwan_group_config
+      enabled:
+        type: boolean
+      endpoint:
         type: string
+      event_lookback:
+        type: string
+        format: duration
+      events:
+        $ref: sdwan_group_config
+      flows:
+        $ref: sdwan_group_config
+      hardware_energy:
+        $ref: sdwan_group_config
+      insecure_skip_verify:
+        type: boolean
+      interfaces:
+        $ref: sdwan_group_config
+      inventory:
+        $ref: sdwan_group_config
+      lifecycle_compliance:
+        $ref: sdwan_group_config
+      management_security:
+        $ref: sdwan_group_config
+      manager:
+        $ref: sdwan_group_config
+      max_retries:
+        type: integer
+      nwpi:
+        $ref: sdwan_group_config
+      page_size:
+        type: integer
+      policy_qos:
+        $ref: sdwan_group_config
+      realtime_details:
+        $ref: sdwan_group_config
+      realtime_lookback:
+        type: string
+        format: duration
+      routing_services:
+        $ref: sdwan_group_config
+      security:
+        $ref: sdwan_group_config
+      statistics_lookback:
+        type: string
+        format: duration
+      targets:
+        $ref: sdwan_target_filters
+      thousandeyes:
+        $ref: sdwan_group_config
+      tunnels:
+        $ref: sdwan_group_config
+      underlay:
+        $ref: sdwan_group_config
+      user_agent:
+        type: string
+  sdwan_group_config:
+    description: SDWANGroupConfig controls a curated Catalyst SD-WAN collection group.
+    type: object
+    properties:
+      enabled:
+        type: boolean
+      max_results:
+        type: integer
   sdwan_target_filters:
     description: SDWANTargetFilters limits SD-WAN collection to known sites, devices, circuits, applications, and services.
     type: object
@@ -325,299 +1193,54 @@ $defs:
         type: array
         items:
           type: string
-  sdwan_group_config:
-    description: SDWANGroupConfig controls a curated Catalyst SD-WAN collection group.
-    type: object
-    properties:
-      enabled:
-        type: boolean
-      max_results:
-        type: integer
-  sdwan_config:
-    description: SDWANConfig defines native Catalyst SD-WAN Manager API polling settings.
-    type: object
-    properties:
-      alarms:
-        $ref: sdwan_group_config
-      app_route:
-        $ref: sdwan_group_config
-      appqoe:
-        $ref: sdwan_group_config
-      audit:
-        $ref: sdwan_group_config
-      auth:
-        $ref: sdwan_auth_config
-      bfd:
-        $ref: sdwan_group_config
-      branch_services:
-        $ref: sdwan_group_config
-      cellular:
-        $ref: sdwan_group_config
-      cloud_onramp:
-        $ref: sdwan_group_config
-      control_plane:
-        $ref: sdwan_group_config
-      enabled:
-        type: boolean
-      endpoint:
-        type: string
-      event_lookback:
-        type: string
-      events:
-        $ref: sdwan_group_config
-      flows:
-        $ref: sdwan_group_config
-      hardware_energy:
-        $ref: sdwan_group_config
-      insecure_skip_verify:
-        type: boolean
-      interfaces:
-        $ref: sdwan_group_config
-      inventory:
-        $ref: sdwan_group_config
-      lifecycle_compliance:
-        $ref: sdwan_group_config
-      management_security:
-        $ref: sdwan_group_config
-      manager:
-        $ref: sdwan_group_config
-      max_retries:
-        type: integer
-      nwpi:
-        $ref: sdwan_group_config
-      page_size:
-        type: integer
-      policy_qos:
-        $ref: sdwan_group_config
-      realtime_details:
-        $ref: sdwan_group_config
-      realtime_lookback:
-        type: string
-      routing_services:
-        $ref: sdwan_group_config
-      security:
-        $ref: sdwan_group_config
-      statistics_lookback:
-        type: string
-      targets:
-        $ref: sdwan_target_filters
-      thousandeyes:
-        $ref: sdwan_group_config
-      tunnels:
-        $ref: sdwan_group_config
-      underlay:
-        $ref: sdwan_group_config
-      user_agent:
-        type: string
-  controller_auth_config:
-    description: ControllerAuthConfig represents username/password or API-key authentication for Nexus controllers.
-    type: object
-    properties:
-      api_key:
-        type: string
-      domain:
-        type: string
-      mode:
-        type: string
-      password:
-        type: string
-      username:
-        type: string
-  nexus_controller_group_config:
-    description: NexusControllerGroupConfig controls a curated controller collection group.
-    type: object
-    properties:
-      enabled:
-        type: boolean
-      max_results:
-        type: integer
-  nexus_dashboard_target_filters:
-    description: NexusDashboardTargetFilters limits Nexus Dashboard collection to relevant fabrics, switches, and services.
-    type: object
-    properties:
-      fabrics:
-        type: array
-        items:
-          type: string
-      interface_names:
-        type: array
-        items:
-          type: string
-      service_names:
-        type: array
-        items:
-          type: string
-      sites:
-        type: array
-        items:
-          type: string
-      switch_ids:
-        type: array
-        items:
-          type: string
-      switch_serials:
-        type: array
-        items:
-          type: string
-  nexus_dashboard_config:
-    description: NexusDashboardConfig defines Nexus Dashboard, NDFC, Insights, NDO, OneManage, and Data Broker polling settings.
-    type: object
-    properties:
-      auth:
-        $ref: controller_auth_config
-      data_broker:
-        $ref: nexus_controller_group_config
-      enabled:
-        type: boolean
-      endpoint:
-        type: string
-      event_lookback:
-        type: string
-      insecure_skip_verify:
-        type: boolean
-      insights:
-        $ref: nexus_controller_group_config
-      max_retries:
-        type: integer
-      ndfc:
-        $ref: nexus_controller_group_config
-      orchestrator:
-        $ref: nexus_controller_group_config
-      page_size:
-        type: integer
-      performance:
-        $ref: nexus_controller_group_config
-      platform:
-        $ref: nexus_controller_group_config
-      service_discovery:
-        type: boolean
-      targets:
-        $ref: nexus_dashboard_target_filters
-      telemetry_lookback:
-        type: string
-      user_agent:
-        type: string
-  aci_controller_config:
-    description: ACIControllerConfig represents a single APIC controller endpoint.
-    type: object
-    properties:
-      endpoint:
-        type: string
-      name:
-        type: string
-  aci_target_filters:
-    description: ACITargetFilters limits APIC collection to relevant nodes, tenants, and objects.
-    type: object
-    properties:
-      bridge_domains:
-        type: array
-        items:
-          type: string
-      epgs:
-        type: array
-        items:
-          type: string
-      fabrics:
-        type: array
-        items:
-          type: string
-      interface_names:
-        type: array
-        items:
-          type: string
-      node_ids:
-        type: array
-        items:
-          type: string
-      serials:
-        type: array
-        items:
-          type: string
-      sites:
-        type: array
-        items:
-          type: string
-      tenants:
-        type: array
-        items:
-          type: string
-      vrfs:
-        type: array
-        items:
-          type: string
-  aci_config:
-    description: ACIConfig defines APIC API polling settings.
-    type: object
-    properties:
-      audit:
-        $ref: nexus_controller_group_config
-      auth:
-        $ref: controller_auth_config
-      controller_health:
-        $ref: nexus_controller_group_config
-      controllers:
-        type: array
-        items:
-          $ref: aci_controller_config
-      enabled:
-        type: boolean
-      endpoints:
-        $ref: nexus_controller_group_config
-      event_lookback:
-        type: string
-      events:
-        $ref: nexus_controller_group_config
-      fabric:
-        $ref: nexus_controller_group_config
-      faults:
-        $ref: nexus_controller_group_config
-      insecure_skip_verify:
-        type: boolean
-      max_retries:
-        type: integer
-      nodes:
-        $ref: nexus_controller_group_config
-      page_size:
-        type: integer
-      stats:
-        $ref: nexus_controller_group_config
-      stats_lookback:
-        type: string
-      targets:
-        $ref: aci_target_filters
-      tenants:
-        $ref: nexus_controller_group_config
-      topology:
-        $ref: nexus_controller_group_config
-      user_agent:
-        type: string
 description: Config defines configuration for Cisco OS receiver.
 type: object
 properties:
+  aci:
+    description: ACI contains APIC API polling settings.
+    $ref: aci_config
+  catalyst_9800:
+    description: Catalyst9800 contains direct Catalyst 9800 WLC telemetry settings.
+    $ref: catalyst_9800_config
+  catalyst_center:
+    description: CatalystCenter contains Cisco Catalyst Center API polling settings.
+    $ref: catalyst_center_config
+  device_selection:
+    description: DeviceSelection limits emitted telemetry to shared Cisco device identities.
+    $ref: device_selection_config
   devices:
     description: Devices is the list of Cisco devices to monitor.
     type: array
     items:
       $ref: device_config
-  device_selection:
-    $ref: device_selection_config
+  fmc:
+    description: FMC contains Secure Firewall Management Center REST and eStreamer settings.
+    $ref: fmc_config
+  intersight:
+    description: Intersight contains Cisco Intersight API polling settings.
+    $ref: intersight_config
+  ios_xr:
+    description: IOSXR contains IOS XR gNMI/MDT telemetry settings.
+    $ref: iosxr_config
+  ise:
+    description: ISE contains Cisco Identity Services Engine REST, pxGrid, and Data Connect settings.
+    $ref: ise_config
+  meraki:
+    description: Meraki contains Meraki Dashboard API polling targets.
+    $ref: meraki_config
   metrics:
     description: Metrics controls per-metric forwarding for cost-sensitive destinations.
     type: object
     additionalProperties:
       $ref: metric_config
-  meraki:
-    $ref: meraki_config
-  intersight:
-    $ref: intersight_config
-  catalyst_center:
-    $ref: catalyst_center_config
-  sdwan:
-    $ref: sdwan_config
   nexus_dashboard:
+    description: NexusDashboard contains Nexus Dashboard, NDFC, Insights, NDO, OneManage, and Data Broker API polling settings.
     $ref: nexus_dashboard_config
   aci:
     $ref: aci_config
+  sdwan:
+    description: SDWAN contains Cisco Catalyst SD-WAN Manager API polling settings.
+    $ref: sdwan_config
   scrapers:
     description: Map of scrapers to be run, keyed by scraper type.
     type: object

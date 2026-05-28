@@ -6,7 +6,9 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,7 +34,7 @@ type DeviceConfig struct {
 	Auth connection.AuthConfig `mapstructure:"auth"`
 }
 
-// MetricConfig controls whether a named metric is forwarded by the Cisco OS receiver.
+// MetricConfig controls whether a named metric or metric-name glob is forwarded by the Cisco OS receiver.
 type MetricConfig struct {
 	// DO NOT USE unkeyed struct initialization
 	_ struct{} `mapstructure:"-"`
@@ -510,6 +512,101 @@ type ACIConfig struct {
 	Topology           NexusControllerGroupConfig `mapstructure:"topology"`
 }
 
+// FMCControllerConfig represents a single Secure Firewall Management Center endpoint.
+type FMCControllerConfig struct {
+	// DO NOT USE unkeyed struct initialization
+	_ struct{} `mapstructure:"-"`
+
+	Endpoint   string `mapstructure:"endpoint"`
+	Name       string `mapstructure:"name"`
+	DomainUUID string `mapstructure:"domain_uuid"`
+}
+
+// FMCTargetFilters limits FMC collection to relevant managed firewalls, policies, and interfaces.
+type FMCTargetFilters struct {
+	// DO NOT USE unkeyed struct initialization
+	_ struct{} `mapstructure:"-"`
+
+	DeviceIDs      []string `mapstructure:"device_ids"`
+	Serials        []string `mapstructure:"serials"`
+	Names          []string `mapstructure:"names"`
+	ManagementIPs  []string `mapstructure:"management_ips"`
+	PolicyIDs      []string `mapstructure:"policy_ids"`
+	PolicyNames    []string `mapstructure:"policy_names"`
+	InterfaceNames []string `mapstructure:"interface_names"`
+}
+
+// FMCGroupConfig controls a curated FMC collection group.
+type FMCGroupConfig struct {
+	// DO NOT USE unkeyed struct initialization
+	_ struct{} `mapstructure:"-"`
+
+	Enabled    bool `mapstructure:"enabled"`
+	MaxResults int  `mapstructure:"max_results"`
+}
+
+// FMCEStreamerTLSConfig contains TLS settings for an eStreamer mutual-TLS client.
+type FMCEStreamerTLSConfig struct {
+	// DO NOT USE unkeyed struct initialization
+	_ struct{} `mapstructure:"-"`
+
+	CertFile           string `mapstructure:"cert_file"`
+	KeyFile            string `mapstructure:"key_file"`
+	CAFile             string `mapstructure:"ca_file"`
+	ServerName         string `mapstructure:"server_name"`
+	InsecureSkipVerify bool   `mapstructure:"insecure_skip_verify"`
+}
+
+// FMCEStreamerTargetConfig represents a single eStreamer endpoint.
+type FMCEStreamerTargetConfig struct {
+	// DO NOT USE unkeyed struct initialization
+	_ struct{} `mapstructure:"-"`
+
+	Endpoint string `mapstructure:"endpoint"`
+	Name     string `mapstructure:"name"`
+}
+
+// FMCEStreamerConfig controls high-fidelity Secure Firewall event streaming.
+type FMCEStreamerConfig struct {
+	// DO NOT USE unkeyed struct initialization
+	_ struct{} `mapstructure:"-"`
+
+	Enabled           bool                       `mapstructure:"enabled"`
+	Targets           []FMCEStreamerTargetConfig `mapstructure:"targets"`
+	TLS               FMCEStreamerTLSConfig      `mapstructure:"tls"`
+	EventTypes        []string                   `mapstructure:"event_types"`
+	Lookback          time.Duration              `mapstructure:"lookback"`
+	ReconnectInterval time.Duration              `mapstructure:"reconnect_interval"`
+	MaxMessageBytes   int                        `mapstructure:"max_message_bytes"`
+}
+
+// FMCConfig defines Secure Firewall Management Center REST and eStreamer settings.
+type FMCConfig struct {
+	// DO NOT USE unkeyed struct initialization
+	_ struct{} `mapstructure:"-"`
+
+	Enabled            bool                  `mapstructure:"enabled"`
+	Controllers        []FMCControllerConfig `mapstructure:"controllers"`
+	Auth               ControllerAuthConfig  `mapstructure:"auth"`
+	UserAgent          string                `mapstructure:"user_agent"`
+	PageSize           int                   `mapstructure:"page_size"`
+	MaxRetries         int                   `mapstructure:"max_retries"`
+	InsecureSkipVerify bool                  `mapstructure:"insecure_skip_verify"`
+	EventLookback      time.Duration         `mapstructure:"event_lookback"`
+	Targets            FMCTargetFilters      `mapstructure:"targets"`
+	Manager            FMCGroupConfig        `mapstructure:"manager"`
+	Inventory          FMCGroupConfig        `mapstructure:"inventory"`
+	Interfaces         FMCGroupConfig        `mapstructure:"interfaces"`
+	Health             FMCGroupConfig        `mapstructure:"health"`
+	VPN                FMCGroupConfig        `mapstructure:"vpn"`
+	HA                 FMCGroupConfig        `mapstructure:"ha"`
+	Policy             FMCGroupConfig        `mapstructure:"policy"`
+	Deployments        FMCGroupConfig        `mapstructure:"deployments"`
+	Audit              FMCGroupConfig        `mapstructure:"audit"`
+	SecurityEvents     FMCGroupConfig        `mapstructure:"security_events"`
+	EStreamer          FMCEStreamerConfig    `mapstructure:"estreamer"`
+}
+
 func defaultNexusControllerGroupConfig(maxResults int) NexusControllerGroupConfig {
 	return NexusControllerGroupConfig{
 		Enabled:    true,
@@ -554,12 +651,56 @@ func defaultACIConfig() ACIConfig {
 	}
 }
 
+func defaultFMCGroupConfig(enabled bool, maxResults int) FMCGroupConfig {
+	return FMCGroupConfig{
+		Enabled:    enabled,
+		MaxResults: maxResults,
+	}
+}
+
+func defaultFMCConfig() FMCConfig {
+	return FMCConfig{
+		UserAgent:      "opentelemetry-collector-contrib-ciscoosreceiver",
+		PageSize:       100,
+		MaxRetries:     3,
+		EventLookback:  24 * time.Hour,
+		Manager:        defaultFMCGroupConfig(true, 100),
+		Inventory:      defaultFMCGroupConfig(true, 5000),
+		Interfaces:     defaultFMCGroupConfig(true, 10000),
+		Health:         defaultFMCGroupConfig(true, 2000),
+		VPN:            defaultFMCGroupConfig(true, 10000),
+		HA:             defaultFMCGroupConfig(true, 1000),
+		Policy:         defaultFMCGroupConfig(true, 10000),
+		Deployments:    defaultFMCGroupConfig(true, 5000),
+		Audit:          defaultFMCGroupConfig(true, 1000),
+		SecurityEvents: defaultFMCGroupConfig(true, 0),
+		EStreamer: FMCEStreamerConfig{
+			EventTypes:        []string{"connection", "intrusion", "intrusion_packet", "file"},
+			Lookback:          5 * time.Minute,
+			ReconnectInterval: 30 * time.Second,
+			MaxMessageBytes:   16 * 1024 * 1024,
+		},
+	}
+}
+
 func (cfg NexusDashboardConfig) hasTarget() bool {
 	return cfg.Enabled || cfg.Endpoint != "" || cfg.Auth.APIKey != "" || cfg.Auth.Username != "" || cfg.Auth.Password != ""
 }
 
 func (cfg ACIConfig) hasTarget() bool {
 	return cfg.Enabled || len(cfg.Controllers) > 0 || cfg.Auth.Username != "" || cfg.Auth.Password != ""
+}
+
+func (cfg FMCConfig) hasTarget() bool {
+	return cfg.hasRESTTarget() || cfg.EStreamer.hasTarget()
+}
+
+func (cfg FMCConfig) hasRESTTarget() bool {
+	return cfg.Enabled || len(cfg.Controllers) > 0 || cfg.Auth.Username != "" || cfg.Auth.Password != ""
+}
+
+func (cfg FMCEStreamerConfig) hasTarget() bool {
+	return cfg.Enabled || len(cfg.Targets) > 0
 }
 
 // Config defines configuration for Cisco OS receiver.
@@ -584,6 +725,9 @@ type Config struct {
 	// CatalystCenter contains Cisco Catalyst Center API polling settings.
 	CatalystCenter CatalystCenterConfig `mapstructure:"catalyst_center"`
 
+	// Catalyst9800 contains direct Catalyst 9800 WLC telemetry settings.
+	Catalyst9800 Catalyst9800Config `mapstructure:"catalyst_9800"`
+
 	// SDWAN contains Cisco Catalyst SD-WAN Manager API polling settings.
 	SDWAN SDWANConfig `mapstructure:"sdwan"`
 
@@ -592,6 +736,15 @@ type Config struct {
 
 	// ACI contains APIC API polling settings.
 	ACI ACIConfig `mapstructure:"aci"`
+
+	// FMC contains Secure Firewall Management Center REST and eStreamer settings.
+	FMC FMCConfig `mapstructure:"fmc"`
+
+	// ISE contains Cisco Identity Services Engine REST, pxGrid, and Data Connect settings.
+	ISE ISEConfig `mapstructure:"ise"`
+
+	// IOSXR contains IOS XR gNMI/MDT telemetry settings.
+	IOSXR IOSXRConfig `mapstructure:"ios_xr"`
 
 	Scrapers map[component.Type]component.Config `mapstructure:"-"`
 }
@@ -613,8 +766,8 @@ func (cfg *Config) Validate() error {
 		err = multierr.Append(err, errors.New("collection_interval must be positive"))
 	}
 
-	if len(cfg.Devices) == 0 && !cfg.Meraki.hasTargets() && !cfg.Intersight.hasTarget() && !cfg.CatalystCenter.hasTarget() && !cfg.SDWAN.hasTarget() && !cfg.NexusDashboard.hasTarget() && !cfg.ACI.hasTarget() {
-		err = multierr.Append(err, errors.New("must specify at least one SSH device, Meraki target, Intersight target, Catalyst Center target, SD-WAN target, Nexus Dashboard target, or ACI target"))
+	if len(cfg.Devices) == 0 && !cfg.Meraki.hasTargets() && !cfg.Intersight.hasTarget() && !cfg.CatalystCenter.hasTarget() && !cfg.Catalyst9800.hasTarget() && !cfg.SDWAN.hasTarget() && !cfg.NexusDashboard.hasTarget() && !cfg.ACI.hasTarget() && !cfg.FMC.hasTarget() && !cfg.ISE.hasTarget() && !cfg.IOSXR.hasTarget() {
+		err = multierr.Append(err, errors.New("must specify at least one SSH device, Meraki target, Intersight target, Catalyst Center target, Catalyst 9800 target, SD-WAN target, Nexus Dashboard target, ACI target, FMC target, ISE target, or IOS XR target"))
 	}
 
 	if len(cfg.Devices) > 0 && len(cfg.Scrapers) == 0 {
@@ -624,6 +777,10 @@ func (cfg *Config) Validate() error {
 	for name := range cfg.Metrics {
 		if strings.TrimSpace(name) == "" {
 			err = multierr.Append(err, errors.New("metrics keys cannot be empty"))
+			continue
+		}
+		if isMetricNamePattern(name) && !validMetricNamePattern(name) {
+			err = multierr.Append(err, fmt.Errorf("metrics key %q must be a valid metric name glob", name))
 		}
 	}
 
@@ -648,9 +805,13 @@ func (cfg *Config) Validate() error {
 	err = multierr.Append(err, cfg.validateMeraki())
 	err = multierr.Append(err, cfg.validateIntersight())
 	err = multierr.Append(err, cfg.validateCatalystCenter())
+	err = multierr.Append(err, cfg.validateCatalyst9800())
 	err = multierr.Append(err, cfg.validateSDWAN())
 	err = multierr.Append(err, cfg.validateNexusDashboard())
 	err = multierr.Append(err, cfg.validateACI())
+	err = multierr.Append(err, cfg.validateFMC())
+	err = multierr.Append(err, cfg.validateISE())
+	err = multierr.Append(err, cfg.validateIOSXR())
 
 	return err
 }
@@ -1053,6 +1214,111 @@ func (cfg *Config) validateACI() error {
 	return err
 }
 
+func (cfg *Config) validateFMC() error {
+	if !cfg.FMC.hasTarget() {
+		return nil
+	}
+
+	var err error
+	restTarget := cfg.FMC.Enabled || len(cfg.FMC.Controllers) > 0 || cfg.FMC.Auth.Username != "" || cfg.FMC.Auth.Password != ""
+	if restTarget {
+		if len(cfg.FMC.Controllers) == 0 {
+			err = multierr.Append(err, errors.New("fmc.controllers must include at least one FMC endpoint"))
+		}
+		for i, controller := range cfg.FMC.Controllers {
+			if controller.Endpoint == "" {
+				err = multierr.Append(err, fmt.Errorf("fmc.controllers[%d].endpoint cannot be empty", i))
+				continue
+			}
+			err = multierr.Append(err, validateHTTPURL(fmt.Sprintf("fmc.controllers[%d].endpoint", i), controller.Endpoint))
+		}
+
+		authMode := inferredControllerAuthMode(cfg.FMC.Auth)
+		if authMode != "username_password" {
+			err = multierr.Append(err, errors.New("fmc.auth.mode must be username_password"))
+		}
+		if cfg.FMC.Auth.Username == "" {
+			err = multierr.Append(err, errors.New("fmc.auth.username must be provided"))
+		}
+		if cfg.FMC.Auth.Password == "" {
+			err = multierr.Append(err, errors.New("fmc.auth.password must be provided"))
+		}
+	}
+
+	if cfg.FMC.PageSize < 0 {
+		err = multierr.Append(err, errors.New("fmc.page_size must not be negative"))
+	}
+	if cfg.FMC.MaxRetries < 0 {
+		err = multierr.Append(err, errors.New("fmc.max_retries must not be negative"))
+	}
+	if cfg.FMC.EventLookback < 0 {
+		err = multierr.Append(err, errors.New("fmc.event_lookback must not be negative"))
+	}
+
+	groups := map[string]FMCGroupConfig{
+		"manager":         cfg.FMC.Manager,
+		"inventory":       cfg.FMC.Inventory,
+		"interfaces":      cfg.FMC.Interfaces,
+		"health":          cfg.FMC.Health,
+		"vpn":             cfg.FMC.VPN,
+		"ha":              cfg.FMC.HA,
+		"policy":          cfg.FMC.Policy,
+		"deployments":     cfg.FMC.Deployments,
+		"audit":           cfg.FMC.Audit,
+		"security_events": cfg.FMC.SecurityEvents,
+	}
+	for name, group := range groups {
+		if group.MaxResults < 0 {
+			err = multierr.Append(err, fmt.Errorf("fmc.%s.max_results must not be negative", name))
+		}
+	}
+
+	err = multierr.Append(err, cfg.validateFMCEStreamer())
+	return err
+}
+
+func (cfg *Config) validateFMCEStreamer() error {
+	if !cfg.FMC.EStreamer.hasTarget() {
+		return nil
+	}
+
+	var err error
+	if cfg.FMC.EStreamer.Enabled && len(cfg.FMC.EStreamer.Targets) == 0 && len(cfg.FMC.Controllers) == 0 {
+		err = multierr.Append(err, errors.New("fmc.estreamer.targets or fmc.controllers must include at least one eStreamer endpoint"))
+	}
+	for i, target := range cfg.FMC.EStreamer.Targets {
+		if target.Endpoint == "" {
+			err = multierr.Append(err, fmt.Errorf("fmc.estreamer.targets[%d].endpoint cannot be empty", i))
+			continue
+		}
+		err = multierr.Append(err, validateHostPortOrHost(fmt.Sprintf("fmc.estreamer.targets[%d].endpoint", i), target.Endpoint))
+	}
+	if cfg.FMC.EStreamer.TLS.CertFile == "" && cfg.FMC.EStreamer.TLS.KeyFile != "" {
+		err = multierr.Append(err, errors.New("fmc.estreamer.tls.cert_file must be provided when key_file is set"))
+	}
+	if cfg.FMC.EStreamer.TLS.KeyFile == "" && cfg.FMC.EStreamer.TLS.CertFile != "" {
+		err = multierr.Append(err, errors.New("fmc.estreamer.tls.key_file must be provided when cert_file is set"))
+	}
+	if cfg.FMC.EStreamer.hasTarget() && (cfg.FMC.EStreamer.TLS.CertFile == "" || cfg.FMC.EStreamer.TLS.KeyFile == "") {
+		err = multierr.Append(err, errors.New("fmc.estreamer.tls.cert_file and fmc.estreamer.tls.key_file must be provided"))
+	}
+	if cfg.FMC.EStreamer.Lookback < 0 {
+		err = multierr.Append(err, errors.New("fmc.estreamer.lookback must not be negative"))
+	}
+	if cfg.FMC.EStreamer.ReconnectInterval < 0 {
+		err = multierr.Append(err, errors.New("fmc.estreamer.reconnect_interval must not be negative"))
+	}
+	if cfg.FMC.EStreamer.MaxMessageBytes < 0 {
+		err = multierr.Append(err, errors.New("fmc.estreamer.max_message_bytes must not be negative"))
+	}
+	for i, eventType := range cfg.FMC.EStreamer.EventTypes {
+		if !validFMCEStreamerEventType(eventType) {
+			err = multierr.Append(err, fmt.Errorf("fmc.estreamer.event_types[%d] must be connection, intrusion, intrusion_packet, or file", i))
+		}
+	}
+	return err
+}
+
 func validateHTTPURL(name, value string) error {
 	parsed, parseErr := url.Parse(value)
 	if parseErr != nil || parsed.Scheme == "" || parsed.Host == "" {
@@ -1060,6 +1326,29 @@ func validateHTTPURL(name, value string) error {
 	}
 	if parsed.Scheme != "https" && parsed.Scheme != "http" {
 		return fmt.Errorf("%s scheme must be http or https", name)
+	}
+	return nil
+}
+
+func validateHostPortOrHost(name, value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fmt.Errorf("%s cannot be empty", name)
+	}
+	if strings.Contains(value, "://") {
+		return fmt.Errorf("%s must be host or host:port, not a URL", name)
+	}
+	if strings.Contains(value, " ") {
+		return fmt.Errorf("%s must not contain spaces", name)
+	}
+	if host, port, err := net.SplitHostPort(value); err == nil {
+		if strings.TrimSpace(host) == "" {
+			return fmt.Errorf("%s host cannot be empty", name)
+		}
+		parsedPort, parseErr := strconv.Atoi(port)
+		if parseErr != nil || parsedPort < 1 || parsedPort > 65535 {
+			return fmt.Errorf("%s port must be between 1 and 65535", name)
+		}
 	}
 	return nil
 }
@@ -1140,6 +1429,17 @@ func inferredControllerAuthMode(auth ControllerAuthConfig) string {
 		return ""
 	default:
 		return auth.Mode
+	}
+}
+
+func validFMCEStreamerEventType(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(strings.ReplaceAll(value, "-", "_"))) {
+	case "connection", "connection_event", "traffic", "security_intelligence", "si",
+		"intrusion", "intrusion_event", "intrusion_packet", "intrusion_packet_event",
+		"file", "file_event", "malware", "file_malware":
+		return true
+	default:
+		return false
 	}
 }
 
