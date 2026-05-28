@@ -1,0 +1,9 @@
+change_type: breaking
+component: receiver/cisco_os
+note: Require SSH device configs to opt into host key verification or explicit insecure mode.
+issues: [0]
+subtext: |
+  Existing `devices` entries must set `auth.known_hosts_file` or `auth.insecure_skip_verify: true` before upgrading.
+  Empty Cisco OS receiver configs now report all supported target blocks in the validation error instead of only
+  saying "must specify at least one device".
+change_logs: [user]

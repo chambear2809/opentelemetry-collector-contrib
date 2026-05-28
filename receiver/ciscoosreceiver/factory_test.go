@@ -63,6 +63,13 @@ func TestCreateDefaultConfig(t *testing.T) {
 	assert.Equal(t, 24*time.Hour, config.CatalystCenter.Lookback)
 	assert.True(t, config.CatalystCenter.Inventory.Enabled)
 	assert.True(t, config.CatalystCenter.Issues.Enabled)
+	assert.Equal(t, 100, config.ISE.PageSize)
+	assert.Equal(t, 24*time.Hour, config.ISE.EventLookback)
+	assert.Equal(t, 15*time.Minute, config.ISE.SessionLookback)
+	assert.True(t, config.ISE.NetworkDevices.Enabled)
+	assert.True(t, config.ISE.AuthFailures.Enabled)
+	assert.False(t, config.ISE.PxGrid.Enabled)
+	assert.False(t, config.ISE.DataConnect.Enabled)
 }
 
 func TestCreateMetricsReceiver(t *testing.T) {
@@ -169,6 +176,60 @@ func TestCreateLogsReceiverWithIntersight(t *testing.T) {
 
 	_, ok := receiver.(*intersightLogsReceiver)
 	assert.True(t, ok, "expected intersightLogsReceiver for Intersight config")
+}
+
+func TestCreateMetricsReceiverWithISE(t *testing.T) {
+	factory := NewFactory()
+	config := factory.CreateDefaultConfig().(*Config)
+	config.ISE.Enabled = true
+	config.ISE.Endpoint = "https://ise.example.com"
+	config.ISE.Auth.Username = "admin"
+	config.ISE.Auth.Password = configopaque.String("password")
+
+	receiver, err := factory.CreateMetrics(t.Context(), receivertest.NewNopSettings(metadata.Type), config, consumertest.NewNop())
+	assert.NotNil(t, receiver)
+	assert.NoError(t, err)
+
+	_, ok := receiver.(*iseMetricsReceiver)
+	assert.True(t, ok, "expected iseMetricsReceiver for ISE-only config")
+}
+
+func TestCreateMetricsReceiverWithIOSXR(t *testing.T) {
+	factory := NewFactory()
+	config := factory.CreateDefaultConfig().(*Config)
+	config.IOSXR.Enabled = true
+	config.IOSXR.PathGroups["interfaces"] = IOSXRPathGroupConfig{Enabled: true}
+	config.IOSXR.DialIn.Targets = []IOSXRTargetConfig{{
+		ClientConfig: mustIOSXRClientConfig("10.0.0.10:57400"),
+		Name:         "core-asr9k-1",
+		Credentials: IOSXRCredentialsConfig{
+			Username: "admin",
+			Password: configopaque.String("password"),
+		},
+	}}
+
+	receiver, err := factory.CreateMetrics(t.Context(), receivertest.NewNopSettings(metadata.Type), config, consumertest.NewNop())
+	assert.NotNil(t, receiver)
+	assert.NoError(t, err)
+
+	_, ok := receiver.(*iosXRDialInReceiver)
+	assert.True(t, ok, "expected iosXRDialInReceiver for IOS XR dial-in config")
+}
+
+func TestCreateLogsReceiverWithISE(t *testing.T) {
+	factory := NewFactory()
+	config := factory.CreateDefaultConfig().(*Config)
+	config.ISE.Enabled = true
+	config.ISE.Endpoint = "https://ise.example.com"
+	config.ISE.Auth.Username = "admin"
+	config.ISE.Auth.Password = configopaque.String("password")
+
+	receiver, err := factory.CreateLogs(t.Context(), receivertest.NewNopSettings(metadata.Type), config, &consumertest.LogsSink{})
+	assert.NotNil(t, receiver)
+	assert.NoError(t, err)
+
+	_, ok := receiver.(*iseLogsReceiver)
+	assert.True(t, ok, "expected iseLogsReceiver for ISE config")
 }
 
 func TestCreateLogsReceiverWithoutIntersight(t *testing.T) {

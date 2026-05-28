@@ -73,6 +73,36 @@ func TestClientAESAuthPassthrough(t *testing.T) {
 	assert.Equal(t, int64(7), got)
 }
 
+func TestClientSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/dna/system/api/v1/auth/token":
+			_, _ = w.Write([]byte(`{"Token":"token-1"}`))
+		case "/dna/intent/api/v1/network-device/count":
+			assert.Equal(t, "token-1", r.Header.Get("X-Auth-Token"))
+			_, _ = w.Write([]byte(`{"response":4}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:           server.URL,
+		Username:           "admin",
+		Password:           "password",
+		Timeout:            time.Second,
+		MaxRetries:         1,
+		InsecureSkipVerify: true,
+	})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	got, err := GetCount(t.Context(), client, "devices.count", "/dna/intent/api/v1/network-device/count", nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(4), got)
+}
+
 func TestClientRefreshesTokenOnceOnUnauthorized(t *testing.T) {
 	var authCalls atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

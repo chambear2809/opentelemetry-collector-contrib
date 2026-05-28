@@ -50,6 +50,32 @@ func TestClientLoginCookieAndClassDecode(t *testing.T) {
 	assert.Equal(t, int64(1), logins.Load())
 }
 
+func TestClientSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/aaaLogin.json" {
+			_, _ = w.Write([]byte(`{"imdata":[{"aaaLogin":{"attributes":{"token":"apic-token"}}}]}`))
+			return
+		}
+		assert.Equal(t, "/api/class/fabricNode.json", r.URL.Path)
+		_, _ = w.Write([]byte(`{"totalCount":"0","imdata":[]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:           server.URL,
+		Username:           "admin",
+		Password:           "password",
+		Timeout:            time.Second,
+		MaxRetries:         1,
+		InsecureSkipVerify: true,
+	})
+	require.NoError(t, err)
+
+	got, err := client.ListClass(t.Context(), "fabric.nodes", "fabricNode", nil, 0)
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
+
 func TestClientRetriesRateLimitsAndRecordsStats(t *testing.T) {
 	var attempts atomic.Int64
 	var stats []RequestStat

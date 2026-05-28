@@ -1,0 +1,253 @@
+{
+  "schema": "com.cisco.opentelemetry.ciscoosreceiver.splunk-o11y.dashboard-bundle/v1",
+  "default_time_range_ms": 3600000,
+  "default_tags": [
+    "ciscoosreceiver",
+    "catalyst-9800",
+    "wlc",
+    "wireless",
+    "netops"
+  ],
+  "group": {
+    "name": "Cisco Catalyst 9800 WLC Receiver",
+    "description": "Dashboard group for Catalyst 9800 wireless controller telemetry normalized by the Cisco OS receiver into WLC, AP, RF, SSID, client, RADIUS, mobility, HA, and controller-health metrics."
+  },
+  "default_filters": {
+    "variables": [
+      {
+        "property": "host.name",
+        "alias": "Controller",
+        "description": "Catalyst 9800 controller name.",
+        "applyIfExists": true
+      },
+      {
+        "property": "host.ip",
+        "alias": "Controller IP",
+        "description": "Catalyst 9800 controller address.",
+        "applyIfExists": true
+      },
+      {
+        "property": "cisco.wlc.ap.name",
+        "alias": "AP",
+        "description": "Wireless access point name.",
+        "applyIfExists": true
+      },
+      {
+        "property": "cisco.wlc.ap.mac",
+        "alias": "AP MAC",
+        "description": "Wireless access point MAC address.",
+        "applyIfExists": true
+      },
+      {
+        "property": "cisco.wlc.ssid",
+        "alias": "SSID",
+        "description": "Wireless SSID.",
+        "applyIfExists": true
+      },
+      {
+        "property": "cisco.wlc.client.mac",
+        "alias": "Client MAC",
+        "description": "Wireless client MAC address.",
+        "applyIfExists": true
+      },
+      {
+        "property": "cisco.wlc.radio.slot",
+        "alias": "Radio Slot",
+        "description": "AP radio slot.",
+        "applyIfExists": true
+      },
+      {
+        "property": "cisco.yang.module",
+        "alias": "YANG Module",
+        "description": "Catalyst 9800 YANG module that produced the metric.",
+        "applyIfExists": true
+      }
+    ]
+  },
+  "dashboards": [
+    {
+      "name": "00 WLC Telemetry Trust And Controller Health",
+      "description": "Value: proves whether Catalyst 9800 telemetry is alive, fresh, and decodable before operators trust wireless health panels.",
+      "value": "Use this page first when WLC telemetry is missing, stale, or suspicious. It separates subscription and decode problems from controller CPU, memory, and update-volume symptoms.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to use the Catalyst 9800 telemetry trust dashboard during incident triage. Interpretation: start here when wireless evidence is absent or delayed, then move to AP, RF, client, RADIUS, mobility, or HA pages once collection trust is proven.",
+          "markdown": "## Value Provided\nUse this dashboard before interpreting wireless health. It proves that Catalyst 9800 subscriptions are active, updates are arriving, YANG payloads are decodable, and the controller is not showing obvious CPU or memory pressure. This prevents a missing AP, SSID, or client signal from being mistaken for a network outage when the real issue is telemetry freshness or model coverage.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Active Subscriptions",
+          "description": "Value: shows whether each WLC telemetry target has active subscriptions. Interpretation: zero means the controller is not currently feeding the receiver; compare with reconnects and unsupported paths before trusting downstream wireless panels.",
+          "signalflow": "data('cisco.wlc.controller.receiver.active_subscriptions').mean(by=['host.name', 'host.ip', 'cisco.telemetry.transport']).publish(label='Active subscriptions')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Telemetry Updates And Decode Errors",
+          "description": "Value: correlates update arrival with decode failures so operators can distinguish a quiet controller from an incompatible or changing YANG payload. Interpretation: update rate should be steady for active targets; rising decode errors mean wireless data may be partial even if subscriptions are up.",
+          "signalflow": "data('cisco.wlc.controller.receiver.updates').rate().sum(by=['host.name', 'cisco.telemetry.transport']).publish(label='Updates/sec'); data('cisco.wlc.controller.receiver.decode_errors').rate().sum(by=['host.name', 'cisco.telemetry.transport']).publish(label='Decode errors/sec')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Unsupported Paths And Dropped Datapoints",
+          "description": "Value: surfaces path-selection and cardinality guardrails that can hide AP, client, or RF evidence. Interpretation: unsupported paths point to release/model gaps; dropped datapoints mean target/path scope or max datapoint caps should be tuned before the dashboard is trusted.",
+          "signalflow": "data('cisco.catalyst9800.receiver.unsupported_paths').rate().sum(by=['host.name', 'cisco.telemetry.transport']).publish(label='Unsupported paths/sec'); data('cisco.catalyst9800.receiver.dropped_datapoints').rate().sum(by=['host.name', 'cisco.telemetry.transport']).publish(label='Dropped datapoints/sec')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Controller CPU And Memory",
+          "description": "Value: shows whether controller resource pressure is likely affecting AP joins, RADIUS, mobility, or telemetry responsiveness. Interpretation: CPU utilization is grouped by platform interval; memory is split into used and free values when the controller model exposes both.",
+          "signalflow": "data('cisco.wlc.controller.cpu.utilization').mean(by=['host.name', 'interval']).publish(label='CPU utilization'); data('cisco.wlc.controller.memory.bytes').mean(by=['host.name', 'state']).publish(label='Memory bytes')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Last Successful Update",
+          "description": "Value: identifies controllers whose telemetry has gone stale even if the last datapoint remains visible in charts. Interpretation: each row is a Unix timestamp; compare it to wall-clock time and investigate reconnects when it stops moving.",
+          "signalflow": "data('cisco.catalyst9800.receiver.last_success_timestamp').mean(by=['host.name', 'host.ip', 'cisco.telemetry.transport']).publish(label='Last success')",
+          "legend_dimension": "host.name"
+        }
+      ]
+    },
+    {
+      "name": "01 AP Join RF And CAPWAP Health",
+      "description": "Value: connects AP join state, CAPWAP tunnel health, RF utilization, noise, client counts, and AP disconnect evidence into one wireless first-response page.",
+      "value": "Use this page when users report wireless outage, unstable APs, RF degradation, or site-wide client loss. It highlights APs that failed to join, CAPWAP state changes, RF channel pressure, noise floor, and AP disconnect reasons.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how AP, CAPWAP, and RF panels help isolate wireless infrastructure failures. Interpretation: start with AP join and CAPWAP state, then use RF utilization, noise, and client-count charts to decide whether the issue is controller/AP reachability or RF environment pressure.",
+          "markdown": "## Value Provided\nUse this dashboard for AP or RF incidents. It answers whether APs are joined, whether CAPWAP state is healthy, whether disconnect or join-failure reasons are accumulating, and whether RF utilization, noise, or client load changed around the incident window.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "AP Join And CAPWAP State",
+          "description": "Value: finds APs that are not joined or have unhealthy CAPWAP state. Interpretation: 1 or healthy state means the AP is connected; 0 or failed/disconnected state rows should be checked before RF or client analysis.",
+          "signalflow": "data('cisco.wlc.ap.join.status').mean(by=['host.name', 'cisco.wlc.ap.name', 'cisco.wlc.ap.mac', 'state']).publish(label='AP joined'); data('cisco.wlc.ap.capwap.state').mean(by=['host.name', 'cisco.wlc.ap.name', 'cisco.wlc.ap.mac', 'state']).publish(label='CAPWAP state')",
+          "legend_dimension": "cisco.wlc.ap.name"
+        },
+        {
+          "name": "AP Join Failures And Disconnects",
+          "description": "Value: explains why APs are absent, flapping, or recently unavailable. Interpretation: rising join failures or disconnects by reason identify controller, network path, certificate, image, or AP-side causes to investigate.",
+          "signalflow": "data('cisco.wlc.ap.join.failure').sum(by=['host.name', 'cisco.wlc.ap.name', 'failure.reason']).publish(label='Join failures'); data('cisco.wlc.ap.disconnect').rate().sum(by=['host.name', 'cisco.wlc.ap.name', 'reason']).publish(label='Disconnects/sec')",
+          "legend_dimension": "cisco.wlc.ap.name"
+        },
+        {
+          "name": "RF Channel Utilization And Noise",
+          "description": "Value: shows whether user symptoms line up with busy RF channels, non-Wi-Fi interference, or poor noise floor. Interpretation: high utilization or noise changes around the incident often explain low throughput even when APs remain joined.",
+          "signalflow": "data('cisco.wlc.rf.channel.utilization').mean(by=['host.name', 'cisco.wlc.ap.name', 'cisco.wlc.radio.slot', 'utilization.type']).publish(label='RF utilization'); data('cisco.wlc.rf.noise_floor').mean(by=['host.name', 'cisco.wlc.ap.name', 'cisco.wlc.radio.slot']).publish(label='Noise floor')",
+          "legend_dimension": "cisco.wlc.ap.name"
+        },
+        {
+          "name": "RF Client Load And Channel Changes",
+          "description": "Value: correlates client concentration and RRM channel changes with reported wireless instability. Interpretation: spikes in client count, repeated channel changes, or a controller recommending new channels can explain roaming and throughput symptoms.",
+          "signalflow": "data('cisco.wlc.rf.client.count').mean(by=['host.name', 'cisco.wlc.ap.name', 'cisco.wlc.radio.slot']).publish(label='RF clients'); data('cisco.wlc.rf.channel.change.count').rate().sum(by=['host.name', 'cisco.wlc.ap.name', 'cisco.wlc.radio.slot']).publish(label='Channel changes/sec'); data('cisco.wlc.rf.channel.recommended').mean(by=['host.name', 'cisco.wlc.ap.name', 'cisco.wlc.radio.slot']).publish(label='Recommended channel')",
+          "legend_dimension": "cisco.wlc.ap.name"
+        }
+      ]
+    },
+    {
+      "name": "02 Clients SSIDs And AAA Experience",
+      "description": "Value: focuses on client connectivity, SSID traffic and retry behavior, RADIUS outcomes, response delays, RSSI, SNR, and authentication failures.",
+      "value": "Use this page when a help desk, site, SSID, or user population reports connection, authentication, roaming, or throughput symptoms. It ties client state and RF quality to SSID and RADIUS evidence.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to use client, SSID, and AAA panels for user-impact triage. Interpretation: start with client connection state and RADIUS outcomes, then use RSSI/SNR, SSID bytes, and retries to separate auth failure from poor RF or throughput pressure.",
+          "markdown": "## Value Provided\nUse this dashboard when affected users or SSIDs are known. It connects client connection state, auth failures, RADIUS accepts/rejects/timeouts, RSSI, SNR, SSID traffic, retries, and client I/O so NetOps can decide whether to escalate to identity, RF, controller, or upstream network teams.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Client Connection State",
+          "description": "Value: identifies clients that are disconnected, stuck, or in an unexpected controller state. Interpretation: group by client MAC and SSID, then use auth failures, RADIUS, RSSI, and SNR to explain why.",
+          "signalflow": "data('cisco.wlc.client.connection.state').mean(by=['host.name', 'cisco.wlc.client.mac', 'cisco.wlc.ssid', 'state']).publish(label='Connection state')",
+          "legend_dimension": "cisco.wlc.client.mac"
+        },
+        {
+          "name": "Client RSSI And SNR",
+          "description": "Value: shows whether client experience degraded because of RF quality rather than authentication or policy. Interpretation: low RSSI or SNR by client, AP, or SSID points toward RF coverage, interference, or client placement issues.",
+          "signalflow": "data('cisco.wlc.client.wireless.rssi').mean(by=['host.name', 'cisco.wlc.client.mac', 'cisco.wlc.ap.name', 'cisco.wlc.ssid']).publish(label='RSSI'); data('cisco.wlc.client.wireless.snr').mean(by=['host.name', 'cisco.wlc.client.mac', 'cisco.wlc.ap.name', 'cisco.wlc.ssid']).publish(label='SNR')",
+          "legend_dimension": "cisco.wlc.client.mac"
+        },
+        {
+          "name": "SSID Traffic Clients And Retries",
+          "description": "Value: correlates SSID load, traffic direction, and retry growth with user-visible slowdowns. Interpretation: traffic silence, retry spikes, or sudden client-count changes on a specific SSID are first-pass evidence for RF, AP, or upstream issues.",
+          "signalflow": "data('cisco.wlc.ssid.client.count').mean(by=['host.name', 'cisco.wlc.ssid']).publish(label='SSID clients'); data('cisco.wlc.ssid.network.io').rate().sum(by=['host.name', 'cisco.wlc.ssid', 'direction']).publish(label='SSID bytes/sec'); data('cisco.wlc.ssid.retry.count').rate().sum(by=['host.name', 'cisco.wlc.ssid', 'direction']).publish(label='SSID retries/sec')",
+          "legend_dimension": "cisco.wlc.ssid"
+        },
+        {
+          "name": "RADIUS Outcomes And Latency",
+          "description": "Value: separates wireless authentication failures from RF and AP reachability problems. Interpretation: rising rejects, timeouts, bad authenticators, or response delay shifts point to ISE/RADIUS reachability, policy, certificate, shared-secret, or identity-store issues.",
+          "signalflow": "data('cisco.wlc.auth.radius.access.accept.count').rate().sum(by=['host.name']).publish(label='Accepts/sec'); data('cisco.wlc.auth.radius.access.reject.count').rate().sum(by=['host.name']).publish(label='Rejects/sec'); data('cisco.wlc.auth.radius.timeout.count').rate().sum(by=['host.name', 'radius.phase']).publish(label='Timeouts/sec'); data('cisco.wlc.auth.radius.response_delay.avg').mean(by=['host.name']).publish(label='Avg response delay'); data('cisco.wlc.auth.radius.response_delay.max').mean(by=['host.name']).publish(label='Max response delay')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Client Auth Failures And Network IO",
+          "description": "Value: ties client auth-failure reasons to whether clients still pass traffic after association. Interpretation: auth failures explain access denial; client I/O silence after successful state can point toward policy, VLAN, upstream, or DHCP issues.",
+          "signalflow": "data('cisco.wlc.client.auth.failure').sum(by=['host.name', 'cisco.wlc.client.mac', 'cisco.wlc.ssid', 'failure.reason']).publish(label='Auth failures'); data('cisco.wlc.client.network.io').rate().sum(by=['host.name', 'cisco.wlc.client.mac', 'cisco.wlc.ssid', 'direction', 'unit']).publish(label='Client IO/sec')",
+          "legend_dimension": "cisco.wlc.client.mac"
+        }
+      ]
+    },
+    {
+      "name": "03 Mobility HA And Wireless Resiliency",
+      "description": "Value: shows mobility peer health, client roaming, handoff failures, HA state, and switchover evidence for resilient wireless operations.",
+      "value": "Use this page for roaming failures, inter-controller mobility problems, controller failover validation, or outage autopsy around HA events.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how mobility and HA panels support wireless resiliency investigations. Interpretation: start with mobility peer and HA state, then use roam, handoff, switchover, and standby failure counts to reconstruct when redundancy or mobility changed.",
+          "markdown": "## Value Provided\nUse this dashboard when the incident involves roaming, anchor/foreign mobility behavior, controller failover, or high availability. It highlights whether peers are up, whether handoffs and roams are growing normally, and whether HA state or standby health changed during the incident window.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Mobility Peer Status",
+          "description": "Value: identifies mobility peers that are down, degraded, or unreachable. Interpretation: rows grouped by controller and mobility peer should remain healthy before client roam and handoff counts are trusted.",
+          "signalflow": "data('cisco.wlc.mobility.peer.status').mean(by=['host.name', 'cisco.wlc.mobility.node_ip', 'status.type', 'state']).publish(label='Mobility peer')",
+          "legend_dimension": "cisco.wlc.mobility.node_ip"
+        },
+        {
+          "name": "Roams Handoffs And Failures",
+          "description": "Value: shows whether client movement or mobility handoff failures line up with user complaints. Interpretation: rising roam counts are expected with movement; rising roam or handoff failures point to mobility, RF, policy, or controller-state issues.",
+          "signalflow": "data('cisco.wlc.client.roam.count').rate().sum(by=['host.name', 'cisco.wlc.ssid', 'roam.type', 'roam.layer']).publish(label='Client roams/sec'); data('cisco.wlc.client.roam.failure.count').rate().sum(by=['host.name', 'cisco.wlc.ssid']).publish(label='Roam failures/sec'); data('cisco.wlc.mobility.handoff.failure.count').rate().sum(by=['host.name', 'handoff.type']).publish(label='Handoff failures/sec')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "HA State And Enabled",
+          "description": "Value: confirms whether controller HA is enabled and whether local or peer state is healthy. Interpretation: failed, standby, disabled, or unexpected peer-state rows should be investigated before planned maintenance or failover.",
+          "signalflow": "data('cisco.wlc.ha.state').mean(by=['host.name', 'ha.role', 'state']).publish(label='HA state'); data('cisco.wlc.ha.enabled').mean(by=['host.name', 'state']).publish(label='HA enabled')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "HA Switchover And Standby Failures",
+          "description": "Value: reconstructs controller failover, standby failure, and resiliency events during an incident window. Interpretation: any new switchover or standby failure should be correlated with AP disconnects, RADIUS timeouts, and client roam failures.",
+          "signalflow": "data('cisco.wlc.ha.switchover.count').rate().sum(by=['host.name']).publish(label='Switchovers/sec'); data('cisco.wlc.ha.standby.failure.count').rate().sum(by=['host.name']).publish(label='Standby failures/sec')",
+          "legend_dimension": "host.name"
+        }
+      ]
+    }
+  ]
+}

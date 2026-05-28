@@ -1,0 +1,188 @@
+// Copyright The OpenTelemetry Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package ciscoosreceiver
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/config/configopaque"
+	"go.opentelemetry.io/collector/consumer/consumertest"
+	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/receiver/receivertest"
+	"go.opentelemetry.io/collector/scraper/scraperhelper"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
+)
+
+func TestFMCMetricsReceiverScrape(t *testing.T) {
+	server := httptest.NewServer(fmcTestHandler(t))
+	defer server.Close()
+
+	cfg := fmcTestConfig(server.URL)
+	cfg.FMC.Inventory = FMCGroupConfig{Enabled: true, MaxResults: 10}
+	receiver, err := newFMCMetricsReceiver(receivertest.NewNopSettings(metadata.Type), cfg, consumertest.NewNop())
+	require.NoError(t, err)
+
+	md, err := receiver.scrape(t.Context())
+	require.NoError(t, err)
+
+	assert.True(t, metricNameExists(md, "fmc.manager.up"))
+	assert.True(t, metricNameExists(md, "fmc.resource.info"))
+	assert.True(t, metricNameExists(md, "cisco.device.up"))
+	assert.True(t, fmcIntMetricValueExists(md, "fmc.scrape.partial_success", 0))
+}
+
+func metricNameExists(md pmetric.Metrics, name string) bool {
+	for i := 0; i < md.ResourceMetrics().Len(); i++ {
+		scopeMetrics := md.ResourceMetrics().At(i).ScopeMetrics()
+		for j := 0; j < scopeMetrics.Len(); j++ {
+			metrics := scopeMetrics.At(j).Metrics()
+			for k := 0; k < metrics.Len(); k++ {
+				if metrics.At(k).Name() == name {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func TestFMCLogsReceiverScrape(t *testing.T) {
+	server := httptest.NewServer(fmcTestHandler(t))
+	defer server.Close()
+
+	cfg := fmcTestConfig(server.URL)
+	cfg.FMC.Health = FMCGroupConfig{Enabled: true, MaxResults: 10}
+	receiver, err := newFMCLogsReceiver(receivertest.NewNopSettings(metadata.Type), cfg, &consumertest.LogsSink{})
+	require.NoError(t, err)
+
+	ld, err := receiver.scrape(t.Context())
+	require.NoError(t, err)
+
+	require.Equal(t, 1, ld.LogRecordCount())
+	assert.True(t, fmcHasLogRecordAttribute(ld, "event.domain", "fmc"))
+	assert.True(t, fmcHasLogRecordAttribute(ld, "event.name", "health.alerts"))
+}
+
+func TestRecentFMCQueryUsesEpochSecondWindow(t *testing.T) {
+	cfg := fmcTestConfig("https://fmc.example.test")
+	cfg.FMC.EventLookback = time.Hour
+
+	query := recentFMCQuery(cfg, time.Unix(1_800_000_000, 0))
+
+	assert.Equal(t, "startTime:1799996400;endTime:1800000000", query.Get("filter"))
+}
+
+func TestLoadFMCEStreamerTLSSupportsInsecureSkipVerify(t *testing.T) {
+	tlsConfig, err := loadFMCEStreamerTLS(FMCEStreamerTLSConfig{
+		ServerName:         "fmc.example.com",
+		InsecureSkipVerify: true,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "fmc.example.com", tlsConfig.ServerName)
+	assert.True(t, tlsConfig.InsecureSkipVerify)
+}
+
+func fmcIntMetricValueExists(md pmetric.Metrics, name string, value int64) bool {
+	for i := 0; i < md.ResourceMetrics().Len(); i++ {
+		scopeMetrics := md.ResourceMetrics().At(i).ScopeMetrics()
+		for j := 0; j < scopeMetrics.Len(); j++ {
+			metrics := scopeMetrics.At(j).Metrics()
+			for k := 0; k < metrics.Len(); k++ {
+				metric := metrics.At(k)
+				if metric.Name() != name || metric.Type() != pmetric.MetricTypeGauge {
+					continue
+				}
+				points := metric.Gauge().DataPoints()
+				for l := 0; l < points.Len(); l++ {
+					if points.At(l).IntValue() == value {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+func fmcHasLogRecordAttribute(ld plog.Logs, name, value string) bool {
+	for i := 0; i < ld.ResourceLogs().Len(); i++ {
+		scopeLogs := ld.ResourceLogs().At(i).ScopeLogs()
+		for j := 0; j < scopeLogs.Len(); j++ {
+			records := scopeLogs.At(j).LogRecords()
+			for k := 0; k < records.Len(); k++ {
+				attr, ok := records.At(k).Attributes().Get(name)
+				if ok && attr.Str() == value {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func fmcTestConfig(endpoint string) *Config {
+	cfg := &Config{
+		ControllerConfig: scraperhelper.ControllerConfig{
+			Timeout:            30 * time.Second,
+			CollectionInterval: time.Minute,
+		},
+		FMC: FMCConfig{
+			Enabled: true,
+			Controllers: []FMCControllerConfig{{
+				Endpoint: endpoint,
+				Name:     "fmc-test",
+			}},
+			Auth: ControllerAuthConfig{
+				Username: "admin",
+				Password: configopaque.String("password"),
+			},
+			PageSize:      10,
+			MaxRetries:    1,
+			EventLookback: time.Hour,
+			Manager:       FMCGroupConfig{Enabled: true, MaxResults: 10},
+		},
+	}
+	return cfg
+}
+
+func fmcTestHandler(t *testing.T) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/fmc_platform/v1/auth/generatetoken":
+			w.Header().Set("X-auth-access-token", "access-1")
+			w.Header().Set("X-auth-refresh-token", "refresh-1")
+			w.Header().Set("DOMAIN_UUID", "domain-1")
+			w.WriteHeader(http.StatusNoContent)
+		case "/api/fmc_platform/v1/info/domain":
+			_, _ = w.Write([]byte(`{"items":[{"id":"domain-1","name":"Global"}],"paging":{"count":1}}`))
+		case "/api/fmc_platform/v1/info/serverversion":
+			_, _ = w.Write([]byte(`{"items":[{"id":"server-1","name":"fmc-test","serverVersion":"7.7"}],"paging":{"count":1}}`))
+		case "/api/fmc_platform/v1/license/devicelicenses",
+			"/api/fmc_platform/v1/license/smartlicenses",
+			"/api/fmc_platform/v1/updates/upgradepackages",
+			"/api/fmc_config/v1/domain/domain-1/devicegroups/devicegrouprecords",
+			"/api/fmc_config/v1/domain/domain-1/chassis/fmcmanagedchassis":
+			_, _ = w.Write([]byte(`{"items":[],"paging":{"count":0}}`))
+		case "/api/fmc_config/v1/domain/domain-1/devices/devicerecords":
+			assert.Equal(t, "access-1", r.Header.Get("X-auth-access-token"))
+			_, _ = w.Write([]byte(`{"items":[{"id":"dev-1","name":"ftd-edge-1","serialNumber":"FMC-SERIAL-1","managementIpAddress":"192.0.2.40","healthStatus":"healthy","softwareVersion":"7.4"}],"paging":{"count":1}}`))
+		case "/api/fmc_config/v1/domain/domain-1/health/alerts":
+			assert.Equal(t, "access-1", r.Header.Get("X-auth-access-token"))
+			_, _ = w.Write([]byte(`{"items":[{"id":"alert-1","name":"Intrusion Policy Out Of Date","severity":"warning","status":"active","eventTime":"2026-01-01T00:00:00Z"}],"paging":{"count":1}}`))
+		case "/api/fmc_config/v1/domain/domain-1/health/events":
+			assert.Equal(t, "access-1", r.Header.Get("X-auth-access-token"))
+			_, _ = w.Write([]byte(`{"items":[],"paging":{"count":0}}`))
+		default:
+			assert.Equal(t, "access-1", r.Header.Get("X-auth-access-token"))
+			_, _ = w.Write([]byte(`{"items":[],"paging":{"count":0}}`))
+		}
+	}
+}

@@ -1,0 +1,539 @@
+// Copyright The OpenTelemetry Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver"
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"math"
+	"net"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/pmetric"
+)
+
+const (
+	iosXRTelemetryTransportDialIn  = "gnmi_dial_in"
+	iosXRTelemetryTransportDialOut = "mdt_grpc_dial_out"
+)
+
+var metricNameCleaner = regexp.MustCompile(`[^A-Za-z0-9_]+`)
+
+type iosXRHealth struct {
+	mu sync.Mutex
+
+	activeSubscriptions int64
+	updatesReceived     int64
+	decodeErrors        int64
+	unsupportedPaths    int64
+	reconnects          int64
+	droppedDatapoints   int64
+	compactGPBPayloads  int64
+	lastSuccess         time.Time
+}
+
+func (h *iosXRHealth) setActiveSubscriptions(value int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.activeSubscriptions = value
+}
+
+func (h *iosXRHealth) addUpdates(value int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.updatesReceived += value
+	h.lastSuccess = time.Now()
+}
+
+func (h *iosXRHealth) addDecodeErrors(value int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.decodeErrors += value
+}
+
+func (h *iosXRHealth) addUnsupportedPaths(value int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.unsupportedPaths += value
+}
+
+func (h *iosXRHealth) addReconnects(value int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.reconnects += value
+}
+
+func (h *iosXRHealth) addDroppedDatapoints(value int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.droppedDatapoints += value
+}
+
+func (h *iosXRHealth) addCompactGPBPayloads(value int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.compactGPBPayloads += value
+}
+
+func (h *iosXRHealth) snapshot() iosXRHealthSnapshot {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return iosXRHealthSnapshot{
+		activeSubscriptions: h.activeSubscriptions,
+		updatesReceived:     h.updatesReceived,
+		decodeErrors:        h.decodeErrors,
+		unsupportedPaths:    h.unsupportedPaths,
+		reconnects:          h.reconnects,
+		droppedDatapoints:   h.droppedDatapoints,
+		compactGPBPayloads:  h.compactGPBPayloads,
+		lastSuccess:         h.lastSuccess,
+	}
+}
+
+type iosXRHealthSnapshot struct {
+	activeSubscriptions int64
+	updatesReceived     int64
+	decodeErrors        int64
+	unsupportedPaths    int64
+	reconnects          int64
+	droppedDatapoints   int64
+	compactGPBPayloads  int64
+	lastSuccess         time.Time
+}
+
+type iosXRMetricContext struct {
+	targetName     string
+	endpoint       string
+	platformFamily string
+	transport      string
+	yangPath       string
+	yangModule     string
+}
+
+func newIOSXRMetrics(ctx iosXRMetricContext) (pmetric.Metrics, pmetric.ScopeMetrics) {
+	md := pmetric.NewMetrics()
+	rm := md.ResourceMetrics().AppendEmpty()
+	attrs := rm.Resource().Attributes()
+	if ctx.targetName != "" {
+		attrs.PutStr("host.name", ctx.targetName)
+		attrs.PutStr("host.id", ctx.targetName)
+	}
+	if ctx.endpoint != "" {
+		if host, _, err := net.SplitHostPort(ctx.endpoint); err == nil {
+			if _, exists := attrs.Get("host.name"); !exists {
+				attrs.PutStr("host.name", host)
+			}
+			putIPAttr(attrs, "host.ip", host)
+		}
+	}
+	attrs.PutStr("hw.type", "network")
+	attrs.PutStr("cisco.os.name", "ios_xr")
+	if ctx.platformFamily != "" {
+		attrs.PutStr("cisco.platform.family", ctx.platformFamily)
+	}
+	if ctx.transport != "" {
+		attrs.PutStr("cisco.telemetry.transport", ctx.transport)
+	}
+	if ctx.yangPath != "" {
+		attrs.PutStr("cisco.yang.path", ctx.yangPath)
+	}
+	if ctx.yangModule != "" {
+		attrs.PutStr("cisco.yang.module", ctx.yangModule)
+	}
+	sm := rm.ScopeMetrics().AppendEmpty()
+	sm.Scope().SetName("github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/iosxr")
+	return md, sm
+}
+
+func appendIOSXRHealthMetrics(md pmetric.Metrics, health *iosXRHealth, ctx iosXRMetricContext, ts pcommon.Timestamp) {
+	if health == nil {
+		return
+	}
+	rm := md.ResourceMetrics().AppendEmpty()
+	attrs := rm.Resource().Attributes()
+	if ctx.targetName != "" {
+		attrs.PutStr("host.name", ctx.targetName)
+		attrs.PutStr("host.id", ctx.targetName)
+	}
+	if ctx.endpoint != "" {
+		if host, _, err := net.SplitHostPort(ctx.endpoint); err == nil {
+			putIPAttr(attrs, "host.ip", host)
+		}
+	}
+	attrs.PutStr("hw.type", "network")
+	attrs.PutStr("cisco.os.name", "ios_xr")
+	if ctx.platformFamily != "" {
+		attrs.PutStr("cisco.platform.family", ctx.platformFamily)
+	}
+	if ctx.transport != "" {
+		attrs.PutStr("cisco.telemetry.transport", ctx.transport)
+	}
+	sm := rm.ScopeMetrics().AppendEmpty()
+	sm.Scope().SetName("github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/iosxr")
+	snap := health.snapshot()
+	appendGaugeMetric(sm, "cisco.iosxr.receiver.active_subscriptions", float64(snap.activeSubscriptions), ts, nil)
+	appendSumMetric(sm, "cisco.iosxr.receiver.updates", float64(snap.updatesReceived), ts, nil)
+	appendSumMetric(sm, "cisco.iosxr.receiver.decode_errors", float64(snap.decodeErrors), ts, nil)
+	appendSumMetric(sm, "cisco.iosxr.receiver.unsupported_paths", float64(snap.unsupportedPaths), ts, nil)
+	appendSumMetric(sm, "cisco.iosxr.receiver.reconnects", float64(snap.reconnects), ts, nil)
+	appendSumMetric(sm, "cisco.iosxr.receiver.dropped_datapoints", float64(snap.droppedDatapoints), ts, nil)
+	appendSumMetric(sm, "cisco.iosxr.receiver.compact_gpb_payloads", float64(snap.compactGPBPayloads), ts, nil)
+	if !snap.lastSuccess.IsZero() {
+		appendGaugeMetric(sm, "cisco.iosxr.receiver.last_success_timestamp", float64(snap.lastSuccess.Unix()), ts, nil)
+	}
+}
+
+func appendIOSXRNumberMetric(sm pmetric.ScopeMetrics, module string, pathParts []string, value float64, ts pcommon.Timestamp, attrs map[string]string) {
+	name := iosXRMetricName(module, pathParts)
+	if isIOSXRCounterMetric(pathParts) {
+		appendSumMetric(sm, name, value, ts, attrs)
+		return
+	}
+	appendGaugeMetric(sm, name, value, ts, attrs)
+}
+
+func appendIOSXRInfoMetric(sm pmetric.ScopeMetrics, module string, pathParts []string, value string, ts pcommon.Timestamp, attrs map[string]string) {
+	name := iosXRMetricName(module, pathParts) + "_info"
+	metric := sm.Metrics().AppendEmpty()
+	metric.SetName(name)
+	dp := metric.SetEmptyGauge().DataPoints().AppendEmpty()
+	dp.SetDoubleValue(1)
+	dp.SetTimestamp(ts)
+	dp.Attributes().PutStr("value", value)
+	applyStringAttrs(dp.Attributes(), attrs)
+}
+
+func appendGaugeMetric(sm pmetric.ScopeMetrics, name string, value float64, ts pcommon.Timestamp, attrs map[string]string) {
+	metric := sm.Metrics().AppendEmpty()
+	metric.SetName(name)
+	dp := metric.SetEmptyGauge().DataPoints().AppendEmpty()
+	dp.SetDoubleValue(value)
+	dp.SetTimestamp(ts)
+	applyStringAttrs(dp.Attributes(), attrs)
+}
+
+func appendSumMetric(sm pmetric.ScopeMetrics, name string, value float64, ts pcommon.Timestamp, attrs map[string]string) {
+	metric := sm.Metrics().AppendEmpty()
+	metric.SetName(name)
+	sum := metric.SetEmptySum()
+	sum.SetIsMonotonic(true)
+	sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+	dp := sum.DataPoints().AppendEmpty()
+	dp.SetDoubleValue(value)
+	dp.SetTimestamp(ts)
+	applyStringAttrs(dp.Attributes(), attrs)
+}
+
+func iosXRMetricName(module string, pathParts []string) string {
+	parts := []string{"cisco", "iosxr", "yang"}
+	if module != "" {
+		parts = append(parts, sanitizeMetricSegment(module))
+	}
+	for _, part := range pathParts {
+		if cleaned := sanitizeMetricSegment(part); cleaned != "" {
+			parts = append(parts, cleaned)
+		}
+	}
+	return strings.Join(parts, ".")
+}
+
+func sanitizeMetricSegment(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.Trim(value, "/")
+	value = strings.ReplaceAll(value, ":", ".")
+	value = strings.ReplaceAll(value, "-", "_")
+	value = strings.ReplaceAll(value, "/", ".")
+	value = metricNameCleaner.ReplaceAllString(value, "_")
+	value = strings.Trim(value, "._")
+	if value == "" {
+		return ""
+	}
+	return strings.ToLower(value)
+}
+
+func isIOSXRCounterMetric(pathParts []string) bool {
+	pathText := strings.ToLower(strings.Join(pathParts, "."))
+	last := ""
+	if len(pathParts) > 0 {
+		last = strings.ToLower(pathParts[len(pathParts)-1])
+	}
+	if strings.Contains(pathText, "summary") || strings.Contains(pathText, "utilization") || strings.Contains(pathText, "temperature") {
+		return false
+	}
+	counterHints := []string{
+		"counter", "counters", "octets", "bytes", "packets", "pkts", "errors", "drops", "discard", "discards",
+		"crc", "matched", "transmit", "received", "in-", "out-", "rx-", "tx-", "interrupts",
+	}
+	for _, hint := range counterHints {
+		if strings.Contains(last, hint) || strings.Contains(pathText, "."+hint) {
+			return true
+		}
+	}
+	return false
+}
+
+func applyStringAttrs(attrs pcommon.Map, values map[string]string) {
+	if len(values) == 0 {
+		return
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if values[key] != "" {
+			attrs.PutStr(key, values[key])
+		}
+	}
+}
+
+func typedNumericValue(value any) (float64, bool) {
+	switch v := value.(type) {
+	case int:
+		return float64(v), true
+	case int8:
+		return float64(v), true
+	case int16:
+		return float64(v), true
+	case int32:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	case uint:
+		return float64(v), true
+	case uint8:
+		return float64(v), true
+	case uint16:
+		return float64(v), true
+	case uint32:
+		return float64(v), true
+	case uint64:
+		return float64(v), true
+	case float32:
+		return float64(v), true
+	case float64:
+		return v, !math.IsNaN(v) && !math.IsInf(v, 0)
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return float64(i), true
+		}
+		f, err := v.Float64()
+		return f, err == nil
+	case bool:
+		if v {
+			return 1, true
+		}
+		return 0, true
+	case string:
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f, true
+		}
+	}
+	return 0, false
+}
+
+func valueToInfoString(value any) string {
+	switch v := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return v
+	case fmt.Stringer:
+		return v.String()
+	default:
+		b, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Sprint(v)
+		}
+		return string(b)
+	}
+}
+
+type iosXRNormalizingConsumer struct {
+	next      consumer.Metrics
+	config    IOSXRConfig
+	selector  deviceSelectionMatcher
+	transport string
+	health    *iosXRHealth
+}
+
+func newIOSXRNormalizingConsumer(next consumer.Metrics, config IOSXRConfig, selector deviceSelectionMatcher, transport string, health *iosXRHealth) consumer.Metrics {
+	return &iosXRNormalizingConsumer{next: next, config: config, selector: selector, transport: transport, health: health}
+}
+
+func (c *iosXRNormalizingConsumer) Capabilities() consumer.Capabilities {
+	return c.next.Capabilities()
+}
+
+func (c *iosXRNormalizingConsumer) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error {
+	c.normalize(md)
+	if c.config.MaxDatapointsPerBatch > 0 {
+		dropped := enforceIOSXRDatapointLimit(md, c.config.MaxDatapointsPerBatch)
+		if dropped > 0 && c.health != nil {
+			c.health.addDroppedDatapoints(int64(dropped))
+		}
+	}
+	if md.MetricCount() == 0 {
+		return nil
+	}
+	return c.next.ConsumeMetrics(ctx, md)
+}
+
+func (c *iosXRNormalizingConsumer) normalize(md pmetric.Metrics) {
+	rms := md.ResourceMetrics()
+	rms.RemoveIf(func(rm pmetric.ResourceMetrics) bool {
+		resAttrs := rm.Resource().Attributes()
+		resAttrs.PutStr("hw.type", "network")
+		resAttrs.PutStr("cisco.os.name", "ios_xr")
+		resAttrs.PutStr("cisco.platform.family", "ios_xr")
+		resAttrs.PutStr("cisco.telemetry.transport", c.transport)
+		if v, ok := resAttrs.Get("cisco.node_id"); ok && v.AsString() != "" {
+			if _, exists := resAttrs.Get("host.name"); !exists {
+				resAttrs.PutStr("host.name", v.AsString())
+			}
+			if _, exists := resAttrs.Get("host.id"); !exists {
+				resAttrs.PutStr("host.id", v.AsString())
+			}
+			resAttrs.PutStr("cisco.node.id", v.AsString())
+		}
+		if !c.selector.empty() && !c.selector.allowsResource(resAttrs) {
+			return true
+		}
+		encodingPath := ""
+		if v, ok := resAttrs.Get("cisco.encoding_path"); ok {
+			encodingPath = v.AsString()
+			resAttrs.PutStr("cisco.yang.path", encodingPath)
+			if module := moduleFromYANGPath(encodingPath); module != "" {
+				resAttrs.PutStr("cisco.yang.module", module)
+			}
+		}
+		module := ""
+		if v, ok := resAttrs.Get("cisco.yang.module"); ok {
+			module = v.AsString()
+		}
+		sms := rm.ScopeMetrics()
+		for j := 0; j < sms.Len(); j++ {
+			metrics := sms.At(j).Metrics()
+			for k := 0; k < metrics.Len(); k++ {
+				metric := metrics.At(k)
+				switch metric.Name() {
+				case "cisco.yang_grpc.compact_gpb_payloads":
+					metric.SetName("cisco.iosxr.receiver.compact_gpb_payloads")
+					if c.health != nil {
+						c.health.addCompactGPBPayloads(int64(metricNumericTotal(metric)))
+					}
+				default:
+					if strings.HasPrefix(metric.Name(), "cisco.") && !strings.HasPrefix(metric.Name(), "cisco.iosxr.") {
+						name := strings.TrimPrefix(metric.Name(), "cisco.")
+						metric.SetName(iosXRMetricName(module, strings.Split(name, ".")))
+					}
+				}
+				annotateMetricDatapoints(metric, module, encodingPath, c.transport)
+			}
+		}
+		return rm.ScopeMetrics().Len() == 0
+	})
+}
+
+func metricNumericTotal(metric pmetric.Metric) float64 {
+	total := 0.0
+	switch metric.Type() {
+	case pmetric.MetricTypeGauge:
+		dps := metric.Gauge().DataPoints()
+		for i := 0; i < dps.Len(); i++ {
+			total += dps.At(i).DoubleValue()
+		}
+	case pmetric.MetricTypeSum:
+		dps := metric.Sum().DataPoints()
+		for i := 0; i < dps.Len(); i++ {
+			total += dps.At(i).DoubleValue()
+		}
+	}
+	return total
+}
+
+func annotateMetricDatapoints(metric pmetric.Metric, module, yangPath, transport string) {
+	apply := func(attrs pcommon.Map) {
+		if module != "" {
+			attrs.PutStr("cisco.yang.module", module)
+		}
+		if yangPath != "" {
+			attrs.PutStr("cisco.yang.path", yangPath)
+		}
+		if transport != "" {
+			attrs.PutStr("cisco.telemetry.transport", transport)
+		}
+		normalizeIOSXRDatapointAttrs(attrs)
+	}
+	switch metric.Type() {
+	case pmetric.MetricTypeGauge:
+		dps := metric.Gauge().DataPoints()
+		for i := 0; i < dps.Len(); i++ {
+			apply(dps.At(i).Attributes())
+		}
+	case pmetric.MetricTypeSum:
+		dps := metric.Sum().DataPoints()
+		for i := 0; i < dps.Len(); i++ {
+			apply(dps.At(i).Attributes())
+		}
+	}
+}
+
+func moduleFromYANGPath(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.Trim(value, "/")
+	if idx := strings.Index(value, ":"); idx > 0 {
+		return value[:idx]
+	}
+	return ""
+}
+
+func putIPAttr(attrs pcommon.Map, key, value string) {
+	if net.ParseIP(value) != nil {
+		attrs.PutStr(key, value)
+	}
+}
+
+func normalizeIOSXRDatapointAttrs(attrs pcommon.Map) {
+	iface := firstIOSXRAttr(attrs, "interface", "interface-name", "if-name", "name")
+	if iface != "" && looksLikeInterfaceName(iface) {
+		putAttrIfMissing(attrs, "network.interface.name", iface)
+	}
+	if vrf := firstIOSXRAttr(attrs, "vrf", "vrf-name", "vrf-name-xr"); vrf != "" {
+		putAttrIfMissing(attrs, "network.vrf.name", vrf)
+	}
+	if peer := firstIOSXRAttr(attrs, "neighbor", "neighbor-address", "peer-address", "neighbor-id"); peer != "" {
+		putAttrIfMissing(attrs, "network.peer.address", peer)
+	}
+	if node := firstIOSXRAttr(attrs, "node_id", "node-id", "node-name", "node"); node != "" {
+		putAttrIfMissing(attrs, "cisco.node.id", node)
+	}
+	if location := firstIOSXRAttr(attrs, "location", "rack", "slot"); location != "" {
+		putAttrIfMissing(attrs, "cisco.location", location)
+	}
+}
+
+func firstIOSXRAttr(attrs pcommon.Map, keys ...string) string {
+	for _, key := range keys {
+		if value, ok := attrs.Get(key); ok && value.AsString() != "" {
+			return value.AsString()
+		}
+	}
+	return ""
+}
+
+func putAttrIfMissing(attrs pcommon.Map, key, value string) {
+	if _, exists := attrs.Get(key); !exists && value != "" {
+		attrs.PutStr(key, value)
+	}
+}

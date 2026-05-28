@@ -2,16 +2,19 @@
 
 This guide lists every metric emitted by the Cisco OS receiver and explains, in plain language, why someone might monitor it. It is written for operators who may not know Cisco or networking terms yet.
 
-The receiver has two SSH scrapers plus API polling paths for Meraki, Intersight, Catalyst Center, Catalyst SD-WAN Manager, Nexus Dashboard/NDFC, and APIC:
+The receiver has two SSH scrapers plus API polling and telemetry paths for Meraki, Intersight, Catalyst Center, Catalyst 9800 WLCs, Catalyst SD-WAN Manager, Nexus Dashboard/NDFC, APIC, and Secure Firewall Management Center:
 
 - `system`: device availability, CPU, memory, protocol, control-plane, routing, forwarding, and router dataplane health.
 - `interfaces`: physical and logical port traffic, errors, packet drops, link status, L2 topology, LACP, vPC, and transceiver sensors.
 - `meraki`: organization-scoped Dashboard API polling for inventory, status, uplinks, switch ports, wireless, VPN, power modules, topology, and transceiver telemetry.
 - `intersight`: signed Intersight API polling for UCS, HyperFlex, storage, Kubernetes, virtualization, alarms, advisories, HCL/compliance, workflows, audit records, and telemetry GroupBy performance.
 - `catalyst_center`: Catalyst Center Assurance API polling for inventory, reachability, interface, network health, client health, site health, topology, issues, device-detail, and client-detail telemetry.
+- `catalyst_9800`: Direct Catalyst 9800 WLC/AP gNMI dial-in and MDT gRPC dial-out telemetry for AP join state, CAPWAP, RF, SSID, client auth/roam, mobility, HA, RADIUS, and controller health.
 - `sdwan`: Catalyst SD-WAN Manager polling for Manager API trust, inventory, control plane, BFD, app-route, interfaces, alarms, events, audit, and opt-in product modules such as tunnels, policy/QoS, security, AppQoE, Cloud OnRamp, NWPI, underlay, cellular, hardware/energy, routing services, branch services, lifecycle/compliance, ThousandEyes agent status, and management security.
 - `nexus_dashboard`: API-first polling for Nexus Dashboard platform health, NDFC LAN/NX-OS fabrics, Insights/Analyze anomalies, Orchestrator/OneManage deployment state, Data Broker sessions, and interface performance.
 - `aci`: APIC class-query polling for ACI controller health, fabric nodes, faults, audit/events, tenant objects, endpoint presence, topology, and bounded stats.
+- `fmc`: Secure Firewall Management Center REST polling for FMC-managed FTD/ASA inventory, interfaces, health, VPN, HA/failover, policy, deployment, audit evidence, and optional eStreamer security-event logs.
+- `ios_xr`: IOS XR gNMI dial-in and MDT gRPC dial-out telemetry for ASR 9000 and NCS routers, normalized from YANG paths into generic `cisco.iosxr.*` metrics.
 
 All metrics include these resource attributes:
 
@@ -48,6 +51,18 @@ Controller/API paths add these correlation attributes when available:
 | `sdwan.application` | Bounded SD-WAN application name for app-route and AI/SaaS path views. |
 | `aci.node.id` | APIC node ID for ACI switches and controllers. |
 | `aci.operation` | Bounded APIC endpoint family or evidence operation. |
+| `fmc.controller.name` | FMC controller display name. |
+| `fmc.domain.uuid` | FMC domain UUID used for `/api/fmc_config/v1/domain/{domainUUID}` requests. |
+| `fmc.operation` | Bounded FMC endpoint family or evidence operation. |
+| `fmc.resource.type` | Normalized FMC object type, such as device, interface, policy, deployment, HA, VPN, or audit record. |
+| `cisco.os.name` | Direct telemetry OS name, such as `ios_xe` for Catalyst 9800 or `ios_xr` for IOS XR. |
+| `cisco.platform.family` | Direct telemetry platform family, such as `catalyst_9800`, ASR 9000, or NCS 5500. |
+| `cisco.yang.path` | Original gNMI/MDT YANG path or encoding path. |
+| `cisco.yang.module` | YANG module inferred from the path, such as `wireless-access-point-oper`, `openconfig-interfaces`, or a Cisco native module. |
+| `cisco.telemetry.transport` | Direct telemetry direction, such as `gnmi_dial_in` or `mdt_grpc_dial_out`. |
+| `cisco.wlc.ap.mac` | Catalyst 9800 AP radio/base MAC when present in the YANG key or JSON payload. |
+| `cisco.wlc.ssid` | Catalyst 9800 SSID name when present. |
+| `cisco.wlc.client.mac` | Catalyst 9800 client MAC when present. |
 | `nexus_dashboard.operation` | Bounded Nexus Dashboard endpoint family or evidence operation. |
 | `ndfc.switch.id` | NDFC switch database ID used by some NDFC interface/performance APIs. |
 | `nd.service.name` | Nexus Dashboard service/app name. |
@@ -86,6 +101,16 @@ For most users, start with these metrics before enabling the larger troubleshoot
 | `nexus_dashboard.service.unavailable` | Shows an ND app/API endpoint that is unavailable, unauthorized, or not installed. |
 | `aci.fault.count` | Shows active APIC faults grouped by severity, code, domain, and type. |
 | `aci.tenant.status` | Shows tenant, VRF, bridge-domain, EPG, contract, and L3Out state from APIC. |
+| `fmc.api.request.errors` | Shows FMC REST failures, including token, permission, endpoint, and rate-limit issues. |
+| `fmc.deployment.status` | Shows deployment job, deployable-device, and pending-change state for managed firewalls. |
+| `fmc.vpn.tunnel.status` | Shows site-to-site and remote-access VPN health where exposed by FMC. |
+| `cisco.catalyst9800.receiver.decode_errors` | Shows Catalyst 9800 gNMI/gRPC decode failures. |
+| `cisco.wlc.ap.join.status` | Shows whether APs are joined to the WLC. |
+| `cisco.wlc.rf.channel.utilization` | Shows wireless channel utilization for RF congestion views. |
+| `cisco.wlc.client.auth.failure` | Shows client exclusion/auth failure reasons. |
+| `cisco.iosxr.receiver.decode_errors` | Shows gNMI/MDT decode failures for IOS XR telemetry. |
+| `cisco.iosxr.receiver.unsupported_paths` | Shows configured IOS XR paths pruned or rejected by capabilities. |
+| `cisco.iosxr.receiver.reconnects` | Shows IOS XR gNMI reconnects. |
 
 ## Cost Controls For Splunk Observability Cloud
 
@@ -97,8 +122,8 @@ smaller Splunk Observability footprint. Disable large endpoint families such as 
 `sdwan.policy_qos`, `intersight.telemetry`, `nexus_dashboard.performance`, or `aci.stats` unless those panels are
 needed. Use each group's `max_results` and provider target filters to keep high-cardinality dimensions bounded.
 
-For final per-metric control, set root-level `metrics.<metric_name>.enabled: false`. The receiver removes those
-metrics before they reach the downstream metrics pipeline:
+For final per-metric control, set root-level `metrics.<metric_name-or-glob>.enabled: false`. Exact metric names
+override matching globs, and the receiver removes matching metrics before they reach the downstream metrics pipeline:
 
 ```yaml
 receivers:
@@ -107,6 +132,10 @@ receivers:
       sdwan.app_route.loss:
         enabled: false
       system.network.errors:
+        enabled: false
+      cisco.wlc.client.*:
+        enabled: false
+      cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.*:
         enabled: false
 ```
 
@@ -406,6 +435,153 @@ symptoms, and audit/event rollups; high-cardinality fault, audit, and event evid
 ACI logs are emitted for active faults, audit/config changes, and event records. Every record includes
 `event.domain=aci`, `event.name`, `aci.group`, `aci.status`, `aci.severity`, `aci.dn`, `aci.class`, `aci.node.id`,
 `cisco.switch.serial`, and `user.name` when present.
+
+## Cisco ISE Metrics And Logs
+
+Cisco ISE support is identity, access, and policy evidence for the same incidents investigated with Catalyst,
+wireless, SD-WAN, Nexus, ACI, and firewall telemetry. REST-safe APIs default on; pxGrid and Data Connect are opt-in.
+
+| Metric | Type | Unit | What It Tells You | Why Monitor It |
+| --- | --- | --- | --- | --- |
+| `ise.api.request.duration` | Gauge, double | `s` | Duration of ISE REST/OpenAPI/ERS/MnT and pxGrid REST requests by operation and outcome. | Detect slow or failing ISE APIs before trusting identity data. |
+| `ise.api.request.errors` | Gauge, int | `{error}` | ISE API request failures. | Alert on broken credentials, disabled API services, permission gaps, and endpoint errors. |
+| `ise.api.rate_limited` | Gauge, int | `{request}` | ISE API requests that were rate limited. | Tune collection interval, page size, and enabled groups. |
+| `ise.api.endpoint.error` | Gauge, int | `{error}` | Endpoint-family scrape failures. | Show exactly which ISE service failed while preserving partial data. |
+| `ise.scrape.partial_success` | Gauge, int | `1` | Whether one or more ISE endpoint families failed or were skipped. | Keep dashboards honest when only part of ISE data was collected. |
+| `ise.service.unavailable` | Gauge, int | `1` | ISE API, pxGrid, or Data Connect service unavailable, disabled, unauthorized, or not installed. | Explain empty posture, pxGrid, or historical panels. |
+| `ise.controller.up` | Gauge, int | `1` | ISE receiver target is configured and being scraped. | Separate collector configuration from ISE/API availability. |
+| `ise.resource.info` | Gauge, int | `1` | Bounded metadata for ISE resources and evidence records. | Build inventory and drilldowns without making text fields metric dimensions. |
+| `ise.resource.status` | Gauge, int | `1` | Encoded resource state with original status as an attribute. | Normalize healthy, pending, warning, and failed ISE states. |
+| `ise.deployment.node.count` | Gauge, int | `{item}` | Deployment node/persona records by bounded status. | Detect missing or unhealthy PAN/MnT/PSN coverage. |
+| `ise.network_device.count` | Gauge, int | `{item}` | Network access device inventory count. | Confirm Catalyst, WLC, SD-WAN, and firewall devices are represented in ISE. |
+| `ise.endpoint.count` | Gauge, int | `{item}` | Endpoint inventory and rejected endpoint counts. | Spot endpoint churn, rejection, or missing posture/profile data. |
+| `ise.session.active.count` | Gauge, double | `{session}` | Active session counters from MnT. | Detect authentication/session spikes or drops. |
+| `ise.session.count` | Gauge, int | `{item}` | Session evidence records by bounded attributes. | Correlate user/device sessions with network incidents. |
+| `ise.radius.failure.count` | Gauge, int | `{item}` | RADIUS authentication failure records. | Triage 802.1X/MAB/VPN/wireless access failures. |
+| `ise.tacacs.failure.count` | Gauge, int | `{item}` | TACACS authentication/authorization/accounting failure records. | Triage network-admin login and command authorization failures. |
+| `ise.accounting.session.count` | Gauge, int | `{item}` | Accounting/session records from available APIs or Data Connect views. | Reconstruct access/session history. |
+| `ise.endpoint.posture.status` | Gauge, int | `1` | Endpoint posture state encoded numerically. | Alert on noncompliant or unknown posture. |
+| `ise.policy.object.count` | Gauge, int | `{item}` | Network-access, device-admin, TACACS, and policy object counts. | Detect policy coverage and drift. |
+| `ise.trustsec.resource.count` | Gauge, int | `{item}` | SGT, SGACL, and SG mapping records. | Correlate TrustSec policy state with segmentation incidents. |
+| `ise.alarm.count` | Gauge, int | `{item}` | ISE alarm rules and active/recent alarm instances by bounded severity/status. | Surface ISE platform or policy incidents. |
+| `ise.certificate.expiration` | Gauge, int | `s` | Certificate expiration Unix timestamp. | Prevent API, EAP, pxGrid, or portal certificate outages. |
+| `ise.license.status` | Gauge, int | `1` | ISE license status encoded numerically. | Detect licensing failures that can affect policy services. |
+| `ise.webhook.delivery.count` | Gauge, int | `{item}` | Recent webhook delivery evidence count. | Verify webhook-based downstream evidence paths. |
+| `ise.pxgrid.service.status` | Gauge, int | `1` | pxGrid service lookup and pxGrid Cloud/Direct status. | Confirm pxGrid service discovery works before relying on subscriptions. |
+| `ise.pxgrid.subscription.status` | Gauge, int | `1` | Configured pxGrid subscription status by topic. | Show whether streaming topics are expected to be active. |
+| `ise.dataconnect.query.duration` | Gauge, double | `s` | Duration of each Data Connect query. | Detect slow or failing historical reporting views. |
+| `ise.dataconnect.query.rows` | Gauge, int | `{row}` | Rows returned from each allowlisted Data Connect view. | Validate view coverage and row caps. |
+| `ise.dataconnect.query.errors` | Gauge, int | `{error}` | Data Connect query failures. | Alert on wallet, TLS, credential, view, or database availability issues. |
+
+ISE logs preserve raw REST/OpenAPI/ERS/MnT objects, pxGrid messages, and Data Connect rows. Each record includes
+`event.domain=ise`, `event.name`, `ise.group`, `ise.object.type`, and bounded correlation attributes for node,
+protocol, outcome, failure reason, message code, policy set/rule, authorization profile, network device, endpoint MAC,
+user, and event/session/audit IDs when present.
+Metric datapoint attributes intentionally omit high-cardinality usernames, endpoint MACs, network-device identifiers,
+and event/session IDs. Event-like session, auth, accounting, pxGrid, and Data Connect metrics use the controller
+resource, while those detailed fields remain available in logs and inventory-oriented resource evidence.
+
+## Secure Firewall Management Center Metrics
+
+FMC REST metrics are read-only management and control-plane signals for FMC-managed FTD/ASA firewalls. They cover
+controller version/license state, device and chassis inventory, perimeter and segmentation state, interfaces, VNI/VTEP,
+static routes, VPN, HA/failover, deployment readiness, policy objects/rules, security-intelligence lists/feeds, and API trust.
+Detailed connection and threat events are emitted as logs through eStreamer because they are high-cardinality event
+records, not bounded scrape metrics.
+
+| Metric | Type | Unit | What It Tells You | Why Monitor It |
+| --- | --- | --- | --- | --- |
+| `fmc.api.request.duration` | Gauge, double | `s` | Duration of each FMC REST request by controller, operation, and outcome. | Detect slow FMC APIs, endpoint failures, and auth/token pressure. |
+| `fmc.api.request.errors` | Gauge, int | `{error}` | FMC REST request failures. | Alert on broken credentials, permission gaps, missing endpoint families, or repeated FMC errors. |
+| `fmc.api.endpoint.error` | Gauge, int | `{error}` | FMC endpoint-family scrape failures. | Show exactly which REST family failed while preserving partial data from other groups. |
+| `fmc.api.rate_limited` | Gauge, int | `{request}` | FMC REST requests that were rate limited. | Tune page size, collection interval, and enabled groups before data goes stale. |
+| `fmc.manager.up` | Gauge, int | `1` | Whether the FMC REST API was reachable for the scrape. | Separate controller reachability issues from firewall health issues. |
+| `fmc.scrape.partial_success` | Gauge, int | `1` | Whether one or more FMC endpoint families failed during the scrape. | Keep dashboards honest when only part of FMC data was collected. |
+| `fmc.scrape.last_success` | Gauge, int | `s` | Unix timestamp of the most recent FMC scrape completion. | Detect stale controller telemetry. |
+| `fmc.resource.info` | Gauge, int | `1` | Bounded metadata for FMC managed objects. | Build inventory, chassis, policy, VPN, HA, and deployment drilldowns. |
+| `fmc.resource.status` | Gauge, int | `1` | Encoded FMC object status with original state attributes. | Normalize state across devices, chassis, interfaces, health metrics, policies, jobs, and HA/VPN objects. |
+| `fmc.resource.count` | Gauge, int | `1` | FMC resources by group, operation, resource type, status, and severity. | Track object volume and spot missing endpoint families. |
+| `fmc.health.status` | Gauge, int | `1` | FMC health alert, event, path-monitor, or aggregate CPU/memory/interface/disk/chassis metric status. | Surface device/controller health issues before they become outages. |
+| `fmc.health.event.count` | Gauge, int | `1` | Recent health alerts/events by bounded status and severity. | Correlate firewall symptoms with controller health evidence. |
+| `fmc.vpn.tunnel.status` | Gauge, int | `1` | VPN policy, tunnel, tunnel-detail, summary, or remote-access gateway status. | Detect perimeter or remote-access outages. |
+| `fmc.ha.status` | Gauge, int | `1` | FMC HA, FTD HA-pair, monitored-interface, cluster, or failover state. | Verify failover readiness and catch degraded HA posture. |
+| `fmc.policy.object.count` | Gauge, int | `1` | FMC policy, assignment, rule, object, security-zone, SGT, syslog, and security-intelligence resources by bounded attributes. | Track segmentation and perimeter-policy drift. |
+| `fmc.deployment.status` | Gauge, int | `1` | Deployment job, deployable device, or pending-change status. | Identify undeployed or failed policy changes. |
+| `fmc.deployment.pending.count` | Gauge, int | `1` | Deployment jobs, deployable devices, and pending changes by bounded status. | Quantify policy deployment backlog. |
+| `fmc.audit.record.count` | Gauge, int | `1` | Audit and configuration-change records by bounded attributes. | Correlate network/security incidents with administrative changes. |
+
+FMC REST logs are emitted for health alerts/events, deployment jobs, audit records, and config changes. eStreamer logs
+use `event.domain=fmc.estreamer` and include `fmc.estreamer.event.type`, `source.address`, `destination.address`, and
+the original fully-qualified event body when available. Accepted eStreamer aliases such as `malware` and
+`security_intelligence` are normalized to the Cisco-supported fully-qualified file and connection event blocks.
+
+## Catalyst 9800 Telemetry Metrics
+
+Catalyst 9800 telemetry is emitted from gNMI dial-in subscriptions and MDT gRPC dial-out. Raw YANG-derived metrics keep
+full model coverage while stable `cisco.wlc.*` aliases give dashboards product-oriented names across gNMI JSON and
+gRPC KV-GPB inputs.
+
+| Metric Pattern | Type | Unit | What It Tells You | Why Monitor It |
+| --- | --- | --- | --- | --- |
+| `cisco.catalyst9800.yang.<module>.<path>.<leaf>` | Gauge or sum, double | model-defined | Numeric YANG leaves from Cisco IOS XE wireless/controller models. Known counters are cumulative sums; other values are gauges. | Keep full C9800 model coverage without waiting for a custom parser per leaf. |
+| `cisco.catalyst9800.yang.<module>.<path>.<leaf>_info` | Gauge, int | `1` | String, enum, identity, and list leaves with the original value on the `value` attribute. | Preserve AP, client, HA, CAPWAP, and mobility states as bounded info metrics. |
+| `cisco.wlc.ap.join.status` | Gauge, double | `1` | Whether an AP is joined. | Alert on APs that leave the controller. |
+| `cisco.wlc.ap.join.failure` | Gauge or sum | `{failure}` | AP join failure events or current failure reason. | Find certificate, discovery, authorization, or CAPWAP join issues. |
+| `cisco.wlc.ap.disconnect` | Gauge or sum | `{disconnect}` | AP disconnect counters or disconnect reasons. | Detect unstable AP/WLC connectivity. |
+| `cisco.wlc.ap.capwap.state` | Gauge | `1` | CAPWAP/AP operational state with state text as an attribute. | Confirm AP control tunnels are operational. |
+| `cisco.wlc.rf.channel.utilization` | Gauge, double | `%` | RF/channel utilization by utilization type. | Find congested or noisy channels. |
+| `cisco.wlc.rf.noise_floor` | Gauge, double | `dBm` | RF noise floor. | Detect interference and RF health problems. |
+| `cisco.wlc.rf.client.count` | Gauge, double | `{client}` | Client count per radio/RRM measurement. | Identify overloaded radios. |
+| `cisco.wlc.rf.channel.change.count` | Sum, double | `{change}` | DCA/channel change counters. | Spot unstable RF environments. |
+| `cisco.wlc.ssid.client.count` | Gauge, double | `{client}` | Associated clients per SSID/BSSID. | Track SSID load. |
+| `cisco.wlc.ssid.channel.utilization` | Gauge, double | `%` | SSID/BSSID channel utilization. | Compare SSID experience across APs and radios. |
+| `cisco.wlc.ssid.network.io` | Sum, double | `By` | SSID traffic by direction. | Trend wireless traffic volume by WLAN. |
+| `cisco.wlc.ssid.retry.count` | Sum, double | `{retry}` | SSID retry counters. | Detect poor airtime quality or client retries. |
+| `cisco.wlc.client.connection.state` | Gauge | `1` | Client connection state. | Detect clients stuck before run/connected state. |
+| `cisco.wlc.client.auth.failure` | Gauge | `1` | Client auth/exclusion failure reason. | Troubleshoot RADIUS, policy, and exclusion problems. |
+| `cisco.wlc.client.roam.count` | Sum or gauge | `{roam}` | Client or mobility roam counters/types. | Track roaming activity and unexpected churn. |
+| `cisco.wlc.client.roam.failure.count` | Sum, double | `{failure}` | Client roam failure counters. | Detect roaming issues across APs or mobility peers. |
+| `cisco.wlc.client.wireless.rssi` | Gauge, double | `dBm` | Client RSSI. | Find weak-signal clients. |
+| `cisco.wlc.client.wireless.snr` | Gauge, double | `dB` | Client SNR. | Diagnose poor client RF quality. |
+| `cisco.wlc.mobility.peer.status` | Gauge | `1` | Mobility peer/link status. | Alert on broken mobility tunnels or peers. |
+| `cisco.wlc.mobility.roam.count` | Sum, double | `{roam}` | L2/L3 mobility roam counters. | Track mobility handoff volume. |
+| `cisco.wlc.mobility.handoff.count` | Sum, double | `{handoff}` | Successful handoff counters. | Confirm mobility handoffs are completing. |
+| `cisco.wlc.mobility.handoff.failure.count` | Sum, double | `{failure}` | Failed handoff counters. | Detect mobility-domain problems. |
+| `cisco.wlc.ha.state` | Gauge | `1` | Local or peer HA state. | Confirm active/standby WLC health. |
+| `cisco.wlc.ha.enabled` | Gauge, double | `1` | Whether HA is enabled. | Detect missing redundancy. |
+| `cisco.wlc.ha.switchover.count` | Sum, double | `{switchover}` | HA switchover counter. | Correlate client/AP events with controller failovers. |
+| `cisco.wlc.ha.standby.failure.count` | Sum, double | `{failure}` | Standby failure counter. | Alert on degraded redundancy. |
+| `cisco.wlc.auth.radius.*` | Gauge or sum | model-defined | RADIUS accepts, rejects, timeouts, delays, responses, and bad authenticators. | Separate WLAN client failures from upstream AAA problems. |
+| `cisco.wlc.controller.*` | Gauge or sum | model-defined | Controller CPU/memory and receiver health aliases. | Detect WLC or collector-side telemetry health issues. |
+| `cisco.catalyst9800.receiver.*` | Gauge or sum | `{event}` | Receiver active subscriptions, updates, decode errors, unsupported paths, reconnects, dropped datapoints, compact GPB payloads, and last success timestamp. | Confirm the telemetry pipeline is live and bounded. |
+
+Catalyst 9800 metrics include `host.*`, `hw.type=network`, `cisco.os.name=ios_xe`,
+`cisco.platform.family=catalyst_9800`, `cisco.yang.path`, `cisco.yang.module`, `cisco.telemetry.transport`, and WLC
+correlation attributes such as `cisco.wlc.ap.mac`, `cisco.wlc.ap.name`, `cisco.wlc.radio.slot`,
+`cisco.wlc.wlan.id`, `cisco.wlc.ssid`, `cisco.wlc.client.mac`, and `cisco.wlc.mobility.node_ip`.
+
+## IOS XR Telemetry Metrics
+
+IOS XR telemetry is emitted from gNMI dial-in subscriptions and MDT gRPC dial-out. Because IOS XR exposes many model
+families, generic decoded YANG leaves use a predictable metric namespace rather than a fixed hand-authored list for
+every leaf.
+
+| Metric Pattern | Type | Unit | What It Tells You | Why Monitor It |
+| --- | --- | --- | --- | --- |
+| `cisco.iosxr.yang.<module>.<path>.<leaf>` | Gauge or sum, double | model-defined | Numeric YANG leaves from OpenConfig or Cisco IOS XR native models. Known counters are cumulative sums; other values are gauges. | Build coverage for interfaces, optics, routing, FIB, BGP, ISIS, MPLS, SR/SRv6, QoS, ASIC, and platform health without waiting for a custom parser per leaf. |
+| `cisco.iosxr.yang.<module>.<path>.<leaf>_info` | Gauge, int | `1` | String, enum, identity, and list leaves with the original value on the `value` attribute. | Preserve states such as admin/oper status, neighbor state, alarm text, and component identity as bounded info metrics. |
+| `cisco.iosxr.receiver.active_subscriptions` | Gauge, int | `{subscription}` | Active gNMI dial-in targets. | Detect target selection mistakes or subscriptions that never start. |
+| `cisco.iosxr.receiver.updates` | Sum, int, cumulative | `{update}` | gNMI updates and deletes received. | Confirm that subscriptions are producing telemetry. |
+| `cisco.iosxr.receiver.decode_errors` | Sum, int, cumulative | `{error}` | JSON/YANG decode failures. | Alert when a model or encoding change starts dropping data. |
+| `cisco.iosxr.receiver.unsupported_paths` | Sum, int, cumulative | `{path}` | Paths rejected or pruned by gNMI capabilities. | Catch path groups that are unavailable on a platform, line card, or IOS XR release. |
+| `cisco.iosxr.receiver.reconnects` | Sum, int, cumulative | `{reconnect}` | gNMI reconnect attempts after subscription failures. | Detect unstable telemetry sessions or endpoint availability issues. |
+| `cisco.iosxr.receiver.dropped_datapoints` | Sum, int, cumulative | `{datapoint}` | Datapoints dropped by the receiver cardinality guard. | Tune path groups, intervals, and caps before overwhelming downstream storage. |
+| `cisco.iosxr.receiver.compact_gpb_payloads` | Sum or gauge, int | `{payload}` | MDT compact `data_gpb` rows received but not generically decoded. | Make compact GPB visibility explicit so operators can switch to KV-GPB or add model-specific protobuf decoding. |
+| `cisco.iosxr.receiver.last_success_timestamp` | Gauge, int | `s` | Unix timestamp of the last successful gNMI update. | Alert on stale IOS XR telemetry. |
+
+IOS XR metrics include `cisco.yang.path`, `cisco.yang.module`, `cisco.telemetry.transport`, `cisco.platform.family`,
+`host.*`, `hw.type=network`, and normalized datapoint keys such as `network.interface.name`, `network.vrf.name`, and
+`network.peer.address` when those keys are present in the YANG path or JSON payload.
 
 ## Plain Language Terms
 

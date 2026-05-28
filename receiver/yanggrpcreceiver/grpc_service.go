@@ -69,6 +69,14 @@ func (s *grpcService) convertToOTELMetrics(telemetry *pb.Telemetry) pmetric.Metr
 	sm := rm.ScopeMetrics().AppendEmpty()
 	timestamp := pcommon.Timestamp(telemetry.MsgTimestamp * 1000000)
 
+	if rows := telemetry.GetDataGpb().GetRow(); len(rows) > 0 {
+		m := sm.Metrics().AppendEmpty()
+		createNumericMetric(m, "yang_grpc.compact_gpb_payloads", float64(len(rows)), timestamp, nil, map[string]string{
+			"node_id":       telemetry.GetNodeIdStr(),
+			"encoding_path": telemetry.GetEncodingPath(),
+		})
+	}
+
 	// Process each entry in DataGpbkv as a distinct row/object.
 	for _, field := range telemetry.DataGpbkv {
 		// Step 1: Initialize context bag with global metadata.

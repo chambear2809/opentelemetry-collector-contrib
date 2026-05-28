@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
+	"go.opentelemetry.io/collector/config/configgrpc"
 	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -48,6 +49,13 @@ const (
 	ciscoOSE2EOptionalCommandsEnv = "CISCOOS_E2E_ENABLE_OPTIONAL_COMMANDS"
 	ciscoOSE2ERouterDataplaneEnv  = "CISCOOS_E2E_ENABLE_ROUTER_DATAPLANE_COMMANDS"
 	ciscoOSE2EVRFsEnv             = "CISCOOS_E2E_VRFS"
+	ciscoOSE2EIOSXREndpointEnv    = "CISCOOS_E2E_IOSXR_ENDPOINT"
+	ciscoOSE2EIOSXRUsernameEnv    = "CISCOOS_E2E_IOSXR_USERNAME"
+	ciscoOSE2EIOSXRPasswordEnv    = "CISCOOS_E2E_IOSXR_PASSWORD"
+	ciscoOSE2EIOSXRInsecureEnv    = "CISCOOS_E2E_IOSXR_TLS_INSECURE"
+	ciscoOSE2EIOSXRGroupsEnv      = "CISCOOS_E2E_IOSXR_PATH_GROUPS"
+	ciscoOSE2EIOSXRMetricsEnv     = "CISCOOS_E2E_IOSXR_EXPECT_METRICS"
+	ciscoOSE2EIOSXRDialOutEnv     = "CISCOOS_E2E_IOSXR_DIALOUT_ENDPOINT"
 )
 
 var defaultCiscoOSE2EMetrics = []string{
@@ -131,6 +139,68 @@ func TestE2ELiveSwitch(t *testing.T) {
 		len(sink.AllMetrics()), sink.DataPointCount(), len(summary.metricNames), len(summary.interfaceNames), setKeys(summary.osNames))
 }
 
+func TestE2EIOSXRGNMIDialIn(t *testing.T) {
+	cfg := newIOSXRDialInE2EConfig(t)
+	sink := new(consumertest.MetricsSink)
+
+	rcvr, err := NewFactory().CreateMetrics(
+		t.Context(),
+		receivertest.NewNopSettings(metadata.Type),
+		cfg,
+		sink,
+	)
+	require.NoError(t, err)
+	require.NoError(t, rcvr.Start(t.Context(), componenttest.NewNopHost()))
+	t.Cleanup(func() {
+		assert.NoError(t, rcvr.Shutdown(context.Background()))
+	})
+
+	expectedMetrics := append([]string{"cisco.iosxr.receiver.updates"}, csvEnv(ciscoOSE2EIOSXRMetricsEnv)...)
+	waitTimeout := durationEnv(t, ciscoOSE2EWaitTimeoutEnv, 2*time.Minute)
+	require.EventuallyWithT(t, func(tt *assert.CollectT) {
+		summary := summarizeCiscoOSE2EMetrics(sink.AllMetrics())
+		assert.Positive(tt, sink.DataPointCount())
+		assert.True(tt, summaryHasMetricPrefix(summary, "cisco.iosxr."), "expected IOS XR metrics")
+		for _, metricName := range expectedMetrics {
+			assert.Contains(tt, summary.metricNames, metricName)
+		}
+	}, waitTimeout, time.Second)
+}
+
+func TestE2EIOSXRMDTDialOut(t *testing.T) {
+	endpoint := os.Getenv(ciscoOSE2EIOSXRDialOutEnv)
+	if endpoint == "" {
+		t.Skipf("set %s to run IOS XR MDT dial-out e2e test", ciscoOSE2EIOSXRDialOutEnv)
+	}
+
+	cfg := NewFactory().CreateDefaultConfig().(*Config)
+	cfg.IOSXR.Enabled = true
+	cfg.IOSXR.DialOut.Enabled = true
+	cfg.IOSXR.DialOut.ServerConfig.NetAddr.Endpoint = endpoint
+	cfg.IOSXR.DialOut.ServerConfig.NetAddr.Transport = "tcp"
+	require.NoError(t, cfg.Validate())
+
+	sink := new(consumertest.MetricsSink)
+	rcvr, err := NewFactory().CreateMetrics(
+		t.Context(),
+		receivertest.NewNopSettings(metadata.Type),
+		cfg,
+		sink,
+	)
+	require.NoError(t, err)
+	require.NoError(t, rcvr.Start(t.Context(), componenttest.NewNopHost()))
+	t.Cleanup(func() {
+		assert.NoError(t, rcvr.Shutdown(context.Background()))
+	})
+
+	waitTimeout := durationEnv(t, ciscoOSE2EWaitTimeoutEnv, 2*time.Minute)
+	require.EventuallyWithT(t, func(tt *assert.CollectT) {
+		summary := summarizeCiscoOSE2EMetrics(sink.AllMetrics())
+		assert.Positive(tt, sink.DataPointCount())
+		assert.True(tt, summaryHasMetricPrefix(summary, "cisco.iosxr."), "expected IOS XR dial-out metrics")
+	}, waitTimeout, time.Second)
+}
+
 func newCiscoOSE2EConfig(t *testing.T) *Config {
 	host := requiredEnvOrSkip(t, ciscoOSE2EHostEnv)
 	username := requiredEnvOrSkip(t, ciscoOSE2EUsernameEnv)
@@ -176,6 +246,40 @@ func newCiscoOSE2EConfig(t *testing.T) *Config {
 		component.MustNewType("system"):     systemCfg,
 		component.MustNewType("interfaces"): interfacesCfg,
 	}
+	require.NoError(t, cfg.Validate())
+	return cfg
+}
+
+func newIOSXRDialInE2EConfig(t *testing.T) *Config {
+	endpoint := requiredEnvOrSkip(t, ciscoOSE2EIOSXREndpointEnv)
+	username := requiredEnvOrSkip(t, ciscoOSE2EIOSXRUsernameEnv)
+	password := requiredEnvOrSkip(t, ciscoOSE2EIOSXRPasswordEnv)
+
+	cfg := NewFactory().CreateDefaultConfig().(*Config)
+	cfg.IOSXR.Enabled = true
+	for _, group := range csvEnvWithDefault(ciscoOSE2EIOSXRGroupsEnv, []string{"interfaces"}) {
+		if _, ok := cfg.IOSXR.PathGroups[group]; ok {
+			cfg.IOSXR.PathGroups[group] = IOSXRPathGroupConfig{Enabled: true}
+		}
+	}
+	clientCfg := configgrpc.NewDefaultClientConfig()
+	clientCfg.Endpoint = endpoint
+	clientCfg.TLS.Insecure = boolEnv(t, ciscoOSE2EIOSXRInsecureEnv, false)
+	cfg.IOSXR.DialIn.Targets = []IOSXRTargetConfig{{
+		ClientConfig: clientCfg,
+		Name:         "iosxr-e2e",
+		Credentials: IOSXRCredentialsConfig{
+			Username: username,
+			Password: configopaque.String(password),
+		},
+		Subscription: IOSXRSubscriptionConfig{
+			Mode:              iosXRSubscribeModeOnce,
+			StreamMode:        iosXRStreamModeSample,
+			SampleInterval:    durationEnv(t, ciscoOSE2ECollectionIntEnv, time.Minute),
+			HeartbeatInterval: durationEnv(t, ciscoOSE2ECollectionIntEnv, time.Minute),
+			SuppressRedundant: true,
+		},
+	}}
 	require.NoError(t, cfg.Validate())
 	return cfg
 }
@@ -369,6 +473,23 @@ func csvEnv(name string) []string {
 		}
 	}
 	return values
+}
+
+func csvEnvWithDefault(key string, defaults []string) []string {
+	values := csvEnv(key)
+	if len(values) == 0 {
+		return defaults
+	}
+	return values
+}
+
+func summaryHasMetricPrefix(summary ciscoOSE2EMetricSummary, prefix string) bool {
+	for metricName := range summary.metricNames {
+		if strings.HasPrefix(metricName, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func setKeys(values map[string]struct{}) []string {

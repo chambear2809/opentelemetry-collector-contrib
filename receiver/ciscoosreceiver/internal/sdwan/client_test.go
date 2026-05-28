@@ -42,6 +42,32 @@ func TestClientBearerList(t *testing.T) {
 	assert.Equal(t, "Bearer token", authHeader)
 }
 
+func TestClientSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/dataservice/device", r.URL.Path)
+		assert.Equal(t, "Bearer token", r.Header.Get("Authorization"))
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{"host-name": "edge-1"}},
+		})
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:           server.URL,
+		AuthMode:           "bearer",
+		BearerToken:        "token",
+		Timeout:            time.Second,
+		InsecureSkipVerify: true,
+	})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	objects, err := client.List(context.Background(), "devices", "/device", nil, 0)
+	require.NoError(t, err)
+	require.Len(t, objects, 1)
+	assert.Equal(t, "edge-1", String(objects[0], "host-name"))
+}
+
 func TestClientAutoJWTLogin(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

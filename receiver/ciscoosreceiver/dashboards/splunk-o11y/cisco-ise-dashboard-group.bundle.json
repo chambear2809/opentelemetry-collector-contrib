@@ -1,0 +1,221 @@
+{
+  "schema": "com.cisco.opentelemetry.ciscoosreceiver.splunk-o11y.dashboard-bundle/v1",
+  "group": {
+    "name": "Cisco ISE Receiver",
+    "description": "Dashboard group for Cisco Identity Services Engine telemetry emitted by the Cisco OS receiver."
+  },
+  "default_time_range_ms": 3600000,
+  "default_tags": [
+    "ciscoosreceiver",
+    "ise",
+    "identity",
+    "security",
+    "netops"
+  ],
+  "default_filters": {
+    "variables": [
+      {
+        "property": "ise.node.name",
+        "alias": "ISE Node",
+        "description": "ISE deployment node.",
+        "applyIfExists": true
+      },
+      {
+        "property": "ise.network_device.name",
+        "alias": "Network Device",
+        "description": "Network access device known to ISE.",
+        "applyIfExists": true
+      },
+      {
+        "property": "ise.endpoint.mac",
+        "alias": "Endpoint MAC",
+        "description": "Endpoint MAC address.",
+        "applyIfExists": true
+      },
+      {
+        "property": "user.name",
+        "alias": "User",
+        "description": "User name from ISE authentication or session evidence.",
+        "applyIfExists": true
+      },
+      {
+        "property": "ise.protocol",
+        "alias": "Protocol",
+        "description": "RADIUS, TACACS, or authentication protocol.",
+        "applyIfExists": true
+      },
+      {
+        "property": "ise.policy.set",
+        "alias": "Policy Set",
+        "description": "ISE policy set.",
+        "applyIfExists": true
+      }
+    ]
+  },
+  "dashboards": [
+    {
+      "name": "00 ISE API Trust And Deployment",
+      "description": "First-response dashboard for ISE API health, scrape completeness, service coverage, and deployment status.",
+      "value": "Proves whether ISE collection is healthy before operators trust identity, posture, policy, pxGrid, or Data Connect evidence.",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to use the ISE API trust dashboard as the incident starting point. Interpretation: start here when ISE data is missing, stale, partially successful, or when API permissions may be hiding identity evidence.",
+          "markdown": "## Value Provided\nUse this dashboard first for Cisco ISE incidents. It separates telemetry trust from access symptoms: API errors, rate limits, unavailable API families, skipped services, and partial scrapes explain visibility gaps before operators trust RADIUS, TACACS, posture, policy, pxGrid, or Data Connect panels.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Partial Scrape",
+          "description": "Value: proves whether one or more ISE endpoint families failed or were skipped during collection. Interpretation: 1 means the dashboard may be incomplete and should be read alongside API and service coverage charts.",
+          "signalflow": "data('ise.scrape.partial_success').mean(by=['ise.endpoint']).publish(label='Partial scrape')",
+          "legend_dimension": "ise.endpoint"
+        },
+        {
+          "name": "API Request Errors",
+          "description": "Value: surfaces failed ISE API calls by operation and HTTP status. Interpretation: non-zero values explain missing deployment, endpoint, session, policy, pxGrid, or Data Connect evidence.",
+          "signalflow": "data('ise.api.request.errors').sum(by=['ise.api.operation', 'http.response.status_code', 'ise.api.outcome']).publish(label='API errors')",
+          "legend_dimension": "ise.api.operation"
+        },
+        {
+          "name": "API Request Duration",
+          "description": "Value: detects slow ISE API operations. Interpretation: rising duration by operation can precede partial scrapes, stale dashboards, or delayed incident evidence.",
+          "signalflow": "data('ise.api.request.duration').mean(by=['ise.api.operation', 'ise.api.outcome']).publish(label='API duration')",
+          "legend_dimension": "ise.api.operation"
+        },
+        {
+          "name": "Unavailable Services",
+          "description": "Value: shows unavailable or skipped ISE API, pxGrid, and Data Connect groups. Interpretation: unavailable means endpoint, API enablement, role, permission, version, or credential gap.",
+          "signalflow": "data('ise.service.unavailable').sum(by=['ise.group', 'ise.api.operation']).publish(label='Unavailable'); data('ise.service.skipped').sum(by=['ise.group', 'ise.skip.reason']).publish(label='Skipped')",
+          "legend_dimension": "ise.group"
+        },
+        {
+          "name": "Deployment Node Status",
+          "description": "Value: tracks ISE deployment node/persona status. Interpretation: warning or failed states can explain missing authentication, posture, or MnT evidence.",
+          "signalflow": "data('ise.deployment.node.status').mean(by=['host.name', 'ise.node.name', 'ise.status']).publish(label='Deployment status')",
+          "legend_dimension": "ise.node.name"
+        }
+      ]
+    },
+    {
+      "name": "01 AAA Failures Sessions And Posture",
+      "description": "Identity access dashboard for RADIUS/TACACS failures, active sessions, endpoint posture, and profile evidence.",
+      "value": "Shows whether users, endpoints, or network devices are failing authentication, authorization, accounting, posture, or profiling workflows.",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to use ISE AAA and posture data during access incidents. Interpretation: correlate failures by protocol, network device, endpoint, user, policy, and failure reason before escalating to wireless, switching, VPN, or identity teams.",
+          "markdown": "## Value Provided\nUse this dashboard for user or endpoint access incidents. RADIUS/TACACS failure counts, active sessions, endpoint posture, and profiling evidence show whether the symptom is identity, network device, policy, or endpoint compliance.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "RADIUS Failures",
+          "description": "Value: counts RADIUS authentication failures by device, user, endpoint, and failure reason. Interpretation: spikes isolate wireless, wired, VPN, MAB, or identity-store issues.",
+          "signalflow": "data('ise.radius.failure.count').sum(by=['ise.network_device.name', 'user.name', 'ise.endpoint.mac', 'ise.failure.reason']).publish(label='RADIUS failures')",
+          "legend_dimension": "ise.failure.reason"
+        },
+        {
+          "name": "TACACS Failures",
+          "description": "Value: counts TACACS authentication, authorization, or accounting failures. Interpretation: spikes point to admin login, command authorization, or network device administration issues.",
+          "signalflow": "data('ise.tacacs.failure.count').sum(by=['ise.network_device.name', 'user.name', 'ise.failure.reason']).publish(label='TACACS failures')",
+          "legend_dimension": "ise.network_device.name"
+        },
+        {
+          "name": "Active Sessions",
+          "description": "Value: tracks ISE active sessions and session evidence volume. Interpretation: sudden drops or spikes indicate access outages, reconnect storms, or MnT visibility gaps.",
+          "signalflow": "data('ise.session.active.count').mean(by=['ise.node.name']).publish(label='Active sessions'); data('ise.session.count').sum(by=['ise.network_device.name', 'ise.protocol']).publish(label='Session records')",
+          "legend_dimension": "ise.network_device.name"
+        },
+        {
+          "name": "Endpoint Posture And Profiles",
+          "description": "Value: surfaces endpoint posture and profile counts. Interpretation: noncompliant, unknown, or changing profile counts can explain policy decisions and quarantine behavior.",
+          "signalflow": "data('ise.endpoint.posture.count').sum(by=['ise.posture.status']).publish(label='Posture'); data('ise.endpoint.profile.count').sum(by=['ise.object.type']).publish(label='Profiles')",
+          "legend_dimension": "ise.posture.status"
+        }
+      ]
+    },
+    {
+      "name": "02 Policy TrustSec Alarms And Certificates",
+      "description": "Policy and platform evidence dashboard for policy objects, TrustSec, alarms, certificates, licenses, and webhooks.",
+      "value": "Correlates access failures with ISE policy state, segmentation objects, platform alarms, certificate expiry, licensing, and webhook delivery evidence.",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how policy and platform evidence narrows ISE incident cause. Interpretation: use these panels when authentication succeeds or fails because of policy, certificate, license, TrustSec, or webhook state.",
+          "markdown": "## Value Provided\nUse this dashboard when access behavior changed after policy, segmentation, certificate, license, or platform events. It keeps policy and operational evidence visible without turning raw rules or event text into metric dimensions.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "Policy Objects",
+          "description": "Value: counts ISE network-access, device-admin, TACACS, and policy objects. Interpretation: missing or changing policy object counts can explain changed access decisions.",
+          "signalflow": "data('ise.policy.object.count').sum(by=['ise.policy.set', 'ise.object.type', 'ise.status']).publish(label='Policy objects')",
+          "legend_dimension": "ise.policy.set"
+        },
+        {
+          "name": "TrustSec Resources",
+          "description": "Value: counts SGT, SGACL, and SG mapping records. Interpretation: changes in TrustSec resource counts or status can explain segmentation impact.",
+          "signalflow": "data('ise.trustsec.resource.count').sum(by=['ise.object.type', 'ise.status']).publish(label='TrustSec resources')",
+          "legend_dimension": "ise.object.type"
+        },
+        {
+          "name": "Alarms Licenses And Webhooks",
+          "description": "Value: surfaces ISE alarms, license state, and webhook delivery evidence. Interpretation: platform alarms, license failures, or webhook delivery failures can explain missing downstream evidence.",
+          "signalflow": "data('ise.alarm.count').sum(by=['ise.severity', 'ise.status']).publish(label='Alarms'); data('ise.license.status').mean(by=['ise.status']).publish(label='License'); data('ise.webhook.delivery.count').sum(by=['ise.status']).publish(label='Webhooks')",
+          "legend_dimension": "ise.status"
+        },
+        {
+          "name": "Certificate Expiration",
+          "description": "Value: shows ISE certificate expiration timestamps. Interpretation: certificates close to expiry can disrupt EAP, portals, pxGrid, or API trust.",
+          "signalflow": "data('ise.certificate.expiration').min(by=['host.name', 'ise.object.type']).publish(label='Certificate expiration')",
+          "legend_dimension": "host.name"
+        }
+      ]
+    },
+    {
+      "name": "03 pxGrid And Data Connect Coverage",
+      "description": "Full-coverage dashboard for pxGrid service/subscription state and Data Connect query health.",
+      "value": "Confirms that opt-in pxGrid streaming and Data Connect historical reporting are working before operators depend on those high-fidelity ISE feeds.",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to validate opt-in pxGrid and Data Connect coverage. Interpretation: use these panels when REST evidence is present but real-time session signals or historical RADIUS/TACACS rows are missing.",
+          "markdown": "## Value Provided\nUse this dashboard for the optional high-fidelity ISE feeds. pxGrid panels prove service lookup and subscription intent; Data Connect panels prove database view access, row caps, and query health.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "pxGrid Service And Subscription Status",
+          "description": "Value: shows pxGrid service lookup and configured subscription state. Interpretation: missing services or failed subscriptions explain absent real-time session, RADIUS, endpoint, TrustSec, or system health signals.",
+          "signalflow": "data('ise.pxgrid.service.status').mean(by=['ise.object.type', 'ise.pxgrid.topic']).publish(label='Service'); data('ise.pxgrid.subscription.status').mean(by=['ise.pxgrid.topic']).publish(label='Subscription')",
+          "legend_dimension": "ise.pxgrid.topic"
+        },
+        {
+          "name": "pxGrid Messages",
+          "description": "Value: counts pxGrid messages or REST query objects by type. Interpretation: changing message volume proves the feed is active and can reveal session or RADIUS failure bursts.",
+          "signalflow": "data('ise.pxgrid.message.count').sum(by=['ise.object.type', 'ise.protocol']).publish(label='pxGrid messages')",
+          "legend_dimension": "ise.object.type"
+        },
+        {
+          "name": "Data Connect Query Health",
+          "description": "Value: tracks Data Connect query duration and errors by view. Interpretation: slow or failing views point to wallet, TLS, credential, database, or view availability problems.",
+          "signalflow": "data('ise.dataconnect.query.duration').mean(by=['ise.dataconnect.view', 'ise.dataconnect.outcome']).publish(label='Duration'); data('ise.dataconnect.query.errors').sum(by=['ise.dataconnect.view']).publish(label='Errors')",
+          "legend_dimension": "ise.dataconnect.view"
+        },
+        {
+          "name": "Data Connect Rows",
+          "description": "Value: shows rows returned by each allowlisted Data Connect view. Interpretation: unexpected zero rows or sudden spikes reveal coverage gaps, row-cap pressure, or incident bursts.",
+          "signalflow": "data('ise.dataconnect.query.rows').sum(by=['ise.dataconnect.view', 'ise.dataconnect.outcome']).publish(label='Rows')",
+          "legend_dimension": "ise.dataconnect.view"
+        }
+      ]
+    }
+  ]
+}

@@ -130,3 +130,35 @@ func TestConvertToOTELMetrics(t *testing.T) {
 	assert.True(t, exists)
 	assert.Equal(t, "test-node", nodeID.Str())
 }
+
+func TestConvertToOTELMetricsEmitsCompactGPBDiagnostic(t *testing.T) {
+	config := createValidTestConfig()
+	consumer := &consumertest.MetricsSink{}
+	settings := createTestSettings()
+
+	receiver := createMetricsReceiver(t.Context(), settings, config, consumer)
+	service := &grpcService{
+		receiver:   receiver.(*yangReceiver),
+		yangParser: internal.NewYANGParser(),
+	}
+
+	metrics := service.convertToOTELMetrics(&pb.Telemetry{
+		NodeId:       &pb.Telemetry_NodeIdStr{NodeIdStr: "xr-1"},
+		EncodingPath: "Cisco-IOS-XR-fib-common-oper:fib/nodes/node/protocols/protocol/vrfs/vrf/summary",
+		MsgTimestamp: 1234567890,
+		DataGpb: &pb.TelemetryGPBTable{Row: []*pb.TelemetryRowGPB{
+			{Timestamp: 1234567890, Content: []byte{0x01}},
+			{Timestamp: 1234567891, Content: []byte{0x02}},
+		}},
+	})
+
+	require.Equal(t, 1, metrics.ResourceMetrics().Len())
+	sm := metrics.ResourceMetrics().At(0).ScopeMetrics().At(0)
+	require.Equal(t, 1, sm.Metrics().Len())
+	metric := sm.Metrics().At(0)
+	assert.Equal(t, "cisco.yang_grpc.compact_gpb_payloads", metric.Name())
+	assert.Equal(t, 2.0, metric.Gauge().DataPoints().At(0).DoubleValue())
+	attrs := metric.Gauge().DataPoints().At(0).Attributes()
+	assert.Equal(t, "xr-1", attrs.AsRaw()["node_id"])
+	assert.Equal(t, "Cisco-IOS-XR-fib-common-oper:fib/nodes/node/protocols/protocol/vrfs/vrf/summary", attrs.AsRaw()["encoding_path"])
+}

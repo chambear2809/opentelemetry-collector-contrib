@@ -12,6 +12,7 @@ import (
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/aci"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/catalystcenter"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/fmc"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/intersight"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/nexusdashboard"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/sdwan"
@@ -297,6 +298,19 @@ func aciObjectIdentity(obj aci.Object) deviceIdentity {
 		hostIPs:   []string{aci.String(obj, "ip", "addr")},
 		serials:   []string{serial},
 		deviceIDs: []string{nodeID, aci.String(obj, "dn"), aci.String(obj, "fabricName", "siteName")},
+	}
+}
+
+func fmcObjectIdentity(obj fmc.Object) deviceIdentity {
+	serial := firstNonEmpty(fmc.String(obj, "serialNumber", "serial"), fmc.String(obj, "parent.device.serial"))
+	deviceID := firstNonEmpty(fmc.StableID(obj), fmc.String(obj, "deviceId", "deviceUUID", "parent.device.id"))
+	name := firstNonEmpty(fmc.String(obj, "name", "hostName", "displayName"), fmc.String(obj, "parent.device.name"))
+	return deviceIdentity{
+		hostNames: []string{name},
+		hostIDs:   []string{firstNonEmpty(serial, deviceID, name)},
+		hostIPs:   []string{fmc.String(obj, "managementIpAddress", "managementIP", "mgmtIp", "ipAddress", "ip", "parent.device.ip")},
+		serials:   []string{serial},
+		deviceIDs: []string{deviceID, fmc.String(obj, "policyId", "parent.policy.id"), fmc.String(obj, "policyName", "parent.policy.name")},
 	}
 }
 

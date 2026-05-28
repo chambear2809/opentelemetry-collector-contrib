@@ -13,7 +13,7 @@ The Cisco OS receiver emits some standard OpenTelemetry metric names, including 
 Use receiver-side collection controls before importing every dashboard into a production Splunk Observability Cloud
 organization. The dashboard bundles can reference optional metrics, but users can keep cost predictable by disabling
 unused collection groups, lowering each group's `max_results`, scoping `device_selection` and provider `targets`, and
-setting root-level `metrics.<metric_name>.enabled: false` for metrics they do not want forwarded. See
+setting root-level `metrics.<metric_name-or-glob>.enabled: false` for metrics they do not want forwarded. See
 [Controlling Metrics And Splunk Observability Cost](metric-control.md) for the full workflow.
 
 ## Recommended Dimensions
@@ -45,6 +45,9 @@ Use these dimensions as dashboard variables:
 | `catalyst_center.device.role` | Catalyst Center device role selector, such as access, distribution, core, or border. |
 | `catalyst_center.status` | Original Catalyst Center status string for reachability, collection, communication, and detail drilldowns. |
 | `catalyst_center.client.mac` | Targeted Catalyst Center client selector for client-detail investigations. |
+| `cisco.wlc.ap.name` | Catalyst 9800 AP selector for AP join, CAPWAP, RF, and client views. |
+| `cisco.wlc.ssid` | Catalyst 9800 SSID selector for client, retry, and traffic views. |
+| `cisco.wlc.client.mac` | Catalyst 9800 client selector for connection, RF quality, auth, and traffic investigations. |
 | `sdwan.system_ip` | Catalyst SD-WAN system IP selector. |
 | `sdwan.site.id` | Catalyst SD-WAN site selector. |
 | `sdwan.uuid` | Catalyst SD-WAN device UUID selector. |
@@ -60,6 +63,15 @@ Use these dimensions as dashboard variables:
 | `aci.node.id` | ACI node selector. |
 | `ndfc.switch.id` | NDFC switch ID selector for interface/performance drilldowns. |
 | `nd.service.name` | Nexus Dashboard service/app selector. |
+| `ise.node.name` | ISE node/persona selector. |
+| `ise.network_device.name` | ISE network access device selector. |
+| `ise.endpoint.mac` | ISE endpoint MAC selector for posture/session investigations. |
+| `user.name` | User selector for ISE auth/session evidence and audit records. |
+| `ise.protocol` | RADIUS/TACACS or authentication protocol selector. |
+| `ise.policy.set` | ISE network-access or device-admin policy set selector. |
+| `cisco.yang.module` | Direct telemetry YANG module selector for Catalyst 9800 and IOS XR model coverage. |
+| `cisco.telemetry.transport` | Direct telemetry transport selector, such as gNMI dial-in or MDT gRPC dial-out. |
+| `cisco.node.id` | IOS XR node, rack, slot, or location selector when exposed by telemetry. |
 
 Avoid using high-cardinality fields such as process names, queue names, neighbor names, and drop reasons as global dashboard variables unless the dashboard is specifically for deep investigation.
 
@@ -118,6 +130,10 @@ Charts:
 | SD-WAN interfaces and circuits | `system.network.interface.status`, `sdwan.transport.interface.status`, `system.network.io`, `system.network.errors`, `system.network.packet.dropped`, and `cisco.interface.speed` by site, device, interface, VPN, and color | WAN circuit, interface, cellular failover, or capacity pressure aligns with incident impact. |
 | SD-WAN events and change evidence | `sdwan.event.count` plus SD-WAN logs by alarm/event/audit type, severity, user, policy, system IP, and site | Alarms, audit/config changes, policy deployments, or security events appear in the incident window. |
 | SD-WAN end-user impact | `sdwan.app_route.*`, `sdwan.app_route.sla.status`, `sdwan.bfd.session.status`, `system.network.interface.status`, `system.network.errors`, `system.network.packet.dropped`, and `sdwan.event.count` by site, application, SLA class, color, interface, and event type | Service desk, app owners, and incident commanders can see which sites/apps/users are likely affected and what symptom class to escalate. |
+| ISE identity and access evidence | `ise.api.request.errors`, `ise.scrape.partial_success`, `ise.radius.failure.count`, `ise.tacacs.failure.count`, `ise.session.active.count`, `ise.endpoint.posture.count`, `ise.policy.object.count`, `ise.trustsec.resource.count`, pxGrid metrics, Data Connect metrics, and ISE logs | Authentication, authorization, posture, TrustSec, or policy-change evidence aligns with network, wireless, SD-WAN, or firewall symptoms. |
+| Catalyst 9800 WLC telemetry trust | `cisco.catalyst9800.receiver.*` and `cisco.wlc.controller.*` by controller and transport | Active subscriptions drop, decode errors rise, paths are unsupported, datapoints are dropped, or controller CPU/memory pressure appears. |
+| Catalyst 9800 wireless user impact | `cisco.wlc.ap.*`, `cisco.wlc.rf.*`, `cisco.wlc.ssid.*`, `cisco.wlc.client.*`, `cisco.wlc.auth.radius.*`, `cisco.wlc.mobility.*`, and `cisco.wlc.ha.*` by AP, SSID, client, and controller | AP joins fail, RF utilization/noise rises, clients fail auth or roam, RADIUS rejects/timeouts appear, mobility peers fail, or HA changes. |
+| IOS XR telemetry trust and model coverage | `cisco.iosxr.receiver.*` plus common `cisco.iosxr.yang.*` interface and model leaves by router, transport, YANG module, and path | Subscriptions stop, updates stall, decode/model errors rise, or common interface/routing/optics path groups stop producing data. |
 | Nexus Dashboard API health | `nexus_dashboard.api.request.duration`, `nexus_dashboard.api.request.errors`, `nexus_dashboard.api.rate_limited`, and `nexus_dashboard.scrape.partial_success` by operation | Controller API errors, authorization failures, unavailable apps, or partial scrape repeat. |
 | Nexus Dashboard service coverage | `nexus_dashboard.service.unavailable` and `nexus_dashboard.service.skipped` by product and group | NDFC, Insights, NDO, or Data Broker is unavailable, unauthorized, not installed, or missing target filters. |
 | Nexus Dashboard change and event evidence | `nexus_dashboard.audit.record.count` and `nexus_dashboard.event.count` by product, operation, status, and severity | Controller-side changes, events, anomalies, advisories, alerts, or root causes appear near the incident window. |
@@ -144,10 +160,12 @@ Autopsy questions:
 - Did Intersight record an alarm, advisory, HCL change, workflow/task failure, or audit/config-change log before the impact?
 - Did UCS, HyperFlex, storage, Kubernetes, or VM state degrade around the same host, serial, cluster, namespace, or workload?
 - Did Catalyst Center show API partial success, site health degradation, active Assurance issues, topology changes, or poor targeted client health?
+- Did Catalyst 9800 show stale telemetry, AP join/CAPWAP failures, RF noise or utilization, RADIUS rejects/timeouts, client roam failures, mobility peer loss, or HA events for the affected SSID or site?
 - Did SD-WAN show Manager/API partial success, unreachable WAN Edge devices, control/BFD loss, TLOC color degradation, app-route SLA violations, Cloud OnRamp/vQoE issues, policy/security drops, cellular failover, or audit/config changes for the affected site or application?
 - From the end-user perspective, which sites and applications are affected, what symptom is most visible to users (loss, latency, jitter, outage, drops, errors, or change), and which team should own the next action?
 - Did Nexus Dashboard show NDFC config drift, deployment failure, fabric health degradation, Insights root-cause evidence, NDO policy deltas, or Data Broker visibility changes?
 - Did APIC show active faults, tenant/EPG/contract/L3Out impact, endpoint disappearance, interface state changes, or topology churn for the affected workload?
+- Did IOS XR telemetry show subscription loss, unsupported paths, interface state/counter changes, optics drift, routing neighbor loss, FIB drops, BFD changes, MPLS/SR state changes, or time-sync issues?
 
 Switch-side coverage:
 
@@ -184,6 +202,9 @@ Start with these detectors before adding organization-specific thresholds:
 | Catalyst Center API degraded | `catalyst_center.api.request.errors` or `catalyst_center.scrape.partial_success` | Errors or partial success repeat for 2-3 scrapes. |
 | Catalyst Center site unhealthy | `catalyst_center.site.network_device.health.percentage` or `catalyst_center.site.client.health.percentage` | Site health falls below policy or drops sharply from baseline. |
 | Catalyst Center active issues | `catalyst_center.issue.active.count` | P1/P2 or high-severity issue counts are greater than 0. |
+| Catalyst 9800 telemetry degraded | `cisco.catalyst9800.receiver.decode_errors`, `cisco.catalyst9800.receiver.unsupported_paths`, or `cisco.catalyst9800.receiver.dropped_datapoints` | Decode, model coverage, or cardinality guardrail counters rise for 2-3 scrapes. |
+| Catalyst 9800 AP or CAPWAP issue | `cisco.wlc.ap.join.status`, `cisco.wlc.ap.capwap.state`, `cisco.wlc.ap.join.failure`, or `cisco.wlc.ap.disconnect` | Important APs are not joined, CAPWAP is unhealthy, or join/disconnect evidence rises. |
+| Catalyst 9800 client or AAA issue | `cisco.wlc.client.connection.state`, `cisco.wlc.client.auth.failure`, `cisco.wlc.auth.radius.access.reject.count`, or `cisco.wlc.auth.radius.timeout.count` | Clients fail to connect, auth failures rise, RADIUS rejects/timeouts increase, or response delay degrades. |
 | SD-WAN API degraded | `sdwan.api.request.errors`, `sdwan.scrape.partial_success`, `sdwan.service.unavailable`, or `sdwan.service.skipped` | Errors, partial success, unavailable feature groups, or missing target scope repeat for 2-3 scrapes. |
 | SD-WAN overlay degraded | `sdwan.control.connection.status`, `sdwan.control.actual_connections`, `sdwan.control.expected_connections`, or `sdwan.bfd.session.status` | Control connections or BFD sessions are down, partial, or below expected count. |
 | SD-WAN app SLA violation | `sdwan.app_route.latency`, `sdwan.app_route.jitter`, `sdwan.app_route.loss`, or `sdwan.app_route.sla.status` | Critical app, SaaS, or AI/model path exceeds SLA thresholds or enters failed/degraded state. |
@@ -195,6 +216,8 @@ Start with these detectors before adding organization-specific thresholds:
 | NDO deployment failure | `nexus_dashboard.orchestrator.deployment.status` | Deployment, schema, template, or site sync state is failed/degraded. |
 | APIC fault present | `aci.fault.count` | Critical or major faults greater than 0. |
 | ACI endpoint missing | `aci.endpoint.present` or `aci.endpoint.count` | Important endpoint is missing or endpoint count drops unexpectedly. |
+| IOS XR telemetry stale | `cisco.iosxr.receiver.updates`, `cisco.iosxr.receiver.last_success_timestamp`, or `cisco.iosxr.receiver.reconnects` | Update rate stops, last success stops advancing, or reconnects rise. |
+| IOS XR interface issue | Common `cisco.iosxr.yang.openconfig_interfaces.*` state, error, discard, and octet counters | Admin-up/oper-down, traffic silence, error/discard growth, or one-way traffic appears. |
 
 ## Incident Autopsy Workflow
 
@@ -208,8 +231,10 @@ Use this sequence when reconstructing an outage:
 6. Check routing and overlay: review routing neighbors, route counts, prefixes, NVE peers, VNIs, and EVPN route counts.
 7. Check physical health: review hardware status, temperature, and transceiver sensors.
 8. Check congestion: inspect PFC pause frames, QoS queue drops, policy drops, WRED/ECN signals, QFP drops, and forwarding drops.
-9. Check controller evidence: review Intersight alarms/advisories/workflows, Catalyst Center Assurance health/issues/client detail, Nexus Dashboard/NDFC/Insights/NDO/Data Broker evidence, and APIC faults/audits/events for the same switch serial, site, fabric, tenant, endpoint, or workload.
-10. Correlate AI pod impact: align UCS/FI/HyperFlex health with Kubernetes namespace/workload, accelerator, Catalyst Center site/client context, ACI tenant/EPG, NDFC fabric, and switch telemetry.
+9. Check wireless evidence: review Catalyst 9800 AP joins, CAPWAP state, RF utilization/noise, RADIUS outcomes, client state, roaming, mobility peers, and HA state for the same site, SSID, AP, or client.
+10. Check controller evidence: review Intersight alarms/advisories/workflows, Catalyst Center Assurance health/issues/client detail, Nexus Dashboard/NDFC/Insights/NDO/Data Broker evidence, and APIC faults/audits/events for the same switch serial, site, fabric, tenant, endpoint, or workload.
+11. Check IOS XR service evidence: review subscription freshness, interface counters, optics, routing/BFD/MPLS/SR state, FIB drops, and time-sync breadcrumbs for affected routers.
+12. Correlate AI pod impact: align UCS/FI/HyperFlex health with Kubernetes namespace/workload, accelerator, Catalyst Center site/client context, ACI tenant/EPG, NDFC fabric, and switch telemetry.
 
 For a fuller autopsy, pair these metrics with syslog or config-change events in Splunk. Metrics tell you what moved; logs and events often tell you who or what changed it.
 

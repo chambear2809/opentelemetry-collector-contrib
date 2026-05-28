@@ -1,0 +1,7 @@
+change_type: enhancement
+component: receiver/cisco_os
+note: Add IOS XR gNMI dial-in and MDT gRPC dial-out telemetry support.
+issues: [0]
+subtext: |
+  IOS XR support adds opt-in ASR 9000 and NCS router coverage through curated YANG path groups, gNMI capabilities and encoding negotiation, MDT KV-GPB normalization through the yang_grpc receiver, compact GPB diagnostics, IOS XR resource/path attributes, and receiver self-health metrics.
+change_logs: [user]

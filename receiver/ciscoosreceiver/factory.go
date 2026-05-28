@@ -49,9 +49,13 @@ func createDefaultConfig() component.Config {
 		Meraki:           defaultMerakiConfig(),
 		Intersight:       defaultIntersightConfig(),
 		CatalystCenter:   defaultCatalystCenterConfig(),
+		Catalyst9800:     defaultCatalyst9800Config(),
 		SDWAN:            defaultSDWANConfig(),
 		NexusDashboard:   defaultNexusDashboardConfig(),
 		ACI:              defaultACIConfig(),
+		FMC:              defaultFMCConfig(),
+		ISE:              defaultISEConfig(),
+		IOSXR:            defaultIOSXRConfig(),
 		Scrapers:         map[component.Type]component.Config{},
 	}
 }
@@ -144,6 +148,14 @@ func createMetricsReceiver(
 		receivers = append(receivers, rcvr)
 	}
 
+	if conf.Catalyst9800.hasTarget() {
+		rcvr, err := newCatalyst9800MetricsReceiver(set, conf, consumer)
+		if err != nil {
+			return nil, err
+		}
+		receivers = append(receivers, rcvr)
+	}
+
 	if conf.SDWAN.hasTarget() {
 		rcvr, err := newSDWANMetricsReceiver(set, conf, consumer)
 		if err != nil {
@@ -162,6 +174,30 @@ func createMetricsReceiver(
 
 	if conf.ACI.hasTarget() {
 		rcvr, err := newACIMetricsReceiver(set, conf, consumer)
+		if err != nil {
+			return nil, err
+		}
+		receivers = append(receivers, rcvr)
+	}
+
+	if conf.FMC.hasRESTTarget() {
+		rcvr, err := newFMCMetricsReceiver(set, conf, consumer)
+		if err != nil {
+			return nil, err
+		}
+		receivers = append(receivers, rcvr)
+	}
+
+	if conf.ISE.hasTarget() {
+		rcvr, err := newISEMetricsReceiver(set, conf, consumer)
+		if err != nil {
+			return nil, err
+		}
+		receivers = append(receivers, rcvr)
+	}
+
+	if conf.IOSXR.hasTarget() {
+		rcvr, err := newIOSXRMetricsReceiver(set, conf, consumer)
 		if err != nil {
 			return nil, err
 		}
@@ -210,6 +246,27 @@ func createLogsReceiver(
 	}
 	if conf.ACI.hasTarget() {
 		rcvr, err := newACILogsReceiver(set, conf, consumer)
+		if err != nil {
+			return nil, err
+		}
+		receivers = append(receivers, rcvr)
+	}
+	if conf.FMC.hasRESTTarget() {
+		rcvr, err := newFMCLogsReceiver(set, conf, consumer)
+		if err != nil {
+			return nil, err
+		}
+		receivers = append(receivers, rcvr)
+	}
+	if conf.FMC.EStreamer.hasTarget() {
+		rcvr, err := newFMCEStreamerLogsReceiver(set, conf, consumer)
+		if err != nil {
+			return nil, err
+		}
+		receivers = append(receivers, rcvr)
+	}
+	if conf.ISE.hasTarget() {
+		rcvr, err := newISELogsReceiver(set, conf, consumer)
 		if err != nil {
 			return nil, err
 		}
