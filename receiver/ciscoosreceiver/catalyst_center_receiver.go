@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver"
+	"go.opentelemetry.io/collector/receiver/receiverhelper"
 	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/catalystcenter"
@@ -32,6 +33,8 @@ type catalystCenterMetricsReceiver struct {
 	config   *Config
 	consumer consumer.Metrics
 	client   *catalystcenter.Client
+	counters *counterStore
+	obs      *receiverhelper.ObsReport
 
 	startMu sync.Mutex
 	cancel  context.CancelFunc
@@ -67,6 +70,8 @@ func newCatalystCenterMetricsReceiver(set receiver.Settings, conf *Config, consu
 		config:   conf,
 		consumer: consumer,
 		client:   client,
+		counters: newCounterStore(),
+		obs:      newPlatformObsReport(set, "http"),
 		done:     make(chan struct{}),
 	}
 	client.OnRequest = r.recordRequest
@@ -122,23 +127,28 @@ func (r *catalystCenterMetricsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 
+	obsCtx := startMetricsOp(r.obs, ctx)
 	md, err := r.scrape(scrapeCtx)
 	if err != nil {
 		r.settings.Logger.Error("Catalyst Center scrape failed", zap.Error(err))
+		endMetricsOp(r.obs, obsCtx, md, err)
 		return
 	}
 	if md.MetricCount() == 0 {
+		endMetricsOp(r.obs, obsCtx, md, nil)
 		return
 	}
-	if err := r.consumer.ConsumeMetrics(scrapeCtx, md); err != nil {
-		r.settings.Logger.Error("Catalyst Center metrics consumer failed", zap.Error(err))
+	consumeErr := r.consumer.ConsumeMetrics(ctx, md)
+	endMetricsOp(r.obs, obsCtx, md, consumeErr)
+	if consumeErr != nil {
+		r.settings.Logger.Error("Catalyst Center metrics consumer failed", zap.Error(consumeErr))
 	}
 }
 
 func (r *catalystCenterMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
 	r.resetRequestStats()
 	now := time.Now()
-	builder := newCatalystCenterMetricsBuilder(now, r.config.CatalystCenter.Endpoint)
+	builder := newCatalystCenterMetricsBuilder(now, r.config.CatalystCenter.Endpoint, r.counters)
 	selector := newDeviceSelectionMatcher(r.config.DeviceSelection)
 	partial := false
 
@@ -401,10 +411,10 @@ func (r *catalystCenterMetricsReceiver) recordAPIRequestMetrics(builder *catalys
 		rb := builder.accountResource()
 		rb.recordDouble("catalyst_center.api.request.duration", "Duration of Catalyst Center API requests.", "s", stat.Duration.Seconds(), attrs)
 		if stat.Outcome != "success" {
-			rb.recordInt("catalyst_center.api.request.errors", "Catalyst Center API request errors.", "{error}", 1, attrs)
+			rb.recordSum("catalyst_center.api.request.errors", "Catalyst Center API request errors.", "{error}", 1, attrs)
 		}
 		if stat.RateLimited {
-			rb.recordInt("catalyst_center.api.rate_limited", "Catalyst Center API requests that were rate limited.", "{request}", 1, attrs)
+			rb.recordSum("catalyst_center.api.rate_limited", "Catalyst Center API requests that were rate limited.", "{request}", 1, attrs)
 		}
 	}
 }
@@ -417,9 +427,13 @@ type catalystCenterMetricsBuilder struct {
 	devices   map[string]catalystcenter.Device
 	counts    map[string]*catalystCenterCount
 	endpoint  string
+	counters  *counterStore
 }
 
-func newCatalystCenterMetricsBuilder(now time.Time, endpoint string) *catalystCenterMetricsBuilder {
+func newCatalystCenterMetricsBuilder(now time.Time, endpoint string, counters *counterStore) *catalystCenterMetricsBuilder {
+	if counters == nil {
+		counters = newCounterStore()
+	}
 	ts := pcommon.NewTimestampFromTime(now)
 	return &catalystCenterMetricsBuilder{
 		metrics:   pmetric.NewMetrics(),
@@ -429,6 +443,7 @@ func newCatalystCenterMetricsBuilder(now time.Time, endpoint string) *catalystCe
 		devices:   map[string]catalystcenter.Device{},
 		counts:    map[string]*catalystCenterCount{},
 		endpoint:  endpoint,
+		counters:  counters,
 	}
 }
 
@@ -439,7 +454,7 @@ func (b *catalystCenterMetricsBuilder) emit() pmetric.Metrics {
 func (b *catalystCenterMetricsBuilder) accountResource() *resourceMetricsBuilder {
 	rb := b.resource("account")
 	attrs := rb.resource.Attributes()
-	putStr(attrs, "host.id", "catalyst_center")
+	putStr(attrs, "host.id", "catalyst_center:"+firstNonEmpty(b.endpoint, "default"))
 	putStr(attrs, "host.name", "Cisco Catalyst Center")
 	putStr(attrs, "os.name", "Catalyst Center")
 	putStr(attrs, "catalyst_center.endpoint", b.endpoint)
@@ -541,6 +556,7 @@ func (b *catalystCenterMetricsBuilder) resource(key string) *resourceMetricsBuil
 		metrics:  map[string]pmetric.Metric{},
 		now:      b.now,
 		start:    b.start,
+		counters: b.counters,
 	}
 	b.resources[key] = rb
 	return rb

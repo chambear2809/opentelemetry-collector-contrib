@@ -296,7 +296,7 @@ func TestISEMetricObjectAttrsExcludeHighCardinalityIdentityFields(t *testing.T) 
 }
 
 func TestISEEventEvidenceMetricsUseControllerResource(t *testing.T) {
-	builder := newISEMetricsBuilder(time.Unix(1, 0), "https://ise.example")
+	builder := newISEMetricsBuilder(time.Unix(1, 0), "https://ise.example", newCounterStore())
 	builder.recordObject(iseEndpointSpec{group: "sessions", operation: "mnt.session.auth_list", objectType: "auth_session"}, iseinternal.Object{
 		"auditSessionId": "audit-1",
 		"userName":       "alice",

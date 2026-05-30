@@ -7,8 +7,10 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"sort"
@@ -23,6 +25,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver"
+	"go.opentelemetry.io/collector/receiver/receiverhelper"
 	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/fmc"
@@ -30,11 +33,67 @@ import (
 
 const fmcScopeName = "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/fmc"
 
+// fmcInstanceID returns a stable identifier for the configured FMC deployment so
+// that the global resource's host.id does not collide with other FMC receivers
+// in the same Splunk O11y tenant.
+func fmcInstanceID(conf *Config) string {
+	if conf == nil {
+		return ""
+	}
+	for _, c := range conf.FMC.Controllers {
+		if id := firstNonEmpty(c.Name, c.Endpoint); id != "" {
+			return id
+		}
+	}
+	return ""
+}
+
+// classifyFMCError buckets a client error returned by FMC into a small enum
+// suitable for use as a metric attribute. Free-form err.Error() text would blow
+// up Splunk O11y MTS cardinality with endpoint paths and request bodies.
+func classifyFMCError(err error) string {
+	if err == nil {
+		return "none"
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return "timeout"
+	}
+	var apiErr *fmc.APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return "auth"
+		case http.StatusTooManyRequests:
+			return "rate_limited"
+		case http.StatusRequestTimeout, http.StatusGatewayTimeout:
+			return "timeout"
+		default:
+			if apiErr.StatusCode >= 500 {
+				return "transport"
+			}
+			return "other"
+		}
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		if netErr.Timeout() {
+			return "timeout"
+		}
+		return "transport"
+	}
+	if strings.Contains(err.Error(), "decode") {
+		return "decode"
+	}
+	return "other"
+}
+
 type fmcMetricsReceiver struct {
 	settings receiver.Settings
 	config   *Config
 	consumer consumer.Metrics
 	clients  []*fmc.Client
+	counters *counterStore
+	obs      *receiverhelper.ObsReport
 
 	startMu sync.Mutex
 	cancel  context.CancelFunc
@@ -49,6 +108,7 @@ type fmcLogsReceiver struct {
 	config   *Config
 	consumer consumer.Logs
 	clients  []*fmc.Client
+	obs      *receiverhelper.ObsReport
 
 	startMu sync.Mutex
 	cancel  context.CancelFunc
@@ -63,6 +123,7 @@ type fmcEStreamerLogsReceiver struct {
 	config   *Config
 	consumer consumer.Logs
 	clients  []*fmc.EStreamerClient
+	obs      *receiverhelper.ObsReport
 
 	startMu sync.Mutex
 	cancel  context.CancelFunc
@@ -109,6 +170,8 @@ func newFMCMetricsReceiver(set receiver.Settings, conf *Config, consumer consume
 		config:   conf,
 		consumer: consumer,
 		clients:  clients,
+		counters: newCounterStore(),
+		obs:      newPlatformObsReport(set, "http"),
 		done:     make(chan struct{}),
 	}
 	for _, client := range clients {
@@ -127,6 +190,7 @@ func newFMCLogsReceiver(set receiver.Settings, conf *Config, consumer consumer.L
 		config:   conf,
 		consumer: consumer,
 		clients:  clients,
+		obs:      newPlatformObsReport(set, "http"),
 		done:     make(chan struct{}),
 		seen:     map[string]time.Time{},
 	}, nil
@@ -142,6 +206,7 @@ func newFMCEStreamerLogsReceiver(set receiver.Settings, conf *Config, consumer c
 		config:   conf,
 		consumer: consumer,
 		clients:  clients,
+		obs:      newPlatformObsReport(set, "tcp"),
 		done:     make(chan struct{}),
 	}, nil
 }
@@ -266,23 +331,28 @@ func (r *fmcMetricsReceiver) run(ctx context.Context) {
 func (r *fmcMetricsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
+	obsCtx := startMetricsOp(r.obs, ctx)
 	md, err := r.scrape(scrapeCtx)
 	if err != nil {
 		r.settings.Logger.Error("FMC scrape failed", zap.Error(err))
+		endMetricsOp(r.obs, obsCtx, md, err)
 		return
 	}
 	if md.MetricCount() == 0 {
+		endMetricsOp(r.obs, obsCtx, md, nil)
 		return
 	}
-	if err := r.consumer.ConsumeMetrics(scrapeCtx, md); err != nil {
-		r.settings.Logger.Error("FMC metrics consumer failed", zap.Error(err))
+	consumeErr := r.consumer.ConsumeMetrics(ctx, md)
+	endMetricsOp(r.obs, obsCtx, md, consumeErr)
+	if consumeErr != nil {
+		r.settings.Logger.Error("FMC metrics consumer failed", zap.Error(consumeErr))
 	}
 }
 
 func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
 	r.resetRequestStats()
 	now := time.Now()
-	builder := newFMCMetricsBuilder(now)
+	builder := newFMCMetricsBuilder(now, fmcInstanceID(r.config), r.counters)
 	selector := newDeviceSelectionMatcher(r.config.DeviceSelection)
 	partial := false
 
@@ -292,9 +362,9 @@ func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 		domainUUID, err := client.DomainUUID(ctx)
 		if err != nil {
 			partial = true
-			controllerRB.recordInt("fmc.api.endpoint.error", "FMC endpoint scrape error.", "{error}", 1, map[string]string{
+			controllerRB.recordSum("fmc.api.endpoint.error", "FMC endpoint scrape error.", "{error}", 1, map[string]string{
 				"fmc.api.operation": "auth.domain_uuid",
-				"fmc.error":         err.Error(),
+				"fmc.error.kind":    classifyFMCError(err),
 			})
 			continue
 		}
@@ -562,9 +632,9 @@ func (r *fmcLogsReceiver) fetchEndpoint(ctx context.Context, client *fmc.Client,
 }
 
 func (r *fmcMetricsReceiver) recordEndpointError(builder *fmcMetricsBuilder, client *fmc.Client, domainUUID, operation string, err error) {
-	builder.controllerResource(client.ControllerName(), client.Endpoint(), domainUUID).recordInt("fmc.api.endpoint.error", "FMC endpoint scrape error.", "{error}", 1, map[string]string{
+	builder.controllerResource(client.ControllerName(), client.Endpoint(), domainUUID).recordSum("fmc.api.endpoint.error", "FMC endpoint scrape error.", "{error}", 1, map[string]string{
 		"fmc.api.operation": operation,
-		"fmc.error":         err.Error(),
+		"fmc.error.kind":    classifyFMCError(err),
 	})
 	r.settings.Logger.Warn("FMC endpoint failed", zap.String("controller", client.ControllerName()), zap.String("operation", operation), zap.Error(err))
 }
@@ -599,10 +669,10 @@ func (r *fmcMetricsReceiver) recordAPIRequestMetrics(builder *fmcMetricsBuilder)
 		rb := builder.controllerResource(stat.Controller, "", "")
 		rb.recordDouble("fmc.api.request.duration", "Duration of FMC REST API requests.", "s", stat.Duration.Seconds(), attrs)
 		if stat.Outcome != "success" {
-			rb.recordInt("fmc.api.request.errors", "FMC REST API request errors.", "{error}", 1, attrs)
+			rb.recordSum("fmc.api.request.errors", "FMC REST API request errors.", "{error}", 1, attrs)
 		}
 		if stat.RateLimited {
-			rb.recordInt("fmc.api.rate_limited", "FMC REST API requests that were rate limited.", "{request}", 1, attrs)
+			rb.recordSum("fmc.api.rate_limited", "FMC REST API requests that were rate limited.", "{request}", 1, attrs)
 		}
 	}
 }
@@ -661,16 +731,21 @@ func (r *fmcLogsReceiver) run(ctx context.Context) {
 func (r *fmcLogsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
+	obsCtx := startLogsOp(r.obs, ctx)
 	ld, err := r.scrape(scrapeCtx)
 	if err != nil {
 		r.settings.Logger.Error("FMC log scrape failed", zap.Error(err))
+		endLogsOp(r.obs, obsCtx, ld, err)
 		return
 	}
 	if ld.LogRecordCount() == 0 {
+		endLogsOp(r.obs, obsCtx, ld, nil)
 		return
 	}
-	if err := r.consumer.ConsumeLogs(scrapeCtx, ld); err != nil {
-		r.settings.Logger.Error("FMC logs consumer failed", zap.Error(err))
+	consumeErr := r.consumer.ConsumeLogs(ctx, ld)
+	endLogsOp(r.obs, obsCtx, ld, consumeErr)
+	if consumeErr != nil {
+		r.settings.Logger.Error("FMC logs consumer failed", zap.Error(consumeErr))
 	}
 }
 
@@ -789,11 +864,22 @@ func (r *fmcEStreamerLogsReceiver) run(ctx context.Context) {
 	wg.Wait()
 }
 
+// fmcEStreamerBackoffSchedule caps how aggressively eStreamer reconnects after
+// repeated failures so that a wedged consumer or auth error cannot trigger a
+// tight reconnect loop.
+var fmcEStreamerBackoffSchedule = []time.Duration{
+	1 * time.Second,
+	5 * time.Second,
+	15 * time.Second,
+	30 * time.Second,
+}
+
 func (r *fmcEStreamerLogsReceiver) runEStreamerClient(ctx context.Context, client *fmc.EStreamerClient) {
 	reconnect := r.config.FMC.EStreamer.ReconnectInterval
 	if reconnect <= 0 {
 		reconnect = defaultFMCConfig().EStreamer.ReconnectInterval
 	}
+	failures := 0
 	for {
 		err := client.Run(ctx, func(event fmc.EStreamerEvent) error {
 			if !fmcGroupEnabled(r.config.FMC, "security_events") {
@@ -804,13 +890,28 @@ func (r *fmcEStreamerLogsReceiver) runEStreamerClient(ctx context.Context, clien
 			if ld.LogRecordCount() == 0 {
 				return nil
 			}
-			return r.consumer.ConsumeLogs(ctx, ld)
+			obsCtx := startLogsOp(r.obs, ctx)
+			consumeErr := r.consumer.ConsumeLogs(ctx, ld)
+			endLogsOp(r.obs, obsCtx, ld, consumeErr)
+			return consumeErr
 		})
 		if ctx.Err() != nil {
 			return
 		}
-		r.settings.Logger.Warn("FMC eStreamer disconnected", zap.String("controller", client.ControllerName()), zap.Error(err))
-		timer := time.NewTimer(reconnect)
+		failures++
+		r.settings.Logger.Warn("FMC eStreamer disconnected",
+			zap.String("controller", client.ControllerName()),
+			zap.Int("consecutive_failures", failures),
+			zap.Error(err))
+		wait := reconnect
+		if failures-1 < len(fmcEStreamerBackoffSchedule) {
+			if backoff := fmcEStreamerBackoffSchedule[failures-1]; backoff > wait {
+				wait = backoff
+			}
+		} else if backoff := fmcEStreamerBackoffSchedule[len(fmcEStreamerBackoffSchedule)-1]; backoff > wait {
+			wait = backoff
+		}
+		timer := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
@@ -824,8 +925,10 @@ type fmcMetricsBuilder struct {
 	metrics   pmetric.Metrics
 	now       pcommon.Timestamp
 	start     pcommon.Timestamp
+	instance  string
 	resources map[string]*resourceMetricsBuilder
 	counts    map[string]*fmcCount
+	counters  *counterStore
 }
 
 type fmcCount struct {
@@ -833,14 +936,19 @@ type fmcCount struct {
 	attrs map[string]string
 }
 
-func newFMCMetricsBuilder(now time.Time) *fmcMetricsBuilder {
+func newFMCMetricsBuilder(now time.Time, instance string, counters *counterStore) *fmcMetricsBuilder {
+	if counters == nil {
+		counters = newCounterStore()
+	}
 	ts := pcommon.NewTimestampFromTime(now)
 	return &fmcMetricsBuilder{
 		metrics:   pmetric.NewMetrics(),
 		now:       ts,
 		start:     ts,
+		instance:  instance,
 		resources: map[string]*resourceMetricsBuilder{},
 		counts:    map[string]*fmcCount{},
+		counters:  counters,
 	}
 }
 
@@ -851,7 +959,7 @@ func (b *fmcMetricsBuilder) emit() pmetric.Metrics {
 func (b *fmcMetricsBuilder) globalResource() *resourceMetricsBuilder {
 	rb := b.resource("fmc")
 	attrs := rb.resource.Attributes()
-	putStr(attrs, "host.id", "fmc")
+	putStr(attrs, "host.id", "fmc:"+firstNonEmpty(b.instance, "default"))
 	putStr(attrs, "host.name", "Cisco Secure Firewall Management Center")
 	putStr(attrs, "hw.type", "network")
 	putStr(attrs, "os.name", "Cisco Secure Firewall Management Center")
@@ -911,6 +1019,7 @@ func (b *fmcMetricsBuilder) resource(key string) *resourceMetricsBuilder {
 		metrics:  map[string]pmetric.Metric{},
 		now:      b.now,
 		start:    b.start,
+		counters: b.counters,
 	}
 	b.resources[key] = rb
 	return rb

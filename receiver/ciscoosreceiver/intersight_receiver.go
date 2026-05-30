@@ -20,6 +20,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver"
+	"go.opentelemetry.io/collector/receiver/receiverhelper"
 	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/intersight"
@@ -32,6 +33,8 @@ type intersightMetricsReceiver struct {
 	config   *Config
 	consumer consumer.Metrics
 	client   *intersight.Client
+	counters *counterStore
+	obs      *receiverhelper.ObsReport
 
 	startMu sync.Mutex
 	cancel  context.CancelFunc
@@ -46,6 +49,7 @@ type intersightLogsReceiver struct {
 	config   *Config
 	consumer consumer.Logs
 	client   *intersight.Client
+	obs      *receiverhelper.ObsReport
 
 	startMu sync.Mutex
 	cancel  context.CancelFunc
@@ -87,6 +91,8 @@ func newIntersightMetricsReceiver(set receiver.Settings, conf *Config, consumer 
 		config:   conf,
 		consumer: consumer,
 		client:   client,
+		counters: newCounterStore(),
+		obs:      newPlatformObsReport(set, "http"),
 		done:     make(chan struct{}),
 	}
 	client.OnRequest = r.recordRequest
@@ -103,6 +109,7 @@ func newIntersightLogsReceiver(set receiver.Settings, conf *Config, consumer con
 		config:   conf,
 		consumer: consumer,
 		client:   client,
+		obs:      newPlatformObsReport(set, "http"),
 		done:     make(chan struct{}),
 		seen:     map[string]time.Time{},
 	}, nil
@@ -171,23 +178,28 @@ func (r *intersightMetricsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 
+	obsCtx := startMetricsOp(r.obs, ctx)
 	md, err := r.scrape(scrapeCtx)
 	if err != nil {
 		r.settings.Logger.Error("Intersight scrape failed", zap.Error(err))
+		endMetricsOp(r.obs, obsCtx, md, err)
 		return
 	}
 	if md.MetricCount() == 0 {
+		endMetricsOp(r.obs, obsCtx, md, nil)
 		return
 	}
-	if err := r.consumer.ConsumeMetrics(scrapeCtx, md); err != nil {
-		r.settings.Logger.Error("Intersight metrics consumer failed", zap.Error(err))
+	consumeErr := r.consumer.ConsumeMetrics(ctx, md)
+	endMetricsOp(r.obs, obsCtx, md, consumeErr)
+	if consumeErr != nil {
+		r.settings.Logger.Error("Intersight metrics consumer failed", zap.Error(consumeErr))
 	}
 }
 
 func (r *intersightMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
 	r.resetRequestStats()
 	now := time.Now()
-	builder := newIntersightMetricsBuilder(now, r.config.Intersight.Endpoint)
+	builder := newIntersightMetricsBuilder(now, r.config.Intersight.Endpoint, r.counters)
 	selector := newDeviceSelectionMatcher(r.config.DeviceSelection)
 	partial := false
 
@@ -295,10 +307,10 @@ func (r *intersightMetricsReceiver) recordAPIRequestMetrics(builder *intersightM
 		rb := builder.accountResource()
 		rb.recordDouble("intersight.api.request.duration", "Duration of Intersight API requests.", "s", stat.Duration.Seconds(), attrs)
 		if stat.Outcome != "success" {
-			rb.recordInt("intersight.api.request.errors", "Intersight API request errors.", "{error}", 1, attrs)
+			rb.recordSum("intersight.api.request.errors", "Intersight API request errors.", "{error}", 1, attrs)
 		}
 		if stat.RateLimited {
-			rb.recordInt("intersight.api.rate_limited", "Intersight API requests that were rate limited.", "{request}", 1, attrs)
+			rb.recordSum("intersight.api.rate_limited", "Intersight API requests that were rate limited.", "{request}", 1, attrs)
 		}
 	}
 }
@@ -352,16 +364,21 @@ func (r *intersightLogsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 
+	obsCtx := startLogsOp(r.obs, ctx)
 	ld, err := r.scrape(scrapeCtx)
 	if err != nil {
 		r.settings.Logger.Error("Intersight log scrape failed", zap.Error(err))
+		endLogsOp(r.obs, obsCtx, ld, err)
 		return
 	}
 	if ld.LogRecordCount() == 0 {
+		endLogsOp(r.obs, obsCtx, ld, nil)
 		return
 	}
-	if err := r.consumer.ConsumeLogs(scrapeCtx, ld); err != nil {
-		r.settings.Logger.Error("Intersight logs consumer failed", zap.Error(err))
+	consumeErr := r.consumer.ConsumeLogs(ctx, ld)
+	endLogsOp(r.obs, obsCtx, ld, consumeErr)
+	if consumeErr != nil {
+		r.settings.Logger.Error("Intersight logs consumer failed", zap.Error(consumeErr))
 	}
 }
 
@@ -431,6 +448,7 @@ type intersightMetricsBuilder struct {
 	resources map[string]*resourceMetricsBuilder
 	counts    map[string]*intersightCount
 	endpoint  string
+	counters  *counterStore
 }
 
 type intersightCount struct {
@@ -438,7 +456,10 @@ type intersightCount struct {
 	attrs map[string]string
 }
 
-func newIntersightMetricsBuilder(now time.Time, endpoint string) *intersightMetricsBuilder {
+func newIntersightMetricsBuilder(now time.Time, endpoint string, counters *counterStore) *intersightMetricsBuilder {
+	if counters == nil {
+		counters = newCounterStore()
+	}
 	ts := pcommon.NewTimestampFromTime(now)
 	return &intersightMetricsBuilder{
 		metrics:   pmetric.NewMetrics(),
@@ -447,6 +468,7 @@ func newIntersightMetricsBuilder(now time.Time, endpoint string) *intersightMetr
 		resources: map[string]*resourceMetricsBuilder{},
 		counts:    map[string]*intersightCount{},
 		endpoint:  endpoint,
+		counters:  counters,
 	}
 }
 
@@ -457,7 +479,7 @@ func (b *intersightMetricsBuilder) emit() pmetric.Metrics {
 func (b *intersightMetricsBuilder) accountResource() *resourceMetricsBuilder {
 	rb := b.resource("account")
 	attrs := rb.resource.Attributes()
-	putStr(attrs, "host.id", "intersight")
+	putStr(attrs, "host.id", "intersight:"+firstNonEmpty(b.endpoint, "default"))
 	putStr(attrs, "host.name", "Cisco Intersight")
 	putStr(attrs, "os.name", "Intersight")
 	putStr(attrs, "intersight.endpoint", b.endpoint)
@@ -495,6 +517,7 @@ func (b *intersightMetricsBuilder) resource(key string) *resourceMetricsBuilder 
 		metrics:  map[string]pmetric.Metric{},
 		now:      b.now,
 		start:    b.start,
+		counters: b.counters,
 	}
 	b.resources[key] = rb
 	return rb

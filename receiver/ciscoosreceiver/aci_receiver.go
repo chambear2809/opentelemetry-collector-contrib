@@ -5,7 +5,10 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
+	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
@@ -19,10 +22,50 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver"
+	"go.opentelemetry.io/collector/receiver/receiverhelper"
 	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/aci"
 )
+
+// classifyACIError buckets a client error returned by the APIC into a small
+// enum suitable for use as a metric attribute. Free-form err.Error() text would
+// blow up Splunk O11y MTS cardinality with endpoint paths and request bodies.
+func classifyACIError(err error) string {
+	if err == nil {
+		return "none"
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return "timeout"
+	}
+	var apiErr *aci.APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return "auth"
+		case http.StatusTooManyRequests:
+			return "rate_limited"
+		case http.StatusRequestTimeout, http.StatusGatewayTimeout:
+			return "timeout"
+		default:
+			if apiErr.StatusCode >= 500 {
+				return "transport"
+			}
+			return "other"
+		}
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		if netErr.Timeout() {
+			return "timeout"
+		}
+		return "transport"
+	}
+	if strings.Contains(err.Error(), "decode") {
+		return "decode"
+	}
+	return "other"
+}
 
 const aciScopeName = "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/aci"
 
@@ -31,6 +74,8 @@ type aciMetricsReceiver struct {
 	config   *Config
 	consumer consumer.Metrics
 	clients  []*aci.Client
+	counters *counterStore
+	obs      *receiverhelper.ObsReport
 
 	startMu sync.Mutex
 	cancel  context.CancelFunc
@@ -45,6 +90,7 @@ type aciLogsReceiver struct {
 	config   *Config
 	consumer consumer.Logs
 	clients  []*aci.Client
+	obs      *receiverhelper.ObsReport
 
 	startMu sync.Mutex
 	cancel  context.CancelFunc
@@ -62,6 +108,21 @@ type aciEndpoint struct {
 	query      func(*Config, time.Time, string) url.Values
 }
 
+// aciInstanceID returns a stable identifier for the configured ACI deployment so
+// that the global resource's host.id does not collide with other ACI receivers
+// in the same Splunk O11y tenant.
+func aciInstanceID(conf *Config) string {
+	if conf == nil {
+		return ""
+	}
+	for _, c := range conf.ACI.Controllers {
+		if id := firstNonEmpty(c.Name, c.Endpoint); id != "" {
+			return id
+		}
+	}
+	return ""
+}
+
 func newACIMetricsReceiver(set receiver.Settings, conf *Config, consumer consumer.Metrics) (*aciMetricsReceiver, error) {
 	clients, err := newACIClients(conf)
 	if err != nil {
@@ -72,6 +133,8 @@ func newACIMetricsReceiver(set receiver.Settings, conf *Config, consumer consume
 		config:   conf,
 		consumer: consumer,
 		clients:  clients,
+		counters: newCounterStore(),
+		obs:      newPlatformObsReport(set, "http"),
 		done:     make(chan struct{}),
 	}
 	for _, client := range clients {
@@ -90,6 +153,7 @@ func newACILogsReceiver(set receiver.Settings, conf *Config, consumer consumer.L
 		config:   conf,
 		consumer: consumer,
 		clients:  clients,
+		obs:      newPlatformObsReport(set, "http"),
 		done:     make(chan struct{}),
 		seen:     map[string]time.Time{},
 	}, nil
@@ -173,23 +237,28 @@ func (r *aciMetricsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 
+	obsCtx := startMetricsOp(r.obs, ctx)
 	md, err := r.scrape(scrapeCtx)
 	if err != nil {
 		r.settings.Logger.Error("ACI scrape failed", zap.Error(err))
+		endMetricsOp(r.obs, obsCtx, md, err)
 		return
 	}
 	if md.MetricCount() == 0 {
+		endMetricsOp(r.obs, obsCtx, md, nil)
 		return
 	}
-	if err := r.consumer.ConsumeMetrics(scrapeCtx, md); err != nil {
-		r.settings.Logger.Error("ACI metrics consumer failed", zap.Error(err))
+	consumeErr := r.consumer.ConsumeMetrics(ctx, md)
+	endMetricsOp(r.obs, obsCtx, md, consumeErr)
+	if consumeErr != nil {
+		r.settings.Logger.Error("ACI metrics consumer failed", zap.Error(consumeErr))
 	}
 }
 
 func (r *aciMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
 	r.resetRequestStats()
 	now := time.Now()
-	builder := newACIMetricsBuilder(now)
+	builder := newACIMetricsBuilder(now, aciInstanceID(r.config), r.counters)
 	selector := newDeviceSelectionMatcher(r.config.DeviceSelection)
 	partial := false
 
@@ -206,10 +275,10 @@ func (r *aciMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 				}
 				partial = true
 				r.settings.Logger.Warn("ACI endpoint failed", zap.String("controller", client.ControllerName()), zap.String("operation", endpoint.operation), zap.Error(err))
-				builder.controllerResource(client.ControllerName(), client.Endpoint()).recordInt("aci.api.endpoint.error", "APIC endpoint scrape error.", "{error}", 1, map[string]string{
+				builder.controllerResource(client.ControllerName(), client.Endpoint()).recordSum("aci.api.endpoint.error", "APIC endpoint scrape error.", "{error}", 1, map[string]string{
 					"aci.api.operation": endpoint.operation,
 					"aci.class":         endpoint.className,
-					"aci.error":         err.Error(),
+					"aci.error.kind":    classifyACIError(err),
 				})
 				continue
 			}
@@ -258,10 +327,10 @@ func (r *aciMetricsReceiver) recordAPIRequestMetrics(builder *aciMetricsBuilder)
 		rb := builder.controllerResource(stat.Controller, "")
 		rb.recordDouble("aci.api.request.duration", "Duration of APIC API requests.", "s", stat.Duration.Seconds(), attrs)
 		if stat.Outcome != "success" {
-			rb.recordInt("aci.api.request.errors", "APIC API request errors.", "{error}", 1, attrs)
+			rb.recordSum("aci.api.request.errors", "APIC API request errors.", "{error}", 1, attrs)
 		}
 		if stat.RateLimited {
-			rb.recordInt("aci.api.rate_limited", "APIC API requests that were rate limited.", "{request}", 1, attrs)
+			rb.recordSum("aci.api.rate_limited", "APIC API requests that were rate limited.", "{request}", 1, attrs)
 		}
 	}
 }
@@ -321,16 +390,21 @@ func (r *aciLogsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 
+	obsCtx := startLogsOp(r.obs, ctx)
 	ld, err := r.scrape(scrapeCtx)
 	if err != nil {
 		r.settings.Logger.Error("ACI log scrape failed", zap.Error(err))
+		endLogsOp(r.obs, obsCtx, ld, err)
 		return
 	}
 	if ld.LogRecordCount() == 0 {
+		endLogsOp(r.obs, obsCtx, ld, nil)
 		return
 	}
-	if err := r.consumer.ConsumeLogs(scrapeCtx, ld); err != nil {
-		r.settings.Logger.Error("ACI logs consumer failed", zap.Error(err))
+	consumeErr := r.consumer.ConsumeLogs(ctx, ld)
+	endLogsOp(r.obs, obsCtx, ld, consumeErr)
+	if consumeErr != nil {
+		r.settings.Logger.Error("ACI logs consumer failed", zap.Error(consumeErr))
 	}
 }
 
@@ -369,7 +443,7 @@ func (r *aciLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 func (r *aciLogsReceiver) seenBefore(controller string, endpoint aciEndpoint, obj aci.Object, now time.Time) bool {
 	key := controller + ":" + endpoint.operation + ":" + aci.StableID(obj)
 	if key == controller+":"+endpoint.operation+":" {
-		key = controller + ":" + endpoint.operation + ":" + fmt.Sprint(obj)
+		key = controller + ":" + endpoint.operation + ":" + aci.FallbackKey(obj)
 	}
 	r.seenMu.Lock()
 	defer r.seenMu.Unlock()
@@ -379,6 +453,10 @@ func (r *aciLogsReceiver) seenBefore(controller string, endpoint aciEndpoint, ob
 	r.seen[key] = now
 	return false
 }
+
+// aciSeenMaxEntries caps the dedup map so a busy fabric with thousands of
+// churning faults cannot grow it without bound between TTL expiries.
+const aciSeenMaxEntries = 50000
 
 func (r *aciLogsReceiver) expireSeen(now time.Time) {
 	ttl := r.config.ACI.EventLookback
@@ -393,14 +471,36 @@ func (r *aciLogsReceiver) expireSeen(now time.Time) {
 			delete(r.seen, key)
 		}
 	}
+	if len(r.seen) <= aciSeenMaxEntries {
+		return
+	}
+	// Bound the map by evicting oldest entries until size is back within
+	// limits. Sorting once is cheap relative to the overflow case.
+	type entry struct {
+		key string
+		ts  time.Time
+	}
+	entries := make([]entry, 0, len(r.seen))
+	for k, t := range r.seen {
+		entries = append(entries, entry{k, t})
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].ts.Before(entries[j].ts) })
+	for _, e := range entries {
+		if len(r.seen) <= aciSeenMaxEntries {
+			break
+		}
+		delete(r.seen, e.key)
+	}
 }
 
 type aciMetricsBuilder struct {
 	metrics   pmetric.Metrics
 	now       pcommon.Timestamp
 	start     pcommon.Timestamp
+	instance  string
 	resources map[string]*resourceMetricsBuilder
 	counts    map[string]*aciCount
+	counters  *counterStore
 }
 
 type aciCount struct {
@@ -408,14 +508,19 @@ type aciCount struct {
 	attrs map[string]string
 }
 
-func newACIMetricsBuilder(now time.Time) *aciMetricsBuilder {
+func newACIMetricsBuilder(now time.Time, instance string, counters *counterStore) *aciMetricsBuilder {
+	if counters == nil {
+		counters = newCounterStore()
+	}
 	ts := pcommon.NewTimestampFromTime(now)
 	return &aciMetricsBuilder{
 		metrics:   pmetric.NewMetrics(),
 		now:       ts,
 		start:     ts,
+		instance:  instance,
 		resources: map[string]*resourceMetricsBuilder{},
 		counts:    map[string]*aciCount{},
+		counters:  counters,
 	}
 }
 
@@ -426,7 +531,7 @@ func (b *aciMetricsBuilder) emit() pmetric.Metrics {
 func (b *aciMetricsBuilder) globalResource() *resourceMetricsBuilder {
 	rb := b.resource("aci")
 	attrs := rb.resource.Attributes()
-	putStr(attrs, "host.id", "aci")
+	putStr(attrs, "host.id", "apic:"+firstNonEmpty(b.instance, "default"))
 	putStr(attrs, "host.name", "Cisco ACI")
 	putStr(attrs, "hw.type", "network")
 	putStr(attrs, "os.name", "Cisco ACI")
@@ -490,6 +595,7 @@ func (b *aciMetricsBuilder) resource(key string) *resourceMetricsBuilder {
 		metrics:  map[string]pmetric.Metric{},
 		now:      b.now,
 		start:    b.start,
+		counters: b.counters,
 	}
 	b.resources[key] = rb
 	return rb
