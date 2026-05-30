@@ -21,6 +21,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver"
+	"go.opentelemetry.io/collector/receiver/receiverhelper"
 	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/nexusdashboard"
@@ -33,6 +34,8 @@ type nexusDashboardMetricsReceiver struct {
 	config   *Config
 	consumer consumer.Metrics
 	client   *nexusdashboard.Client
+	counters *counterStore
+	obs      *receiverhelper.ObsReport
 
 	startMu sync.Mutex
 	cancel  context.CancelFunc
@@ -47,6 +50,7 @@ type nexusDashboardLogsReceiver struct {
 	config   *Config
 	consumer consumer.Logs
 	client   *nexusdashboard.Client
+	obs      *receiverhelper.ObsReport
 
 	startMu sync.Mutex
 	cancel  context.CancelFunc
@@ -83,6 +87,8 @@ func newNexusDashboardMetricsReceiver(set receiver.Settings, conf *Config, consu
 		config:   conf,
 		consumer: consumer,
 		client:   client,
+		counters: newCounterStore(),
+		obs:      newPlatformObsReport(set, "http"),
 		done:     make(chan struct{}),
 	}
 	client.OnRequest = r.recordRequest
@@ -99,6 +105,7 @@ func newNexusDashboardLogsReceiver(set receiver.Settings, conf *Config, consumer
 		config:   conf,
 		consumer: consumer,
 		client:   client,
+		obs:      newPlatformObsReport(set, "http"),
 		done:     make(chan struct{}),
 		seen:     map[string]time.Time{},
 	}, nil
@@ -169,23 +176,28 @@ func (r *nexusDashboardMetricsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 
+	obsCtx := startMetricsOp(r.obs, ctx)
 	md, err := r.scrape(scrapeCtx)
 	if err != nil {
 		r.settings.Logger.Error("Nexus Dashboard scrape failed", zap.Error(err))
+		endMetricsOp(r.obs, obsCtx, md, err)
 		return
 	}
 	if md.MetricCount() == 0 {
+		endMetricsOp(r.obs, obsCtx, md, nil)
 		return
 	}
-	if err := r.consumer.ConsumeMetrics(scrapeCtx, md); err != nil {
-		r.settings.Logger.Error("Nexus Dashboard metrics consumer failed", zap.Error(err))
+	consumeErr := r.consumer.ConsumeMetrics(ctx, md)
+	endMetricsOp(r.obs, obsCtx, md, consumeErr)
+	if consumeErr != nil {
+		r.settings.Logger.Error("Nexus Dashboard metrics consumer failed", zap.Error(consumeErr))
 	}
 }
 
 func (r *nexusDashboardMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
 	r.resetRequestStats()
 	now := time.Now()
-	builder := newNexusDashboardMetricsBuilder(now, r.config.NexusDashboard.Endpoint)
+	builder := newNexusDashboardMetricsBuilder(now, r.config.NexusDashboard.Endpoint, r.counters)
 	selector := newDeviceSelectionMatcher(r.config.DeviceSelection)
 	partial := false
 
@@ -252,10 +264,10 @@ func (r *nexusDashboardMetricsReceiver) recordAPIRequestMetrics(builder *nexusDa
 		rb := builder.controllerResource()
 		rb.recordDouble("nexus_dashboard.api.request.duration", "Duration of Nexus Dashboard API requests.", "s", stat.Duration.Seconds(), attrs)
 		if stat.Outcome != "success" {
-			rb.recordInt("nexus_dashboard.api.request.errors", "Nexus Dashboard API request errors.", "{error}", 1, attrs)
+			rb.recordSum("nexus_dashboard.api.request.errors", "Nexus Dashboard API request errors.", "{error}", 1, attrs)
 		}
 		if stat.RateLimited {
-			rb.recordInt("nexus_dashboard.api.rate_limited", "Nexus Dashboard API requests that were rate limited.", "{request}", 1, attrs)
+			rb.recordSum("nexus_dashboard.api.rate_limited", "Nexus Dashboard API requests that were rate limited.", "{request}", 1, attrs)
 		}
 	}
 }
@@ -309,16 +321,21 @@ func (r *nexusDashboardLogsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 
+	obsCtx := startLogsOp(r.obs, ctx)
 	ld, err := r.scrape(scrapeCtx)
 	if err != nil {
 		r.settings.Logger.Error("Nexus Dashboard log scrape failed", zap.Error(err))
+		endLogsOp(r.obs, obsCtx, ld, err)
 		return
 	}
 	if ld.LogRecordCount() == 0 {
+		endLogsOp(r.obs, obsCtx, ld, nil)
 		return
 	}
-	if err := r.consumer.ConsumeLogs(scrapeCtx, ld); err != nil {
-		r.settings.Logger.Error("Nexus Dashboard logs consumer failed", zap.Error(err))
+	consumeErr := r.consumer.ConsumeLogs(ctx, ld)
+	endLogsOp(r.obs, obsCtx, ld, consumeErr)
+	if consumeErr != nil {
+		r.settings.Logger.Error("Nexus Dashboard logs consumer failed", zap.Error(consumeErr))
 	}
 }
 
@@ -388,6 +405,7 @@ type nexusDashboardMetricsBuilder struct {
 	resources map[string]*resourceMetricsBuilder
 	counts    map[string]*nexusDashboardCount
 	endpoint  string
+	counters  *counterStore
 }
 
 type nexusDashboardCount struct {
@@ -395,7 +413,10 @@ type nexusDashboardCount struct {
 	attrs map[string]string
 }
 
-func newNexusDashboardMetricsBuilder(now time.Time, endpoint string) *nexusDashboardMetricsBuilder {
+func newNexusDashboardMetricsBuilder(now time.Time, endpoint string, counters *counterStore) *nexusDashboardMetricsBuilder {
+	if counters == nil {
+		counters = newCounterStore()
+	}
 	ts := pcommon.NewTimestampFromTime(now)
 	return &nexusDashboardMetricsBuilder{
 		metrics:   pmetric.NewMetrics(),
@@ -404,6 +425,7 @@ func newNexusDashboardMetricsBuilder(now time.Time, endpoint string) *nexusDashb
 		resources: map[string]*resourceMetricsBuilder{},
 		counts:    map[string]*nexusDashboardCount{},
 		endpoint:  endpoint,
+		counters:  counters,
 	}
 }
 
@@ -462,6 +484,7 @@ func (b *nexusDashboardMetricsBuilder) resource(key string) *resourceMetricsBuil
 		metrics:  map[string]pmetric.Metric{},
 		now:      b.now,
 		start:    b.start,
+		counters: b.counters,
 	}
 	b.resources[key] = rb
 	return rb
@@ -611,7 +634,7 @@ func (b *nexusDashboardMetricsBuilder) recordFailedEndpoint(endpoint nexusDashbo
 			return
 		}
 	}
-	b.controllerResource().recordInt("nexus_dashboard.api.endpoint.error", "Nexus Dashboard endpoint scrape error.", "{error}", 1, attrs)
+	b.controllerResource().recordSum("nexus_dashboard.api.endpoint.error", "Nexus Dashboard endpoint scrape error.", "{error}", 1, attrs)
 }
 
 func (b *nexusDashboardMetricsBuilder) addCount(name string, attrs map[string]string) {

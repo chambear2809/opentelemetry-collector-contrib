@@ -84,11 +84,37 @@ type Client struct {
 	pageSize    int
 	spacing     time.Duration
 
-	authMu   sync.Mutex
+	authMu        sync.Mutex
+	loginInflight chan struct{}
+	lastAuthErr   error
+	lastAuthAt    time.Time
+	authFailures  int
+
 	limitMu  sync.Mutex
 	nextSend time.Time
 
 	OnRequest func(RequestStat)
+}
+
+// authBackoffSchedule defines the wait that ensureAuth honors after a failed
+// login. It avoids hammering the SD-WAN Manager and locking out the user
+// account when credentials are wrong.
+var authBackoffSchedule = []time.Duration{
+	1 * time.Second,
+	5 * time.Second,
+	30 * time.Second,
+	5 * time.Minute,
+}
+
+func authBackoffFor(failures int) time.Duration {
+	if failures <= 0 {
+		return 0
+	}
+	idx := failures - 1
+	if idx >= len(authBackoffSchedule) {
+		idx = len(authBackoffSchedule) - 1
+	}
+	return authBackoffSchedule[idx]
 }
 
 // NewClient creates a Catalyst SD-WAN Manager API client.
@@ -230,7 +256,14 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 		}
 		lastErr = err
 		if status == http.StatusUnauthorized || status == http.StatusForbidden {
+			// Drop auth state but do not retry inline — the next scrape is the
+			// next retry boundary, and ensureAuth applies a backoff so a bad
+			// credential cannot lock out the SD-WAN user.
 			c.clearAuth()
+			if ctx.Err() != nil {
+				return nil, nil, ctx.Err()
+			}
+			return nil, nil, err
 		}
 		retryHeader := ""
 		if header != nil {
@@ -307,11 +340,53 @@ func (c *Client) ensureAuth(ctx context.Context) error {
 	case "bearer", "cookie":
 		return nil
 	}
-	c.authMu.Lock()
-	defer c.authMu.Unlock()
-	if c.bearerToken != "" || c.jsessionID != "" {
-		return nil
+	for {
+		c.authMu.Lock()
+		if c.bearerToken != "" || c.jsessionID != "" {
+			c.authMu.Unlock()
+			return nil
+		}
+		if c.authFailures > 0 && time.Since(c.lastAuthAt) < authBackoffFor(c.authFailures) {
+			err := c.lastAuthErr
+			c.authMu.Unlock()
+			if err == nil {
+				err = errors.New("sdwan auth in backoff")
+			}
+			return err
+		}
+		if c.loginInflight != nil {
+			ch := c.loginInflight
+			c.authMu.Unlock()
+			select {
+			case <-ch:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+			continue
+		}
+		ch := make(chan struct{})
+		c.loginInflight = ch
+		c.authMu.Unlock()
+
+		err := c.performLogin(ctx)
+
+		c.authMu.Lock()
+		c.loginInflight = nil
+		if err != nil {
+			c.authFailures++
+			c.lastAuthErr = err
+			c.lastAuthAt = time.Now()
+		} else {
+			c.authFailures = 0
+			c.lastAuthErr = nil
+		}
+		close(ch)
+		c.authMu.Unlock()
+		return err
 	}
+}
+
+func (c *Client) performLogin(ctx context.Context) error {
 	if c.authMode == "jwt" || c.authMode == "auto" {
 		if err := c.loginJWT(ctx); err == nil {
 			return nil

@@ -80,10 +80,35 @@ type Client struct {
 	pageSize   int
 	controller string
 
-	tokenMu sync.Mutex
-	token   string
+	tokenMu       sync.Mutex
+	token         string
+	loginInflight chan struct{}
+	lastAuthErr   error
+	lastAuthAt    time.Time
+	authFailures  int
 
 	OnRequest func(RequestStat)
+}
+
+// authBackoffSchedule defines the wait that ensureToken honors after a failed
+// login. It avoids hammering the APIC and locking out the user account when
+// credentials are wrong.
+var authBackoffSchedule = []time.Duration{
+	1 * time.Second,
+	5 * time.Second,
+	30 * time.Second,
+	5 * time.Minute,
+}
+
+func authBackoffFor(failures int) time.Duration {
+	if failures <= 0 {
+		return 0
+	}
+	idx := failures - 1
+	if idx >= len(authBackoffSchedule) {
+		idx = len(authBackoffSchedule) - 1
+	}
+	return authBackoffSchedule[idx]
 }
 
 // NewClient creates an APIC API client.
@@ -230,7 +255,15 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 		}
 		lastErr = err
 		if status == http.StatusUnauthorized || status == http.StatusForbidden {
+			// Drop the token but do not retry inline — a bad credential would
+			// otherwise loop login → fail → login on every attempt and risk
+			// locking the APIC user account. ensureToken applies a backoff so
+			// the next scrape is the next retry boundary.
 			c.clearToken()
+			if ctx.Err() != nil {
+				return nil, nil, ctx.Err()
+			}
+			return nil, nil, err
 		}
 		retryHeader := ""
 		if header != nil {
@@ -306,11 +339,62 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 }
 
 func (c *Client) ensureToken(ctx context.Context) (string, error) {
-	c.tokenMu.Lock()
-	defer c.tokenMu.Unlock()
-	if c.token != "" {
-		return c.token, nil
+	for {
+		c.tokenMu.Lock()
+		if c.token != "" {
+			tok := c.token
+			c.tokenMu.Unlock()
+			return tok, nil
+		}
+		// If a backoff window is active after a recent failed login, return
+		// the cached error without hitting the wire.
+		if c.authFailures > 0 && time.Since(c.lastAuthAt) < authBackoffFor(c.authFailures) {
+			err := c.lastAuthErr
+			c.tokenMu.Unlock()
+			if err == nil {
+				err = errors.New("apic auth in backoff")
+			}
+			return "", err
+		}
+		// Concurrent callers wait on the inflight channel rather than racing
+		// the login.
+		if c.loginInflight != nil {
+			ch := c.loginInflight
+			c.tokenMu.Unlock()
+			select {
+			case <-ch:
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+			continue
+		}
+		ch := make(chan struct{})
+		c.loginInflight = ch
+		c.tokenMu.Unlock()
+
+		token, err := c.login(ctx)
+
+		c.tokenMu.Lock()
+		c.loginInflight = nil
+		if err != nil {
+			c.authFailures++
+			c.lastAuthErr = err
+			c.lastAuthAt = time.Now()
+		} else {
+			c.token = token
+			c.authFailures = 0
+			c.lastAuthErr = nil
+		}
+		close(ch)
+		c.tokenMu.Unlock()
+		if err != nil {
+			return "", err
+		}
+		return token, nil
 	}
+}
+
+func (c *Client) login(ctx context.Context) (string, error) {
 	loginName := c.username
 	if c.domain != "" && c.domain != "local" {
 		loginName = "apic:" + c.domain + `\` + c.username
@@ -361,7 +445,6 @@ func (c *Client) ensureToken(ctx context.Context) (string, error) {
 		return "", err
 	}
 	c.record(RequestStat{Controller: c.name, Operation: "aaaLogin", Method: http.MethodPost, Path: "/api/aaaLogin.json", Outcome: "success", StatusCode: resp.StatusCode, Duration: duration})
-	c.token = token
 	return token, nil
 }
 
@@ -463,7 +546,7 @@ func cloneValues(values url.Values) url.Values {
 
 func retryableStatus(status int) bool {
 	switch status {
-	case 0, http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout, http.StatusUnauthorized, http.StatusForbidden:
+	case 0, http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 		return true
 	default:
 		return false

@@ -118,7 +118,7 @@ func TestIntersightScrapeAppliesTargetFilters(t *testing.T) {
 }
 
 func TestIntersightTelemetryRespectsSharedDeviceSelection(t *testing.T) {
-	builder := newIntersightMetricsBuilder(time.Now(), "https://intersight.example.com")
+	builder := newIntersightMetricsBuilder(time.Now(), "https://intersight.example.com", newCounterStore())
 	selector := newDeviceSelectionMatcher(DeviceSelectionConfig{
 		Include: DeviceSelectionMatchConfig{HostNames: []string{"ucs-server-1"}},
 		Exclude: DeviceSelectionMatchConfig{DeviceIDs: []string{"excluded-device"}},

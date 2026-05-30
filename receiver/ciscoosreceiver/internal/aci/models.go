@@ -5,6 +5,7 @@ package aci
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -102,6 +103,26 @@ func StableID(obj Object) string {
 	return firstNonEmpty(
 		String(obj, "serial", "nodeId", "id", "dn", "name", "mac", "ip"),
 	)
+}
+
+// FallbackKey returns a deterministic key=value;key=value... representation of
+// an APIC object for use when StableID cannot find an identifier. Go map
+// iteration order is randomized, so fmt.Sprint on a map produces a different
+// string per call and breaks dedup across scrapes.
+func FallbackKey(obj Object) string {
+	if len(obj) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(obj))
+	for k := range obj {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, k+"="+fmt.Sprint(obj[k]))
+	}
+	return strings.Join(parts, ";")
 }
 
 // SearchText returns a lower-case concatenation of common identity fields.

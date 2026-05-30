@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver"
+	"go.opentelemetry.io/collector/receiver/receiverhelper"
 	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/sdwan"
@@ -31,6 +32,8 @@ type sdwanMetricsReceiver struct {
 	config   *Config
 	consumer consumer.Metrics
 	client   *sdwan.Client
+	counters *counterStore
+	obs      *receiverhelper.ObsReport
 
 	startMu sync.Mutex
 	cancel  context.CancelFunc
@@ -45,6 +48,7 @@ type sdwanLogsReceiver struct {
 	config   *Config
 	consumer consumer.Logs
 	client   *sdwan.Client
+	obs      *receiverhelper.ObsReport
 
 	startMu sync.Mutex
 	cancel  context.CancelFunc
@@ -76,6 +80,8 @@ func newSDWANMetricsReceiver(set receiver.Settings, conf *Config, consumer consu
 		config:   conf,
 		consumer: consumer,
 		client:   client,
+		counters: newCounterStore(),
+		obs:      newPlatformObsReport(set, "http"),
 		done:     make(chan struct{}),
 	}
 	client.OnRequest = r.recordRequest
@@ -94,6 +100,7 @@ func newSDWANLogsReceiver(set receiver.Settings, conf *Config, consumer consumer
 		client:   client,
 		done:     make(chan struct{}),
 		seen:     map[string]time.Time{},
+		obs:      newPlatformObsReport(set, "http"),
 	}, nil
 }
 
@@ -163,23 +170,28 @@ func (r *sdwanMetricsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 
+	obsCtx := startMetricsOp(r.obs, ctx)
 	md, err := r.scrape(scrapeCtx)
 	if err != nil {
 		r.settings.Logger.Error("SD-WAN scrape failed", zap.Error(err))
+		endMetricsOp(r.obs, obsCtx, md, err)
 		return
 	}
 	if md.MetricCount() == 0 {
+		endMetricsOp(r.obs, obsCtx, md, nil)
 		return
 	}
-	if err := r.consumer.ConsumeMetrics(scrapeCtx, md); err != nil {
-		r.settings.Logger.Error("SD-WAN metrics consumer failed", zap.Error(err))
+	consumeErr := r.consumer.ConsumeMetrics(ctx, md)
+	endMetricsOp(r.obs, obsCtx, md, consumeErr)
+	if consumeErr != nil {
+		r.settings.Logger.Error("SD-WAN metrics consumer failed", zap.Error(consumeErr))
 	}
 }
 
 func (r *sdwanMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
 	r.resetRequestStats()
 	now := time.Now()
-	builder := newSDWANMetricsBuilder(now, r.config.SDWAN.Endpoint)
+	builder := newSDWANMetricsBuilder(now, r.config.SDWAN.Endpoint, r.counters)
 	selector := newDeviceSelectionMatcher(r.config.DeviceSelection)
 	targets := newSDWANTargetMatcher(r.config.SDWAN.Targets)
 	partial := false
@@ -517,10 +529,10 @@ func (r *sdwanMetricsReceiver) recordAPIRequestMetrics(builder *sdwanMetricsBuil
 		rb := builder.managerResource()
 		rb.recordDouble("sdwan.api.request.duration", "Duration of SD-WAN Manager API requests.", "s", stat.Duration.Seconds(), attrs)
 		if stat.Outcome != "success" {
-			rb.recordInt("sdwan.api.request.errors", "SD-WAN Manager API request errors.", "{error}", 1, attrs)
+			rb.recordSum("sdwan.api.request.errors", "SD-WAN Manager API request errors.", "{error}", 1, attrs)
 		}
 		if stat.RateLimited {
-			rb.recordInt("sdwan.api.rate_limited", "SD-WAN Manager API requests that were rate limited.", "{request}", 1, attrs)
+			rb.recordSum("sdwan.api.rate_limited", "SD-WAN Manager API requests that were rate limited.", "{request}", 1, attrs)
 		}
 	}
 }
@@ -574,16 +586,21 @@ func (r *sdwanLogsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 
+	obsCtx := startLogsOp(r.obs, ctx)
 	ld, err := r.scrape(scrapeCtx)
 	if err != nil {
 		r.settings.Logger.Error("SD-WAN logs scrape failed", zap.Error(err))
+		endLogsOp(r.obs, obsCtx, ld, err)
 		return
 	}
 	if ld.LogRecordCount() == 0 {
+		endLogsOp(r.obs, obsCtx, ld, nil)
 		return
 	}
-	if err := r.consumer.ConsumeLogs(scrapeCtx, ld); err != nil {
-		r.settings.Logger.Error("SD-WAN logs consumer failed", zap.Error(err))
+	consumeErr := r.consumer.ConsumeLogs(ctx, ld)
+	endLogsOp(r.obs, obsCtx, ld, consumeErr)
+	if consumeErr != nil {
+		r.settings.Logger.Error("SD-WAN logs consumer failed", zap.Error(consumeErr))
 	}
 }
 
@@ -660,9 +677,13 @@ type sdwanMetricsBuilder struct {
 	deviceKeys []string
 	counts     map[string]*sdwanCount
 	endpoint   string
+	counters   *counterStore
 }
 
-func newSDWANMetricsBuilder(now time.Time, endpoint string) *sdwanMetricsBuilder {
+func newSDWANMetricsBuilder(now time.Time, endpoint string, counters *counterStore) *sdwanMetricsBuilder {
+	if counters == nil {
+		counters = newCounterStore()
+	}
 	ts := pcommon.NewTimestampFromTime(now)
 	return &sdwanMetricsBuilder{
 		metrics:   pmetric.NewMetrics(),
@@ -672,6 +693,7 @@ func newSDWANMetricsBuilder(now time.Time, endpoint string) *sdwanMetricsBuilder
 		devices:   map[string]sdwan.Object{},
 		counts:    map[string]*sdwanCount{},
 		endpoint:  endpoint,
+		counters:  counters,
 	}
 }
 
@@ -682,7 +704,7 @@ func (b *sdwanMetricsBuilder) emit() pmetric.Metrics {
 func (b *sdwanMetricsBuilder) managerResource() *resourceMetricsBuilder {
 	rb := b.resource("manager")
 	attrs := rb.resource.Attributes()
-	putStr(attrs, "host.id", "sdwan_manager")
+	putStr(attrs, "host.id", "sdwan_manager:"+firstNonEmpty(b.endpoint, "default"))
 	putStr(attrs, "host.name", "Cisco Catalyst SD-WAN Manager")
 	putStr(attrs, "hw.type", "network")
 	putStr(attrs, "os.name", "Catalyst SD-WAN Manager")
@@ -803,6 +825,7 @@ func (b *sdwanMetricsBuilder) resource(key string) *resourceMetricsBuilder {
 		metrics:  map[string]pmetric.Metric{},
 		now:      b.now,
 		start:    b.start,
+		counters: b.counters,
 	}
 	b.resources[key] = rb
 	return rb
@@ -908,7 +931,7 @@ func (b *sdwanLogsBuilder) scope(key string) plog.ScopeLogs {
 	}
 	rl := b.logs.ResourceLogs().AppendEmpty()
 	attrs := rl.Resource().Attributes()
-	putStr(attrs, "host.id", "sdwan_manager")
+	putStr(attrs, "host.id", "sdwan_manager:"+firstNonEmpty(b.endpoint, "default"))
 	putStr(attrs, "host.name", "Cisco Catalyst SD-WAN Manager")
 	putStr(attrs, "hw.type", "network")
 	putStr(attrs, "os.name", "Catalyst SD-WAN Manager")

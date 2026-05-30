@@ -6,8 +6,10 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
@@ -21,12 +23,52 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver"
+	"go.opentelemetry.io/collector/receiver/receiverhelper"
 	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/ise"
 )
 
 const iseScopeName = "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/ise"
+
+// classifyISEError buckets a client error returned by ISE into a small enum
+// suitable for use as a metric attribute. Free-form err.Error() text would blow
+// up Splunk O11y MTS cardinality with endpoint paths and request bodies.
+func classifyISEError(err error) string {
+	if err == nil {
+		return "none"
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return "timeout"
+	}
+	var apiErr *ise.APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return "auth"
+		case http.StatusTooManyRequests:
+			return "rate_limited"
+		case http.StatusRequestTimeout, http.StatusGatewayTimeout:
+			return "timeout"
+		default:
+			if apiErr.StatusCode >= 500 {
+				return "transport"
+			}
+			return "other"
+		}
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		if netErr.Timeout() {
+			return "timeout"
+		}
+		return "transport"
+	}
+	if strings.Contains(err.Error(), "decode") {
+		return "decode"
+	}
+	return "other"
+}
 
 type iseMetricsReceiver struct {
 	settings    receiver.Settings
@@ -36,6 +78,8 @@ type iseMetricsReceiver struct {
 	client      *ise.Client
 	pxGrid      *ise.PxGridClient
 	dataConnect *ise.DataConnectClient
+	counters    *counterStore
+	obs         *receiverhelper.ObsReport
 
 	startMu sync.Mutex
 	cancel  context.CancelFunc
@@ -56,6 +100,7 @@ type iseLogsReceiver struct {
 	client      *ise.Client
 	pxGrid      *ise.PxGridClient
 	dataConnect *ise.DataConnectClient
+	obs         *receiverhelper.ObsReport
 
 	startMu sync.Mutex
 	cancel  context.CancelFunc
@@ -101,6 +146,8 @@ func newISEMetricsReceiver(set receiver.Settings, conf *Config, consumer consume
 		iseConfig: iseCfg,
 		consumer:  consumer,
 		client:    client,
+		counters:  newCounterStore(),
+		obs:       newPlatformObsReport(set, "http"),
 		done:      make(chan struct{}),
 	}
 	client.OnRequest = r.recordRequest
@@ -135,6 +182,7 @@ func newISELogsReceiver(set receiver.Settings, conf *Config, consumer consumer.L
 		iseConfig: iseCfg,
 		consumer:  consumer,
 		client:    client,
+		obs:       newPlatformObsReport(set, "http"),
 		done:      make(chan struct{}),
 		seen:      map[string]time.Time{},
 	}
@@ -283,16 +331,21 @@ func (r *iseMetricsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 
+	obsCtx := startMetricsOp(r.obs, ctx)
 	md, err := r.scrape(scrapeCtx)
 	if err != nil {
 		r.settings.Logger.Error("ISE scrape failed", zap.Error(err))
+		endMetricsOp(r.obs, obsCtx, md, err)
 		return
 	}
 	if md.MetricCount() == 0 {
+		endMetricsOp(r.obs, obsCtx, md, nil)
 		return
 	}
-	if err := r.consumer.ConsumeMetrics(scrapeCtx, md); err != nil {
-		r.settings.Logger.Error("ISE metrics consumer failed", zap.Error(err))
+	consumeErr := r.consumer.ConsumeMetrics(ctx, md)
+	endMetricsOp(r.obs, obsCtx, md, consumeErr)
+	if consumeErr != nil {
+		r.settings.Logger.Error("ISE metrics consumer failed", zap.Error(consumeErr))
 	}
 }
 
@@ -300,7 +353,7 @@ func (r *iseMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 	r.resetRequestStats()
 	r.resetDataConnectQueries()
 	now := time.Now()
-	builder := newISEMetricsBuilder(now, r.iseConfig.Endpoint)
+	builder := newISEMetricsBuilder(now, r.iseConfig.Endpoint, r.counters)
 	selector := newDeviceSelectionMatcher(r.config.DeviceSelection)
 	targets := newISETargetMatcher(r.iseConfig.Targets)
 	partial := false
@@ -518,10 +571,10 @@ func (r *iseMetricsReceiver) recordAPIRequestMetrics(builder *iseMetricsBuilder)
 		}
 		builder.controllerResource().recordDouble("ise.api.request.duration", "Duration of Cisco ISE API requests.", "s", stat.Duration.Seconds(), attrs)
 		if stat.Outcome != "success" {
-			builder.controllerResource().recordInt("ise.api.request.errors", "Cisco ISE API request errors.", "{error}", 1, attrs)
+			builder.controllerResource().recordSum("ise.api.request.errors", "Cisco ISE API request errors.", "{error}", 1, attrs)
 		}
 		if stat.RateLimited {
-			builder.controllerResource().recordInt("ise.api.rate_limited", "Cisco ISE API requests that were rate limited.", "{request}", 1, attrs)
+			builder.controllerResource().recordSum("ise.api.rate_limited", "Cisco ISE API requests that were rate limited.", "{request}", 1, attrs)
 		}
 	}
 }
@@ -550,7 +603,7 @@ func (r *iseMetricsReceiver) recordDataConnectMetrics(builder *iseMetricsBuilder
 		builder.controllerResource().recordDouble("ise.dataconnect.query.duration", "Duration of Cisco ISE Data Connect queries.", "s", query.Duration.Seconds(), attrs)
 		builder.controllerResource().recordInt("ise.dataconnect.query.rows", "Rows returned by Cisco ISE Data Connect queries.", "{row}", int64(query.Rows), attrs)
 		if query.Outcome != "success" {
-			builder.controllerResource().recordInt("ise.dataconnect.query.errors", "Cisco ISE Data Connect query errors.", "{error}", 1, attrs)
+			builder.controllerResource().recordSum("ise.dataconnect.query.errors", "Cisco ISE Data Connect query errors.", "{error}", 1, attrs)
 		}
 	}
 }
@@ -620,16 +673,21 @@ func (r *iseLogsReceiver) run(ctx context.Context) {
 func (r *iseLogsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
+	obsCtx := startLogsOp(r.obs, ctx)
 	ld, err := r.scrape(scrapeCtx)
 	if err != nil {
 		r.settings.Logger.Error("ISE log scrape failed", zap.Error(err))
+		endLogsOp(r.obs, obsCtx, ld, err)
 		return
 	}
 	if ld.LogRecordCount() == 0 {
+		endLogsOp(r.obs, obsCtx, ld, nil)
 		return
 	}
-	if err := r.consumer.ConsumeLogs(scrapeCtx, ld); err != nil {
-		r.settings.Logger.Error("ISE logs consumer failed", zap.Error(err))
+	consumeErr := r.consumer.ConsumeLogs(ctx, ld)
+	endLogsOp(r.obs, obsCtx, ld, consumeErr)
+	if consumeErr != nil {
+		r.settings.Logger.Error("ISE logs consumer failed", zap.Error(consumeErr))
 	}
 }
 
@@ -813,9 +871,13 @@ type iseMetricsBuilder struct {
 	endpoint  string
 	resources map[string]*resourceMetricsBuilder
 	counts    []iseCount
+	counters  *counterStore
 }
 
-func newISEMetricsBuilder(now time.Time, endpoint string) *iseMetricsBuilder {
+func newISEMetricsBuilder(now time.Time, endpoint string, counters *counterStore) *iseMetricsBuilder {
+	if counters == nil {
+		counters = newCounterStore()
+	}
 	ts := pcommon.NewTimestampFromTime(now)
 	return &iseMetricsBuilder{
 		metrics:   pmetric.NewMetrics(),
@@ -823,6 +885,7 @@ func newISEMetricsBuilder(now time.Time, endpoint string) *iseMetricsBuilder {
 		start:     ts,
 		endpoint:  endpoint,
 		resources: map[string]*resourceMetricsBuilder{},
+		counters:  counters,
 	}
 }
 
@@ -884,6 +947,7 @@ func (b *iseMetricsBuilder) resource(key string) *resourceMetricsBuilder {
 		metrics:  map[string]pmetric.Metric{},
 		now:      b.now,
 		start:    b.start,
+		counters: b.counters,
 	}
 	b.resources[key] = rb
 	return rb
@@ -996,9 +1060,9 @@ func (b *iseMetricsBuilder) recordEndpointError(spec iseEndpointSpec, err error)
 		"ise.group":         spec.group,
 		"ise.api.operation": spec.operation,
 		"ise.api.path":      spec.path,
-		"ise.error":         err.Error(),
+		"ise.error.kind":    classifyISEError(err),
 	}
-	b.controllerResource().recordInt("ise.api.endpoint.error", "Cisco ISE endpoint scrape error.", "{error}", 1, attrs)
+	b.controllerResource().recordSum("ise.api.endpoint.error", "Cisco ISE endpoint scrape error.", "{error}", 1, attrs)
 	if ise.IsUnavailable(err) {
 		b.recordServiceUnavailable(spec.group, spec.operation, err)
 	}
@@ -1008,7 +1072,7 @@ func (b *iseMetricsBuilder) recordServiceUnavailable(group, operation string, er
 	b.controllerResource().recordInt("ise.service.unavailable", "Cisco ISE service endpoint unavailable, disabled, unauthorized, or not installed.", "1", 1, map[string]string{
 		"ise.group":         group,
 		"ise.api.operation": operation,
-		"ise.error":         err.Error(),
+		"ise.error.kind":    classifyISEError(err),
 	})
 }
 

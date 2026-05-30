@@ -28,7 +28,7 @@ func newMetricFilteringConsumer(next consumer.Metrics, config *Config) consumer.
 }
 
 func (c *metricFilteringConsumer) Capabilities() consumer.Capabilities {
-	return c.next.Capabilities()
+	return consumer.Capabilities{MutatesData: true}
 }
 
 func (c *metricFilteringConsumer) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error {
