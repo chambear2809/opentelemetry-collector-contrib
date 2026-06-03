@@ -849,6 +849,10 @@ func (r *iseLogsReceiver) markSeen(spec iseEndpointSpec, obj ise.Object, now tim
 	return true
 }
 
+// iseSeenMaxEntries caps the dedup map so a deployment with large config
+// inventories cannot grow it without bound between TTL expiries.
+const iseSeenMaxEntries = 50000
+
 func (r *iseLogsReceiver) pruneSeen(now time.Time) {
 	ttl := r.iseConfig.EventLookback
 	if ttl <= 0 {
@@ -861,6 +865,26 @@ func (r *iseLogsReceiver) pruneSeen(now time.Time) {
 		if ts.Before(cutoff) {
 			delete(r.seen, key)
 		}
+	}
+	if len(r.seen) <= iseSeenMaxEntries {
+		return
+	}
+	// Bound the map by evicting oldest entries until size is back within
+	// limits. Sorting once is cheap relative to the overflow case.
+	type entry struct {
+		key string
+		ts  time.Time
+	}
+	entries := make([]entry, 0, len(r.seen))
+	for k, t := range r.seen {
+		entries = append(entries, entry{k, t})
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].ts.Before(entries[j].ts) })
+	for _, e := range entries {
+		if len(r.seen) <= iseSeenMaxEntries {
+			break
+		}
+		delete(r.seen, e.key)
 	}
 }
 
@@ -915,7 +939,7 @@ func (b *iseMetricsBuilder) objectResource(spec iseEndpointSpec, obj ise.Object)
 	}
 	rb := b.resource(spec.objectType + ":" + id)
 	attrs := rb.resource.Attributes()
-	putStr(attrs, "host.id", "ise:"+id)
+	putStr(attrs, "host.id", "ise:"+spec.objectType+":"+id)
 	putStr(attrs, "host.name", firstNonEmpty(ise.String(obj, "name", "Name", "hostname", "nodeName", "network_device_name"), id))
 	putStr(attrs, "host.ip", ise.String(obj, "ipaddress", "ipAddress", "nas_ip_address", "device_ip_address"))
 	putStr(attrs, "hw.type", "network")

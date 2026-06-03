@@ -787,10 +787,11 @@ func (r *fmcLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 }
 
 func (r *fmcLogsReceiver) seenBefore(controller string, endpoint fmcEndpoint, obj fmc.Object, now time.Time) bool {
-	key := controller + ":" + endpoint.operation + ":" + fmc.StableID(obj)
-	if key == controller+":"+endpoint.operation+":" {
-		key = controller + ":" + endpoint.operation + ":" + fmt.Sprint(obj)
+	id := fmc.StableID(obj)
+	if id == "" {
+		id = fmc.FallbackKey(obj)
 	}
+	key := controller + ":" + endpoint.operation + ":" + id
 	r.seenMu.Lock()
 	defer r.seenMu.Unlock()
 	if _, ok := r.seen[key]; ok {

@@ -243,6 +243,10 @@ func (r *catalyst9800DialInReceiver) recvPoll(ctx context.Context, target Cataly
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
+	if err := stream.Send(&gnmi.SubscribeRequest{Request: &gnmi.SubscribeRequest_Poll{Poll: &gnmi.Poll{}}}); err != nil {
+		return err
+	}
+
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- r.recvLoop(ctx, target, stream)

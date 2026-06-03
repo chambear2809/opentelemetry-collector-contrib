@@ -299,10 +299,12 @@ func (r *intersightMetricsReceiver) requestStats() []intersight.RequestStat {
 func (r *intersightMetricsReceiver) recordAPIRequestMetrics(builder *intersightMetricsBuilder) {
 	for _, stat := range r.requestStats() {
 		attrs := map[string]string{
-			"intersight.api.operation":  stat.Operation,
-			"http.request.method":       stat.Method,
-			"http.response.status_code": strconv.Itoa(stat.StatusCode),
-			"intersight.api.outcome":    stat.Outcome,
+			"intersight.api.operation": stat.Operation,
+			"http.request.method":      stat.Method,
+			"intersight.api.outcome":   stat.Outcome,
+		}
+		if stat.StatusCode > 0 {
+			attrs["http.response.status_code"] = strconv.Itoa(stat.StatusCode)
 		}
 		rb := builder.accountResource()
 		rb.recordDouble("intersight.api.request.duration", "Duration of Intersight API requests.", "s", stat.Duration.Seconds(), attrs)
