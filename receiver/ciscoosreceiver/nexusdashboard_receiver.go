@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -28,6 +29,48 @@ import (
 )
 
 const nexusDashboardScopeName = "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/nexusdashboard"
+
+// classifyNexusDashboardError buckets an error into a small, fixed set of
+// categories so it can be used as a metric attribute without exploding metric
+// cardinality. Raw err.Error() (which embeds the HTTP response body) must never
+// be used as a Sum attribute.
+func classifyNexusDashboardError(err error) string {
+	if err == nil {
+		return "none"
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return "timeout"
+	}
+	var apiErr *nexusdashboard.APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return "auth"
+		case http.StatusNotFound:
+			return "not_found"
+		case http.StatusTooManyRequests:
+			return "rate_limited"
+		case http.StatusRequestTimeout, http.StatusGatewayTimeout:
+			return "timeout"
+		default:
+			if apiErr.StatusCode >= 500 {
+				return "transport"
+			}
+			return "other"
+		}
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		if netErr.Timeout() {
+			return "timeout"
+		}
+		return "transport"
+	}
+	if strings.Contains(err.Error(), "decode") {
+		return "decode"
+	}
+	return "other"
+}
 
 type nexusDashboardMetricsReceiver struct {
 	settings receiver.Settings
@@ -624,7 +667,7 @@ func (b *nexusDashboardMetricsBuilder) recordFailedEndpoint(endpoint nexusDashbo
 		"nexus_dashboard.group":         endpoint.group,
 		"nexus_dashboard.api.operation": endpoint.operation,
 		"nexus_dashboard.api.path":      endpoint.path,
-		"nexus_dashboard.error":         err.Error(),
+		"nexus_dashboard.error":         classifyNexusDashboardError(err),
 	})
 	var apiErr *nexusdashboard.APIError
 	if errors.As(err, &apiErr) {

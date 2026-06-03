@@ -389,8 +389,14 @@ func buildIOSXRSubscribeRequest(sub IOSXRSubscriptionConfig, paths []iosXRPathDe
 			continue
 		}
 		streamMode := sub.StreamMode
-		if streamMode == "" && def.DefaultStreamMode != "" {
+		// A path's catalog DefaultStreamMode is authoritative: event-style paths
+		// (e.g. neighbor/state changes) are catalogued as on_change and must not
+		// be downgraded to timer sampling by the global stream_mode default.
+		if def.DefaultStreamMode != "" {
 			streamMode = def.DefaultStreamMode
+		}
+		if streamMode == "" {
+			streamMode = iosXRStreamModeSample
 		}
 		if streamMode == iosXRStreamModeTargetDefined && !strings.HasPrefix(def.Path, "openconfig-") {
 			streamMode = iosXRStreamModeSample

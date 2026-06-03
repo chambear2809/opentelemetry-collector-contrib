@@ -237,8 +237,18 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 			return body, header, nil
 		}
 		lastErr = err
-		if c.authMode == "username_password" && (status == http.StatusUnauthorized || status == http.StatusForbidden) {
-			c.clearToken()
+		if status == http.StatusUnauthorized || status == http.StatusForbidden {
+			// Do not retry inline. In api_key mode there is no token to refresh,
+			// so retrying just re-sends the same rejected credentials and risks
+			// locking the account; in username_password mode we drop the token
+			// and let the next scrape re-authenticate.
+			if c.authMode == "username_password" {
+				c.clearToken()
+			}
+			if ctx.Err() != nil {
+				return nil, nil, ctx.Err()
+			}
+			return nil, nil, err
 		}
 		retryHeader := ""
 		if header != nil {
@@ -487,7 +497,7 @@ func cloneValues(values url.Values) url.Values {
 
 func retryableStatus(status int) bool {
 	switch status {
-	case 0, http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout, http.StatusUnauthorized, http.StatusForbidden:
+	case 0, http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 		return true
 	default:
 		return false

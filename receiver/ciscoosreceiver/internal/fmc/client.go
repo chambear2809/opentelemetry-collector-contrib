@@ -249,7 +249,14 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 		}
 		lastErr = err
 		if status == http.StatusUnauthorized || status == http.StatusForbidden {
+			// Drop the token but do not retry inline — a bad credential would
+			// otherwise loop login → fail → login on every attempt and risk
+			// locking the FMC user account. The next scrape re-authenticates.
 			c.clearToken()
+			if ctx.Err() != nil {
+				return nil, nil, ctx.Err()
+			}
+			return nil, nil, err
 		}
 		retryHeader := ""
 		if header != nil {
@@ -546,7 +553,7 @@ func firstHeader(header http.Header, keys ...string) string {
 
 func retryableStatus(status int) bool {
 	switch status {
-	case 0, http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout, http.StatusUnauthorized, http.StatusForbidden:
+	case 0, http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 		return true
 	default:
 		return false

@@ -177,6 +177,25 @@ func TestBuildIOSXRSubscribeRequestModesAndGuardrails(t *testing.T) {
 	assert.True(t, subscribe.Subscription[0].SuppressRedundant)
 }
 
+func TestBuildIOSXRSubscribeRequestPathDefaultStreamModeOverrides(t *testing.T) {
+	req := buildIOSXRSubscribeRequest(IOSXRSubscriptionConfig{
+		Mode:           iosXRSubscribeModeStream,
+		StreamMode:     iosXRStreamModeSample,
+		SampleInterval: 30 * time.Second,
+	}, []iosXRPathDefinition{
+		{ID: "alarms", Path: "Cisco-IOS-XR-alarmgr-server-oper:alarms", DefaultStreamMode: iosXRStreamModeOnChange},
+		{ID: "counters", Path: "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/latest/generic-counters"},
+	}, gnmi.Encoding_JSON)
+
+	subscribe := req.GetSubscribe()
+	require.NotNil(t, subscribe)
+	require.Len(t, subscribe.Subscription, 2)
+	// Per-path catalog DefaultStreamMode wins over the global sample default.
+	assert.Equal(t, gnmi.SubscriptionMode_ON_CHANGE, subscribe.Subscription[0].Mode)
+	// Path with no catalog default falls back to the global stream_mode.
+	assert.Equal(t, gnmi.SubscriptionMode_SAMPLE, subscribe.Subscription[1].Mode)
+}
+
 type fakeGNMIServer struct {
 	gnmi.UnimplementedGNMIServer
 
