@@ -27,7 +27,14 @@ func parseGNMIPath(raw string) (*gnmi.Path, error) {
 		}
 		name := part
 		if i == 0 {
-			if idx := strings.Index(part, ":"); idx > 0 {
+			// An origin separator can only occur in the element name. Key
+			// values commonly contain colons (for example MAC and IPv6
+			// addresses) and must not be mistaken for an origin.
+			nameEnd := strings.IndexByte(part, '[')
+			if nameEnd < 0 {
+				nameEnd = len(part)
+			}
+			if idx := strings.Index(part[:nameEnd], ":"); idx > 0 {
 				out.Origin = part[:idx]
 				name = part[idx+1:]
 			}

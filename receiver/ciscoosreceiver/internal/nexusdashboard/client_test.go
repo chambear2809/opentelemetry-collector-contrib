@@ -12,7 +12,19 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
+
+func TestClientRetryValidationPreservesExplicitZero(t *testing.T) {
+	client, err := NewClient(Config{Endpoint: "https://nexus.example.test", AuthMode: "api_key", Username: "admin", APIKey: "key", MaxRetries: 0})
+	require.NoError(t, err)
+	assert.Zero(t, client.retries)
+	for _, retries := range []int{-1, httpclient.HardMaxRequestRetries + 1} {
+		_, err = NewClient(Config{Endpoint: "https://nexus.example.test", AuthMode: "api_key", Username: "admin", APIKey: "key", MaxRetries: retries})
+		require.ErrorContains(t, err, "invalid nexus dashboard max retries")
+	}
+}
 
 func TestClientAPIKeyHeadersAndPagination(t *testing.T) {
 	var requests atomic.Int64
@@ -22,10 +34,11 @@ func TestClientAPIKeyHeadersAndPagination(t *testing.T) {
 		switch requests.Add(1) {
 		case 1:
 			assert.Equal(t, "0", r.URL.Query().Get("offset"))
-			w.Header().Set("Link", `</api/v1/manage/fabrics?offset=1&max=1>; rel="next"`)
+			w.Header().Set("Link", `</api/v1/manage/fabrics?filter=a,b&offset=1&max=1>; rel="prev next"`)
 			_, _ = w.Write([]byte(`{"items":[{"fabricName":"fabric-a"}]}`))
 		default:
 			assert.Equal(t, "1", r.URL.Query().Get("offset"))
+			assert.Equal(t, "a,b", r.URL.Query().Get("filter"))
 			_, _ = w.Write([]byte(`{"items":[{"fabricName":"fabric-b"}]}`))
 		}
 	}))
@@ -48,6 +61,42 @@ func TestClientAPIKeyHeadersAndPagination(t *testing.T) {
 	assert.Equal(t, "fabric-a", got[0]["fabricName"])
 	assert.Equal(t, "fabric-b", got[1]["fabricName"])
 	assert.Equal(t, int64(2), requests.Load())
+}
+
+func TestDecodeObjectsPreservesLargeInteger(t *testing.T) {
+	objects, _, _, err := decodeObjects([]byte(`{"items":[{"bytes":9007199254740993}]}`), nil)
+	require.NoError(t, err)
+	require.Len(t, objects, 1)
+	value, ok := Int64(objects[0], "bytes")
+	require.True(t, ok)
+	assert.Equal(t, int64(9007199254740993), value)
+}
+
+func TestClientRejectsPaginationCycle(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.Header().Set("Link", `</api/v1/manage/fabrics?max=1&offset=0>; rel="next"`)
+		_, _ = w.Write([]byte(`{"items":[{"fabricName":"fabric-a"}]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:   server.URL,
+		AuthMode:   "api_key",
+		Username:   "admin",
+		APIKey:     "nd-api-key",
+		Timeout:    time.Second,
+		MaxRetries: 1,
+		PageSize:   1,
+	})
+	require.NoError(t, err)
+
+	got, err := client.List(t.Context(), "fabrics", "/api/v1/manage/fabrics", nil, 10)
+	require.ErrorContains(t, err, "continuation cycle")
+	require.Len(t, got, 1)
+	assert.Equal(t, "fabric-a", got[0]["fabricName"])
+	assert.Equal(t, int64(1), requests.Load())
 }
 
 func TestClientSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {
@@ -131,6 +180,33 @@ func TestClientStopsWhenFullPageHasNoNextOrRemaining(t *testing.T) {
 	require.Len(t, got, 1)
 	assert.Equal(t, "fabric-a", got[0]["fabricName"])
 	assert.Equal(t, int64(1), requests.Load())
+}
+
+func TestClientPaginationHardPageLimitReturnsPartialResults(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		_, _ = w.Write([]byte(`{"items":[{"fabricName":"fabric-a"}],"pagination":{"remaining":1}}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:   server.URL,
+		AuthMode:   "api_key",
+		Username:   "admin",
+		APIKey:     "nd-api-key",
+		Timeout:    time.Second,
+		MaxRetries: 1,
+		PageSize:   1,
+	})
+	require.NoError(t, err)
+
+	got, err := client.List(t.Context(), "fabrics", "/api/v1/manage/fabrics", nil, 0)
+	var limitErr *httpclient.PaginationLimitError
+	require.ErrorAs(t, err, &limitErr)
+	assert.Equal(t, "page", limitErr.Kind)
+	assert.Len(t, got, httpclient.HardMaxPaginationPages)
+	assert.Equal(t, int64(httpclient.HardMaxPaginationPages), requests.Load())
 }
 
 func TestClientRejectsInvalidConfig(t *testing.T) {

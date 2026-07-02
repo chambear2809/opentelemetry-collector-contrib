@@ -4,6 +4,8 @@
 package ciscoosreceiver
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/consumer/consumertest"
+	"go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/connection"
@@ -31,6 +34,27 @@ func newTestDevice(name, host string) DeviceConfig {
 			Password: configopaque.String("password"),
 		},
 	}
+}
+
+type lifecycleTestReceiver struct {
+	name               string
+	events             *[]string
+	startErr           error
+	shutdownErr        error
+	shutdownContextErr *error
+}
+
+func (r *lifecycleTestReceiver) Start(_ context.Context, _ component.Host) error {
+	*r.events = append(*r.events, r.name+".start")
+	return r.startErr
+}
+
+func (r *lifecycleTestReceiver) Shutdown(ctx context.Context) error {
+	*r.events = append(*r.events, r.name+".shutdown")
+	if r.shutdownContextErr != nil {
+		*r.shutdownContextErr = ctx.Err()
+	}
+	return r.shutdownErr
 }
 
 func TestNewFactory(t *testing.T) {
@@ -383,4 +407,73 @@ func TestCloneInterfacesScraperConfigPreservesOptionalGroups(t *testing.T) {
 	assert.Equal(t, 16, cloned.Transceiver.MaxInterfaces)
 	assert.Equal(t, "192.0.2.10", cloned.Device.Device.Host.IP)
 	assert.Equal(t, 45*time.Second, cloned.Timeout)
+}
+
+func TestMultiMetricsReceiverStartFailureRollsBackStartedReceivers(t *testing.T) {
+	startErr := errors.New("start failed")
+	rollbackErr := errors.New("rollback failed")
+	events := []string{}
+	first := &lifecycleTestReceiver{name: "first", events: &events}
+	second := &lifecycleTestReceiver{name: "second", events: &events, shutdownErr: rollbackErr}
+	failing := &lifecycleTestReceiver{name: "failing", events: &events, startErr: startErr}
+	notStarted := &lifecycleTestReceiver{name: "not-started", events: &events}
+	receiver := &multiMetricsReceiver{receivers: []receiver.Metrics{first, second, failing, notStarted}}
+
+	err := receiver.Start(t.Context(), componenttest.NewNopHost())
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, startErr)
+	assert.ErrorIs(t, err, rollbackErr)
+	assert.Equal(t, []string{
+		"first.start",
+		"second.start",
+		"failing.start",
+		"second.shutdown",
+		"first.shutdown",
+	}, events)
+}
+
+func TestMultiLogsReceiverStartFailureRollsBackStartedReceivers(t *testing.T) {
+	startErr := errors.New("start failed")
+	rollbackErr := errors.New("rollback failed")
+	events := []string{}
+	first := &lifecycleTestReceiver{name: "first", events: &events}
+	second := &lifecycleTestReceiver{name: "second", events: &events, shutdownErr: rollbackErr}
+	failing := &lifecycleTestReceiver{name: "failing", events: &events, startErr: startErr}
+	notStarted := &lifecycleTestReceiver{name: "not-started", events: &events}
+	receiver := &multiLogsReceiver{receivers: []receiver.Logs{first, second, failing, notStarted}}
+
+	err := receiver.Start(t.Context(), componenttest.NewNopHost())
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, startErr)
+	assert.ErrorIs(t, err, rollbackErr)
+	assert.Equal(t, []string{
+		"first.start",
+		"second.start",
+		"failing.start",
+		"second.shutdown",
+		"first.shutdown",
+	}, events)
+}
+
+func TestMultiMetricsReceiverRollbackOutlivesCanceledStartContext(t *testing.T) {
+	startErr := errors.New("start failed")
+	events := []string{}
+	var shutdownContextErr error
+	first := &lifecycleTestReceiver{
+		name:               "first",
+		events:             &events,
+		shutdownContextErr: &shutdownContextErr,
+	}
+	failing := &lifecycleTestReceiver{name: "failing", events: &events, startErr: startErr}
+	receiver := &multiMetricsReceiver{receivers: []receiver.Metrics{first, failing}}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	err := receiver.Start(ctx, componenttest.NewNopHost())
+
+	require.ErrorIs(t, err, startErr)
+	assert.NoError(t, shutdownContextErr)
+	assert.Equal(t, []string{"first.start", "failing.start", "first.shutdown"}, events)
 }

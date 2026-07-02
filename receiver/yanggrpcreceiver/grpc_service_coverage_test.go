@@ -5,10 +5,12 @@ package yanggrpcreceiver
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/consumer/consumertest"
+	"go.opentelemetry.io/collector/pdata/pmetric"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/yanggrpcreceiver/internal"
@@ -58,7 +60,7 @@ func TestProcessTelemetryData_ErrorHandling(t *testing.T) {
 		ReqId: 12345,
 		Data:  []byte{}, // Empty data
 	}
-	err := service.processTelemetryData(emptyMsg)
+	err := service.processTelemetryData(t.Context(), emptyMsg)
 	assert.NoError(t, err)
 
 	// Test with invalid protobuf data
@@ -66,7 +68,7 @@ func TestProcessTelemetryData_ErrorHandling(t *testing.T) {
 		ReqId: 12345,
 		Data:  []byte("invalid protobuf data"),
 	}
-	err = service.processTelemetryData(invalidMsg)
+	err = service.processTelemetryData(t.Context(), invalidMsg)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot parse invalid wire-format data")
 
@@ -83,7 +85,7 @@ func TestProcessTelemetryData_ErrorHandling(t *testing.T) {
 		ReqId: 12345,
 		Data:  validData,
 	}
-	err = service.processTelemetryData(validMsg)
+	err = service.processTelemetryData(t.Context(), validMsg)
 	assert.NoError(t, err)
 }
 
@@ -118,7 +120,8 @@ func TestConvertToOTELMetrics(t *testing.T) {
 		DataGpbkv: []*pb.TelemetryField{},
 	}
 
-	metrics := service.convertToOTELMetrics(telemetry)
+	metrics, err := service.convertToOTELMetrics(telemetry, time.Unix(1, 0))
+	require.NoError(t, err)
 	assert.NotNil(t, metrics)
 	assert.Equal(t, 1, metrics.ResourceMetrics().Len())
 
@@ -142,7 +145,7 @@ func TestConvertToOTELMetricsEmitsCompactGPBDiagnostic(t *testing.T) {
 		yangParser: internal.NewYANGParser(),
 	}
 
-	metrics := service.convertToOTELMetrics(&pb.Telemetry{
+	metrics, err := service.convertToOTELMetrics(&pb.Telemetry{
 		NodeId:       &pb.Telemetry_NodeIdStr{NodeIdStr: "xr-1"},
 		EncodingPath: "Cisco-IOS-XR-fib-common-oper:fib/nodes/node/protocols/protocol/vrfs/vrf/summary",
 		MsgTimestamp: 1234567890,
@@ -150,14 +153,17 @@ func TestConvertToOTELMetricsEmitsCompactGPBDiagnostic(t *testing.T) {
 			{Timestamp: 1234567890, Content: []byte{0x01}},
 			{Timestamp: 1234567891, Content: []byte{0x02}},
 		}},
-	})
+	}, time.Unix(1, 0))
+	require.NoError(t, err)
 
 	require.Equal(t, 1, metrics.ResourceMetrics().Len())
 	sm := metrics.ResourceMetrics().At(0).ScopeMetrics().At(0)
 	require.Equal(t, 1, sm.Metrics().Len())
 	metric := sm.Metrics().At(0)
 	assert.Equal(t, "cisco.yang_grpc.compact_gpb_payloads", metric.Name())
-	assert.Equal(t, 2.0, metric.Gauge().DataPoints().At(0).DoubleValue())
+	dp := metric.Gauge().DataPoints().At(0)
+	assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+	assert.Equal(t, int64(2), dp.IntValue())
 	attrs := metric.Gauge().DataPoints().At(0).Attributes()
 	assert.Equal(t, "xr-1", attrs.AsRaw()["node_id"])
 	assert.Equal(t, "Cisco-IOS-XR-fib-common-oper:fib/nodes/node/protocols/protocol/vrfs/vrf/summary", attrs.AsRaw()["encoding_path"])

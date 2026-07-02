@@ -14,7 +14,19 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
+
+func TestClientRetryValidationPreservesExplicitZero(t *testing.T) {
+	client, err := NewClient(Config{Endpoint: "https://catalyst.example.test", Username: "admin", Password: "password", MaxRetries: 0})
+	require.NoError(t, err)
+	assert.Zero(t, client.retries)
+	for _, retries := range []int{-1, httpclient.HardMaxRequestRetries + 1} {
+		_, err = NewClient(Config{Endpoint: "https://catalyst.example.test", Username: "admin", Password: "password", MaxRetries: retries})
+		require.ErrorContains(t, err, "invalid catalyst center max retries")
+	}
+}
 
 func TestClientBasicAuthHeadersAndTokenCache(t *testing.T) {
 	var authCalls atomic.Int64
@@ -47,6 +59,22 @@ func TestClientBasicAuthHeadersAndTokenCache(t *testing.T) {
 	}
 	assert.Equal(t, int64(1), authCalls.Load())
 	assert.Equal(t, int64(2), dataCalls.Load())
+}
+
+func TestDecodeCountPreservesLargeInteger(t *testing.T) {
+	count, err := decodeCount([]byte(`{"response":9007199254740993}`))
+	require.NoError(t, err)
+	assert.Equal(t, int64(9007199254740993), count)
+}
+
+func TestDecodePagePreservesLargeGenericInteger(t *testing.T) {
+	var out []map[string]any
+	_, _, err := decodePage([]byte(`{"response":[{"counter":9007199254740993}]}`), &out)
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	number, ok := out[0]["counter"].(json.Number)
+	require.True(t, ok)
+	assert.Equal(t, "9007199254740993", number.String())
 }
 
 func TestClientAESAuthPassthrough(t *testing.T) {
@@ -195,6 +223,33 @@ func TestClientGetPaginationAppliesEndpointPageLimitAndPageEnvelope(t *testing.T
 	assert.Equal(t, int64(1), dataCalls.Load())
 }
 
+func TestClientGetPaginationCapsOverReturnedPage(t *testing.T) {
+	var dataCalls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/dna/system/api/v1/auth/token":
+			_, _ = w.Write([]byte(`{"Token":"token-1"}`))
+		case "/dna/intent/api/v1/network-device":
+			dataCalls.Add(1)
+			assert.Equal(t, "2", r.URL.Query().Get("limit"))
+			_, _ = w.Write([]byte(`{"response":[{"hostname":"one"},{"hostname":"two"},{"hostname":"unexpected"}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", Timeout: time.Second, MaxRetries: 1})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	got, err := GetPaginatedJSON[Device](t.Context(), client, "devices", "/dna/intent/api/v1/network-device", nil, 2)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, "two", got[1].Hostname)
+	assert.Equal(t, int64(1), dataCalls.Load())
+}
+
 func TestClientPostPagination(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -227,6 +282,120 @@ func TestClientPostPagination(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 3)
 	assert.Equal(t, "three", got[2].IssueID)
+}
+
+func TestClientPostPaginationCapsOverReturnedPage(t *testing.T) {
+	var dataCalls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/dna/system/api/v1/auth/token":
+			_, _ = w.Write([]byte(`{"Token":"token-1"}`))
+		case "/dna/data/api/v1/assuranceIssues/query":
+			dataCalls.Add(1)
+			var body map[string]any
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			page := body["page"].(map[string]any)
+			assert.Equal(t, float64(2), page["limit"])
+			_, _ = w.Write([]byte(`{"response":[{"issueId":"one"},{"issueId":"two"},{"issueId":"unexpected"}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", Timeout: time.Second, MaxRetries: 1})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	got, err := PostPaginatedJSON[Issue](t.Context(), client, "issues.query", "/dna/data/api/v1/assuranceIssues/query", map[string]any{"filters": []any{}}, 2)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, "two", got[1].IssueID)
+	assert.Equal(t, int64(1), dataCalls.Load())
+}
+
+func TestClientPaginationHardPageLimitReturnsPartialResults(t *testing.T) {
+	t.Run("GET", func(t *testing.T) {
+		var dataCalls atomic.Int64
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/dna/system/api/v1/auth/token":
+				_, _ = w.Write([]byte(`{"Token":"token-1"}`))
+			case "/dna/intent/api/v1/network-device":
+				dataCalls.Add(1)
+				_, _ = w.Write([]byte(`{"response":[{"hostname":"one"}]}`))
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		defer server.Close()
+
+		client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", PageSize: 1, Timeout: time.Second, MaxRetries: 1})
+		require.NoError(t, err)
+		client.spacing = 0
+
+		got, err := GetPaginatedJSON[Device](t.Context(), client, "devices", "/dna/intent/api/v1/network-device", nil, 0)
+		var limitErr *httpclient.PaginationLimitError
+		require.ErrorAs(t, err, &limitErr)
+		assert.Equal(t, "page", limitErr.Kind)
+		assert.Len(t, got, httpclient.HardMaxPaginationPages)
+		assert.Equal(t, int64(httpclient.HardMaxPaginationPages), dataCalls.Load())
+	})
+
+	t.Run("POST", func(t *testing.T) {
+		var dataCalls atomic.Int64
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/dna/system/api/v1/auth/token":
+				_, _ = w.Write([]byte(`{"Token":"token-1"}`))
+			case "/dna/data/api/v1/assuranceIssues/query":
+				dataCalls.Add(1)
+				_, _ = w.Write([]byte(`{"response":[{"issueId":"one"}]}`))
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		defer server.Close()
+
+		client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", PageSize: 1, Timeout: time.Second, MaxRetries: 1})
+		require.NoError(t, err)
+		client.spacing = 0
+
+		got, err := PostPaginatedJSON[Issue](t.Context(), client, "issues.query", "/dna/data/api/v1/assuranceIssues/query", map[string]any{}, 0)
+		var limitErr *httpclient.PaginationLimitError
+		require.ErrorAs(t, err, &limitErr)
+		assert.Equal(t, "page", limitErr.Kind)
+		assert.Len(t, got, httpclient.HardMaxPaginationPages)
+		assert.Equal(t, int64(httpclient.HardMaxPaginationPages), dataCalls.Load())
+	})
+}
+
+func TestClientPaginationHardResultLimitTruncatesOverReturnedPage(t *testing.T) {
+	values := make([]int, httpclient.HardMaxPaginationResults+1)
+	var dataCalls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/dna/system/api/v1/auth/token":
+			_, _ = w.Write([]byte(`{"Token":"token-1"}`))
+		case "/dna/intent/api/v1/values":
+			dataCalls.Add(1)
+			require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"response": values}))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", Timeout: time.Second, MaxRetries: 1})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	got, err := GetPaginatedJSON[int](t.Context(), client, "values", "/dna/intent/api/v1/values", nil, 0)
+	var limitErr *httpclient.PaginationLimitError
+	require.ErrorAs(t, err, &limitErr)
+	assert.Equal(t, "result", limitErr.Kind)
+	assert.Len(t, got, httpclient.HardMaxPaginationResults)
+	assert.Equal(t, int64(1), dataCalls.Load())
 }
 
 func TestClientRetries429RetryAfter(t *testing.T) {

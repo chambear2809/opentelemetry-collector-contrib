@@ -16,7 +16,9 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
 )
 
 // SecurityManager manages security features for the gRPC receiver
@@ -29,13 +31,20 @@ type SecurityManager struct {
 // RateLimiter implements per-client rate limiting
 type RateLimiter struct {
 	limiters        map[string]*rate.Limiter
-	mu              sync.RWMutex
+	mu              sync.Mutex
 	requestsPerSec  rate.Limit
 	burstSize       int
 	cleanupInterval time.Duration
 	cleanupTicker   *time.Ticker
-	done            chan bool
+	done            chan struct{}
+	stopped         chan struct{}
+	stopOnce        sync.Once
 }
+
+const (
+	defaultRateLimiterCleanupInterval = time.Minute
+	maxRateLimiterClients             = 100_000
+)
 
 // NewSecurityManager creates a new SecurityManager
 func NewSecurityManager(allowedClients []string, logger *zap.Logger, ratelimitingEnabled bool, requestsPerSecond float64, burstSize int, cleanupInterval time.Duration) *SecurityManager {
@@ -58,12 +67,19 @@ func NewSecurityManager(allowedClients []string, logger *zap.Logger, ratelimitin
 
 // newRateLimiter creates a new RateLimiter
 func newRateLimiter(requestsPerSec rate.Limit, burstSize int, cleanupInterval time.Duration) *RateLimiter {
+	// Configuration validation rejects non-positive intervals. Keep the
+	// constructor defensive as it is also used directly by tests and internal
+	// callers: time.NewTicker panics for a non-positive duration.
+	if cleanupInterval <= 0 {
+		cleanupInterval = defaultRateLimiterCleanupInterval
+	}
 	rl := &RateLimiter{
 		limiters:        make(map[string]*rate.Limiter),
 		requestsPerSec:  requestsPerSec,
 		burstSize:       burstSize,
 		cleanupInterval: cleanupInterval,
-		done:            make(chan bool),
+		done:            make(chan struct{}),
+		stopped:         make(chan struct{}),
 	}
 
 	// Start cleanup goroutine
@@ -80,6 +96,11 @@ func (rl *RateLimiter) Allow(ip string) bool {
 
 	limiter, exists := rl.limiters[ip]
 	if !exists {
+		// Refuse new identities after the hard ceiling instead of allowing a
+		// source-IP flood to grow collector state without bound.
+		if len(rl.limiters) >= maxRateLimiterClients {
+			return false
+		}
 		limiter = rate.NewLimiter(rl.requestsPerSec, rl.burstSize)
 		rl.limiters[ip] = limiter
 	}
@@ -89,6 +110,7 @@ func (rl *RateLimiter) Allow(ip string) bool {
 
 // cleanup removes unused rate limiters
 func (rl *RateLimiter) cleanup() {
+	defer close(rl.stopped)
 	for {
 		select {
 		case <-rl.cleanupTicker.C:
@@ -107,7 +129,10 @@ func (rl *RateLimiter) cleanup() {
 
 // Stop stops the rate limiter cleanup
 func (rl *RateLimiter) Stop() {
-	close(rl.done)
+	rl.stopOnce.Do(func() {
+		close(rl.done)
+		<-rl.stopped
+	})
 }
 
 // getClientAuthType converts string auth type to tls.ClientAuthType
@@ -127,34 +152,81 @@ func (*SecurityManager) getClientAuthType(authType string) (tls.ClientAuthType, 
 	return tls.NoClientCert, fmt.Errorf("invalid client auth type: %s", authType)
 }
 
-// CreateSecurityInterceptor creates a gRPC interceptor for security enforcement
+// CreateSecurityInterceptor creates a unary gRPC interceptor for security enforcement.
 func (sm *SecurityManager) CreateSecurityInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		// Get client IP
-		clientIP, err := sm.getClientIP(ctx)
+		clientIP, err := sm.authorizePeer(ctx, info.FullMethod)
 		if err != nil {
-			sm.logger.Warn("Failed to get client IP", zap.Error(err))
-			clientIP = "unknown"
+			return nil, err
 		}
-
-		// Check IP allowlist if configured
-		if len(sm.allowedClients) > 0 && !sm.isIPAllowed(clientIP) {
-			sm.logger.Warn("Client IP not in allowlist", zap.String("client_ip", clientIP))
-			return nil, errors.New("client IP not allowed")
+		if err := sm.authorizeRate(clientIP, info.FullMethod); err != nil {
+			return nil, err
 		}
-
-		// Apply rate limiting if enabled
-		if sm.rateLimiter != nil && !sm.rateLimiter.Allow(clientIP) {
-			sm.logger.Warn("Rate limit exceeded", zap.String("client_ip", clientIP))
-			return nil, errors.New("rate limit exceeded")
-		}
-
-		sm.logger.Debug("Security check passed",
-			zap.String("client_ip", clientIP),
-			zap.String("method", info.FullMethod))
-
 		return handler(ctx, req)
 	}
+}
+
+// CreateStreamSecurityInterceptor creates a streaming gRPC interceptor for security enforcement.
+func (sm *SecurityManager) CreateStreamSecurityInterceptor() grpc.StreamServerInterceptor {
+	return func(srv any, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		clientIP, err := sm.authorizePeer(stream.Context(), info.FullMethod)
+		if err != nil {
+			return err
+		}
+		if sm.rateLimiter != nil {
+			stream = &rateLimitedServerStream{
+				ServerStream: stream,
+				manager:      sm,
+				clientIP:     clientIP,
+				method:       info.FullMethod,
+			}
+		}
+		return handler(srv, stream)
+	}
+}
+
+// rateLimitedServerStream applies the configured token bucket to every
+// successfully received stream message. Limiting only stream establishment
+// leaves a long-lived MDT stream free to send an unlimited number of payloads.
+type rateLimitedServerStream struct {
+	grpc.ServerStream
+	manager  *SecurityManager
+	clientIP string
+	method   string
+}
+
+func (s *rateLimitedServerStream) RecvMsg(message any) error {
+	if err := s.ServerStream.RecvMsg(message); err != nil {
+		return err
+	}
+	return s.manager.authorizeRate(s.clientIP, s.method)
+}
+
+func (sm *SecurityManager) authorizePeer(ctx context.Context, method string) (string, error) {
+	clientIP, err := sm.getClientIP(ctx)
+	if err != nil {
+		sm.logger.Warn("Failed to get client IP", zap.String("method", method), zap.Error(err))
+		if len(sm.allowedClients) > 0 || sm.rateLimiter != nil {
+			return "", status.Error(codes.Unauthenticated, "unable to identify client")
+		}
+		return "", nil
+	}
+
+	if len(sm.allowedClients) > 0 && !sm.isIPAllowed(clientIP) {
+		sm.logger.Warn("Client IP not in allowlist", zap.String("client_ip", clientIP), zap.String("method", method))
+		return "", status.Error(codes.PermissionDenied, "client IP not allowed")
+	}
+
+	sm.logger.Debug("Security check passed", zap.String("client_ip", clientIP), zap.String("method", method))
+	return clientIP, nil
+}
+
+func (sm *SecurityManager) authorizeRate(clientIP, method string) error {
+	if sm.rateLimiter != nil && !sm.rateLimiter.Allow(clientIP) {
+		sm.logger.Warn("Rate limit exceeded", zap.String("client_ip", clientIP), zap.String("method", method))
+		return status.Error(codes.ResourceExhausted, "rate limit exceeded")
+	}
+	return nil
 }
 
 // getClientIP extracts the client IP from the gRPC context
@@ -179,6 +251,7 @@ func (*SecurityManager) getClientIP(ctx context.Context) (string, error) {
 
 // isIPAllowed checks if the given IP is in the allowlist
 func (sm *SecurityManager) isIPAllowed(clientIP string) bool {
+	parsedClientIP := net.ParseIP(clientIP)
 	for _, allowedIP := range sm.allowedClients {
 		// Support CIDR notation
 		if strings.Contains(allowedIP, "/") {
@@ -187,12 +260,11 @@ func (sm *SecurityManager) isIPAllowed(clientIP string) bool {
 				sm.logger.Warn("Invalid CIDR in allowed_clients", zap.String("cidr", allowedIP))
 				continue
 			}
-			ip := net.ParseIP(clientIP)
-			if ip != nil && cidr.Contains(ip) {
+			if parsedClientIP != nil && cidr.Contains(parsedClientIP) {
 				return true
 			}
 			// Direct IP match
-		} else if clientIP == allowedIP {
+		} else if parsedAllowedIP := net.ParseIP(allowedIP); parsedClientIP != nil && parsedAllowedIP != nil && parsedAllowedIP.Equal(parsedClientIP) {
 			return true
 		}
 	}

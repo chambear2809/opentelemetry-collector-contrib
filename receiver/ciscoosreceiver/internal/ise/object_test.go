@@ -4,6 +4,7 @@
 package ise
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -17,6 +18,14 @@ func TestDecodeObjectsExtractsISESearchResultJSON(t *testing.T) {
 	assert.Equal(t, 2, total)
 	require.Len(t, objects, 2)
 	assert.Equal(t, "nad-1", String(objects[0], "name"))
+}
+
+func TestDecodeObjectPreservesLargeGenericInteger(t *testing.T) {
+	obj, err := decodeObject([]byte(`{"counter":9007199254740993}`))
+	require.NoError(t, err)
+	number, ok := obj["counter"].(json.Number)
+	require.True(t, ok)
+	assert.Equal(t, "9007199254740993", number.String())
 }
 
 func TestDecodeObjectsExtractsERSXMLResources(t *testing.T) {
@@ -60,4 +69,12 @@ func TestObjectHelpersHandleNormalizedNestedObjects(t *testing.T) {
 	ts, ok := Time(obj, "timestamp")
 	require.True(t, ok)
 	assert.Equal(t, time.Unix(1_700_000_000, 0).UTC(), ts)
+}
+
+func TestStableIDDoesNotUseNonUniqueMessageCode(t *testing.T) {
+	assert.Empty(t, StableID(Object{"message_code": "5200"}))
+	assert.Empty(t, StableID(Object{"messageCode": "5200"}))
+	assert.Equal(t, "event-123", StableID(Object{"message_code": "5200", "event_id": "event-123"}))
+	assert.Equal(t, "event-123", StableID(Object{"link": "/events", "message_code": "5200", "event_id": "event-123"}))
+	assert.Equal(t, "message-123", StableID(Object{"message_code": "5200", "message_id": "message-123"}))
 }

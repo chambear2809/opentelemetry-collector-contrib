@@ -8,15 +8,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	gnmi "github.com/openconfig/gnmi/proto/gnmi"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configgrpc"
 	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver"
 	"go.uber.org/multierr"
@@ -29,6 +32,61 @@ import (
 
 type iosXRCompositeReceiver struct {
 	receivers []receiver.Metrics
+}
+
+const (
+	directGNMIRetryInitial = time.Second
+	directGNMIRetryMax     = 30 * time.Second
+)
+
+func nextDirectGNMIRetryDelay(consecutiveFailures int, random func(time.Duration) time.Duration) time.Duration {
+	if consecutiveFailures < 1 {
+		consecutiveFailures = 1
+	}
+	base := directGNMIRetryInitial
+	for failure := 1; failure < consecutiveFailures && base < directGNMIRetryMax; failure++ {
+		if base > directGNMIRetryMax/2 {
+			base = directGNMIRetryMax
+		} else {
+			base *= 2
+		}
+	}
+	if base > directGNMIRetryMax {
+		base = directGNMIRetryMax
+	}
+	// Equal jitter keeps retries in [base/2, base), bounding the maximum delay
+	// while preventing synchronized reconnect storms across many targets.
+	half := base / 2
+	span := base - half
+	if random == nil {
+		random = randomDirectGNMIDuration
+	}
+	jitter := random(span)
+	if jitter < 0 {
+		jitter = 0
+	}
+	if jitter >= span {
+		jitter = span - 1
+	}
+	return half + jitter
+}
+
+func randomDirectGNMIDuration(max time.Duration) time.Duration {
+	if max <= 1 {
+		return 0
+	}
+	return time.Duration(rand.Int63n(int64(max))) //nolint:gosec // Retry jitter does not require cryptographic randomness.
+}
+
+func waitForDirectGNMIRetry(ctx context.Context, delay time.Duration) bool {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }
 
 func newIOSXRMetricsReceiver(set receiver.Settings, conf *Config, next consumer.Metrics) (receiver.Metrics, error) {
@@ -75,11 +133,7 @@ func newIOSXRMetricsReceiver(set receiver.Settings, conf *Config, next consumer.
 }
 
 func (r *iosXRCompositeReceiver) Start(ctx context.Context, host component.Host) error {
-	var err error
-	for _, receiver := range r.receivers {
-		err = multierr.Append(err, receiver.Start(ctx, host))
-	}
-	return err
+	return startMetricsReceivers(ctx, host, r.receivers)
 }
 
 func (r *iosXRCompositeReceiver) Shutdown(ctx context.Context) error {
@@ -95,6 +149,7 @@ func newIOSXRDialOutReceiver(set receiver.Settings, cfg IOSXRConfig, selector de
 	yangCfg := factory.CreateDefaultConfig().(*yanggrpcreceiver.Config)
 	yangCfg.ServerConfig = cfg.DialOut.ServerConfig
 	yangCfg.Security.AllowedClients = cfg.DialOut.AllowedClients
+	yangCfg.Security.RateLimiting = cfg.DialOut.RateLimiting
 	yangCfg.YANG.ModulePaths = cfg.DialOut.ModulePaths
 	health := &iosXRHealth{}
 	normalizer := newIOSXRNormalizingConsumer(next, cfg, selector, iosXRTelemetryTransportDialOut, health)
@@ -112,6 +167,10 @@ type iosXRDialInReceiver struct {
 	cancel context.CancelFunc
 	done   chan struct{}
 	host   component.Host
+
+	subscribeTargetFn func(context.Context, IOSXRTargetConfig) (bool, error)
+	retryWaitFn       func(context.Context, time.Duration) bool
+	retryJitterFn     func(time.Duration) time.Duration
 }
 
 func (r *iosXRDialInReceiver) Start(_ context.Context, host component.Host) error {
@@ -123,7 +182,6 @@ func (r *iosXRDialInReceiver) Start(_ context.Context, host component.Host) erro
 	ctx, cancel := context.WithCancel(context.Background())
 	r.cancel = cancel
 	r.host = host
-	r.health.setActiveSubscriptions(int64(len(r.targets)))
 	go r.run(ctx)
 	return nil
 }
@@ -159,37 +217,63 @@ func (r *iosXRDialInReceiver) run(ctx context.Context) {
 }
 
 func (r *iosXRDialInReceiver) runTarget(ctx context.Context, target IOSXRTargetConfig) {
-	backoff := 5 * time.Second
+	subscribe := r.subscribeTargetAttempt
+	if r.subscribeTargetFn != nil {
+		subscribe = r.subscribeTargetFn
+	}
+	waitRetry := waitForDirectGNMIRetry
+	if r.retryWaitFn != nil {
+		waitRetry = r.retryWaitFn
+	}
+	r.emitTargetHealth(ctx, target)
+	consecutiveFailures := 0
 	for {
 		if ctx.Err() != nil {
 			return
 		}
-		err := r.subscribeTarget(ctx, target)
+		successful, err := subscribe(ctx, target)
+		r.setTargetSubscriptionActive(ctx, target, false)
 		if ctx.Err() != nil {
 			return
 		}
+		if target.Subscription.Mode == iosXRSubscribeModeOnce && err == nil {
+			return
+		}
+		if successful {
+			consecutiveFailures = 0
+		} else {
+			consecutiveFailures++
+		}
+		if r.health != nil {
+			r.health.addTargetReconnects(target.Name, 1)
+		}
 		if err != nil {
-			r.health.addReconnects(1)
 			r.settings.Logger.Warn("IOS XR gNMI subscription failed",
 				zap.String("target", target.Name),
 				zap.String("endpoint", target.Endpoint),
 				zap.Error(err))
 		}
-		if target.Subscription.Mode == iosXRSubscribeModeOnce && err == nil {
-			return
+		r.emitTargetHealth(ctx, target)
+		retryOrdinal := consecutiveFailures
+		if retryOrdinal == 0 {
+			retryOrdinal = 1
 		}
-		select {
-		case <-ctx.Done():
+		delay := nextDirectGNMIRetryDelay(retryOrdinal, r.retryJitterFn)
+		if !waitRetry(ctx, delay) {
 			return
-		case <-time.After(backoff):
 		}
 	}
 }
 
 func (r *iosXRDialInReceiver) subscribeTarget(ctx context.Context, target IOSXRTargetConfig) error {
+	_, err := r.subscribeTargetAttempt(ctx, target)
+	return err
+}
+
+func (r *iosXRDialInReceiver) subscribeTargetAttempt(ctx context.Context, target IOSXRTargetConfig) (bool, error) {
 	conn, err := target.ClientConfig.ToClientConn(ctx, r.host.GetExtensions(), r.settings.TelemetrySettings, configgrpc.WithGrpcDialOption(grpc.WithBlock()))
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer conn.Close()
 
@@ -200,42 +284,72 @@ func (r *iosXRDialInReceiver) subscribeTarget(ctx context.Context, target IOSXRT
 		defer cancel()
 		caps, err = client.Capabilities(capCtx, &gnmi.CapabilityRequest{})
 		if err != nil {
-			return fmt.Errorf("capabilities: %w", err)
+			return false, fmt.Errorf("capabilities: %w", err)
 		}
 	}
 
 	paths, err := r.resolveTargetPaths(target, caps)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if len(paths) == 0 {
-		return errors.New("no IOS XR paths available after capability filtering")
+		return false, errors.New("no IOS XR paths available after capability filtering")
 	}
 	encoding, err := negotiateIOSXREncoding(target.EncodingPreference, caps)
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	stream, err := client.Subscribe(r.outgoingContext(ctx, target))
+	streamCtx, cancelStream := context.WithCancel(r.outgoingContext(ctx, target))
+	defer cancelStream()
+	stream, err := client.Subscribe(streamCtx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if err := stream.Send(buildIOSXRSubscribeRequest(target.Subscription, paths, encoding)); err != nil {
-		return err
+		return false, err
 	}
+	r.setTargetSubscriptionActive(ctx, target, true)
+	defer r.setTargetSubscriptionActive(ctx, target, false)
+	var progressed atomic.Bool
 
 	if target.Subscription.Mode == iosXRSubscribeModePoll {
-		return r.recvPoll(ctx, target, stream)
+		err := r.recvPoll(streamCtx, cancelStream, target, stream, &progressed)
+		return progressed.Load(), err
 	}
 	if target.Subscription.Mode == iosXRSubscribeModeOnce {
 		if closeErr := stream.CloseSend(); closeErr != nil {
 			r.settings.Logger.Debug("IOS XR gNMI once close send failed", zap.Error(closeErr))
 		}
 	}
-	return r.recvLoop(ctx, target, stream)
+	err = r.recvLoop(ctx, target, stream, &progressed)
+	return progressed.Load(), err
 }
 
-func (r *iosXRDialInReceiver) recvPoll(ctx context.Context, target IOSXRTargetConfig, stream grpc.BidiStreamingClient[gnmi.SubscribeRequest, gnmi.SubscribeResponse]) error {
+func (r *iosXRDialInReceiver) setTargetSubscriptionActive(ctx context.Context, target IOSXRTargetConfig, active bool) {
+	if r.health == nil || !r.health.setTargetSubscriptionActive(target.Name, active) {
+		return
+	}
+	r.emitTargetHealth(ctx, target)
+}
+
+func (r *iosXRDialInReceiver) emitTargetHealth(ctx context.Context, target IOSXRTargetConfig) {
+	if r.health == nil || r.consumer == nil || ctx.Err() != nil {
+		return
+	}
+	md := pmetric.NewMetrics()
+	appendIOSXRHealthMetrics(md, r.health, iosXRMetricContext{
+		targetName:     target.Name,
+		endpoint:       target.Endpoint,
+		platformFamily: target.PlatformFamily,
+		transport:      iosXRTelemetryTransportDialIn,
+	}, pcommon.NewTimestampFromTime(time.Now()))
+	if err := r.consumer.ConsumeMetrics(ctx, md); err != nil {
+		r.settings.Logger.Warn("IOS XR gNMI health delivery failed", zap.String("target", target.Name), zap.Error(err))
+	}
+}
+
+func (r *iosXRDialInReceiver) recvPoll(ctx context.Context, cancelStream context.CancelFunc, target IOSXRTargetConfig, stream grpc.BidiStreamingClient[gnmi.SubscribeRequest, gnmi.SubscribeResponse], progressed *atomic.Bool) error {
 	interval := target.Subscription.PollInterval
 	if interval <= 0 {
 		interval = target.Subscription.SampleInterval
@@ -249,7 +363,18 @@ func (r *iosXRDialInReceiver) recvPoll(ctx context.Context, target IOSXRTargetCo
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- r.recvLoop(ctx, target, stream)
+		errCh <- r.recvLoop(ctx, target, stream, progressed)
+	}()
+	readerJoined := false
+	defer func() {
+		// CloseSend only closes the client-to-server half of a gNMI stream. Cancel
+		// the exact context passed to Subscribe so grpc-go also interrupts Recv,
+		// then join the reader before this subscription attempt can reconnect or
+		// report itself fully shut down.
+		cancelStream()
+		if !readerJoined {
+			<-errCh
+		}
 	}()
 
 	for {
@@ -257,6 +382,7 @@ func (r *iosXRDialInReceiver) recvPoll(ctx context.Context, target IOSXRTargetCo
 		case <-ctx.Done():
 			return ctx.Err()
 		case err := <-errCh:
+			readerJoined = true
 			return err
 		case <-ticker.C:
 			if err := stream.Send(&gnmi.SubscribeRequest{Request: &gnmi.SubscribeRequest_Poll{Poll: &gnmi.Poll{}}}); err != nil {
@@ -266,8 +392,8 @@ func (r *iosXRDialInReceiver) recvPoll(ctx context.Context, target IOSXRTargetCo
 	}
 }
 
-func (r *iosXRDialInReceiver) recvLoop(ctx context.Context, target IOSXRTargetConfig, stream grpc.BidiStreamingClient[gnmi.SubscribeRequest, gnmi.SubscribeResponse]) error {
-	decoder := iosXRGNMIUpdateDecoder{target: target, health: r.health}
+func (r *iosXRDialInReceiver) recvLoop(ctx context.Context, target IOSXRTargetConfig, stream grpc.BidiStreamingClient[gnmi.SubscribeRequest, gnmi.SubscribeResponse], progressed *atomic.Bool) error {
+	decoder := iosXRGNMIUpdateDecoder{target: target, health: r.health, maxDatapoints: r.config.MaxDatapointsPerBatch}
 	for {
 		resp, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
@@ -281,9 +407,10 @@ func (r *iosXRDialInReceiver) recvLoop(ctx context.Context, target IOSXRTargetCo
 			if body.Update == nil {
 				continue
 			}
-			r.health.addUpdates(int64(len(body.Update.GetUpdate()) + len(body.Update.GetDelete())))
+			r.health.addTargetUpdates(target.Name, int64(len(body.Update.GetUpdate())+len(body.Update.GetDelete())))
 			md := decoder.decodeNotification(body.Update, iosXRTelemetryTransportDialIn)
 			if md.MetricCount() == 0 {
+				progressed.Store(true)
 				continue
 			}
 			if r.config.MaxDatapointsPerBatch > 0 {
@@ -295,13 +422,15 @@ func (r *iosXRDialInReceiver) recvLoop(ctx context.Context, target IOSXRTargetCo
 			if err := r.consumer.ConsumeMetrics(ctx, md); err != nil {
 				return err
 			}
+			progressed.Store(true)
 		case *gnmi.SubscribeResponse_SyncResponse:
 			if body.SyncResponse {
+				progressed.Store(true)
 				r.settings.Logger.Debug("IOS XR gNMI initial sync complete", zap.String("target", target.Name))
 			}
 		case *gnmi.SubscribeResponse_Error:
 			if body.Error != nil {
-				return fmt.Errorf("subscribe response error: %s", body.Error.GetMessage())
+				return sanitizedGNMISubscribeError(body.Error)
 			}
 		}
 	}
@@ -379,8 +508,8 @@ func buildIOSXRSubscribeRequest(sub IOSXRSubscriptionConfig, paths []iosXRPathDe
 	list := &gnmi.SubscriptionList{
 		Mode:             subscriptionListMode(sub.Mode),
 		Encoding:         encoding,
-		UpdatesOnly:      sub.UpdatesOnly,
-		AllowAggregation: sub.AllowAggregation,
+		UpdatesOnly:      sub.updatesOnly(),
+		AllowAggregation: sub.allowAggregation(),
 		Subscription:     make([]*gnmi.Subscription, 0, len(paths)),
 	}
 	for _, def := range paths {
@@ -409,7 +538,7 @@ func buildIOSXRSubscribeRequest(sub IOSXRSubscriptionConfig, paths []iosXRPathDe
 			Path:              p,
 			Mode:              subscriptionStreamMode(streamMode),
 			SampleInterval:    uint64(sampleInterval.Nanoseconds()),
-			SuppressRedundant: sub.SuppressRedundant,
+			SuppressRedundant: sub.suppressRedundant(),
 			HeartbeatInterval: uint64(sub.HeartbeatInterval.Nanoseconds()),
 		})
 	}

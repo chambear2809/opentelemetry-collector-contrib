@@ -4,13 +4,15 @@
 package ise
 
 import (
-	"bytes"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
 
 // Object is a normalized Cisco ISE API, pxGrid, or Data Connect object.
@@ -133,8 +135,9 @@ func Time(obj Object, keys ...string) (time.Time, bool) {
 // StableID returns a best-effort stable identifier for deduplicating ISE evidence.
 func StableID(obj Object) string {
 	if id := String(obj,
-		"id", "uuid", "UUID", "idRef", "link", "audit_session_id", "auditSessionId", "audit-session-id",
-		"session_id", "sessionId", "message_code", "messageCode", "eventId", "event_id", "deliveryId", "taskId",
+		"id", "uuid", "UUID", "eventId", "event_id", "eventID", "deliveryId", "delivery_id",
+		"taskId", "task_id", "message_id", "messageId", "message-id", "audit_session_id", "auditSessionId",
+		"audit-session-id", "session_id", "sessionId", "idRef", "link",
 	); id != "" {
 		return id
 	}
@@ -198,10 +201,13 @@ func valueForKey(obj Object, key string) (any, bool) {
 
 func decodeObject(body []byte) (Object, error) {
 	var obj Object
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.UseNumber()
-	if err := decoder.Decode(&obj); err == nil {
+	jsonErr := httpclient.DecodeJSON(body, &obj)
+	if jsonErr == nil {
 		return obj, nil
+	}
+	var limitErr *httpclient.JSONComplexityLimitError
+	if errors.As(jsonErr, &limitErr) {
+		return nil, jsonErr
 	}
 	xmlObj, err := decodeXMLObject(body)
 	if err != nil {
@@ -212,11 +218,14 @@ func decodeObject(body []byte) (Object, error) {
 
 func decodeObjects(body []byte) ([]Object, int, error) {
 	var raw any
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.UseNumber()
-	if err := decoder.Decode(&raw); err == nil {
+	jsonErr := httpclient.DecodeJSON(body, &raw)
+	if jsonErr == nil {
 		normalized := normalizeJSON(raw)
 		return extractObjects(normalized), extractTotal(normalized), nil
+	}
+	var limitErr *httpclient.JSONComplexityLimitError
+	if errors.As(jsonErr, &limitErr) {
+		return nil, -1, jsonErr
 	}
 	xmlObj, err := decodeXMLObject(body)
 	if err != nil {
@@ -251,32 +260,24 @@ func extractObjects(value any) []Object {
 	case []Object:
 		return typed
 	case Object:
-		for _, key := range []string{"response", "Response", "data", "Data", "items", "Items", "resources", "Resources", "resource", "Resource"} {
+		for _, key := range []string{"response", "Response", "data", "Data", "items", "Items", "content", "Content", "results", "Results", "records", "Records", "entries", "Entries", "resources", "Resources", "resource", "Resource"} {
 			if nested, ok := typed[key]; ok {
-				if objects := extractObjects(nested); len(objects) > 0 {
-					return objects
-				}
+				return extractObjects(nested)
 			}
 		}
 		for _, key := range []string{"activeSession", "authSession", "authStatusElements", "acctStatusElements", "sessionParameters"} {
 			if nested, ok := typed[key]; ok {
-				if objects := extractObjects(nested); len(objects) > 0 {
-					return objects
-				}
+				return extractObjects(nested)
 			}
 		}
 		for _, key := range []string{"SearchResult", "searchResult", "ERSResponse", "ersResponse", "OperationResult"} {
 			if nested, ok := typed[key]; ok {
-				if objects := extractObjects(nested); len(objects) > 0 {
-					return objects
-				}
+				return extractObjects(nested)
 			}
 		}
 		for _, key := range []string{"sessionCount", "activeSessionList", "authSessionList", "authStatusOutputList", "authStatusList", "acctStatusOutputList", "acctStatusList"} {
 			if nested, ok := typed[key]; ok {
-				if objects := extractObjects(nested); len(objects) > 0 {
-					return objects
-				}
+				return extractObjects(nested)
 			}
 		}
 		if len(typed) == 1 {

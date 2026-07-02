@@ -4,11 +4,214 @@
 package connection
 
 import (
+	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"io"
+	"net"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	cryptossh "golang.org/x/crypto/ssh"
 )
+
+func startSSHExecTestServer(t *testing.T, rejectedCommand string) (string, <-chan string) {
+	t.Helper()
+
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	signer, err := cryptossh.NewSignerFromKey(privateKey)
+	require.NoError(t, err)
+	serverConfig := &cryptossh.ServerConfig{NoClientAuth: true}
+	serverConfig.AddHostKey(signer)
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	commands := make(chan string, 4)
+	serverDone := make(chan struct{})
+	var (
+		acceptedMu sync.Mutex
+		accepted   net.Conn
+	)
+	go func() {
+		defer close(serverDone)
+		connection, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			return
+		}
+		acceptedMu.Lock()
+		accepted = connection
+		acceptedMu.Unlock()
+		defer connection.Close()
+
+		serverConnection, channels, requests, handshakeErr := cryptossh.NewServerConn(connection, serverConfig)
+		if handshakeErr != nil {
+			return
+		}
+		defer serverConnection.Close()
+		go cryptossh.DiscardRequests(requests)
+
+		for newChannel := range channels {
+			if newChannel.ChannelType() != "session" {
+				_ = newChannel.Reject(cryptossh.UnknownChannelType, "session channel required")
+				continue
+			}
+			channel, sessionRequests, channelErr := newChannel.Accept()
+			if channelErr != nil {
+				return
+			}
+			for request := range sessionRequests {
+				if request.Type != "exec" {
+					_ = request.Reply(false, nil)
+					continue
+				}
+				var payload struct {
+					Command string
+				}
+				if cryptossh.Unmarshal(request.Payload, &payload) != nil {
+					_ = request.Reply(false, nil)
+					_ = channel.Close()
+					break
+				}
+				commands <- payload.Command
+				if payload.Command == rejectedCommand {
+					_ = request.Reply(false, nil)
+					_ = channel.Close()
+					break
+				}
+				_ = request.Reply(true, nil)
+				_, _ = io.WriteString(channel, "output for "+payload.Command)
+				_, _ = channel.SendRequest("exit-status", false, cryptossh.Marshal(struct{ Status uint32 }{Status: 0}))
+				_ = channel.Close()
+				break
+			}
+		}
+	}()
+
+	t.Cleanup(func() {
+		_ = listener.Close()
+		acceptedMu.Lock()
+		if accepted != nil {
+			_ = accepted.Close()
+		}
+		acceptedMu.Unlock()
+		select {
+		case <-serverDone:
+		case <-time.After(2 * time.Second):
+			t.Error("SSH exec test server did not stop")
+		}
+	})
+	return listener.Addr().String(), commands
+}
+
+func testReconnectClient(address string) *Client {
+	return &Client{
+		Target:  address,
+		Logger:  zap.NewNop(),
+		network: "tcp",
+		address: address,
+		config: &cryptossh.ClientConfig{
+			User:            "collector",
+			HostKeyCallback: cryptossh.InsecureIgnoreHostKey(), // #nosec G106 -- loopback-only test server
+			Timeout:         2 * time.Second,
+		},
+	}
+}
+
+func TestReconnectDisablesPagingBeforeRequestedCommand(t *testing.T) {
+	address, commands := startSSHExecTestServer(t, "")
+	client := testReconnectClient(address)
+	t.Cleanup(func() { _ = client.Close() })
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	output, err := client.ExecuteCommand(ctx, "show version")
+	require.NoError(t, err)
+	assert.Equal(t, "output for show version", output)
+	assert.Equal(t, int64(1), client.ReconnectCount())
+	assert.Equal(t, "terminal length 0", <-commands)
+	assert.Equal(t, "show version", <-commands)
+}
+
+func TestReconnectRejectsConnectionWhenPagingInitializationFails(t *testing.T) {
+	address, commands := startSSHExecTestServer(t, "terminal length 0")
+	client := testReconnectClient(address)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	_, err := client.ExecuteCommand(ctx, "show version")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to disable CLI pagination after SSH reconnect")
+	assert.Equal(t, int64(0), client.ReconnectCount())
+	assert.Nil(t, client.Connection)
+	assert.Equal(t, "terminal length 0", <-commands)
+	select {
+	case command := <-commands:
+		t.Fatalf("requested command %q ran before paging initialization succeeded", command)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestClientClosePreventsInFlightReconnectFromPublishingConnection(t *testing.T) {
+	address, commands := startSSHExecTestServer(t, "")
+	client := testReconnectClient(address)
+
+	originalDialSSH := dialSSH
+	dialed := make(chan struct{})
+	releaseDial := make(chan struct{})
+	var releaseDialOnce sync.Once
+	release := func() { releaseDialOnce.Do(func() { close(releaseDial) }) }
+	dialSSH = func(ctx context.Context, network, address string, config *cryptossh.ClientConfig) (*cryptossh.Client, error) {
+		conn, err := originalDialSSH(ctx, network, address, config)
+		close(dialed)
+		<-releaseDial
+		return conn, err
+	}
+	t.Cleanup(func() {
+		release()
+		dialSSH = originalDialSSH
+		_ = client.Close()
+	})
+
+	result := make(chan error, 1)
+	go func() {
+		_, err := client.ExecuteCommand(t.Context(), "show version")
+		result <- err
+	}()
+
+	select {
+	case <-dialed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("SSH reconnect did not reach the dial barrier")
+	}
+	require.NoError(t, client.Close())
+	release()
+
+	select {
+	case err := <-result:
+		require.ErrorIs(t, err, net.ErrClosed)
+	case <-time.After(5 * time.Second):
+		t.Fatal("SSH command did not stop after the client was closed")
+	}
+	conn, closed := client.currentConnection()
+	assert.True(t, closed)
+	assert.Nil(t, conn, "an in-flight reconnect must not resurrect a closed client")
+	assert.Equal(t, int64(0), client.ReconnectCount())
+
+	// The reconnect may initialize its private candidate connection, but the
+	// requested command must never run after Close has made the client terminal.
+	assert.Equal(t, "terminal length 0", <-commands)
+	select {
+	case command := <-commands:
+		t.Fatalf("requested command %q ran after client close", command)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
 
 func TestClient_DetectOSType(t *testing.T) {
 	tests := []struct {
@@ -67,6 +270,41 @@ Hardware
 func TestOutputNeedsInteractiveShell(t *testing.T) {
 	assert.True(t, outputNeedsInteractiveShell(`Line has invalid autocommand "show platform hardware qfp active datapath utilization"`))
 	assert.False(t, outputNeedsInteractiveShell("Cisco IOS XE Software, Version 17.09.02a"))
+}
+
+func TestCommandOutputCaptureBoundsCombinedStdoutAndStderr(t *testing.T) {
+	stdout, stderr, limit := newCommandOutputCapture(5)
+
+	written, err := stdout.Write([]byte("abc"))
+	assert.NoError(t, err)
+	assert.Equal(t, 3, written)
+	written, err = stderr.Write([]byte("def"))
+	assert.NoError(t, err)
+	assert.Equal(t, 3, written)
+
+	select {
+	case <-limit.overflow:
+	default:
+		t.Fatal("combined SSH output overflow was not signaled")
+	}
+	assert.True(t, limit.Exceeded())
+	assert.Equal(t, "abcde", stdout.String()+stderr.String())
+}
+
+func TestCommandOutputCaptureIsRaceSafe(t *testing.T) {
+	stdout, stderr, limit := newCommandOutputCapture(1024)
+	var wg sync.WaitGroup
+	for _, output := range []*boundedCommandBuffer{stdout, stderr} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = output.Write([]byte(strings.Repeat("x", 2048)))
+		}()
+	}
+	wg.Wait()
+
+	assert.True(t, limit.Exceeded())
+	assert.Len(t, stdout.String()+stderr.String(), 1024)
 }
 
 func TestParseDeviceMetadataFromShowVersionIOSXE(t *testing.T) {

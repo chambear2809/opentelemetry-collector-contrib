@@ -6,14 +6,39 @@ package sdwan
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
+
+func TestClientRetryCountValidation(t *testing.T) {
+	client, err := NewClient(Config{
+		Endpoint:    "https://sdwan.example.com",
+		AuthMode:    "bearer",
+		BearerToken: "token",
+		MaxRetries:  0,
+	})
+	require.NoError(t, err)
+	assert.Zero(t, client.retries)
+
+	for _, retries := range []int{-1, httpclient.HardMaxRequestRetries + 1} {
+		_, err := NewClient(Config{
+			Endpoint:    "https://sdwan.example.com",
+			AuthMode:    "bearer",
+			BearerToken: "token",
+			MaxRetries:  retries,
+		})
+		require.ErrorContains(t, err, "invalid sdwan max retries")
+	}
+}
 
 func TestClientBearerList(t *testing.T) {
 	var authHeader string
@@ -40,6 +65,361 @@ func TestClientBearerList(t *testing.T) {
 	require.Len(t, objects, 1)
 	assert.Equal(t, "edge-1", String(objects[0], "host-name"))
 	assert.Equal(t, "Bearer token", authHeader)
+}
+
+func TestClientListPaginatesStatisticsScrollID(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		assert.Equal(t, "/dataservice/data/device/statistics/interfacestatistics", r.URL.Path)
+		switch r.URL.Query().Get("scrollId") {
+		case "":
+			assert.Equal(t, "2026-07-01T00:00:00", r.URL.Query().Get("startDate"))
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{"id": "1"}, {"id": "2"}},
+				"pageInfo": map[string]any{
+					"scrollId":    "scroll-1",
+					"hasMoreData": true,
+					"count":       2,
+				},
+			})
+		case "scroll-1":
+			assert.Equal(t, "2", r.URL.Query().Get("count"))
+			assert.Empty(t, r.URL.Query().Get("startDate"))
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{"id": "3"}},
+				"pageInfo": map[string]any{
+					"scrollId":    "scroll-2",
+					"hasMoreData": false,
+					"count":       1,
+				},
+			})
+		default:
+			http.Error(w, "unexpected scroll ID", http.StatusBadRequest)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, AuthMode: "bearer", BearerToken: "token", Timeout: time.Second})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	objects, err := client.List(context.Background(), "statistics.interfaces", "/data/device/statistics/interfacestatistics", url.Values{"startDate": {"2026-07-01T00:00:00"}}, 0)
+	require.NoError(t, err)
+	require.Len(t, objects, 3)
+	assert.Equal(t, "3", String(objects[2], "id"))
+	assert.Equal(t, 2, requests)
+}
+
+func TestClientListPaginatesStateFromEndID(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		assert.Equal(t, "edge-1", r.URL.Query().Get("deviceId"))
+		switch r.URL.Query().Get("startId") {
+		case "":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{"id": "1"}, {"id": "2"}},
+				"pageInfo": map[string]any{
+					"startId":     "49:1",
+					"endId":       "49:2",
+					"moreEntries": true,
+					"count":       2,
+				},
+			})
+		case "49:2":
+			assert.Equal(t, "2", r.URL.Query().Get("count"))
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{"id": "3"}},
+				"pageInfo": map[string]any{
+					"startId":     "50:3",
+					"endId":       "50:3",
+					"moreEntries": false,
+					"count":       1,
+				},
+			})
+		default:
+			http.Error(w, "unexpected start ID", http.StatusBadRequest)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, AuthMode: "bearer", BearerToken: "token", Timeout: time.Second})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	objects, err := client.List(context.Background(), "state.interfaces", "/data/device/state/Interface", url.Values{"deviceId": {"edge-1"}}, 0)
+	require.NoError(t, err)
+	require.Len(t, objects, 3)
+	assert.Equal(t, "3", String(objects[2], "id"))
+	assert.Equal(t, 2, requests)
+}
+
+func TestClientListDetectsContinuationCycle(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{"id": requests}},
+			"pageInfo": map[string]any{
+				"scrollId":    "repeated-scroll",
+				"hasMoreData": true,
+				"count":       1,
+			},
+		})
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, AuthMode: "bearer", BearerToken: "token", Timeout: time.Second})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	objects, err := client.List(context.Background(), "statistics.cycle", "/statistics/cycle", nil, 0)
+	require.ErrorContains(t, err, "continuation cycle")
+	assert.Len(t, objects, 2)
+	assert.Equal(t, 2, requests)
+}
+
+func TestClientListRejectsMissingContinuationToken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data":     []map[string]any{{"id": "1"}},
+			"pageInfo": map[string]any{"hasMoreData": true, "count": 1},
+		})
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, AuthMode: "bearer", BearerToken: "token", Timeout: time.Second})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	objects, err := client.List(context.Background(), "statistics.missing_token", "/statistics/missing-token", nil, 0)
+	require.ErrorContains(t, err, "pageInfo.scrollId is empty")
+	assert.Len(t, objects, 1)
+}
+
+func TestClientListPreservesLaterPageError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("scrollId") == "" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data":     []map[string]any{{"id": "1"}},
+				"pageInfo": map[string]any{"scrollId": "next", "hasMoreData": true, "count": 1},
+			})
+			return
+		}
+		http.Error(w, "failed", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, AuthMode: "bearer", BearerToken: "token", Timeout: time.Second})
+	require.NoError(t, err)
+	client.spacing = 0
+	client.retries = 0
+
+	objects, err := client.List(context.Background(), "statistics.error", "/statistics/error", nil, 0)
+	require.Error(t, err)
+	var apiErr *APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, http.StatusInternalServerError, apiErr.StatusCode)
+	assert.Len(t, objects, 1)
+}
+
+func TestClientListEnforcesHardResultLimit(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data":     []map[string]any{{"id": "1"}, {"id": "2"}, {"id": "3"}},
+			"pageInfo": map[string]any{"scrollId": "next", "hasMoreData": true, "count": 3},
+		})
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, AuthMode: "bearer", BearerToken: "token", Timeout: time.Second})
+	require.NoError(t, err)
+	client.spacing = 0
+	client.maxResults = 2
+
+	objects, err := client.List(context.Background(), "statistics.limit", "/statistics/limit", nil, 0)
+	require.ErrorContains(t, err, "exceeded 2 results")
+	assert.Len(t, objects, 2)
+	assert.Equal(t, 1, requests)
+}
+
+func TestClientListEnforcesPageLimit(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data":     []map[string]any{{"id": "1"}},
+			"pageInfo": map[string]any{"scrollId": "next", "hasMoreData": true, "count": 1},
+		})
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, AuthMode: "bearer", BearerToken: "token", Timeout: time.Second})
+	require.NoError(t, err)
+	client.spacing = 0
+	client.maxPages = 1
+
+	objects, err := client.List(context.Background(), "statistics.page_limit", "/statistics/page-limit", nil, 0)
+	require.ErrorContains(t, err, "exceeded 1 pages")
+	assert.Len(t, objects, 1)
+	assert.Equal(t, 1, requests)
+}
+
+func TestClientPostQueryPaginatesStatisticsScrollID(t *testing.T) {
+	var requests int
+	var bodies [][]byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/dataservice/statistics/query", r.URL.Path)
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		bodies = append(bodies, body)
+
+		switch r.URL.Query().Get("scrollId") {
+		case "":
+			assert.Empty(t, r.URL.Query().Get("count"))
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{"id": "1"}, {"id": "2"}},
+				"pageInfo": map[string]any{
+					"scrollId":    "scroll-1",
+					"hasMoreData": true,
+					"count":       2,
+				},
+			})
+		case "scroll-1":
+			assert.Equal(t, "2", r.URL.Query().Get("count"))
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{"id": "3"}},
+				"pageInfo": map[string]any{
+					"scrollId":    "scroll-2",
+					"hasMoreData": false,
+					"count":       1,
+				},
+			})
+		default:
+			http.Error(w, "unexpected scroll ID", http.StatusBadRequest)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, AuthMode: "bearer", BearerToken: "token", Timeout: time.Second})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	payload := map[string]any{"query": map[string]any{"field": "entry_time"}, "size": 2}
+	objects, err := client.PostQuery(context.Background(), "statistics.query", "/statistics/query", payload, 0)
+	require.NoError(t, err)
+	require.Len(t, objects, 3)
+	assert.Equal(t, "3", String(objects[2], "id"))
+	assert.Equal(t, 2, requests)
+	require.Len(t, bodies, 2)
+	assert.JSONEq(t, string(bodies[0]), string(bodies[1]))
+}
+
+func TestClientPostQueryDetectsContinuationCycle(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		assert.Equal(t, http.MethodPost, r.Method)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{"id": requests}},
+			"pageInfo": map[string]any{
+				"scrollId":    "repeated-scroll",
+				"hasMoreData": true,
+				"count":       1,
+			},
+		})
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, AuthMode: "bearer", BearerToken: "token", Timeout: time.Second})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	objects, err := client.PostQuery(context.Background(), "statistics.cycle", "/statistics/cycle", map[string]any{"size": 1}, 0)
+	require.ErrorContains(t, err, "continuation cycle")
+	assert.Len(t, objects, 2)
+	assert.Equal(t, 2, requests)
+}
+
+func TestClientPostQueryPreservesLaterPageError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		if r.URL.Query().Get("scrollId") == "" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data":     []map[string]any{{"id": "1"}},
+				"pageInfo": map[string]any{"scrollId": "next", "hasMoreData": true, "count": 1},
+			})
+			return
+		}
+		http.Error(w, "failed", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, AuthMode: "bearer", BearerToken: "token", Timeout: time.Second})
+	require.NoError(t, err)
+	client.spacing = 0
+	client.retries = 0
+
+	objects, err := client.PostQuery(context.Background(), "statistics.error", "/statistics/error", map[string]any{"size": 1}, 0)
+	require.Error(t, err)
+	var apiErr *APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, http.StatusInternalServerError, apiErr.StatusCode)
+	assert.Len(t, objects, 1)
+}
+
+func TestClientPostQueryEnforcesHardResultLimit(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		assert.Equal(t, http.MethodPost, r.Method)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data":     []map[string]any{{"id": "1"}, {"id": "2"}, {"id": "3"}},
+			"pageInfo": map[string]any{"scrollId": "next", "hasMoreData": true, "count": 3},
+		})
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, AuthMode: "bearer", BearerToken: "token", Timeout: time.Second})
+	require.NoError(t, err)
+	client.spacing = 0
+	client.maxResults = 2
+
+	objects, err := client.PostQuery(context.Background(), "statistics.limit", "/statistics/limit", map[string]any{"size": 3}, 10)
+	require.ErrorContains(t, err, "exceeded 2 results")
+	assert.Len(t, objects, 2)
+	assert.Equal(t, 1, requests)
+}
+
+func TestClientPreservesLargeJSONIntegers(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":[{"rx-packets":9007199254740993,"tx-packets":9007199254740993.0}]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:    server.URL,
+		AuthMode:    "bearer",
+		BearerToken: "token",
+		Timeout:     time.Second,
+	})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	objects, err := client.List(context.Background(), "interfaces", "/device/interface", nil, 0)
+	require.NoError(t, err)
+	require.Len(t, objects, 1)
+	value, ok := Int(objects[0], "rx-packets")
+	require.True(t, ok)
+	assert.Equal(t, int64(9007199254740993), value)
+	value, ok = Int(objects[0], "tx-packets")
+	require.True(t, ok)
+	assert.Equal(t, int64(9007199254740993), value)
 }
 
 func TestClientSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {

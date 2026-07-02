@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/config/configgrpc"
 	"go.opentelemetry.io/collector/config/configopaque"
+	"go.opentelemetry.io/collector/config/configoptional"
+	"go.opentelemetry.io/collector/confmap"
 )
 
 func validIOSXRConfig() *Config {
@@ -38,7 +40,13 @@ func TestIOSXRDefaultConfigIsConservative(t *testing.T) {
 	assert.Equal(t, iosXRStreamModeSample, cfg.IOSXR.Subscription.StreamMode)
 	assert.Equal(t, time.Minute, cfg.IOSXR.Subscription.SampleInterval)
 	assert.Equal(t, time.Minute, cfg.IOSXR.Subscription.HeartbeatInterval)
-	assert.Equal(t, 50000, cfg.IOSXR.MaxDatapointsPerBatch)
+	assert.True(t, cfg.IOSXR.Subscription.suppressRedundant())
+	assert.False(t, cfg.IOSXR.Subscription.updatesOnly())
+	assert.False(t, cfg.IOSXR.Subscription.allowAggregation())
+	assert.Equal(t, directGNMIDefaultMaxDatapoints, cfg.IOSXR.MaxDatapointsPerBatch)
+	assert.Equal(t, 100.0, cfg.IOSXR.DialOut.RateLimiting.RequestsPerSecond)
+	assert.Equal(t, 10, cfg.IOSXR.DialOut.RateLimiting.BurstSize)
+	assert.Equal(t, time.Minute, cfg.IOSXR.DialOut.RateLimiting.CleanupInterval)
 	for group, groupCfg := range cfg.IOSXR.PathGroups {
 		assert.False(t, groupCfg.Enabled, "path group %s should be opt-in", group)
 	}
@@ -61,6 +69,33 @@ func TestIOSXRConfigValidate(t *testing.T) {
 			},
 		},
 		{
+			name: "invalid dial out rate limit",
+			mutate: func(cfg *Config) {
+				cfg.IOSXR.DialOut.Enabled = true
+				cfg.IOSXR.DialOut.RateLimiting.Enabled = true
+				cfg.IOSXR.DialOut.RateLimiting.CleanupInterval = -time.Second
+			},
+			expectedErr: "ios_xr.dial_out: cleanup_interval must be positive",
+		},
+		{
+			name: "dial out receive size exceeds YANG receiver cap",
+			mutate: func(cfg *Config) {
+				cfg.IOSXR.DialIn.Targets = nil
+				cfg.IOSXR.DialOut.Enabled = true
+				cfg.IOSXR.DialOut.MaxRecvMsgSizeMiB = 17
+			},
+			expectedErr: "ios_xr.dial_out: max_recv_msg_size_mib must be between 1 and 16",
+		},
+		{
+			name: "dial out concurrent streams exceed YANG receiver cap",
+			mutate: func(cfg *Config) {
+				cfg.IOSXR.DialIn.Targets = nil
+				cfg.IOSXR.DialOut.Enabled = true
+				cfg.IOSXR.DialOut.MaxConcurrentStreams = 1001
+			},
+			expectedErr: "ios_xr.dial_out: max_concurrent_streams must be between 1 and 1000",
+		},
+		{
 			name: "target requires enabled IOS XR",
 			mutate: func(cfg *Config) {
 				cfg.IOSXR.Enabled = false
@@ -73,6 +108,20 @@ func TestIOSXRConfigValidate(t *testing.T) {
 				cfg.IOSXR.DialIn.Targets[0].Endpoint = "10.0.0.10"
 			},
 			expectedErr: "endpoint must be host:port",
+		},
+		{
+			name: "invalid gRPC client option",
+			mutate: func(cfg *Config) {
+				cfg.IOSXR.DialIn.Targets[0].BalancerName = "not_registered"
+			},
+			expectedErr: "invalid balancer_name",
+		},
+		{
+			name: "plaintext gNMI credentials are rejected",
+			mutate: func(cfg *Config) {
+				cfg.IOSXR.DialIn.Targets[0].TLS.Insecure = true
+			},
+			expectedErr: "tls.insecure must be false because gNMI credentials require TLS",
 		},
 		{
 			name: "invalid mode",
@@ -117,11 +166,32 @@ func TestIOSXRConfigValidate(t *testing.T) {
 			expectedErr: "unsupported_path_action must be warn, error, or ignore",
 		},
 		{
+			name: "batch limit exceeds hard ceiling",
+			mutate: func(cfg *Config) {
+				cfg.IOSXR.MaxDatapointsPerBatch = directGNMIHardMaxDatapoints + 1
+			},
+			expectedErr: "max_datapoints_per_batch must not exceed 100000",
+		},
+		{
 			name: "target path override without global groups",
 			mutate: func(cfg *Config) {
 				cfg.IOSXR.PathGroups["interfaces"] = IOSXRPathGroupConfig{}
 				cfg.IOSXR.DialIn.Targets[0].Paths.Include = []string{"openconfig-interfaces:interfaces/interface/state"}
 			},
+		},
+		{
+			name: "invalid custom path",
+			mutate: func(cfg *Config) {
+				cfg.IOSXR.DialIn.Targets[0].Paths.Include = []string{"openconfig-interfaces:interfaces/interface[state"}
+			},
+			expectedErr: "must be a valid gNMI path",
+		},
+		{
+			name: "wildcard custom path",
+			mutate: func(cfg *Config) {
+				cfg.IOSXR.DialIn.Targets[0].Paths.Include = []string{"openconfig-interfaces:interfaces/*"}
+			},
+			expectedErr: "cannot contain wildcards",
 		},
 	}
 
@@ -143,6 +213,42 @@ func TestIOSXRConfigValidate(t *testing.T) {
 	}
 }
 
+func TestIOSXRTargetSubscriptionBooleanInheritance(t *testing.T) {
+	parent := defaultIOSXRConfig()
+	parent.Subscription.UpdatesOnly = configoptional.Some(true)
+	parent.Subscription.AllowAggregation = configoptional.Some(true)
+
+	inherited := (IOSXRTargetConfig{}).withDefaults(parent)
+	assert.True(t, inherited.Subscription.suppressRedundant())
+	assert.True(t, inherited.Subscription.updatesOnly())
+	assert.True(t, inherited.Subscription.allowAggregation())
+
+	explicitFalse := (IOSXRTargetConfig{Subscription: IOSXRSubscriptionConfig{
+		SuppressRedundant: configoptional.Some(false),
+		UpdatesOnly:       configoptional.Some(false),
+		AllowAggregation:  configoptional.Some(false),
+	}}).withDefaults(parent)
+	assert.False(t, explicitFalse.Subscription.suppressRedundant())
+	assert.False(t, explicitFalse.Subscription.updatesOnly())
+	assert.False(t, explicitFalse.Subscription.allowAggregation())
+}
+
+func TestIOSXRSubscriptionExplicitFalseUnmarshalsAsPresent(t *testing.T) {
+	var sub IOSXRSubscriptionConfig
+	require.NoError(t, confmap.NewFromStringMap(map[string]any{
+		"suppress_redundant": false,
+		"updates_only":       false,
+		"allow_aggregation":  false,
+	}).Unmarshal(&sub))
+
+	assert.True(t, sub.SuppressRedundant.HasValue())
+	assert.True(t, sub.UpdatesOnly.HasValue())
+	assert.True(t, sub.AllowAggregation.HasValue())
+	assert.False(t, sub.suppressRedundant())
+	assert.False(t, sub.updatesOnly())
+	assert.False(t, sub.allowAggregation())
+}
+
 func TestIOSXRUnsupportedPathActions(t *testing.T) {
 	for _, action := range []string{iosXRUnsupportedWarn, iosXRUnsupportedError, iosXRUnsupportedIgnore} {
 		t.Run(action, func(t *testing.T) {
@@ -151,4 +257,15 @@ func TestIOSXRUnsupportedPathActions(t *testing.T) {
 			require.NoError(t, cfg.Validate())
 		})
 	}
+}
+
+func TestIOSXRRejectsUnsecuredRemoteDialOutListener(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	cfg.IOSXR.Enabled = true
+	cfg.IOSXR.DialOut.Enabled = true
+	cfg.IOSXR.DialOut.NetAddr.Endpoint = "0.0.0.0:57500"
+
+	err := cfg.Validate()
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "ios_xr.dial_out: non-loopback listeners require TLS")
 }

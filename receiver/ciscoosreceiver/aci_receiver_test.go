@@ -13,8 +13,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/consumer/consumertest"
+	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/aci"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
 )
 
@@ -176,6 +178,54 @@ func TestNodeIDFromACIDN(t *testing.T) {
 	assert.Equal(t, "202", nodeIDFromACIDN("topology/pod-1/node-202/sys/procsys/CDprocSysCPU5min"))
 	assert.Equal(t, "101", nodeIDFromACIDN("topology/pod-1/node-101/sys/phys-[eth1/1]"))
 	assert.Empty(t, nodeIDFromACIDN("uni/tn-prod/ap-app/epg-web"))
+}
+
+func TestACIInterfaceRatesUseCanonicalDescriptors(t *testing.T) {
+	builder := newACIMetricsBuilder(time.Now(), "test", nil)
+	builder.recordStatsObject(builder.globalResource(), aci.Object{
+		"dn":        "topology/pod-1/node-101/sys/phys-[eth1/1]",
+		"bytesRate": float64(1),
+		"pktsRate":  float64(2),
+	})
+
+	ioRate := requireMetricByName(t, builder.emit(), "cisco.interface.io.rate")
+	assert.Equal(t, "bit/s", ioRate.Unit())
+	require.Equal(t, 1, ioRate.Gauge().DataPoints().Len())
+	assert.Equal(t, float64(8), ioRate.Gauge().DataPoints().At(0).DoubleValue())
+
+	packetRate := requireMetricByName(t, builder.emit(), "cisco.interface.packet.rate")
+	assert.Equal(t, "{packet}/s", packetRate.Unit())
+	assert.Equal(t, float64(2), packetRate.Gauge().DataPoints().At(0).DoubleValue())
+	assert.NotContains(t, metricNames(builder.emit()), "system.network.packets")
+}
+
+func TestACIFabricHealthUsesFirstPresentSynonym(t *testing.T) {
+	builder := newACIMetricsBuilder(time.Now(), "test", nil)
+	builder.recordFabricObject(builder.globalResource(), aci.Object{
+		"cur":         float64(91),
+		"health":      float64(82),
+		"healthScore": float64(73),
+	}, "")
+
+	metric := requireMetricByName(t, builder.emit(), "aci.fabric.health")
+	require.Equal(t, 1, metric.Gauge().DataPoints().Len())
+	assert.Equal(t, float64(91), metric.Gauge().DataPoints().At(0).DoubleValue())
+}
+
+func requireMetricByName(t *testing.T, md pmetric.Metrics, name string) pmetric.Metric {
+	t.Helper()
+	for i := 0; i < md.ResourceMetrics().Len(); i++ {
+		for j := 0; j < md.ResourceMetrics().At(i).ScopeMetrics().Len(); j++ {
+			metrics := md.ResourceMetrics().At(i).ScopeMetrics().At(j).Metrics()
+			for k := 0; k < metrics.Len(); k++ {
+				if metrics.At(k).Name() == name {
+					return metrics.At(k)
+				}
+			}
+		}
+	}
+	require.FailNow(t, "metric not found", name)
+	return pmetric.Metric{}
 }
 
 func newTestACIMetricsReceiver(t *testing.T, endpoint string) *aciMetricsReceiver {

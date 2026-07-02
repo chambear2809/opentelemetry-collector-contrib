@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -19,12 +20,13 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
 
 const (
 	defaultUserAgent          = "opentelemetry-collector-contrib-ciscoosreceiver"
 	defaultRequestTimeout     = 30 * time.Second
-	defaultMaxRetries         = 3
 	defaultPageSize           = 500
 	defaultRequestSpacing     = 250 * time.Millisecond
 	catalystCenterTokenMargin = 5 * time.Minute
@@ -60,14 +62,10 @@ type RequestStat struct {
 // APIError is returned for non-success Catalyst Center API responses.
 type APIError struct {
 	StatusCode int
-	Body       string
 }
 
 func (e *APIError) Error() string {
-	if e.Body == "" {
-		return fmt.Sprintf("catalyst center API returned HTTP %d", e.StatusCode)
-	}
-	return fmt.Sprintf("catalyst center API returned HTTP %d: %s", e.StatusCode, e.Body)
+	return httpclient.StatusError("catalyst center", e.StatusCode)
 }
 
 // Client is a compact Catalyst Center REST client with token caching.
@@ -133,12 +131,9 @@ func NewClient(cfg Config) (*Client, error) {
 	if userAgent == "" {
 		userAgent = defaultUserAgent
 	}
-	retries := cfg.MaxRetries
-	if retries < 0 {
-		retries = 0
-	}
-	if retries == 0 {
-		retries = defaultMaxRetries
+	retries, err := httpclient.RetryCount(cfg.MaxRetries)
+	if err != nil {
+		return nil, fmt.Errorf("invalid catalyst center max retries: %w", err)
 	}
 	pageSize := cfg.PageSize
 	if pageSize <= 0 {
@@ -160,7 +155,7 @@ func NewClient(cfg Config) (*Client, error) {
 		password:       cfg.Password,
 		aesCredentials: cfg.AESCredentials,
 		userAgent:      userAgent,
-		client:         &http.Client{Timeout: timeout, Transport: transport},
+		client:         &http.Client{Timeout: timeout, Transport: transport, CheckRedirect: httpclient.SameOriginRedirectPolicy(parsed)},
 		retries:        retries,
 		pageSize:       pageSize,
 		spacing:        defaultRequestSpacing,
@@ -179,7 +174,7 @@ func GetJSON[T any](ctx context.Context, c *Client, operation, path string, quer
 	if err != nil {
 		return out, err
 	}
-	if err := json.Unmarshal(body, &out); err != nil {
+	if err := httpclient.DecodeJSON(body, &out); err != nil {
 		return out, fmt.Errorf("decode catalyst center %s response: %w", operation, err)
 	}
 	return out, nil
@@ -222,32 +217,57 @@ func GetPaginatedJSONWithPageLimit[T any](ctx context.Context, c *Client, operat
 		query = url.Values{}
 	}
 	var results []T
+	resultLimit, hardResultLimit := httpclient.EffectivePaginationResultLimit(maxResults)
 	offset := 1
+	pages := 0
+	var byteBudget httpclient.PaginationByteBudget
+	seenRequests := make(map[string]struct{})
 	for {
+		if len(results) >= resultLimit {
+			if hardResultLimit {
+				return results, httpclient.NewPaginationLimitError(operation, "result", resultLimit, len(results))
+			}
+			return results, nil
+		}
+		if pages >= httpclient.HardMaxPaginationPages {
+			return results, httpclient.NewPaginationLimitError(operation, "page", httpclient.HardMaxPaginationPages, len(results))
+		}
 		pageSize := c.pageSizeFor(pageLimit)
-		if maxResults > 0 {
-			remaining := maxResults - len(results)
-			if remaining <= 0 {
-				return results, nil
-			}
-			if remaining < pageSize {
-				pageSize = remaining
-			}
+		if remaining := resultLimit - len(results); remaining < pageSize {
+			pageSize = remaining
 		}
 		pageQuery := cloneValues(query)
 		pageQuery.Set("limit", strconv.Itoa(pageSize))
 		pageQuery.Set("offset", strconv.Itoa(offset))
+		requestKey := path + "?" + pageQuery.Encode()
+		if _, seen := seenRequests[requestKey]; seen {
+			return results, fmt.Errorf("paginate catalyst center %s response: detected continuation cycle after %d partial results", operation, len(results))
+		}
+		seenRequests[requestKey] = struct{}{}
 		body, err := c.do(ctx, http.MethodGet, operation, path, pageQuery, nil)
 		if err != nil {
 			return results, err
 		}
+		if err := byteBudget.Charge(operation, len(body), len(results)); err != nil {
+			return results, err
+		}
+		pages++
 		var page []T
 		pageInfo, hasPageInfo, err := decodePage(body, &page)
 		if err != nil {
 			return results, fmt.Errorf("decode catalyst center %s page: %w", operation, err)
 		}
 		results = append(results, page...)
-		if len(page) == 0 || len(page) < pageSize || pageInfo.complete(len(page), hasPageInfo) {
+		complete := len(page) == 0 || len(page) < pageSize || pageInfo.complete(len(page), hasPageInfo)
+		truncated := len(results) > resultLimit
+		if len(results) >= resultLimit {
+			results = results[:resultLimit]
+			if hardResultLimit && (truncated || !complete) {
+				return results, httpclient.NewPaginationLimitError(operation, "result", resultLimit, len(results))
+			}
+			return results, nil
+		}
+		if complete {
 			return results, nil
 		}
 		offset += len(page)
@@ -257,17 +277,28 @@ func GetPaginatedJSONWithPageLimit[T any](ctx context.Context, c *Client, operat
 // PostPaginatedJSON fetches all pages for a POST endpoint with response and page envelope fields.
 func PostPaginatedJSON[T any](ctx context.Context, c *Client, operation, path string, body map[string]any, maxResults int) ([]T, error) {
 	var results []T
+	resultLimit, hardResultLimit := httpclient.EffectivePaginationResultLimit(maxResults)
 	offset := 1
+	pages := 0
+	var byteBudget httpclient.PaginationByteBudget
+	seenOffsets := make(map[int]struct{})
 	for {
+		if len(results) >= resultLimit {
+			if hardResultLimit {
+				return results, httpclient.NewPaginationLimitError(operation, "result", resultLimit, len(results))
+			}
+			return results, nil
+		}
+		if pages >= httpclient.HardMaxPaginationPages {
+			return results, httpclient.NewPaginationLimitError(operation, "page", httpclient.HardMaxPaginationPages, len(results))
+		}
+		if _, seen := seenOffsets[offset]; seen {
+			return results, fmt.Errorf("paginate catalyst center %s response: detected continuation cycle after %d partial results", operation, len(results))
+		}
+		seenOffsets[offset] = struct{}{}
 		pageSize := c.pageSize
-		if maxResults > 0 {
-			remaining := maxResults - len(results)
-			if remaining <= 0 {
-				return results, nil
-			}
-			if remaining < pageSize {
-				pageSize = remaining
-			}
+		if remaining := resultLimit - len(results); remaining < pageSize {
+			pageSize = remaining
 		}
 		pageBody := cloneMap(body)
 		pageBody["page"] = map[string]any{
@@ -282,13 +313,26 @@ func PostPaginatedJSON[T any](ctx context.Context, c *Client, operation, path st
 		if err != nil {
 			return results, err
 		}
+		if err := byteBudget.Charge(operation, len(responseBody), len(results)); err != nil {
+			return results, err
+		}
+		pages++
 		var page []T
 		pageInfo, hasPageInfo, err := decodePage(responseBody, &page)
 		if err != nil {
 			return results, fmt.Errorf("decode catalyst center %s page: %w", operation, err)
 		}
 		results = append(results, page...)
-		if len(page) == 0 || len(page) < pageSize || pageInfo.complete(len(page), hasPageInfo) {
+		complete := len(page) == 0 || len(page) < pageSize || pageInfo.complete(len(page), hasPageInfo)
+		truncated := len(results) > resultLimit
+		if len(results) >= resultLimit {
+			results = results[:resultLimit]
+			if hardResultLimit && (truncated || !complete) {
+				return results, httpclient.NewPaginationLimitError(operation, "result", resultLimit, len(results))
+			}
+			return results, nil
+		}
+		if complete {
 			return results, nil
 		}
 		offset += len(page)
@@ -368,7 +412,7 @@ func (c *Client) authenticate(ctx context.Context) (string, error) {
 	var envelope struct {
 		Token string `json:"Token"`
 	}
-	if err := json.Unmarshal(body, &envelope); err != nil {
+	if err := httpclient.DecodeJSON(body, &envelope); err != nil {
 		return "", fmt.Errorf("decode catalyst center auth token response: %w", err)
 	}
 	if envelope.Token == "" {
@@ -416,7 +460,7 @@ func (c *Client) doRaw(ctx context.Context, method, operation, path string, quer
 		if err != nil {
 			lastErr = err
 			c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", Duration: duration, Err: err})
-			if !sleepBeforeRetry(ctx, attempt, -1) {
+			if attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, -1) {
 				if ctx.Err() != nil {
 					return nil, ctx.Err()
 				}
@@ -425,7 +469,7 @@ func (c *Client) doRaw(ctx context.Context, method, operation, path string, quer
 			continue
 		}
 
-		bodyBytes, readErr := io.ReadAll(resp.Body)
+		bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 		closeErr := resp.Body.Close()
 		if readErr != nil {
 			lastErr = readErr
@@ -442,7 +486,7 @@ func (c *Client) doRaw(ctx context.Context, method, operation, path string, quer
 			return bodyBytes, nil
 		}
 
-		apiErr := &APIError{StatusCode: resp.StatusCode, Body: string(bodyBytes)}
+		apiErr := &APIError{StatusCode: resp.StatusCode}
 		lastErr = apiErr
 		rateLimited := resp.StatusCode == http.StatusTooManyRequests
 		c.record(RequestStat{
@@ -455,7 +499,7 @@ func (c *Client) doRaw(ctx context.Context, method, operation, path string, quer
 			RateLimited: rateLimited,
 			Err:         apiErr,
 		})
-		if !retryableStatus(resp.StatusCode) || !sleepBeforeRetry(ctx, attempt, retryAfter(resp.Header.Get("Retry-After"))) {
+		if !retryableStatus(resp.StatusCode) || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(resp.Header.Get("Retry-After"))) {
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
@@ -543,7 +587,7 @@ func decodePage(body []byte, out any) (pageMetadata, bool, error) {
 		Detail   json.RawMessage `json:"detail"`
 		Page     *pageMetadata   `json:"page"`
 	}
-	if err := json.Unmarshal(body, &envelope); err != nil {
+	if err := httpclient.DecodeJSON(body, &envelope); err != nil {
 		return pageMetadata{}, false, err
 	}
 	raw := envelope.Response
@@ -553,7 +597,7 @@ func decodePage(body []byte, out any) (pageMetadata, bool, error) {
 	if len(raw) == 0 {
 		return pageMetadata{}, envelope.Page != nil, errors.New("missing response field")
 	}
-	if err := json.Unmarshal(raw, out); err != nil {
+	if err := httpclient.DecodeJSON(raw, out); err != nil {
 		return pageMetadata{}, envelope.Page != nil, err
 	}
 	if envelope.Page == nil {
@@ -566,7 +610,7 @@ func decodeCount(body []byte) (int64, error) {
 	var envelope struct {
 		Response any `json:"response"`
 	}
-	if err := json.Unmarshal(body, &envelope); err != nil {
+	if err := httpclient.DecodeJSON(body, &envelope); err != nil {
 		return 0, err
 	}
 	return countFromAny(envelope.Response)
@@ -575,9 +619,18 @@ func decodeCount(body []byte) (int64, error) {
 func countFromAny(value any) (int64, error) {
 	switch typed := value.(type) {
 	case float64:
+		if math.IsNaN(typed) || math.IsInf(typed, 0) || math.Trunc(typed) != typed || typed < float64(math.MinInt64) || typed >= float64(math.MaxInt64) {
+			return 0, fmt.Errorf("invalid count value %v", typed)
+		}
 		return int64(typed), nil
 	case int64:
 		return typed, nil
+	case json.Number:
+		count, err := typed.Int64()
+		if err != nil {
+			return 0, fmt.Errorf("invalid count value %q: %w", typed, err)
+		}
+		return count, nil
 	case map[string]any:
 		if count, ok := typed["count"]; ok {
 			return countFromAny(count)

@@ -1,0 +1,72 @@
+// Copyright The OpenTelemetry Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package httpclient
+
+import "fmt"
+
+const (
+	// HardMaxPaginationPages bounds controller calls even when a receiver or a
+	// direct client caller deliberately disables its configured result cap.
+	HardMaxPaginationPages = 100
+	// HardMaxPaginationResults bounds memory retained from a single paginated
+	// operation. A configured positive limit at or below this value still wins.
+	HardMaxPaginationResults = 100_000
+	// HardMaxPaginationBytes bounds aggregate response bytes decoded and retained
+	// by one paginated operation. The per-response limit alone would otherwise
+	// permit 100 near-limit pages to expand into gigabytes of generic maps.
+	HardMaxPaginationBytes = 64 * 1024 * 1024
+)
+
+// PaginationByteBudget tracks aggregate raw page bytes for one operation.
+type PaginationByteBudget struct {
+	used int
+}
+
+// Charge reserves one page before it is decoded. An over-budget page is not
+// decoded or appended, so callers can safely return their prior partial slice.
+func (b *PaginationByteBudget) Charge(operation string, pageBytes, partialResults int) error {
+	if pageBytes < 0 || pageBytes > HardMaxPaginationBytes-b.used {
+		return NewPaginationLimitError(operation, "byte", HardMaxPaginationBytes, partialResults)
+	}
+	b.used += pageBytes
+	return nil
+}
+
+// PaginationLimitError reports that a client returned partial results because
+// continuing pagination would exceed a non-configurable safety ceiling.
+type PaginationLimitError struct {
+	Operation string
+	Kind      string
+	Maximum   int
+	Results   int
+}
+
+func (e *PaginationLimitError) Error() string {
+	return fmt.Sprintf(
+		"paginate %s: hard %s limit of %d exhausted after %d partial results",
+		e.Operation,
+		e.Kind,
+		e.Maximum,
+		e.Results,
+	)
+}
+
+// EffectivePaginationResultLimit returns the result ceiling and whether it is
+// the hard client safety limit rather than a caller-configured cap.
+func EffectivePaginationResultLimit(configured int) (limit int, hard bool) {
+	if configured > 0 && configured <= HardMaxPaginationResults {
+		return configured, false
+	}
+	return HardMaxPaginationResults, true
+}
+
+// NewPaginationLimitError builds the common partial-result exhaustion error.
+func NewPaginationLimitError(operation, kind string, maximum, results int) error {
+	return &PaginationLimitError{
+		Operation: operation,
+		Kind:      kind,
+		Maximum:   maximum,
+		Results:   results,
+	}
+}

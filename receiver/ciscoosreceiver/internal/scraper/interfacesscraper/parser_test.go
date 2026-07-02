@@ -615,6 +615,22 @@ func TestParseInterfacesSkipsUnavailableRates(t *testing.T) {
 	assert.False(t, interfaces[0].HasOutputRate)
 }
 
+func TestParseInterfacesSkipsUnavailableNXOSCombinedRates(t *testing.T) {
+	output := `Ethernet1/1 is up
+admin state is up, Dedicated Interface
+  full-duplex, 10 Gb/s, media type is 10G
+  Load-Interval #2: 5 minute (300 seconds)
+    input rate - bps, - pps; output rate - bps, - pps`
+
+	interfaces := parseInterfaces(output, zaptest.NewLogger(t))
+
+	require.Len(t, interfaces, 1)
+	assert.False(t, interfaces[0].HasInputRate)
+	assert.False(t, interfaces[0].HasOutputRate)
+	assert.Equal(t, invalidCounterValue, interfaces[0].InputRateBits)
+	assert.Equal(t, invalidCounterValue, interfaces[0].OutputRateBits)
+}
+
 func TestStr2Float64(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -639,6 +655,10 @@ func TestStr2Float64(t *testing.T) {
 
 func TestStr2Int64PreservesLargeCounters(t *testing.T) {
 	assert.Equal(t, int64(9007199254740993), str2int64("9,007,199,254,740,993"))
+	assert.Equal(t, invalidCounterValue, str2int64("18,446,744,073,709,551,615"))
+	assert.Equal(t, invalidCounterValue, str2int64("-"))
+	assert.Equal(t, invalidCounterValue, str2int64("-1"))
+	assert.Equal(t, invalidCounterValue, str2int64("not-a-counter"))
 }
 
 func TestInterface_GetOperStatusInt(t *testing.T) {

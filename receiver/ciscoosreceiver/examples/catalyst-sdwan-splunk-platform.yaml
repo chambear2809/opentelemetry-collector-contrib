@@ -1,0 +1,266 @@
+# Starter API-only config for sending Catalyst Center and Catalyst SD-WAN
+# telemetry from the Cisco OS receiver to Splunk Platform through HEC.
+#
+# Required Splunk env vars:
+#   SPLUNK_HEC_ENDPOINT=https://splunk.example.com:8088/services/collector
+#   SPLUNK_HEC_TOKEN=...
+#   SPLUNK_METRICS_INDEX=cisco_metrics
+#   SPLUNK_EVENTS_INDEX=cisco_events
+#
+# Required Catalyst Center env vars:
+#   CATALYST_CENTER_ENDPOINT=https://catalyst-center.example.com
+#   CATALYST_CENTER_USERNAME=...
+#   CATALYST_CENTER_PASSWORD=...
+#
+# Required SD-WAN env vars:
+#   SDWAN_ENDPOINT=https://sdwan-manager.example.com
+#   SDWAN_USERNAME=...
+#   SDWAN_PASSWORD=...
+#
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  cisco_os:
+    collection_interval: 60s
+    timeout: 30s
+
+    # Optional receiver-side device filtering. Leave unset if you want all
+    # configured devices and controller/API records to flow into Splunk, then
+    # filter at search/dashboard time by host.name, host.id, or host.ip.
+    # device_selection:
+    #   include:
+    #     host_names: ["core-switch-1"]
+    #     host_ips: ["10.0.0.10"]
+    #   exclude:
+    #     host_names: []
+    #     host_ips: []
+
+    metrics:
+      # Keep high-cardinality wireless client detail off unless needed.
+      cisco.wlc.client.*:
+        enabled: false
+
+    catalyst_center:
+      enabled: true
+      endpoint: ${env:CATALYST_CENTER_ENDPOINT}
+      insecure_skip_verify: false
+      page_size: 500
+      max_retries: 3
+      lookback: 24h
+      auth:
+        mode: basic
+        username: ${env:CATALYST_CENTER_USERNAME}
+        password: ${env:CATALYST_CENTER_PASSWORD}
+      inventory:
+        enabled: true
+        max_results: 5000
+      interfaces:
+        enabled: true
+        max_results: 10000
+      health:
+        enabled: true
+        max_results: 1000
+      topology:
+        enabled: true
+        max_results: 10000
+      issues:
+        enabled: true
+        max_results: 1000
+      details:
+        # Turn this on only after adding targeted device/client lookups.
+        enabled: false
+        max_results: 1000
+      # Catalyst Center provides Catalyst inventory, health, topology,
+      # interface status, and interface speed context. Interface packet
+      # counters for SD-WAN edges come from SD-WAN Manager below.
+      # Optional targeted detail lookups:
+      # targets:
+      #   device_details:
+      #     - identifier: uuid
+      #       search_by: ${env:CATALYST_CENTER_DEVICE_UUID}
+      #   client_macs: ["00:11:22:33:44:55"]
+
+    sdwan:
+      enabled: true
+      endpoint: ${env:SDWAN_ENDPOINT}
+      insecure_skip_verify: false
+      page_size: 500
+      max_retries: 3
+      event_lookback: 24h
+      statistics_lookback: 30m
+      realtime_lookback: 5m
+      auth:
+        mode: auto
+        username: ${env:SDWAN_USERNAME}
+        password: ${env:SDWAN_PASSWORD}
+      # Add filters early in production to keep cardinality and API load bounded.
+      # To scope collection to individual WAN edges without SSH, set one or
+      # more SD-WAN Manager identifiers, for example:
+      #   system_ips: ["10.0.0.1"]
+      #   uuids: ["..."]
+      #   serials: ["..."]
+      # Add interface_names when you only need specific ports.
+      targets:
+        site_ids: []
+        system_ips: []
+        uuids: []
+        serials: []
+        device_types: []
+        personalities: []
+        colors: []
+        interface_names: []
+        vpn_ids: []
+        applications: []
+        application_families: []
+        cloud_providers: []
+        service_types: []
+      manager:
+        enabled: true
+        max_results: 1000
+      inventory:
+        enabled: true
+        max_results: 5000
+      control_plane:
+        enabled: true
+        max_results: 10000
+      bfd:
+        enabled: true
+        max_results: 10000
+      app_route:
+        enabled: true
+        max_results: 10000
+      interfaces:
+        enabled: true
+        max_results: 10000
+      alarms:
+        enabled: true
+        max_results: 1000
+      events:
+        enabled: true
+        max_results: 1000
+      audit:
+        enabled: true
+        max_results: 1000
+      # Opt-in groups. Enable only for an active investigation or scoped targets.
+      realtime_details:
+        enabled: false
+        max_results: 1000
+      tunnels:
+        enabled: false
+        max_results: 10000
+      flows:
+        enabled: false
+        max_results: 10000
+      policy_qos:
+        enabled: false
+        max_results: 10000
+      security:
+        enabled: false
+        max_results: 10000
+      appqoe:
+        enabled: false
+        max_results: 10000
+      cloud_onramp:
+        enabled: false
+        max_results: 10000
+      nwpi:
+        enabled: false
+        max_results: 10000
+      underlay:
+        enabled: false
+        max_results: 10000
+      cellular:
+        enabled: false
+        max_results: 10000
+      hardware_energy:
+        enabled: false
+        max_results: 10000
+      routing_services:
+        enabled: false
+        max_results: 10000
+      branch_services:
+        enabled: false
+        max_results: 10000
+      lifecycle_compliance:
+        enabled: false
+        max_results: 10000
+      thousandeyes:
+        enabled: false
+        max_results: 1000
+      management_security:
+        enabled: false
+        max_results: 1000
+
+    # Optional direct Catalyst 9800 WLC telemetry. Uncomment for WLC/AP gNMI
+    # collection in addition to Catalyst Center Assurance polling.
+    # catalyst_9800:
+    #   enabled: true
+    #   max_datapoints_per_batch: 10000
+    #   unsupported_path_action: warn
+    #   path_groups:
+    #     client_detail:
+    #       enabled: false
+    #     neighbors:
+    #       enabled: false
+    #     capwap_packets:
+    #       enabled: false
+    #   dial_in:
+    #     targets:
+    #       - name: campus-wlc-1
+    #         endpoint: ${env:CATALYST_9800_GNMI_ENDPOINT}
+    #         credentials:
+    #           username: ${env:CATALYST_9800_USERNAME}
+    #           password: ${env:CATALYST_9800_PASSWORD}
+    #         tls:
+    #           insecure_skip_verify: false
+    #         subscription:
+    #           mode: stream
+    #           stream_mode: sample
+    #           sample_interval: 60s
+    #           heartbeat_interval: 60s
+    #           suppress_redundant: true
+    #         encoding_preference: [json_ietf, json]
+
+processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 512
+  batch:
+    timeout: 10s
+    send_batch_size: 8192
+
+exporters:
+  splunk_hec/cisco_metrics:
+    endpoint: ${env:SPLUNK_HEC_ENDPOINT}
+    token: ${env:SPLUNK_HEC_TOKEN}
+    index: ${env:SPLUNK_METRICS_INDEX}
+    source: otel:cisco_os
+    sourcetype: cisco:otel:metric
+    use_multi_metric_format: true
+    health_check_enabled: true
+    tls:
+      insecure_skip_verify: false
+
+  splunk_hec/cisco_events:
+    endpoint: ${env:SPLUNK_HEC_ENDPOINT}
+    token: ${env:SPLUNK_HEC_TOKEN}
+    index: ${env:SPLUNK_EVENTS_INDEX}
+    source: otel:cisco_os
+    sourcetype: cisco:otel:event
+    health_check_enabled: true
+    tls:
+      insecure_skip_verify: false
+
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics:
+      receivers: [cisco_os]
+      processors: [memory_limiter, batch]
+      exporters: [splunk_hec/cisco_metrics]
+    logs:
+      receivers: [cisco_os]
+      processors: [memory_limiter, batch]
+      exporters: [splunk_hec/cisco_events]

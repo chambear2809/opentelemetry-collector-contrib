@@ -22,7 +22,7 @@ This receiver closes that gap:
 
 ## Quality Improvements Shipped
 
-A correctness review identified and fixed 20+ issues including: broken SSH session execution that would have silently failed against real Cisco devices, `float64` counter fields that lose precision on 100GbE+ links, a hardcoded insecure host-key policy, missing SSH host key verification, and metric unit strings that violated OTel semantic conventions. The receiver now ships in a production-ready state aligned with OpenTelemetry Collector contribution standards.
+A correctness review identified and fixed 20+ issues including: broken SSH session execution that would have silently failed against real Cisco devices, `float64` counter fields that lose precision on 100GbE+ links, a hardcoded insecure host-key policy, missing SSH host key verification, and metric unit strings that violated OTel semantic conventions. The receiver is hardened for production evaluation and aligned with OpenTelemetry Collector contribution standards, but it remains an alpha component and should be validated against each target platform, software release, and scale profile before broad rollout.
 
 ---
 *Targets Cisco AI Pod deployments with IOS-XE on Catalyst 9000 and NX-OS on Nexus 9000 switching.*

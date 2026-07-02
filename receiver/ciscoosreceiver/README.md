@@ -51,7 +51,8 @@ The following settings are available:
 Use the canonical receiver name `cisco_os` in new Collector configs. The deprecated `ciscoos` name remains accepted for existing configs.
 
 For Cisco appliance/controller endpoints that commonly use lab or privately issued TLS certificates, set the corresponding
-`insecure_skip_verify: true` option only when the certificate cannot be verified by a configured CA bundle. Prefer
+`insecure_skip_verify: true` option only when the certificate cannot be verified by a configured CA bundle. REST
+endpoints must use HTTPS; `insecure_skip_verify` never enables plaintext HTTP. Prefer
 `ca_file`/server-name settings where the receiver exposes them. Meraki is intentionally excluded because the Dashboard
 API is Cisco-hosted SaaS with public CA certificates.
 
@@ -74,6 +75,8 @@ Each entry in the `devices` list contains device information and authentication 
 *At least one of `auth.password` or `auth.key_file` is required. Both can be provided for fallback authentication (key file is tried first).
 
 **At least one of `auth.known_hosts_file` or `auth.insecure_skip_verify: true` is required. Using `known_hosts_file` is strongly recommended for production deployments.
+
+Combined stdout and stderr from each SSH command are capped at 16 MiB. Exceeding the cap fails that scrape instead of parsing or exporting truncated device output.
 
 **Authentication Methods:**
 - **Password authentication**: Provide `auth.password`
@@ -119,7 +122,8 @@ Use collection groups, target filters, and per-metric forwarding together when s
 cost-sensitive destinations such as Splunk Observability Cloud:
 
 - Collection groups such as `sdwan.interfaces.enabled`, `intersight.telemetry.enabled`, `nexus_dashboard.performance.enabled`, and `aci.stats.enabled` stop whole endpoint families from being polled and emitted.
-- `max_results` caps bound the number of returned objects for each group.
+- `max_results` caps bound the number of returned objects for each group. REST pagination has non-configurable safety ceilings of 100 pages, 100,000 retained results, and 64 MiB of aggregate raw page data per operation; larger configured result caps are rejected.
+- Controller `max_retries` values default to `3`, accept `0` to disable retries, and are capped at `10` so exponential backoff cannot overflow or keep a scrape retrying indefinitely.
 - `device_selection` and provider-native `targets` keep collection scoped to the devices, sites, applications, interfaces, tenants, or fabrics that matter.
 - Root-level `metrics` entries remove exact metric names or metric-name globs before the receiver passes data to the next Collector component. Metrics are enabled unless explicitly set to `enabled: false`; exact names override matching globs.
 
@@ -161,6 +165,7 @@ organization endpoints with `serials[]` filters where the API supports them.
 | `meraki.auth.api_key` | string | Yes | Meraki Dashboard API key. The receiver sends it as `Authorization: Bearer <key>`. |
 | `meraki.base_url` | string | No | Dashboard API base URL. Defaults to `https://api.meraki.com/api/v1`. |
 | `meraki.user_agent` | string | No | User-Agent for Dashboard API requests. |
+| `meraki.max_retries` | int | No | Retries for 429 and transient 5xx responses. Defaults to `3`; set `0` to disable retries. |
 | `meraki.organizations` | list | No* | Organization-wide polling targets. |
 | `meraki.devices` | list | No* | Explicit serial-scoped polling targets grouped by organization. |
 
@@ -253,8 +258,8 @@ explicitly configured device/client detail lookups.
 | `catalyst_center.page_size` | int | No | Offset/limit page size. Defaults to `500`, the documented network-device/interface maximum. Site health is automatically capped at Catalyst Center's 20-record API limit. |
 | `catalyst_center.max_retries` | int | No | Retries for 429 and transient 5xx responses. Defaults to `3`. |
 | `catalyst_center.lookback` | duration | No | Lookback window for site health and assurance issue queries. Defaults to `24h`. |
-| `catalyst_center.targets.device_details` | list | No | Optional `/device-detail` lookups. Each entry uses `identifier` (`macAddress`, `nwDeviceName`, or `uuid`) and `search_by` (the value to search for). |
-| `catalyst_center.targets.client_macs` | list | No | Optional client MAC addresses for `/client-detail` lookups. |
+| `catalyst_center.targets.device_details` | list | No | Optional `/device-detail` lookups. Each entry uses `identifier` (`macAddress`, `nwDeviceName`, or `uuid`) and `search_by` (the value to search for). MAC identifiers must contain a valid 48-bit MAC address. |
+| `catalyst_center.targets.client_macs` | list | No | Optional 48-bit client MAC addresses for `/client-detail` lookups. Colon, hyphen, and Cisco dotted spellings are accepted. |
 
 *Required for `basic` authentication.
 
@@ -308,9 +313,7 @@ externally managed bearer tokens, and externally supplied `JSESSIONID`/XSRF toke
 | `sdwan.page_size` | int | No | Generic page/result cap for SD-WAN endpoints. Defaults to `500`. |
 | `sdwan.max_retries` | int | No | Retries for 429 and transient 5xx responses. Defaults to `3`. |
 | `sdwan.event_lookback` | duration | No | Lookback for alarms, events, and audit logs. Defaults to `24h`. |
-| `sdwan.statistics_lookback` | duration | No | Lookback for statistics-style endpoint groups. Defaults to `30m`. |
-| `sdwan.realtime_lookback` | duration | No | Intended realtime incident window. Defaults to `5m`. |
-| `sdwan.targets.*` | lists | No | Optional filters for sites, system IPs, UUIDs, serials, device types, personalities, colors, interfaces, VPNs, applications, cloud providers, and service types. |
+| `sdwan.targets.*` | lists | No | Optional filters for sites, system IPs, UUIDs, serials, device types, personalities, colors, interfaces, VPNs, applications, cloud providers, and service types. `system_ips` entries must be literal IP addresses. |
 
 *Required for `jwt` or `session` auth.
 
@@ -365,7 +368,6 @@ leaf and spine is unavailable.
 | `nexus_dashboard.page_size` | int | No | Generic page size for controller APIs. Defaults to `100`. |
 | `nexus_dashboard.max_retries` | int | No | Retries for 429 and transient 5xx responses. Defaults to `3`. |
 | `nexus_dashboard.event_lookback` | duration | No | Lookback for audit, event, anomaly, advisory, and deployment evidence. Defaults to `24h`. |
-| `nexus_dashboard.telemetry_lookback` | duration | No | Lookback for performance-oriented endpoints. Defaults to `30m`. |
 | `nexus_dashboard.targets.*` | lists | No | Optional filters for `sites`, `fabrics`, `switch_serials`, `switch_ids`, `interface_names`, and `service_names`. |
 
 *Required for `api_key` auth.
@@ -401,7 +403,6 @@ switches is restricted.
 | `aci.max_retries` | int | No | Retries for 429 and transient 5xx responses. Defaults to `3`. |
 | `aci.insecure_skip_verify` | bool | No | Disables APIC certificate verification for self-signed lab certificates. |
 | `aci.event_lookback` | duration | No | Lookback for faults, audits, and events. Defaults to `24h`. |
-| `aci.stats_lookback` | duration | No | Lookback for stats-oriented endpoints. Defaults to `30m`. |
 | `aci.targets.*` | lists | No | Optional filters for sites, fabrics, node IDs, serials, tenants, VRFs, bridge domains, EPGs, and interfaces. |
 
 Collection groups default to enabled and can be disabled or capped independently:
@@ -445,7 +446,7 @@ supported connection/file/intrusion/intrusion-packet event blocks.
 | `fmc.max_retries` | int | No | Retries for 429, token expiry, and transient 5xx responses. Defaults to `3`. |
 | `fmc.event_lookback` | duration | No | Lookback for REST health and deployment evidence where FMC exposes time filters. Defaults to `24h`; audit volume is bounded with `fmc.audit.max_results`. |
 | `fmc.insecure_skip_verify` | bool | No | Disables FMC REST certificate verification for self-signed lab certificates. |
-| `fmc.targets.*` | lists | No | Optional filters for device IDs, serials, names, management IPs, policy IDs/names, and interface names. |
+| `fmc.targets.*` | lists | No | Optional filters for device IDs, serials, names, management IPs, policy IDs/names, and interface names. `management_ips` entries must be literal IP addresses. |
 | `fmc.estreamer.enabled` | bool | No | Enables eStreamer fully-qualified event ingestion. |
 | `fmc.estreamer.targets` | list | No | eStreamer `host:port` targets. If omitted and eStreamer is enabled, targets are derived from `fmc.controllers` using port `8302`. |
 | `fmc.estreamer.tls.cert_file` | string | Yes** | PEM client certificate exported for eStreamer. Convert FMC-generated PKCS#12 files to PEM before use. |
@@ -456,6 +457,7 @@ supported connection/file/intrusion/intrusion-packet event blocks.
 | `fmc.estreamer.event_types` | list | No | Event types to request: `connection`, `intrusion`, `intrusion_packet`, and `file`; aliases include `traffic`, `malware`, and `security_intelligence`. Defaults to all four Cisco FQE blocks. |
 | `fmc.estreamer.lookback` | duration | No | Initial eStreamer event replay window. Defaults to `5m`. |
 | `fmc.estreamer.reconnect_interval` | duration | No | Delay before reconnecting a failed eStreamer session. Defaults to `30s`. |
+| `fmc.estreamer.max_message_bytes` | int | No | Maximum eStreamer message size. Defaults to and cannot exceed `16777216` (16 MiB); bundles are also limited to 100,000 embedded records/events. |
 
 *Required for FMC REST collection.
 
@@ -474,7 +476,6 @@ Collection groups default to enabled and can be disabled or capped independently
 | `policy` | policy assignments, access/prefilter/NAT rules, intrusion/file/DNS/SSL/health/platform policies, syslog alerts, security zones, network/port/application objects, SGTs, and security-intelligence lists/feeds |
 | `deployments` | deployable devices, deployment job histories, per-device deployments, and pending changes |
 | `audit` | audit and configuration-change records emitted as logs |
-| `security_events` | eStreamer fully-qualified security event logs |
 
 ```yaml
 fmc:
@@ -528,16 +529,19 @@ delete, policy mutation, certificate mutation, license mutation, repository muta
 | `ise.insecure_skip_verify` | bool | No | Disables ISE REST certificate verification. Use only for isolated labs; prefer `ise.ca_file` plus a matching endpoint or `ise.server_name`. |
 | `ise.event_lookback` | duration | No | Lookback for evidence dedupe. Defaults to `24h`. |
 | `ise.session_lookback` | duration | No | Lookback for session/auth list windows. Defaults to `15m`. |
-| `ise.targets.*` | lists | No | Optional filters for node names, network device names/IPs, endpoint MACs, usernames, policy names, security group names, and pxGrid services. |
+| `ise.targets.*` | lists | No | Optional filters for node names, network device names/IPs, endpoint MACs, usernames, policy names, security group names, and pxGrid services. Network-device IPs must be literal IP addresses and endpoint MACs must be valid 48-bit addresses. |
 | `ise.pxgrid.*` | map | No | Optional pxGrid endpoint, node name, password or cert/key/CA, `auto_activate`, streaming subscriptions, and result cap. |
 | `ise.pxgrid.ca_file` | string | No | PEM CA bundle used to verify the pxGrid REST/WebSocket certificate. |
 | `ise.pxgrid.server_name` | string | No | TLS server name/SNI override for pxGrid. |
 | `ise.pxgrid.insecure_skip_verify` | bool | No | Disables pxGrid certificate verification for self-signed lab certificates. |
-| `ise.data_connect.*` | map | No | Optional Data Connect host, port, service name, username, password, wallet directory, SSL settings, lookback, row cap, and view overrides. |
+| `ise.pxgrid.allowed_service_hosts` | list | No | Additional pxGrid cluster hostnames or IPs authorized only at the configured control endpoint's port. The configured control host and port are always authorized for HTTPS and WSS. |
+| `ise.pxgrid.allowed_service_origins` | list | No | Additional exact service-discovery origins, such as `https://ise-psn.example.com:8910` or `wss://ise-pubsub.example.com:8910`. Include each required scheme and port explicitly; paths, credentials, queries, and fragments are rejected. |
+| `ise.data_connect.*` | map | No | Optional Data Connect host, port, service name, username, password, wallet directory, mandatory TLS, lookback, row cap, and view overrides. Plaintext credential transport is rejected. |
 | `ise.data_connect.ssl_verify` | bool | No | Set to `false` only when Data Connect TLS cannot be verified by configured wallet/CA material. Defaults to `true`. |
 
 Collection groups default to enabled for REST-safe APIs and can be disabled or capped independently. `pxgrid` and
-`data_connect` default to disabled.
+`data_connect` default to disabled. pxGrid streaming rejects WebSocket/STOMP frames or bodies over 4 MiB, more than
+256 headers, more than 64 KiB of aggregate headers, or any protocol line over 8 KiB.
 
 | Group | Coverage |
 |-------|----------|
@@ -602,15 +606,21 @@ gNMI Capabilities unless `skip_capabilities` is set on a target.
 | `catalyst_9800.enabled` | bool | No | Enables direct Catalyst 9800 telemetry. Defaults to `false`. |
 | `catalyst_9800.path_groups.*.enabled` | bool | No | Enables curated path groups. Safe defaults are `ap`, `rf`, `ssid`, `mobility`, `ha`, `auth_summary`, and `controller_system`; `client_detail`, `capwap_packets`, and `neighbors` default to disabled. |
 | `catalyst_9800.dial_in.targets` | list | No* | gNMI targets with `name`, `endpoint`, `credentials`, optional TLS/client settings, encoding preference, subscription, and path overrides. |
-| `catalyst_9800.dial_in.targets[].tls` | map | No | Standard gRPC client TLS settings, including `ca_file`, `server_name_override`, and `insecure_skip_verify` for self-signed target certificates. |
+| `catalyst_9800.dial_in.targets[].tls` | map | No | Standard gRPC client TLS settings. TLS is required because credentials are sent as gRPC metadata; plaintext `insecure: true` is rejected. `insecure_skip_verify` remains an explicit lab-only certificate-verification bypass. |
 | `catalyst_9800.dial_out.enabled` | bool | No* | Enables a Catalyst 9800 MDT gRPC dial-out listener. |
 | `catalyst_9800.dial_out.endpoint` | string | No | gRPC listen endpoint. Defaults to `localhost:57501`; production configs usually set `0.0.0.0:57501` or a specific collector IP. |
 | `catalyst_9800.dial_out.allowed_clients` | list | No | Optional source CIDR allowlist passed to the wrapped `yang_grpc` receiver. |
+| `catalyst_9800.dial_out.rate_limiting` | map | No | Optional per-client, per-message stream limit. Set `enabled`, `requests_per_second`, `burst_size`, and `cleanup_interval`. |
+| `catalyst_9800.dial_out.max_recv_msg_size_mib` | int | No | Maximum inbound message size, from 1 through 16 MiB. Defaults to `4`. |
+| `catalyst_9800.dial_out.max_concurrent_streams` | int | No | Maximum concurrent streams, from 1 through 1000. Defaults to `100`. |
 | `catalyst_9800.encoding_preference` | list | No | gNMI encoding negotiation order. Defaults to `["json_ietf", "json"]`; `proto` is reserved for gRPC/KV-GPB dial-out. |
 | `catalyst_9800.subscription.mode` | string | No | `once`, `poll`, or `stream`. Defaults to `stream`. |
 | `catalyst_9800.subscription.stream_mode` | string | No | `sample`, `on_change`, or `target_defined`. Native Cisco paths fall back to `sample` for `target_defined`; path catalog entries such as AP join and LLDP can override to on-change. |
 | `catalyst_9800.subscription.sample_interval` | duration | No | Base sample interval. Defaults to `60s`; AP/CAPWAP/common client/hardware/CDP paths enforce `15m`, AP oper/radio data/client traffic/RRM paths enforce `180s`, and radio stats/mobility/HA/auth/controller health paths enforce `60s`. |
-| `catalyst_9800.max_datapoints_per_batch` | int | No | Maximum datapoints forwarded from one decoded telemetry batch. Defaults to `50000`; set lower for cost-sensitive Splunk Observability Cloud pipelines, or `0` to disable the guardrail. |
+| `catalyst_9800.subscription.suppress_redundant` | bool | No | Suppresses unchanged values in streaming subscriptions. Defaults to `true`; a target inherits the receiver-level value when omitted, and can explicitly set `false`. |
+| `catalyst_9800.subscription.updates_only` | bool | No | Requests only post-subscription updates. Defaults to `false`; a target inherits the receiver-level value when omitted, and can explicitly override it. |
+| `catalyst_9800.subscription.allow_aggregation` | bool | No | Allows target-defined aggregation. Defaults to `false`; a target inherits the receiver-level value when omitted, and can explicitly override it. |
+| `catalyst_9800.max_datapoints_per_batch` | int | No | Maximum datapoints forwarded from one decoded telemetry batch. Defaults to `50000`; set lower for cost-sensitive Splunk Observability Cloud pipelines. A value of `0` selects the default, and values above the production hard ceiling of `100000` are rejected. |
 | `catalyst_9800.unsupported_path_action` | string | No | `warn`, `error`, or `ignore` when target capabilities do not advertise a configured path module. Defaults to `warn`. |
 | `catalyst_9800.paths.include` / `exclude` | lists | No | Custom concrete YANG paths and excludes. Includes cannot contain wildcards; excludes can match path IDs, groups, exact paths, or globs. |
 
@@ -647,6 +657,11 @@ catalyst_9800:
     enabled: true
     endpoint: 0.0.0.0:57501
     allowed_clients: ["10.0.0.0/8"]
+    rate_limiting:
+      enabled: true
+      requests_per_second: 100
+      burst_size: 10
+      cleanup_interval: 1m
 ```
 
 ### IOS XR Configuration
@@ -666,15 +681,21 @@ negotiated in configured order (`json_ietf`, `json`, `proto`), unsupported model
 | `ios_xr.enabled` | bool | No | Enables IOS XR telemetry. Defaults to `false`. |
 | `ios_xr.path_groups.*.enabled` | bool | No | Enables curated path groups. All groups default to disabled. |
 | `ios_xr.dial_in.targets` | list | No* | gNMI targets with `name`, `endpoint`, `credentials`, optional TLS/client settings, encoding preference, subscription, and path overrides. |
-| `ios_xr.dial_in.targets[].tls` | map | No | Standard gRPC client TLS settings, including `ca_file`, `server_name_override`, and `insecure_skip_verify` for self-signed target certificates. |
+| `ios_xr.dial_in.targets[].tls` | map | No | Standard gRPC client TLS settings. TLS is required because credentials are sent as gRPC metadata; plaintext `insecure: true` is rejected. `insecure_skip_verify` remains an explicit lab-only certificate-verification bypass. |
 | `ios_xr.dial_out.enabled` | bool | No* | Enables an MDT gRPC dial-out listener. |
 | `ios_xr.dial_out.endpoint` | string | No | gRPC listen endpoint. Defaults to `localhost:57500`; production configs usually set `0.0.0.0:57500` or a specific collector IP. |
 | `ios_xr.dial_out.allowed_clients` | list | No | Optional source CIDR allowlist passed to the wrapped `yang_grpc` receiver. |
+| `ios_xr.dial_out.rate_limiting` | map | No | Optional per-client, per-message stream limit. Set `enabled`, `requests_per_second`, `burst_size`, and `cleanup_interval`. |
+| `ios_xr.dial_out.max_recv_msg_size_mib` | int | No | Maximum inbound message size, from 1 through 16 MiB. Defaults to `4`. |
+| `ios_xr.dial_out.max_concurrent_streams` | int | No | Maximum concurrent streams, from 1 through 1000. Defaults to `100`. |
 | `ios_xr.encoding_preference` | list | No | Encoding negotiation order. Defaults to `["json_ietf", "json", "proto"]`. |
 | `ios_xr.subscription.mode` | string | No | `once`, `poll`, or `stream`. Defaults to `stream`. |
 | `ios_xr.subscription.stream_mode` | string | No | `sample`, `on_change`, or `target_defined`. Native Cisco paths fall back to `sample` for `target_defined` unless capabilities prove support. |
 | `ios_xr.subscription.sample_interval` | duration | No | Sample interval. Defaults to `60s`; high-volume catalog paths enforce safe minimums. |
-| `ios_xr.max_datapoints_per_batch` | int | No | Maximum datapoints forwarded from one decoded telemetry batch. Defaults to `50000`; set lower for cost-sensitive Splunk Observability Cloud pipelines, or `0` to disable the guardrail. |
+| `ios_xr.subscription.suppress_redundant` | bool | No | Suppresses unchanged values in streaming subscriptions. Defaults to `true`; a target inherits the receiver-level value when omitted, and can explicitly set `false`. |
+| `ios_xr.subscription.updates_only` | bool | No | Requests only post-subscription updates. Defaults to `false`; a target inherits the receiver-level value when omitted, and can explicitly override it. |
+| `ios_xr.subscription.allow_aggregation` | bool | No | Allows target-defined aggregation. Defaults to `false`; a target inherits the receiver-level value when omitted, and can explicitly override it. |
+| `ios_xr.max_datapoints_per_batch` | int | No | Maximum datapoints forwarded from one decoded telemetry batch. Defaults to `50000`; set lower for cost-sensitive Splunk Observability Cloud pipelines. A value of `0` selects the default, and values above the production hard ceiling of `100000` are rejected. |
 | `ios_xr.unsupported_path_action` | string | No | `warn`, `error`, or `ignore` when target capabilities do not advertise a configured path module. Defaults to `warn`. |
 | `ios_xr.paths.include` / `exclude` | lists | No | Custom YANG paths and excludes. Excludes can match path IDs, groups, exact paths, or globs. |
 
@@ -717,6 +738,11 @@ ios_xr:
     enabled: true
     endpoint: 0.0.0.0:57500
     allowed_clients: ["10.0.0.0/8"]
+    rate_limiting:
+      enabled: true
+      requests_per_second: 100
+      burst_size: 10
+      cleanup_interval: 1m
 ```
 
 ### Scrapers Configuration
@@ -742,7 +768,7 @@ The default scraper configuration collects the bounded, low-cardinality metrics 
 | `control_plane.commands.copp` | bool | `false` | Enables CoPP/control-plane packet and drop metrics. Also enabled by `control_plane.enabled`. |
 | `control_plane.commands.punt_rates` | bool | `false` | Enables IOS/IOS XE punt queue/interface rate metrics. NX-OS hardware rate-limiter counters are not emitted as rates. Also enabled by `control_plane.enabled`. |
 | `routing_forwarding.enabled` | bool | `false` | Enables safe routing and forwarding summary commands. |
-| `routing_forwarding.vrfs` | list | `["default"]` | VRFs to collect for VRF-aware routing/forwarding commands. |
+| `routing_forwarding.vrfs` | list | `["default"]` | VRFs to collect for VRF-aware routing/forwarding commands. Names may contain letters, digits, `.`, `_`, `-`, or `:`; other characters are rejected because names are inserted into device CLI commands. |
 | `routing_forwarding.max_vrfs` | int | `16` | Maximum VRFs collected per scrape. |
 | `routing_forwarding.commands.all` | bool | `false` | Enables every routing/forwarding command family. |
 | `routing_forwarding.commands.route_summary` | bool | `false` | Enables route summary metrics. Also enabled by `routing_forwarding.enabled`. |
@@ -767,7 +793,7 @@ The default scraper configuration collects the bounded, low-cardinality metrics 
 | `hardware_health.commands.module` | bool | `false` | Enables module/platform health commands. |
 | `hardware_health.commands.inventory` | bool | `false` | Enables inventory commands. |
 | `routing_neighbors.enabled` | bool | `false` | Enables optional BGP, OSPF, EIGRP, and ISIS neighbor state metrics. |
-| `routing_neighbors.vrfs` | list | `["default"]` | VRFs to collect for VRF-aware neighbor commands. |
+| `routing_neighbors.vrfs` | list | `["default"]` | VRFs to collect for VRF-aware neighbor commands. Names use the same CLI-safe character set as `routing_forwarding.vrfs`. |
 | `routing_neighbors.max_vrfs` | int | `16` | Maximum VRFs collected per scrape. |
 | `routing_neighbors.max_neighbors` | int | `512` | Maximum neighbors emitted per scrape. |
 | `routing_neighbors.commands.*` | bool | `false` | Enables individual neighbor command families: `all`, `bgp`, `ospf`, `eigrp`, `isis`. |
@@ -785,6 +811,7 @@ The default scraper configuration collects the bounded, low-cardinality metrics 
 | `counters.include` | list | `[]` | Optional glob patterns for allowed `cisco.interface.counter.name` values. Empty means include all collected counters. |
 | `counters.exclude` | list | `[]` | Optional glob patterns for counter names to drop after include filtering. |
 | `counters.max_per_interface` | int | `100` | Maximum `cisco.interface.counter` series emitted per interface. Set to `0` for no per-interface cap. |
+| `counters.max_interfaces` | int | `256` | Maximum interfaces enriched by optional high-cardinality counter commands. A value of `0` selects the safe default. |
 | `counters.commands.all` | bool | `false` | Enables all optional counter command groups. |
 | `counters.commands.interface_counters` | bool | `false` | Enables IOS/IOS XE `show interfaces counters` or NX-OS `show interface counters`. Also enabled by `counters.enabled`. |
 | `counters.commands.interface_errors` | bool | `false` | Enables IOS/IOS XE `show interfaces counters errors` or NX-OS `show interface counters errors`. Also enabled by `counters.enabled`. |
@@ -832,7 +859,7 @@ For a plain-language catalog of every metric, including when to enable it and wh
 ### Meraki API Metrics
 - Reused semantic/parity metrics when the Dashboard API exposes matching data: `cisco.device.up`, `system.memory.utilization`, `system.network.interface.status`, `cisco.interface.admin.status`, `cisco.interface.speed`, `cisco.interface.io.rate`, `cisco.interface.utilization`, `cisco.topology.neighbor.info`, and `cisco.transceiver.sensor`.
 - API and scrape health: `meraki.api.request.duration`, `meraki.api.request.errors`, `meraki.api.request.rate_limited`, and `cisco.scrape.partial_success`.
-- Cloud/windowed telemetry: `meraki.device.status`, `meraki.uplink.status`, `meraki.uplink.loss`, `meraki.uplink.latency`, `meraki.uplink.cellular.signal.*`, `meraki.switch.port.*`, `meraki.wireless.*`, `meraki.appliance.performance.score`, `meraki.vpn.peer.*`, and `meraki.power.module.status`.
+- Cloud/windowed telemetry: `meraki.controller.up`, `meraki.scrape.last_success`, `meraki.device.status`, `meraki.uplink.status`, `meraki.uplink.loss`, `meraki.uplink.latency`, `meraki.uplink.cellular.signal.*`, `meraki.switch.port.*`, `meraki.wireless.*`, `meraki.appliance.performance.score`, `meraki.vpn.peer.*`, and `meraki.power.module.status`.
 
 Meraki windowed usage values are emitted as Meraki-specific gauges unless the Dashboard API exposes true cumulative
 counters. Unsupported SSH parity gaps are intentionally not synthesized: `system.uptime`, `cisco.protocol.*`,
@@ -857,7 +884,7 @@ state, NX-OS NVE/EVPN fabric metrics, vPC, LACP counters, and detailed QoS queue
 - API and scrape health: `sdwan.api.request.duration`, `sdwan.api.request.errors`, `sdwan.api.rate_limited`, `sdwan.scrape.partial_success`, `sdwan.scrape.last_success`, `sdwan.service.unavailable`, and `sdwan.service.skipped`.
 - Manager and inventory: `sdwan.manager.up`, `sdwan.manager.status`, `sdwan.manager.endpoint.status`, `sdwan.inventory.device.count`, `sdwan.resource.info`, `sdwan.resource.status`, `sdwan.device.reachability.status`, `sdwan.device.validity.status`, `sdwan.device.certificate.status`, `cisco.device.up`, `system.cpu.utilization`, `system.memory.utilization`, and `system.uptime`.
 - Overlay and path health: `sdwan.control.connection.status`, `sdwan.control.connection.count`, `sdwan.control.expected_connections`, `sdwan.control.actual_connections`, `sdwan.bfd.session.status`, `sdwan.bfd.session.count`, `sdwan.bfd.session.transitions`, `sdwan.bfd.session.flap.count`, `sdwan.app_route.latency`, `sdwan.app_route.jitter`, `sdwan.app_route.loss`, and `sdwan.app_route.sla.status`.
-- Interface and transport evidence: `system.network.interface.status`, `sdwan.transport.interface.status`, `cisco.interface.admin.status`, `cisco.interface.speed`, `system.network.io`, `system.network.errors`, and `system.network.packet.dropped`.
+- Interface and transport evidence: `system.network.interface.status`, `sdwan.transport.interface.status`, `cisco.interface.admin.status`, `cisco.interface.speed`, `system.network.io`, `system.network.packet.count`, `system.network.errors`, and `system.network.packet.dropped`.
 - Full-coverage opt-in evidence: advanced groups emit bounded `sdwan.resource.status`, `sdwan.collection.object.count`, `sdwan.service.unavailable`, and `sdwan.service.skipped` signals for realtime details, tunnels, flows, policy/QoS, security, AppQoE, Cloud OnRamp, NWPI, underlay, cellular, hardware/energy, routing services, branch services, lifecycle/compliance, ThousandEyes agent status, and management security endpoint families.
 - Logs: alarms, events, and audit records are emitted as log records with `event.domain=sdwan`, original API object bodies, and bounded correlation attributes such as `sdwan.severity`, `sdwan.status`, `sdwan.system_ip`, `sdwan.site.id`, `sdwan.uuid`, `sdwan.policy.name`, `user.name`, and `user.email`.
 - End-user dashboard views: the SD-WAN Splunk bundle includes service desk, branch/site experience, SaaS/AI critical app experience, and incident commander pages that translate app-route, BFD, interface, event, Cloud OnRamp, AppQoE, policy/security, and telemetry-trust signals into user-impact triage.
@@ -887,13 +914,13 @@ state, NX-OS NVE/EVPN fabric metrics, vPC, LACP counters, and detailed QoS queue
 - Logs: ISE logs preserve raw REST/OpenAPI/ERS/MnT, pxGrid, and Data Connect records with `event.domain=ise`, `event.name`, node, protocol, outcome, failure reason, policy, network device, endpoint MAC, user, session/audit ID, and HTTP status attributes where present.
 
 ### Catalyst 9800 Metrics
-- Generic YANG telemetry: numeric leaves are emitted as `cisco.catalyst9800.yang.<module>.<path>.<leaf>`, string and enum leaves use an `_info` metric with the original value on the `value` attribute, known counters are cumulative sums, and other numeric leaves are gauges.
+- Generic YANG telemetry: numeric leaves are emitted as `cisco.catalyst9800.yang.<module>.<path>.<leaf>`; integral values are preserved as int64 datapoints when representable, while other numeric values use double datapoints. String and enum leaves use an `_info` metric with the original value on the `value` attribute, known counters are cumulative sums, and other numeric leaves are gauges.
 - Wireless aliases: stable `cisco.wlc.*` metrics cover AP join/failure/disconnect/CAPWAP state, RF utilization/noise/client count/channel changes, SSID client/utilization/traffic/retry counters, client connection/auth/roam/RSSI/SNR, mobility peer/roam/handoff, HA state, RADIUS summary health, and controller CPU/receiver health.
 - Correlation attributes: Catalyst 9800 metrics include `host.name`, `host.id`, `host.ip`, `hw.type=network`, `cisco.os.name=ios_xe`, `cisco.platform.family=catalyst_9800`, `cisco.yang.path`, `cisco.yang.module`, `cisco.telemetry.transport`, AP MAC/name, radio slot, WLAN ID, SSID, client MAC, and mobility peer IP when present.
 - Receiver health: `cisco.catalyst9800.receiver.active_subscriptions`, `cisco.catalyst9800.receiver.updates`, `cisco.catalyst9800.receiver.decode_errors`, `cisco.catalyst9800.receiver.unsupported_paths`, `cisco.catalyst9800.receiver.reconnects`, `cisco.catalyst9800.receiver.dropped_datapoints`, `cisco.catalyst9800.receiver.compact_gpb_payloads`, and `cisco.catalyst9800.receiver.last_success_timestamp` help detect stale or lossy WLC telemetry.
 
 ### IOS XR Metrics
-- Generic YANG telemetry: numeric leaves are emitted as `cisco.iosxr.yang.<module>.<path>.<leaf>`, string and enum leaves use an `_info` metric with the original value on the `value` attribute, known counters are cumulative sums, and other numeric leaves are gauges.
+- Generic YANG telemetry: numeric leaves are emitted as `cisco.iosxr.yang.<module>.<path>.<leaf>`; integral values are preserved as int64 datapoints when representable, while other numeric values use double datapoints. String and enum leaves use an `_info` metric with the original value on the `value` attribute, known counters are cumulative sums, and other numeric leaves are gauges.
 - Core WAN evidence: curated path groups cover system, platform, environment, high-speed interfaces, optics, routing, FIB/CEF, BGP, ISIS, MPLS, SR/SRv6, QoS, security policy, BFD, topology, time sync, ASIC, and telemetry self-health.
 - Correlation attributes: IOS XR metrics include `host.name`, `host.id`, `host.ip`, `hw.type=network`, `cisco.os.name=ios_xr`, `cisco.platform.family`, `cisco.yang.path`, `cisco.yang.module`, `cisco.telemetry.transport`, and normalized interface, VRF, neighbor, node, and location keys where available.
 - Receiver health: `cisco.iosxr.receiver.active_subscriptions`, `cisco.iosxr.receiver.updates`, `cisco.iosxr.receiver.decode_errors`, `cisco.iosxr.receiver.unsupported_paths`, `cisco.iosxr.receiver.reconnects`, `cisco.iosxr.receiver.dropped_datapoints`, `cisco.iosxr.receiver.compact_gpb_payloads`, and `cisco.iosxr.receiver.last_success_timestamp` help detect stale or lossy telemetry.
@@ -903,7 +930,7 @@ state, NX-OS NVE/EVPN fabric metrics, vPC, LACP counters, and detailed QoS queue
 - `system.network.io` - Number of bytes transmitted and received (with `network.io.direction` attribute: `receive` or `transmit`)
 - `system.network.errors` - Number of errors encountered (with `network.io.direction` attribute: `receive` or `transmit`)
 - `system.network.packet.dropped` - Number of packets dropped (with `network.io.direction` attribute: `receive` or `transmit`)
-- `system.network.packet.count` - Number of packets transmitted or received, categorized by type and direction (with `network.packet.type` attribute: `unicast`, `multicast`, or `broadcast`)
+- `system.network.packet.count` - Number of packets transmitted or received, categorized by direction and, when the source exposes it, packet type (with `network.packet.type` attribute: `unicast`, `multicast`, or `broadcast`)
 - `system.network.interface.status` - Interface operational status (1 = up, 0 = down)
 - `cisco.interface.admin.status` - Interface administrative status (1 = enabled/up, 0 = disabled/down), useful for distinguishing intentionally disabled ports from failed ports.
 - `cisco.interface.speed` - Numeric interface line speed in `bit/s` when the device reports an explicit speed.

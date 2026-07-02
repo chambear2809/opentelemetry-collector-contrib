@@ -20,28 +20,67 @@ import (
 type sshDialer func(ctx context.Context, network, address string, config *cryptossh.ClientConfig) (*cryptossh.Client, error)
 
 var dialSSH sshDialer = func(ctx context.Context, network, address string, config *cryptossh.ClientConfig) (*cryptossh.Client, error) {
-	type dialResult struct {
-		conn *cryptossh.Client
-		err  error
+	if config == nil {
+		return nil, errors.New("SSH client config is nil")
 	}
-	ch := make(chan dialResult, 1)
-	go func() {
-		conn, err := cryptossh.Dial(network, address, config)
-		ch <- dialResult{conn, err}
-	}()
-	select {
-	case r := <-ch:
-		return r.conn, r.err
-	case <-ctx.Done():
-		// The dial goroutine is still running. When it completes, close any
-		// connection it returns so we don't leak an open SSH socket.
-		go func() {
-			if r := <-ch; r.conn != nil {
-				r.conn.Close()
-			}
-		}()
-		return nil, ctx.Err()
+
+	dialer := net.Dialer{Timeout: config.Timeout}
+	rawConn, err := dialer.DialContext(ctx, network, address)
+	if err != nil {
+		return nil, err
 	}
+
+	// NewClientConn performs the SSH version exchange, key exchange, and
+	// authentication synchronously. Bound that work independently of the TCP
+	// connect and close the socket when the context is canceled so a peer that
+	// accepts TCP but never speaks SSH cannot strand a goroutine indefinitely.
+	handshakeDeadline, hasDeadline := ctx.Deadline()
+	if config.Timeout > 0 {
+		timeoutDeadline := time.Now().Add(config.Timeout)
+		if !hasDeadline || timeoutDeadline.Before(handshakeDeadline) {
+			handshakeDeadline = timeoutDeadline
+			hasDeadline = true
+		}
+	}
+	if hasDeadline {
+		if err := rawConn.SetDeadline(handshakeDeadline); err != nil {
+			_ = rawConn.Close()
+			return nil, fmt.Errorf("failed to set SSH handshake deadline: %w", err)
+		}
+	}
+
+	cancelCloseDone := make(chan struct{})
+	stopCancelClose := context.AfterFunc(ctx, func() {
+		defer close(cancelCloseDone)
+		_ = rawConn.Close()
+	})
+
+	sshConn, channels, requests, handshakeErr := cryptossh.NewClientConn(rawConn, address, config)
+	if !stopCancelClose() {
+		<-cancelCloseDone
+		if sshConn != nil {
+			_ = sshConn.Close()
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+	}
+	if handshakeErr != nil {
+		_ = rawConn.Close()
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		return nil, handshakeErr
+	}
+
+	// The deadline only protects connection establishment. Successful clients
+	// must remain usable for long-lived command sessions.
+	if err := rawConn.SetDeadline(time.Time{}); err != nil {
+		_ = sshConn.Close()
+		return nil, fmt.Errorf("failed to clear SSH handshake deadline: %w", err)
+	}
+
+	return cryptossh.NewClient(sshConn, channels, requests), nil
 }
 
 // EstablishDeviceConnection creates a device connection using the provided DeviceConfig.

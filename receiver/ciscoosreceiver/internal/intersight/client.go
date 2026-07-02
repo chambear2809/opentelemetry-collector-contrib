@@ -19,13 +19,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
 
 const (
 	defaultEndpoint       = "https://intersight.com"
 	defaultUserAgent      = "opentelemetry-collector-contrib-ciscoosreceiver"
 	defaultRequestTimeout = 30 * time.Second
-	defaultMaxRetries     = 3
 	defaultPageSize       = 100
 )
 
@@ -57,14 +58,10 @@ type RequestStat struct {
 // APIError is returned for non-success Intersight API responses.
 type APIError struct {
 	StatusCode int
-	Body       string
 }
 
 func (e *APIError) Error() string {
-	if e.Body == "" {
-		return fmt.Sprintf("intersight API returned HTTP %d", e.StatusCode)
-	}
-	return fmt.Sprintf("intersight API returned HTTP %d: %s", e.StatusCode, e.Body)
+	return httpclient.StatusError("intersight", e.StatusCode)
 }
 
 // Client is a compact Cisco Intersight REST and telemetry client.
@@ -107,12 +104,9 @@ func NewClient(cfg Config) (*Client, error) {
 	if userAgent == "" {
 		userAgent = defaultUserAgent
 	}
-	retries := cfg.MaxRetries
-	if retries < 0 {
-		retries = 0
-	}
-	if retries == 0 {
-		retries = defaultMaxRetries
+	retries, err := httpclient.RetryCount(cfg.MaxRetries)
+	if err != nil {
+		return nil, fmt.Errorf("invalid intersight max retries: %w", err)
 	}
 	pageSize := cfg.PageSize
 	if pageSize <= 0 {
@@ -129,7 +123,7 @@ func NewClient(cfg Config) (*Client, error) {
 		signer:    signer,
 		endpoint:  parsed,
 		userAgent: userAgent,
-		client:    &http.Client{Timeout: timeout, Transport: transport},
+		client:    &http.Client{Timeout: timeout, Transport: transport, CheckRedirect: httpclient.SameOriginRedirectPolicy(parsed)},
 		retries:   retries,
 		pageSize:  pageSize,
 	}, nil
@@ -158,33 +152,58 @@ func (c *Client) List(ctx context.Context, operation, path string, query url.Val
 		query = url.Values{}
 	}
 	var results []Object
+	resultLimit, hardResultLimit := httpclient.EffectivePaginationResultLimit(maxResults)
 	skip := 0
+	pages := 0
+	var byteBudget httpclient.PaginationByteBudget
+	seenRequests := make(map[string]struct{})
 	for {
+		if len(results) >= resultLimit {
+			if hardResultLimit {
+				return results, httpclient.NewPaginationLimitError(operation, "result", resultLimit, len(results))
+			}
+			return results, nil
+		}
+		if pages >= httpclient.HardMaxPaginationPages {
+			return results, httpclient.NewPaginationLimitError(operation, "page", httpclient.HardMaxPaginationPages, len(results))
+		}
 		pageQuery := cloneValues(query)
 		pageSize := c.pageSize
-		if maxResults > 0 {
-			remaining := maxResults - len(results)
-			if remaining <= 0 {
-				return results, nil
-			}
-			if remaining < pageSize {
-				pageSize = remaining
-			}
+		if remaining := resultLimit - len(results); remaining < pageSize {
+			pageSize = remaining
 		}
 		pageQuery.Set("$top", strconv.Itoa(pageSize))
 		pageQuery.Set("$skip", strconv.Itoa(skip))
+		requestKey := path + "?" + pageQuery.Encode()
+		if _, seen := seenRequests[requestKey]; seen {
+			return results, fmt.Errorf("paginate intersight %s response: detected continuation cycle after %d partial results", operation, len(results))
+		}
+		seenRequests[requestKey] = struct{}{}
 
 		body, err := c.do(ctx, http.MethodGet, operation, path, pageQuery, nil)
 		if err != nil {
 			return results, err
 		}
+		if err := byteBudget.Charge(operation, len(body), len(results)); err != nil {
+			return results, err
+		}
+		pages++
 
 		page, err := decodeList(body)
 		if err != nil {
 			return results, fmt.Errorf("decode intersight %s page: %w", operation, err)
 		}
 		results = append(results, page...)
-		if len(page) < pageSize {
+		complete := len(page) < pageSize
+		truncated := len(results) > resultLimit
+		if len(results) >= resultLimit {
+			results = results[:resultLimit]
+			if hardResultLimit && (truncated || !complete) {
+				return results, httpclient.NewPaginationLimitError(operation, "result", resultLimit, len(results))
+			}
+			return results, nil
+		}
+		if complete {
 			return results, nil
 		}
 		skip += len(page)
@@ -202,7 +221,7 @@ func (c *Client) PostJSON(ctx context.Context, operation, path string, body any)
 		return nil, err
 	}
 	var out any
-	if err := json.Unmarshal(response, &out); err != nil {
+	if err := httpclient.DecodeJSON(response, &out); err != nil {
 		return nil, fmt.Errorf("decode intersight %s response: %w", operation, err)
 	}
 	return out, nil
@@ -236,7 +255,7 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 		if err != nil {
 			lastErr = err
 			c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", Duration: duration, Err: err})
-			if !sleepBeforeRetry(ctx, attempt, -1) {
+			if attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, -1) {
 				if ctx.Err() != nil {
 					return nil, ctx.Err()
 				}
@@ -245,7 +264,7 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 			continue
 		}
 
-		bodyBytes, readErr := io.ReadAll(resp.Body)
+		bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 		closeErr := resp.Body.Close()
 		if readErr != nil {
 			lastErr = readErr
@@ -262,7 +281,7 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 			return bodyBytes, nil
 		}
 
-		apiErr := &APIError{StatusCode: resp.StatusCode, Body: string(bodyBytes)}
+		apiErr := &APIError{StatusCode: resp.StatusCode}
 		lastErr = apiErr
 		rateLimited := resp.StatusCode == http.StatusTooManyRequests
 		c.record(RequestStat{
@@ -275,7 +294,7 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 			RateLimited: rateLimited,
 			Err:         apiErr,
 		})
-		if !retryableStatus(resp.StatusCode) || !sleepBeforeRetry(ctx, attempt, retryAfter(resp.Header.Get("Retry-After"))) {
+		if !retryableStatus(resp.StatusCode) || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(resp.Header.Get("Retry-After"))) {
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
@@ -343,12 +362,12 @@ func decodeList(body []byte) ([]Object, error) {
 		Results []Object `json:"Results"`
 		Count   int64    `json:"Count"`
 	}
-	if err := json.Unmarshal(body, &envelope); err == nil && envelope.Results != nil {
+	if err := httpclient.DecodeJSON(body, &envelope); err == nil && envelope.Results != nil {
 		return envelope.Results, nil
 	}
 
 	var array []Object
-	if err := json.Unmarshal(body, &array); err != nil {
+	if err := httpclient.DecodeJSON(body, &array); err != nil {
 		return nil, err
 	}
 	return array, nil

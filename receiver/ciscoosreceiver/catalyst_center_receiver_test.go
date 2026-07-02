@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/catalystcenter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
 )
 
@@ -140,6 +141,19 @@ func TestCatalystCenterScrapeRecordsPartialSuccess(t *testing.T) {
 	assert.True(t, intMetricValueExists(md, "catalyst_center.scrape.partial_success", 1))
 	assert.Contains(t, metricNames(md), "catalyst_center.api.request.errors")
 	assert.True(t, hasResourceHostID(md, "FOC1234"))
+}
+
+func TestCatalystCenterDeviceUtilizationNormalizesPercentages(t *testing.T) {
+	builder := newCatalystCenterMetricsBuilder(time.Now(), "test", nil)
+	rb := builder.accountResource()
+	for _, value := range []any{float64(42), float64(0.42), float64(-1), float64(101), "NaN", "Inf"} {
+		recordObjectRatio(rb, catalystcenter.Object{"cpu": value}, "cpu", "system.cpu.utilization", "CPU utilization.", nil)
+	}
+
+	metric := requireMetricByName(t, builder.emit(), "system.cpu.utilization")
+	require.Equal(t, 2, metric.Gauge().DataPoints().Len())
+	assert.InDelta(t, 0.42, metric.Gauge().DataPoints().At(0).DoubleValue(), 1e-12)
+	assert.InDelta(t, 0.42, metric.Gauge().DataPoints().At(1).DoubleValue(), 1e-12)
 }
 
 func newTestCatalystCenterReceiver(t *testing.T, endpoint string, mutate func(*Config)) *catalystCenterMetricsReceiver {

@@ -5,6 +5,7 @@ package ciscoosreceiver
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,7 +13,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configopaque"
+	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
+	"go.opentelemetry.io/collector/confmap/xconfmap"
 	"go.opentelemetry.io/collector/scraper/scraperhelper"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/connection"
@@ -533,12 +536,10 @@ func TestConfigValidate(t *testing.T) {
 						Username: "admin",
 						Password: configopaque.String("password"),
 					},
-					PageSize:           500,
-					MaxRetries:         3,
-					EventLookback:      time.Hour,
-					StatisticsLookback: 30 * time.Minute,
-					RealtimeLookback:   5 * time.Minute,
-					Inventory:          defaultSDWANGroupConfig(true, 10),
+					PageSize:      500,
+					MaxRetries:    3,
+					EventLookback: time.Hour,
+					Inventory:     defaultSDWANGroupConfig(true, 10),
 				},
 			},
 			expectedErr: "",
@@ -728,6 +729,29 @@ func TestConfigValidate(t *testing.T) {
 				},
 			},
 			expectedErr: "",
+		},
+		{
+			name: "fmc estreamer message limit exceeds hard maximum",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				FMC: FMCConfig{
+					EStreamer: FMCEStreamerConfig{
+						Enabled: true,
+						Targets: []FMCEStreamerTargetConfig{{
+							Endpoint: "fmc.example.com:8302",
+						}},
+						TLS: FMCEStreamerTLSConfig{
+							CertFile: "/etc/otelcol/fmc-estreamer.crt",
+							KeyFile:  "/etc/otelcol/fmc-estreamer.key",
+						},
+						MaxMessageBytes: maxFMCEStreamerMessageBytes + 1,
+					},
+				},
+			},
+			expectedErr: "fmc.estreamer.max_message_bytes must be between 1 and 16777216 when set",
 		},
 		{
 			name: "missing fmc controller",
@@ -943,7 +967,21 @@ func TestConfigValidate(t *testing.T) {
 					component.MustNewType("system"): nil,
 				},
 			},
-			expectedErr: "timeout must not be negative",
+			expectedErr: "timeout must be positive",
+		},
+		{
+			name: "zero timeout",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            0,
+					CollectionInterval: 60 * time.Second,
+				},
+				Devices: []DeviceConfig{validTestDevice()},
+				Scrapers: map[component.Type]component.Config{
+					component.MustNewType("system"): nil,
+				},
+			},
+			expectedErr: "timeout must be positive",
 		},
 		{
 			name: "zero collection interval",
@@ -974,6 +1012,246 @@ func TestConfigValidate(t *testing.T) {
 	}
 }
 
+func TestValidateHostPortOrHost(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		wantErr bool
+	}{
+		{name: "hostname", value: "fmc.example.com"},
+		{name: "hostname with trailing dot", value: "fmc.example.com."},
+		{name: "hostname and port", value: "fmc.example.com:8302"},
+		{name: "bare IPv4", value: "192.0.2.10"},
+		{name: "IPv4 and port", value: "192.0.2.10:8302"},
+		{name: "bare IPv6", value: "2001:db8::10"},
+		{name: "bracketed IPv6 and port", value: "[2001:db8::10]:8302"},
+		{name: "empty", value: "", wantErr: true},
+		{name: "URL", value: "https://fmc.example.com:8302", wantErr: true},
+		{name: "embedded whitespace", value: "fmc.example.com\t:8302", wantErr: true},
+		{name: "missing host", value: ":8302", wantErr: true},
+		{name: "missing port", value: "fmc.example.com:", wantErr: true},
+		{name: "nonnumeric port", value: "fmc.example.com:not-a-port", wantErr: true},
+		{name: "signed port", value: "fmc.example.com:+8302", wantErr: true},
+		{name: "zero port", value: "fmc.example.com:0", wantErr: true},
+		{name: "port too large", value: "fmc.example.com:65536", wantErr: true},
+		{name: "unclosed IPv6 bracket", value: "[2001:db8::10:8302", wantErr: true},
+		{name: "unopened IPv6 bracket", value: "2001:db8::10]:8302", wantErr: true},
+		{name: "bracketed IPv6 without port", value: "[2001:db8::10]", wantErr: true},
+		{name: "bracketed hostname", value: "[fmc.example.com]:8302", wantErr: true},
+		{name: "malformed IPv6", value: "2001:db8::not-ip", wantErr: true},
+		{name: "malformed IPv4", value: "192.0.2.999", wantErr: true},
+		{name: "empty hostname label", value: "fmc..example.com", wantErr: true},
+		{name: "invalid hostname character", value: "fmc/example.com", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateHostPortOrHost("endpoint", tt.value)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestValidateHTTPURLRequiresHTTPSAndSafeContents(t *testing.T) {
+	require.NoError(t, validateHTTPURL("endpoint", "https://controller.example.com", false))
+	require.ErrorContains(t, validateHTTPURL("endpoint", "http://controller.example.com", true), "must use https")
+	require.ErrorContains(t, validateHTTPURL("endpoint", "http://controller.example.com", false), "must use https")
+	require.Error(t, validateHTTPURL("endpoint", "ftp://controller.example.com", true))
+	require.ErrorContains(t, validateHTTPURL("endpoint", "https://user:password@controller.example.com", false), "must not include user information")
+	require.ErrorContains(t, validateHTTPURL("endpoint", "https://controller.example.com?token=secret", false), "must not include a query string")
+	require.ErrorContains(t, validateHTTPURL("endpoint", "https://controller.example.com#token", false), "must not include a fragment")
+}
+
+func TestMerakiConfigRejectsPlaintextBaseURL(t *testing.T) {
+	cfg := NewFactory().CreateDefaultConfig().(*Config)
+	cfg.Meraki.Auth.APIKey = configopaque.String("secret")
+	cfg.Meraki.BaseURL = "http://api.example.com"
+	cfg.Meraki.Organizations = []MerakiOrganizationConfig{{OrganizationID: "org-1"}}
+
+	require.ErrorContains(t, cfg.Validate(), "meraki.base_url must use https")
+}
+
+func TestMerakiConfigRejectsCredentialsInBaseURL(t *testing.T) {
+	cfg := NewFactory().CreateDefaultConfig().(*Config)
+	cfg.Meraki.Auth.APIKey = configopaque.String("secret")
+	cfg.Meraki.BaseURL = "https://user:password@api.example.com/api/v1"
+	cfg.Meraki.Organizations = []MerakiOrganizationConfig{{OrganizationID: "org-1"}}
+
+	require.ErrorContains(t, cfg.Validate(), "meraki.base_url must not include user information")
+}
+
+func TestConfigRejectsBlankProviderTargetFilters(t *testing.T) {
+	tests := []struct {
+		name      string
+		configure func(*Config)
+		wantErr   string
+	}{
+		{
+			name: "Meraki",
+			configure: func(cfg *Config) {
+				cfg.Meraki.Auth.APIKey = configopaque.String("secret")
+				cfg.Meraki.Organizations = []MerakiOrganizationConfig{{OrganizationID: "org-1", Serials: []string{" "}}}
+			},
+			wantErr: "meraki.organizations[0].serials[0] cannot be empty",
+		},
+		{
+			name: "Intersight",
+			configure: func(cfg *Config) {
+				cfg.Intersight.Enabled = true
+				cfg.Intersight.Auth.KeyID = "key-id"
+				cfg.Intersight.Auth.KeyPEM = configopaque.String("pem")
+				cfg.Intersight.Targets.Serials = []string{" "}
+			},
+			wantErr: "intersight.targets.serials[0] cannot be empty",
+		},
+		{
+			name: "Catalyst Center",
+			configure: func(cfg *Config) {
+				cfg.CatalystCenter.Enabled = true
+				cfg.CatalystCenter.Endpoint = "https://catalyst-center.example.com"
+				cfg.CatalystCenter.Auth.Username = "admin"
+				cfg.CatalystCenter.Auth.Password = configopaque.String("secret")
+				cfg.CatalystCenter.Targets.ClientMACs = []string{" "}
+			},
+			wantErr: "catalyst_center.targets.client_macs[0] cannot be empty",
+		},
+		{
+			name: "Nexus Dashboard",
+			configure: func(cfg *Config) {
+				cfg.NexusDashboard.Enabled = true
+				cfg.NexusDashboard.Endpoint = "https://nd.example.com"
+				cfg.NexusDashboard.Auth.Username = "admin"
+				cfg.NexusDashboard.Auth.Password = configopaque.String("secret")
+				cfg.NexusDashboard.Targets.SwitchIDs = []string{" "}
+			},
+			wantErr: "nexus_dashboard.targets.switch_ids[0] cannot be empty",
+		},
+		{
+			name: "ACI",
+			configure: func(cfg *Config) {
+				cfg.ACI.Enabled = true
+				cfg.ACI.Controllers = []ACIControllerConfig{{Endpoint: "https://apic.example.com"}}
+				cfg.ACI.Auth.Username = "admin"
+				cfg.ACI.Auth.Password = configopaque.String("secret")
+				cfg.ACI.Targets.NodeIDs = []string{" "}
+			},
+			wantErr: "aci.targets.node_ids[0] cannot be empty",
+		},
+		{
+			name: "FMC",
+			configure: func(cfg *Config) {
+				cfg.FMC.Enabled = true
+				cfg.FMC.Controllers = []FMCControllerConfig{{Endpoint: "https://fmc.example.com"}}
+				cfg.FMC.Auth.Username = "admin"
+				cfg.FMC.Auth.Password = configopaque.String("secret")
+				cfg.FMC.Targets.Serials = []string{" "}
+			},
+			wantErr: "fmc.targets.serials[0] cannot be empty",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := NewFactory().CreateDefaultConfig().(*Config)
+			tt.configure(cfg)
+			require.ErrorContains(t, cfg.Validate(), tt.wantErr)
+		})
+	}
+}
+
+func TestConfigRejectsInvalidTargetAddresses(t *testing.T) {
+	tests := []struct {
+		name      string
+		configure func(*Config)
+		wantErr   string
+	}{
+		{
+			name: "SD-WAN system IP",
+			configure: func(cfg *Config) {
+				cfg.SDWAN.Enabled = true
+				cfg.SDWAN.Endpoint = "https://sdwan.example.com"
+				cfg.SDWAN.Auth.BearerToken = configopaque.String("token")
+				cfg.SDWAN.Targets.SystemIPs = []string{"10.0.0.999"}
+			},
+			wantErr: "sdwan.targets.system_ips[0] must be a valid IP address",
+		},
+		{
+			name: "FMC management IP",
+			configure: func(cfg *Config) {
+				cfg.FMC.Enabled = true
+				cfg.FMC.Controllers = []FMCControllerConfig{{Endpoint: "https://fmc.example.com"}}
+				cfg.FMC.Auth.Username = "admin"
+				cfg.FMC.Auth.Password = configopaque.String("secret")
+				cfg.FMC.Targets.ManagementIPs = []string{"not-an-ip"}
+			},
+			wantErr: "fmc.targets.management_ips[0] must be a valid IP address",
+		},
+		{
+			name: "Catalyst Center client MAC",
+			configure: func(cfg *Config) {
+				cfg.CatalystCenter.Enabled = true
+				cfg.CatalystCenter.Endpoint = "https://catalyst-center.example.com"
+				cfg.CatalystCenter.Auth.Username = "admin"
+				cfg.CatalystCenter.Auth.Password = configopaque.String("secret")
+				cfg.CatalystCenter.Targets.ClientMACs = []string{"not-a-mac"}
+			},
+			wantErr: "catalyst_center.targets.client_macs[0] must be a valid 48-bit MAC address",
+		},
+		{
+			name: "Catalyst Center detail MAC",
+			configure: func(cfg *Config) {
+				cfg.CatalystCenter.Enabled = true
+				cfg.CatalystCenter.Endpoint = "https://catalyst-center.example.com"
+				cfg.CatalystCenter.Auth.Username = "admin"
+				cfg.CatalystCenter.Auth.Password = configopaque.String("secret")
+				cfg.CatalystCenter.Targets.DeviceDetails = []CatalystCenterDeviceDetailTarget{{Identifier: "macAddress", SearchBy: "not-a-mac"}}
+			},
+			wantErr: "catalyst_center.targets.device_details[0].search_by must be a valid 48-bit MAC address",
+		},
+		{
+			name: "ISE network device IP",
+			configure: func(cfg *Config) {
+				cfg.ISE.Enabled = true
+				cfg.ISE.Endpoint = "https://ise.example.com"
+				cfg.ISE.Auth.Username = "admin"
+				cfg.ISE.Auth.Password = configopaque.String("secret")
+				cfg.ISE.Targets.NetworkDeviceIPs = []string{"not-an-ip"}
+			},
+			wantErr: "ise.targets.network_device_ips[0] must be a valid IP address",
+		},
+		{
+			name: "ISE endpoint MAC",
+			configure: func(cfg *Config) {
+				cfg.ISE.Enabled = true
+				cfg.ISE.Endpoint = "https://ise.example.com"
+				cfg.ISE.Auth.Username = "admin"
+				cfg.ISE.Auth.Password = configopaque.String("secret")
+				cfg.ISE.Targets.EndpointMACs = []string{"not-a-mac"}
+			},
+			wantErr: "ise.targets.endpoint_macs[0] must be a valid 48-bit MAC address",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := NewFactory().CreateDefaultConfig().(*Config)
+			tt.configure(cfg)
+			require.ErrorContains(t, cfg.Validate(), tt.wantErr)
+		})
+	}
+}
+
+func TestValidateMACAddressAcceptsCommonCiscoSpellings(t *testing.T) {
+	for _, value := range []string{"00:11:22:33:44:55", "00-11-22-33-44-55", "0011.2233.4455"} {
+		require.NoError(t, validateMACAddress("mac", value))
+	}
+	require.Error(t, validateMACAddress("mac", "00:11:22:33:44:55:66:77"))
+}
+
 func TestConfigUnmarshal(t *testing.T) {
 	cm, err := confmaptest.LoadConf(filepath.Join("testdata", "config.yaml"))
 	require.NoError(t, err)
@@ -1002,6 +1280,7 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.False(t, cfg.Metrics["cisco.wlc.client.*"].Enabled)
 	assert.False(t, cfg.Metrics["cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.*"].Enabled)
 	assert.Equal(t, "https://api.meraki.com/api/v1", cfg.Meraki.BaseURL)
+	assert.Equal(t, 3, cfg.Meraki.MaxRetries)
 	assert.Equal(t, "meraki-key", string(cfg.Meraki.Auth.APIKey))
 	require.Len(t, cfg.Meraki.Organizations, 1)
 	assert.Equal(t, "123456", cfg.Meraki.Organizations[0].OrganizationID)
@@ -1053,8 +1332,6 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.Equal(t, 300, cfg.SDWAN.PageSize)
 	assert.Equal(t, 2, cfg.SDWAN.MaxRetries)
 	assert.Equal(t, 9*time.Hour, cfg.SDWAN.EventLookback)
-	assert.Equal(t, 20*time.Minute, cfg.SDWAN.StatisticsLookback)
-	assert.Equal(t, 3*time.Minute, cfg.SDWAN.RealtimeLookback)
 	assert.Equal(t, "jwt", cfg.SDWAN.Auth.Mode)
 	assert.Equal(t, "admin", cfg.SDWAN.Auth.Username)
 	assert.Equal(t, "password", string(cfg.SDWAN.Auth.Password))
@@ -1088,7 +1365,6 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.Equal(t, 75, cfg.NexusDashboard.PageSize)
 	assert.Equal(t, 2, cfg.NexusDashboard.MaxRetries)
 	assert.Equal(t, 8*time.Hour, cfg.NexusDashboard.EventLookback)
-	assert.Equal(t, 20*time.Minute, cfg.NexusDashboard.TelemetryLookback)
 	assert.Equal(t, []string{"fabric-a"}, cfg.NexusDashboard.Targets.Fabrics)
 	assert.Equal(t, []string{"N9K-SERIAL-1"}, cfg.NexusDashboard.Targets.SwitchSerials)
 	assert.Equal(t, []string{"101"}, cfg.NexusDashboard.Targets.SwitchIDs)
@@ -1106,7 +1382,6 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.Equal(t, 2, cfg.ACI.MaxRetries)
 	assert.True(t, cfg.ACI.InsecureSkipVerify)
 	assert.Equal(t, 10*time.Hour, cfg.ACI.EventLookback)
-	assert.Equal(t, 25*time.Minute, cfg.ACI.StatsLookback)
 	assert.Equal(t, []string{"101"}, cfg.ACI.Targets.NodeIDs)
 	assert.Equal(t, []string{"prod"}, cfg.ACI.Targets.Tenants)
 	assert.Equal(t, 300, cfg.ACI.Faults.MaxResults)
@@ -1139,7 +1414,6 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.Equal(t, 300, cfg.FMC.Policy.MaxResults)
 	assert.Equal(t, 125, cfg.FMC.Deployments.MaxResults)
 	assert.Equal(t, 100, cfg.FMC.Audit.MaxResults)
-	assert.True(t, cfg.FMC.SecurityEvents.Enabled)
 	assert.True(t, cfg.FMC.EStreamer.Enabled)
 	require.Len(t, cfg.FMC.EStreamer.Targets, 1)
 	assert.Equal(t, "fmc1.example.com:8302", cfg.FMC.EStreamer.Targets[0].Endpoint)
@@ -1279,4 +1553,113 @@ func TestConfigUnmarshalNil(t *testing.T) {
 	cfg := &Config{}
 	err := cfg.Unmarshal(nil)
 	require.NoError(t, err)
+}
+
+func TestConfigValidationIncludesDynamicScrapers(t *testing.T) {
+	tests := []struct {
+		name    string
+		scraper component.Config
+		wantErr string
+	}{
+		{
+			name: "system",
+			scraper: func() component.Config {
+				cfg := systemscraper.NewFactory().CreateDefaultConfig().(*systemscraper.Config)
+				cfg.RoutingForwarding.VRFs = []string{"blue;show version"}
+				return cfg
+			}(),
+			wantErr: "routing_forwarding.vrfs[0] must contain only",
+		},
+		{
+			name: "interfaces",
+			scraper: func() component.Config {
+				cfg := interfacesscraper.NewFactory().CreateDefaultConfig().(*interfacesscraper.Config)
+				cfg.Counters.MaxInterfaces = -1
+				return cfg
+			}(),
+			wantErr: "counters.max_interfaces must not be negative",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := NewFactory().CreateDefaultConfig().(*Config)
+			cfg.Devices = []DeviceConfig{validTestDevice()}
+			cfg.Scrapers = map[component.Type]component.Config{component.MustNewType(tt.name): tt.scraper}
+			require.ErrorContains(t, xconfmap.Validate(cfg), tt.wantErr)
+		})
+	}
+}
+
+func TestConfigUnmarshalRejectsUnknownSettings(t *testing.T) {
+	tests := []struct {
+		name   string
+		config map[string]any
+	}{
+		{
+			name: "unknown top-level setting",
+			config: map[string]any{
+				"collecton_interval": "1m",
+			},
+		},
+		{
+			name: "unknown nested setting",
+			config: map[string]any{
+				"sdwan": map[string]any{
+					"insecure_skip_verfy": true,
+				},
+			},
+		},
+		{
+			name: "removed Nexus telemetry lookback",
+			config: map[string]any{
+				"nexus_dashboard": map[string]any{
+					"telemetry_lookback": "30m",
+				},
+			},
+		},
+		{
+			name: "removed Nexus service discovery switch",
+			config: map[string]any{
+				"nexus_dashboard": map[string]any{
+					"service_discovery": true,
+				},
+			},
+		},
+		{
+			name: "removed ACI stats lookback",
+			config: map[string]any{
+				"aci": map[string]any{
+					"stats_lookback": "30m",
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := NewFactory().CreateDefaultConfig().(*Config)
+			err := cfg.Unmarshal(confmap.NewFromStringMap(tt.config))
+			require.Error(t, err)
+			assert.Contains(t, strings.ToLower(err.Error()), "invalid keys")
+		})
+	}
+}
+
+func TestConfigUnmarshalPreservesExplicitZeroRetries(t *testing.T) {
+	cfg := NewFactory().CreateDefaultConfig().(*Config)
+	require.NoError(t, cfg.Unmarshal(confmap.NewFromStringMap(map[string]any{
+		"meraki": map[string]any{"max_retries": 0},
+	})))
+	assert.Zero(t, cfg.Meraki.MaxRetries)
+}
+
+func TestConfigSafetyCeilings(t *testing.T) {
+	assert.EqualError(t, validatePageSize("provider.page_size", 100_001), "provider.page_size must not exceed 100000")
+	assert.EqualError(t, validateMaxRetries("provider.max_retries", 11), "provider.max_retries must not exceed 10")
+	assert.EqualError(t, validateMaxResults("provider.group.max_results", 100_001), "provider.group.max_results must not exceed the hard pagination limit of 100000")
+
+	assert.NoError(t, validatePageSize("provider.page_size", 100_000))
+	assert.NoError(t, validateMaxRetries("provider.max_retries", 10))
+	assert.NoError(t, validateMaxResults("provider.group.max_results", 100_000))
 }

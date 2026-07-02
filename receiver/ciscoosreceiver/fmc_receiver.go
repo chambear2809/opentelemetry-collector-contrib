@@ -5,8 +5,10 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -94,6 +96,7 @@ type fmcMetricsReceiver struct {
 	clients  []*fmc.Client
 	counters *counterStore
 	obs      *receiverhelper.ObsReport
+	success  scrapeSuccessState
 
 	startMu sync.Mutex
 	cancel  context.CancelFunc
@@ -114,8 +117,7 @@ type fmcLogsReceiver struct {
 	cancel  context.CancelFunc
 	done    chan struct{}
 
-	seenMu sync.Mutex
-	seen   map[string]time.Time
+	seen *logDeduplicator
 }
 
 type fmcEStreamerLogsReceiver struct {
@@ -192,7 +194,7 @@ func newFMCLogsReceiver(set receiver.Settings, conf *Config, consumer consumer.L
 		clients:  clients,
 		obs:      newPlatformObsReport(set, "http"),
 		done:     make(chan struct{}),
-		seen:     map[string]time.Time{},
+		seen:     newLogDeduplicator(),
 	}, nil
 }
 
@@ -332,21 +334,15 @@ func (r *fmcMetricsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 	obsCtx := startMetricsOp(r.obs, ctx)
-	md, err := r.scrape(scrapeCtx)
-	if err != nil {
-		r.settings.Logger.Error("FMC scrape failed", zap.Error(err))
-		endMetricsOp(r.obs, obsCtx, md, err)
-		return
+	md, scrapeErr := r.scrape(scrapeCtx)
+	if scrapeErr != nil {
+		r.settings.Logger.Error("FMC scrape failed", zap.Error(scrapeErr))
 	}
-	if md.MetricCount() == 0 {
-		endMetricsOp(r.obs, obsCtx, md, nil)
-		return
-	}
-	consumeErr := r.consumer.ConsumeMetrics(ctx, md)
-	endMetricsOp(r.obs, obsCtx, md, consumeErr)
+	metricCount, consumeErr := consumeMetricsIfPresent(ctx, r.consumer, md)
 	if consumeErr != nil {
 		r.settings.Logger.Error("FMC metrics consumer failed", zap.Error(consumeErr))
 	}
+	endMetricsOp(r.obs, obsCtx, metricCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
@@ -358,7 +354,6 @@ func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 
 	for _, client := range r.clients {
 		controllerRB := builder.controllerResource(client.ControllerName(), client.Endpoint(), "")
-		controllerRB.recordInt("fmc.manager.up", "FMC REST API availability for this scrape.", "1", 1, nil)
 		domainUUID, err := client.DomainUUID(ctx)
 		if err != nil {
 			partial = true
@@ -371,22 +366,21 @@ func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 		cache := fmcControllerCache{}
 		if fmcGroupEnabled(r.config.FMC, "inventory") || fmcGroupEnabled(r.config.FMC, "interfaces") {
 			devices, err := r.fetchEndpoint(ctx, client, domainUUID, fmcEndpoint{group: "inventory", operation: "devices.records", path: "devices/devicerecords", objectType: "fmc.device"}, now)
+			cache.devices = filterFMCObjects(devices, r.config.FMC.Targets)
+			if fmcGroupEnabled(r.config.FMC, "inventory") {
+				for _, obj := range cache.devices {
+					if !selector.allows(fmcObjectIdentity(obj)) {
+						continue
+					}
+					builder.recordObject(client.ControllerName(), client.Endpoint(), domainUUID, fmcEndpoint{group: "inventory", operation: "devices.records", objectType: "fmc.device"}, obj)
+				}
+			}
 			if err != nil {
 				if ctx.Err() != nil {
-					return builder.emit(), ctx.Err()
+					return r.finishScrape(builder, now, true), ctx.Err()
 				}
 				partial = true
 				r.recordEndpointError(builder, client, domainUUID, "devices.records", err)
-			} else {
-				cache.devices = filterFMCObjects(devices, r.config.FMC.Targets)
-				if fmcGroupEnabled(r.config.FMC, "inventory") {
-					for _, obj := range cache.devices {
-						if !selector.allows(fmcObjectIdentity(obj)) {
-							continue
-						}
-						builder.recordObject(client.ControllerName(), client.Endpoint(), domainUUID, fmcEndpoint{group: "inventory", operation: "devices.records", objectType: "fmc.device"}, obj)
-					}
-				}
 			}
 		}
 
@@ -395,14 +389,6 @@ func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 				continue
 			}
 			objects, err := r.fetchEndpoint(ctx, client, domainUUID, endpoint, now)
-			if err != nil {
-				if ctx.Err() != nil {
-					return builder.emit(), ctx.Err()
-				}
-				partial = true
-				r.recordEndpointError(builder, client, domainUUID, endpoint.operation, err)
-				continue
-			}
 			objects = filterFMCObjects(objects, r.config.FMC.Targets)
 			switch endpoint.operation {
 			case "deployment.deployable_devices":
@@ -426,6 +412,14 @@ func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 				}
 				builder.recordObject(client.ControllerName(), client.Endpoint(), domainUUID, endpoint, obj)
 			}
+			if err != nil {
+				if ctx.Err() != nil {
+					return r.finishScrape(builder, now, true), ctx.Err()
+				}
+				partial = true
+				r.recordEndpointError(builder, client, domainUUID, endpoint.operation, err)
+				continue
+			}
 		}
 
 		if fmcGroupEnabled(r.config.FMC, "interfaces") {
@@ -435,20 +429,20 @@ func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 				}
 				for _, endpoint := range fmcDeviceScopedEndpoints() {
 					objects, err := r.fetchScopedEndpoint(ctx, client, domainUUID, endpoint, device, now)
-					if err != nil {
-						if ctx.Err() != nil {
-							return builder.emit(), ctx.Err()
-						}
-						partial = true
-						r.recordEndpointError(builder, client, domainUUID, endpoint.operation, err)
-						continue
-					}
 					for _, obj := range filterFMCObjects(objects, r.config.FMC.Targets) {
 						inheritFMCDevice(obj, device)
 						if !selector.allows(fmcObjectIdentity(obj)) {
 							continue
 						}
 						builder.recordObject(client.ControllerName(), client.Endpoint(), domainUUID, endpoint.asEndpoint(), obj)
+					}
+					if err != nil {
+						if ctx.Err() != nil {
+							return r.finishScrape(builder, now, true), ctx.Err()
+						}
+						partial = true
+						r.recordEndpointError(builder, client, domainUUID, endpoint.operation, err)
+						continue
 					}
 				}
 			}
@@ -458,20 +452,20 @@ func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 				}
 				for _, endpoint := range fmcChassisScopedEndpoints() {
 					objects, err := r.fetchScopedEndpoint(ctx, client, domainUUID, endpoint, chassis, now)
-					if err != nil {
-						if ctx.Err() != nil {
-							return builder.emit(), ctx.Err()
-						}
-						partial = true
-						r.recordEndpointError(builder, client, domainUUID, endpoint.operation, err)
-						continue
-					}
 					for _, obj := range filterFMCObjects(objects, r.config.FMC.Targets) {
 						inheritFMCDevice(obj, chassis)
 						if !selector.allows(fmcObjectIdentity(obj)) {
 							continue
 						}
 						builder.recordObject(client.ControllerName(), client.Endpoint(), domainUUID, endpoint.asEndpoint(), obj)
+					}
+					if err != nil {
+						if ctx.Err() != nil {
+							return r.finishScrape(builder, now, true), ctx.Err()
+						}
+						partial = true
+						r.recordEndpointError(builder, client, domainUUID, endpoint.operation, err)
+						continue
 					}
 				}
 			}
@@ -484,20 +478,20 @@ func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 				}
 				for _, endpoint := range fmcHealthScopedEndpoints() {
 					objects, err := r.fetchScopedEndpoint(ctx, client, domainUUID, endpoint, device, now)
-					if err != nil {
-						if ctx.Err() != nil {
-							return builder.emit(), ctx.Err()
-						}
-						partial = true
-						r.recordEndpointError(builder, client, domainUUID, endpoint.operation, err)
-						continue
-					}
 					for _, obj := range filterFMCObjects(objects, r.config.FMC.Targets) {
 						inheritFMCDevice(obj, device)
 						if !selector.allows(fmcObjectIdentity(obj)) {
 							continue
 						}
 						builder.recordObject(client.ControllerName(), client.Endpoint(), domainUUID, endpoint.asEndpoint(), obj)
+					}
+					if err != nil {
+						if ctx.Err() != nil {
+							return r.finishScrape(builder, now, true), ctx.Err()
+						}
+						partial = true
+						r.recordEndpointError(builder, client, domainUUID, endpoint.operation, err)
+						continue
 					}
 				}
 			}
@@ -507,19 +501,19 @@ func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 			for _, tunnel := range cache.tunnelStatuses {
 				for _, endpoint := range fmcVPNTunnelScopedEndpoints() {
 					objects, err := r.fetchScopedEndpoint(ctx, client, domainUUID, endpoint, tunnel, now)
-					if err != nil {
-						if ctx.Err() != nil {
-							return builder.emit(), ctx.Err()
-						}
-						partial = true
-						r.recordEndpointError(builder, client, domainUUID, endpoint.operation, err)
-						continue
-					}
 					for _, obj := range filterFMCObjects(objects, r.config.FMC.Targets) {
 						if !selector.allows(fmcObjectIdentity(obj)) {
 							continue
 						}
 						builder.recordObject(client.ControllerName(), client.Endpoint(), domainUUID, endpoint.asEndpoint(), obj)
+					}
+					if err != nil {
+						if ctx.Err() != nil {
+							return r.finishScrape(builder, now, true), ctx.Err()
+						}
+						partial = true
+						r.recordEndpointError(builder, client, domainUUID, endpoint.operation, err)
+						continue
 					}
 				}
 			}
@@ -529,19 +523,19 @@ func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 			for _, pair := range cache.haPairs {
 				for _, endpoint := range fmcHAScopedEndpoints() {
 					objects, err := r.fetchScopedEndpoint(ctx, client, domainUUID, endpoint, pair, now)
-					if err != nil {
-						if ctx.Err() != nil {
-							return builder.emit(), ctx.Err()
-						}
-						partial = true
-						r.recordEndpointError(builder, client, domainUUID, endpoint.operation, err)
-						continue
-					}
 					for _, obj := range filterFMCObjects(objects, r.config.FMC.Targets) {
 						if !selector.allows(fmcObjectIdentity(obj)) {
 							continue
 						}
 						builder.recordObject(client.ControllerName(), client.Endpoint(), domainUUID, endpoint.asEndpoint(), obj)
+					}
+					if err != nil {
+						if ctx.Err() != nil {
+							return r.finishScrape(builder, now, true), ctx.Err()
+						}
+						partial = true
+						r.recordEndpointError(builder, client, domainUUID, endpoint.operation, err)
+						continue
 					}
 				}
 			}
@@ -551,17 +545,17 @@ func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 			for _, scoped := range fmcPolicyScopedEndpoints() {
 				for _, policy := range cache.objectsForSource(scoped.source) {
 					objects, err := r.fetchScopedEndpoint(ctx, client, domainUUID, scoped, policy, now)
+					for _, obj := range filterFMCObjects(objects, r.config.FMC.Targets) {
+						inheritFMCPolicy(obj, policy)
+						builder.recordObject(client.ControllerName(), client.Endpoint(), domainUUID, scoped.asEndpoint(), obj)
+					}
 					if err != nil {
 						if ctx.Err() != nil {
-							return builder.emit(), ctx.Err()
+							return r.finishScrape(builder, now, true), ctx.Err()
 						}
 						partial = true
 						r.recordEndpointError(builder, client, domainUUID, scoped.operation, err)
 						continue
-					}
-					for _, obj := range filterFMCObjects(objects, r.config.FMC.Targets) {
-						inheritFMCPolicy(obj, policy)
-						builder.recordObject(client.ControllerName(), client.Endpoint(), domainUUID, scoped.asEndpoint(), obj)
 					}
 				}
 			}
@@ -571,14 +565,6 @@ func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 			for _, deployable := range cache.deployableDevices {
 				for _, scoped := range fmcDeploymentScopedEndpoints() {
 					objects, err := r.fetchScopedEndpoint(ctx, client, domainUUID, scoped, deployable, now)
-					if err != nil {
-						if ctx.Err() != nil {
-							return builder.emit(), ctx.Err()
-						}
-						partial = true
-						r.recordEndpointError(builder, client, domainUUID, scoped.operation, err)
-						continue
-					}
 					for _, obj := range filterFMCObjects(objects, r.config.FMC.Targets) {
 						inheritFMCDevice(obj, deployable)
 						if !selector.allows(fmcObjectIdentity(obj)) {
@@ -586,15 +572,48 @@ func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 						}
 						builder.recordObject(client.ControllerName(), client.Endpoint(), domainUUID, scoped.asEndpoint(), obj)
 					}
+					if err != nil {
+						if ctx.Err() != nil {
+							return r.finishScrape(builder, now, true), ctx.Err()
+						}
+						partial = true
+						r.recordEndpointError(builder, client, domainUUID, scoped.operation, err)
+						continue
+					}
 				}
 			}
 		}
 	}
+	return r.finishScrape(builder, now, partial), nil
+}
+
+func (r *fmcMetricsReceiver) finishScrape(builder *fmcMetricsBuilder, _ time.Time, partial bool) pmetric.Metrics {
+	r.statsMu.Lock()
+	stats := append([]fmc.RequestStat(nil), r.stats...)
+	r.statsMu.Unlock()
 	r.recordAPIRequestMetrics(builder)
-	builder.globalResource().recordInt("fmc.scrape.partial_success", "Whether one or more FMC endpoint families failed during the scrape.", "1", boolToInt(partial), nil)
-	builder.globalResource().recordInt("fmc.scrape.last_success", "Unix timestamp of the most recent FMC scrape completion.", "s", now.Unix(), nil)
+
+	for _, client := range r.clients {
+		controllerStats := make([]fmc.RequestStat, 0, len(stats))
+		for _, stat := range stats {
+			if stat.Controller == client.ControllerName() {
+				controllerStats = append(controllerStats, stat)
+			}
+		}
+		outcome := summarizeAPIOutcomes(controllerStats, func(stat fmc.RequestStat) string { return stat.Outcome })
+		if availability, ok := outcome.availability(); ok {
+			builder.controllerResource(client.ControllerName(), client.Endpoint(), "").recordInt("fmc.manager.up", "FMC REST API availability for this scrape.", "1", availability, nil)
+		}
+	}
+
+	overall := summarizeAPIOutcomes(stats, func(stat fmc.RequestStat) string { return stat.Outcome })
+	rb := builder.globalResource()
+	rb.recordInt("fmc.scrape.partial_success", "Whether one or more FMC endpoint families failed during the scrape.", "1", boolToInt(partial), nil)
+	if lastSuccess, ok := r.success.observe(time.Now(), !partial && overall.succeeded); ok {
+		rb.recordInt("fmc.scrape.last_success", "Unix timestamp of the most recent fully successful FMC scrape.", "s", lastSuccess.Unix(), nil)
+	}
 	builder.flushCounts()
-	return builder.emit(), nil
+	return builder.emit()
 }
 
 func (r *fmcMetricsReceiver) fetchEndpoint(ctx context.Context, client *fmc.Client, domainUUID string, endpoint fmcEndpoint, now time.Time) ([]fmc.Object, error) {
@@ -655,6 +674,7 @@ func (r *fmcMetricsReceiver) recordAPIRequestMetrics(builder *fmcMetricsBuilder)
 	r.statsMu.Lock()
 	stats := append([]fmc.RequestStat(nil), r.stats...)
 	r.statsMu.Unlock()
+	observations := make([]apiRequestObservation, 0, len(stats))
 	for _, stat := range stats {
 		attrs := map[string]string{
 			"fmc.controller.name": stat.Controller,
@@ -666,13 +686,16 @@ func (r *fmcMetricsReceiver) recordAPIRequestMetrics(builder *fmcMetricsBuilder)
 		if stat.StatusCode > 0 {
 			attrs["http.response.status_code"] = strconv.Itoa(stat.StatusCode)
 		}
-		rb := builder.controllerResource(stat.Controller, "", "")
-		rb.recordDouble("fmc.api.request.duration", "Duration of FMC REST API requests.", "s", stat.Duration.Seconds(), attrs)
-		if stat.Outcome != "success" {
-			rb.recordSum("fmc.api.request.errors", "FMC REST API request errors.", "{error}", 1, attrs)
+		observations = append(observations, apiRequestObservation{resource: stat.Controller, attrs: attrs, durationSeconds: stat.Duration.Seconds(), failed: stat.Outcome != "success", rateLimited: stat.RateLimited})
+	}
+	for _, aggregate := range aggregateAPIRequestObservations(observations) {
+		rb := builder.controllerResource(aggregate.resource, "", "")
+		rb.recordDouble("fmc.api.request.duration", "Average duration of FMC REST API request attempts in this scrape.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
+		if aggregate.errors > 0 {
+			rb.recordSum("fmc.api.request.errors", "FMC REST API request errors.", "{error}", aggregate.errors, aggregate.attrs)
 		}
-		if stat.RateLimited {
-			rb.recordSum("fmc.api.rate_limited", "FMC REST API requests that were rate limited.", "{request}", 1, attrs)
+		if aggregate.rateLimited > 0 {
+			rb.recordSum("fmc.api.rate_limited", "FMC REST API requests that were rate limited.", "{request}", aggregate.rateLimited, aggregate.attrs)
 		}
 	}
 }
@@ -731,32 +754,29 @@ func (r *fmcLogsReceiver) run(ctx context.Context) {
 func (r *fmcLogsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
+	r.seen.BeginBatch()
 	obsCtx := startLogsOp(r.obs, ctx)
-	ld, err := r.scrape(scrapeCtx)
-	if err != nil {
-		r.settings.Logger.Error("FMC log scrape failed", zap.Error(err))
-		endLogsOp(r.obs, obsCtx, ld, err)
-		return
+	ld, scrapeErr := r.scrape(scrapeCtx)
+	if scrapeErr != nil {
+		r.settings.Logger.Error("FMC log scrape failed", zap.Error(scrapeErr))
 	}
-	if ld.LogRecordCount() == 0 {
-		endLogsOp(r.obs, obsCtx, ld, nil)
-		return
-	}
-	consumeErr := r.consumer.ConsumeLogs(ctx, ld)
-	endLogsOp(r.obs, obsCtx, ld, consumeErr)
+	logCount, consumeErr := consumeDeduplicatedLogs(ctx, r.consumer, r.seen, ld)
 	if consumeErr != nil {
 		r.settings.Logger.Error("FMC logs consumer failed", zap.Error(consumeErr))
 	}
+	endLogsOp(r.obs, obsCtx, logCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *fmcLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 	ld := plog.NewLogs()
 	now := time.Now()
+	var endpointErrors []error
 	selector := newDeviceSelectionMatcher(r.config.DeviceSelection)
 	for _, client := range r.clients {
 		domainUUID, err := client.DomainUUID(ctx)
 		if err != nil {
 			r.settings.Logger.Warn("FMC log auth failed", zap.String("controller", client.ControllerName()), zap.Error(err))
+			endpointErrors = append(endpointErrors, fmt.Errorf("FMC %s authentication: %w", client.ControllerName(), err))
 			continue
 		}
 		for _, endpoint := range fmcLogEndpoints() {
@@ -764,13 +784,6 @@ func (r *fmcLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 				continue
 			}
 			objects, err := r.fetchEndpoint(ctx, client, domainUUID, endpoint, now)
-			if err != nil {
-				if ctx.Err() != nil {
-					return ld, ctx.Err()
-				}
-				r.settings.Logger.Warn("FMC log endpoint failed", zap.String("controller", client.ControllerName()), zap.String("operation", endpoint.operation), zap.Error(err))
-				continue
-			}
 			for _, obj := range filterFMCObjects(objects, r.config.FMC.Targets) {
 				if !selector.allows(fmcObjectIdentity(obj)) {
 					continue
@@ -780,25 +793,23 @@ func (r *fmcLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 				}
 				appendFMCLog(ld, client.ControllerName(), client.Endpoint(), domainUUID, endpoint, obj, now)
 			}
+			if err != nil {
+				if ctx.Err() != nil {
+					return ld, ctx.Err()
+				}
+				r.settings.Logger.Warn("FMC log endpoint failed", zap.String("controller", client.ControllerName()), zap.String("operation", endpoint.operation), zap.Error(err))
+				endpointErrors = append(endpointErrors, fmt.Errorf("FMC %s %s: %w", client.ControllerName(), endpoint.operation, err))
+				continue
+			}
 		}
 	}
 	r.expireSeen(now)
-	return ld, nil
+	return ld, errors.Join(endpointErrors...)
 }
 
 func (r *fmcLogsReceiver) seenBefore(controller string, endpoint fmcEndpoint, obj fmc.Object, now time.Time) bool {
-	id := fmc.StableID(obj)
-	if id == "" {
-		id = fmc.FallbackKey(obj)
-	}
-	key := controller + ":" + endpoint.operation + ":" + id
-	r.seenMu.Lock()
-	defer r.seenMu.Unlock()
-	if _, ok := r.seen[key]; ok {
-		return true
-	}
-	r.seen[key] = now
-	return false
+	key := logDedupKey(controller+":"+endpoint.operation, fmc.StableID(obj), obj)
+	return !r.seen.MarkPending(key, now)
 }
 
 func (r *fmcLogsReceiver) expireSeen(now time.Time) {
@@ -807,13 +818,7 @@ func (r *fmcLogsReceiver) expireSeen(now time.Time) {
 		ttl = defaultFMCConfig().EventLookback
 	}
 	ttl *= 2
-	r.seenMu.Lock()
-	defer r.seenMu.Unlock()
-	for key, ts := range r.seen {
-		if now.Sub(ts) > ttl {
-			delete(r.seen, key)
-		}
-	}
+	r.seen.Expire(now.Add(-ttl), 0)
 }
 
 func (r *fmcEStreamerLogsReceiver) Start(_ context.Context, _ component.Host) error {
@@ -875,26 +880,118 @@ var fmcEStreamerBackoffSchedule = []time.Duration{
 	30 * time.Second,
 }
 
+const (
+	// The protocol request cursor has one-second resolution. Replaying one full
+	// second before the newest delivered event avoids losing events that share a
+	// cursor second or are returned by a server with exclusive cursor semantics.
+	fmcEStreamerResumeOverlap = time.Second
+
+	// The replay set is intentionally in-memory and bounded. Collector restarts
+	// can therefore replay the configured startup lookback (at-least-once), but a
+	// reconnect in the same process suppresses events already accepted downstream.
+	fmcEStreamerSeenLimit          = 100_000
+	fmcEStreamerSeenPruneThreshold = 110_000
+)
+
+type fmcEStreamerSeenEvent struct {
+	eventTime time.Time
+	seenAt    time.Time
+}
+
+type fmcEStreamerResumeState struct {
+	initialTime time.Time
+	cursor      time.Time
+	seen        map[string]fmcEStreamerSeenEvent
+}
+
+func newFMCEStreamerResumeState(initialTime time.Time) *fmcEStreamerResumeState {
+	return &fmcEStreamerResumeState{
+		initialTime: initialTime,
+		seen:        make(map[string]fmcEStreamerSeenEvent),
+	}
+}
+
+func (s *fmcEStreamerResumeState) requestStart() time.Time {
+	if s.cursor.IsZero() {
+		return s.initialTime
+	}
+	resume := s.cursor.UTC().Truncate(time.Second).Add(-fmcEStreamerResumeOverlap)
+	if s.initialTime.IsZero() || resume.After(s.initialTime) {
+		return resume
+	}
+	return s.initialTime
+}
+
+func (s *fmcEStreamerResumeState) seenBefore(key string) bool {
+	_, ok := s.seen[key]
+	return ok
+}
+
+func (s *fmcEStreamerResumeState) commit(key string, eventTime, seenAt time.Time) {
+	s.seen[key] = fmcEStreamerSeenEvent{eventTime: eventTime, seenAt: seenAt}
+	if eventTime.After(s.cursor) {
+		s.cursor = eventTime.UTC()
+	}
+	if len(s.seen) >= fmcEStreamerSeenPruneThreshold {
+		s.prune()
+	}
+}
+
+func (s *fmcEStreamerResumeState) prune() {
+	cutoff := s.requestStart()
+	if !cutoff.IsZero() {
+		for key, item := range s.seen {
+			if !item.eventTime.IsZero() && item.eventTime.Before(cutoff) {
+				delete(s.seen, key)
+			}
+		}
+	}
+	if len(s.seen) <= fmcEStreamerSeenLimit {
+		return
+	}
+	type seenEntry struct {
+		key    string
+		seenAt time.Time
+	}
+	entries := make([]seenEntry, 0, len(s.seen))
+	for key, item := range s.seen {
+		entries = append(entries, seenEntry{key: key, seenAt: item.seenAt})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].seenAt.Before(entries[j].seenAt)
+	})
+	for _, entry := range entries[:len(entries)-fmcEStreamerSeenLimit] {
+		delete(s.seen, entry.key)
+	}
+}
+
+func fmcEStreamerEventKey(event fmc.EStreamerEvent) string {
+	hash := sha256.New()
+	_, _ = fmt.Fprintf(hash, "%d\x00%s\x00", event.RecordType, event.EventType)
+	if id := fmc.StableID(event.Body); id != "" {
+		_, _ = hash.Write([]byte("id:\x00"))
+		_, _ = hash.Write([]byte(id))
+		return fmt.Sprintf("sha256:%x", hash.Sum(nil))
+	}
+	_, _ = fmt.Fprintf(hash, "timestamp:\x00%d\x00payload:\x00", event.Timestamp.UnixNano())
+	payload := []byte(event.Raw)
+	if len(payload) == 0 {
+		payload, _ = json.Marshal(event.Body)
+	}
+	_, _ = hash.Write(payload)
+	return fmt.Sprintf("sha256:%x", hash.Sum(nil))
+}
+
 func (r *fmcEStreamerLogsReceiver) runEStreamerClient(ctx context.Context, client *fmc.EStreamerClient) {
 	reconnect := r.config.FMC.EStreamer.ReconnectInterval
 	if reconnect <= 0 {
 		reconnect = defaultFMCConfig().EStreamer.ReconnectInterval
 	}
+	resume := newFMCEStreamerResumeState(client.InitialTime())
 	failures := 0
 	for {
-		err := client.Run(ctx, func(event fmc.EStreamerEvent) error {
-			if !fmcGroupEnabled(r.config.FMC, "security_events") {
-				return nil
-			}
-			ld := plog.NewLogs()
-			appendFMCEStreamerLog(ld, client.ControllerName(), client.Address(), event, time.Now())
-			if ld.LogRecordCount() == 0 {
-				return nil
-			}
-			obsCtx := startLogsOp(r.obs, ctx)
-			consumeErr := r.consumer.ConsumeLogs(ctx, ld)
-			endLogsOp(r.obs, obsCtx, ld, consumeErr)
-			return consumeErr
+		err := client.RunFrom(ctx, resume.requestStart(), func(event fmc.EStreamerEvent) error {
+			return r.consumeEStreamerEvent(ctx, client, resume, event)
 		})
 		if ctx.Err() != nil {
 			return
@@ -922,6 +1019,30 @@ func (r *fmcEStreamerLogsReceiver) runEStreamerClient(ctx context.Context, clien
 	}
 }
 
+func (r *fmcEStreamerLogsReceiver) consumeEStreamerEvent(ctx context.Context, client *fmc.EStreamerClient, resume *fmcEStreamerResumeState, event fmc.EStreamerEvent) error {
+	key := fmcEStreamerEventKey(event)
+	if resume.seenBefore(key) {
+		return nil
+	}
+	now := time.Now()
+	ld := plog.NewLogs()
+	appendFMCEStreamerLog(ld, client.ControllerName(), client.Address(), event, now)
+	if ld.LogRecordCount() > 0 {
+		obsCtx := startLogsOp(r.obs, ctx)
+		logCount := ld.LogRecordCount()
+		consumeErr := r.consumer.ConsumeLogs(ctx, ld)
+		endLogsOp(r.obs, obsCtx, logCount, consumeErr)
+		if consumeErr != nil {
+			return consumeErr
+		}
+	}
+	// Commit only after the next consumer accepts the event. A failed consume is
+	// retried from the previous cursor; after a successful consume, the overlap
+	// may replay it from FMC but this in-memory fingerprint suppresses re-export.
+	resume.commit(key, event.Timestamp, now)
+	return nil
+}
+
 type fmcMetricsBuilder struct {
 	metrics   pmetric.Metrics
 	now       pcommon.Timestamp
@@ -945,7 +1066,7 @@ func newFMCMetricsBuilder(now time.Time, instance string, counters *counterStore
 	return &fmcMetricsBuilder{
 		metrics:   pmetric.NewMetrics(),
 		now:       ts,
-		start:     ts,
+		start:     pcommon.NewTimestampFromTime(counters.StartTime()),
 		instance:  instance,
 		resources: map[string]*resourceMetricsBuilder{},
 		counts:    map[string]*fmcCount{},
@@ -988,7 +1109,7 @@ func (b *fmcMetricsBuilder) objectResource(controllerName, controllerEndpoint, d
 	attrs := rb.resource.Attributes()
 	putStr(attrs, "host.id", hostID)
 	putStr(attrs, "host.name", firstNonEmpty(fmc.String(obj, "name", "hostName", "displayName"), hostID))
-	putStr(attrs, "host.ip", fmc.String(obj, "managementIpAddress", "managementIP", "mgmtIp", "ipAddress", "ip"))
+	putIPAttrs(attrs, "host.ip", fmc.String(obj, "managementIpAddress"), fmc.String(obj, "managementIP"), fmc.String(obj, "mgmtIp"), fmc.String(obj, "ipAddress"), fmc.String(obj, "ip"))
 	putStr(attrs, "host.type", firstNonEmpty(fmc.String(obj, "model", "deviceType", "type"), endpoint.objectType))
 	putStr(attrs, "hw.type", "network")
 	putStr(attrs, "os.name", "Cisco Secure Firewall")
@@ -1015,12 +1136,13 @@ func (b *fmcMetricsBuilder) resource(key string) *resourceMetricsBuilder {
 	sm := rm.ScopeMetrics().AppendEmpty()
 	sm.Scope().SetName(fmcScopeName)
 	rb := &resourceMetricsBuilder{
-		resource: rm.Resource(),
-		scope:    sm,
-		metrics:  map[string]pmetric.Metric{},
-		now:      b.now,
-		start:    b.start,
-		counters: b.counters,
+		resource:         rm.Resource(),
+		scope:            sm,
+		metrics:          map[string]pmetric.Metric{},
+		now:              b.now,
+		start:            b.start,
+		counterNamespace: key,
+		counters:         b.counters,
 	}
 	b.resources[key] = rb
 	return rb
@@ -1038,14 +1160,16 @@ func (b *fmcMetricsBuilder) recordObject(controllerName, controllerEndpoint, dom
 		"fmc.severity":      firstNonEmpty(severity, "unknown"),
 	})
 	rb.recordInt("fmc.resource.info", "FMC managed object metadata.", "1", 1, attrs)
-	if status != "" {
-		rb.recordInt("fmc.resource.status", "FMC managed object status encoded for troubleshooting.", "1", statusCode(status), attrs)
+	if code, ok := statusCode(status); ok {
+		rb.recordInt("fmc.resource.status", "FMC managed object status encoded for troubleshooting.", "1", code, attrs)
 	}
 	b.addCount("fmc.resource.count", attrs)
 
 	switch endpoint.group {
 	case "inventory":
-		rb.recordInt("cisco.device.up", "FMC-managed firewall availability reported by FMC.", "1", upStatus(status), nil)
+		if up, ok := upStatus(status); ok {
+			rb.recordInt("cisco.device.up", "FMC-managed firewall availability reported by FMC.", "1", up, nil)
+		}
 	case "interfaces":
 		recordControllerStringState(rb, "system.network.interface.status", "FMC-managed firewall interface status.", status, "fmc.interface.status", interfaceAttrs(fmc.String(obj, "name", "ifname", "interfaceName"), fmc.String(obj, "macAddress", "mac"), fmc.String(obj, "description", "descr"), fmc.String(obj, "speed")))
 	case "health":
@@ -1103,7 +1227,7 @@ func appendFMCLog(ld plog.Logs, controllerName, controllerEndpoint, domainUUID s
 	attrs := rl.Resource().Attributes()
 	putStr(attrs, "host.id", firstNonEmpty(fmc.String(obj, "serialNumber", "serial"), fmc.StableID(obj), controllerName))
 	putStr(attrs, "host.name", firstNonEmpty(fmc.String(obj, "name", "hostName", "displayName"), controllerName))
-	putStr(attrs, "host.ip", fmc.String(obj, "managementIpAddress", "managementIP", "mgmtIp", "ipAddress", "ip"))
+	putIPAttrs(attrs, "host.ip", fmc.String(obj, "managementIpAddress"), fmc.String(obj, "managementIP"), fmc.String(obj, "mgmtIp"), fmc.String(obj, "ipAddress"), fmc.String(obj, "ip"))
 	putStr(attrs, "hw.type", "network")
 	putStr(attrs, "os.name", "Cisco Secure Firewall")
 	putStr(attrs, "cisco.controller.type", "fmc")
@@ -1118,9 +1242,9 @@ func appendFMCLog(ld plog.Logs, controllerName, controllerEndpoint, domainUUID s
 	record := sl.LogRecords().AppendEmpty()
 	record.SetObservedTimestamp(pcommon.NewTimestampFromTime(now))
 	if ts, ok := fmcLogTimestamp(obj); ok {
-		record.SetTimestamp(pcommon.NewTimestampFromTime(ts))
-	} else {
-		record.SetTimestamp(pcommon.NewTimestampFromTime(now))
+		if timestamp, valid := pdataTimestampFromTime(ts); valid {
+			record.SetTimestamp(timestamp)
+		}
 	}
 	severity := firstNonEmpty(fmc.String(obj, "severity", "eventSeverity", "healthStatus"), fmcObjectStatus(obj))
 	record.SetSeverityText(severity)
@@ -1145,7 +1269,7 @@ func appendFMCEStreamerLog(ld plog.Logs, controllerName, address string, event f
 	attrs := rl.Resource().Attributes()
 	putStr(attrs, "host.id", firstNonEmpty(fmc.String(event.Body, "SensorId", "sensorId", "DeviceUUID", "deviceUUID"), controllerName))
 	putStr(attrs, "host.name", firstNonEmpty(fmc.String(event.Body, "SensorName", "sensorName", "DeviceName", "deviceName"), controllerName))
-	putStr(attrs, "host.ip", fmc.String(event.Body, "InitiatorIP", "initiatorIp", "SensorIP", "sensorIp"))
+	putIPAttrs(attrs, "host.ip", fmc.String(event.Body, "InitiatorIP"), fmc.String(event.Body, "initiatorIp"), fmc.String(event.Body, "SensorIP"), fmc.String(event.Body, "sensorIp"))
 	putStr(attrs, "hw.type", "network")
 	putStr(attrs, "os.name", "Cisco Secure Firewall")
 	putStr(attrs, "cisco.controller.type", "fmc")
@@ -1157,9 +1281,9 @@ func appendFMCEStreamerLog(ld plog.Logs, controllerName, address string, event f
 	record := sl.LogRecords().AppendEmpty()
 	record.SetObservedTimestamp(pcommon.NewTimestampFromTime(now))
 	if !event.Timestamp.IsZero() {
-		record.SetTimestamp(pcommon.NewTimestampFromTime(event.Timestamp))
-	} else {
-		record.SetTimestamp(pcommon.NewTimestampFromTime(now))
+		if timestamp, valid := pdataTimestampFromTime(event.Timestamp); valid {
+			record.SetTimestamp(timestamp)
+		}
 	}
 	severity := fmc.String(event.Body, "Severity", "severity", "Impact", "impact")
 	record.SetSeverityText(severity)
@@ -1419,8 +1543,6 @@ func fmcGroupEnabled(cfg FMCConfig, group string) bool {
 		return cfg.Deployments.Enabled
 	case "audit":
 		return cfg.Audit.Enabled
-	case "security_events":
-		return cfg.SecurityEvents.Enabled
 	default:
 		return true
 	}
@@ -1446,8 +1568,6 @@ func fmcGroupMaxResults(cfg FMCConfig, group string) int {
 		return cfg.Deployments.MaxResults
 	case "audit":
 		return cfg.Audit.MaxResults
-	case "security_events":
-		return cfg.SecurityEvents.MaxResults
 	default:
 		return 0
 	}

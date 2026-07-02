@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -18,12 +17,13 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
 
 const (
 	defaultUserAgent      = "opentelemetry-collector-contrib-ciscoosreceiver"
 	defaultRequestTimeout = 30 * time.Second
-	defaultMaxRetries     = 3
 	defaultPageSize       = 100
 	tokenRefreshAfter     = 25 * time.Minute
 )
@@ -58,14 +58,10 @@ type RequestStat struct {
 // APIError is returned for non-success FMC REST API responses.
 type APIError struct {
 	StatusCode int
-	Body       string
 }
 
 func (e *APIError) Error() string {
-	if e.Body == "" {
-		return fmt.Sprintf("fmc API returned HTTP %d", e.StatusCode)
-	}
-	return fmt.Sprintf("fmc API returned HTTP %d: %s", e.StatusCode, e.Body)
+	return httpclient.StatusError("fmc", e.StatusCode)
 }
 
 // Client is a compact FMC REST API client.
@@ -109,12 +105,9 @@ func NewClient(cfg Config) (*Client, error) {
 	if userAgent == "" {
 		userAgent = defaultUserAgent
 	}
-	retries := cfg.MaxRetries
-	if retries < 0 {
-		retries = 0
-	}
-	if retries == 0 {
-		retries = defaultMaxRetries
+	retries, err := httpclient.RetryCount(cfg.MaxRetries)
+	if err != nil {
+		return nil, fmt.Errorf("invalid fmc max retries: %w", err)
 	}
 	pageSize := cfg.PageSize
 	if pageSize <= 0 {
@@ -136,7 +129,7 @@ func NewClient(cfg Config) (*Client, error) {
 		password:   cfg.Password,
 		domainUUID: cfg.DomainUUID,
 		userAgent:  userAgent,
-		client:     &http.Client{Timeout: timeout, Transport: transport},
+		client:     &http.Client{Timeout: timeout, Transport: transport, CheckRedirect: httpclient.SameOriginRedirectPolicy(parsed)},
 		retries:    retries,
 		pageSize:   pageSize,
 	}, nil
@@ -197,18 +190,25 @@ func (c *Client) list(ctx context.Context, method, operation, path string, query
 		query = url.Values{}
 	}
 	var results []Object
+	resultLimit, hardResultLimit := httpclient.EffectivePaginationResultLimit(maxResults)
 	offset := 0
+	pages := 0
+	var byteBudget httpclient.PaginationByteBudget
+	seenRequests := make(map[string]struct{})
 	for {
+		if len(results) >= resultLimit {
+			if hardResultLimit {
+				return results, httpclient.NewPaginationLimitError(operation, "result", resultLimit, len(results))
+			}
+			return results, nil
+		}
+		if pages >= httpclient.HardMaxPaginationPages {
+			return results, httpclient.NewPaginationLimitError(operation, "page", httpclient.HardMaxPaginationPages, len(results))
+		}
 		pageQuery := cloneValues(query)
 		pageSize := c.pageSize
-		if maxResults > 0 {
-			remaining := maxResults - len(results)
-			if remaining <= 0 {
-				return results, nil
-			}
-			if remaining < pageSize {
-				pageSize = remaining
-			}
+		if remaining := resultLimit - len(results); remaining < pageSize {
+			pageSize = remaining
 		}
 		if _, ok := pageQuery["limit"]; !ok {
 			pageQuery.Set("limit", strconv.Itoa(pageSize))
@@ -216,26 +216,38 @@ func (c *Client) list(ctx context.Context, method, operation, path string, query
 		if _, ok := pageQuery["offset"]; !ok {
 			pageQuery.Set("offset", strconv.Itoa(offset))
 		}
+		requestKey := method + " " + path + "?" + pageQuery.Encode()
+		if _, seen := seenRequests[requestKey]; seen {
+			return results, fmt.Errorf("paginate fmc %s response: detected continuation cycle after %d partial results", operation, len(results))
+		}
+		seenRequests[requestKey] = struct{}{}
 
 		body, _, err := c.do(ctx, method, operation, path, pageQuery, payload)
 		if err != nil {
 			return results, err
 		}
+		if err := byteBudget.Charge(operation, len(body), len(results)); err != nil {
+			return results, err
+		}
+		pages++
 		pageObjects, next, total, err := decodeObjects(body)
 		if err != nil {
 			return results, fmt.Errorf("decode fmc %s response: %w", operation, err)
 		}
 		results = append(results, pageObjects...)
-		if maxResults > 0 && len(results) >= maxResults {
-			return results[:maxResults], nil
-		}
-		if len(pageObjects) == 0 || len(pageObjects) < pageSize || total > -1 && len(results) >= total {
+		complete := len(pageObjects) == 0 || len(pageObjects) < pageSize || total > -1 && len(results) >= total || next == "" && total < 0
+		truncated := len(results) > resultLimit
+		if len(results) >= resultLimit {
+			results = results[:resultLimit]
+			if hardResultLimit && (truncated || !complete) {
+				return results, httpclient.NewPaginationLimitError(operation, "result", resultLimit, len(results))
+			}
 			return results, nil
 		}
-		if next == "" && total < 0 {
+		if complete {
 			return results, nil
 		}
-		offset += pageSize
+		offset += len(pageObjects)
 	}
 }
 
@@ -262,7 +274,7 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 		if header != nil {
 			retryHeader = header.Get("Retry-After")
 		}
-		if !retryableStatus(status) || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
+		if !retryableStatus(status) || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
 			if ctx.Err() != nil {
 				return nil, nil, ctx.Err()
 			}
@@ -305,7 +317,7 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", Duration: duration, Err: err})
 		return nil, nil, 0, err
 	}
-	bodyBytes, readErr := io.ReadAll(resp.Body)
+	bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
 		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
@@ -318,7 +330,7 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "success", StatusCode: resp.StatusCode, Duration: duration})
 		return bodyBytes, resp.Header, resp.StatusCode, nil
 	}
-	apiErr := &APIError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(bodyBytes))}
+	apiErr := &APIError{StatusCode: resp.StatusCode}
 	c.record(RequestStat{
 		Controller:  c.name,
 		Operation:   operation,
@@ -371,7 +383,7 @@ func (c *Client) generateToken(ctx context.Context) error {
 		c.record(RequestStat{Controller: c.name, Operation: "auth.generatetoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/generatetoken", Outcome: "error", Duration: duration, Err: err})
 		return err
 	}
-	bodyBytes, readErr := io.ReadAll(resp.Body)
+	_, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
 		c.record(RequestStat{Controller: c.name, Operation: "auth.generatetoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/generatetoken", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
@@ -381,7 +393,7 @@ func (c *Client) generateToken(ctx context.Context) error {
 		return closeErr
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		apiErr := &APIError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(bodyBytes))}
+		apiErr := &APIError{StatusCode: resp.StatusCode}
 		c.record(RequestStat{Controller: c.name, Operation: "auth.generatetoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/generatetoken", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: apiErr})
 		return apiErr
 	}
@@ -427,7 +439,7 @@ func (c *Client) refresh(ctx context.Context) error {
 		c.record(RequestStat{Controller: c.name, Operation: "auth.refreshtoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/refreshtoken", Outcome: "error", Duration: duration, Err: err})
 		return err
 	}
-	bodyBytes, readErr := io.ReadAll(resp.Body)
+	_, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
 		c.record(RequestStat{Controller: c.name, Operation: "auth.refreshtoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/refreshtoken", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
@@ -437,7 +449,7 @@ func (c *Client) refresh(ctx context.Context) error {
 		return closeErr
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		apiErr := &APIError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(bodyBytes))}
+		apiErr := &APIError{StatusCode: resp.StatusCode}
 		c.record(RequestStat{Controller: c.name, Operation: "auth.refreshtoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/refreshtoken", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: apiErr})
 		return apiErr
 	}
@@ -482,10 +494,8 @@ func (c *Client) record(stat RequestStat) {
 }
 
 func decodeObjects(body []byte) ([]Object, string, int, error) {
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.UseNumber()
 	var raw any
-	if err := decoder.Decode(&raw); err != nil {
+	if err := httpclient.DecodeJSON(body, &raw); err != nil {
 		return nil, "", -1, err
 	}
 	return objectsFromRaw(raw)
