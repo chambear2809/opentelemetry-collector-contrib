@@ -5,8 +5,10 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -114,8 +116,7 @@ type fmcLogsReceiver struct {
 	cancel  context.CancelFunc
 	done    chan struct{}
 
-	seenMu sync.Mutex
-	seen   map[string]time.Time
+	seen *logDeduplicator
 }
 
 type fmcEStreamerLogsReceiver struct {
@@ -192,7 +193,7 @@ func newFMCLogsReceiver(set receiver.Settings, conf *Config, consumer consumer.L
 		clients:  clients,
 		obs:      newPlatformObsReport(set, "http"),
 		done:     make(chan struct{}),
-		seen:     map[string]time.Time{},
+		seen:     newLogDeduplicator(),
 	}, nil
 }
 
@@ -332,21 +333,15 @@ func (r *fmcMetricsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 	obsCtx := startMetricsOp(r.obs, ctx)
-	md, err := r.scrape(scrapeCtx)
-	if err != nil {
-		r.settings.Logger.Error("FMC scrape failed", zap.Error(err))
-		endMetricsOp(r.obs, obsCtx, md, err)
-		return
+	md, scrapeErr := r.scrape(scrapeCtx)
+	if scrapeErr != nil {
+		r.settings.Logger.Error("FMC scrape failed", zap.Error(scrapeErr))
 	}
-	if md.MetricCount() == 0 {
-		endMetricsOp(r.obs, obsCtx, md, nil)
-		return
-	}
-	consumeErr := r.consumer.ConsumeMetrics(ctx, md)
-	endMetricsOp(r.obs, obsCtx, md, consumeErr)
+	consumeErr := consumeMetricsIfPresent(ctx, r.consumer, md)
 	if consumeErr != nil {
 		r.settings.Logger.Error("FMC metrics consumer failed", zap.Error(consumeErr))
 	}
+	endMetricsOp(r.obs, obsCtx, md, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
@@ -731,22 +726,17 @@ func (r *fmcLogsReceiver) run(ctx context.Context) {
 func (r *fmcLogsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
+	r.seen.BeginBatch()
 	obsCtx := startLogsOp(r.obs, ctx)
-	ld, err := r.scrape(scrapeCtx)
-	if err != nil {
-		r.settings.Logger.Error("FMC log scrape failed", zap.Error(err))
-		endLogsOp(r.obs, obsCtx, ld, err)
-		return
+	ld, scrapeErr := r.scrape(scrapeCtx)
+	if scrapeErr != nil {
+		r.settings.Logger.Error("FMC log scrape failed", zap.Error(scrapeErr))
 	}
-	if ld.LogRecordCount() == 0 {
-		endLogsOp(r.obs, obsCtx, ld, nil)
-		return
-	}
-	consumeErr := r.consumer.ConsumeLogs(ctx, ld)
-	endLogsOp(r.obs, obsCtx, ld, consumeErr)
+	consumeErr := consumeDeduplicatedLogs(ctx, r.consumer, r.seen, ld)
 	if consumeErr != nil {
 		r.settings.Logger.Error("FMC logs consumer failed", zap.Error(consumeErr))
 	}
+	endLogsOp(r.obs, obsCtx, ld, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *fmcLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
@@ -792,13 +782,7 @@ func (r *fmcLogsReceiver) seenBefore(controller string, endpoint fmcEndpoint, ob
 		id = fmc.FallbackKey(obj)
 	}
 	key := controller + ":" + endpoint.operation + ":" + id
-	r.seenMu.Lock()
-	defer r.seenMu.Unlock()
-	if _, ok := r.seen[key]; ok {
-		return true
-	}
-	r.seen[key] = now
-	return false
+	return !r.seen.MarkPending(key, now)
 }
 
 func (r *fmcLogsReceiver) expireSeen(now time.Time) {
@@ -807,13 +791,7 @@ func (r *fmcLogsReceiver) expireSeen(now time.Time) {
 		ttl = defaultFMCConfig().EventLookback
 	}
 	ttl *= 2
-	r.seenMu.Lock()
-	defer r.seenMu.Unlock()
-	for key, ts := range r.seen {
-		if now.Sub(ts) > ttl {
-			delete(r.seen, key)
-		}
-	}
+	r.seen.Expire(now.Add(-ttl), 0)
 }
 
 func (r *fmcEStreamerLogsReceiver) Start(_ context.Context, _ component.Host) error {
@@ -875,26 +853,113 @@ var fmcEStreamerBackoffSchedule = []time.Duration{
 	30 * time.Second,
 }
 
+const (
+	// The protocol request cursor has one-second resolution. Replaying one full
+	// second before the newest delivered event avoids losing events that share a
+	// cursor second or are returned by a server with exclusive cursor semantics.
+	fmcEStreamerResumeOverlap = time.Second
+
+	// The replay set is intentionally in-memory and bounded. Collector restarts
+	// can therefore replay the configured startup lookback (at-least-once), but a
+	// reconnect in the same process suppresses events already accepted downstream.
+	fmcEStreamerSeenLimit          = 100_000
+	fmcEStreamerSeenPruneThreshold = 110_000
+)
+
+type fmcEStreamerSeenEvent struct {
+	eventTime time.Time
+	seenAt    time.Time
+}
+
+type fmcEStreamerResumeState struct {
+	initialTime time.Time
+	cursor      time.Time
+	seen        map[string]fmcEStreamerSeenEvent
+}
+
+func newFMCEStreamerResumeState(initialTime time.Time) *fmcEStreamerResumeState {
+	return &fmcEStreamerResumeState{
+		initialTime: initialTime,
+		seen:        make(map[string]fmcEStreamerSeenEvent),
+	}
+}
+
+func (s *fmcEStreamerResumeState) requestStart() time.Time {
+	if s.cursor.IsZero() {
+		return s.initialTime
+	}
+	resume := s.cursor.UTC().Truncate(time.Second).Add(-fmcEStreamerResumeOverlap)
+	if s.initialTime.IsZero() || resume.After(s.initialTime) {
+		return resume
+	}
+	return s.initialTime
+}
+
+func (s *fmcEStreamerResumeState) seenBefore(key string) bool {
+	_, ok := s.seen[key]
+	return ok
+}
+
+func (s *fmcEStreamerResumeState) commit(key string, eventTime, seenAt time.Time) {
+	s.seen[key] = fmcEStreamerSeenEvent{eventTime: eventTime, seenAt: seenAt}
+	if eventTime.After(s.cursor) {
+		s.cursor = eventTime.UTC()
+	}
+	if len(s.seen) >= fmcEStreamerSeenPruneThreshold {
+		s.prune()
+	}
+}
+
+func (s *fmcEStreamerResumeState) prune() {
+	cutoff := s.requestStart()
+	if !cutoff.IsZero() {
+		for key, item := range s.seen {
+			if !item.eventTime.IsZero() && item.eventTime.Before(cutoff) {
+				delete(s.seen, key)
+			}
+		}
+	}
+	if len(s.seen) <= fmcEStreamerSeenLimit {
+		return
+	}
+	type seenEntry struct {
+		key    string
+		seenAt time.Time
+	}
+	entries := make([]seenEntry, 0, len(s.seen))
+	for key, item := range s.seen {
+		entries = append(entries, seenEntry{key: key, seenAt: item.seenAt})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].seenAt.Before(entries[j].seenAt)
+	})
+	for _, entry := range entries[:len(entries)-fmcEStreamerSeenLimit] {
+		delete(s.seen, entry.key)
+	}
+}
+
+func fmcEStreamerEventKey(event fmc.EStreamerEvent) string {
+	if id := fmc.StableID(event.Body); id != "" {
+		return fmt.Sprintf("%d:%s:id:%s", event.RecordType, event.EventType, id)
+	}
+	payload := []byte(event.Raw)
+	if len(payload) == 0 {
+		payload, _ = json.Marshal(event.Body)
+	}
+	fingerprint := sha256.Sum256([]byte(fmt.Sprintf("%d\x00%s\x00%d\x00%s", event.RecordType, event.EventType, event.Timestamp.UnixNano(), payload)))
+	return fmt.Sprintf("sha256:%x", fingerprint)
+}
+
 func (r *fmcEStreamerLogsReceiver) runEStreamerClient(ctx context.Context, client *fmc.EStreamerClient) {
 	reconnect := r.config.FMC.EStreamer.ReconnectInterval
 	if reconnect <= 0 {
 		reconnect = defaultFMCConfig().EStreamer.ReconnectInterval
 	}
+	resume := newFMCEStreamerResumeState(client.InitialTime())
 	failures := 0
 	for {
-		err := client.Run(ctx, func(event fmc.EStreamerEvent) error {
-			if !fmcGroupEnabled(r.config.FMC, "security_events") {
-				return nil
-			}
-			ld := plog.NewLogs()
-			appendFMCEStreamerLog(ld, client.ControllerName(), client.Address(), event, time.Now())
-			if ld.LogRecordCount() == 0 {
-				return nil
-			}
-			obsCtx := startLogsOp(r.obs, ctx)
-			consumeErr := r.consumer.ConsumeLogs(ctx, ld)
-			endLogsOp(r.obs, obsCtx, ld, consumeErr)
-			return consumeErr
+		err := client.RunFrom(ctx, resume.requestStart(), func(event fmc.EStreamerEvent) error {
+			return r.consumeEStreamerEvent(ctx, client, resume, event)
 		})
 		if ctx.Err() != nil {
 			return
@@ -922,6 +987,31 @@ func (r *fmcEStreamerLogsReceiver) runEStreamerClient(ctx context.Context, clien
 	}
 }
 
+func (r *fmcEStreamerLogsReceiver) consumeEStreamerEvent(ctx context.Context, client *fmc.EStreamerClient, resume *fmcEStreamerResumeState, event fmc.EStreamerEvent) error {
+	key := fmcEStreamerEventKey(event)
+	if resume.seenBefore(key) {
+		return nil
+	}
+	now := time.Now()
+	if fmcGroupEnabled(r.config.FMC, "security_events") {
+		ld := plog.NewLogs()
+		appendFMCEStreamerLog(ld, client.ControllerName(), client.Address(), event, now)
+		if ld.LogRecordCount() > 0 {
+			obsCtx := startLogsOp(r.obs, ctx)
+			consumeErr := r.consumer.ConsumeLogs(ctx, ld)
+			endLogsOp(r.obs, obsCtx, ld, consumeErr)
+			if consumeErr != nil {
+				return consumeErr
+			}
+		}
+	}
+	// Commit only after the next consumer accepts the event. A failed consume is
+	// retried from the previous cursor; after a successful consume, the overlap
+	// may replay it from FMC but this in-memory fingerprint suppresses re-export.
+	resume.commit(key, event.Timestamp, now)
+	return nil
+}
+
 type fmcMetricsBuilder struct {
 	metrics   pmetric.Metrics
 	now       pcommon.Timestamp
@@ -945,7 +1035,7 @@ func newFMCMetricsBuilder(now time.Time, instance string, counters *counterStore
 	return &fmcMetricsBuilder{
 		metrics:   pmetric.NewMetrics(),
 		now:       ts,
-		start:     ts,
+		start:     pcommon.NewTimestampFromTime(counters.StartTime()),
 		instance:  instance,
 		resources: map[string]*resourceMetricsBuilder{},
 		counts:    map[string]*fmcCount{},
@@ -1015,12 +1105,13 @@ func (b *fmcMetricsBuilder) resource(key string) *resourceMetricsBuilder {
 	sm := rm.ScopeMetrics().AppendEmpty()
 	sm.Scope().SetName(fmcScopeName)
 	rb := &resourceMetricsBuilder{
-		resource: rm.Resource(),
-		scope:    sm,
-		metrics:  map[string]pmetric.Metric{},
-		now:      b.now,
-		start:    b.start,
-		counters: b.counters,
+		resource:         rm.Resource(),
+		scope:            sm,
+		metrics:          map[string]pmetric.Metric{},
+		now:              b.now,
+		start:            b.start,
+		counterNamespace: key,
+		counters:         b.counters,
 	}
 	b.resources[key] = rb
 	return rb

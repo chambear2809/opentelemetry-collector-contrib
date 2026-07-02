@@ -365,8 +365,17 @@ func validateIOSXRPathGroups(prefix string, groups map[string]IOSXRPathGroupConf
 func validateIOSXRPaths(prefix string, paths IOSXRPathOverrideConfig) error {
 	var err error
 	for i, path := range paths.Include {
-		if strings.TrimSpace(path) == "" {
+		path = strings.TrimSpace(path)
+		if path == "" {
 			err = multierr.Append(err, fmt.Errorf("%s.include[%d] cannot be empty", prefix, i))
+			continue
+		}
+		if strings.Contains(path, "*") {
+			err = multierr.Append(err, fmt.Errorf("%s.include[%d] cannot contain wildcards because IOS XR gNMI does not support wildcard paths", prefix, i))
+			continue
+		}
+		if _, parseErr := parseGNMIPath(path); parseErr != nil {
+			err = multierr.Append(err, fmt.Errorf("%s.include[%d] must be a valid gNMI path: %w", prefix, i, parseErr))
 		}
 	}
 	for i, path := range paths.Exclude {

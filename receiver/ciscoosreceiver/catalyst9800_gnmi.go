@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -80,14 +82,21 @@ func (d catalyst9800GNMIUpdateDecoder) decodeTypedValue(sm pmetric.ScopeMetrics,
 	case *gnmi.TypedValue_AsciiVal:
 		appendCatalyst9800InfoMetric(sm, module, parts, v.AsciiVal, ts, attrs)
 	case *gnmi.TypedValue_IntVal:
-		appendCatalyst9800NumberMetric(sm, module, parts, float64(v.IntVal), ts, attrs)
+		appendCatalyst9800IntMetric(sm, module, parts, v.IntVal, ts, attrs)
 	case *gnmi.TypedValue_UintVal:
-		appendCatalyst9800NumberMetric(sm, module, parts, float64(v.UintVal), ts, attrs)
+		if v.UintVal <= math.MaxInt64 {
+			appendCatalyst9800IntMetric(sm, module, parts, int64(v.UintVal), ts, attrs)
+		} else {
+			overflowAttrs := cloneAttrs(attrs)
+			overflowAttrs["cisco.value.type"] = "uint64"
+			overflowAttrs["cisco.value.out_of_range"] = "true"
+			appendCatalyst9800InfoMetric(sm, module, parts, strconv.FormatUint(v.UintVal, 10), ts, overflowAttrs)
+		}
 	case *gnmi.TypedValue_BoolVal:
 		if v.BoolVal {
-			appendCatalyst9800NumberMetric(sm, module, parts, 1, ts, attrs)
+			appendCatalyst9800IntMetric(sm, module, parts, 1, ts, attrs)
 		} else {
-			appendCatalyst9800NumberMetric(sm, module, parts, 0, ts, attrs)
+			appendCatalyst9800IntMetric(sm, module, parts, 0, ts, attrs)
 		}
 	case *gnmi.TypedValue_FloatVal:
 		appendCatalyst9800NumberMetric(sm, module, parts, float64(v.FloatVal), ts, attrs)
@@ -159,7 +168,7 @@ func walkCatalyst9800JSON(sm pmetric.ScopeMetrics, module string, parts []string
 		}
 	default:
 		if n, ok := typedNumericValue(v); ok {
-			appendCatalyst9800NumberMetric(sm, module, parts, n, ts, attrs)
+			appendCatalyst9800MetricNumber(sm, module, parts, n, ts, attrs)
 			return
 		}
 		if value := valueToInfoString(v); value != "" {

@@ -4,11 +4,16 @@
 package fmc
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/binary"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -105,4 +110,90 @@ func TestNormalizeFQEEventTypesSupportsOperationalAliases(t *testing.T) {
 		[]string{"connection", "file", "intrusion_packet"},
 		normalizeFQEEventTypes([]string{"security_intelligence", "malware", "IntrusionPacket"}),
 	)
+}
+
+func TestEStreamerRunCancellationInterruptsIdleRead(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer serverConn.Close()
+
+	client, err := NewEStreamerClient(EStreamerConfig{
+		Address:     "fmc.example.test:8302",
+		ReadTimeout: time.Hour,
+	})
+	require.NoError(t, err)
+	client.dialContext = func(context.Context, string, string) (net.Conn, error) {
+		return clientConn, nil
+	}
+
+	requestReceived := make(chan struct{})
+	serverDone := make(chan error, 1)
+	go func() {
+		headerBytes := make([]byte, estreamerMessageHeaderLen)
+		if _, readErr := io.ReadFull(serverConn, headerBytes); readErr != nil {
+			serverDone <- readErr
+			return
+		}
+		header := decodeHeader(headerBytes)
+		if _, readErr := io.CopyN(io.Discard, serverConn, int64(header.length)); readErr != nil {
+			serverDone <- readErr
+			return
+		}
+		close(requestReceived)
+		var payload [1]byte
+		_, readErr := serverConn.Read(payload[:])
+		serverDone <- readErr
+	}()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	runDone := make(chan error, 1)
+	go func() {
+		runDone <- client.Run(ctx, func(EStreamerEvent) error { return nil })
+	}()
+
+	select {
+	case <-requestReceived:
+	case <-time.After(time.Second):
+		t.Fatal("eStreamer request was not received")
+	}
+	cancel()
+	select {
+	case runErr := <-runDone:
+		require.ErrorIs(t, runErr, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("eStreamer Run did not unblock promptly after cancellation")
+	}
+	select {
+	case <-serverDone:
+	case <-time.After(time.Second):
+		t.Fatal("server side did not observe the cancelled connection")
+	}
+}
+
+func TestEStreamerWriteRequestHandlesShortWritesAndUsesResumeCursor(t *testing.T) {
+	client, err := NewEStreamerClient(EStreamerConfig{Address: "fmc.example.test:8302"})
+	require.NoError(t, err)
+	writer := &chunkWriter{max: 3}
+	resume := time.Unix(1_800_000_123, 0).UTC()
+
+	require.NoError(t, client.writeRequest(writer, resume))
+	written := writer.Bytes()
+	require.GreaterOrEqual(t, len(written), estreamerMessageHeaderLen+8)
+	header := decodeHeader(written[:estreamerMessageHeaderLen])
+	assert.Equal(t, estreamerMessageRequest, header.messageType)
+	assert.Equal(t, uint32(len(written)-estreamerMessageHeaderLen), header.length)
+	payload := written[estreamerMessageHeaderLen:]
+	assert.Equal(t, uint32(resume.Unix()), binary.BigEndian.Uint32(payload[:4]))
+	assert.Equal(t, estreamerRequestBitExtendedHeader, binary.BigEndian.Uint32(payload[4:8]))
+}
+
+type chunkWriter struct {
+	bytes.Buffer
+	max int
+}
+
+func (w *chunkWriter) Write(payload []byte) (int, error) {
+	if len(payload) > w.max {
+		payload = payload[:w.max]
+	}
+	return w.Buffer.Write(payload)
 }

@@ -105,9 +105,9 @@ type iseLogsReceiver struct {
 	startMu sync.Mutex
 	cancel  context.CancelFunc
 	done    chan struct{}
+	workers sync.WaitGroup
 
-	seenMu sync.Mutex
-	seen   map[string]time.Time
+	seen *logDeduplicator
 }
 
 type iseEndpointMode string
@@ -184,7 +184,7 @@ func newISELogsReceiver(set receiver.Settings, conf *Config, consumer consumer.L
 		client:    client,
 		obs:       newPlatformObsReport(set, "http"),
 		done:      make(chan struct{}),
-		seen:      map[string]time.Time{},
+		seen:      newLogDeduplicator(),
 	}
 	if iseCfg.PxGrid.Enabled {
 		pxGrid, err := newISEPxGridClient(conf, iseCfg)
@@ -332,21 +332,15 @@ func (r *iseMetricsReceiver) collect(ctx context.Context) {
 	defer cancel()
 
 	obsCtx := startMetricsOp(r.obs, ctx)
-	md, err := r.scrape(scrapeCtx)
-	if err != nil {
-		r.settings.Logger.Error("ISE scrape failed", zap.Error(err))
-		endMetricsOp(r.obs, obsCtx, md, err)
-		return
+	md, scrapeErr := r.scrape(scrapeCtx)
+	if scrapeErr != nil {
+		r.settings.Logger.Error("ISE scrape failed", zap.Error(scrapeErr))
 	}
-	if md.MetricCount() == 0 {
-		endMetricsOp(r.obs, obsCtx, md, nil)
-		return
-	}
-	consumeErr := r.consumer.ConsumeMetrics(ctx, md)
-	endMetricsOp(r.obs, obsCtx, md, consumeErr)
+	consumeErr := consumeMetricsIfPresent(ctx, r.consumer, md)
 	if consumeErr != nil {
 		r.settings.Logger.Error("ISE metrics consumer failed", zap.Error(consumeErr))
 	}
+	endMetricsOp(r.obs, obsCtx, md, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *iseMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
@@ -354,7 +348,7 @@ func (r *iseMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 	r.resetDataConnectQueries()
 	now := time.Now()
 	builder := newISEMetricsBuilder(now, r.iseConfig.Endpoint, r.counters)
-	selector := newDeviceSelectionMatcher(r.config.DeviceSelection)
+	selector := newISEDeviceSelectionMatcher(r.config)
 	targets := newISETargetMatcher(r.iseConfig.Targets)
 	partial := false
 
@@ -374,21 +368,21 @@ func (r *iseMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 			continue
 		}
 		for _, obj := range objects {
-			if !targets.allows(obj) || !selector.allows(iseObjectIdentity(obj)) {
-				continue
-			}
-			builder.recordObject(spec, obj)
 			if spec.operation == "openapi.webhooks" {
-				if r.scrapeWebhookDeliveries(ctx, builder, obj, targets, now) {
+				if r.scrapeWebhookDeliveries(ctx, builder, obj, targets, selector, now) {
 					partial = true
 				}
 			}
+			if !iseObjectSelected(obj, targets, selector) {
+				continue
+			}
+			builder.recordObject(spec, obj)
 		}
 	}
-	if r.scrapePxGrid(ctx, builder, targets, now) {
+	if r.scrapePxGrid(ctx, builder, targets, selector, now) {
 		partial = true
 	}
-	if r.scrapeDataConnect(ctx, builder, targets) {
+	if r.scrapeDataConnect(ctx, builder, targets, selector) {
 		partial = true
 	}
 	r.recordAPIRequestMetrics(builder)
@@ -399,7 +393,7 @@ func (r *iseMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 	return builder.emit(), nil
 }
 
-func (r *iseMetricsReceiver) scrapeWebhookDeliveries(ctx context.Context, builder *iseMetricsBuilder, webhook ise.Object, targets iseTargetMatcher, now time.Time) bool {
+func (r *iseMetricsReceiver) scrapeWebhookDeliveries(ctx context.Context, builder *iseMetricsBuilder, webhook ise.Object, targets iseTargetMatcher, selector deviceSelectionMatcher, now time.Time) bool {
 	spec, ok := iseWebhookDeliveriesSpec(webhook)
 	if !ok {
 		return false
@@ -411,7 +405,7 @@ func (r *iseMetricsReceiver) scrapeWebhookDeliveries(ctx context.Context, builde
 		return true
 	}
 	for _, obj := range objects {
-		if targets.allows(obj) {
+		if iseObjectSelected(obj, targets, selector) {
 			builder.recordObject(spec, obj)
 		}
 	}
@@ -451,7 +445,7 @@ func iseEndpointPath(conf *Config, spec iseEndpointSpec, now time.Time) string {
 	return spec.path
 }
 
-func (r *iseMetricsReceiver) scrapePxGrid(ctx context.Context, builder *iseMetricsBuilder, targets iseTargetMatcher, now time.Time) bool {
+func (r *iseMetricsReceiver) scrapePxGrid(ctx context.Context, builder *iseMetricsBuilder, targets iseTargetMatcher, selector deviceSelectionMatcher, now time.Time) bool {
 	if r.pxGrid == nil {
 		if r.iseConfig.PxGrid.Enabled {
 			builder.recordServiceSkipped("pxgrid", "pxgrid.client", "pxGrid client not configured")
@@ -491,33 +485,33 @@ func (r *iseMetricsReceiver) scrapePxGrid(ctx context.Context, builder *iseMetri
 			builder.recordServiceSkipped("pxgrid", "pxgrid.service_lookup", service)
 		}
 		for _, obj := range objects {
-			if targets.allows(obj) {
+			if iseObjectSelected(obj, targets, selector) {
 				builder.recordObject(spec, obj)
 			}
 		}
 	}
 	for _, query := range isePxGridRESTQueries(r.iseConfig, now) {
-		objects, err := r.pxGrid.PostObjects(ctx, query.operation, query.path, query.payload, r.iseConfig.PxGrid.MaxResults)
+		objects, err := r.pxGrid.PostObjects(ctx, query.operation, query.service, query.path, query.payload, r.iseConfig.PxGrid.MaxResults)
 		if err != nil {
 			partial = true
 			builder.recordServiceUnavailable("pxgrid", query.operation, err)
 			continue
 		}
 		for _, obj := range objects {
-			if targets.allows(obj) {
+			if iseObjectSelected(obj, targets, selector) {
 				builder.recordObject(iseEndpointSpec{group: "pxgrid", operation: query.operation, objectType: query.objectType, mode: iseEndpointList}, obj)
 			}
 		}
 	}
 	if r.iseConfig.PxGrid.Streaming {
-		for _, topic := range isePxGridTopics(r.iseConfig.PxGrid.Subscriptions) {
-			builder.controllerResource().recordInt("ise.pxgrid.subscription.status", "Configured Cisco ISE pxGrid subscription status.", "1", 1, map[string]string{"ise.pxgrid.topic": topic})
+		for _, subscription := range isePxGridSubscriptions(r.iseConfig.PxGrid.Subscriptions) {
+			builder.controllerResource().recordInt("ise.pxgrid.subscription.status", "Configured Cisco ISE pxGrid subscription status.", "1", 1, map[string]string{"ise.pxgrid.topic": isePxGridSubscriptionLabel(subscription)})
 		}
 	}
 	return partial
 }
 
-func (r *iseMetricsReceiver) scrapeDataConnect(ctx context.Context, builder *iseMetricsBuilder, targets iseTargetMatcher) bool {
+func (r *iseMetricsReceiver) scrapeDataConnect(ctx context.Context, builder *iseMetricsBuilder, targets iseTargetMatcher, selector deviceSelectionMatcher) bool {
 	if r.dataConnect == nil {
 		return false
 	}
@@ -535,7 +529,7 @@ func (r *iseMetricsReceiver) scrapeDataConnect(ctx context.Context, builder *ise
 			continue
 		}
 		for _, obj := range objects {
-			if targets.allows(obj) {
+			if iseObjectSelected(obj, targets, selector) {
 				builder.recordObject(spec, obj)
 			}
 		}
@@ -616,12 +610,24 @@ func (r *iseLogsReceiver) Start(_ context.Context, _ component.Host) error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	r.cancel = cancel
-	go r.run(ctx)
+	r.workers.Add(1)
+	go func() {
+		defer r.workers.Done()
+		r.run(ctx)
+	}()
 	if r.pxGrid != nil && r.iseConfig.PxGrid.Streaming {
-		for _, topic := range isePxGridTopics(r.iseConfig.PxGrid.Subscriptions) {
-			go r.runPxGridSubscription(ctx, topic)
+		for _, subscription := range isePxGridSubscriptions(r.iseConfig.PxGrid.Subscriptions) {
+			r.workers.Add(1)
+			go func() {
+				defer r.workers.Done()
+				r.runPxGridSubscription(ctx, subscription)
+			}()
 		}
 	}
+	go func() {
+		r.workers.Wait()
+		close(r.done)
+	}()
 	return nil
 }
 
@@ -656,7 +662,6 @@ func (r *iseLogsReceiver) close() {
 }
 
 func (r *iseLogsReceiver) run(ctx context.Context) {
-	defer close(r.done)
 	r.collect(ctx)
 	ticker := time.NewTicker(r.config.CollectionInterval)
 	defer ticker.Stop()
@@ -673,27 +678,23 @@ func (r *iseLogsReceiver) run(ctx context.Context) {
 func (r *iseLogsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
+	r.seen.BeginBatch()
 	obsCtx := startLogsOp(r.obs, ctx)
-	ld, err := r.scrape(scrapeCtx)
-	if err != nil {
-		r.settings.Logger.Error("ISE log scrape failed", zap.Error(err))
-		endLogsOp(r.obs, obsCtx, ld, err)
-		return
+	ld, scrapeErr := r.scrape(scrapeCtx)
+	if scrapeErr != nil {
+		r.settings.Logger.Error("ISE log scrape failed", zap.Error(scrapeErr))
 	}
-	if ld.LogRecordCount() == 0 {
-		endLogsOp(r.obs, obsCtx, ld, nil)
-		return
-	}
-	consumeErr := r.consumer.ConsumeLogs(ctx, ld)
-	endLogsOp(r.obs, obsCtx, ld, consumeErr)
+	consumeErr := consumeDeduplicatedLogs(ctx, r.consumer, r.seen, ld)
 	if consumeErr != nil {
 		r.settings.Logger.Error("ISE logs consumer failed", zap.Error(consumeErr))
 	}
+	endLogsOp(r.obs, obsCtx, ld, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *iseLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 	now := time.Now()
 	builder := newISELogsBuilder(now, r.iseConfig.Endpoint)
+	selector := newISEDeviceSelectionMatcher(r.config)
 	targets := newISETargetMatcher(r.iseConfig.Targets)
 	r.pruneSeen(now)
 	for _, spec := range iseLogEndpoints() {
@@ -709,32 +710,38 @@ func (r *iseLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 			continue
 		}
 		for _, obj := range objects {
-			if !targets.allows(obj) || !r.markSeen(spec, obj, now) {
+			if spec.operation == "openapi.webhooks" {
+				// Webhook definitions are configuration and may contain delivery
+				// credentials. Use them only to discover event deliveries.
+				r.scrapeWebhookDeliveryLogs(ctx, builder, obj, targets, selector, now)
+				continue
+			}
+			if !iseObjectSelected(obj, targets, selector) {
+				continue
+			}
+			if !r.markSeen(spec, obj, now) {
 				continue
 			}
 			builder.recordObject(spec, obj)
-			if spec.operation == "openapi.webhooks" {
-				r.scrapeWebhookDeliveryLogs(ctx, builder, obj, targets, now)
-			}
 		}
 	}
 	if r.pxGrid != nil {
-		for _, query := range isePxGridRESTQueries(r.iseConfig, now) {
-			objects, err := r.pxGrid.PostObjects(ctx, query.operation, query.path, query.payload, r.iseConfig.PxGrid.MaxResults)
+		for _, query := range isePxGridLogQueries(r.iseConfig, now) {
+			objects, err := r.pxGrid.PostObjects(ctx, query.operation, query.service, query.path, query.payload, r.iseConfig.PxGrid.MaxResults)
 			if err != nil {
 				r.settings.Logger.Warn("ISE pxGrid REST log endpoint failed", zap.String("operation", query.operation), zap.Error(err))
 				continue
 			}
 			spec := iseEndpointSpec{group: "pxgrid", operation: query.operation, objectType: query.objectType}
 			for _, obj := range objects {
-				if targets.allows(obj) && r.markSeen(spec, obj, now) {
+				if iseObjectSelected(obj, targets, selector) && r.markSeen(spec, obj, now) {
 					builder.recordObject(spec, obj)
 				}
 			}
 		}
 	}
 	if r.dataConnect != nil {
-		for _, view := range iseDataConnectViews(r.iseConfig) {
+		for _, view := range iseDataConnectLogViews(r.iseConfig) {
 			objects, err := r.dataConnect.QueryView(ctx, view)
 			if err != nil {
 				r.settings.Logger.Warn("ISE Data Connect log view failed", zap.String("view", view.Name), zap.Error(err))
@@ -742,7 +749,7 @@ func (r *iseLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 			}
 			spec := iseEndpointSpec{group: "data_connect", operation: "data_connect." + strings.ToLower(view.Name), objectType: "data_connect_" + strings.ToLower(view.Category)}
 			for _, obj := range objects {
-				if targets.allows(obj) && r.markSeen(spec, obj, now) {
+				if iseObjectSelected(obj, targets, selector) && r.markSeen(spec, obj, now) {
 					builder.recordObject(spec, obj)
 				}
 			}
@@ -751,7 +758,7 @@ func (r *iseLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 	return builder.emit(), nil
 }
 
-func (r *iseLogsReceiver) scrapeWebhookDeliveryLogs(ctx context.Context, builder *iseLogsBuilder, webhook ise.Object, targets iseTargetMatcher, now time.Time) {
+func (r *iseLogsReceiver) scrapeWebhookDeliveryLogs(ctx context.Context, builder *iseLogsBuilder, webhook ise.Object, targets iseTargetMatcher, selector deviceSelectionMatcher, now time.Time) {
 	spec, ok := iseWebhookDeliveriesSpec(webhook)
 	if !ok {
 		return
@@ -762,7 +769,7 @@ func (r *iseLogsReceiver) scrapeWebhookDeliveryLogs(ctx context.Context, builder
 		return
 	}
 	for _, obj := range objects {
-		if targets.allows(obj) && r.markSeen(spec, obj, now) {
+		if iseObjectSelected(obj, targets, selector) && r.markSeen(spec, obj, now) {
 			builder.recordObject(spec, obj)
 		}
 	}
@@ -789,18 +796,18 @@ func (r *iseLogsReceiver) fetchEndpoint(ctx context.Context, spec iseEndpointSpe
 	}
 }
 
-func (r *iseLogsReceiver) runPxGridSubscription(ctx context.Context, topic string) {
+func (r *iseLogsReceiver) runPxGridSubscription(ctx context.Context, subscription ise.PxGridSubscription) {
 	for {
 		if ctx.Err() != nil {
 			return
 		}
-		err := r.pxGrid.Subscribe(ctx, topic, func(message ise.StompMessage) {
+		err := r.pxGrid.Subscribe(ctx, subscription, func(message ise.StompMessage) {
 			r.consumePxGridMessage(ctx, message)
 		})
 		if ctx.Err() != nil {
 			return
 		}
-		r.settings.Logger.Warn("ISE pxGrid subscription disconnected", zap.String("topic", topic), zap.Error(err))
+		r.settings.Logger.Warn("ISE pxGrid subscription disconnected", zap.String("service", subscription.Service), zap.String("topic_property", subscription.TopicProperty), zap.Error(err))
 		timer := time.NewTimer(30 * time.Second)
 		select {
 		case <-ctx.Done():
@@ -828,25 +835,27 @@ func (r *iseLogsReceiver) consumePxGridMessage(ctx context.Context, message ise.
 			obj["body"] = string(message.Body)
 		}
 	}
+	if !newISEDeviceSelectionMatcher(r.config).allows(iseObjectIdentity(obj)) {
+		return
+	}
 	spec := iseEndpointSpec{group: "pxgrid", operation: "pxgrid.subscription", objectType: "pxgrid_message"}
-	if !r.markSeen(spec, obj, now) {
+	key := iseSeenKey(spec, obj)
+	if !r.seen.MarkCommitted(key, now) {
 		return
 	}
 	builder.recordObject(spec, obj)
 	if err := r.consumer.ConsumeLogs(ctx, builder.emit()); err != nil {
+		r.seen.Forget(key)
 		r.settings.Logger.Error("ISE pxGrid log consumer failed", zap.Error(err))
 	}
 }
 
 func (r *iseLogsReceiver) markSeen(spec iseEndpointSpec, obj ise.Object, now time.Time) bool {
-	key := spec.operation + ":" + firstNonEmpty(ise.StableID(obj), mustJSON(obj))
-	r.seenMu.Lock()
-	defer r.seenMu.Unlock()
-	if _, exists := r.seen[key]; exists {
-		return false
-	}
-	r.seen[key] = now
-	return true
+	return r.seen.MarkPending(iseSeenKey(spec, obj), now)
+}
+
+func iseSeenKey(spec iseEndpointSpec, obj ise.Object) string {
+	return spec.operation + ":" + firstNonEmpty(ise.StableID(obj), mustJSON(redactISELogObject(obj)))
 }
 
 // iseSeenMaxEntries caps the dedup map so a deployment with large config
@@ -859,33 +868,7 @@ func (r *iseLogsReceiver) pruneSeen(now time.Time) {
 		ttl = defaultISEConfig().EventLookback
 	}
 	cutoff := now.Add(-ttl)
-	r.seenMu.Lock()
-	defer r.seenMu.Unlock()
-	for key, ts := range r.seen {
-		if ts.Before(cutoff) {
-			delete(r.seen, key)
-		}
-	}
-	if len(r.seen) <= iseSeenMaxEntries {
-		return
-	}
-	// Bound the map by evicting oldest entries until size is back within
-	// limits. Sorting once is cheap relative to the overflow case.
-	type entry struct {
-		key string
-		ts  time.Time
-	}
-	entries := make([]entry, 0, len(r.seen))
-	for k, t := range r.seen {
-		entries = append(entries, entry{k, t})
-	}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].ts.Before(entries[j].ts) })
-	for _, e := range entries {
-		if len(r.seen) <= iseSeenMaxEntries {
-			break
-		}
-		delete(r.seen, e.key)
-	}
+	r.seen.Expire(cutoff, iseSeenMaxEntries)
 }
 
 type iseMetricsBuilder struct {
@@ -906,7 +889,7 @@ func newISEMetricsBuilder(now time.Time, endpoint string, counters *counterStore
 	return &iseMetricsBuilder{
 		metrics:   pmetric.NewMetrics(),
 		now:       ts,
-		start:     ts,
+		start:     pcommon.NewTimestampFromTime(counters.StartTime()),
 		endpoint:  endpoint,
 		resources: map[string]*resourceMetricsBuilder{},
 		counters:  counters,
@@ -966,12 +949,13 @@ func (b *iseMetricsBuilder) resource(key string) *resourceMetricsBuilder {
 	sm := rm.ScopeMetrics().AppendEmpty()
 	sm.Scope().SetName(iseScopeName)
 	rb := &resourceMetricsBuilder{
-		resource: rm.Resource(),
-		scope:    sm,
-		metrics:  map[string]pmetric.Metric{},
-		now:      b.now,
-		start:    b.start,
-		counters: b.counters,
+		resource:         rm.Resource(),
+		scope:            sm,
+		metrics:          map[string]pmetric.Metric{},
+		now:              b.now,
+		start:            b.start,
+		counterNamespace: key,
+		counters:         b.counters,
 	}
 	b.resources[key] = rb
 	return rb
@@ -1153,8 +1137,11 @@ func (b *iseLogsBuilder) recordObject(spec iseEndpointSpec, obj ise.Object) {
 	sl.Scope().SetName(iseScopeName)
 	record := sl.LogRecords().AppendEmpty()
 	record.SetTimestamp(b.now)
+	if sourceTime, ok := ise.Time(obj, "timestamp", "eventTimestamp", "createTime", "updateTime"); ok {
+		record.SetTimestamp(pcommon.NewTimestampFromTime(sourceTime))
+	}
 	record.SetObservedTimestamp(b.now)
-	record.Body().SetStr(mustJSON(obj))
+	record.Body().SetStr(mustJSON(redactISELogObject(obj)))
 	record.Attributes().PutStr("event.domain", "ise")
 	record.Attributes().PutStr("event.name", spec.operation)
 	record.Attributes().PutStr("ise.group", spec.group)
@@ -1392,8 +1379,54 @@ func iseMetricEndpoints() []iseEndpointSpec {
 }
 
 func iseLogEndpoints() []iseEndpointSpec {
-	specs := iseMetricEndpoints()
+	specs := make([]iseEndpointSpec, 0)
+	for _, spec := range iseMetricEndpoints() {
+		if iseLogEndpointAllowed(spec.operation) {
+			specs = append(specs, spec)
+		}
+	}
 	return specs
+}
+
+// iseLogEndpointAllowed is intentionally an allowlist. Metric collection may
+// inspect configuration and inventory endpoints, but raw logs are limited to
+// operational events and status evidence to avoid exporting sensitive ISE
+// configuration. openapi.webhooks is discovery-only; its objects are never
+// emitted, only their delivery evidence is.
+func iseLogEndpointAllowed(operation string) bool {
+	switch operation {
+	case "openapi.task_service",
+		"ers.support_bundle_status",
+		"openapi.backup_restore.last_backup_status",
+		"openapi.upgrade.prepare_status",
+		"openapi.upgrade.stage_status",
+		"openapi.upgrade.proceed_status",
+		"openapi.upgrade.summary_status",
+		"openapi.patch.prechecks_status",
+		"openapi.patch.install_status",
+		"openapi.patch.install_summary",
+		"openapi.patch.rollback_prechecks_status",
+		"openapi.patch.rollback_summary",
+		"openapi.patch.rollback_status",
+		"ers.rejected_endpoints",
+		"mnt.session.active_list",
+		"mnt.session.auth_list",
+		"openapi.exim.posture_export_status",
+		"openapi.exim.posture_import_status",
+		"openapi.exim.posture_import_step_status",
+		"openapi.exim.posture_import_summary",
+		"ers.sgmapping_deploy_status",
+		"ers.sgmapping_group_deploy_status",
+		"openapi.trustsec.aci_readiness",
+		"openapi.trustsec.aci_status",
+		"openapi.trustsec.workload_service_status",
+		"openapi.alarms",
+		"openapi.alarm_instances",
+		"openapi.webhooks":
+		return true
+	default:
+		return false
+	}
 }
 
 func iseAuthSessionsListPath(conf *Config, now time.Time) string {
@@ -1439,14 +1472,14 @@ func isePxGridRESTQueries(cfg ISEConfig, now time.Time) []isePxGridQuery {
 		payload["startTimestamp"] = now.Add(-cfg.EventLookback).UTC().Format(time.RFC3339Nano)
 	}
 	queries := []isePxGridQuery{
-		{operation: "pxgrid.session.get_sessions", path: "/mnt/sd/getSessions", objectType: "pxgrid_session", service: "com.cisco.ise.session", payload: payload},
-		{operation: "pxgrid.session.get_user_groups", path: "/mnt/sd/getUserGroups", objectType: "pxgrid_user_group", service: "com.cisco.ise.session", payload: payload},
-		{operation: "pxgrid.radius.get_failures", path: "/ise/radius/getFailures", objectType: "pxgrid_radius_failure", service: "com.cisco.ise.radius", payload: payload},
-		{operation: "pxgrid.system.get_healths", path: "/ise/system/getHealths", objectType: "pxgrid_system_health", service: "com.cisco.ise.system", payload: payload},
-		{operation: "pxgrid.system.get_performances", path: "/ise/system/getPerformances", objectType: "pxgrid_system_performance", service: "com.cisco.ise.system", payload: payload},
-		{operation: "pxgrid.trustsec.get_security_groups", path: "/ise/config/trustsec/getSecurityGroups", objectType: "pxgrid_sgt", service: "com.cisco.ise.config.trustsec", payload: payload},
-		{operation: "pxgrid.trustsec.get_sgacls", path: "/ise/config/trustsec/getSecurityGroupAcls", objectType: "pxgrid_sgacl", service: "com.cisco.ise.config.trustsec", payload: payload},
-		{operation: "pxgrid.trustsec.get_egress_policies", path: "/ise/config/trustsec/getEgressPolicies", objectType: "pxgrid_egress_policy", service: "com.cisco.ise.config.trustsec", payload: payload},
+		{operation: "pxgrid.session.get_sessions", path: "/getSessions", objectType: "pxgrid_session", service: "com.cisco.ise.session", payload: payload},
+		{operation: "pxgrid.session.get_user_groups", path: "/getUserGroups", objectType: "pxgrid_user_group", service: "com.cisco.ise.session", payload: payload},
+		{operation: "pxgrid.radius.get_failures", path: "/getFailures", objectType: "pxgrid_radius_failure", service: "com.cisco.ise.radius", payload: payload},
+		{operation: "pxgrid.system.get_healths", path: "/getHealths", objectType: "pxgrid_system_health", service: "com.cisco.ise.system", payload: payload},
+		{operation: "pxgrid.system.get_performances", path: "/getPerformances", objectType: "pxgrid_system_performance", service: "com.cisco.ise.system", payload: payload},
+		{operation: "pxgrid.trustsec.get_security_groups", path: "/getSecurityGroups", objectType: "pxgrid_sgt", service: "com.cisco.ise.config.trustsec", payload: payload},
+		{operation: "pxgrid.trustsec.get_sgacls", path: "/getSecurityGroupAcls", objectType: "pxgrid_sgacl", service: "com.cisco.ise.config.trustsec", payload: payload},
+		{operation: "pxgrid.trustsec.get_egress_policies", path: "/getEgressPolicies", objectType: "pxgrid_egress_policy", service: "com.cisco.ise.config.trustsec", payload: payload},
 	}
 	if len(cfg.Targets.PxGridServices) == 0 {
 		return queries
@@ -1464,24 +1497,57 @@ func isePxGridRESTQueries(cfg ISEConfig, now time.Time) []isePxGridQuery {
 	return filtered
 }
 
-func isePxGridTopics(subscriptions ISEPxGridSubscriptionConfig) []string {
-	var topics []string
+// isePxGridLogQueries is intentionally narrower than metric polling. Session
+// and RADIUS failure records are operational evidence; user-group, TrustSec,
+// and system-health responses are configuration or metric snapshots and must
+// not be exported as raw logs.
+func isePxGridLogQueries(cfg ISEConfig, now time.Time) []isePxGridQuery {
+	queries := isePxGridRESTQueries(cfg, now)
+	logs := make([]isePxGridQuery, 0, 2)
+	for _, query := range queries {
+		switch query.operation {
+		case "pxgrid.session.get_sessions", "pxgrid.radius.get_failures":
+			logs = append(logs, query)
+		}
+	}
+	return logs
+}
+
+func isePxGridSubscriptions(subscriptions ISEPxGridSubscriptionConfig) []ise.PxGridSubscription {
+	var configured []ise.PxGridSubscription
 	if subscriptions.Session {
-		topics = append(topics, "/topic/com.cisco.ise.session")
+		configured = append(configured, ise.PxGridSubscription{Service: "com.cisco.ise.session", TopicProperty: "sessionTopic"})
 	}
 	if subscriptions.RadiusFailures {
-		topics = append(topics, "/topic/com.cisco.ise.radius")
+		configured = append(configured, ise.PxGridSubscription{Service: "com.cisco.ise.radius", TopicProperty: "failureTopic"})
 	}
 	if subscriptions.Endpoint {
-		topics = append(topics, "/topic/com.cisco.ise.endpoint")
+		configured = append(configured, ise.PxGridSubscription{Service: "com.cisco.ise.endpoint", TopicProperty: "topic"})
 	}
 	if subscriptions.TrustSec {
-		topics = append(topics, "/topic/com.cisco.ise.config.trustsec")
+		configured = append(configured, ise.PxGridSubscription{
+			Service:                  "com.cisco.ise.config.trustsec",
+			TopicProperty:            "securityGroupTopic",
+			AlternateTopicProperties: []string{"securityGroupAclTopic", "securityGroupVnVlanTopic"},
+		})
 	}
 	if subscriptions.SystemHealth {
-		topics = append(topics, "/topic/com.cisco.ise.system")
+		// Cisco documents the System service REST operations but no standard
+		// streaming topic property. Keep the configured service visible, but let
+		// Subscribe fail explicitly rather than guessing a property or destination.
+		configured = append(configured, ise.PxGridSubscription{
+			Service: "com.cisco.ise.system",
+		})
 	}
-	return topics
+	return configured
+}
+
+func isePxGridSubscriptionLabel(subscription ise.PxGridSubscription) string {
+	property := subscription.TopicProperty
+	if property == "" {
+		property = "unsupported"
+	}
+	return subscription.Service + "#" + property
 }
 
 func iseDataConnectViews(cfg ISEConfig) []ise.DataConnectView {
@@ -1525,6 +1591,44 @@ func iseDataConnectViews(cfg ISEConfig) []ise.DataConnectView {
 	}
 	sort.Slice(views, func(i, j int) bool { return views[i].Name < views[j].Name })
 	return views
+}
+
+// iseDataConnectLogViews limits raw logs to time-oriented operational evidence.
+// Inventory, policy, identity, profiling, administrator configuration, and
+// generic OpenAPI audit rows remain available to metrics but are not emitted
+// as log bodies because they may contain sensitive configuration.
+func iseDataConnectLogViews(cfg ISEConfig) []ise.DataConnectView {
+	views := iseDataConnectViews(cfg)
+	logs := make([]ise.DataConnectView, 0, len(views))
+	for _, view := range views {
+		if iseDataConnectLogViewAllowed(view.Name) {
+			logs = append(logs, view)
+		}
+	}
+	return logs
+}
+
+func iseDataConnectLogViewAllowed(name string) bool {
+	switch strings.ToUpper(strings.TrimSpace(name)) {
+	case "ADMINISTRATOR_LOGINS",
+		"RADIUS_AUTHENTICATIONS_WEEK",
+		"RADIUS_AUTHENTICATIONS",
+		"RADIUS_ACCOUNTING_WEEK",
+		"RADIUS_ACCOUNTING",
+		"TACACS_AUTHENTICATION_LAST_TWO_DAYS",
+		"TACACS_AUTHENTICATION",
+		"TACACS_AUTHORIZATION_LAST_TWO_DAYS",
+		"TACACS_AUTHORIZATION",
+		"TACACS_ACCOUNTING_LAST_TWO_DAYS",
+		"TACACS_ACCOUNTING",
+		"TACACS_COMMAND_ACCOUNTING",
+		"POSTURE_ASSESSMENT_BY_ENDPOINT",
+		"ADAPTIVE_NETWORK_CONTROL",
+		"THREAT_EVENTS":
+		return true
+	default:
+		return false
+	}
 }
 
 func iseGroupEnabled(cfg ISEConfig, group string) bool {
@@ -1596,12 +1700,60 @@ func normalizeTargetValues(values []string) []string {
 }
 
 func iseObjectIdentity(obj ise.Object) deviceIdentity {
-	return deviceIdentity{
-		hostNames: []string{ise.String(obj, "name", "Name", "hostname", "nodeName", "network_device_name", "networkDeviceName")},
-		hostIPs:   []string{ise.String(obj, "ipaddress", "ipAddress", "nas_ip_address", "device_ip_address")},
-		hostIDs:   []string{ise.StableID(obj)},
-		deviceIDs: []string{ise.String(obj, "id", "uuid", "mac", "macAddress", "calling_station_id")},
+	identity := deviceIdentity{}
+	appendISEObjectIdentity(&identity, obj, 0)
+	return identity
+}
+
+func appendISEObjectIdentity(identity *deviceIdentity, value any, depth int) {
+	if depth > 8 {
+		return
 	}
+	var obj ise.Object
+	switch typed := value.(type) {
+	case ise.Object:
+		obj = typed
+	case map[string]any:
+		obj = ise.Object(typed)
+	case []any:
+		for _, nested := range typed {
+			appendISEObjectIdentity(identity, nested, depth+1)
+		}
+		return
+	case []ise.Object:
+		for _, nested := range typed {
+			appendISEObjectIdentity(identity, nested, depth+1)
+		}
+		return
+	default:
+		return
+	}
+
+	identity.hostNames = append(identity.hostNames, ise.String(obj,
+		"name", "hostname", "nodeName", "serverName", "network_device_name", "networkDeviceName", "deviceName", "nasIdentifier",
+	))
+	identity.hostIPs = append(identity.hostIPs, ise.String(obj,
+		"ipaddress", "ipAddress", "nas_ip_address", "nasIpAddress", "device_ip_address", "deviceIpAddress", "networkDeviceIp",
+	))
+	identity.hostIDs = append(identity.hostIDs, ise.StableID(obj))
+	identity.serials = append(identity.serials, ise.String(obj, "serial", "serialNumber"))
+	identity.deviceIDs = append(identity.deviceIDs, ise.String(obj,
+		"id", "uuid", "deviceId", "endpointId", "mac", "macAddress", "calling_station_id", "callingStationId",
+	))
+	for _, nested := range obj {
+		appendISEObjectIdentity(identity, nested, depth+1)
+	}
+}
+
+func newISEDeviceSelectionMatcher(config *Config) deviceSelectionMatcher {
+	if config == nil {
+		return newDeviceSelectionMatcher(DeviceSelectionConfig{})
+	}
+	return newDeviceSelectionMatcher(config.DeviceSelection)
+}
+
+func iseObjectSelected(obj ise.Object, targets iseTargetMatcher, selector deviceSelectionMatcher) bool {
+	return targets.allows(obj) && selector.allows(iseObjectIdentity(obj))
 }
 
 func iseObjectAttrs(spec iseEndpointSpec, obj ise.Object) map[string]string {
@@ -1693,6 +1845,63 @@ func putIf(attrs map[string]string, key, value string) {
 	if value != "" {
 		attrs[key] = value
 	}
+}
+
+const iseRedactedLogValue = "[REDACTED]"
+
+func redactISELogObject(obj ise.Object) ise.Object {
+	redacted := make(ise.Object, len(obj))
+	for key, value := range obj {
+		if isSensitiveISELogKey(key) {
+			redacted[key] = iseRedactedLogValue
+			continue
+		}
+		redacted[key] = redactISELogValue(value)
+	}
+	return redacted
+}
+
+func redactISELogValue(value any) any {
+	switch typed := value.(type) {
+	case ise.Object:
+		return redactISELogObject(typed)
+	case map[string]any:
+		return redactISELogObject(ise.Object(typed))
+	case map[string]string:
+		redacted := make(map[string]string, len(typed))
+		for key, nested := range typed {
+			if isSensitiveISELogKey(key) {
+				redacted[key] = iseRedactedLogValue
+			} else {
+				redacted[key] = nested
+			}
+		}
+		return redacted
+	case []any:
+		redacted := make([]any, len(typed))
+		for i, nested := range typed {
+			redacted[i] = redactISELogValue(nested)
+		}
+		return redacted
+	case []ise.Object:
+		redacted := make([]ise.Object, len(typed))
+		for i, nested := range typed {
+			redacted[i] = redactISELogObject(nested)
+		}
+		return redacted
+	case []map[string]any:
+		redacted := make([]ise.Object, len(typed))
+		for i, nested := range typed {
+			redacted[i] = redactISELogObject(ise.Object(nested))
+		}
+		return redacted
+	default:
+		return value
+	}
+}
+
+func isSensitiveISELogKey(key string) bool {
+	return isSensitiveLogKey(key)
 }
 
 func mustJSON(obj ise.Object) string {

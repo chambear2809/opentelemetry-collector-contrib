@@ -6,11 +6,19 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 import (
 	"context"
 
+	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/collector/receiver/receiverhelper"
 )
+
+func consumeMetricsIfPresent(ctx context.Context, next consumer.Metrics, md pmetric.Metrics) error {
+	if md.MetricCount() == 0 {
+		return nil
+	}
+	return next.ConsumeMetrics(ctx, md)
+}
 
 const obsReportFormat = "ciscoosreceiver"
 

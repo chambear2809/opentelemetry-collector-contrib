@@ -4,6 +4,7 @@
 package ciscoosreceiver
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -13,11 +14,11 @@ import (
 )
 
 // TestDashboardTokensAreWellFormed scans every Splunk Observability bundle
-// dashboard shipped with the receiver and checks that each SignalFlow
-// data('…') token resolves to a metric name the receiver could plausibly emit.
-// It guards against serialization leaks like "state.json.mtu" or other tokens
-// that contain characters which iosXRMetricName / metricNameCleaner would
-// strip, since those tokens will silently render no data in Splunk O11y.
+// dashboard shipped with the receiver and checks that each SignalFlow data('...')
+// token is shaped like either a Cisco receiver metric name or an accepted
+// Prometheus/OpenMetrics name used by adjacent Cisco AI POD integrations.
+// It guards against serialization leaks like "state.json.mtu" that will
+// silently render no data in Splunk O11y.
 func TestDashboardTokensAreWellFormed(t *testing.T) {
 	root := filepath.Join("dashboards", "splunk-o11y")
 	entries, err := os.ReadDir(root)
@@ -26,10 +27,10 @@ func TestDashboardTokensAreWellFormed(t *testing.T) {
 	}
 
 	dataRE := regexp.MustCompile(`data\('([^']+)'`)
-	// Allowed characters in any emitted metric name. Receivers route everything
-	// through helpers that lower-case and squash non-alphanumerics, so any token
-	// containing other characters cannot be produced by the receiver.
-	tokenRE := regexp.MustCompile(`^[a-z0-9_]+(\.[a-z0-9_]+)+$`)
+	// Allowed characters for Cisco receiver metric names and Prometheus metric
+	// names used by storage integrations. Prometheus allows underscores, colons,
+	// and mixed case; Cisco receiver names remain lower-case dotted tokens.
+	tokenRE := regexp.MustCompile(`^[A-Za-z_:][A-Za-z0-9_:]*(\.[A-Za-z0-9_:]+)*$`)
 	// Tokens with these substrings indicate a JSON/serialization leak.
 	bannedSubstrings := []string{".json.", ".list.", ".jsonval.", ".string_val."}
 
@@ -51,6 +52,26 @@ func TestDashboardTokensAreWellFormed(t *testing.T) {
 			body, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatalf("read %s: %v", path, err)
+			}
+			var bundle struct {
+				Dashboards []struct {
+					Name   string            `json:"name"`
+					Charts []json.RawMessage `json:"charts"`
+				} `json:"dashboards"`
+			}
+			if err := json.Unmarshal(body, &bundle); err != nil {
+				t.Fatalf("decode %s as JSON: %v", path, err)
+			}
+			if len(bundle.Dashboards) == 0 {
+				t.Fatalf("%s does not contain any dashboards", path)
+			}
+			for _, dashboard := range bundle.Dashboards {
+				if strings.TrimSpace(dashboard.Name) == "" {
+					t.Errorf("%s contains a dashboard without a name", path)
+				}
+				if len(dashboard.Charts) == 0 {
+					t.Errorf("dashboard %q in %s does not contain any charts", dashboard.Name, path)
+				}
 			}
 			seen := map[string]struct{}{}
 			for _, m := range dataRE.FindAllStringSubmatch(string(body), -1) {

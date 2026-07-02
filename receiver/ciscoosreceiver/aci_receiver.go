@@ -96,8 +96,7 @@ type aciLogsReceiver struct {
 	cancel  context.CancelFunc
 	done    chan struct{}
 
-	seenMu sync.Mutex
-	seen   map[string]time.Time
+	seen *logDeduplicator
 }
 
 type aciEndpoint struct {
@@ -155,7 +154,7 @@ func newACILogsReceiver(set receiver.Settings, conf *Config, consumer consumer.L
 		clients:  clients,
 		obs:      newPlatformObsReport(set, "http"),
 		done:     make(chan struct{}),
-		seen:     map[string]time.Time{},
+		seen:     newLogDeduplicator(),
 	}, nil
 }
 
@@ -238,21 +237,15 @@ func (r *aciMetricsReceiver) collect(ctx context.Context) {
 	defer cancel()
 
 	obsCtx := startMetricsOp(r.obs, ctx)
-	md, err := r.scrape(scrapeCtx)
-	if err != nil {
-		r.settings.Logger.Error("ACI scrape failed", zap.Error(err))
-		endMetricsOp(r.obs, obsCtx, md, err)
-		return
+	md, scrapeErr := r.scrape(scrapeCtx)
+	if scrapeErr != nil {
+		r.settings.Logger.Error("ACI scrape failed", zap.Error(scrapeErr))
 	}
-	if md.MetricCount() == 0 {
-		endMetricsOp(r.obs, obsCtx, md, nil)
-		return
-	}
-	consumeErr := r.consumer.ConsumeMetrics(ctx, md)
-	endMetricsOp(r.obs, obsCtx, md, consumeErr)
+	consumeErr := consumeMetricsIfPresent(ctx, r.consumer, md)
 	if consumeErr != nil {
 		r.settings.Logger.Error("ACI metrics consumer failed", zap.Error(consumeErr))
 	}
+	endMetricsOp(r.obs, obsCtx, md, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *aciMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
@@ -390,22 +383,17 @@ func (r *aciLogsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 
+	r.seen.BeginBatch()
 	obsCtx := startLogsOp(r.obs, ctx)
-	ld, err := r.scrape(scrapeCtx)
-	if err != nil {
-		r.settings.Logger.Error("ACI log scrape failed", zap.Error(err))
-		endLogsOp(r.obs, obsCtx, ld, err)
-		return
+	ld, scrapeErr := r.scrape(scrapeCtx)
+	if scrapeErr != nil {
+		r.settings.Logger.Error("ACI log scrape failed", zap.Error(scrapeErr))
 	}
-	if ld.LogRecordCount() == 0 {
-		endLogsOp(r.obs, obsCtx, ld, nil)
-		return
-	}
-	consumeErr := r.consumer.ConsumeLogs(ctx, ld)
-	endLogsOp(r.obs, obsCtx, ld, consumeErr)
+	consumeErr := consumeDeduplicatedLogs(ctx, r.consumer, r.seen, ld)
 	if consumeErr != nil {
 		r.settings.Logger.Error("ACI logs consumer failed", zap.Error(consumeErr))
 	}
+	endLogsOp(r.obs, obsCtx, ld, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *aciLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
@@ -445,13 +433,7 @@ func (r *aciLogsReceiver) seenBefore(controller string, endpoint aciEndpoint, ob
 	if key == controller+":"+endpoint.operation+":" {
 		key = controller + ":" + endpoint.operation + ":" + aci.FallbackKey(obj)
 	}
-	r.seenMu.Lock()
-	defer r.seenMu.Unlock()
-	if _, ok := r.seen[key]; ok {
-		return true
-	}
-	r.seen[key] = now
-	return false
+	return !r.seen.MarkPending(key, now)
 }
 
 // aciSeenMaxEntries caps the dedup map so a busy fabric with thousands of
@@ -464,33 +446,7 @@ func (r *aciLogsReceiver) expireSeen(now time.Time) {
 		ttl = defaultACIConfig().EventLookback
 	}
 	ttl *= 2
-	r.seenMu.Lock()
-	defer r.seenMu.Unlock()
-	for key, ts := range r.seen {
-		if now.Sub(ts) > ttl {
-			delete(r.seen, key)
-		}
-	}
-	if len(r.seen) <= aciSeenMaxEntries {
-		return
-	}
-	// Bound the map by evicting oldest entries until size is back within
-	// limits. Sorting once is cheap relative to the overflow case.
-	type entry struct {
-		key string
-		ts  time.Time
-	}
-	entries := make([]entry, 0, len(r.seen))
-	for k, t := range r.seen {
-		entries = append(entries, entry{k, t})
-	}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].ts.Before(entries[j].ts) })
-	for _, e := range entries {
-		if len(r.seen) <= aciSeenMaxEntries {
-			break
-		}
-		delete(r.seen, e.key)
-	}
+	r.seen.Expire(now.Add(-ttl), aciSeenMaxEntries)
 }
 
 type aciMetricsBuilder struct {
@@ -516,7 +472,7 @@ func newACIMetricsBuilder(now time.Time, instance string, counters *counterStore
 	return &aciMetricsBuilder{
 		metrics:   pmetric.NewMetrics(),
 		now:       ts,
-		start:     ts,
+		start:     pcommon.NewTimestampFromTime(counters.StartTime()),
 		instance:  instance,
 		resources: map[string]*resourceMetricsBuilder{},
 		counts:    map[string]*aciCount{},
@@ -590,12 +546,13 @@ func (b *aciMetricsBuilder) resource(key string) *resourceMetricsBuilder {
 	sm := rm.ScopeMetrics().AppendEmpty()
 	sm.Scope().SetName(aciScopeName)
 	rb := &resourceMetricsBuilder{
-		resource: rm.Resource(),
-		scope:    sm,
-		metrics:  map[string]pmetric.Metric{},
-		now:      b.now,
-		start:    b.start,
-		counters: b.counters,
+		resource:         rm.Resource(),
+		scope:            sm,
+		metrics:          map[string]pmetric.Metric{},
+		now:              b.now,
+		start:            b.start,
+		counterNamespace: key,
+		counters:         b.counters,
 	}
 	b.resources[key] = rb
 	return rb

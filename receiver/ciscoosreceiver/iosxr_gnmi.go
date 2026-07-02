@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -78,14 +80,21 @@ func (d iosXRGNMIUpdateDecoder) decodeTypedValue(sm pmetric.ScopeMetrics, module
 	case *gnmi.TypedValue_AsciiVal:
 		appendIOSXRInfoMetric(sm, module, parts, v.AsciiVal, ts, attrs)
 	case *gnmi.TypedValue_IntVal:
-		appendIOSXRNumberMetric(sm, module, parts, float64(v.IntVal), ts, attrs)
+		appendIOSXRIntMetric(sm, module, parts, v.IntVal, ts, attrs)
 	case *gnmi.TypedValue_UintVal:
-		appendIOSXRNumberMetric(sm, module, parts, float64(v.UintVal), ts, attrs)
+		if v.UintVal <= math.MaxInt64 {
+			appendIOSXRIntMetric(sm, module, parts, int64(v.UintVal), ts, attrs)
+		} else {
+			overflowAttrs := cloneAttrs(attrs)
+			overflowAttrs["cisco.value.type"] = "uint64"
+			overflowAttrs["cisco.value.out_of_range"] = "true"
+			appendIOSXRInfoMetric(sm, module, parts, strconv.FormatUint(v.UintVal, 10), ts, overflowAttrs)
+		}
 	case *gnmi.TypedValue_BoolVal:
 		if v.BoolVal {
-			appendIOSXRNumberMetric(sm, module, parts, 1, ts, attrs)
+			appendIOSXRIntMetric(sm, module, parts, 1, ts, attrs)
 		} else {
-			appendIOSXRNumberMetric(sm, module, parts, 0, ts, attrs)
+			appendIOSXRIntMetric(sm, module, parts, 0, ts, attrs)
 		}
 	case *gnmi.TypedValue_FloatVal:
 		appendIOSXRNumberMetric(sm, module, parts, float64(v.FloatVal), ts, attrs)
@@ -156,7 +165,7 @@ func walkIOSXRJSON(sm pmetric.ScopeMetrics, module string, parts []string, value
 		}
 	default:
 		if n, ok := typedNumericValue(v); ok {
-			appendIOSXRNumberMetric(sm, module, parts, n, ts, attrs)
+			appendIOSXRMetricNumber(sm, module, parts, n, ts, attrs)
 			return
 		}
 		if value := valueToInfoString(v); value != "" {

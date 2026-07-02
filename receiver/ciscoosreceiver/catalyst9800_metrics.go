@@ -43,7 +43,7 @@ func newCatalyst9800Metrics(ctx catalyst9800MetricContext) (pmetric.Metrics, pme
 			if _, exists := attrs.Get("host.name"); !exists {
 				attrs.PutStr("host.name", host)
 			}
-			attrs.PutStr("host.ip", host)
+			putIPAttr(attrs, "host.ip", host)
 		}
 	}
 	attrs.PutStr("hw.type", "network")
@@ -75,7 +75,7 @@ func appendCatalyst9800HealthMetrics(md pmetric.Metrics, health *catalyst9800Hea
 	}
 	if ctx.endpoint != "" {
 		if host, _, err := net.SplitHostPort(ctx.endpoint); err == nil {
-			attrs.PutStr("host.ip", host)
+			putIPAttr(attrs, "host.ip", host)
 		}
 	}
 	attrs.PutStr("hw.type", "network")
@@ -86,7 +86,7 @@ func appendCatalyst9800HealthMetrics(md pmetric.Metrics, health *catalyst9800Hea
 	}
 	sm := rm.ScopeMetrics().AppendEmpty()
 	sm.Scope().SetName("github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/catalyst9800")
-	snap := health.snapshot()
+	snap := health.snapshotForTarget(ctx.targetName)
 	appendGaugeMetric(sm, "cisco.catalyst9800.receiver.active_subscriptions", float64(snap.activeSubscriptions), ts, nil)
 	appendSumMetric(sm, "cisco.catalyst9800.receiver.updates", float64(snap.updatesReceived), ts, nil)
 	appendSumMetric(sm, "cisco.catalyst9800.receiver.decode_errors", float64(snap.decodeErrors), ts, nil)
@@ -100,23 +100,39 @@ func appendCatalyst9800HealthMetrics(md pmetric.Metrics, health *catalyst9800Hea
 	if !snap.lastSuccess.IsZero() {
 		appendGaugeMetric(sm, "cisco.catalyst9800.receiver.last_success_timestamp", float64(snap.lastSuccess.Unix()), ts, nil)
 	}
+	if ctx.targetName != "" {
+		appendGaugeMetric(sm, "cisco.catalyst9800.receiver.target.subscription.active", float64(boolToInt(snap.targetActive)), ts, nil)
+		appendSumMetric(sm, "cisco.catalyst9800.receiver.target.updates", float64(snap.targetUpdatesReceived), ts, nil)
+		appendSumMetric(sm, "cisco.catalyst9800.receiver.target.reconnects", float64(snap.targetReconnects), ts, nil)
+		if !snap.targetLastSuccess.IsZero() {
+			appendGaugeMetric(sm, "cisco.catalyst9800.receiver.target.last_success_timestamp", float64(snap.targetLastSuccess.Unix()), ts, nil)
+		}
+		appendGaugeMetric(sm, "cisco.wlc.controller.receiver.subscription.active", float64(boolToInt(snap.targetActive)), ts, nil)
+	}
 }
 
 func appendCatalyst9800NumberMetric(sm pmetric.ScopeMetrics, module string, pathParts []string, value float64, ts pcommon.Timestamp, attrs map[string]string) {
+	appendCatalyst9800MetricNumber(sm, module, pathParts, doubleMetricNumber(value), ts, attrs)
+}
+
+func appendCatalyst9800IntMetric(sm pmetric.ScopeMetrics, module string, pathParts []string, value int64, ts pcommon.Timestamp, attrs map[string]string) {
+	appendCatalyst9800MetricNumber(sm, module, pathParts, intMetricNumber(value), ts, attrs)
+}
+
+func appendCatalyst9800MetricNumber(sm pmetric.ScopeMetrics, module string, pathParts []string, value metricNumber, ts pcommon.Timestamp, attrs map[string]string) {
 	name := catalyst9800MetricName(module, pathParts)
 	if isCatalyst9800CounterMetric(pathParts) {
-		appendSumMetric(sm, name, value, ts, attrs)
+		appendMetricNumberSum(sm, name, value, ts, attrs)
 	} else {
-		appendGaugeMetric(sm, name, value, ts, attrs)
+		appendMetricNumberGauge(sm, name, value, ts, attrs)
 	}
 	appendCatalyst9800AliasesForValue(sm, module, pathParts, value, ts, attrs)
 }
 
 func appendCatalyst9800InfoMetric(sm pmetric.ScopeMetrics, module string, pathParts []string, value string, ts pcommon.Timestamp, attrs map[string]string) {
 	name := catalyst9800MetricName(module, pathParts) + "_info"
-	metric := sm.Metrics().AppendEmpty()
-	metric.SetName(name)
-	dp := metric.SetEmptyGauge().DataPoints().AppendEmpty()
+	metric := getOrCreateMetric(sm, name, pmetric.MetricTypeGauge)
+	dp := metric.Gauge().DataPoints().AppendEmpty()
 	dp.SetDoubleValue(1)
 	dp.SetTimestamp(ts)
 	dp.Attributes().PutStr("value", value)
@@ -182,21 +198,28 @@ func appendCatalyst9800AliasesForValue(sm pmetric.ScopeMetrics, module string, p
 		textValue = valueToInfoString(value)
 	}
 
-	appendNumber := func(name string, extra map[string]string, asCounter bool) {
+	appendNumber := func(name string, extra map[string]string, asCounter bool, unit ...string) {
 		if !numeric {
 			return
 		}
 		next := mergeStringAttrs(aliasAttrs, extra)
 		if asCounter {
-			appendSumMetric(sm, name, numericValue, ts, next)
-			return
+			appendMetricNumberSum(sm, name, numericValue, ts, next)
+		} else {
+			appendMetricNumberGauge(sm, name, numericValue, ts, next)
 		}
-		appendGaugeMetric(sm, name, numericValue, ts, next)
+		if len(unit) > 0 && unit[0] != "" {
+			metricType := pmetric.MetricTypeGauge
+			if asCounter {
+				metricType = pmetric.MetricTypeSum
+			}
+			getOrCreateMetric(sm, name, metricType).SetUnit(unit[0])
+		}
 	}
 	appendState := func(name, attrName string, extra map[string]string) {
 		next := mergeStringAttrs(aliasAttrs, extra)
 		if numeric {
-			appendGaugeMetric(sm, name, numericValue, ts, next)
+			appendMetricNumberGauge(sm, name, numericValue, ts, next)
 			return
 		}
 		if textValue == "" {
@@ -212,7 +235,7 @@ func appendCatalyst9800AliasesForValue(sm pmetric.ScopeMetrics, module string, p
 	appendEvent := func(name, attrName string, extra map[string]string) {
 		next := mergeStringAttrs(aliasAttrs, extra)
 		if numeric {
-			appendSumMetric(sm, name, numericValue, ts, next)
+			appendMetricNumberSum(sm, name, numericValue, ts, next)
 			return
 		}
 		if textValue == "" {
@@ -251,9 +274,9 @@ func appendCatalyst9800AliasesForValue(sm pmetric.ScopeMetrics, module string, p
 	case "num_assoc_clients":
 		appendNumber("cisco.wlc.ssid.client.count", nil, false)
 	case "tx_bytes_data":
-		appendNumber("cisco.wlc.ssid.network.io", map[string]string{"direction": "tx"}, true)
+		appendNumber("cisco.wlc.ssid.network.io", map[string]string{"direction": "tx"}, true, "By")
 	case "rx_bytes_data":
-		appendNumber("cisco.wlc.ssid.network.io", map[string]string{"direction": "rx"}, true)
+		appendNumber("cisco.wlc.ssid.network.io", map[string]string{"direction": "rx"}, true, "By")
 	case "tx_retries", "tx_retries_data", "rx_retries", "rx_retries_data":
 		appendNumber("cisco.wlc.ssid.retry.count", map[string]string{"direction": catalyst9800Direction(leaf)}, true)
 	case "co_state":
@@ -315,8 +338,10 @@ func appendCatalyst9800AliasesForValue(sm pmetric.ScopeMetrics, module string, p
 	}
 	if strings.Contains(pathText, "traffic_stats") {
 		switch leaf {
-		case "bytes_rx", "bytes_tx", "pkts_rx", "pkts_tx":
-			appendNumber("cisco.wlc.client.network.io", map[string]string{"direction": catalyst9800Direction(leaf), "unit": catalyst9800TrafficUnit(leaf)}, true)
+		case "bytes_rx", "bytes_tx":
+			appendNumber("cisco.wlc.client.network.io", map[string]string{"direction": catalyst9800Direction(leaf)}, true, "By")
+		case "pkts_rx", "pkts_tx":
+			appendNumber("cisco.wlc.client.network.packets", map[string]string{"direction": catalyst9800Direction(leaf)}, true, "{packet}")
 		}
 	}
 }
@@ -441,16 +466,6 @@ func catalyst9800Direction(leaf string) string {
 	return ""
 }
 
-func catalyst9800TrafficUnit(leaf string) string {
-	if strings.Contains(leaf, "byte") {
-		return "bytes"
-	}
-	if strings.Contains(leaf, "pkt") || strings.Contains(leaf, "packet") {
-		return "packets"
-	}
-	return ""
-}
-
 func catalyst9800HARole(leaf string) string {
 	if leaf == "peer_state" {
 		return "peer"
@@ -506,6 +521,7 @@ func (c *catalyst9800NormalizingConsumer) normalize(md pmetric.Metrics) {
 	rms := md.ResourceMetrics()
 	rms.RemoveIf(func(rm pmetric.ResourceMetrics) bool {
 		resAttrs := rm.Resource().Attributes()
+		normalizeHostIPAttr(resAttrs)
 		resAttrs.PutStr("hw.type", "network")
 		resAttrs.PutStr("cisco.os.name", "ios_xe")
 		resAttrs.PutStr("cisco.platform.family", "catalyst_9800")
@@ -545,7 +561,7 @@ func (c *catalyst9800NormalizingConsumer) normalize(md pmetric.Metrics) {
 				case "cisco.yang_grpc.compact_gpb_payloads":
 					metric.SetName("cisco.catalyst9800.receiver.compact_gpb_payloads")
 					if c.health != nil {
-						c.health.addCompactGPBPayloads(int64(metricNumericTotal(metric)))
+						c.health.addCompactGPBPayloads(metricNumericTotal(metric))
 					}
 				default:
 					if strings.HasPrefix(originalName, "cisco.") && !strings.HasPrefix(originalName, "cisco.catalyst9800.") && !strings.HasPrefix(originalName, "cisco.wlc.") {
@@ -560,6 +576,7 @@ func (c *catalyst9800NormalizingConsumer) normalize(md pmetric.Metrics) {
 			for k := originalLen; k < metrics.Len(); k++ {
 				annotateMetricDatapoints(metrics.At(k), module, encodingPath, c.transport)
 			}
+			coalesceMetricStreams(sm)
 		}
 		return rm.ScopeMetrics().Len() == 0
 	})
@@ -599,7 +616,7 @@ func appendCatalyst9800AliasesFromMetric(sm pmetric.ScopeMetrics, metric pmetric
 				}
 				continue
 			}
-			appendCatalyst9800AliasesForValue(sm, module, aliasParts, numberDatapointFloat(dp), ts, addCommonAttrs(dp.Attributes()))
+			appendCatalyst9800AliasesForValue(sm, module, aliasParts, numberDatapointValue(dp), ts, addCommonAttrs(dp.Attributes()))
 		}
 	case pmetric.MetricTypeSum:
 		dps := metric.Sum().DataPoints()
@@ -608,15 +625,15 @@ func appendCatalyst9800AliasesFromMetric(sm pmetric.ScopeMetrics, metric pmetric
 			if dp.Timestamp() != 0 {
 				ts = dp.Timestamp()
 			}
-			appendCatalyst9800AliasesForValue(sm, module, aliasParts, numberDatapointFloat(dp), ts, addCommonAttrs(dp.Attributes()))
+			appendCatalyst9800AliasesForValue(sm, module, aliasParts, numberDatapointValue(dp), ts, addCommonAttrs(dp.Attributes()))
 		}
 	}
 }
 
-func numberDatapointFloat(dp pmetric.NumberDataPoint) float64 {
+func numberDatapointValue(dp pmetric.NumberDataPoint) any {
 	switch dp.ValueType() {
 	case pmetric.NumberDataPointValueTypeInt:
-		return float64(dp.IntValue())
+		return dp.IntValue()
 	default:
 		return dp.DoubleValue()
 	}

@@ -83,7 +83,7 @@ For most users, start with these metrics before enabling the larger troubleshoot
 | `cisco.interface.utilization` | Shows how close each interface is to its reported line speed. |
 | `system.network.errors` | Shows physical or link-layer problems on ports. |
 | `system.network.packet.dropped` | Shows traffic the device could not forward. |
-| `system.network.packet.count` | Shows packet volume by receive/transmit direction and packet type. |
+| `system.network.packet.count` | Shows packet volume by receive/transmit direction and, when available, packet type. |
 | `cisco.interface.admin.status` | Shows whether a port is administratively enabled or intentionally disabled. |
 | `cisco.scrape.partial_success` | Shows when the receiver reached a device but one or more command families failed. |
 | `meraki.api.request.errors` | Shows Dashboard API request failures, including authorization, endpoint, or rate-limit issues. |
@@ -357,8 +357,8 @@ Realtime and high-cardinality feature areas are opt-in and report `sdwan.service
 
 SD-WAN also reuses common Cisco and OpenTelemetry metrics where semantics match: `cisco.device.up`,
 `system.cpu.utilization`, `system.memory.utilization`, `system.uptime`, `system.network.interface.status`,
-`system.network.io`, `system.network.errors`, `system.network.packet.dropped`, `cisco.interface.admin.status`, and
-`cisco.interface.speed`.
+`system.network.io`, `system.network.packet.count`, `system.network.errors`, `system.network.packet.dropped`,
+`cisco.interface.admin.status`, and `cisco.interface.speed`.
 
 SD-WAN logs are emitted for alarms, events, and audit records. The original API object is preserved in the log body,
 while bounded attributes such as `event.domain=sdwan`, `event.name`, `sdwan.severity`, `sdwan.status`,
@@ -641,7 +641,7 @@ These metrics are collected by the `interfaces` scraper from normal interface co
 | --- | --- | --- | --- | --- |
 | `system.network.interface.status` | Gauge, int | `1` | Whether a port is operationally up. `1` means up, `0` means down. | Alert when important uplinks, server ports, or WAN links go down. |
 | `system.network.io` | Sum, int, cumulative | `By` | Total bytes received and transmitted per interface. | Track traffic volume, capacity trends, and unexpected spikes or silence on important ports. |
-| `system.network.packet.count` | Sum, int, cumulative | `{packet}` | Total packets by direction and packet type: unicast, multicast, or broadcast. | Detect unusual traffic patterns, broadcast storms, or large changes in packet volume. |
+| `system.network.packet.count` | Sum, int, cumulative | `{packet}` | Total packets by direction and, when available, packet type: unicast, multicast, or broadcast. | Detect unusual traffic patterns, broadcast storms, or large changes in packet volume. |
 | `system.network.errors` | Sum, int, cumulative | `{error}` | Interface receive and transmit errors. | Find cabling, optics, duplex, hardware, or congestion problems before users report symptoms. |
 | `system.network.packet.dropped` | Sum, int, cumulative | `{packet}` | Packets discarded by the interface. | Drops often mean congestion, buffering limits, faulty links, or device resource pressure. |
 | `cisco.interface.admin.status` | Gauge, int | `1` | Whether an interface is administratively enabled. `1` means enabled/up, `0` means disabled/down. | Separate intentional shutdowns from operational failures when comparing against `system.network.interface.status`. |
@@ -657,7 +657,7 @@ Common interface attributes:
 | `network.interface.mac` | Interface MAC address. |
 | `network.interface.speed` | Configured or detected interface speed. |
 | `network.io.direction` | `receive` or `transmit`. |
-| `network.packet.type` | `unicast`, `multicast`, or `broadcast` for packet count metrics. |
+| `network.packet.type` | `unicast`, `multicast`, or `broadcast` for packet count metrics when the source exposes packet-type counters. |
 
 ## Optional Interface Rate Metrics
 
@@ -885,7 +885,7 @@ These metric groups are intended to map cleanly to Splunk Observability Cloud ch
 | Dashboard Area | Metrics |
 | --- | --- |
 | Device inventory and health | `cisco.device.up`, `system.uptime`, `system.cpu.utilization`, `system.memory.utilization` grouped by `host.name`, `host.type`, `os.name`, and `os.version`. |
-| Interface capacity | `cisco.interface.speed`, `cisco.interface.utilization`, `system.network.io`, `system.network.errors`, and `system.network.packet.dropped` grouped by `host.name` and `network.interface.name`. |
+| Interface capacity | `cisco.interface.speed`, `cisco.interface.utilization`, `system.network.io`, `system.network.packet.count`, `system.network.errors`, and `system.network.packet.dropped` grouped by `host.name` and `network.interface.name`. |
 | Interface state | `cisco.interface.admin.status` compared with `system.network.interface.status` grouped by `host.name` and `network.interface.name`. |
 | Receiver reliability | `cisco.scrape.partial_success`, `cisco.scrape.command.duration`, `cisco.scrape.command.errors`, and `cisco.ssh.reconnects` grouped by `host.name` and `cisco.scrape.command.family`. |
 | Hardware health | `cisco.hardware.status` and `cisco.hardware.temperature` grouped by `host.name`, `cisco.hardware.component`, `cisco.hardware.name`, and `cisco.hardware.slot`. |

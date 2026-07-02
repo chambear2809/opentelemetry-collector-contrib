@@ -318,7 +318,7 @@ func deviceIdentityFromResourceAttrs(attrs pcommon.Map) deviceIdentity {
 	return deviceIdentity{
 		hostNames: []string{attrString(attrs, "host.name")},
 		hostIDs:   []string{attrString(attrs, "host.id")},
-		hostIPs:   []string{attrString(attrs, "host.ip")},
+		hostIPs:   attrStrings(attrs, "host.ip"),
 		serials: []string{
 			attrString(attrs, "meraki.device.serial"),
 			attrString(attrs, "intersight.serial"),
@@ -349,6 +349,25 @@ func attrString(attrs pcommon.Map, key string) string {
 		return ""
 	}
 	return value.AsString()
+}
+
+func attrStrings(attrs pcommon.Map, key string) []string {
+	value, ok := attrs.Get(key)
+	if !ok {
+		return nil
+	}
+	if value.Type() != pcommon.ValueTypeSlice {
+		return []string{value.AsString()}
+	}
+	values := value.Slice()
+	result := make([]string, 0, values.Len())
+	for i := 0; i < values.Len(); i++ {
+		item := values.At(i)
+		if item.Type() == pcommon.ValueTypeStr && item.Str() != "" {
+			result = append(result, item.Str())
+		}
+	}
+	return result
 }
 
 func anyString(value any) string {

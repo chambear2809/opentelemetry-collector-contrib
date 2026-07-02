@@ -4,6 +4,7 @@
 package ciscoosreceiver
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -28,6 +29,7 @@ func TestCatalyst9800GNMIDecoderWirelessAliasesAndRawMetrics(t *testing.T) {
 	for _, notification := range []*gnmi.Notification{
 		catalyst9800JSONNotification(t, "wireless-ap-global-oper:ap-global-oper-data/ap-join-stats[wtp-mac=AA:BB:CC:DD:EE:FF]", "ap-join-info", `{
 			"ap-name": "AP-01",
+			"ap-ip": "192.0.2.21",
 			"is-joined": true,
 			"last-join-failure-type": "max-retries",
 			"disconnects": 2
@@ -115,6 +117,8 @@ func TestCatalyst9800GNMIDecoderWirelessAliasesAndRawMetrics(t *testing.T) {
 		"cisco.wlc.client.roam.failure.count",
 		"cisco.wlc.client.wireless.rssi",
 		"cisco.wlc.client.wireless.snr",
+		"cisco.wlc.client.network.io",
+		"cisco.wlc.client.network.packets",
 		"cisco.wlc.mobility.peer.status",
 		"cisco.wlc.mobility.roam.count",
 		"cisco.wlc.mobility.handoff.count",
@@ -137,15 +141,88 @@ func TestCatalyst9800GNMIDecoderWirelessAliasesAndRawMetrics(t *testing.T) {
 	join := mustFindIOSXRMetric(t, md, "cisco.wlc.ap.join.status")
 	require.Equal(t, pmetric.MetricTypeGauge, join.Type())
 	dp := join.Gauge().DataPoints().At(0)
-	assert.Equal(t, 1.0, dp.DoubleValue())
+	assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+	assert.Equal(t, int64(1), dp.IntValue())
 	assert.Equal(t, "AA:BB:CC:DD:EE:FF", attrValue(t, dp.Attributes(), "cisco.wlc.ap.mac"))
+	assert.Equal(t, []string{"192.0.2.21"}, stringSliceAttrValue(t, dp.Attributes(), "host.ip"))
+
+	clientBytes := mustFindIOSXRMetric(t, md, "cisco.wlc.client.network.io")
+	require.Equal(t, pmetric.MetricTypeSum, clientBytes.Type())
+	assert.Equal(t, "By", clientBytes.Unit())
+	require.Equal(t, 1, clientBytes.Sum().DataPoints().Len())
+	bytesDP := clientBytes.Sum().DataPoints().At(0)
+	assert.Equal(t, int64(1234), bytesDP.IntValue())
+	assert.Equal(t, "rx", attrValue(t, bytesDP.Attributes(), "direction"))
+	_, hasUnitAttr := bytesDP.Attributes().Get("unit")
+	assert.False(t, hasUnitAttr)
+
+	clientPackets := mustFindIOSXRMetric(t, md, "cisco.wlc.client.network.packets")
+	require.Equal(t, pmetric.MetricTypeSum, clientPackets.Type())
+	assert.Equal(t, "{packet}", clientPackets.Unit())
+	require.Equal(t, 1, clientPackets.Sum().DataPoints().Len())
+	packetsDP := clientPackets.Sum().DataPoints().At(0)
+	assert.Equal(t, int64(10), packetsDP.IntValue())
+	assert.Equal(t, "tx", attrValue(t, packetsDP.Attributes(), "direction"))
+	_, hasUnitAttr = packetsDP.Attributes().Get("unit")
+	assert.False(t, hasUnitAttr)
 
 	resourceAttrs := md.ResourceMetrics().At(0).Resource().Attributes()
 	assert.Equal(t, "wlc-9800-1", attrValue(t, resourceAttrs, "host.name"))
-	assert.Equal(t, "192.0.2.20", attrValue(t, resourceAttrs, "host.ip"))
+	assert.Equal(t, []string{"192.0.2.20"}, stringSliceAttrValue(t, resourceAttrs, "host.ip"))
 	assert.Equal(t, "ios_xe", attrValue(t, resourceAttrs, "cisco.os.name"))
 	assert.Equal(t, "catalyst_9800", attrValue(t, resourceAttrs, "cisco.platform.family"))
 	assert.Equal(t, "gnmi_dial_in", attrValue(t, resourceAttrs, "cisco.telemetry.transport"))
+}
+
+func TestCatalyst9800GNMIDecoderCoalescesMetricStreamsAndPreservesUint64(t *testing.T) {
+	decoder := catalyst9800GNMIUpdateDecoder{
+		target: Catalyst9800TargetConfig{Name: "wlc-1"},
+		health: &catalyst9800Health{},
+	}
+
+	md := decoder.decodeNotification(&gnmi.Notification{
+		Timestamp: time.Unix(1700000000, 0).UnixNano(),
+		Prefix:    mustParseIOSXRPath(t, "wireless-access-point-oper:access-point-oper-data"),
+		Update: []*gnmi.Update{
+			{
+				Path: catalyst9800SSIDCounterPath("AA:BB:CC:DD:EE:01", "tx-bytes-data"),
+				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_UintVal{UintVal: math.MaxInt64}},
+			},
+			{
+				Path: catalyst9800SSIDCounterPath("AA:BB:CC:DD:EE:02", "tx-bytes-data"),
+				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_UintVal{UintVal: 42}},
+			},
+			{
+				Path: catalyst9800SSIDCounterPath("AA:BB:CC:DD:EE:03", "rx-bytes-data"),
+				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_UintVal{UintVal: ^uint64(0)}},
+			},
+		},
+	}, catalyst9800TelemetryTransportDialIn)
+
+	const txBytes = "cisco.catalyst9800.yang.wireless_access_point_oper.access_point_oper_data.ssid_counters.tx_bytes_data"
+	assert.Equal(t, 1, metricCountNamed(md, txBytes))
+	assertCatalyst9800IntDatapointsByAP(t, mustFindIOSXRMetric(t, md, txBytes), map[string]int64{
+		"AA:BB:CC:DD:EE:01": math.MaxInt64,
+		"AA:BB:CC:DD:EE:02": 42,
+	})
+
+	const networkIO = "cisco.wlc.ssid.network.io"
+	assert.Equal(t, 1, metricCountNamed(md, networkIO))
+	assertCatalyst9800IntDatapointsByAP(t, mustFindIOSXRMetric(t, md, networkIO), map[string]int64{
+		"AA:BB:CC:DD:EE:01": math.MaxInt64,
+		"AA:BB:CC:DD:EE:02": 42,
+	})
+
+	const rxBytesInfo = "cisco.catalyst9800.yang.wireless_access_point_oper.access_point_oper_data.ssid_counters.rx_bytes_data_info"
+	assert.Equal(t, 1, metricCountNamed(md, rxBytesInfo))
+	overflow := mustFindIOSXRMetric(t, md, rxBytesInfo)
+	require.Equal(t, pmetric.MetricTypeGauge, overflow.Type())
+	require.Equal(t, 1, overflow.Gauge().DataPoints().Len())
+	overflowDP := overflow.Gauge().DataPoints().At(0)
+	assert.Equal(t, "18446744073709551615", attrValue(t, overflowDP.Attributes(), "value"))
+	assert.Equal(t, "uint64", attrValue(t, overflowDP.Attributes(), "cisco.value.type"))
+	assert.Equal(t, "true", attrValue(t, overflowDP.Attributes(), "cisco.value.out_of_range"))
+	assert.Equal(t, "AA:BB:CC:DD:EE:03", attrValue(t, overflowDP.Attributes(), "cisco.wlc.ap.mac"))
 }
 
 func TestCatalyst9800GNMIDecoderInvalidJSONCountsDecodeErrors(t *testing.T) {
@@ -173,6 +250,34 @@ func catalyst9800JSONNotification(t *testing.T, prefix, updatePath, body string)
 			Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: []byte(body)}},
 		}},
 	}
+}
+
+func catalyst9800SSIDCounterPath(apMAC, leaf string) *gnmi.Path {
+	return &gnmi.Path{Elem: []*gnmi.PathElem{
+		{
+			Name: "ssid-counters",
+			Key: map[string]string{
+				"wtp-mac": apMAC,
+				"slot-id": "0",
+				"wlan-id": "42",
+			},
+		},
+		{Name: leaf},
+	}}
+}
+
+func assertCatalyst9800IntDatapointsByAP(t *testing.T, metric pmetric.Metric, expected map[string]int64) {
+	t.Helper()
+	require.Equal(t, pmetric.MetricTypeSum, metric.Type())
+	dps := metric.Sum().DataPoints()
+	require.Equal(t, len(expected), dps.Len())
+	actual := make(map[string]int64, dps.Len())
+	for i := 0; i < dps.Len(); i++ {
+		dp := dps.At(i)
+		assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+		actual[attrValue(t, dp.Attributes(), "cisco.wlc.ap.mac")] = dp.IntValue()
+	}
+	assert.Equal(t, expected, actual)
 }
 
 func mustCatalyst9800ClientConfig(endpoint string) configgrpc.ClientConfig {

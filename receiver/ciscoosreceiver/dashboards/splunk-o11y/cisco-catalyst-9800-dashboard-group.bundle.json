@@ -199,8 +199,8 @@
         },
         {
           "name": "Client Auth Failures And Network IO",
-          "description": "Value: ties client auth-failure reasons to whether clients still pass traffic after association. Interpretation: auth failures explain access denial; client I/O silence after successful state can point toward policy, VLAN, upstream, or DHCP issues.",
-          "signalflow": "data('cisco.wlc.client.auth.failure').sum(by=['host.name', 'cisco.wlc.client.mac', 'cisco.wlc.ssid', 'failure.reason']).publish(label='Auth failures'); data('cisco.wlc.client.network.io').rate().sum(by=['host.name', 'cisco.wlc.client.mac', 'cisco.wlc.ssid', 'direction', 'unit']).publish(label='Client IO/sec')",
+          "description": "Value: ties client auth-failure reasons to whether clients still pass bytes and packets after association. Interpretation: auth failures explain access denial; byte or packet silence after successful state can point toward policy, VLAN, upstream, or DHCP issues.",
+          "signalflow": "data('cisco.wlc.client.auth.failure').sum(by=['host.name', 'cisco.wlc.client.mac', 'cisco.wlc.ssid', 'failure.reason']).publish(label='Auth failures'); data('cisco.wlc.client.network.io').rate().sum(by=['host.name', 'cisco.wlc.client.mac', 'cisco.wlc.ssid', 'direction']).publish(label='Client bytes/sec'); data('cisco.wlc.client.network.packets').rate().sum(by=['host.name', 'cisco.wlc.client.mac', 'cisco.wlc.ssid', 'direction']).publish(label='Client packets/sec')",
           "legend_dimension": "cisco.wlc.client.mac"
         }
       ]

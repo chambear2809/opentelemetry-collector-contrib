@@ -19,6 +19,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
 
 const (
@@ -129,7 +131,7 @@ func NewClient(cfg Config) (*Client, error) {
 		signer:    signer,
 		endpoint:  parsed,
 		userAgent: userAgent,
-		client:    &http.Client{Timeout: timeout, Transport: transport},
+		client:    &http.Client{Timeout: timeout, Transport: transport, CheckRedirect: httpclient.SameOriginRedirectPolicy(parsed)},
 		retries:   retries,
 		pageSize:  pageSize,
 	}, nil
@@ -236,7 +238,7 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 		if err != nil {
 			lastErr = err
 			c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", Duration: duration, Err: err})
-			if !sleepBeforeRetry(ctx, attempt, -1) {
+			if attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, -1) {
 				if ctx.Err() != nil {
 					return nil, ctx.Err()
 				}
@@ -245,7 +247,7 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 			continue
 		}
 
-		bodyBytes, readErr := io.ReadAll(resp.Body)
+		bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 		closeErr := resp.Body.Close()
 		if readErr != nil {
 			lastErr = readErr
@@ -275,7 +277,7 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 			RateLimited: rateLimited,
 			Err:         apiErr,
 		})
-		if !retryableStatus(resp.StatusCode) || !sleepBeforeRetry(ctx, attempt, retryAfter(resp.Header.Get("Retry-After"))) {
+		if !retryableStatus(resp.StatusCode) || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(resp.Header.Get("Retry-After"))) {
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}

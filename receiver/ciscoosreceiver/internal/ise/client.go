@@ -20,6 +20,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
 
 const (
@@ -146,7 +148,7 @@ func NewClient(cfg Config) (*Client, error) {
 		username:  cfg.Username,
 		password:  cfg.Password,
 		userAgent: userAgent,
-		client:    &http.Client{Timeout: timeout, Transport: transport},
+		client:    &http.Client{Timeout: timeout, Transport: transport, CheckRedirect: httpclient.SameOriginRedirectPolicy(parsed)},
 		retries:   retries,
 		pageSize:  pageSize,
 		spacing:   defaultRequestSpacing,
@@ -352,7 +354,7 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 	}
 	defer resp.Body.Close()
 
-	respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 16*1024*1024))
+	respBody, readErr := httpclient.ReadResponseBody(resp.Body)
 	if readErr != nil {
 		c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
 		return nil, resp.Header, resp.StatusCode, readErr

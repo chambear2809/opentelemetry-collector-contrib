@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configgrpc"
 	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver"
 	"go.uber.org/multierr"
@@ -75,11 +76,7 @@ func newCatalyst9800MetricsReceiver(set receiver.Settings, conf *Config, next co
 }
 
 func (r *catalyst9800CompositeReceiver) Start(ctx context.Context, host component.Host) error {
-	var err error
-	for _, receiver := range r.receivers {
-		err = multierr.Append(err, receiver.Start(ctx, host))
-	}
-	return err
+	return startMetricsReceivers(ctx, host, r.receivers)
 }
 
 func (r *catalyst9800CompositeReceiver) Shutdown(ctx context.Context) error {
@@ -112,6 +109,10 @@ type catalyst9800DialInReceiver struct {
 	cancel context.CancelFunc
 	done   chan struct{}
 	host   component.Host
+
+	subscribeTargetFn func(context.Context, Catalyst9800TargetConfig) (bool, error)
+	retryWaitFn       func(context.Context, time.Duration) bool
+	retryJitterFn     func(time.Duration) time.Duration
 }
 
 func (r *catalyst9800DialInReceiver) Start(_ context.Context, host component.Host) error {
@@ -123,7 +124,6 @@ func (r *catalyst9800DialInReceiver) Start(_ context.Context, host component.Hos
 	ctx, cancel := context.WithCancel(context.Background())
 	r.cancel = cancel
 	r.host = host
-	r.health.setActiveSubscriptions(int64(len(r.targets)))
 	go r.run(ctx)
 	return nil
 }
@@ -159,37 +159,63 @@ func (r *catalyst9800DialInReceiver) run(ctx context.Context) {
 }
 
 func (r *catalyst9800DialInReceiver) runTarget(ctx context.Context, target Catalyst9800TargetConfig) {
-	backoff := 5 * time.Second
+	subscribe := r.subscribeTargetAttempt
+	if r.subscribeTargetFn != nil {
+		subscribe = r.subscribeTargetFn
+	}
+	waitRetry := waitForDirectGNMIRetry
+	if r.retryWaitFn != nil {
+		waitRetry = r.retryWaitFn
+	}
+	r.emitTargetHealth(ctx, target)
+	consecutiveFailures := 0
 	for {
 		if ctx.Err() != nil {
 			return
 		}
-		err := r.subscribeTarget(ctx, target)
+		successful, err := subscribe(ctx, target)
+		r.setTargetSubscriptionActive(ctx, target, false)
 		if ctx.Err() != nil {
 			return
 		}
+		if target.Subscription.Mode == iosXRSubscribeModeOnce && err == nil {
+			return
+		}
+		if successful {
+			consecutiveFailures = 0
+		} else {
+			consecutiveFailures++
+		}
+		if r.health != nil {
+			r.health.addTargetReconnects(target.Name, 1)
+		}
 		if err != nil {
-			r.health.addReconnects(1)
 			r.settings.Logger.Warn("Catalyst 9800 gNMI subscription failed",
 				zap.String("target", target.Name),
 				zap.String("endpoint", target.Endpoint),
 				zap.Error(err))
 		}
-		if target.Subscription.Mode == iosXRSubscribeModeOnce && err == nil {
-			return
+		r.emitTargetHealth(ctx, target)
+		retryOrdinal := consecutiveFailures
+		if retryOrdinal == 0 {
+			retryOrdinal = 1
 		}
-		select {
-		case <-ctx.Done():
+		delay := nextDirectGNMIRetryDelay(retryOrdinal, r.retryJitterFn)
+		if !waitRetry(ctx, delay) {
 			return
-		case <-time.After(backoff):
 		}
 	}
 }
 
 func (r *catalyst9800DialInReceiver) subscribeTarget(ctx context.Context, target Catalyst9800TargetConfig) error {
+	_, err := r.subscribeTargetAttempt(ctx, target)
+	return err
+}
+
+func (r *catalyst9800DialInReceiver) subscribeTargetAttempt(ctx context.Context, target Catalyst9800TargetConfig) (bool, error) {
 	conn, err := target.ClientConfig.ToClientConn(ctx, r.host.GetExtensions(), r.settings.TelemetrySettings, configgrpc.WithGrpcDialOption(grpc.WithBlock()))
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer conn.Close()
 
@@ -200,39 +226,64 @@ func (r *catalyst9800DialInReceiver) subscribeTarget(ctx context.Context, target
 		defer cancel()
 		caps, err = client.Capabilities(capCtx, &gnmi.CapabilityRequest{})
 		if err != nil {
-			return fmt.Errorf("capabilities: %w", err)
+			return false, fmt.Errorf("capabilities: %w", err)
 		}
 	}
 
 	paths, err := r.resolveTargetPaths(target, caps)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if len(paths) == 0 {
-		return errors.New("no Catalyst 9800 paths available after capability filtering")
+		return false, errors.New("no Catalyst 9800 paths available after capability filtering")
 	}
 	encoding, err := negotiateCatalyst9800Encoding(target.EncodingPreference, caps)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	stream, err := client.Subscribe(r.outgoingContext(ctx, target))
 	if err != nil {
-		return err
+		return false, err
 	}
 	if err := stream.Send(buildCatalyst9800SubscribeRequest(target.Subscription, paths, encoding)); err != nil {
-		return err
+		return false, err
 	}
+	r.setTargetSubscriptionActive(ctx, target, true)
+	defer r.setTargetSubscriptionActive(ctx, target, false)
 
 	if target.Subscription.Mode == iosXRSubscribeModePoll {
-		return r.recvPoll(ctx, target, stream)
+		return true, r.recvPoll(ctx, target, stream)
 	}
 	if target.Subscription.Mode == iosXRSubscribeModeOnce {
 		if closeErr := stream.CloseSend(); closeErr != nil {
 			r.settings.Logger.Debug("Catalyst 9800 gNMI once close send failed", zap.Error(closeErr))
 		}
 	}
-	return r.recvLoop(ctx, target, stream)
+	return true, r.recvLoop(ctx, target, stream)
+}
+
+func (r *catalyst9800DialInReceiver) setTargetSubscriptionActive(ctx context.Context, target Catalyst9800TargetConfig, active bool) {
+	if r.health == nil || !r.health.setTargetSubscriptionActive(target.Name, active) {
+		return
+	}
+	r.emitTargetHealth(ctx, target)
+}
+
+func (r *catalyst9800DialInReceiver) emitTargetHealth(ctx context.Context, target Catalyst9800TargetConfig) {
+	if r.health == nil || r.consumer == nil || ctx.Err() != nil {
+		return
+	}
+	md := pmetric.NewMetrics()
+	appendCatalyst9800HealthMetrics(md, r.health, catalyst9800MetricContext{
+		targetName:     target.Name,
+		endpoint:       target.Endpoint,
+		platformFamily: target.PlatformFamily,
+		transport:      catalyst9800TelemetryTransportDialIn,
+	}, pcommon.NewTimestampFromTime(time.Now()))
+	if err := r.consumer.ConsumeMetrics(ctx, md); err != nil {
+		r.settings.Logger.Warn("Catalyst 9800 gNMI health delivery failed", zap.String("target", target.Name), zap.Error(err))
+	}
 }
 
 func (r *catalyst9800DialInReceiver) recvPoll(ctx context.Context, target Catalyst9800TargetConfig, stream grpc.BidiStreamingClient[gnmi.SubscribeRequest, gnmi.SubscribeResponse]) error {
@@ -281,7 +332,7 @@ func (r *catalyst9800DialInReceiver) recvLoop(ctx context.Context, target Cataly
 			if body.Update == nil {
 				continue
 			}
-			r.health.addUpdates(int64(len(body.Update.GetUpdate()) + len(body.Update.GetDelete())))
+			r.health.addTargetUpdates(target.Name, int64(len(body.Update.GetUpdate())+len(body.Update.GetDelete())))
 			md := decoder.decodeNotification(body.Update, catalyst9800TelemetryTransportDialIn)
 			if md.MetricCount() == 0 {
 				continue

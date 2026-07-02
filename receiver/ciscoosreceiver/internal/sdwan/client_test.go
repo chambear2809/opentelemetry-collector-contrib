@@ -42,6 +42,32 @@ func TestClientBearerList(t *testing.T) {
 	assert.Equal(t, "Bearer token", authHeader)
 }
 
+func TestClientPreservesLargeJSONIntegers(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":[{"rx-packets":9007199254740993,"tx-packets":9007199254740993.0}]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:    server.URL,
+		AuthMode:    "bearer",
+		BearerToken: "token",
+		Timeout:     time.Second,
+	})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	objects, err := client.List(context.Background(), "interfaces", "/device/interface", nil, 0)
+	require.NoError(t, err)
+	require.Len(t, objects, 1)
+	value, ok := Int(objects[0], "rx-packets")
+	require.True(t, ok)
+	assert.Equal(t, int64(9007199254740993), value)
+	value, ok = Int(objects[0], "tx-packets")
+	require.True(t, ok)
+	assert.Equal(t, int64(9007199254740993), value)
+}
+
 func TestClientSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/dataservice/device", r.URL.Path)

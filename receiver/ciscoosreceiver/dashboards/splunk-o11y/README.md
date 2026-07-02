@@ -2,7 +2,8 @@
 
 This directory contains importable Splunk Observability Cloud dashboard groups for the Cisco OS receiver. The bundles
 cover Cisco OS SSH collection, Nexus switch SSH collection, Meraki, Intersight, Catalyst Center, Catalyst 9800 WLC,
-Catalyst SD-WAN, Nexus Dashboard/NDFC/Insights/Orchestrator/Data Broker, ACI/APIC, FMC, ISE, and IOS XR telemetry.
+Catalyst SD-WAN, Nexus Dashboard/NDFC/Insights/Orchestrator/Data Broker, ACI/APIC, FMC, ISE, IOS XR telemetry, and
+VAST Storage telemetry for Cisco AI PODs.
 
 The SSH-focused bundle creates one dashboard group named `Cisco OS Receiver` with an overview dashboard plus focused pages:
 
@@ -112,6 +113,17 @@ The IOS XR-focused bundle creates a dashboard group named `Cisco IOS XR Receiver
 | `01 IOS XR Interfaces Optics And Physical Path` | Uses common OpenConfig and native interface leaves to investigate state, traffic silence, errors, discards, packet counters, MTU, and optical power. |
 | `02 IOS XR Routing MPLS SR And Time Sync` | Gives a model-aware landing page for BGP, ISIS, RIB/FIB, FlowSpec, BFD, MPLS-TE, segment routing, NTP, and PTP breadcrumbs when those path groups are enabled. |
 
+The VAST Storage bundle creates a dashboard group named `VAST Storage For Cisco AI PODs`:
+
+| Dashboard | Value Provided |
+| --- | --- |
+| `00 VAST Collection Trust` | Proves whether VMS and CSI Prometheus endpoints are reachable and producing samples before operators trust storage symptoms. |
+| `01 VAST Cluster Health And Capacity` | Connects logical/physical capacity, quota pressure, node state, media state, and CNode scheduler utilization. |
+| `02 VAST IOPS Bandwidth And Latency` | Correlates view, VIP, VIP pool, latency-event, bandwidth, IOPS, and QoS wait evidence. |
+| `03 VAST Physical Devices And Media` | Shows VAST media, node, NIC, fan, temperature, memory, and RDMA link health. |
+| `04 VAST CSI Provisioning And Mount Health` | Tracks CSI operations, mount outcomes, mount duration, and NFS transport backlog for Kubernetes workloads. |
+| `05 Cisco AI POD Storage Fabric Correlation` | Correlates VAST and CSI symptoms with Cisco switch-side interface, PFC, ECN, queue-drop, error, and optics evidence. |
+
 The overview dashboard is the first-response page when the failure domain is unknown. The focused pages are for operators who already know which area they are investigating, such as interfaces, routing, AI/RDMA, or optics. Each page includes a `Value Provided` text panel so the operational purpose is visible after import. Each chart description also uses this structure:
 
 - `Value:` why the chart matters to an ITOps or NetOps troubleshooting workflow.
@@ -150,6 +162,7 @@ python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashb
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-nexus-controller-dashboard-group.bundle.json --dry-run
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-nexus-switch-dashboard-group.bundle.json --dry-run
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-ios-xr-dashboard-group.bundle.json --dry-run
+python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-vast-storage-dashboard-group.bundle.json --dry-run
 ```
 
 Import the dashboard group:
@@ -166,6 +179,7 @@ python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashb
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-nexus-controller-dashboard-group.bundle.json
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-nexus-switch-dashboard-group.bundle.json
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-ios-xr-dashboard-group.bundle.json
+python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-vast-storage-dashboard-group.bundle.json
 ```
 
 Use `--prefix "Lab - "` to create a separate copy for testing.
@@ -177,7 +191,8 @@ Use `--prefix "Lab - "` to create a separate copy for testing.
 `cisco-catalyst-center-dashboard-group.bundle.json`, `cisco-catalyst-9800-dashboard-group.bundle.json`,
 `cisco-sdwan-dashboard-group.bundle.json`, `cisco-ise-dashboard-group.bundle.json`,
 `cisco-nexus-controller-dashboard-group.bundle.json`, and
-`cisco-ios-xr-dashboard-group.bundle.json` are small
+`cisco-ios-xr-dashboard-group.bundle.json`, and
+`cisco-vast-storage-dashboard-group.bundle.json` are small
 repo-native bundles. The importer converts them into Splunk Observability Cloud API payloads:
 
 - `POST /v2/dashboardgroup` creates the dashboard group.
@@ -256,3 +271,11 @@ For IOS XR dashboards, configure `ios_xr.enabled: true` with at least one gNMI d
 stream. The telemetry trust page should populate for any active target. Interface panels use common OpenConfig and native
 IOS XR interface leaves; routing, MPLS, segment routing, BFD, optics, and time-sync panels populate when those path
 groups are enabled and advertised by the target router release.
+
+For VAST Storage dashboards, configure the Splunk Collector to scrape the VMS Prometheus endpoints and, when Kubernetes
+volume evidence is required, the VAST CSI driver `/metrics` endpoints. See
+[VAST Storage For Cisco AI PODs](../../docs/vast-storage.md). The VMS pages expect metrics such as
+`vast_cluster_online`, `vast_cluster_logical_space`, `vast_cluster_physical_space`, `vast_view_metrics_ViewMetrics_*`,
+`vast_vip_*`, `vast_quota_*`, `vast_vms_alarms`, `vast_ssd_*`, and `vast_cnode_*`. The CSI page expects
+`csi_plugin_operations_total`, `csi_node_mount_operations_total`, `csi_node_mount_duration_seconds_*`, and
+`csi_node_nfs_xprt_*`. The fabric correlation page also expects Cisco switch metrics from the Cisco OS receiver.

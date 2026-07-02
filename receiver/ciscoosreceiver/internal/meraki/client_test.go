@@ -73,6 +73,52 @@ func TestClientPaginationWithAbsoluteAndRelativeLinks(t *testing.T) {
 	assert.Equal(t, "second", got[1].Serial)
 }
 
+func TestClientRejectsCrossOriginPaginationLink(t *testing.T) {
+	var leakedRequests atomic.Int64
+	otherOrigin := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		leakedRequests.Add(1)
+	}))
+	defer otherOrigin.Close()
+
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Link", `<`+otherOrigin.URL+`/api/v1/devices?startingAfter=secret>; rel="next"`)
+		_, _ = w.Write([]byte(`[{"serial":"first"}]`))
+	}))
+	defer origin.Close()
+
+	client, err := NewClient(Config{APIKey: "test-key", BaseURL: origin.URL + "/api/v1", Timeout: time.Second, MaxRetries: 1})
+	require.NoError(t, err)
+
+	got, err := GetPaginatedJSON[Device](t.Context(), client, "123456", "devices", "/devices", nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cross-origin")
+	require.Len(t, got, 1)
+	assert.Zero(t, leakedRequests.Load())
+}
+
+func TestClientDoesNotFollowCrossOriginRedirect(t *testing.T) {
+	var leakedAuthorization atomic.Bool
+	otherOrigin := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		leakedAuthorization.Store(r.Header.Get("Authorization") != "")
+	}))
+	defer otherOrigin.Close()
+
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, otherOrigin.URL+"/stolen", http.StatusFound)
+	}))
+	defer origin.Close()
+
+	client, err := NewClient(Config{APIKey: "test-key", BaseURL: origin.URL, Timeout: time.Second, MaxRetries: 1})
+	require.NoError(t, err)
+
+	_, err = GetJSON[map[string]bool](t.Context(), client, "123456", "redirect", "/test", nil)
+	require.Error(t, err)
+	var apiErr *APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, http.StatusFound, apiErr.StatusCode)
+	assert.False(t, leakedAuthorization.Load())
+}
+
 func TestClientPaginatedItemsEnvelope(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"items":[{"serial":"Q234-ABCD-5678"}]}`))
@@ -137,6 +183,29 @@ func TestClientRetries5xx(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, got["ok"])
 	assert.Equal(t, int64(2), attempts.Load())
+}
+
+func TestClientDoesNotSleepAfterFinalRetry(t *testing.T) {
+	var attempts atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempt := attempts.Add(1)
+		if attempt == 1 {
+			w.Header().Set("Retry-After", "0")
+		} else {
+			w.Header().Set("Retry-After", "2")
+		}
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{APIKey: "test-key", BaseURL: server.URL, Timeout: time.Second, MaxRetries: 1})
+	require.NoError(t, err)
+
+	start := time.Now()
+	_, err = GetJSON[map[string]bool](t.Context(), client, "123456", "test", "/test", nil)
+	require.Error(t, err)
+	assert.Equal(t, int64(2), attempts.Load())
+	assert.Less(t, time.Since(start), 500*time.Millisecond)
 }
 
 func TestClientContextTimeoutDuringRetry(t *testing.T) {

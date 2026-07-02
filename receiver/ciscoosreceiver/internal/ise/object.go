@@ -133,8 +133,9 @@ func Time(obj Object, keys ...string) (time.Time, bool) {
 // StableID returns a best-effort stable identifier for deduplicating ISE evidence.
 func StableID(obj Object) string {
 	if id := String(obj,
-		"id", "uuid", "UUID", "idRef", "link", "audit_session_id", "auditSessionId", "audit-session-id",
-		"session_id", "sessionId", "message_code", "messageCode", "eventId", "event_id", "deliveryId", "taskId",
+		"id", "uuid", "UUID", "eventId", "event_id", "eventID", "deliveryId", "delivery_id",
+		"taskId", "task_id", "message_id", "messageId", "message-id", "audit_session_id", "auditSessionId",
+		"audit-session-id", "session_id", "sessionId", "idRef", "link",
 	); id != "" {
 		return id
 	}

@@ -71,6 +71,7 @@ type EStreamerClient struct {
 	dialTimeout     time.Duration
 	readTimeout     time.Duration
 	maxMessageBytes int
+	dialContext     func(context.Context, string, string) (net.Conn, error)
 
 	OnStat func(EStreamerStat)
 }
@@ -122,19 +123,46 @@ func (c *EStreamerClient) Address() string {
 	return c.address
 }
 
+// InitialTime returns the configured startup cursor.
+func (c *EStreamerClient) InitialTime() time.Time {
+	return c.initialTime
+}
+
 // Run connects, requests fully-qualified events, and streams decoded events until ctx ends.
 func (c *EStreamerClient) Run(ctx context.Context, onEvent func(EStreamerEvent) error) error {
-	dialer := &net.Dialer{Timeout: c.dialTimeout}
-	tlsDialer := tls.Dialer{NetDialer: dialer, Config: c.tlsConfig}
-	conn, err := tlsDialer.DialContext(ctx, "tcp", c.address)
+	return c.RunFrom(ctx, c.initialTime, onEvent)
+}
+
+// RunFrom connects and requests fully-qualified events beginning at initialTime.
+// Callers can advance initialTime between reconnects after downstream delivery
+// succeeds. The eStreamer cursor has second-level resolution, so callers should
+// retain a small overlap and suppress replayed boundary events.
+func (c *EStreamerClient) RunFrom(ctx context.Context, initialTime time.Time, onEvent func(EStreamerEvent) error) error {
+	dialContext := c.dialContext
+	if dialContext == nil {
+		dialer := &net.Dialer{Timeout: c.dialTimeout}
+		tlsDialer := tls.Dialer{NetDialer: dialer, Config: c.tlsConfig}
+		dialContext = tlsDialer.DialContext
+	}
+	conn, err := dialContext(ctx, "tcp", c.address)
 	if err != nil {
 		c.record(EStreamerStat{Controller: c.name, Outcome: "connect_error", Err: err})
 		return err
 	}
 	defer conn.Close()
+	// A socket read deadline based only on readTimeout does not react to receiver
+	// shutdown. Moving the connection deadline to now when ctx is cancelled
+	// promptly interrupts idle reads and writes without leaking a watcher goroutine.
+	stopCancelDeadline := context.AfterFunc(ctx, func() {
+		_ = conn.SetDeadline(time.Now())
+	})
+	defer stopCancelDeadline()
 	c.record(EStreamerStat{Controller: c.name, Outcome: "connected"})
 
-	if err := c.writeRequest(conn); err != nil {
+	if err := c.writeRequest(conn, initialTime); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		c.record(EStreamerStat{Controller: c.name, Outcome: "request_error", Err: err})
 		return err
 	}
@@ -196,23 +224,22 @@ type estreamerHeader struct {
 	length      uint32
 }
 
-func (c *EStreamerClient) writeRequest(conn net.Conn) error {
+func (c *EStreamerClient) writeRequest(writer io.Writer, initialTime time.Time) error {
 	request := defaultFQERequest(c.eventTypes)
 	jsonBytes, err := json.Marshal(request)
 	if err != nil {
 		return err
 	}
 	initial := uint32(^uint32(0))
-	if !c.initialTime.IsZero() {
-		initial = uint32(c.initialTime.Unix())
+	if !initialTime.IsZero() {
+		initial = uint32(initialTime.Unix())
 	}
 	payload := make([]byte, 8+len(jsonBytes))
 	binary.BigEndian.PutUint32(payload[0:4], initial)
 	binary.BigEndian.PutUint32(payload[4:8], estreamerRequestBitExtendedHeader)
 	copy(payload[8:], jsonBytes)
 	message := encodeEStreamerMessage(estreamerMessageRequest, payload)
-	_, err = conn.Write(message)
-	return err
+	return writeAll(writer, message)
 }
 
 func (c *EStreamerClient) readMessage(reader io.Reader) (estreamerHeader, []byte, error) {
@@ -341,8 +368,24 @@ func decodeEStreamerError(payload []byte) error {
 }
 
 func writeNullMessage(writer io.Writer) error {
-	_, err := writer.Write(encodeEStreamerMessage(estreamerMessageNull, nil))
-	return err
+	return writeAll(writer, encodeEStreamerMessage(estreamerMessageNull, nil))
+}
+
+func writeAll(writer io.Writer, payload []byte) error {
+	for len(payload) > 0 {
+		n, err := writer.Write(payload)
+		if n < 0 || n > len(payload) {
+			return io.ErrShortWrite
+		}
+		payload = payload[n:]
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return io.ErrShortWrite
+		}
+	}
+	return nil
 }
 
 func encodeEStreamerMessage(messageType uint16, payload []byte) []byte {

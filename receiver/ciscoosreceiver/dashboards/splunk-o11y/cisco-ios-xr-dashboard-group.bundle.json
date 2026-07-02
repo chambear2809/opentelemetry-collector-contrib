@@ -1,0 +1,189 @@
+{
+  "schema": "com.cisco.opentelemetry.ciscoosreceiver.splunk-o11y.dashboard-bundle/v1",
+  "default_time_range_ms": 3600000,
+  "default_tags": [
+    "ciscoosreceiver",
+    "ios-xr",
+    "gnmi",
+    "routing",
+    "netops"
+  ],
+  "group": {
+    "name": "Cisco IOS XR Receiver",
+    "description": "Operational dashboards for Cisco IOS XR gNMI and MDT telemetry collected by the Cisco OS receiver."
+  },
+  "default_filters": {
+    "variables": [
+      {
+        "property": "host.name",
+        "alias": "Router",
+        "description": "Cisco IOS XR router name.",
+        "applyIfExists": true
+      },
+      {
+        "property": "host.ip",
+        "alias": "Router IP",
+        "description": "Cisco IOS XR router address.",
+        "applyIfExists": true
+      },
+      {
+        "property": "network.interface.name",
+        "alias": "Interface",
+        "description": "IOS XR network interface.",
+        "applyIfExists": true
+      },
+      {
+        "property": "cisco.yang.module",
+        "alias": "YANG Module",
+        "description": "YANG module that produced the datapoint.",
+        "applyIfExists": true
+      },
+      {
+        "property": "cisco.telemetry.transport",
+        "alias": "Transport",
+        "description": "gNMI dial-in or MDT dial-out transport.",
+        "applyIfExists": true
+      }
+    ]
+  },
+  "dashboards": [
+    {
+      "name": "00 IOS XR Telemetry Trust And Coverage",
+      "description": "Value: verifies that IOS XR subscriptions are connected, fresh, decodable, and within configured path and cardinality limits.",
+      "value": "Use this dashboard before interpreting router telemetry. It distinguishes an IOS XR incident from a receiver connection, model compatibility, freshness, or datapoint-limit problem.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains the IOS XR collection-trust workflow. Interpretation: prove that subscriptions and updates are healthy, then investigate decode failures, unsupported paths, reconnects, compact GPB payloads, and dropped datapoints before trusting model-specific dashboards.",
+          "markdown": "## Value Provided\nStart here whenever IOS XR data is missing, stale, or surprising. Healthy targets have active subscriptions, a continuing update rate, and an advancing last-success timestamp. Decode errors, unsupported paths, compact GPB payloads, or cardinality drops mean model data can be incomplete even while a connection is alive.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Active Subscriptions",
+          "description": "Value: identifies IOS XR targets with an active telemetry subscription. Interpretation: a missing or zero row means that target is not currently delivering telemetry and downstream charts should not be treated as authoritative.",
+          "signalflow": "data('cisco.iosxr.receiver.active_subscriptions').mean(by=['host.name', 'host.ip', 'cisco.telemetry.transport']).publish(label='Active subscriptions')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Updates And Reconnects",
+          "description": "Value: correlates incoming update volume with connection instability. Interpretation: a steady update rate is expected for streaming targets; reconnect growth or an update rate falling to zero points to transport, authentication, certificate, or router availability trouble.",
+          "signalflow": "data('cisco.iosxr.receiver.updates').rate().sum(by=['host.name', 'cisco.telemetry.transport']).publish(label='Updates/sec'); data('cisco.iosxr.receiver.reconnects').rate().sum(by=['host.name', 'cisco.telemetry.transport']).publish(label='Reconnects/sec')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Decode Path And Cardinality Exceptions",
+          "description": "Value: exposes conditions that make an otherwise connected IOS XR feed incomplete. Interpretation: rising decode errors indicate payload incompatibility; unsupported paths indicate model gaps; dropped datapoints indicate that path or target scope exceeds the configured guardrail.",
+          "signalflow": "data('cisco.iosxr.receiver.decode_errors').rate().sum(by=['host.name', 'cisco.telemetry.transport']).publish(label='Decode errors/sec'); data('cisco.iosxr.receiver.unsupported_paths').rate().sum(by=['host.name', 'cisco.telemetry.transport']).publish(label='Unsupported paths/sec'); data('cisco.iosxr.receiver.dropped_datapoints').rate().sum(by=['host.name', 'cisco.telemetry.transport']).publish(label='Dropped datapoints/sec')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Compact GPB Payloads",
+          "description": "Value: shows payloads received in compact GPB form that the generic decoder cannot expand into YANG metrics. Interpretation: any sustained rate means collection is alive but model telemetry is being counted rather than decoded; use KV-GPB or add model-specific protobuf support.",
+          "signalflow": "data('cisco.iosxr.receiver.compact_gpb_payloads').rate().sum(by=['host.name', 'cisco.telemetry.transport']).publish(label='Compact GPB payloads/sec')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Last Successful Update",
+          "description": "Value: finds targets whose last visible datapoint is stale. Interpretation: the Unix timestamp should advance with incoming telemetry; compare it to current time and use reconnect and decode panels when it stops moving.",
+          "signalflow": "data('cisco.iosxr.receiver.last_success_timestamp').mean(by=['host.name', 'host.ip', 'cisco.telemetry.transport']).publish(label='Last success')",
+          "legend_dimension": "host.name"
+        }
+      ]
+    },
+    {
+      "name": "01 IOS XR Interfaces Optics And Physical Path",
+      "description": "Value: connects interface state, traffic, errors, discards, packet volume, MTU, and available IOS XR optics telemetry for physical-path triage.",
+      "value": "Use this dashboard when an IOS XR path is down, lossy, silent, asymmetric, or capacity constrained. It keeps interface state and counters together so operators can identify the affected router and interface before moving into model-specific optics evidence.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains the IOS XR interface and physical-path workflow. Interpretation: begin with admin and operational state, then correlate octet, packet, error, and discard rates; use MTU and native optics path data to test configuration and physical-layer hypotheses.",
+          "markdown": "## Value Provided\nUse this page for interface and physical-path incidents. It is based on the receiver's default OpenConfig interface path, so traffic and health charts remain portable across IOS XR releases. Enable the optional `optics` path group when native transceiver detail is required.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Interface Administrative And Operational State",
+          "description": "Value: identifies interfaces that are disabled, down, or in an unexpected state. Interpretation: compare admin and operational state per interface; admin-up and oper-down points to a physical, peer, optic, or lower-layer issue.",
+          "signalflow": "data('cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.admin_status_info').mean(by=['host.name', 'network.interface.name', 'value']).publish(label='Admin state'); data('cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.oper_status_info').mean(by=['host.name', 'network.interface.name', 'value']).publish(label='Oper state')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "name": "Interface Octet Rate",
+          "description": "Value: compares ingress and egress traffic to find silence, asymmetry, or a change around an incident. Interpretation: an unexpected zero, one-way traffic, or a sharp rate change should be correlated with state, errors, discards, and peer-side evidence.",
+          "signalflow": "data('cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Ingress octets/sec'); data('cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.out_octets').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Egress octets/sec')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "name": "Interface Packet Rate",
+          "description": "Value: shows packet pressure and direction independently of frame size. Interpretation: packet-rate spikes with modest octet rate can reveal small-packet load, while one-sided or absent packet flow narrows the affected direction.",
+          "signalflow": "data('cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_pkts').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Ingress packets/sec'); data('cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.out_pkts').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Egress packets/sec')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "name": "Interface Errors And Discards",
+          "description": "Value: distinguishes corrupt or failed traffic from congestion, queue, or policy drops. Interpretation: errors point toward the physical path or framing; discards with clean error counters point toward capacity, buffering, policy, or forwarding behavior.",
+          "signalflow": "data('cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_errors').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Ingress errors/sec'); data('cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.out_errors').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Egress errors/sec'); data('cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_discards').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Ingress discards/sec'); data('cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.out_discards').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Egress discards/sec')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "name": "Interface MTU",
+          "description": "Value: exposes MTU differences that can explain selective reachability, fragmentation, or application-specific loss. Interpretation: compare MTU across both ends of the path and with the encapsulation requirement when only larger packets fail.",
+          "signalflow": "data('cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.mtu').mean(by=['host.name', 'network.interface.name']).publish(label='MTU')",
+          "legend_dimension": "network.interface.name"
+        }
+      ]
+    },
+    {
+      "name": "02 IOS XR Routing MPLS SR And Time Sync",
+      "description": "Value: provides a model-aware landing page for IOS XR route inventory and optional BGP, ISIS, MPLS, segment-routing, NTP, and PTP path groups.",
+      "value": "Use this dashboard after collection trust is established to confirm which control-plane model groups are producing telemetry and to inspect IPv4 route inventory. Detailed leaf names vary by IOS XR release, so the coverage panels intentionally use receiver-provided YANG module and path dimensions.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to use optional IOS XR control-plane path groups without mistaking absent configuration for receiver failure. Interpretation: validate update and model coverage first, then use route counts and module-specific filters to focus on BGP, ISIS, MPLS, segment routing, NTP, or PTP telemetry enabled for the target.",
+          "markdown": "## Value Provided\nIOS XR native YANG leaves are normalized under `cisco.iosxr.yang.<module>...`. Enable only the path groups supported by the router and needed by the operating model. Use the YANG Module filter to isolate BGP, ISIS, MPLS, segment-routing, NTP, or PTP data, and return to the telemetry-trust dashboard if a selected group produces no updates.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "IPv4 RIB Routes By Protocol",
+          "description": "Value: tracks route inventory by the protocol and table dimensions exported by the IOS XR IPv4 RIB model. Interpretation: abrupt route-count loss or unexpected divergence between protocols should be correlated with neighbor and adjacency state on the router.",
+          "signalflow": "data('cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.rib.rib_table_ids.rib_table_id.summary_protos.summary_proto.route_count').mean(by=['host.name', 'cisco.yang.path']).publish(label='IPv4 routes')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Control Plane Update Flow",
+          "description": "Value: confirms that the telemetry stream continues to carry control-plane model updates during the selected window. Interpretation: filter by router and YANG module, then treat a flat zero alongside active subscriptions as an on-change quiet period or a path/model selection issue rather than immediate proof of routing failure.",
+          "signalflow": "data('cisco.iosxr.receiver.updates').rate().sum(by=['host.name', 'cisco.telemetry.transport']).publish(label='All IOS XR updates/sec')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Unsupported Control Plane Paths",
+          "description": "Value: identifies configured model paths that a router does not advertise or accept. Interpretation: filter to the affected router and compare its IOS XR release and capabilities before enabling BGP, ISIS, MPLS, segment-routing, NTP, or PTP groups fleet-wide.",
+          "signalflow": "data('cisco.iosxr.receiver.unsupported_paths').rate().sum(by=['host.name', 'cisco.telemetry.transport']).publish(label='Unsupported paths/sec')",
+          "legend_dimension": "host.name"
+        },
+        {
+          "name": "Control Plane Decode Failures",
+          "description": "Value: surfaces native or OpenConfig payloads that could not be translated into metrics. Interpretation: a rise after a router upgrade or path-group change points to a schema, encoding, or payload compatibility issue and means routing dashboards may be incomplete.",
+          "signalflow": "data('cisco.iosxr.receiver.decode_errors').rate().sum(by=['host.name', 'cisco.telemetry.transport']).publish(label='Decode errors/sec')",
+          "legend_dimension": "host.name"
+        }
+      ]
+    }
+  ]
+}

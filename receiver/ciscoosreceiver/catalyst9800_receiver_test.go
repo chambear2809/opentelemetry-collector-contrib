@@ -4,6 +4,8 @@
 package ciscoosreceiver
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -12,6 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/receiver/receivertest"
+
+	componentmetadata "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
 )
 
 func TestCatalyst9800ResolveTargetPathsAcceptsCiscoModuleAliases(t *testing.T) {
@@ -94,6 +99,50 @@ func TestBuildCatalyst9800SubscribeRequestHonorsPathDefaultStreamMode(t *testing
 	assert.Zero(t, sub.Subscription[0].SampleInterval)
 }
 
+func TestCatalyst9800RunTargetTracksLifecycleAndResetsRetryBackoff(t *testing.T) {
+	sink := &consumertest.MetricsSink{}
+	receiver := &catalyst9800DialInReceiver{
+		settings: receivertest.NewNopSettings(componentmetadata.Type),
+		config:   defaultCatalyst9800Config(),
+		consumer: sink,
+		health:   &catalyst9800Health{},
+	}
+	target := Catalyst9800TargetConfig{Name: "wlc-1", Subscription: Catalyst9800SubscriptionConfig{Mode: iosXRSubscribeModeStream}}
+	attempts := 0
+	observedActive := int64(0)
+	receiver.subscribeTargetFn = func(ctx context.Context, target Catalyst9800TargetConfig) (bool, error) {
+		attempts++
+		if attempts < 3 {
+			return false, errors.New("dial failed")
+		}
+		receiver.setTargetSubscriptionActive(ctx, target, true)
+		observedActive = receiver.health.snapshot().activeSubscriptions
+		receiver.setTargetSubscriptionActive(ctx, target, false)
+		return true, errors.New("stream disconnected")
+	}
+	receiver.retryJitterFn = func(time.Duration) time.Duration { return 0 }
+	var delays []time.Duration
+	receiver.retryWaitFn = func(_ context.Context, delay time.Duration) bool {
+		delays = append(delays, delay)
+		return len(delays) < 3
+	}
+
+	receiver.runTarget(t.Context(), target)
+
+	assert.Equal(t, 3, attempts)
+	assert.Equal(t, []time.Duration{500 * time.Millisecond, time.Second, 500 * time.Millisecond}, delays)
+	assert.Equal(t, int64(1), observedActive)
+	snapshot := receiver.health.snapshotForTarget(target.Name)
+	assert.Equal(t, int64(0), snapshot.activeSubscriptions)
+	assert.False(t, snapshot.targetActive)
+	assert.Equal(t, int64(3), snapshot.reconnects)
+	assert.Equal(t, int64(3), snapshot.targetReconnects)
+	assert.True(t, metricGaugeValueExists(sink.AllMetrics(), "cisco.catalyst9800.receiver.active_subscriptions", 1))
+	assert.True(t, metricGaugeValueExists(sink.AllMetrics(), "cisco.catalyst9800.receiver.active_subscriptions", 0))
+	assert.True(t, metricGaugeValueExists(sink.AllMetrics(), "cisco.catalyst9800.receiver.target.subscription.active", 1))
+	assert.True(t, metricGaugeValueExists(sink.AllMetrics(), "cisco.catalyst9800.receiver.target.subscription.active", 0))
+}
+
 func TestCatalyst9800NormalizingConsumerRenamesDialOutMetricsAndAddsAliases(t *testing.T) {
 	sink := &consumertest.MetricsSink{}
 	normalizer := newCatalyst9800NormalizingConsumer(
@@ -104,7 +153,9 @@ func TestCatalyst9800NormalizingConsumerRenamesDialOutMetricsAndAddsAliases(t *t
 		&catalyst9800Health{},
 	)
 
-	err := normalizer.ConsumeMetrics(t.Context(), rawCatalyst9800DialOutMetrics("cisco.rrm-oper-data.rrm-measurement.cca-util-percentage", 67, "wlc-1"))
+	raw := rawCatalyst9800DialOutMetrics("cisco.rrm-oper-data.rrm-measurement.cca-util-percentage", 67, "wlc-1")
+	raw.ResourceMetrics().At(0).Resource().Attributes().PutStr("host.ip", "192.0.2.40")
+	err := normalizer.ConsumeMetrics(t.Context(), raw)
 	require.NoError(t, err)
 	require.Len(t, sink.AllMetrics(), 1)
 
@@ -114,6 +165,7 @@ func TestCatalyst9800NormalizingConsumerRenamesDialOutMetricsAndAddsAliases(t *t
 
 	resourceAttrs := md.ResourceMetrics().At(0).Resource().Attributes()
 	assert.Equal(t, "wlc-1", attrValue(t, resourceAttrs, "host.name"))
+	assert.Equal(t, []string{"192.0.2.40"}, stringSliceAttrValue(t, resourceAttrs, "host.ip"))
 	assert.Equal(t, "ios_xe", attrValue(t, resourceAttrs, "cisco.os.name"))
 	assert.Equal(t, "catalyst_9800", attrValue(t, resourceAttrs, "cisco.platform.family"))
 	assert.Equal(t, "mdt_grpc_dial_out", attrValue(t, resourceAttrs, "cisco.telemetry.transport"))
