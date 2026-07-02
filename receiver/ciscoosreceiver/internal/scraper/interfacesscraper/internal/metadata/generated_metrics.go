@@ -3,14 +3,13 @@
 package metadata
 
 import (
-	"slices"
-	"time"
-
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/filter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/scraper"
+	"slices"
+	"time"
 )
 
 const (
@@ -78,67 +77,88 @@ var MapAttributeNetworkPacketType = map[string]AttributeNetworkPacketType{
 
 var MetricsInfo = metricsInfo{
 	CiscoInterfaceAdminStatus: metricInfo{
-		Name: "cisco.interface.admin.status",
+		Name:       "cisco.interface.admin.status",
+		Attributes: []string{"network.interface.description", "network.interface.mac", "network.interface.name", "network.interface.speed"},
 	},
 	CiscoInterfaceCounter: metricInfo{
-		Name: "cisco.interface.counter",
+		Name:       "cisco.interface.counter",
+		Attributes: []string{"cisco.interface.counter.name", "network.interface.description", "network.interface.mac", "network.interface.name", "network.interface.speed"},
 	},
 	CiscoInterfaceErrdisabled: metricInfo{
-		Name: "cisco.interface.errdisabled",
+		Name:       "cisco.interface.errdisabled",
+		Attributes: []string{"network.interface.name", "cisco.errdisabled.reason"},
 	},
 	CiscoInterfaceIoRate: metricInfo{
-		Name: "cisco.interface.io.rate",
+		Name:       "cisco.interface.io.rate",
+		Attributes: []string{"network.io.direction", "network.interface.description", "network.interface.mac", "network.interface.name", "network.interface.speed"},
 	},
 	CiscoInterfacePacketRate: metricInfo{
-		Name: "cisco.interface.packet.rate",
+		Name:       "cisco.interface.packet.rate",
+		Attributes: []string{"network.io.direction", "network.interface.description", "network.interface.mac", "network.interface.name", "network.interface.speed"},
 	},
 	CiscoInterfacePauseFrames: metricInfo{
-		Name: "cisco.interface.pause.frames",
+		Name:       "cisco.interface.pause.frames",
+		Attributes: []string{"network.interface.name", "network.io.direction", "cisco.pause.type", "cisco.qos.priority"},
 	},
 	CiscoInterfaceQosPolicyBytes: metricInfo{
-		Name: "cisco.interface.qos.policy.bytes",
+		Name:       "cisco.interface.qos.policy.bytes",
+		Attributes: []string{"network.interface.name", "network.io.direction", "cisco.qos.class", "cisco.qos.action", "cisco.qos.drop.reason", "cisco.qos.source"},
 	},
 	CiscoInterfaceQosPolicyPackets: metricInfo{
-		Name: "cisco.interface.qos.policy.packets",
+		Name:       "cisco.interface.qos.policy.packets",
+		Attributes: []string{"network.interface.name", "network.io.direction", "cisco.qos.class", "cisco.qos.action", "cisco.qos.drop.reason", "cisco.qos.source"},
 	},
 	CiscoInterfaceQosQueueBytes: metricInfo{
-		Name: "cisco.interface.qos.queue.bytes",
+		Name:       "cisco.interface.qos.queue.bytes",
+		Attributes: []string{"network.interface.name", "network.io.direction", "cisco.qos.queue", "cisco.qos.group", "cisco.qos.action", "cisco.qos.drop.reason", "cisco.qos.source"},
 	},
 	CiscoInterfaceQosQueuePackets: metricInfo{
-		Name: "cisco.interface.qos.queue.packets",
+		Name:       "cisco.interface.qos.queue.packets",
+		Attributes: []string{"network.interface.name", "network.io.direction", "cisco.qos.queue", "cisco.qos.group", "cisco.qos.action", "cisco.qos.drop.reason", "cisco.qos.source"},
 	},
 	CiscoInterfaceSpeed: metricInfo{
-		Name: "cisco.interface.speed",
+		Name:       "cisco.interface.speed",
+		Attributes: []string{"network.interface.description", "network.interface.mac", "network.interface.name"},
 	},
 	CiscoInterfaceUtilization: metricInfo{
-		Name: "cisco.interface.utilization",
+		Name:       "cisco.interface.utilization",
+		Attributes: []string{"network.io.direction", "network.interface.description", "network.interface.mac", "network.interface.name"},
 	},
 	CiscoL2StpBlockedPorts: metricInfo{
-		Name: "cisco.l2.stp.blocked_ports",
+		Name:       "cisco.l2.stp.blocked_ports",
+		Attributes: []string{"cisco.l2.vlan", "network.interface.name"},
 	},
 	CiscoL2StpInstances: metricInfo{
-		Name: "cisco.l2.stp.instances",
+		Name:       "cisco.l2.stp.instances",
+		Attributes: []string{"cisco.l2.stp.state"},
 	},
 	CiscoL2StpTopologyChanges: metricInfo{
-		Name: "cisco.l2.stp.topology_changes",
+		Name:       "cisco.l2.stp.topology_changes",
+		Attributes: []string{"cisco.l2.vlan", "network.interface.name"},
 	},
 	CiscoLacpErrors: metricInfo{
-		Name: "cisco.lacp.errors",
+		Name:       "cisco.lacp.errors",
+		Attributes: []string{"network.interface.name", "cisco.lacp.error.type"},
 	},
 	CiscoLacpPackets: metricInfo{
-		Name: "cisco.lacp.packets",
+		Name:       "cisco.lacp.packets",
+		Attributes: []string{"network.interface.name", "cisco.lacp.packet.type", "network.io.direction"},
 	},
 	CiscoPortChannelMemberStatus: metricInfo{
-		Name: "cisco.port_channel.member.status",
+		Name:       "cisco.port_channel.member.status",
+		Attributes: []string{"cisco.port_channel.name", "network.interface.name", "cisco.port_channel.state"},
 	},
 	CiscoPortChannelStatus: metricInfo{
-		Name: "cisco.port_channel.status",
+		Name:       "cisco.port_channel.status",
+		Attributes: []string{"cisco.port_channel.name", "cisco.port_channel.state"},
 	},
 	CiscoScrapeCommandDuration: metricInfo{
-		Name: "cisco.scrape.command.duration",
+		Name:       "cisco.scrape.command.duration",
+		Attributes: []string{"cisco.scrape.command.family", "cisco.scrape.command.outcome"},
 	},
 	CiscoScrapeCommandErrors: metricInfo{
-		Name: "cisco.scrape.command.errors",
+		Name:       "cisco.scrape.command.errors",
+		Attributes: []string{"cisco.scrape.command.family", "cisco.scrape.error.type"},
 	},
 	CiscoScrapePartialSuccess: metricInfo{
 		Name: "cisco.scrape.partial_success",
@@ -147,31 +167,40 @@ var MetricsInfo = metricsInfo{
 		Name: "cisco.ssh.reconnects",
 	},
 	CiscoTopologyNeighborInfo: metricInfo{
-		Name: "cisco.topology.neighbor.info",
+		Name:       "cisco.topology.neighbor.info",
+		Attributes: []string{"cisco.topology.protocol", "network.interface.name", "cisco.topology.neighbor.name", "cisco.topology.neighbor.interface", "cisco.topology.neighbor.platform", "cisco.topology.neighbor.address"},
 	},
 	CiscoTransceiverSensor: metricInfo{
-		Name: "cisco.transceiver.sensor",
+		Name:       "cisco.transceiver.sensor",
+		Attributes: []string{"network.interface.name", "cisco.transceiver.sensor", "cisco.transceiver.lane", "cisco.transceiver.sensor.unit"},
 	},
 	CiscoVpcConsistencyFailures: metricInfo{
-		Name: "cisco.vpc.consistency.failures",
+		Name:       "cisco.vpc.consistency.failures",
+		Attributes: []string{"cisco.vpc.check"},
 	},
 	CiscoVpcStatus: metricInfo{
-		Name: "cisco.vpc.status",
+		Name:       "cisco.vpc.status",
+		Attributes: []string{"cisco.vpc.domain", "cisco.vpc.peer", "cisco.vpc.state"},
 	},
 	SystemNetworkErrors: metricInfo{
-		Name: "system.network.errors",
+		Name:       "system.network.errors",
+		Attributes: []string{"network.io.direction", "network.interface.description", "network.interface.mac", "network.interface.name", "network.interface.speed"},
 	},
 	SystemNetworkInterfaceStatus: metricInfo{
-		Name: "system.network.interface.status",
+		Name:       "system.network.interface.status",
+		Attributes: []string{"network.interface.description", "network.interface.mac", "network.interface.name", "network.interface.speed"},
 	},
 	SystemNetworkIo: metricInfo{
-		Name: "system.network.io",
+		Name:       "system.network.io",
+		Attributes: []string{"network.io.direction", "network.interface.description", "network.interface.mac", "network.interface.name", "network.interface.speed"},
 	},
 	SystemNetworkPacketCount: metricInfo{
-		Name: "system.network.packet.count",
+		Name:       "system.network.packet.count",
+		Attributes: []string{"network.io.direction", "network.packet.type", "network.interface.description", "network.interface.mac", "network.interface.name", "network.interface.speed"},
 	},
 	SystemNetworkPacketDropped: metricInfo{
-		Name: "system.network.packet.dropped",
+		Name:       "system.network.packet.dropped",
+		Attributes: []string{"network.io.direction", "network.interface.description", "network.interface.mac", "network.interface.name", "network.interface.speed"},
 	},
 }
 
@@ -211,7 +240,8 @@ type metricsInfo struct {
 }
 
 type metricInfo struct {
-	Name string
+	Name       string
+	Attributes []string
 }
 
 type metricCiscoInterfaceAdminStatus struct {
