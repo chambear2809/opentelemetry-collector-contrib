@@ -11,7 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -181,7 +181,7 @@ func NewClient(cfg Config) (*Client, error) {
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	if cfg.InsecureSkipVerify {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // Explicit opt-in for private SD-WAN Manager appliances.
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 
 	return &Client{
@@ -253,8 +253,8 @@ func (c *Client) collectPages(ctx context.Context, method, operation, path strin
 		if err != nil {
 			return results, err
 		}
-		if err := byteBudget.Charge(operation, len(body), len(results)); err != nil {
-			return results, err
+		if budgetErr := byteBudget.Charge(operation, len(body), len(results)); budgetErr != nil {
+			return results, budgetErr
 		}
 		objects, pageInfo, err := decodeObjectsPage(body, header)
 		if err != nil {
@@ -293,7 +293,7 @@ func (c *Client) collectPages(ctx context.Context, method, operation, path strin
 func (c *Client) do(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, http.Header, error) {
 	var lastErr error
 	attempts := c.retries + 1
-	for attempt := 0; attempt < attempts; attempt++ {
+	for attempt := range attempts {
 		body, header, status, err := c.doOnce(ctx, method, operation, path, query, payload)
 		if err == nil {
 			return body, header, nil
@@ -783,7 +783,7 @@ func sleepBeforeRetry(ctx context.Context, attempt int, retryAfter time.Duration
 	delay := retryAfter
 	if delay <= 0 {
 		delay = time.Duration(100*(1<<attempt)) * time.Millisecond
-		delay += time.Duration(rand.Intn(100)) * time.Millisecond //nolint:gosec // jitter only
+		delay += time.Duration(rand.IntN(100)) * time.Millisecond
 	}
 	timer := time.NewTimer(delay)
 	defer timer.Stop()

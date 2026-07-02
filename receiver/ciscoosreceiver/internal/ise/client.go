@@ -12,7 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"os"
@@ -157,9 +157,9 @@ func clientTLSConfig(cfg Config) (*tls.Config, error) {
 	if cfg.CAFile == "" && cfg.ServerName == "" && !cfg.InsecureSkipVerify {
 		return nil, nil
 	}
-	tlsConfig := &tls.Config{ServerName: cfg.ServerName} //nolint:gosec // InsecureSkipVerify is an explicit receiver setting below.
+	tlsConfig := &tls.Config{ServerName: cfg.ServerName}
 	if cfg.InsecureSkipVerify {
-		tlsConfig.InsecureSkipVerify = true //nolint:gosec // Explicit opt-in for private ISE appliances.
+		tlsConfig.InsecureSkipVerify = true
 	}
 	if cfg.CAFile == "" {
 		return tlsConfig, nil
@@ -232,8 +232,8 @@ func (c *Client) List(ctx context.Context, operation, path string, query url.Val
 		if err != nil {
 			return results, err
 		}
-		if err := byteBudget.Charge(operation, len(body), len(results)); err != nil {
-			return results, err
+		if budgetErr := byteBudget.Charge(operation, len(body), len(results)); budgetErr != nil {
+			return results, budgetErr
 		}
 		objects, _, err := decodeObjects(body)
 		if err != nil {
@@ -310,8 +310,8 @@ func (c *Client) ListERS(ctx context.Context, operation, path string, query url.
 		if err != nil {
 			return results, err
 		}
-		if err := byteBudget.Charge(operation, len(body), len(results)); err != nil {
-			return results, err
+		if budgetErr := byteBudget.Charge(operation, len(body), len(results)); budgetErr != nil {
+			return results, budgetErr
 		}
 		objects, total, err := decodeObjects(body)
 		if err != nil {
@@ -603,13 +603,13 @@ func splitLinkHeader(header string) []string {
 }
 
 func linkHasNextRelation(parameters string) bool {
-	for _, parameter := range strings.Split(parameters, ";") {
+	for parameter := range strings.SplitSeq(parameters, ";") {
 		name, value, ok := strings.Cut(strings.TrimSpace(parameter), "=")
 		if !ok || !strings.EqualFold(strings.TrimSpace(name), "rel") {
 			continue
 		}
 		value = strings.Trim(strings.TrimSpace(value), `"`)
-		for _, relation := range strings.Fields(value) {
+		for relation := range strings.FieldsSeq(value) {
 			if strings.EqualFold(relation, "next") {
 				return true
 			}
@@ -621,7 +621,7 @@ func linkHasNextRelation(parameters string) bool {
 func (c *Client) do(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, http.Header, error) {
 	var lastErr error
 	attempts := c.retries + 1
-	for attempt := 0; attempt < attempts; attempt++ {
+	for attempt := range attempts {
 		body, header, status, err := c.doOnce(ctx, method, operation, path, query, payload)
 		if err == nil {
 			return body, header, nil
@@ -630,7 +630,7 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 		if ctx.Err() != nil || !retryableStatus(status) || attempt == attempts-1 {
 			break
 		}
-		sleep := time.Duration(1<<attempt)*100*time.Millisecond + time.Duration(rand.Int63n(int64(50*time.Millisecond))) //nolint:gosec // Retry jitter does not need crypto randomness.
+		sleep := time.Duration(1<<attempt)*100*time.Millisecond + time.Duration(rand.Int64N(int64(50*time.Millisecond)))
 		timer := time.NewTimer(sleep)
 		select {
 		case <-ctx.Done():

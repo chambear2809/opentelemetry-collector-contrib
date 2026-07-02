@@ -11,7 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -136,7 +136,7 @@ func NewClient(cfg Config) (*Client, error) {
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	if cfg.InsecureSkipVerify {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // Explicit opt-in for private Nexus Dashboard appliances.
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 
 	return &Client{
@@ -211,8 +211,8 @@ func (c *Client) List(ctx context.Context, operation, path string, query url.Val
 		if err != nil {
 			return results, err
 		}
-		if err := byteBudget.Charge(operation, len(body), len(results)); err != nil {
-			return results, err
+		if budgetErr := byteBudget.Charge(operation, len(body), len(results)); budgetErr != nil {
+			return results, budgetErr
 		}
 		pages++
 		page, next, remaining, err := decodeObjects(body, header)
@@ -244,7 +244,7 @@ func (c *Client) List(ctx context.Context, operation, path string, query url.Val
 func (c *Client) do(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, http.Header, error) {
 	var lastErr error
 	attempts := c.retries + 1
-	for attempt := 0; attempt < attempts; attempt++ {
+	for attempt := range attempts {
 		body, header, status, err := c.doOnce(ctx, method, operation, path, query, payload)
 		if err == nil {
 			return body, header, nil
@@ -295,8 +295,8 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if err := c.authorize(ctx, req); err != nil {
-		return nil, nil, 0, err
+	if authErr := c.authorize(ctx, req); authErr != nil {
+		return nil, nil, 0, authErr
 	}
 
 	start := time.Now()
@@ -533,7 +533,7 @@ func retryAfter(value string) time.Duration {
 func sleepBeforeRetry(ctx context.Context, attempt int, retryAfter time.Duration) bool {
 	if retryAfter < 0 {
 		backoff := time.Duration(200*(1<<attempt)) * time.Millisecond
-		jitter := time.Duration(rand.Int63n(int64(100 * time.Millisecond))) //nolint:gosec // Jitter only.
+		jitter := time.Duration(rand.Int64N(int64(100 * time.Millisecond)))
 		retryAfter = backoff + jitter
 	}
 	timer := time.NewTimer(retryAfter)

@@ -6,6 +6,7 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 import (
 	"context"
 	"fmt"
+	"maps"
 	"math"
 	"net/url"
 	"sort"
@@ -84,7 +85,8 @@ func newMerakiMetricsReceiver(set receiver.Settings, conf *Config, consumer cons
 
 func normalizeMerakiTargets(cfg MerakiConfig) []merakiTarget {
 	byOrganization := make(map[string]merakiTarget, len(cfg.Organizations)+len(cfg.Devices))
-	for _, org := range cfg.Organizations {
+	for i := range cfg.Organizations {
+		org := &cfg.Organizations[i]
 		target := byOrganization[org.OrganizationID]
 		target.OrganizationID = org.OrganizationID
 		target.NetworkIDs = uniqueStrings(append(target.NetworkIDs, org.NetworkIDs...))
@@ -162,7 +164,7 @@ func (r *merakiMetricsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 
-	obsCtx := startMetricsOp(r.obs, ctx)
+	obsCtx := startMetricsOp(ctx, r.obs)
 	md, scrapeErr := r.scrape(scrapeCtx)
 	if scrapeErr != nil {
 		r.settings.Logger.Error("Meraki scrape failed", zap.Error(scrapeErr))
@@ -171,7 +173,7 @@ func (r *merakiMetricsReceiver) collect(ctx context.Context) {
 	if consumeErr != nil {
 		r.settings.Logger.Error("Meraki metrics consumer failed", zap.Error(consumeErr))
 	}
-	endMetricsOp(r.obs, obsCtx, metricCount, combineSignalErrors(scrapeErr, consumeErr))
+	endMetricsOp(obsCtx, r.obs, metricCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *merakiMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
@@ -181,15 +183,17 @@ func (r *merakiMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, er
 	partialByOrganization := make(map[string]bool, len(r.targets))
 	var scrapeErr error
 
-	for i, target := range r.targets {
-		targetPartial, err := r.scrapeTarget(ctx, builder, target)
+	for i := range r.targets {
+		target := &r.targets[i]
+		targetPartial, err := r.scrapeTarget(ctx, builder, *target)
 		partialByOrganization[target.OrganizationID] = targetPartial || err != nil
 		if err != nil {
 			scrapeErr = err
 			// The shared scrape context is no longer usable. Mark targets that
 			// could not be attempted as partial instead of silently reporting
 			// them as successful.
-			for _, remaining := range r.targets[i+1:] {
+			for j := range r.targets[i+1:] {
+				remaining := &r.targets[i+1+j]
 				partialByOrganization[remaining.OrganizationID] = true
 			}
 			break
@@ -202,7 +206,8 @@ func (r *merakiMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, er
 func (r *merakiMetricsReceiver) finishScrape(builder *merakiMetricsBuilder, partialByOrganization map[string]bool) pmetric.Metrics {
 	r.recordAPIRequestMetrics(builder)
 	stats := r.requestStats()
-	for _, target := range r.targets {
+	for i := range r.targets {
+		target := &r.targets[i]
 		rb := builder.orgResource(target.OrganizationID)
 		partial := partialByOrganization[target.OrganizationID]
 		rb.recordInt("cisco.scrape.partial_success", "Whether one or more Meraki endpoint families failed during the scrape.", "1", boolToInt(partial), nil)
@@ -258,11 +263,12 @@ func (r *merakiMetricsReceiver) scrapeTarget(ctx context.Context, builder *merak
 		r.settings.Logger.Warn("Meraki device inventory endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
 	}
 	inventorySerials := make(map[string]struct{}, len(devices))
-	for _, device := range devices {
+	for i := range devices {
+		device := &devices[i]
 		if device.Serial == "" {
 			continue
 		}
-		resource := deviceResourceFromInventory(device)
+		resource := deviceResourceFromInventory(*device)
 		if !selector.allows(merakiDeviceIdentity(resource)) {
 			continue
 		}
@@ -320,11 +326,12 @@ func (r *merakiMetricsReceiver) scrapeDeviceStatuses(ctx context.Context, builde
 			return true
 		}
 	}
-	for _, status := range statuses {
+	for i := range statuses {
+		status := &statuses[i]
 		if !allowsSerial(allowedSerials, status.Serial) {
 			continue
 		}
-		resource := deviceResourceFromStatus(status)
+		resource := deviceResourceFromStatus(*status)
 		if !selector.allows(merakiDeviceIdentity(resource)) {
 			continue
 		}
@@ -350,16 +357,17 @@ func (r *merakiMetricsReceiver) scrapeMemoryUsage(ctx context.Context, builder *
 			return true
 		}
 	}
-	for _, usage := range usages {
+	for i := range usages {
+		usage := &usages[i]
 		if !allowsSerial(allowedSerials, usage.Serial) {
 			continue
 		}
-		resource := deviceResourceFromMemory(usage)
+		resource := deviceResourceFromMemory(*usage)
 		if !selector.allows(merakiDeviceIdentity(resource)) {
 			continue
 		}
 		rb := builder.deviceResource(resource)
-		if value, ok := memoryUtilization(usage); ok {
+		if value, ok := memoryUtilization(*usage); ok {
 			rb.recordDouble("system.memory.utilization", "Memory utilization as a ratio from 0 to 1.", "1", value, map[string]string{"system.memory.state": "used"})
 		}
 	}
@@ -376,16 +384,18 @@ func (r *merakiMetricsReceiver) scrapeSwitchPorts(ctx context.Context, builder *
 			return true
 		}
 	}
-	for _, sw := range statuses {
+	for i := range statuses {
+		sw := &statuses[i]
 		if !allowsSerial(allowedSerials, sw.Serial) {
 			continue
 		}
-		resource := deviceResourceFromSwitch(sw)
+		resource := deviceResourceFromSwitch(*sw)
 		if !selector.allows(merakiDeviceIdentity(resource)) {
 			continue
 		}
 		rb := builder.deviceResource(resource)
-		for _, port := range sw.Ports {
+		for j := range sw.Ports {
+			port := &sw.Ports[j]
 			speedBits, speedString := parseMerakiSpeed(port.Speed)
 			if speedBits > 0 {
 				builder.setPortSpeed(sw.Serial, port.PortID, speedBits)
@@ -419,11 +429,12 @@ func (r *merakiMetricsReceiver) scrapeSwitchPorts(ctx context.Context, builder *
 			return true
 		}
 	}
-	for _, sw := range usages {
+	for i := range usages {
+		sw := &usages[i]
 		if !allowsSerial(allowedSerials, sw.Serial) {
 			continue
 		}
-		resource := deviceResourceFromSwitchUsage(sw)
+		resource := deviceResourceFromSwitchUsage(*sw)
 		if !selector.allows(merakiDeviceIdentity(resource)) {
 			continue
 		}
@@ -477,7 +488,8 @@ func (r *merakiMetricsReceiver) scrapeUplinks(ctx context.Context, builder *mera
 			continue
 		}
 		rb := builder.deviceResource(resource)
-		for _, uplink := range device.Uplinks {
+		for i := range device.Uplinks {
+			uplink := &device.Uplinks[i]
 			attrs := map[string]string{
 				"meraki.uplink.interface":       uplink.Interface,
 				"meraki.uplink.status":          uplink.Status,
@@ -576,7 +588,8 @@ func (r *merakiMetricsReceiver) scrapeWireless(ctx context.Context, builder *mer
 			return true
 		}
 	}
-	for _, device := range packetLoss {
+	for i := range packetLoss {
+		device := &packetLoss[i]
 		if !allowsSerial(allowedSerials, device.Device.Serial) {
 			continue
 		}
@@ -631,7 +644,8 @@ func (r *merakiMetricsReceiver) scrapeVPN(ctx context.Context, builder *merakiMe
 			return true
 		}
 	}
-	for _, status := range statuses {
+	for i := range statuses {
+		status := &statuses[i]
 		if !allowsSerial(allowedSerials, status.DeviceSerial) {
 			continue
 		}
@@ -675,7 +689,8 @@ func (r *merakiMetricsReceiver) scrapeVPN(ctx context.Context, builder *merakiMe
 			continue
 		}
 		rb := builder.networkResource(stat.NetworkID, stat.NetworkName, target.OrganizationID)
-		for _, peer := range stat.MerakiVPNPeers {
+		for i := range stat.MerakiVPNPeers {
+			peer := &stat.MerakiVPNPeers[i]
 			peerAttrs := map[string]string{
 				"meraki.vpn.peer.network_id": peer.NetworkID,
 				"meraki.vpn.peer.name":       peer.NetworkName,
@@ -707,7 +722,8 @@ func (r *merakiMetricsReceiver) scrapePowerModules(ctx context.Context, builder 
 			return true
 		}
 	}
-	for _, device := range statuses {
+	for i := range statuses {
+		device := &statuses[i]
 		if !allowsSerial(allowedSerials, device.Serial) {
 			continue
 		}
@@ -738,11 +754,12 @@ func (r *merakiMetricsReceiver) scrapeTopology(ctx context.Context, builder *mer
 			return true
 		}
 	}
-	for _, device := range devices {
+	for i := range devices {
+		device := &devices[i]
 		if !allowsSerial(allowedSerials, device.Serial) {
 			continue
 		}
-		resource := deviceResourceFromTopology(device)
+		resource := deviceResourceFromTopology(*device)
 		if !selector.allows(merakiDeviceIdentity(resource)) {
 			continue
 		}
@@ -773,7 +790,8 @@ func (r *merakiMetricsReceiver) scrapeTransceivers(ctx context.Context, builder 
 		}
 		rb := builder.deviceResource(resource)
 		for _, port := range device.Ports {
-			for _, reading := range port.Readings {
+			for i := range port.Readings {
+				reading := &port.Readings[i]
 				attrs := interfaceAttrs(firstNonEmpty(port.InterfaceName, port.PortID), "", "", "")
 				attrs["cisco.transceiver.lane"] = reading.SFPProductID
 				recordTransceiverValue(rb, attrs, "tx_power", "dBm", reading.ByMetric.Power.Transmit)
@@ -789,8 +807,10 @@ func (r *merakiMetricsReceiver) scrapeTransceivers(ctx context.Context, builder 
 
 func (r *merakiMetricsReceiver) scrapeAppliancePerformance(ctx context.Context, builder *merakiMetricsBuilder, target merakiTarget, allowedSerials map[string]struct{}, selector deviceSelectionMatcher) bool {
 	partial := false
-	for _, device := range builder.applianceDevices(allowedSerials) {
-		if !selector.allows(merakiDeviceIdentity(device)) {
+	devices := builder.applianceDevices(allowedSerials)
+	for i := range devices {
+		device := &devices[i]
+		if !selector.allows(merakiDeviceIdentity(*device)) {
 			continue
 		}
 		path := "/devices/" + url.PathEscape(device.Serial) + "/appliance/performance"
@@ -800,7 +820,7 @@ func (r *merakiMetricsReceiver) scrapeAppliancePerformance(ctx context.Context, 
 			partial = true
 			continue
 		}
-		builder.deviceResource(device).recordDouble("meraki.appliance.performance.score", "Meraki appliance performance score.", "1", perf.PerfScore, nil)
+		builder.deviceResource(*device).recordDouble("meraki.appliance.performance.score", "Meraki appliance performance score.", "1", perf.PerfScore, nil)
 	}
 	return partial
 }
@@ -1079,7 +1099,8 @@ func (b *merakiMetricsBuilder) portSpeed(serial, portID string) int64 {
 
 func (b *merakiMetricsBuilder) applianceDevices(allowedSerials map[string]struct{}) []deviceResource {
 	devices := make([]deviceResource, 0)
-	for _, device := range b.devices {
+	for serial := range b.devices {
+		device := b.devices[serial]
 		if !allowsSerial(allowedSerials, device.Serial) {
 			continue
 		}
@@ -1184,12 +1205,6 @@ func (rb *resourceMetricsBuilder) sumMetric(name, description, unit string) pmet
 	sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
 	rb.metrics[name] = metric
 	return metric
-}
-
-// metric is retained for backwards compatibility with helpers that pre-existed
-// the Sum/Gauge split. New code should prefer gaugeMetric or sumMetric.
-func (rb *resourceMetricsBuilder) metric(name, description, unit string) pmetric.Metric {
-	return rb.gaugeMetric(name, description, unit)
 }
 
 func deviceResourceFromInventory(device meraki.Device) deviceResource {
@@ -1358,9 +1373,7 @@ func withVPNUplinks(attrs map[string]string, sender, receiver string) map[string
 
 func cloneStringMap(attrs map[string]string) map[string]string {
 	out := make(map[string]string, len(attrs))
-	for key, value := range attrs {
-		out[key] = value
-	}
+	maps.Copy(out, attrs)
 	return out
 }
 
@@ -1418,7 +1431,8 @@ func firstNonEmpty(values ...string) string {
 }
 
 func firstUplinkIP(status meraki.UplinkStatus) string {
-	for _, uplink := range status.Uplinks {
+	for i := range status.Uplinks {
+		uplink := &status.Uplinks[i]
 		if uplink.IP != "" {
 			return uplink.IP
 		}
@@ -1517,7 +1531,7 @@ func parseMerakiSpeed(speed string) (int64, string) {
 		return 0, speed
 	}
 	unit := strings.ToLower(fields[1])
-	multiplier := float64(1)
+	var multiplier float64
 	switch {
 	case strings.HasPrefix(unit, "tb"):
 		multiplier = 1_000_000_000_000

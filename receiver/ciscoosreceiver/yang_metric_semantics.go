@@ -3,7 +3,10 @@
 
 package ciscoosreceiver
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // isUnambiguousYANGCounter deliberately recognizes only leaf names whose
 // semantics are cumulative across Cisco and OpenConfig models. Unknown numeric
@@ -40,10 +43,5 @@ func containsMetricWord(value, word string) bool {
 	if value == word {
 		return true
 	}
-	for _, part := range strings.FieldsFunc(value, func(r rune) bool { return r == '_' || r == '.' }) {
-		if part == word {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(strings.FieldsFunc(value, func(r rune) bool { return r == '_' || r == '.' }), word)
 }

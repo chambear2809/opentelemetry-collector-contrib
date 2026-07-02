@@ -136,10 +136,6 @@ func (m deviceSelectionMatcher) empty() bool {
 	return m.include.empty() && m.exclude.empty()
 }
 
-func (m deviceSelectionMatcher) includeActive() bool {
-	return !m.include.empty()
-}
-
 func (m deviceSelectionMatcher) allows(id deviceIdentity) bool {
 	if m.exclude.matches(id) {
 		return false

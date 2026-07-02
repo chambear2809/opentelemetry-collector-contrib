@@ -13,7 +13,7 @@ import (
 
 // sanitizedGNMISubscribeError preserves stable diagnostic context without
 // reflecting a device-controlled error message into collector logs.
-func sanitizedGNMISubscribeError(protocolErr *gnmi.Error) error {
+func sanitizedGNMISubscribeError(protocolErr *gnmi.Error) error { //nolint:staticcheck // Deprecated response errors remain required for older gNMI producers.
 	if protocolErr == nil {
 		return errors.New("subscribe response error")
 	}

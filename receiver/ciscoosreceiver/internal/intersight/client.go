@@ -13,7 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -82,7 +82,7 @@ func NewClient(cfg Config) (*Client, error) {
 	if cfg.KeyID == "" {
 		return nil, errors.New("intersight key ID is required")
 	}
-	signer, err := newSigner(cfg.KeyPEM, cfg.KeyFile)
+	requestSigner, err := newSigner(cfg.KeyPEM, cfg.KeyFile)
 	if err != nil {
 		return nil, err
 	}
@@ -115,12 +115,12 @@ func NewClient(cfg Config) (*Client, error) {
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	if cfg.InsecureSkipVerify {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // Explicit opt-in for private Intersight appliances.
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 
 	return &Client{
 		keyID:     cfg.KeyID,
-		signer:    signer,
+		signer:    requestSigner,
 		endpoint:  parsed,
 		userAgent: userAgent,
 		client:    &http.Client{Timeout: timeout, Transport: transport, CheckRedirect: httpclient.SameOriginRedirectPolicy(parsed)},
@@ -184,8 +184,8 @@ func (c *Client) List(ctx context.Context, operation, path string, query url.Val
 		if err != nil {
 			return results, err
 		}
-		if err := byteBudget.Charge(operation, len(body), len(results)); err != nil {
-			return results, err
+		if budgetErr := byteBudget.Charge(operation, len(body), len(results)); budgetErr != nil {
+			return results, budgetErr
 		}
 		pages++
 
@@ -230,7 +230,7 @@ func (c *Client) PostJSON(ctx context.Context, operation, path string, body any)
 func (c *Client) do(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, error) {
 	var lastErr error
 	attempts := c.retries + 1
-	for attempt := 0; attempt < attempts; attempt++ {
+	for attempt := range attempts {
 		reqURL := c.buildURL(path, query)
 		var body io.Reader
 		if payload != nil {
@@ -245,8 +245,8 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 		if payload != nil {
 			req.Header.Set("Content-Type", "application/json")
 		}
-		if err := c.sign(req, payload); err != nil {
-			return nil, err
+		if signErr := c.sign(req, payload); signErr != nil {
+			return nil, signErr
 		}
 
 		start := time.Now()
@@ -267,12 +267,10 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 		bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 		closeErr := resp.Body.Close()
 		if readErr != nil {
-			lastErr = readErr
 			c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
 			return nil, readErr
 		}
 		if closeErr != nil {
-			lastErr = closeErr
 			return nil, closeErr
 		}
 
@@ -342,7 +340,7 @@ func (c *Client) sign(req *http.Request, payload []byte) error {
 		return err
 	}
 	req.Header.Set("Authorization", fmt.Sprintf(
-		`Signature keyId="%s",algorithm="%s",headers="%s",signature="%s"`,
+		`Signature keyId=%q,algorithm=%q,headers=%q,signature=%q`,
 		c.keyID,
 		c.signer.algorithm(),
 		strings.Join(headers, " "),
@@ -409,7 +407,7 @@ func retryAfter(value string) time.Duration {
 func sleepBeforeRetry(ctx context.Context, attempt int, retryAfter time.Duration) bool {
 	if retryAfter < 0 {
 		backoff := time.Duration(200*(1<<attempt)) * time.Millisecond
-		jitter := time.Duration(rand.Int63n(int64(100 * time.Millisecond))) //nolint:gosec // Jitter only.
+		jitter := time.Duration(rand.Int64N(int64(100 * time.Millisecond)))
 		retryAfter = backoff + jitter
 	}
 	timer := time.NewTimer(retryAfter)

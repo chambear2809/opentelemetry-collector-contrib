@@ -7,7 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -139,12 +139,12 @@ func GetPaginatedJSON[T any](ctx context.Context, c *Client, organizationID, ope
 		if err != nil {
 			return results, err
 		}
-		if err := byteBudget.Charge(operation, len(body), len(results)); err != nil {
-			return results, err
+		if budgetErr := byteBudget.Charge(operation, len(body), len(results)); budgetErr != nil {
+			return results, budgetErr
 		}
 		var page []T
-		if err := httpclient.DecodeJSON(body, &page); err != nil {
-			return results, fmt.Errorf("decode meraki %s page: %w", operation, err)
+		if decodeErr := httpclient.DecodeJSON(body, &page); decodeErr != nil {
+			return results, fmt.Errorf("decode meraki %s page: %w", operation, decodeErr)
 		}
 		if len(page) > httpclient.HardMaxPaginationResults-len(results) {
 			remaining := httpclient.HardMaxPaginationResults - len(results)
@@ -186,14 +186,14 @@ func GetPaginatedItemsJSON[T any](ctx context.Context, c *Client, organizationID
 		if err != nil {
 			return results, err
 		}
-		if err := byteBudget.Charge(operation, len(body), len(results)); err != nil {
-			return results, err
+		if budgetErr := byteBudget.Charge(operation, len(body), len(results)); budgetErr != nil {
+			return results, budgetErr
 		}
 		var page struct {
 			Items []T `json:"items"`
 		}
-		if err := httpclient.DecodeJSON(body, &page); err != nil {
-			return results, fmt.Errorf("decode meraki %s page: %w", operation, err)
+		if decodeErr := httpclient.DecodeJSON(body, &page); decodeErr != nil {
+			return results, fmt.Errorf("decode meraki %s page: %w", operation, decodeErr)
 		}
 		if len(page.Items) > httpclient.HardMaxPaginationResults-len(results) {
 			remaining := httpclient.HardMaxPaginationResults - len(results)
@@ -226,7 +226,7 @@ func (c *Client) do(ctx context.Context, organizationID, operation, path string,
 	}
 	var lastErr error
 	attempts := c.retries + 1
-	for attempt := 0; attempt < attempts; attempt++ {
+	for attempt := range attempts {
 		if err := c.sourceLimiter.wait(ctx); err != nil {
 			return nil, nil, err
 		}
@@ -271,7 +271,6 @@ func (c *Client) do(ctx context.Context, organizationID, operation, path string,
 		body, readErr := httpclient.ReadResponseBody(resp.Body)
 		closeErr := resp.Body.Close()
 		if readErr != nil {
-			lastErr = readErr
 			c.record(RequestStat{
 				OrganizationID: organizationID,
 				Operation:      operation,
@@ -285,7 +284,6 @@ func (c *Client) do(ctx context.Context, organizationID, operation, path string,
 			return nil, resp.Header, readErr
 		}
 		if closeErr != nil {
-			lastErr = closeErr
 			return nil, resp.Header, closeErr
 		}
 
@@ -424,11 +422,9 @@ func sleepBeforeRetry(ctx context.Context, attempt int, serverDelay time.Duratio
 	delay := serverDelay
 	if delay < 0 {
 		delay = time.Duration(1<<attempt) * time.Second
-		if delay > 5*time.Second {
-			delay = 5 * time.Second
-		}
+		delay = min(delay, 5*time.Second)
 		if delay > 4*time.Nanosecond {
-			delay += time.Duration(rand.Int63n(int64(delay / 4)))
+			delay += time.Duration(rand.Int64N(int64(delay / 4)))
 		}
 	}
 	timer := time.NewTimer(delay)

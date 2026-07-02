@@ -4,7 +4,6 @@
 package ciscoosreceiver
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -134,7 +133,7 @@ func TestResolveCatalyst9800PathSelectionDeduplicatesAndExcludes(t *testing.T) {
 	ids := map[string]struct{}{}
 	for _, def := range selected {
 		assert.NotEqual(t, "rf.radio_data", def.ID)
-		assert.False(t, strings.Contains(def.ID, "lldp"))
+		assert.NotContains(t, def.ID, "lldp")
 		ids[def.ID] = struct{}{}
 	}
 

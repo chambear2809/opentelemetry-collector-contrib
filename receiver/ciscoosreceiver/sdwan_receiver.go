@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"net/url"
 	"sort"
@@ -172,7 +173,7 @@ func (r *sdwanMetricsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 
-	obsCtx := startMetricsOp(r.obs, ctx)
+	obsCtx := startMetricsOp(ctx, r.obs)
 	md, scrapeErr := r.scrape(scrapeCtx)
 	if scrapeErr != nil {
 		r.settings.Logger.Error("SD-WAN scrape failed", zap.Error(scrapeErr))
@@ -181,7 +182,7 @@ func (r *sdwanMetricsReceiver) collect(ctx context.Context) {
 	if consumeErr != nil {
 		r.settings.Logger.Error("SD-WAN metrics consumer failed", zap.Error(consumeErr))
 	}
-	endMetricsOp(r.obs, obsCtx, metricCount, combineSignalErrors(scrapeErr, consumeErr))
+	endMetricsOp(obsCtx, r.obs, metricCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *sdwanMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
@@ -487,7 +488,7 @@ func (r *sdwanMetricsReceiver) scrapeOptInGroups(ctx context.Context, builder *s
 	return partial
 }
 
-func (r *sdwanMetricsReceiver) recordControlPlaneObject(builder *sdwanMetricsBuilder, device, obj sdwan.Object, spec sdwanEndpointSpec) {
+func (r *sdwanMetricsReceiver) recordControlPlaneObject(builder *sdwanMetricsBuilder, device, obj sdwan.Object, _ sdwanEndpointSpec) {
 	if !newSDWANTargetMatcher(r.config.SDWAN.Targets).allowsPath(obj) {
 		return
 	}
@@ -507,7 +508,7 @@ func (r *sdwanMetricsReceiver) recordControlPlaneObject(builder *sdwanMetricsBui
 	}
 }
 
-func (r *sdwanMetricsReceiver) recordBFDObject(builder *sdwanMetricsBuilder, device, obj sdwan.Object, spec sdwanEndpointSpec) {
+func (r *sdwanMetricsReceiver) recordBFDObject(builder *sdwanMetricsBuilder, device, obj sdwan.Object, _ sdwanEndpointSpec) {
 	if !newSDWANTargetMatcher(r.config.SDWAN.Targets).allowsPath(obj) {
 		return
 	}
@@ -522,7 +523,7 @@ func (r *sdwanMetricsReceiver) recordBFDObject(builder *sdwanMetricsBuilder, dev
 	recordSDWANAbsoluteSumInt(rb, obj, "flaps", "sdwan.bfd.session.flap.count", "SD-WAN BFD session flap count.", "{flap}", attrs, "flaps", "flapCount")
 }
 
-func (r *sdwanMetricsReceiver) recordAppRouteObject(builder *sdwanMetricsBuilder, device, obj sdwan.Object, spec sdwanEndpointSpec) {
+func (r *sdwanMetricsReceiver) recordAppRouteObject(builder *sdwanMetricsBuilder, device, obj sdwan.Object, _ sdwanEndpointSpec) {
 	if !newSDWANTargetMatcher(r.config.SDWAN.Targets).allowsApplicationPath(obj) {
 		return
 	}
@@ -576,7 +577,7 @@ func (r *sdwanMetricsReceiver) recordInterfaceObject(builder *sdwanMetricsBuilde
 	recordSDWANAbsoluteSumInt(rb, obj, "tx-drops", "system.network.packet.dropped", "SD-WAN interface transmit drops.", "{packet}", withAttr(attrs, "network.io.direction", "transmit"), "tx-drops", "txDrops", "tx_drops")
 }
 
-func (r *sdwanMetricsReceiver) recordGenericObject(builder *sdwanMetricsBuilder, device, obj sdwan.Object, spec sdwanEndpointSpec) {
+func (*sdwanMetricsReceiver) recordGenericObject(builder *sdwanMetricsBuilder, device, obj sdwan.Object, spec sdwanEndpointSpec) {
 	rb := builder.deviceResource(device)
 	attrs := sdwanPathAttrs(device, obj)
 	putNonEmpty(attrs, "sdwan.collection.group", spec.group)
@@ -687,7 +688,7 @@ func (r *sdwanLogsReceiver) collect(ctx context.Context) {
 	defer cancel()
 
 	r.seen.BeginBatch()
-	obsCtx := startLogsOp(r.obs, ctx)
+	obsCtx := startLogsOp(ctx, r.obs)
 	ld, scrapeErr := r.scrape(scrapeCtx)
 	if scrapeErr != nil {
 		r.settings.Logger.Error("SD-WAN logs scrape failed", zap.Error(scrapeErr))
@@ -696,7 +697,7 @@ func (r *sdwanLogsReceiver) collect(ctx context.Context) {
 	if consumeErr != nil {
 		r.settings.Logger.Error("SD-WAN logs consumer failed", zap.Error(consumeErr))
 	}
-	endLogsOp(r.obs, obsCtx, logCount, combineSignalErrors(scrapeErr, consumeErr))
+	endLogsOp(obsCtx, r.obs, logCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *sdwanLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
@@ -1113,12 +1114,8 @@ func (idx sdwanDeviceIndex) enrich(obj sdwan.Object) (sdwan.Object, bool) {
 			continue
 		}
 		merged := make(sdwan.Object, len(device)+len(obj))
-		for field, value := range device {
-			merged[field] = value
-		}
-		for field, value := range obj {
-			merged[field] = value
-		}
+		maps.Copy(merged, device)
+		maps.Copy(merged, obj)
 		return merged, true
 	}
 	return obj, false

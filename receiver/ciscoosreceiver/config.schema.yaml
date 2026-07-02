@@ -36,9 +36,6 @@ $defs:
         type: integer
       stats:
         $ref: nexus_controller_group_config
-      stats_lookback:
-        type: string
-        format: duration
       targets:
         $ref: aci_target_filters
       tenants:
@@ -151,6 +148,8 @@ $defs:
         type: array
         items:
           type: string
+      rate_limiting:
+        $ref: /receiver/yanggrpcreceiver.rate_limiting_config
     allOf:
       - $ref: go.opentelemetry.io/collector/config/configgrpc.server_config
   catalyst_9800_path_group_config:
@@ -176,6 +175,7 @@ $defs:
     type: object
     properties:
       allow_aggregation:
+        x-optional: true
         type: boolean
       heartbeat_interval:
         type: string
@@ -191,8 +191,10 @@ $defs:
       stream_mode:
         type: string
       suppress_redundant:
+        x-optional: true
         type: boolean
       updates_only:
+        x-optional: true
         type: boolean
   catalyst_9800_target_config:
     description: Catalyst9800TargetConfig identifies one Catalyst 9800 gNMI dial-in target.
@@ -391,8 +393,6 @@ $defs:
       page_size:
         type: integer
       policy:
-        $ref: fmc_group_config
-      security_events:
         $ref: fmc_group_config
       targets:
         $ref: fmc_target_filters
@@ -630,6 +630,8 @@ $defs:
         type: array
         items:
           type: string
+      rate_limiting:
+        $ref: /receiver/yanggrpcreceiver.rate_limiting_config
     allOf:
       - $ref: go.opentelemetry.io/collector/config/configgrpc.server_config
   iosxr_path_group_config:
@@ -655,6 +657,7 @@ $defs:
     type: object
     properties:
       allow_aggregation:
+        x-optional: true
         type: boolean
       heartbeat_interval:
         type: string
@@ -670,8 +673,10 @@ $defs:
       stream_mode:
         type: string
       suppress_redundant:
+        x-optional: true
         type: boolean
       updates_only:
+        x-optional: true
         type: boolean
   iosxr_target_config:
     description: IOSXRTargetConfig identifies one IOS XR gNMI dial-in target.
@@ -820,6 +825,14 @@ $defs:
     description: ISEPxGridConfig controls Cisco ISE pxGrid REST and streaming collection.
     type: object
     properties:
+      allowed_service_hosts:
+        type: array
+        items:
+          type: string
+      allowed_service_origins:
+        type: array
+        items:
+          type: string
       auto_activate:
         type: boolean
       ca_file:
@@ -914,6 +927,8 @@ $defs:
         type: array
         items:
           $ref: meraki_device_config
+      max_retries:
+        type: integer
       organizations:
         type: array
         items:
@@ -997,13 +1012,8 @@ $defs:
         $ref: nexus_controller_group_config
       platform:
         $ref: nexus_controller_group_config
-      service_discovery:
-        type: boolean
       targets:
         $ref: nexus_dashboard_target_filters
-      telemetry_lookback:
-        type: string
-        format: duration
       user_agent:
         type: string
   nexus_dashboard_target_filters:
@@ -1109,16 +1119,10 @@ $defs:
         $ref: sdwan_group_config
       realtime_details:
         $ref: sdwan_group_config
-      realtime_lookback:
-        type: string
-        format: duration
       routing_services:
         $ref: sdwan_group_config
       security:
         $ref: sdwan_group_config
-      statistics_lookback:
-        type: string
-        format: duration
       targets:
         $ref: sdwan_target_filters
       thousandeyes:

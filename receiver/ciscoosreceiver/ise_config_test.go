@@ -185,8 +185,8 @@ func TestISEConfigValidateDataConnectViewOverrides(t *testing.T) {
 	cfg.ISE.DataConnect.Username = "dataconnect"
 	cfg.ISE.DataConnect.Password = configopaque.String("db-secret")
 	cfg.ISE.DataConnect.Views = map[string]ISEGroupConfig{
-		"UPSPOLICYSET": defaultISEGroupConfig(true, 100),
-		"bad-view":     defaultISEGroupConfig(true, 100),
+		"UPSPOLICYSET": defaultISEGroupConfig(100),
+		"bad-view":     defaultISEGroupConfig(100),
 	}
 
 	err := cfg.Validate()

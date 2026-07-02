@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -238,7 +239,7 @@ func (r *aciMetricsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 
-	obsCtx := startMetricsOp(r.obs, ctx)
+	obsCtx := startMetricsOp(ctx, r.obs)
 	md, scrapeErr := r.scrape(scrapeCtx)
 	if scrapeErr != nil {
 		r.settings.Logger.Error("ACI scrape failed", zap.Error(scrapeErr))
@@ -247,7 +248,7 @@ func (r *aciMetricsReceiver) collect(ctx context.Context) {
 	if consumeErr != nil {
 		r.settings.Logger.Error("ACI metrics consumer failed", zap.Error(consumeErr))
 	}
-	endMetricsOp(r.obs, obsCtx, metricCount, combineSignalErrors(scrapeErr, consumeErr))
+	endMetricsOp(obsCtx, r.obs, metricCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *aciMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
@@ -415,7 +416,7 @@ func (r *aciLogsReceiver) collect(ctx context.Context) {
 	defer cancel()
 
 	r.seen.BeginBatch()
-	obsCtx := startLogsOp(r.obs, ctx)
+	obsCtx := startLogsOp(ctx, r.obs)
 	ld, scrapeErr := r.scrape(scrapeCtx)
 	if scrapeErr != nil {
 		r.settings.Logger.Error("ACI log scrape failed", zap.Error(scrapeErr))
@@ -424,7 +425,7 @@ func (r *aciLogsReceiver) collect(ctx context.Context) {
 	if consumeErr != nil {
 		r.settings.Logger.Error("ACI logs consumer failed", zap.Error(consumeErr))
 	}
-	endLogsOp(r.obs, obsCtx, logCount, combineSignalErrors(scrapeErr, consumeErr))
+	endLogsOp(obsCtx, r.obs, logCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *aciLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
@@ -635,7 +636,7 @@ func (b *aciMetricsBuilder) recordObject(controllerName, controllerEndpoint stri
 	}
 }
 
-func (b *aciMetricsBuilder) recordFabricObject(rb *resourceMetricsBuilder, obj aci.Object, status string) {
+func (*aciMetricsBuilder) recordFabricObject(rb *resourceMetricsBuilder, obj aci.Object, status string) {
 	if aci.String(obj, "serial") != "" || aci.String(obj, "nodeId", "id") != "" {
 		if up, ok := upStatus(status); ok {
 			rb.recordInt("cisco.device.up", "ACI node availability reported by APIC.", "1", up, nil)
@@ -655,7 +656,7 @@ func (b *aciMetricsBuilder) recordFaultObject(rb *resourceMetricsBuilder, obj ac
 	b.addCount("aci.fault.count", attrs)
 }
 
-func (b *aciMetricsBuilder) recordStatsObject(rb *resourceMetricsBuilder, obj aci.Object) {
+func (*aciMetricsBuilder) recordStatsObject(rb *resourceMetricsBuilder, obj aci.Object) {
 	if ifName := interfaceNameFromACIDN(aci.String(obj, "dn", "id", "name")); ifName != "" {
 		attrs := interfaceAttrs(ifName, "", aci.String(obj, "descr"), aci.String(obj, "speed", "ethpmCfgSpeed"))
 		if status := aciObjectStatus(obj); status != "" {
@@ -696,7 +697,7 @@ func (b *aciMetricsBuilder) recordTenantObject(rb *resourceMetricsBuilder, obj a
 	b.addCount("aci.tenant.object.count", attrs)
 }
 
-func (b *aciMetricsBuilder) recordTopologyObject(rb *resourceMetricsBuilder, obj aci.Object) {
+func (*aciMetricsBuilder) recordTopologyObject(rb *resourceMetricsBuilder, obj aci.Object) {
 	attrs := compactAttrs(map[string]string{
 		"network.interface.name": interfaceNameFromACIDN(aci.String(obj, "dn", "id")),
 		"network.peer.name":      aci.String(obj, "sysName", "chassisIdV", "portIdV", "name"),
@@ -843,7 +844,7 @@ func recentACIQuery(cfg *Config, now time.Time, className string) url.Values {
 		lookback = defaultACIConfig().EventLookback
 	}
 	return aci.Query(map[string]string{
-		"query-target-filter": fmt.Sprintf(`gt(%s.created,"%s")`, className, now.Add(-lookback).UTC().Format(time.RFC3339)),
+		"query-target-filter": fmt.Sprintf(`gt(%s.created,%q)`, className, now.Add(-lookback).UTC().Format(time.RFC3339)),
 	})
 }
 
@@ -991,9 +992,9 @@ func epgFromACIDN(dn string) string {
 }
 
 func tokenAfterPrefix(dn, prefix string) string {
-	for _, part := range strings.Split(dn, "/") {
-		if strings.HasPrefix(part, prefix) {
-			return strings.TrimPrefix(part, prefix)
+	for part := range strings.SplitSeq(dn, "/") {
+		if value, ok := strings.CutPrefix(part, prefix); ok {
+			return value
 		}
 	}
 	return ""
@@ -1024,8 +1025,7 @@ func interfaceNameFromACIDN(value string) string {
 		}
 	}
 	parts := strings.Split(value, "/")
-	for i := len(parts) - 1; i >= 0; i-- {
-		part := parts[i]
+	for _, part := range slices.Backward(parts) {
 		if strings.HasPrefix(part, "phys-[") && strings.HasSuffix(part, "]") {
 			return strings.TrimSuffix(strings.TrimPrefix(part, "phys-["), "]")
 		}

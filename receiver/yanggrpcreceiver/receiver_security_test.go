@@ -5,7 +5,6 @@ package yanggrpcreceiver
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net"
 	"path/filepath"
@@ -57,7 +56,7 @@ func TestReceiverStreamSecurityInterceptor(t *testing.T) {
 			rcvr := createMetricsReceiver(t.Context(), createTestSettings(), cfg, consumertest.NewNop())
 			require.NoError(t, rcvr.Start(t.Context(), componenttest.NewNopHost()))
 			t.Cleanup(func() {
-				require.NoError(t, rcvr.Shutdown(context.Background()))
+				require.NoError(t, rcvr.Shutdown(context.WithoutCancel(t.Context())))
 			})
 
 			conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -74,7 +73,7 @@ func TestReceiverStreamSecurityInterceptor(t *testing.T) {
 			_, err = stream.Recv()
 
 			if tt.wantCode == codes.OK {
-				require.True(t, errors.Is(err, io.EOF), "expected an accepted stream to close normally, got %v", err)
+				require.ErrorIs(t, err, io.EOF, "expected an accepted stream to close normally, got %v", err)
 				return
 			}
 			require.Equal(t, tt.wantCode, status.Code(err))
@@ -91,7 +90,7 @@ func TestReceiverRateLimitsEachStreamMessage(t *testing.T) {
 	cfg.Security.RateLimiting.BurstSize = 1
 	rcvr := createMetricsReceiver(t.Context(), createTestSettings(), cfg, consumertest.NewNop())
 	require.NoError(t, rcvr.Start(t.Context(), componenttest.NewNopHost()))
-	t.Cleanup(func() { require.NoError(t, rcvr.Shutdown(context.Background())) })
+	t.Cleanup(func() { require.NoError(t, rcvr.Shutdown(context.WithoutCancel(t.Context()))) })
 
 	conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
@@ -127,7 +126,7 @@ func TestReceiverStartFailureCleansUpSecurityAndListener(t *testing.T) {
 
 	rcvr := createMetricsReceiver(t.Context(), createTestSettings(), cfg, consumertest.NewNop())
 	require.Error(t, rcvr.Start(t.Context(), componenttest.NewNopHost()))
-	require.NoError(t, rcvr.Shutdown(context.Background()))
+	require.NoError(t, rcvr.Shutdown(context.WithoutCancel(t.Context())))
 
 	listener, err := net.Listen("tcp", endpoint)
 	require.NoError(t, err, "failed Start must release the listener")
@@ -143,7 +142,7 @@ func TestReceiverModuleLoadFailureCleansUpSecurityAndListener(t *testing.T) {
 
 	rcvr := createMetricsReceiver(t.Context(), createTestSettings(), cfg, consumertest.NewNop())
 	require.ErrorContains(t, rcvr.Start(t.Context(), componenttest.NewNopHost()), "load YANG modules")
-	require.NoError(t, rcvr.Shutdown(context.Background()))
+	require.NoError(t, rcvr.Shutdown(context.WithoutCancel(t.Context())))
 
 	listener, err := net.Listen("tcp", endpoint)
 	require.NoError(t, err, "failed Start must release the listener")
@@ -239,7 +238,7 @@ func TestReceiverShutdownDeadlineDoesNotWaitForBlockedDownstream(t *testing.T) {
 	}
 	// Join the graceful-stop goroutine after the intentionally non-cooperative
 	// consumer is released so this test itself leaves no background work behind.
-	require.NoError(t, rcvr.Shutdown(context.Background()))
+	require.NoError(t, rcvr.Shutdown(context.WithoutCancel(t.Context())))
 }
 
 type blockingMetricsConsumer struct {

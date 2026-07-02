@@ -72,11 +72,11 @@ func TestClientTokenAndPagination(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	domain, err := client.DomainUUID(context.Background())
+	domain, err := client.DomainUUID(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, "domain-1", domain)
 
-	objects, err := client.List(context.Background(), "devices.records", "/api/fmc_config/v1/domain/domain-1/devices/devicerecords", nil, 0)
+	objects, err := client.List(t.Context(), "devices.records", "/api/fmc_config/v1/domain/domain-1/devices/devicerecords", nil, 0)
 	require.NoError(t, err)
 	require.Len(t, objects, 3)
 	assert.Equal(t, "ftd-1", String(objects[0], "name"))
@@ -102,7 +102,7 @@ func TestClientSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	domain, err := client.DomainUUID(context.Background())
+	domain, err := client.DomainUUID(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, "domain-1", domain)
 }
@@ -213,8 +213,7 @@ func TestFMCGenericDecodersPreserveLargeIntegers(t *testing.T) {
 
 	eventPayload := make([]byte, 8)
 	eventPayload = append(eventPayload, []byte(`{"EventType":"ConnectionEvent","counter":9007199254740993}`)...)
-	event, err := decodeEStreamerEvent("fmc-1", eventPayload)
-	require.NoError(t, err)
+	event := decodeEStreamerEvent("fmc-1", eventPayload)
 	number, ok = event.Body["counter"].(json.Number)
 	require.True(t, ok)
 	assert.Equal(t, "9007199254740993", number.String())
@@ -275,8 +274,7 @@ func TestNewEStreamerClientEnforcesHardMessageLimit(t *testing.T) {
 }
 
 func TestDecodeEStreamerEventDoesNotForwardMalformedRawPayload(t *testing.T) {
-	event, err := decodeEStreamerEvent("fmc-1", []byte(`{"password":"do-not-export"`))
-	require.NoError(t, err)
+	event := decodeEStreamerEvent("fmc-1", []byte(`{"password":"do-not-export"`))
 	assert.Equal(t, "decode_error", event.EventType)
 	assert.Empty(t, event.Raw)
 	assert.Equal(t, true, event.Body["decode_error"])
@@ -285,8 +283,7 @@ func TestDecodeEStreamerEventDoesNotForwardMalformedRawPayload(t *testing.T) {
 }
 
 func TestDecodeEStreamerEventDoesNotRetainSuccessfulFramingText(t *testing.T) {
-	event, err := decodeEStreamerEvent("fmc-1", []byte(`12345678password=prefix-secret {"EventType":"ConnectionEvent","id":"event-1"} password=suffix-secret`))
-	require.NoError(t, err)
+	event := decodeEStreamerEvent("fmc-1", []byte(`12345678password=prefix-secret {"EventType":"ConnectionEvent","id":"event-1"} password=suffix-secret`))
 	assert.Equal(t, "connection_event", event.EventType)
 	assert.Empty(t, event.Raw)
 	assert.Equal(t, "event-1", String(event.Body, "id"))
@@ -333,7 +330,7 @@ func TestEStreamerRunCancellationInterruptsIdleRead(t *testing.T) {
 		serverDone <- readErr
 	}()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	runDone := make(chan error, 1)
 	go func() {
 		runDone <- client.Run(ctx, func(EStreamerEvent) error { return nil })

@@ -211,11 +211,7 @@ func (c *EStreamerClient) RunFrom(ctx context.Context, initialTime time.Time, on
 				}
 			}
 		case estreamerMessageEventV3, estreamerMessageEvent:
-			event, err := decodeEStreamerEvent(c.name, payload)
-			if err != nil {
-				c.record(EStreamerStat{Controller: c.name, Outcome: "decode_error", Bytes: len(payload), Err: err})
-				return err
-			}
+			event := decodeEStreamerEvent(c.name, payload)
 			c.record(EStreamerStat{Controller: c.name, Outcome: "events", Events: 1, Bytes: len(payload)})
 			if err := onEvent(event); err != nil {
 				return err
@@ -238,7 +234,7 @@ func (c *EStreamerClient) writeRequest(writer io.Writer, initialTime time.Time) 
 	if err != nil {
 		return err
 	}
-	initial := uint32(^uint32(0))
+	initial := ^uint32(0)
 	if !initialTime.IsZero() {
 		initial = uint32(initialTime.Unix())
 	}
@@ -297,10 +293,7 @@ func decodeEStreamerBundle(controller string, payload []byte) ([]EStreamerEvent,
 		body := remaining[estreamerMessageHeaderLen:total]
 		switch header.messageType {
 		case estreamerMessageEventV3, estreamerMessageEvent:
-			event, err := decodeEStreamerEvent(controller, body)
-			if err != nil {
-				return events, err
-			}
+			event := decodeEStreamerEvent(controller, body)
 			events = append(events, event)
 		case estreamerMessageNull:
 		case estreamerMessageError:
@@ -311,7 +304,7 @@ func decodeEStreamerBundle(controller string, payload []byte) ([]EStreamerEvent,
 	return events, nil
 }
 
-func decodeEStreamerEvent(controller string, payload []byte) (EStreamerEvent, error) {
+func decodeEStreamerEvent(controller string, payload []byte) EStreamerEvent {
 	event := EStreamerEvent{Controller: controller}
 	if len(payload) >= 8 {
 		event.RecordType = binary.BigEndian.Uint32(payload[0:4])
@@ -333,7 +326,7 @@ func decodeEStreamerEvent(controller string, payload []byte) (EStreamerEvent, er
 	text := string(bytes.Trim(payload, "\x00\r\n\t "))
 	event.Raw = text
 	if text == "" {
-		return event, nil
+		return event
 	}
 	start := strings.Index(text, "{")
 	end := strings.LastIndex(text, "}")
@@ -349,7 +342,7 @@ func decodeEStreamerEvent(controller string, payload []byte) (EStreamerEvent, er
 			"payload_sha256": fmt.Sprintf("%x", fingerprint),
 		}
 		event.Raw = ""
-		return event, nil
+		return event
 	}
 	// Only the decoded JSON object is part of the event contract. Framing text
 	// surrounding that object is device-controlled and can contain secrets.
@@ -369,7 +362,7 @@ func decodeEStreamerEvent(controller string, payload []byte) (EStreamerEvent, er
 			event.Timestamp = ts
 		}
 	}
-	return event, nil
+	return event
 }
 
 func decodeEStreamerError(payload []byte) error {

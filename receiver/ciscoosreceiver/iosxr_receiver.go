@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"strings"
 	"sync"
@@ -40,9 +40,7 @@ const (
 )
 
 func nextDirectGNMIRetryDelay(consecutiveFailures int, random func(time.Duration) time.Duration) time.Duration {
-	if consecutiveFailures < 1 {
-		consecutiveFailures = 1
-	}
+	consecutiveFailures = max(consecutiveFailures, 1)
 	base := directGNMIRetryInitial
 	for failure := 1; failure < consecutiveFailures && base < directGNMIRetryMax; failure++ {
 		if base > directGNMIRetryMax/2 {
@@ -51,9 +49,7 @@ func nextDirectGNMIRetryDelay(consecutiveFailures int, random func(time.Duration
 			base *= 2
 		}
 	}
-	if base > directGNMIRetryMax {
-		base = directGNMIRetryMax
-	}
+	base = min(base, directGNMIRetryMax)
 	// Equal jitter keeps retries in [base/2, base), bounding the maximum delay
 	// while preventing synchronized reconnect storms across many targets.
 	half := base / 2
@@ -62,20 +58,18 @@ func nextDirectGNMIRetryDelay(consecutiveFailures int, random func(time.Duration
 		random = randomDirectGNMIDuration
 	}
 	jitter := random(span)
-	if jitter < 0 {
-		jitter = 0
-	}
+	jitter = max(jitter, 0)
 	if jitter >= span {
 		jitter = span - 1
 	}
 	return half + jitter
 }
 
-func randomDirectGNMIDuration(max time.Duration) time.Duration {
-	if max <= 1 {
+func randomDirectGNMIDuration(upperBound time.Duration) time.Duration {
+	if upperBound <= 1 {
 		return 0
 	}
-	return time.Duration(rand.Int63n(int64(max))) //nolint:gosec // Retry jitter does not require cryptographic randomness.
+	return time.Duration(rand.Int64N(int64(upperBound)))
 }
 
 func waitForDirectGNMIRetry(ctx context.Context, delay time.Duration) bool {
@@ -96,8 +90,8 @@ func newIOSXRMetricsReceiver(set receiver.Settings, conf *Config, next consumer.
 
 	if len(cfg.DialIn.Targets) > 0 {
 		targets := make([]IOSXRTargetConfig, 0, len(cfg.DialIn.Targets))
-		for _, target := range cfg.DialIn.Targets {
-			target = target.withDefaults(cfg)
+		for i := range cfg.DialIn.Targets {
+			target := cfg.DialIn.Targets[i].withDefaults(cfg)
 			if selector.allows(iosXRTargetIdentity(target)) {
 				targets = append(targets, target)
 			}
@@ -152,7 +146,7 @@ func newIOSXRDialOutReceiver(set receiver.Settings, cfg IOSXRConfig, selector de
 	yangCfg.Security.RateLimiting = cfg.DialOut.RateLimiting
 	yangCfg.YANG.ModulePaths = cfg.DialOut.ModulePaths
 	health := &iosXRHealth{}
-	normalizer := newIOSXRNormalizingConsumer(next, cfg, selector, iosXRTelemetryTransportDialOut, health)
+	normalizer := newIOSXRNormalizingConsumer(next, cfg, selector, health)
 	return factory.CreateMetrics(context.Background(), set, yangCfg, normalizer)
 }
 
@@ -205,13 +199,11 @@ func (r *iosXRDialInReceiver) Shutdown(ctx context.Context) error {
 func (r *iosXRDialInReceiver) run(ctx context.Context) {
 	defer close(r.done)
 	var wg sync.WaitGroup
-	for _, target := range r.targets {
-		target := target
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for i := range r.targets {
+		target := r.targets[i]
+		wg.Go(func() {
 			r.runTarget(ctx, target)
-		}()
+		})
 	}
 	wg.Wait()
 }
@@ -271,7 +263,7 @@ func (r *iosXRDialInReceiver) subscribeTarget(ctx context.Context, target IOSXRT
 }
 
 func (r *iosXRDialInReceiver) subscribeTargetAttempt(ctx context.Context, target IOSXRTargetConfig) (bool, error) {
-	conn, err := target.ClientConfig.ToClientConn(ctx, r.host.GetExtensions(), r.settings.TelemetrySettings, configgrpc.WithGrpcDialOption(grpc.WithBlock()))
+	conn, err := target.ClientConfig.ToClientConn(ctx, r.host.GetExtensions(), r.settings.TelemetrySettings, configgrpc.WithGrpcDialOption(grpc.WithBlock())) //nolint:staticcheck // Blocking dial semantics remain required by the collector gNMI connection path.
 	if err != nil {
 		return false, err
 	}
@@ -306,24 +298,24 @@ func (r *iosXRDialInReceiver) subscribeTargetAttempt(ctx context.Context, target
 	if err != nil {
 		return false, err
 	}
-	if err := stream.Send(buildIOSXRSubscribeRequest(target.Subscription, paths, encoding)); err != nil {
-		return false, err
+	if sendErr := stream.Send(buildIOSXRSubscribeRequest(target.Subscription, paths, encoding)); sendErr != nil {
+		return false, sendErr
 	}
 	r.setTargetSubscriptionActive(ctx, target, true)
 	defer r.setTargetSubscriptionActive(ctx, target, false)
 	var progressed atomic.Bool
 
 	if target.Subscription.Mode == iosXRSubscribeModePoll {
-		err := r.recvPoll(streamCtx, cancelStream, target, stream, &progressed)
-		return progressed.Load(), err
+		recvErr := r.recvPoll(streamCtx, cancelStream, target, stream, &progressed)
+		return progressed.Load(), recvErr
 	}
 	if target.Subscription.Mode == iosXRSubscribeModeOnce {
 		if closeErr := stream.CloseSend(); closeErr != nil {
 			r.settings.Logger.Debug("IOS XR gNMI once close send failed", zap.Error(closeErr))
 		}
 	}
-	err = r.recvLoop(ctx, target, stream, &progressed)
-	return progressed.Load(), err
+	recvErr := r.recvLoop(ctx, target, stream, &progressed)
+	return progressed.Load(), recvErr
 }
 
 func (r *iosXRDialInReceiver) setTargetSubscriptionActive(ctx context.Context, target IOSXRTargetConfig, active bool) {
@@ -408,7 +400,7 @@ func (r *iosXRDialInReceiver) recvLoop(ctx context.Context, target IOSXRTargetCo
 				continue
 			}
 			r.health.addTargetUpdates(target.Name, int64(len(body.Update.GetUpdate())+len(body.Update.GetDelete())))
-			md := decoder.decodeNotification(body.Update, iosXRTelemetryTransportDialIn)
+			md := decoder.decodeNotification(body.Update)
 			if md.MetricCount() == 0 {
 				progressed.Store(true)
 				continue
@@ -429,14 +421,15 @@ func (r *iosXRDialInReceiver) recvLoop(ctx context.Context, target IOSXRTargetCo
 				r.settings.Logger.Debug("IOS XR gNMI initial sync complete", zap.String("target", target.Name))
 			}
 		case *gnmi.SubscribeResponse_Error:
-			if body.Error != nil {
-				return sanitizedGNMISubscribeError(body.Error)
+			protocolErr := body.Error //nolint:staticcheck // Older gNMI targets still send the deprecated SubscribeResponse error field.
+			if protocolErr != nil {
+				return sanitizedGNMISubscribeError(protocolErr)
 			}
 		}
 	}
 }
 
-func (r *iosXRDialInReceiver) outgoingContext(ctx context.Context, target IOSXRTargetConfig) context.Context {
+func (*iosXRDialInReceiver) outgoingContext(ctx context.Context, target IOSXRTargetConfig) context.Context {
 	return metadata.AppendToOutgoingContext(ctx,
 		"username", target.Credentials.Username,
 		"password", string(target.Credentials.Password),
@@ -454,7 +447,8 @@ func (r *iosXRDialInReceiver) resolveTargetPaths(target IOSXRTargetConfig, caps 
 	}
 	out := make([]iosXRPathDefinition, 0, len(selected))
 	var unsupported []string
-	for _, def := range selected {
+	for i := range selected {
+		def := selected[i]
 		module := moduleFromYANGPath(def.Path)
 		if module == "" {
 			out = append(out, def)
@@ -512,14 +506,15 @@ func buildIOSXRSubscribeRequest(sub IOSXRSubscriptionConfig, paths []iosXRPathDe
 		AllowAggregation: sub.allowAggregation(),
 		Subscription:     make([]*gnmi.Subscription, 0, len(paths)),
 	}
-	for _, def := range paths {
+	for i := range paths {
+		def := paths[i]
 		p, err := parseGNMIPath(def.Path)
 		if err != nil {
 			continue
 		}
 		streamMode := sub.StreamMode
 		// A path's catalog DefaultStreamMode is authoritative: event-style paths
-		// (e.g. neighbor/state changes) are catalogued as on_change and must not
+		// (e.g. neighbor/state changes) are cataloged as on_change and must not
 		// be downgraded to timer sampling by the global stream_mode default.
 		if def.DefaultStreamMode != "" {
 			streamMode = def.DefaultStreamMode
@@ -530,10 +525,7 @@ func buildIOSXRSubscribeRequest(sub IOSXRSubscriptionConfig, paths []iosXRPathDe
 		if streamMode == iosXRStreamModeTargetDefined && !strings.HasPrefix(def.Path, "openconfig-") {
 			streamMode = iosXRStreamModeSample
 		}
-		sampleInterval := sub.SampleInterval
-		if def.MinSampleInterval > sampleInterval {
-			sampleInterval = def.MinSampleInterval
-		}
+		sampleInterval := max(sub.SampleInterval, def.MinSampleInterval)
 		list.Subscription = append(list.Subscription, &gnmi.Subscription{
 			Path:              p,
 			Mode:              subscriptionStreamMode(streamMode),

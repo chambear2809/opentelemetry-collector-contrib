@@ -95,7 +95,7 @@ func TestCatalyst9800GNMIDecoderWirelessAliasesAndRawMetrics(t *testing.T) {
 			"five-seconds": 22
 		}`),
 	} {
-		decoder.decodeNotification(notification, catalyst9800TelemetryTransportDialIn).ResourceMetrics().MoveAndAppendTo(md.ResourceMetrics())
+		decoder.decodeNotification(notification).ResourceMetrics().MoveAndAppendTo(md.ResourceMetrics())
 	}
 
 	assertMetricExists(t, md, "cisco.catalyst9800.yang.wireless_ap_global_oper.ap_global_oper_data.ap_join_stats.ap_join_info.is_joined")
@@ -145,7 +145,7 @@ func TestCatalyst9800GNMIDecoderWirelessAliasesAndRawMetrics(t *testing.T) {
 	assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
 	assert.Equal(t, int64(1), dp.IntValue())
 	assert.Equal(t, "AA:BB:CC:DD:EE:FF", attrValue(t, dp.Attributes(), "cisco.wlc.ap.mac"))
-	assert.Equal(t, []string{"192.0.2.21"}, stringSliceAttrValue(t, dp.Attributes(), "host.ip"))
+	assert.Equal(t, []string{"192.0.2.21"}, stringSliceAttrValue(t, dp.Attributes()))
 
 	clientBytes := mustFindIOSXRMetric(t, md, "cisco.wlc.client.network.io")
 	require.Equal(t, pmetric.MetricTypeSum, clientBytes.Type())
@@ -169,7 +169,7 @@ func TestCatalyst9800GNMIDecoderWirelessAliasesAndRawMetrics(t *testing.T) {
 
 	resourceAttrs := md.ResourceMetrics().At(0).Resource().Attributes()
 	assert.Equal(t, "wlc-9800-1", attrValue(t, resourceAttrs, "host.name"))
-	assert.Equal(t, []string{"192.0.2.20"}, stringSliceAttrValue(t, resourceAttrs, "host.ip"))
+	assert.Equal(t, []string{"192.0.2.20"}, stringSliceAttrValue(t, resourceAttrs))
 	assert.Equal(t, "ios_xe", attrValue(t, resourceAttrs, "cisco.os.name"))
 	assert.Equal(t, "catalyst_9800", attrValue(t, resourceAttrs, "cisco.platform.family"))
 	assert.Equal(t, "gnmi_dial_in", attrValue(t, resourceAttrs, "cisco.telemetry.transport"))
@@ -198,7 +198,7 @@ func TestCatalyst9800GNMIDecoderCoalescesMetricStreamsAndPreservesUint64(t *test
 				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_UintVal{UintVal: ^uint64(0)}},
 			},
 		},
-	}, catalyst9800TelemetryTransportDialIn)
+	})
 
 	const txBytes = "cisco.catalyst9800.yang.wireless_access_point_oper.access_point_oper_data.ssid_counters.tx_bytes_data"
 	assert.Equal(t, 1, metricCountNamed(md, txBytes))
@@ -235,7 +235,7 @@ func TestCatalyst9800GNMIDecoderInvalidJSONCountsDecodeErrors(t *testing.T) {
 			Path: mustParseIOSXRPath(t, "bad-json"),
 			Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`{"unterminated"`)}},
 		}},
-	}, catalyst9800TelemetryTransportDialIn)
+	})
 
 	assert.Equal(t, int64(1), health.snapshot().decodeErrors)
 	assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
@@ -257,7 +257,7 @@ func TestCatalyst9800GNMIDecoderBoundsAdversarialJSON(t *testing.T) {
 				Path: mustParseIOSXRPath(t, "wide"),
 				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: manyLeafJSON(t, 1_000)}},
 			}},
-		}, catalyst9800TelemetryTransportDialIn)
+		})
 
 		assert.Equal(t, 5, directTelemetryDataPointCount(md))
 		assert.Positive(t, health.snapshot().droppedDatapoints)
@@ -278,7 +278,7 @@ func TestCatalyst9800GNMIDecoderBoundsAdversarialJSON(t *testing.T) {
 				Path: mustParseIOSXRPath(t, "deep"),
 				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: deeplyNestedJSON(t, 32)}},
 			}},
-		}, catalyst9800TelemetryTransportDialIn)
+		})
 
 		assert.Zero(t, directTelemetryDataPointCount(md))
 		assert.Positive(t, health.snapshot().droppedDatapoints)
@@ -306,7 +306,7 @@ func TestCatalyst9800GNMIDecoderRecreationDoesNotAdvanceCounterEpoch(t *testing.
 				Path: catalyst9800SSIDCounterPath("AA:BB:CC:DD:EE:FF", "tx-bytes-data"),
 				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_UintVal{UintVal: values[i]}},
 			}},
-		}, catalyst9800TelemetryTransportDialIn)
+		})
 		require.NoError(t, tracked.ConsumeMetrics(t.Context(), md))
 	}
 

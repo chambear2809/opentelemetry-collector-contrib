@@ -52,7 +52,7 @@ func TestClientBasicAuthHeadersAndTokenCache(t *testing.T) {
 	require.NoError(t, err)
 	client.spacing = 0
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		got, err := GetCount(t.Context(), client, "devices.count", "/dna/intent/api/v1/network-device/count", nil)
 		require.NoError(t, err)
 		assert.Equal(t, int64(4), got)
@@ -257,7 +257,9 @@ func TestClientPostPagination(t *testing.T) {
 			_, _ = w.Write([]byte(`{"Token":"token-1"}`))
 		case "/dna/data/api/v1/assuranceIssues/query":
 			var body map[string]any
-			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
+				return
+			}
 			page := body["page"].(map[string]any)
 			assert.Equal(t, float64(2), page["limit"])
 			switch page["offset"] {
@@ -293,7 +295,9 @@ func TestClientPostPaginationCapsOverReturnedPage(t *testing.T) {
 		case "/dna/data/api/v1/assuranceIssues/query":
 			dataCalls.Add(1)
 			var body map[string]any
-			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
+				return
+			}
 			page := body["page"].(map[string]any)
 			assert.Equal(t, float64(2), page["limit"])
 			_, _ = w.Write([]byte(`{"response":[{"issueId":"one"},{"issueId":"two"},{"issueId":"unexpected"}]}`))
@@ -379,7 +383,7 @@ func TestClientPaginationHardResultLimitTruncatesOverReturnedPage(t *testing.T) 
 			_, _ = w.Write([]byte(`{"Token":"token-1"}`))
 		case "/dna/intent/api/v1/values":
 			dataCalls.Add(1)
-			require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"response": values}))
+			assert.NoError(t, json.NewEncoder(w).Encode(map[string]any{"response": values}))
 		default:
 			http.NotFound(w, r)
 		}

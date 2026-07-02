@@ -30,12 +30,12 @@ func String(obj Object, keys ...string) string {
 			if strings.TrimSpace(typed) != "" {
 				return typed
 			}
+		case json.Number:
+			return typed.String()
 		case fmt.Stringer:
 			if text := strings.TrimSpace(typed.String()); text != "" {
 				return text
 			}
-		case json.Number:
-			return typed.String()
 		case float64:
 			if typed == float64(int64(typed)) {
 				return strconv.FormatInt(int64(typed), 10)
@@ -190,9 +190,8 @@ func valueForKey(obj Object, key string) (any, bool) {
 	if value, ok := obj[key]; ok {
 		return value, true
 	}
-	lower := strings.ToLower(key)
 	for candidate, value := range obj {
-		if strings.ToLower(candidate) == lower {
+		if strings.EqualFold(candidate, key) {
 			return value, true
 		}
 	}

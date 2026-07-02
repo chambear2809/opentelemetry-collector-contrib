@@ -74,7 +74,7 @@ func startStalledSSHServer(t *testing.T) (string, <-chan stalledSSHAcceptResult,
 	return listener.Addr().String(), accepted, remoteClosed
 }
 
-func waitForStalledSSHAccept(t *testing.T, accepted <-chan stalledSSHAcceptResult) net.Conn {
+func waitForStalledSSHAccept(t *testing.T, accepted <-chan stalledSSHAcceptResult) {
 	t.Helper()
 
 	select {
@@ -84,10 +84,9 @@ func waitForStalledSSHAccept(t *testing.T, accepted <-chan stalledSSHAcceptResul
 		t.Cleanup(func() {
 			_ = result.conn.Close()
 		})
-		return result.conn
+		return
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for stalled SSH server to accept connection")
-		return nil
 	}
 }
 
@@ -105,7 +104,7 @@ func requirePromptRemoteClose(t *testing.T, remoteClosed <-chan error) {
 
 func TestDialSSHContextCancellationClosesStalledHandshake(t *testing.T) {
 	address, accepted, remoteClosed := startStalledSSHServer(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
 	config := &cryptossh.ClientConfig{
@@ -151,7 +150,7 @@ func TestDialSSHHandshakeTimeoutClosesStalledConnection(t *testing.T) {
 	dialDone := make(chan dialResult, 1)
 	dialStarted := time.Now()
 	go func() {
-		client, err := dialSSH(context.Background(), "tcp", address, config)
+		client, err := dialSSH(t.Context(), "tcp", address, config)
 		dialDone <- dialResult{client: client, err: err}
 	}()
 

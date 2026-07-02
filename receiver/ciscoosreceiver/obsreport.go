@@ -39,7 +39,7 @@ func newPlatformObsReport(set receiver.Settings, transport string) *receiverhelp
 
 // startMetricsOp begins an obsreport metrics operation. Safe to call when obs
 // is nil.
-func startMetricsOp(obs *receiverhelper.ObsReport, ctx context.Context) context.Context {
+func startMetricsOp(ctx context.Context, obs *receiverhelper.ObsReport) context.Context {
 	if obs == nil {
 		return ctx
 	}
@@ -47,7 +47,7 @@ func startMetricsOp(obs *receiverhelper.ObsReport, ctx context.Context) context.
 }
 
 // endMetricsOp closes the metrics operation started by startMetricsOp.
-func endMetricsOp(obs *receiverhelper.ObsReport, ctx context.Context, count int, err error) {
+func endMetricsOp(ctx context.Context, obs *receiverhelper.ObsReport, count int, err error) {
 	if obs == nil {
 		return
 	}
@@ -56,7 +56,7 @@ func endMetricsOp(obs *receiverhelper.ObsReport, ctx context.Context, count int,
 
 // startLogsOp begins an obsreport logs operation. Safe to call when obs is
 // nil.
-func startLogsOp(obs *receiverhelper.ObsReport, ctx context.Context) context.Context {
+func startLogsOp(ctx context.Context, obs *receiverhelper.ObsReport) context.Context {
 	if obs == nil {
 		return ctx
 	}
@@ -64,7 +64,7 @@ func startLogsOp(obs *receiverhelper.ObsReport, ctx context.Context) context.Con
 }
 
 // endLogsOp closes the logs operation started by startLogsOp.
-func endLogsOp(obs *receiverhelper.ObsReport, ctx context.Context, count int, err error) {
+func endLogsOp(ctx context.Context, obs *receiverhelper.ObsReport, count int, err error) {
 	if obs == nil {
 		return
 	}

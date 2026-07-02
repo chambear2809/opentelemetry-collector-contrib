@@ -237,22 +237,22 @@ func appendIOSXRHealthMetrics(md pmetric.Metrics, health *iosXRHealth, ctx iosXR
 	sm := rm.ScopeMetrics().AppendEmpty()
 	sm.Scope().SetName("github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/iosxr")
 	snap := health.snapshotForTarget(ctx.targetName)
-	appendGaugeMetric(sm, "cisco.iosxr.receiver.active_subscriptions", float64(snap.activeSubscriptions), ts, nil)
-	appendSumMetric(sm, "cisco.iosxr.receiver.updates", float64(snap.updatesReceived), ts, nil)
-	appendSumMetric(sm, "cisco.iosxr.receiver.decode_errors", float64(snap.decodeErrors), ts, nil)
-	appendSumMetric(sm, "cisco.iosxr.receiver.unsupported_paths", float64(snap.unsupportedPaths), ts, nil)
-	appendSumMetric(sm, "cisco.iosxr.receiver.reconnects", float64(snap.reconnects), ts, nil)
-	appendSumMetric(sm, "cisco.iosxr.receiver.dropped_datapoints", float64(snap.droppedDatapoints), ts, nil)
-	appendSumMetric(sm, "cisco.iosxr.receiver.compact_gpb_payloads", float64(snap.compactGPBPayloads), ts, nil)
+	appendGaugeMetric(sm, "cisco.iosxr.receiver.active_subscriptions", float64(snap.activeSubscriptions), ts)
+	appendSumMetric(sm, "cisco.iosxr.receiver.updates", float64(snap.updatesReceived), ts)
+	appendSumMetric(sm, "cisco.iosxr.receiver.decode_errors", float64(snap.decodeErrors), ts)
+	appendSumMetric(sm, "cisco.iosxr.receiver.unsupported_paths", float64(snap.unsupportedPaths), ts)
+	appendSumMetric(sm, "cisco.iosxr.receiver.reconnects", float64(snap.reconnects), ts)
+	appendSumMetric(sm, "cisco.iosxr.receiver.dropped_datapoints", float64(snap.droppedDatapoints), ts)
+	appendSumMetric(sm, "cisco.iosxr.receiver.compact_gpb_payloads", float64(snap.compactGPBPayloads), ts)
 	if !snap.lastSuccess.IsZero() {
-		appendGaugeMetric(sm, "cisco.iosxr.receiver.last_success_timestamp", float64(snap.lastSuccess.Unix()), ts, nil)
+		appendGaugeMetric(sm, "cisco.iosxr.receiver.last_success_timestamp", float64(snap.lastSuccess.Unix()), ts)
 	}
 	if ctx.targetName != "" {
-		appendGaugeMetric(sm, "cisco.iosxr.receiver.target.subscription.active", float64(boolToInt(snap.targetActive)), ts, nil)
-		appendSumMetric(sm, "cisco.iosxr.receiver.target.updates", float64(snap.targetUpdatesReceived), ts, nil)
-		appendSumMetric(sm, "cisco.iosxr.receiver.target.reconnects", float64(snap.targetReconnects), ts, nil)
+		appendGaugeMetric(sm, "cisco.iosxr.receiver.target.subscription.active", float64(boolToInt(snap.targetActive)), ts)
+		appendSumMetric(sm, "cisco.iosxr.receiver.target.updates", float64(snap.targetUpdatesReceived), ts)
+		appendSumMetric(sm, "cisco.iosxr.receiver.target.reconnects", float64(snap.targetReconnects), ts)
 		if !snap.targetLastSuccess.IsZero() {
-			appendGaugeMetric(sm, "cisco.iosxr.receiver.target.last_success_timestamp", float64(snap.targetLastSuccess.Unix()), ts, nil)
+			appendGaugeMetric(sm, "cisco.iosxr.receiver.target.last_success_timestamp", float64(snap.targetLastSuccess.Unix()), ts)
 		}
 	}
 }
@@ -277,8 +277,8 @@ func appendIOSXRInfoMetricIndexed(builder *indexedMetricBuilder, module string, 
 	builder.appendInfo(name, value, ts, attrs)
 }
 
-func appendGaugeMetric(sm pmetric.ScopeMetrics, name string, value float64, ts pcommon.Timestamp, attrs map[string]string) {
-	appendMetricNumberGauge(sm, name, doubleMetricNumber(value), ts, attrs)
+func appendGaugeMetric(sm pmetric.ScopeMetrics, name string, value float64, ts pcommon.Timestamp) {
+	appendMetricNumberGauge(sm, name, doubleMetricNumber(value), ts, nil)
 }
 
 func appendMetricNumberGauge(sm pmetric.ScopeMetrics, name string, value metricNumber, ts pcommon.Timestamp, attrs map[string]string) {
@@ -289,8 +289,8 @@ func appendMetricNumberGauge(sm pmetric.ScopeMetrics, name string, value metricN
 	applyStringAttrs(dp.Attributes(), attrs)
 }
 
-func appendSumMetric(sm pmetric.ScopeMetrics, name string, value float64, ts pcommon.Timestamp, attrs map[string]string) {
-	appendMetricNumberSum(sm, name, doubleMetricNumber(value), ts, attrs)
+func appendSumMetric(sm pmetric.ScopeMetrics, name string, value float64, ts pcommon.Timestamp) {
+	appendMetricNumberSum(sm, name, doubleMetricNumber(value), ts, nil)
 }
 
 func appendMetricNumberSum(sm pmetric.ScopeMetrics, name string, value metricNumber, ts pcommon.Timestamp, attrs map[string]string) {
@@ -495,11 +495,11 @@ type iosXRNormalizingConsumer struct {
 	health    *iosXRHealth
 }
 
-func newIOSXRNormalizingConsumer(next consumer.Metrics, config IOSXRConfig, selector deviceSelectionMatcher, transport string, health *iosXRHealth) consumer.Metrics {
-	return &iosXRNormalizingConsumer{next: next, config: config, selector: selector, transport: transport, health: health}
+func newIOSXRNormalizingConsumer(next consumer.Metrics, config IOSXRConfig, selector deviceSelectionMatcher, health *iosXRHealth) consumer.Metrics {
+	return &iosXRNormalizingConsumer{next: next, config: config, selector: selector, transport: iosXRTelemetryTransportDialOut, health: health}
 }
 
-func (c *iosXRNormalizingConsumer) Capabilities() consumer.Capabilities {
+func (*iosXRNormalizingConsumer) Capabilities() consumer.Capabilities {
 	return consumer.Capabilities{MutatesData: true}
 }
 
