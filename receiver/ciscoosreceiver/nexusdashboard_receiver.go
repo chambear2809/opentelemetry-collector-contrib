@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
@@ -219,7 +220,7 @@ func (r *nexusDashboardMetricsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 
-	obsCtx := startMetricsOp(r.obs, ctx)
+	obsCtx := startMetricsOp(ctx, r.obs)
 	md, scrapeErr := r.scrape(scrapeCtx)
 	if scrapeErr != nil {
 		r.settings.Logger.Error("Nexus Dashboard scrape failed", zap.Error(scrapeErr))
@@ -228,7 +229,7 @@ func (r *nexusDashboardMetricsReceiver) collect(ctx context.Context) {
 	if consumeErr != nil {
 		r.settings.Logger.Error("Nexus Dashboard metrics consumer failed", zap.Error(consumeErr))
 	}
-	endMetricsOp(r.obs, obsCtx, metricCount, combineSignalErrors(scrapeErr, consumeErr))
+	endMetricsOp(obsCtx, r.obs, metricCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *nexusDashboardMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
@@ -238,7 +239,9 @@ func (r *nexusDashboardMetricsReceiver) scrape(ctx context.Context) (pmetric.Met
 	selector := newDeviceSelectionMatcher(r.config.DeviceSelection)
 	partial := false
 
-	for _, endpoint := range nexusDashboardMetricEndpointInstances(r.config) {
+	endpoints := nexusDashboardMetricEndpointInstances(r.config)
+	for i := range endpoints {
+		endpoint := endpoints[i]
 		if !nexusDashboardGroupEnabled(r.config.NexusDashboard, endpoint.group) {
 			continue
 		}
@@ -375,7 +378,7 @@ func (r *nexusDashboardLogsReceiver) collect(ctx context.Context) {
 	defer cancel()
 
 	r.seen.BeginBatch()
-	obsCtx := startLogsOp(r.obs, ctx)
+	obsCtx := startLogsOp(ctx, r.obs)
 	ld, scrapeErr := r.scrape(scrapeCtx)
 	if scrapeErr != nil {
 		r.settings.Logger.Error("Nexus Dashboard log scrape failed", zap.Error(scrapeErr))
@@ -384,7 +387,7 @@ func (r *nexusDashboardLogsReceiver) collect(ctx context.Context) {
 	if consumeErr != nil {
 		r.settings.Logger.Error("Nexus Dashboard logs consumer failed", zap.Error(consumeErr))
 	}
-	endLogsOp(r.obs, obsCtx, logCount, combineSignalErrors(scrapeErr, consumeErr))
+	endLogsOp(obsCtx, r.obs, logCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *nexusDashboardLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
@@ -392,7 +395,9 @@ func (r *nexusDashboardLogsReceiver) scrape(ctx context.Context) (plog.Logs, err
 	now := time.Now()
 	var endpointErrors []error
 	selector := newDeviceSelectionMatcher(r.config.DeviceSelection)
-	for _, endpoint := range nexusDashboardLogEndpointInstances(r.config) {
+	endpoints := nexusDashboardLogEndpointInstances(r.config)
+	for i := range endpoints {
+		endpoint := endpoints[i]
 		if !nexusDashboardGroupEnabled(r.config.NexusDashboard, endpoint.group) || endpoint.skipped {
 			continue
 		}
@@ -574,7 +579,7 @@ func (b *nexusDashboardMetricsBuilder) recordObject(endpoint nexusDashboardEndpo
 	}
 }
 
-func (b *nexusDashboardMetricsBuilder) recordPlatformObject(rb *resourceMetricsBuilder, obj nexusdashboard.Object, status string) {
+func (*nexusDashboardMetricsBuilder) recordPlatformObject(rb *resourceMetricsBuilder, obj nexusdashboard.Object, status string) {
 	if code, ok := statusCode(status); ok {
 		rb.recordInt("nexus_dashboard.service.health", "Nexus Dashboard platform, node, service, license, and storage health.", "1", code, map[string]string{
 			"nd.service.name": nexusdashboard.String(obj, "serviceName", "appName", "featureName", "name"),
@@ -587,7 +592,7 @@ func (b *nexusDashboardMetricsBuilder) recordPlatformObject(rb *resourceMetricsB
 	recordNexusDashboardNumeric(rb, obj, "diskUsage", "nexus_dashboard.storage.utilization", "Storage utilization reported by Nexus Dashboard.", "1", nil, 0.01)
 }
 
-func (b *nexusDashboardMetricsBuilder) recordNDFCObject(rb *resourceMetricsBuilder, obj nexusdashboard.Object, status string) {
+func (*nexusDashboardMetricsBuilder) recordNDFCObject(rb *resourceMetricsBuilder, obj nexusdashboard.Object, status string) {
 	if looksLikeSwitch(obj) {
 		if up, ok := upStatus(status); ok {
 			rb.recordInt("cisco.device.up", "Nexus switch availability reported by Nexus Dashboard or NDFC.", "1", up, nil)
@@ -612,7 +617,7 @@ func (b *nexusDashboardMetricsBuilder) recordInsightsObject(rb *resourceMetricsB
 	recordControllerStringState(rb, "nexus_dashboard.insights.status", "Insights anomaly, advisory, flow, compliance, or recommendation status.", status, "nexus_dashboard.status", attrs)
 }
 
-func (b *nexusDashboardMetricsBuilder) recordOrchestratorObject(rb *resourceMetricsBuilder, obj nexusdashboard.Object, status string) {
+func (*nexusDashboardMetricsBuilder) recordOrchestratorObject(rb *resourceMetricsBuilder, obj nexusdashboard.Object, status string) {
 	attrs := compactAttrs(map[string]string{
 		"nexus_dashboard.ndo.site":   nexusdashboard.String(obj, "siteName", "site"),
 		"nexus_dashboard.ndo.schema": nexusdashboard.String(obj, "schemaName", "schema"),
@@ -622,7 +627,7 @@ func (b *nexusDashboardMetricsBuilder) recordOrchestratorObject(rb *resourceMetr
 	recordNexusDashboardNumeric(rb, obj, "policyDeltaCount", "nexus_dashboard.orchestrator.policy_delta.count", "NDO policy deltas.", "{delta}", attrs, 1)
 }
 
-func (b *nexusDashboardMetricsBuilder) recordDataBrokerObject(rb *resourceMetricsBuilder, obj nexusdashboard.Object, status string) {
+func (*nexusDashboardMetricsBuilder) recordDataBrokerObject(rb *resourceMetricsBuilder, obj nexusdashboard.Object, status string) {
 	attrs := compactAttrs(map[string]string{
 		"nexus_dashboard.databroker.rule":    nexusdashboard.String(obj, "ruleName", "name"),
 		"nexus_dashboard.databroker.session": nexusdashboard.String(obj, "sessionName", "sessionId"),
@@ -632,7 +637,7 @@ func (b *nexusDashboardMetricsBuilder) recordDataBrokerObject(rb *resourceMetric
 	recordNexusDashboardNumeric(rb, obj, "sessionCount", "nexus_dashboard.data_broker.session.count", "Data Broker sessions.", "{session}", attrs, 1)
 }
 
-func (b *nexusDashboardMetricsBuilder) recordPerformanceObject(rb *resourceMetricsBuilder, obj nexusdashboard.Object) {
+func (*nexusDashboardMetricsBuilder) recordPerformanceObject(rb *resourceMetricsBuilder, obj nexusdashboard.Object) {
 	if ifName := nexusdashboard.String(obj, "ifName", "interfaceName", "portName"); ifName != "" {
 		attrs := interfaceAttrs(ifName, nexusdashboard.String(obj, "macAddress"), nexusdashboard.String(obj, "description", "descr"), nexusdashboard.String(obj, "speed"))
 		if status := nexusDashboardObjectStatus(obj); status != "" {
@@ -654,9 +659,7 @@ func (b *nexusDashboardMetricsBuilder) recordSkippedEndpoint(endpoint nexusDashb
 		"nexus_dashboard.api.operation": endpoint.operation,
 		"nexus_dashboard.skip.reason":   "missing_target_filter",
 	})
-	for key, value := range endpoint.attrs {
-		attrs[key] = value
-	}
+	maps.Copy(attrs, endpoint.attrs)
 	b.controllerResource().recordInt("nexus_dashboard.service.skipped", "Nexus Dashboard service or target-specific endpoint skipped because the required app or target filter was unavailable.", "1", 1, attrs)
 }
 

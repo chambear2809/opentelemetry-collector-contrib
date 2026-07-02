@@ -4,7 +4,6 @@
 package httpclient
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -26,7 +25,7 @@ func TestEffectivePaginationResultLimit(t *testing.T) {
 func TestPaginationLimitErrorIsTypedAndExplicit(t *testing.T) {
 	err := NewPaginationLimitError("inventory", "page", 100, 42)
 	var limitErr *PaginationLimitError
-	require.True(t, errors.As(err, &limitErr))
+	require.ErrorAs(t, err, &limitErr)
 	assert.Equal(t, 42, limitErr.Results)
 	assert.ErrorContains(t, err, "partial results")
 }

@@ -5,7 +5,6 @@ package yanggrpcreceiver
 
 import (
 	"context"
-	"errors"
 	"math"
 	"testing"
 	"time"
@@ -205,7 +204,7 @@ func TestProcessTelemetryDataPropagatesStreamContext(t *testing.T) {
 	cancel()
 	err = service.processTelemetryData(canceled, &pb.MdtDialoutArgs{Data: payload})
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, context.Canceled))
+	assert.ErrorIs(t, err, context.Canceled)
 }
 
 func newLimitsTestService(t *testing.T) *grpcService {

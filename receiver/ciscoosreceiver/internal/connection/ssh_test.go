@@ -295,11 +295,9 @@ func TestCommandOutputCaptureIsRaceSafe(t *testing.T) {
 	stdout, stderr, limit := newCommandOutputCapture(1024)
 	var wg sync.WaitGroup
 	for _, output := range []*boundedCommandBuffer{stdout, stderr} {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			_, _ = output.Write([]byte(strings.Repeat("x", 2048)))
-		}()
+		})
 	}
 	wg.Wait()
 

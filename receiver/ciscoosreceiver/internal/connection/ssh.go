@@ -32,7 +32,7 @@ type Client struct {
 	network        string
 	address        string
 	config         *cryptossh.ClientConfig
-	reconnectCount int64
+	reconnectCount atomic.Int64
 	connectionMu   sync.Mutex
 	reconnectMu    sync.Mutex
 	closed         bool
@@ -211,9 +211,9 @@ func (s *Client) executeCommandInShell(ctx context.Context, command string, enab
 		cryptossh.TTY_OP_ISPEED: 14400,
 		cryptossh.TTY_OP_OSPEED: 14400,
 	}
-	if err := session.RequestPty("vt100", 80, 240, modes); err != nil {
+	if ptyErr := session.RequestPty("vt100", 80, 240, modes); ptyErr != nil {
 		session.Close()
-		return "", fmt.Errorf("failed to request SSH PTY: %w", err)
+		return "", fmt.Errorf("failed to request SSH PTY: %w", ptyErr)
 	}
 
 	stdin, err := session.StdinPipe()
@@ -323,16 +323,16 @@ func (s *Client) newSession(ctx context.Context) (*cryptossh.Session, error) {
 		zap.String("target", s.Target),
 		zap.Error(err))
 	if reconnectErr := s.reconnect(ctx, conn); reconnectErr != nil {
-		return nil, fmt.Errorf("failed to reconnect after session creation failed: %w (original error: %v)", reconnectErr, err)
+		return nil, fmt.Errorf("failed to reconnect after session creation failed: %w (original error: %w)", reconnectErr, err)
 	}
 
 	conn, closed = s.currentConnection()
 	if closed || conn == nil {
-		return nil, fmt.Errorf("failed to create SSH session after reconnect: %w (original error: %v)", net.ErrClosed, err)
+		return nil, fmt.Errorf("failed to create SSH session after reconnect: %w (original error: %w)", net.ErrClosed, err)
 	}
 	session, retryErr := s.openSession(ctx, conn)
 	if retryErr != nil {
-		return nil, fmt.Errorf("failed to create SSH session after reconnect: %w (original error: %v)", retryErr, err)
+		return nil, fmt.Errorf("failed to create SSH session after reconnect: %w (original error: %w)", retryErr, err)
 	}
 	return session, nil
 }
@@ -437,12 +437,12 @@ func (s *Client) reconnect(ctx context.Context, failedConn *cryptossh.Client) er
 		_ = stale.Close()
 	}
 
-	atomic.AddInt64(&s.reconnectCount, 1)
+	s.reconnectCount.Add(1)
 	return nil
 }
 
 func (s *Client) ReconnectCount() int64 {
-	return atomic.LoadInt64(&s.reconnectCount)
+	return s.reconnectCount.Load()
 }
 
 // DetectOSType executes "show version" to detect Cisco OS type

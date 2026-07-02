@@ -133,7 +133,9 @@ func TestClientUsernamePasswordLoginToken(t *testing.T) {
 		}
 		assert.Equal(t, "Bearer nd-token", r.Header.Get("Authorization"))
 		cookie, err := r.Cookie("AuthCookie")
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 		assert.Equal(t, "nd-token", cookie.Value)
 		_, _ = w.Write([]byte(`[{"name":"nd-cluster"}]`))
 	}))

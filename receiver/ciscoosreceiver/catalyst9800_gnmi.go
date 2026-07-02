@@ -26,7 +26,7 @@ type catalyst9800GNMIUpdateDecoder struct {
 	limits        directGNMIDecodeLimits
 }
 
-func (d *catalyst9800GNMIUpdateDecoder) decodeNotification(notification *gnmi.Notification, transport string) pmetric.Metrics {
+func (d *catalyst9800GNMIUpdateDecoder) decodeNotification(notification *gnmi.Notification) pmetric.Metrics {
 	ts := pcommon.NewTimestampFromTime(time.Now())
 	if notification.GetTimestamp() > 0 {
 		ts = pcommon.Timestamp(notification.GetTimestamp())
@@ -41,7 +41,7 @@ func (d *catalyst9800GNMIUpdateDecoder) decodeNotification(notification *gnmi.No
 		targetName:     d.target.Name,
 		endpoint:       d.target.Endpoint,
 		platformFamily: d.target.PlatformFamily,
-		transport:      transport,
+		transport:      catalyst9800TelemetryTransportDialIn,
 		yangPath:       prefixText,
 		yangModule:     module,
 	})
@@ -107,7 +107,7 @@ func (d *catalyst9800GNMIUpdateDecoder) decodeNotification(notification *gnmi.No
 		targetName:     d.target.Name,
 		endpoint:       d.target.Endpoint,
 		platformFamily: d.target.PlatformFamily,
-		transport:      transport,
+		transport:      catalyst9800TelemetryTransportDialIn,
 	}, ts)
 	return md
 }
@@ -141,12 +141,14 @@ func (d catalyst9800GNMIUpdateDecoder) decodeTypedValue(metrics *indexedMetricBu
 			appendCatalyst9800MetricNumberIndexed(metrics, module, parts, intMetricNumber(0), ts, attrs)
 		}
 	case *gnmi.TypedValue_FloatVal:
-		appendCatalyst9800MetricNumberIndexed(metrics, module, parts, doubleMetricNumber(float64(v.FloatVal)), ts, attrs)
+		floatValue := v.FloatVal //nolint:staticcheck // Deprecated scalar remains required for older gNMI producers.
+		appendCatalyst9800MetricNumberIndexed(metrics, module, parts, doubleMetricNumber(float64(floatValue)), ts, attrs)
 	case *gnmi.TypedValue_DoubleVal:
 		appendCatalyst9800MetricNumberIndexed(metrics, module, parts, doubleMetricNumber(v.DoubleVal), ts, attrs)
 	case *gnmi.TypedValue_DecimalVal:
-		if v.DecimalVal != nil {
-			appendCatalyst9800MetricNumberIndexed(metrics, module, parts, doubleMetricNumber(float64(v.DecimalVal.Digits)/pow10(v.DecimalVal.Precision)), ts, attrs)
+		decimalValue := v.DecimalVal //nolint:staticcheck // Deprecated scalar remains required for older gNMI producers.
+		if decimalValue != nil {
+			appendCatalyst9800MetricNumberIndexed(metrics, module, parts, doubleMetricNumber(float64(decimalValue.Digits)/pow10(decimalValue.Precision)), ts, attrs)
 		} else {
 			budget.addDecodeError()
 			budget.drop(false)
@@ -212,7 +214,7 @@ func (d catalyst9800GNMIUpdateDecoder) decodeTypedValue(metrics *indexedMetricBu
 	}
 }
 
-func (d catalyst9800GNMIUpdateDecoder) decodeJSONValue(metrics *indexedMetricBuilder, module string, parts []string, raw []byte, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth int) {
+func (catalyst9800GNMIUpdateDecoder) decodeJSONValue(metrics *indexedMetricBuilder, module string, parts []string, raw []byte, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth int) {
 	if len(raw) > directGNMIHardMaxPayloadBytes {
 		budget.drop(true)
 		return

@@ -71,7 +71,7 @@ func TestIOSXRGNMIDecoderScalarsJSONLeaflistsAndDeletes(t *testing.T) {
 				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_ProtoBytes{ProtoBytes: []byte{0x01, 0x02}}},
 			},
 		},
-	}, iosXRTelemetryTransportDialIn)
+	})
 
 	assertMetricExists(t, md, "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets")
 	assertMetricExists(t, md, "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.enabled")
@@ -95,7 +95,7 @@ func TestIOSXRGNMIDecoderScalarsJSONLeaflistsAndDeletes(t *testing.T) {
 
 	resourceAttrs := md.ResourceMetrics().At(0).Resource().Attributes()
 	assert.Equal(t, "core-asr9k-1", attrValue(t, resourceAttrs, "host.name"))
-	assert.Equal(t, []string{"192.0.2.10"}, stringSliceAttrValue(t, resourceAttrs, "host.ip"))
+	assert.Equal(t, []string{"192.0.2.10"}, stringSliceAttrValue(t, resourceAttrs))
 	assert.Equal(t, "ios_xr", attrValue(t, resourceAttrs, "cisco.os.name"))
 	assert.Equal(t, "gnmi_dial_in", attrValue(t, resourceAttrs, "cisco.telemetry.transport"))
 	_, hasResourceModule := resourceAttrs.Get("cisco.yang.module")
@@ -127,7 +127,7 @@ func TestIOSXRGNMIDecoderCoalescesMetricStreamsAndPreservesUint64(t *testing.T) 
 				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_UintVal{UintVal: ^uint64(0)}},
 			},
 		},
-	}, iosXRTelemetryTransportDialIn)
+	})
 
 	const inOctets = "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets"
 	assert.Equal(t, 1, metricCountNamed(md, inOctets))
@@ -166,7 +166,7 @@ func TestIOSXRGNMIDecoderInvalidJSONCountsDecodeErrors(t *testing.T) {
 			Path: mustParseIOSXRPath(t, "bad-json"),
 			Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`{"unterminated"`)}},
 		}},
-	}, iosXRTelemetryTransportDialIn)
+	})
 
 	assert.Equal(t, int64(1), health.snapshot().decodeErrors)
 	assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
@@ -188,7 +188,7 @@ func TestIOSXRGNMIDecoderBoundsAdversarialJSON(t *testing.T) {
 				Path: mustParseIOSXRPath(t, "wide"),
 				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: manyLeafJSON(t, 1_000)}},
 			}},
-		}, iosXRTelemetryTransportDialIn)
+		})
 
 		assert.Equal(t, 5, directTelemetryDataPointCount(md))
 		assert.Positive(t, health.snapshot().droppedDatapoints)
@@ -209,7 +209,7 @@ func TestIOSXRGNMIDecoderBoundsAdversarialJSON(t *testing.T) {
 				Path: mustParseIOSXRPath(t, "deep"),
 				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: deeplyNestedJSON(t, 32)}},
 			}},
-		}, iosXRTelemetryTransportDialIn)
+		})
 
 		assert.Zero(t, directTelemetryDataPointCount(md))
 		assert.Positive(t, health.snapshot().droppedDatapoints)
@@ -237,7 +237,7 @@ func TestIOSXRGNMIDecoderRecreationDoesNotAdvanceCounterEpoch(t *testing.T) {
 				Path: mustParseIOSXRPath(t, "counters/in-octets"),
 				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_UintVal{UintVal: values[i]}},
 			}},
-		}, iosXRTelemetryTransportDialIn)
+		})
 		require.NoError(t, tracked.ConsumeMetrics(t.Context(), md))
 	}
 
@@ -327,7 +327,7 @@ func directTelemetryDataPointCount(md pmetric.Metrics) int {
 func manyLeafJSON(t *testing.T, count int) []byte {
 	t.Helper()
 	value := make(map[string]any, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		value[fmt.Sprintf("field-%06d", i)] = i
 	}
 	raw, err := json.Marshal(value)
@@ -338,7 +338,7 @@ func manyLeafJSON(t *testing.T, count int) []byte {
 func deeplyNestedJSON(t *testing.T, depth int) []byte {
 	t.Helper()
 	var value any = 1
-	for i := 0; i < depth; i++ {
+	for range depth {
 		value = map[string]any{"level": value}
 	}
 	raw, err := json.Marshal(value)
@@ -353,10 +353,10 @@ func attrValue(t *testing.T, attrs pcommon.Map, key string) string {
 	return value.AsString()
 }
 
-func stringSliceAttrValue(t *testing.T, attrs pcommon.Map, key string) []string {
+func stringSliceAttrValue(t *testing.T, attrs pcommon.Map) []string {
 	t.Helper()
-	value, ok := attrs.Get(key)
-	require.True(t, ok, "missing attribute %s", key)
+	value, ok := attrs.Get("host.ip")
+	require.True(t, ok, "missing attribute host.ip")
 	require.Equal(t, pcommon.ValueTypeSlice, value.Type())
 	values := value.Slice()
 	result := make([]string, 0, values.Len())

@@ -12,8 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 	go_ora "github.com/sijms/go-ora/v2"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
 
 const (
@@ -159,12 +160,13 @@ func (c *DataConnectClient) QueryView(ctx context.Context, view DataConnectView)
 		query string
 		args  []any
 	)
-	if timeColumn != "" && c.lookback > 0 {
+	switch {
+	case timeColumn != "" && c.lookback > 0:
 		query = fmt.Sprintf("SELECT * FROM %s WHERE %s >= :1 ORDER BY %s DESC FETCH FIRST %d ROWS ONLY", viewName, timeColumn, timeColumn, limit)
 		args = append(args, time.Now().UTC().Add(-c.lookback))
-	} else if timeColumn != "" {
+	case timeColumn != "":
 		query = fmt.Sprintf("SELECT * FROM %s ORDER BY %s DESC FETCH FIRST %d ROWS ONLY", viewName, timeColumn, limit)
-	} else {
+	default:
 		query = fmt.Sprintf("SELECT * FROM %s FETCH FIRST %d ROWS ONLY", viewName, limit)
 	}
 	start := time.Now()

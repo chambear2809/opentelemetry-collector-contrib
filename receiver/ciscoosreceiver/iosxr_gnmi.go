@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"sort"
 	"strconv"
@@ -26,7 +27,7 @@ type iosXRGNMIUpdateDecoder struct {
 	limits        directGNMIDecodeLimits
 }
 
-func (d *iosXRGNMIUpdateDecoder) decodeNotification(notification *gnmi.Notification, transport string) pmetric.Metrics {
+func (d *iosXRGNMIUpdateDecoder) decodeNotification(notification *gnmi.Notification) pmetric.Metrics {
 	ts := pcommon.NewTimestampFromTime(time.Now())
 	if notification.GetTimestamp() > 0 {
 		ts = pcommon.Timestamp(notification.GetTimestamp())
@@ -41,7 +42,7 @@ func (d *iosXRGNMIUpdateDecoder) decodeNotification(notification *gnmi.Notificat
 		targetName:     d.target.Name,
 		endpoint:       d.target.Endpoint,
 		platformFamily: d.target.PlatformFamily,
-		transport:      transport,
+		transport:      iosXRTelemetryTransportDialIn,
 		yangPath:       prefixText,
 		yangModule:     module,
 	})
@@ -105,7 +106,7 @@ func (d *iosXRGNMIUpdateDecoder) decodeNotification(notification *gnmi.Notificat
 		targetName:     d.target.Name,
 		endpoint:       d.target.Endpoint,
 		platformFamily: d.target.PlatformFamily,
-		transport:      transport,
+		transport:      iosXRTelemetryTransportDialIn,
 	}, ts)
 	return md
 }
@@ -139,12 +140,14 @@ func (d iosXRGNMIUpdateDecoder) decodeTypedValue(metrics *indexedMetricBuilder, 
 			appendIOSXRMetricNumberIndexed(metrics, module, parts, intMetricNumber(0), ts, attrs)
 		}
 	case *gnmi.TypedValue_FloatVal:
-		appendIOSXRMetricNumberIndexed(metrics, module, parts, doubleMetricNumber(float64(v.FloatVal)), ts, attrs)
+		floatValue := v.FloatVal //nolint:staticcheck // Deprecated scalar remains required for older gNMI producers.
+		appendIOSXRMetricNumberIndexed(metrics, module, parts, doubleMetricNumber(float64(floatValue)), ts, attrs)
 	case *gnmi.TypedValue_DoubleVal:
 		appendIOSXRMetricNumberIndexed(metrics, module, parts, doubleMetricNumber(v.DoubleVal), ts, attrs)
 	case *gnmi.TypedValue_DecimalVal:
-		if v.DecimalVal != nil {
-			appendIOSXRMetricNumberIndexed(metrics, module, parts, doubleMetricNumber(float64(v.DecimalVal.Digits)/pow10(v.DecimalVal.Precision)), ts, attrs)
+		decimalValue := v.DecimalVal //nolint:staticcheck // Deprecated scalar remains required for older gNMI producers.
+		if decimalValue != nil {
+			appendIOSXRMetricNumberIndexed(metrics, module, parts, doubleMetricNumber(float64(decimalValue.Digits)/pow10(decimalValue.Precision)), ts, attrs)
 		} else {
 			budget.addDecodeError()
 			budget.drop(false)
@@ -211,7 +214,7 @@ func (d iosXRGNMIUpdateDecoder) decodeTypedValue(metrics *indexedMetricBuilder, 
 	}
 }
 
-func (d iosXRGNMIUpdateDecoder) decodeJSONValue(metrics *indexedMetricBuilder, module string, parts []string, raw []byte, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth int) {
+func (iosXRGNMIUpdateDecoder) decodeJSONValue(metrics *indexedMetricBuilder, module string, parts []string, raw []byte, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth int) {
 	if len(raw) > directGNMIHardMaxPayloadBytes {
 		budget.drop(true)
 		return
@@ -370,7 +373,8 @@ func scalarTypedValueString(value *gnmi.TypedValue) string {
 	case *gnmi.TypedValue_BoolVal:
 		return fmt.Sprintf("%t", v.BoolVal)
 	case *gnmi.TypedValue_FloatVal:
-		return fmt.Sprintf("%g", v.FloatVal)
+		floatValue := v.FloatVal //nolint:staticcheck // Deprecated scalar remains required for older gNMI producers.
+		return fmt.Sprintf("%g", floatValue)
 	case *gnmi.TypedValue_DoubleVal:
 		return fmt.Sprintf("%g", v.DoubleVal)
 	default:
@@ -387,9 +391,7 @@ func pow10(precision uint32) float64 {
 
 func cloneAttrs(attrs map[string]string) map[string]string {
 	out := make(map[string]string, len(attrs)+4)
-	for key, value := range attrs {
-		out[key] = value
-	}
+	maps.Copy(out, attrs)
 	return out
 }
 
@@ -451,7 +453,8 @@ func pathPartsAndAttrs(prefix, update *gnmi.Path, budget *directGNMIDecodeBudget
 				}
 			}
 		}
-		for _, elem := range p.GetElement() {
+		legacyElements := p.GetElement() //nolint:staticcheck // Legacy Path.Element support is required for older gNMI producers.
+		for _, elem := range legacyElements {
 			if !budget.visitField(len(parts) + 1) {
 				return false
 			}
@@ -505,7 +508,8 @@ func gnmiPathToString(p *gnmi.Path) string {
 	}
 	parts := make([]string, 0, len(p.GetElem()))
 	for _, elem := range p.GetElem() {
-		name := elem.GetName()
+		var name strings.Builder
+		name.WriteString(elem.GetName())
 		if len(elem.GetKey()) > 0 {
 			keys := make([]string, 0, len(elem.GetKey()))
 			for key := range elem.GetKey() {
@@ -513,13 +517,18 @@ func gnmiPathToString(p *gnmi.Path) string {
 			}
 			sort.Strings(keys)
 			for _, key := range keys {
-				name += "[" + key + "=" + elem.GetKey()[key] + "]"
+				name.WriteByte('[')
+				name.WriteString(key)
+				name.WriteByte('=')
+				name.WriteString(elem.GetKey()[key])
+				name.WriteByte(']')
 			}
 		}
-		parts = append(parts, name)
+		parts = append(parts, name.String())
 	}
 	if len(parts) == 0 {
-		parts = append(parts, p.GetElement()...)
+		legacyElements := p.GetElement() //nolint:staticcheck // Legacy Path.Element support is required for older gNMI producers.
+		parts = append(parts, legacyElements...)
 	}
 	out := strings.Join(parts, "/")
 	if p.GetOrigin() != "" {

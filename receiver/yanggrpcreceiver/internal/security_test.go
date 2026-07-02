@@ -124,12 +124,12 @@ func TestSecurityManager_StreamInterceptorAuthorizesPeer(t *testing.T) {
 		{
 			name:           "peer unavailable with allowlist configured",
 			allowedClients: []string{"192.0.2.10"},
-			ctx:            context.Background(),
+			ctx:            t.Context(),
 			wantCode:       codes.Unauthenticated,
 		},
 		{
 			name:        "peer unavailable with security disabled",
-			ctx:         context.Background(),
+			ctx:         t.Context(),
 			wantCode:    codes.OK,
 			wantHandled: true,
 		},

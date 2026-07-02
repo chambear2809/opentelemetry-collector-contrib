@@ -201,8 +201,8 @@ func (cfg *Config) validateCatalyst9800() error {
 		err = multierr.Append(err, errors.New("catalyst_9800 requires at least one dial_in target or dial_out.enabled: true"))
 	}
 	names := map[string]struct{}{}
-	for i, target := range wlc.DialIn.Targets {
-		target = target.withDefaults(wlc)
+	for i := range wlc.DialIn.Targets {
+		target := wlc.DialIn.Targets[i].withDefaults(wlc)
 		prefix := fmt.Sprintf("catalyst_9800.dial_in.targets[%d]", i)
 		if strings.TrimSpace(target.Name) == "" {
 			err = multierr.Append(err, fmt.Errorf("%s.name cannot be empty", prefix))
@@ -218,7 +218,7 @@ func (cfg *Config) validateCatalyst9800() error {
 		} else if _, _, splitErr := net.SplitHostPort(target.Endpoint); splitErr != nil {
 			err = multierr.Append(err, fmt.Errorf("%s.endpoint must be host:port", prefix))
 		}
-		if grpcErr := target.ClientConfig.Validate(); grpcErr != nil {
+		if grpcErr := target.Validate(); grpcErr != nil {
 			err = multierr.Append(err, fmt.Errorf("%s: %w", prefix, grpcErr))
 		}
 		if target.TLS.Insecure {
@@ -265,7 +265,7 @@ func (cfg Catalyst9800Config) withDefaults() Catalyst9800Config {
 	if cfg.MaxDatapointsPerBatch == 0 {
 		cfg.MaxDatapointsPerBatch = defaults.MaxDatapointsPerBatch
 	}
-	if cfg.DialOut.ServerConfig.NetAddr.Endpoint == "" {
+	if cfg.DialOut.NetAddr.Endpoint == "" {
 		cfg.DialOut.ServerConfig = defaults.DialOut.ServerConfig
 	}
 	for i := range cfg.DialIn.Targets {

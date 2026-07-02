@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
@@ -357,7 +358,7 @@ func (r *iseMetricsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 
-	obsCtx := startMetricsOp(r.obs, ctx)
+	obsCtx := startMetricsOp(ctx, r.obs)
 	md, scrapeErr := r.scrape(scrapeCtx)
 	if scrapeErr != nil {
 		r.settings.Logger.Error("ISE scrape failed", zap.Error(scrapeErr))
@@ -366,7 +367,7 @@ func (r *iseMetricsReceiver) collect(ctx context.Context) {
 	if consumeErr != nil {
 		r.settings.Logger.Error("ISE metrics consumer failed", zap.Error(consumeErr))
 	}
-	endMetricsOp(r.obs, obsCtx, metricCount, combineSignalErrors(scrapeErr, consumeErr))
+	endMetricsOp(obsCtx, r.obs, metricCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *iseMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
@@ -681,18 +682,14 @@ func (r *iseLogsReceiver) Start(_ context.Context, _ component.Host) error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	r.cancel = cancel
-	r.workers.Add(1)
-	go func() {
-		defer r.workers.Done()
+	r.workers.Go(func() {
 		r.run(ctx)
-	}()
+	})
 	if r.pxGrid != nil && r.iseConfig.PxGrid.Streaming {
 		for _, subscription := range isePxGridSubscriptions(r.iseConfig.PxGrid.Subscriptions) {
-			r.workers.Add(1)
-			go func() {
-				defer r.workers.Done()
+			r.workers.Go(func() {
 				r.runPxGridSubscription(ctx, subscription)
-			}()
+			})
 		}
 	}
 	go func() {
@@ -773,7 +770,7 @@ func (r *iseLogsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 	r.seen.BeginBatch()
-	obsCtx := startLogsOp(r.obs, ctx)
+	obsCtx := startLogsOp(ctx, r.obs)
 	ld, scrapeErr := r.scrape(scrapeCtx)
 	if scrapeErr != nil {
 		r.settings.Logger.Error("ISE log scrape failed", zap.Error(scrapeErr))
@@ -782,7 +779,7 @@ func (r *iseLogsReceiver) collect(ctx context.Context) {
 	if consumeErr != nil {
 		r.settings.Logger.Error("ISE logs consumer failed", zap.Error(consumeErr))
 	}
-	endLogsOp(r.obs, obsCtx, logCount, combineSignalErrors(scrapeErr, consumeErr))
+	endLogsOp(obsCtx, r.obs, logCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *iseLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
@@ -941,9 +938,7 @@ func (r *iseLogsReceiver) consumePxGridMessage(ctx context.Context, message ise.
 	if len(message.Body) > 0 {
 		var body ise.Object
 		if err := httpclient.DecodeJSON(message.Body, &body); err == nil {
-			for key, value := range body {
-				obj[key] = value
-			}
+			maps.Copy(obj, body)
 		} else {
 			fingerprint := sha256.Sum256(message.Body)
 			obj["body_decode_error"] = true
@@ -1088,17 +1083,17 @@ func (b *iseMetricsBuilder) recordObject(spec iseEndpointSpec, obj ise.Object) {
 	switch spec.group {
 	case "deployment":
 		if spec.objectType == "deployment" || strings.Contains(spec.objectType, "node") {
-			b.addCount("ise.deployment.node.count", withAttr(attrs, "ise.status", status), 1)
+			b.addCount("ise.deployment.node.count", withAttr(attrs, "ise.status", status))
 			recordISEStatus(rb, "ise.deployment.node.status", "Cisco ISE deployment node or persona status.", status, withAttr(attrs, "ise.status", status))
 		}
 	case "network_devices":
 		if spec.objectType == "network_device" {
-			b.addCount("ise.network_device.count", withAttr(attrs, "ise.status", status), 1)
+			b.addCount("ise.network_device.count", withAttr(attrs, "ise.status", status))
 			recordISEStatus(rb, "ise.network_device.status", "Cisco ISE network access device status.", status, withAttr(attrs, "ise.status", status))
 		}
 	case "endpoints":
 		if spec.objectType == "endpoint" || spec.objectType == "rejected_endpoint" {
-			b.addCount("ise.endpoint.count", withAttr(attrs, "ise.status", status), 1)
+			b.addCount("ise.endpoint.count", withAttr(attrs, "ise.status", status))
 			recordISEStatus(rb, "ise.endpoint.status", "Cisco ISE endpoint status.", status, withAttr(attrs, "ise.status", status))
 		}
 	case "sessions":
@@ -1106,39 +1101,39 @@ func (b *iseMetricsBuilder) recordObject(spec iseEndpointSpec, obj ise.Object) {
 	case "auth_failures":
 		b.recordAuthFailureObject(rb, obj, attrs, evidenceAttrs)
 	case "accounting":
-		b.addCount("ise.accounting.session.count", attrs, 1)
+		b.addCount("ise.accounting.session.count", attrs)
 	case "policy":
-		b.addCount("ise.policy.object.count", attrs, 1)
+		b.addCount("ise.policy.object.count", attrs)
 		recordISEStatus(rb, "ise.policy.status", "Cisco ISE policy object status.", status, withAttr(attrs, "ise.status", status))
 	case "posture":
-		b.addCount("ise.endpoint.posture.count", withAttr(attrs, "ise.posture.status", firstNonEmpty(status, ise.String(obj, "posture_status", "postureStatus"))), 1)
+		b.addCount("ise.endpoint.posture.count", withAttr(attrs, "ise.posture.status", firstNonEmpty(status, ise.String(obj, "posture_status", "postureStatus"))))
 	case "profiler":
-		b.addCount("ise.endpoint.profile.count", attrs, 1)
+		b.addCount("ise.endpoint.profile.count", attrs)
 		recordISEStatus(rb, "ise.profiler.policy.status", "Cisco ISE profiler policy status.", status, withAttr(attrs, "ise.status", status))
 	case "trustsec":
-		b.addCount("ise.trustsec.resource.count", attrs, 1)
+		b.addCount("ise.trustsec.resource.count", attrs)
 		recordISEStatus(rb, "ise.trustsec.resource.status", "Cisco ISE TrustSec resource status.", status, withAttr(attrs, "ise.status", status))
 	case "alarms":
-		b.addCount("ise.alarm.count", withAttr(attrs, "ise.severity", firstNonEmpty(ise.String(obj, "severity", "Severity"), status)), 1)
+		b.addCount("ise.alarm.count", withAttr(attrs, "ise.severity", firstNonEmpty(ise.String(obj, "severity", "Severity"), status)))
 	case "certificates":
-		b.addCount("ise.certificate.count", attrs, 1)
+		b.addCount("ise.certificate.count", attrs)
 		if expiry, ok := ise.Time(obj, "expirationDate", "expiration_date", "validTo", "notAfter"); ok {
 			rb.recordInt("ise.certificate.expiration", "Cisco ISE certificate expiration time.", "s", expiry.Unix(), attrs)
 		}
 	case "licensing":
-		b.addCount("ise.license.count", withAttr(attrs, "ise.status", status), 1)
+		b.addCount("ise.license.count", withAttr(attrs, "ise.status", status))
 		recordISEStatus(rb, "ise.license.status", "Cisco ISE license status.", status, withAttr(attrs, "ise.status", status))
 	case "webhooks":
 		if spec.objectType == "webhook_delivery" {
-			b.addCount("ise.webhook.delivery.count", withAttr(attrs, "ise.status", status), 1)
+			b.addCount("ise.webhook.delivery.count", withAttr(attrs, "ise.status", status))
 		}
 	case "pxgrid":
-		b.addCount("ise.pxgrid.message.count", attrs, 1)
+		b.addCount("ise.pxgrid.message.count", attrs)
 		if strings.Contains(spec.objectType, "service") || strings.Contains(spec.operation, "service") {
 			rb.recordInt("ise.pxgrid.service.status", "Cisco ISE pxGrid service lookup status.", "1", 1, evidenceAttrs)
 		}
 	case "data_connect":
-		b.addCount("ise.dataconnect.row.count", attrs, 1)
+		b.addCount("ise.dataconnect.row.count", attrs)
 	}
 }
 
@@ -1147,7 +1142,7 @@ func (b *iseMetricsBuilder) recordSessionObject(rb *resourceMetricsBuilder, obj 
 		rb.recordDouble("ise.session.active.count", "Cisco ISE active session count.", "{session}", count, evidenceAttrs)
 		return
 	}
-	b.addCount("ise.session.count", withAttr(attrs, "ise.posture.status", ise.String(obj, "posture_status", "postureStatus")), 1)
+	b.addCount("ise.session.count", withAttr(attrs, "ise.posture.status", ise.String(obj, "posture_status", "postureStatus")))
 	posture := ise.String(obj, "posture_status", "postureStatus")
 	recordISEStatus(rb, "ise.endpoint.posture.status", "Cisco ISE endpoint posture status.", posture, withAttr(evidenceAttrs, "ise.posture.status", posture))
 }
@@ -1161,10 +1156,10 @@ func recordISEStatus(rb *resourceMetricsBuilder, name, description, value string
 func (b *iseMetricsBuilder) recordAuthFailureObject(rb *resourceMetricsBuilder, obj ise.Object, attrs, evidenceAttrs map[string]string) {
 	protocol := strings.ToLower(firstNonEmpty(ise.String(obj, "authentication_protocol", "authenticationProtocol", "protocol"), "radius"))
 	if strings.Contains(protocol, "tacacs") {
-		b.addCount("ise.tacacs.failure.count", attrs, 1)
+		b.addCount("ise.tacacs.failure.count", attrs)
 		return
 	}
-	b.addCount("ise.radius.failure.count", attrs, 1)
+	b.addCount("ise.radius.failure.count", attrs)
 	if reason := ise.String(obj, "failure_reason", "failureReason", "cause"); reason != "" {
 		rb.recordInt("ise.auth.failure.reason.info", "Cisco ISE authentication failure reason evidence.", "1", 1, withAttr(evidenceAttrs, "ise.failure.reason", reason))
 	}
@@ -1199,8 +1194,8 @@ func (b *iseMetricsBuilder) recordServiceSkipped(group, operation, reason string
 	})
 }
 
-func (b *iseMetricsBuilder) addCount(name string, attrs map[string]string, increment int64) {
-	b.counts = append(b.counts, iseCount{name: name, value: increment, attrs: attrs})
+func (b *iseMetricsBuilder) addCount(name string, attrs map[string]string) {
+	b.counts = append(b.counts, iseCount{name: name, value: 1, attrs: attrs})
 }
 
 func (b *iseMetricsBuilder) flushCounts() {

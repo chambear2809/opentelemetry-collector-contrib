@@ -12,7 +12,8 @@ import (
 )
 
 func TestSanitizedGNMISubscribeErrorDoesNotExposeDeviceMessage(t *testing.T) {
-	err := sanitizedGNMISubscribeError(&gnmi.Error{Code: 7, Message: "device-controlled secret"})
+	protocolErr := &gnmi.Error{Code: 7, Message: "device-controlled secret"} //nolint:staticcheck // Exercise compatibility with deprecated gNMI errors.
+	err := sanitizedGNMISubscribeError(protocolErr)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "code=7")
 	assert.ErrorContains(t, err, "message_length=24")

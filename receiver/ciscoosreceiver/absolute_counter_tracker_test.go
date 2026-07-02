@@ -4,7 +4,6 @@
 package ciscoosreceiver
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -18,7 +17,7 @@ import (
 func TestAbsoluteCounterTrackingConsumerDeclaresMutation(t *testing.T) {
 	consumer := newAbsoluteCounterTrackingConsumer(consumertest.NewNop())
 	assert.True(t, consumer.Capabilities().MutatesData)
-	require.NoError(t, consumer.ConsumeMetrics(context.Background(), cumulativeTestMetric(time.Unix(100, 0), 1)))
+	require.NoError(t, consumer.ConsumeMetrics(t.Context(), cumulativeTestMetric(time.Unix(100, 0), 1)))
 }
 
 func TestAbsoluteCounterTrackerDetectsReset(t *testing.T) {

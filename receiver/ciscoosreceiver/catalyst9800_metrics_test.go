@@ -16,7 +16,7 @@ import (
 )
 
 func TestCatalyst9800NormalizingConsumerDeclaresMutation(t *testing.T) {
-	normalizer := newCatalyst9800NormalizingConsumer(consumertest.NewNop(), defaultCatalyst9800Config(), deviceSelectionMatcher{}, catalyst9800TelemetryTransportDialOut, nil)
+	normalizer := newCatalyst9800NormalizingConsumer(consumertest.NewNop(), defaultCatalyst9800Config(), deviceSelectionMatcher{}, nil)
 	assert.True(t, normalizer.Capabilities().MutatesData)
 }
 
@@ -26,7 +26,6 @@ func TestCatalyst9800NormalizingConsumerCoalescesStreamsAndPreservesIntDatapoint
 		sink,
 		defaultCatalyst9800Config(),
 		newDeviceSelectionMatcher(DeviceSelectionConfig{}),
-		catalyst9800TelemetryTransportDialOut,
 		&catalyst9800Health{},
 	)
 

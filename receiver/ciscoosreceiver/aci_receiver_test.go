@@ -106,8 +106,8 @@ func TestACILogsApplySharedDeviceSelection(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, 1, ld.LogRecordCount())
-	assert.True(t, hasLogResourceAttribute(ld, "host.id", "101"))
-	assert.False(t, hasLogResourceAttribute(ld, "host.id", "909"))
+	assert.True(t, hasLogResourceAttribute(ld, "101"))
+	assert.False(t, hasLogResourceAttribute(ld, "909"))
 }
 
 func TestACILogsEmitEvidenceAndDeduplicate(t *testing.T) {
@@ -273,7 +273,9 @@ func newACIFixtureServer(t *testing.T, routes map[string]string) *httptest.Serve
 			return
 		}
 		cookie, err := r.Cookie("APIC-cookie")
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 		assert.Equal(t, "apic-token", cookie.Value)
 		if body, ok := routes[r.URL.Path]; ok {
 			_, _ = w.Write([]byte(body))

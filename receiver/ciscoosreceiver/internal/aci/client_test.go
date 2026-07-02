@@ -40,7 +40,9 @@ func TestClientLoginCookieAndClassDecode(t *testing.T) {
 		assert.Equal(t, "1", r.URL.Query().Get("page-size"))
 		assert.Equal(t, "0", r.URL.Query().Get("page"))
 		cookie, err := r.Cookie("APIC-cookie")
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 		assert.Equal(t, "apic-token", cookie.Value)
 		_, _ = w.Write([]byte(`{"totalCount":"1","imdata":[{"fabricNode":{"attributes":{"id":"101","serial":"ABC123","name":"leaf101"}}}]}`))
 	}))

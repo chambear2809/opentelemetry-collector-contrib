@@ -14,7 +14,7 @@ import (
 )
 
 func TestIOSXRNormalizingConsumerDeclaresMutation(t *testing.T) {
-	normalizer := newIOSXRNormalizingConsumer(consumertest.NewNop(), defaultIOSXRConfig(), deviceSelectionMatcher{}, iosXRTelemetryTransportDialOut, nil)
+	normalizer := newIOSXRNormalizingConsumer(consumertest.NewNop(), defaultIOSXRConfig(), deviceSelectionMatcher{}, nil)
 	assert.True(t, normalizer.Capabilities().MutatesData)
 }
 
@@ -39,11 +39,10 @@ func TestIOSXRNormalizingConsumerRenamesDialOutMetricsAndAttributes(t *testing.T
 		sink,
 		defaultIOSXRConfig(),
 		newDeviceSelectionMatcher(DeviceSelectionConfig{}),
-		iosXRTelemetryTransportDialOut,
 		health,
 	)
 
-	raw := rawIOSXRDialOutMetrics("cisco.interface.statistics.rx-pkts", 7, "xr-1")
+	raw := rawIOSXRDialOutMetrics("cisco.interface.statistics.rx-pkts", 7)
 	raw.ResourceMetrics().At(0).Resource().Attributes().PutStr("host.ip", "192.0.2.30")
 	raw.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0).Gauge().DataPoints().At(0).Attributes().PutStr("interface", "HundredGigE0/0/0/0")
 	raw.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0).Gauge().DataPoints().At(0).Attributes().PutStr("vrf", "default")
@@ -60,7 +59,7 @@ func TestIOSXRNormalizingConsumerRenamesDialOutMetricsAndAttributes(t *testing.T
 	resourceAttrs := md.ResourceMetrics().At(0).Resource().Attributes()
 	assert.Equal(t, "xr-1", attrValue(t, resourceAttrs, "host.name"))
 	assert.Equal(t, "xr-1", attrValue(t, resourceAttrs, "host.id"))
-	assert.Equal(t, []string{"192.0.2.30"}, stringSliceAttrValue(t, resourceAttrs, "host.ip"))
+	assert.Equal(t, []string{"192.0.2.30"}, stringSliceAttrValue(t, resourceAttrs))
 	assert.Equal(t, "network", attrValue(t, resourceAttrs, "hw.type"))
 	assert.Equal(t, "ios_xr", attrValue(t, resourceAttrs, "cisco.os.name"))
 	assert.Equal(t, "ios_xr", attrValue(t, resourceAttrs, "cisco.platform.family"))
@@ -85,7 +84,6 @@ func TestIOSXRNormalizingConsumerCoalescesStreamsAndPreservesIntDatapoints(t *te
 		sink,
 		defaultIOSXRConfig(),
 		newDeviceSelectionMatcher(DeviceSelectionConfig{}),
-		iosXRTelemetryTransportDialOut,
 		&iosXRHealth{},
 	)
 
@@ -131,9 +129,9 @@ func TestIOSXRNormalizingConsumerAppliesDeviceSelection(t *testing.T) {
 	selector := newDeviceSelectionMatcher(DeviceSelectionConfig{
 		Include: DeviceSelectionMatchConfig{HostNames: []string{"xr-2"}},
 	})
-	normalizer := newIOSXRNormalizingConsumer(sink, defaultIOSXRConfig(), selector, iosXRTelemetryTransportDialOut, &iosXRHealth{})
+	normalizer := newIOSXRNormalizingConsumer(sink, defaultIOSXRConfig(), selector, &iosXRHealth{})
 
-	err := normalizer.ConsumeMetrics(t.Context(), rawIOSXRDialOutMetrics("cisco.interface.statistics.rx-pkts", 7, "xr-1"))
+	err := normalizer.ConsumeMetrics(t.Context(), rawIOSXRDialOutMetrics("cisco.interface.statistics.rx-pkts", 7))
 	require.NoError(t, err)
 	assert.Empty(t, sink.AllMetrics())
 }
@@ -143,9 +141,9 @@ func TestIOSXRNormalizingConsumerAllowsRootMetricFilteringAfterRename(t *testing
 	filter := newMetricFilteringConsumer(sink, &Config{Metrics: map[string]MetricConfig{
 		"cisco.iosxr.yang.cisco_ios_xr_infra_statsd_oper.interface.statistics.rx_pkts": {Enabled: false},
 	}})
-	normalizer := newIOSXRNormalizingConsumer(filter, defaultIOSXRConfig(), newDeviceSelectionMatcher(DeviceSelectionConfig{}), iosXRTelemetryTransportDialOut, &iosXRHealth{})
+	normalizer := newIOSXRNormalizingConsumer(filter, defaultIOSXRConfig(), newDeviceSelectionMatcher(DeviceSelectionConfig{}), &iosXRHealth{})
 
-	err := normalizer.ConsumeMetrics(t.Context(), rawIOSXRDialOutMetrics("cisco.interface.statistics.rx-pkts", 7, "xr-1"))
+	err := normalizer.ConsumeMetrics(t.Context(), rawIOSXRDialOutMetrics("cisco.interface.statistics.rx-pkts", 7))
 	require.NoError(t, err)
 	assert.Empty(t, sink.AllMetrics())
 }
@@ -153,9 +151,9 @@ func TestIOSXRNormalizingConsumerAllowsRootMetricFilteringAfterRename(t *testing
 func TestIOSXRNormalizingConsumerRenamesCompactGPBDiagnostic(t *testing.T) {
 	sink := &consumertest.MetricsSink{}
 	health := &iosXRHealth{}
-	normalizer := newIOSXRNormalizingConsumer(sink, defaultIOSXRConfig(), newDeviceSelectionMatcher(DeviceSelectionConfig{}), iosXRTelemetryTransportDialOut, health)
+	normalizer := newIOSXRNormalizingConsumer(sink, defaultIOSXRConfig(), newDeviceSelectionMatcher(DeviceSelectionConfig{}), health)
 
-	err := normalizer.ConsumeMetrics(t.Context(), rawIOSXRDialOutMetrics("cisco.yang_grpc.compact_gpb_payloads", 3, "xr-1"))
+	err := normalizer.ConsumeMetrics(t.Context(), rawIOSXRDialOutMetrics("cisco.yang_grpc.compact_gpb_payloads", 3))
 	require.NoError(t, err)
 	require.Len(t, sink.AllMetrics(), 1)
 
@@ -169,7 +167,7 @@ func TestIOSXRNormalizingConsumerEnforcesDatapointLimit(t *testing.T) {
 	health := &iosXRHealth{}
 	cfg := defaultIOSXRConfig()
 	cfg.MaxDatapointsPerBatch = 2
-	normalizer := newIOSXRNormalizingConsumer(sink, cfg, newDeviceSelectionMatcher(DeviceSelectionConfig{}), iosXRTelemetryTransportDialOut, health)
+	normalizer := newIOSXRNormalizingConsumer(sink, cfg, newDeviceSelectionMatcher(DeviceSelectionConfig{}), health)
 
 	err := normalizer.ConsumeMetrics(t.Context(), rawIOSXRDialOutMultiDatapointMetric())
 	require.NoError(t, err)
@@ -181,10 +179,10 @@ func TestIOSXRNormalizingConsumerEnforcesDatapointLimit(t *testing.T) {
 	assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
 }
 
-func rawIOSXRDialOutMetrics(metricName string, value float64, nodeID string) pmetric.Metrics {
+func rawIOSXRDialOutMetrics(metricName string, value float64) pmetric.Metrics {
 	md := pmetric.NewMetrics()
 	rm := md.ResourceMetrics().AppendEmpty()
-	rm.Resource().Attributes().PutStr("cisco.node_id", nodeID)
+	rm.Resource().Attributes().PutStr("cisco.node_id", "xr-1")
 	rm.Resource().Attributes().PutStr("cisco.encoding_path", "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/latest/generic-counters")
 	sm := rm.ScopeMetrics().AppendEmpty()
 	metric := sm.Metrics().AppendEmpty()
@@ -195,7 +193,7 @@ func rawIOSXRDialOutMetrics(metricName string, value float64, nodeID string) pme
 }
 
 func rawIOSXRDialOutMultiDatapointMetric() pmetric.Metrics {
-	md := rawIOSXRDialOutMetrics("cisco.interface.statistics.rx-pkts", 1, "xr-1")
+	md := rawIOSXRDialOutMetrics("cisco.interface.statistics.rx-pkts", 1)
 	dps := md.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0).Gauge().DataPoints()
 	for _, value := range []float64{2, 3} {
 		dp := dps.AppendEmpty()

@@ -11,7 +11,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
+	"maps"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -138,7 +139,7 @@ func NewClient(cfg Config) (*Client, error) {
 	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	if cfg.InsecureSkipVerify {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // Explicit opt-in for private APIC appliances.
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 	name := cfg.Name
 	if name == "" {
@@ -232,8 +233,8 @@ func (c *Client) List(ctx context.Context, operation, path string, query url.Val
 		if err != nil {
 			return results, err
 		}
-		if err := byteBudget.Charge(operation, len(body), len(results)); err != nil {
-			return results, err
+		if budgetErr := byteBudget.Charge(operation, len(body), len(results)); budgetErr != nil {
+			return results, budgetErr
 		}
 		pages++
 		pageObjects, total, err := decodeObjects(body)
@@ -261,7 +262,7 @@ func (c *Client) List(ctx context.Context, operation, path string, query url.Val
 func (c *Client) do(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, http.Header, error) {
 	var lastErr error
 	attempts := c.retries + 1
-	for attempt := 0; attempt < attempts; attempt++ {
+	for attempt := range attempts {
 		body, header, status, err := c.doOnce(ctx, method, operation, path, query, payload)
 		if err == nil {
 			return body, header, nil
@@ -515,9 +516,7 @@ func decodeObjects(body []byte) ([]Object, int, error) {
 				obj := Object{"aci.class": className}
 				if rawMap, ok := raw.(map[string]any); ok {
 					if attrs, ok := rawMap["attributes"].(map[string]any); ok {
-						for key, value := range attrs {
-							obj[key] = value
-						}
+						maps.Copy(obj, attrs)
 					}
 					if children, ok := rawMap["children"].([]any); ok && len(children) > 0 {
 						obj["children.count"] = len(children)
@@ -582,7 +581,7 @@ func retryAfter(value string) time.Duration {
 func sleepBeforeRetry(ctx context.Context, attempt int, retryAfter time.Duration) bool {
 	if retryAfter < 0 {
 		backoff := time.Duration(200*(1<<attempt)) * time.Millisecond
-		jitter := time.Duration(rand.Int63n(int64(100 * time.Millisecond))) //nolint:gosec // Jitter only.
+		jitter := time.Duration(rand.Int64N(int64(100 * time.Millisecond)))
 		retryAfter = backoff + jitter
 	}
 	timer := time.NewTimer(retryAfter)

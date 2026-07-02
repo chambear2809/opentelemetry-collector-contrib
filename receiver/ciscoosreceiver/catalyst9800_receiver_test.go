@@ -210,7 +210,6 @@ func TestCatalyst9800NormalizingConsumerRenamesDialOutMetricsAndAddsAliases(t *t
 		sink,
 		defaultCatalyst9800Config(),
 		newDeviceSelectionMatcher(DeviceSelectionConfig{}),
-		catalyst9800TelemetryTransportDialOut,
 		&catalyst9800Health{},
 	)
 
@@ -226,7 +225,7 @@ func TestCatalyst9800NormalizingConsumerRenamesDialOutMetricsAndAddsAliases(t *t
 
 	resourceAttrs := md.ResourceMetrics().At(0).Resource().Attributes()
 	assert.Equal(t, "wlc-1", attrValue(t, resourceAttrs, "host.name"))
-	assert.Equal(t, []string{"192.0.2.40"}, stringSliceAttrValue(t, resourceAttrs, "host.ip"))
+	assert.Equal(t, []string{"192.0.2.40"}, stringSliceAttrValue(t, resourceAttrs))
 	assert.Equal(t, "ios_xe", attrValue(t, resourceAttrs, "cisco.os.name"))
 	assert.Equal(t, "catalyst_9800", attrValue(t, resourceAttrs, "cisco.platform.family"))
 	assert.Equal(t, "mdt_grpc_dial_out", attrValue(t, resourceAttrs, "cisco.telemetry.transport"))
@@ -245,7 +244,6 @@ func TestCatalyst9800NormalizingConsumerAllowsRootMetricPatternFilteringAfterAli
 		filter,
 		defaultCatalyst9800Config(),
 		newDeviceSelectionMatcher(DeviceSelectionConfig{}),
-		catalyst9800TelemetryTransportDialOut,
 		&catalyst9800Health{},
 	)
 

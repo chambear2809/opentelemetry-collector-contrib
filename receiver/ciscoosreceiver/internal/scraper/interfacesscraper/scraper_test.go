@@ -90,7 +90,7 @@ func TestInterfacesScraper_Shutdown(t *testing.T) {
 
 func TestInterfacesScraper_TroubleshootingGroupsDisabled(t *testing.T) {
 	scraper := newStartedTestInterfacesScraper(t, createDefaultConfig().(*Config))
-	fakeClient := newFakeInterfacesCommandClient("IOS XE")
+	fakeClient := newFakeInterfacesCommandClient()
 	scraper.rpcClient = fakeClient
 
 	metrics, err := scraper.ScrapeMetrics(t.Context())
@@ -108,7 +108,7 @@ func TestInterfacesScraper_TroubleshootingGroupsDisabled(t *testing.T) {
 
 func TestInterfacesScraper_ParseInterfaceDataFallsBackWhenPrimaryOutputUnparseable(t *testing.T) {
 	scraper := newStartedTestInterfacesScraper(t, createDefaultConfig().(*Config))
-	fakeClient := newFakeInterfacesCommandClient("IOS XE")
+	fakeClient := newFakeInterfacesCommandClient()
 	fakeClient.outputs["show interface"] = "% Invalid input detected at '^' marker."
 	fakeClient.outputs["show interface brief"] = `Interface              IP-Address      OK? Method Status                Protocol
 GigabitEthernet1/0/1   unassigned      YES unset  up                    up`
@@ -128,7 +128,7 @@ func TestInterfacesScraper_RecordsSpeedUtilizationAndTopology(t *testing.T) {
 	cfg.L2Topology.Commands.CDP = true
 
 	scraper := newStartedTestInterfacesScraper(t, cfg)
-	fakeClient := newFakeInterfacesCommandClient("IOS XE")
+	fakeClient := newFakeInterfacesCommandClient()
 	fakeClient.outputs["show interface"] = `GigabitEthernet1/0/1 is up, line protocol is up
   Hardware is iGbE, address is aabb.ccdd.ee01
   Description: uplink
@@ -172,7 +172,7 @@ func TestInterfacesScraper_TroubleshootingGroupsRecordWithCapsFiltersAndOptional
 	cfg.Transceiver.MaxInterfaces = 1
 
 	scraper := newStartedTestInterfacesScraper(t, cfg)
-	fakeClient := newFakeInterfacesCommandClient("IOS XE")
+	fakeClient := newFakeInterfacesCommandClient()
 	fakeClient.errors["show spanning-tree summary"] = errors.New("unsupported")
 	fakeClient.errors["show spanning-tree detail"] = errors.New("unsupported")
 	fakeClient.errors["show spanning-tree blockedports"] = errors.New("unsupported")
@@ -207,7 +207,7 @@ Gi1/0/2 transceiver is present
 
 func TestInterfacesScraper_PrimaryFailureRecordsScrapeHealth(t *testing.T) {
 	scraper := newStartedTestInterfacesScraper(t, createDefaultConfig().(*Config))
-	fakeClient := newFakeInterfacesCommandClient("IOS XE")
+	fakeClient := newFakeInterfacesCommandClient()
 	fakeClient.errors["show interface"] = errors.New("unsupported")
 	fakeClient.errors["show interface brief"] = errors.New("unsupported")
 	scraper.rpcClient = fakeClient
@@ -226,7 +226,7 @@ func TestInterfacesScraper_OptionalCountersDoNotSuppressCoreInterfaceMetrics(t *
 	cfg.Counters.Commands.PlatformQueueStats = true
 
 	scraper := newStartedTestInterfacesScraper(t, cfg)
-	fakeClient := newFakeInterfacesCommandClient("IOS XE")
+	fakeClient := newFakeInterfacesCommandClient()
 	fakeClient.blockUntilContext["show platform hardware fed active qos queue stats interface GigabitEthernet1/0/1"] = true
 	scraper.rpcClient = fakeClient
 
@@ -310,9 +310,9 @@ type fakeInterfacesCommandClient struct {
 	calls             []string
 }
 
-func newFakeInterfacesCommandClient(osType string) *fakeInterfacesCommandClient {
+func newFakeInterfacesCommandClient() *fakeInterfacesCommandClient {
 	return &fakeInterfacesCommandClient{
-		osType: osType,
+		osType: "IOS XE",
 		outputs: map[string]string{
 			"show interface": `GigabitEthernet1/0/1 is up, line protocol is up
   Hardware is iGbE, address is aabb.ccdd.ee01

@@ -74,10 +74,10 @@ func TestCounterStoreKeepsIntegerAndDoubleSeriesSeparate(t *testing.T) {
 	store := newCounterStoreAt(time.Unix(100, 0))
 	const aboveFloatPrecision = int64(1<<53 + 1)
 
-	intTotal, _ := store.AddInt("resource-a", "requests", nil, aboveFloatPrecision)
-	doubleTotal, _ := store.AddDouble("resource-a", "requests", nil, 0.5)
-	intTotal, _ = store.AddInt("resource-a", "requests", nil, 2)
-	doubleTotal, _ = store.AddDouble("resource-a", "requests", nil, 0.25)
+	_, _ = store.AddInt("resource-a", "requests", nil, aboveFloatPrecision)
+	_, _ = store.AddDouble("resource-a", "requests", nil, 0.5)
+	intTotal, _ := store.AddInt("resource-a", "requests", nil, 2)
+	doubleTotal, _ := store.AddDouble("resource-a", "requests", nil, 0.25)
 
 	assert.Equal(t, aboveFloatPrecision+2, intTotal)
 	assert.Equal(t, 0.75, doubleTotal)

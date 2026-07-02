@@ -47,7 +47,6 @@ func TestDashboardTokensAreWellFormed(t *testing.T) {
 	sort.Strings(bundles)
 
 	for _, path := range bundles {
-		path := path
 		t.Run(filepath.Base(path), func(t *testing.T) {
 			body, err := os.ReadFile(path)
 			if err != nil {
