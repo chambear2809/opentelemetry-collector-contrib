@@ -4,10 +4,8 @@
 package ciscoosreceiver
 
 import (
-	"io"
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"testing"
 	"time"
 
@@ -24,7 +22,7 @@ import (
 )
 
 func TestSDWANScrapeEmitsCoreMetrics(t *testing.T) {
-	server, _ := newSDWANFixtureServer(t, map[string]string{
+	server := newSDWANFixtureServer(t, map[string]string{
 		"/dataservice/clusterManagement/health/summary": `{"status":"normal","clusterHealth":98}`,
 		"/dataservice/client/server":                    `{"status":"running","version":"20.18.1"}`,
 		"/dataservice/settings/configuration/device":    `{"status":"ok"}`,
@@ -79,7 +77,7 @@ func TestSDWANAllManagerEndpointsFailWithoutAdvancingLastSuccess(t *testing.T) {
 		"/dataservice/client/server":                    http.StatusServiceUnavailable,
 		"/dataservice/settings/configuration/device":    http.StatusServiceUnavailable,
 	}
-	server, _ := newSDWANFixtureServer(t, nil, failures)
+	server := newSDWANFixtureServer(t, nil, failures)
 	defer server.Close()
 
 	receiver := newTestSDWANReceiver(t, server.URL, func(cfg *Config) {
@@ -105,7 +103,7 @@ func TestSDWANAllManagerEndpointsFailWithoutAdvancingLastSuccess(t *testing.T) {
 }
 
 func TestSDWANScrapeAppliesTargetAndDeviceSelection(t *testing.T) {
-	server, _ := newSDWANFixtureServer(t, map[string]string{
+	server := newSDWANFixtureServer(t, map[string]string{
 		"/dataservice/device": `{"data":[
 			{"host-name":"edge-1","system-ip":"10.0.0.1","uuid":"uuid-1","chasisNumber":"SDWAN-SERIAL-1","site-id":"100","personality":"vedge","status":"reachable"},
 			{"host-name":"edge-2","system-ip":"10.0.0.2","uuid":"uuid-2","chasisNumber":"SDWAN-SERIAL-2","site-id":"200","personality":"vedge","status":"reachable"}
@@ -134,7 +132,7 @@ func TestSDWANScrapeAppliesTargetAndDeviceSelection(t *testing.T) {
 }
 
 func TestSDWANMetricSemanticsAndIntegerPrecision(t *testing.T) {
-	server, _ := newSDWANFixtureServer(t, map[string]string{
+	server := newSDWANFixtureServer(t, map[string]string{
 		"/dataservice/device": `{"data":[
 			{"host-name":"edge-1","system-ip":"10.0.0.1","uuid":"uuid-1","chasisNumber":"SDWAN-SERIAL-1","site-id":"100","personality":"vedge","status":"reachable","cpuLoad":25,"memUsage":0.4}
 		]}`,
@@ -161,24 +159,24 @@ func TestSDWANMetricSemanticsAndIntegerPrecision(t *testing.T) {
 	md, err := receiver.scrape(t.Context())
 	require.NoError(t, err)
 
-	assert.Equal(t, 0.25, sdwanGaugeDoubleValue(t, md, "SDWAN-SERIAL-1", "system.cpu.utilization", "", ""))
-	assert.Equal(t, 0.4, sdwanGaugeDoubleValue(t, md, "SDWAN-SERIAL-1", "system.memory.utilization", "", ""))
+	assert.Equal(t, 0.25, sdwanGaugeDoubleValue(t, md, "system.cpu.utilization", "", ""))
+	assert.Equal(t, 0.4, sdwanGaugeDoubleValue(t, md, "system.memory.utilization", "", ""))
 	assert.Equal(t, int64(1_000_000_000), sdwanGaugeIntValue(t, md, "SDWAN-SERIAL-1", "cisco.interface.speed", "", ""))
 	assert.Equal(t, "bit/s", findSDWANMetricForHost(t, md, "SDWAN-SERIAL-1", "cisco.interface.speed").Unit())
-	assert.Equal(t, 123_500.0, sdwanGaugeDoubleValue(t, md, "SDWAN-SERIAL-1", "cisco.interface.io.rate", "network.io.direction", "receive"))
-	assert.Equal(t, 50_000.0, sdwanGaugeDoubleValue(t, md, "SDWAN-SERIAL-1", "cisco.interface.io.rate", "network.io.direction", "transmit"))
+	assert.Equal(t, 123_500.0, sdwanGaugeDoubleValue(t, md, "cisco.interface.io.rate", "network.io.direction", "receive"))
+	assert.Equal(t, 50_000.0, sdwanGaugeDoubleValue(t, md, "cisco.interface.io.rate", "network.io.direction", "transmit"))
 	assert.Equal(t, "bit/s", findSDWANMetricForHost(t, md, "SDWAN-SERIAL-1", "cisco.interface.io.rate").Unit())
 	assert.Equal(t, 2, metricDataPointCount(md, "cisco.interface.io.rate"))
 
-	assertSDWANCumulativeInt(t, md, "SDWAN-SERIAL-1", "system.network.io", "network.io.direction", "receive", 9007199254740993)
-	assertSDWANCumulativeInt(t, md, "SDWAN-SERIAL-1", "system.network.io", "network.io.direction", "transmit", 9007199254740994)
+	assertSDWANCumulativeInt(t, md, "system.network.io", "network.io.direction", "receive", 9007199254740993)
+	assertSDWANCumulativeInt(t, md, "system.network.io", "network.io.direction", "transmit", 9007199254740994)
 	assert.Equal(t, "By", findSDWANMetricForHost(t, md, "SDWAN-SERIAL-1", "system.network.io").Unit())
 	assert.Equal(t, 2, metricDataPointCount(md, "system.network.io"), "kbps window rates must not be exported as byte totals")
-	assertSDWANCumulativeInt(t, md, "SDWAN-SERIAL-1", "system.network.packet.count", "network.io.direction", "receive", 9007199254740995)
-	assertSDWANCumulativeInt(t, md, "SDWAN-SERIAL-1", "system.network.errors", "network.io.direction", "receive", 9007199254740997)
-	assertSDWANCumulativeInt(t, md, "SDWAN-SERIAL-1", "system.network.packet.dropped", "network.io.direction", "receive", 9007199254740999)
-	assertSDWANCumulativeInt(t, md, "SDWAN-SERIAL-1", "sdwan.bfd.session.transitions", "", "", 9007199254740993)
-	assertSDWANCumulativeInt(t, md, "SDWAN-SERIAL-1", "sdwan.bfd.session.flap.count", "", "", 9007199254740994)
+	assertSDWANCumulativeInt(t, md, "system.network.packet.count", "network.io.direction", "receive", 9007199254740995)
+	assertSDWANCumulativeInt(t, md, "system.network.errors", "network.io.direction", "receive", 9007199254740997)
+	assertSDWANCumulativeInt(t, md, "system.network.packet.dropped", "network.io.direction", "receive", 9007199254740999)
+	assertSDWANCumulativeInt(t, md, "sdwan.bfd.session.transitions", "", "", 9007199254740993)
+	assertSDWANCumulativeInt(t, md, "sdwan.bfd.session.flap.count", "", "", 9007199254740994)
 }
 
 func TestSDWANPercentRatioDoesNotDoubleScaleRatios(t *testing.T) {
@@ -203,7 +201,7 @@ func TestSDWANPercentRatioDoesNotDoubleScaleRatios(t *testing.T) {
 }
 
 func TestSDWANEventMetricsAndLogsApplyNativeAndSharedFilters(t *testing.T) {
-	server, _ := newSDWANFixtureServer(t, map[string]string{
+	server := newSDWANFixtureServer(t, map[string]string{
 		"/dataservice/device": `{"data":[
 			{"host-name":"edge-1","system-ip":"10.0.0.1","uuid":"uuid-1","chasisNumber":"SDWAN-SERIAL-1","site-id":"100","personality":"vedge","status":"reachable"},
 			{"host-name":"edge-2","system-ip":"10.0.0.2","uuid":"uuid-2","chasisNumber":"SDWAN-SERIAL-2","site-id":"200","personality":"vedge","status":"reachable"},
@@ -300,7 +298,7 @@ func TestSDWANReceiversRetainEarlierPagesWhenLaterPagesFail(t *testing.T) {
 }
 
 func TestMetricFilterDropsConfiguredMetrics(t *testing.T) {
-	server, _ := newSDWANFixtureServer(t, map[string]string{
+	server := newSDWANFixtureServer(t, map[string]string{
 		"/dataservice/device": `{"data":[
 			{"host-name":"edge-1","system-ip":"10.0.0.1","uuid":"uuid-1","chasisNumber":"SDWAN-SERIAL-1","site-id":"100","personality":"vedge","status":"reachable"}
 		]}`,
@@ -333,7 +331,7 @@ func TestMetricFilterDropsConfiguredMetrics(t *testing.T) {
 }
 
 func TestMetricFilterSupportsGlobPatternsWithExactOverride(t *testing.T) {
-	server, _ := newSDWANFixtureServer(t, map[string]string{
+	server := newSDWANFixtureServer(t, map[string]string{
 		"/dataservice/device": `{"data":[
 			{"host-name":"edge-1","system-ip":"10.0.0.1","uuid":"uuid-1","chasisNumber":"SDWAN-SERIAL-1","site-id":"100","personality":"vedge","status":"reachable"}
 		]}`,
@@ -368,7 +366,7 @@ func TestMetricFilterSupportsGlobPatternsWithExactOverride(t *testing.T) {
 }
 
 func TestSDWANLogsPreserveEventBodies(t *testing.T) {
-	server, _ := newSDWANFixtureServer(t, map[string]string{
+	server := newSDWANFixtureServer(t, map[string]string{
 		"/dataservice/alarms":   `{"data":[{"id":"alarm-1","severity":"critical","status":"active","system-ip":"10.0.0.1","message":"BFD down"}]}`,
 		"/dataservice/events":   `{"data":[{"eventId":"event-1","severity":"info","system-ip":"10.0.0.1"}]}`,
 		"/dataservice/auditlog": `{"data":[{"entry_uuid":"audit-1","severity":"info","user":"admin","policyName":"app-route-ai"}]}`,
@@ -418,21 +416,10 @@ func newTestSDWANLogsReceiver(t *testing.T, endpoint string, mutate func(*Config
 	return receiver
 }
 
-type sdwanCapturedRequest struct {
-	path string
-	body string
-}
-
-func newSDWANFixtureServer(t *testing.T, routes map[string]string, failures map[string]int) (*httptest.Server, *[]sdwanCapturedRequest) {
+func newSDWANFixtureServer(t *testing.T, routes map[string]string, failures map[string]int) *httptest.Server {
 	t.Helper()
-	var mu sync.Mutex
-	requests := []sdwanCapturedRequest{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "Bearer token", r.Header.Get("Authorization"))
-		bodyBytes, _ := io.ReadAll(r.Body)
-		mu.Lock()
-		requests = append(requests, sdwanCapturedRequest{path: r.URL.Path, body: string(bodyBytes)})
-		mu.Unlock()
 
 		if status := failures[r.URL.Path]; status != 0 {
 			w.Header().Set("Retry-After", "0")
@@ -446,7 +433,7 @@ func newSDWANFixtureServer(t *testing.T, routes map[string]string, failures map[
 		}
 		_, _ = w.Write([]byte(`{"data":[]}`))
 	}))
-	return server, &requests
+	return server
 }
 
 func logRecordAttributeExists(ld plog.Logs, key, value string) bool {
@@ -486,9 +473,9 @@ func findSDWANMetricForHost(t *testing.T, md pmetric.Metrics, hostID, name strin
 	return pmetric.Metric{}
 }
 
-func sdwanGaugeDoubleValue(t *testing.T, md pmetric.Metrics, hostID, name, attrKey, attrValue string) float64 {
+func sdwanGaugeDoubleValue(t *testing.T, md pmetric.Metrics, name, attrKey, attrValue string) float64 {
 	t.Helper()
-	metric := findSDWANMetricForHost(t, md, hostID, name)
+	metric := findSDWANMetricForHost(t, md, "SDWAN-SERIAL-1", name)
 	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
 	dps := metric.Gauge().DataPoints()
 	for i := 0; i < dps.Len(); i++ {
@@ -518,9 +505,9 @@ func sdwanGaugeIntValue(t *testing.T, md pmetric.Metrics, hostID, name, attrKey,
 	return 0
 }
 
-func assertSDWANCumulativeInt(t *testing.T, md pmetric.Metrics, hostID, name, attrKey, attrValue string, want int64) {
+func assertSDWANCumulativeInt(t *testing.T, md pmetric.Metrics, name, attrKey, attrValue string, want int64) {
 	t.Helper()
-	metric := findSDWANMetricForHost(t, md, hostID, name)
+	metric := findSDWANMetricForHost(t, md, "SDWAN-SERIAL-1", name)
 	require.Equal(t, pmetric.MetricTypeSum, metric.Type())
 	assert.True(t, metric.Sum().IsMonotonic())
 	assert.Equal(t, pmetric.AggregationTemporalityCumulative, metric.Sum().AggregationTemporality())

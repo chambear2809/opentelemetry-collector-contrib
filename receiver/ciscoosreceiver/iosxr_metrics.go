@@ -277,7 +277,7 @@ func appendIOSXRInfoMetricIndexed(builder *indexedMetricBuilder, module string, 
 	builder.appendInfo(name, value, ts, attrs)
 }
 
-func appendGaugeMetric(sm pmetric.ScopeMetrics, name string, value float64, ts pcommon.Timestamp, attrs map[string]string) {
+func appendGaugeMetric(sm pmetric.ScopeMetrics, name string, value float64, ts pcommon.Timestamp, attrs map[string]string) { //nolint:unparam // Attribute support is shared infrastructure for future receiver-health dimensions.
 	appendMetricNumberGauge(sm, name, doubleMetricNumber(value), ts, attrs)
 }
 
@@ -289,7 +289,7 @@ func appendMetricNumberGauge(sm pmetric.ScopeMetrics, name string, value metricN
 	applyStringAttrs(dp.Attributes(), attrs)
 }
 
-func appendSumMetric(sm pmetric.ScopeMetrics, name string, value float64, ts pcommon.Timestamp, attrs map[string]string) {
+func appendSumMetric(sm pmetric.ScopeMetrics, name string, value float64, ts pcommon.Timestamp, attrs map[string]string) { //nolint:unparam // Attribute support is shared infrastructure for future receiver-health dimensions.
 	appendMetricNumberSum(sm, name, doubleMetricNumber(value), ts, attrs)
 }
 
@@ -495,11 +495,11 @@ type iosXRNormalizingConsumer struct {
 	health    *iosXRHealth
 }
 
-func newIOSXRNormalizingConsumer(next consumer.Metrics, config IOSXRConfig, selector deviceSelectionMatcher, transport string, health *iosXRHealth) consumer.Metrics {
+func newIOSXRNormalizingConsumer(next consumer.Metrics, config IOSXRConfig, selector deviceSelectionMatcher, transport string, health *iosXRHealth) consumer.Metrics { //nolint:unparam // Transport remains explicit because the normalizer owns transport attribution.
 	return &iosXRNormalizingConsumer{next: next, config: config, selector: selector, transport: transport, health: health}
 }
 
-func (c *iosXRNormalizingConsumer) Capabilities() consumer.Capabilities {
+func (*iosXRNormalizingConsumer) Capabilities() consumer.Capabilities {
 	return consumer.Capabilities{MutatesData: true}
 }
 

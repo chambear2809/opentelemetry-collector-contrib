@@ -274,7 +274,7 @@ func TestDirectGNMIRetryDelayIsBoundedExponentialWithJitter(t *testing.T) {
 	assert.Equal(t, 2*time.Second, nextDirectGNMIRetryDelay(3, noJitter))
 	assert.Equal(t, 15*time.Second, nextDirectGNMIRetryDelay(100, noJitter))
 
-	maxJitter := func(max time.Duration) time.Duration { return max - 1 }
+	maxJitter := func(upperBound time.Duration) time.Duration { return upperBound - 1 }
 	delay := nextDirectGNMIRetryDelay(100, maxJitter)
 	assert.LessOrEqual(t, delay, directGNMIRetryMax)
 	assert.GreaterOrEqual(t, delay, directGNMIRetryMax/2)

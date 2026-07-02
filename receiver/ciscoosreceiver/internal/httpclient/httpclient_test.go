@@ -64,7 +64,7 @@ func TestDecodeJSONRejectsComplexityBeforeTargetDecode(t *testing.T) {
 		var input bytes.Buffer
 		input.Grow(HardMaxJSONTokens*2 + 2)
 		input.WriteByte('[')
-		for i := 0; i < HardMaxJSONTokens/2+1; i++ {
+		for i := range HardMaxJSONTokens/2 + 1 {
 			if i > 0 {
 				input.WriteByte(',')
 			}
@@ -84,7 +84,7 @@ func TestDecodeJSONRejectsComplexityBeforeTargetDecode(t *testing.T) {
 		var input bytes.Buffer
 		input.Grow(HardMaxJSONNodes*2 + 2)
 		input.WriteByte('[')
-		for i := 0; i < HardMaxJSONNodes; i++ {
+		for i := range HardMaxJSONNodes {
 			if i > 0 {
 				input.WriteByte(',')
 			}

@@ -26,7 +26,7 @@ type rsaSigner struct {
 	key *rsa.PrivateKey
 }
 
-func (s rsaSigner) algorithm() string {
+func (rsaSigner) algorithm() string {
 	return "rsa-sha256"
 }
 
@@ -39,7 +39,7 @@ type ecdsaSigner struct {
 	key *ecdsa.PrivateKey
 }
 
-func (s ecdsaSigner) algorithm() string {
+func (ecdsaSigner) algorithm() string {
 	return "hs2019"
 }
 
@@ -52,7 +52,7 @@ type ed25519Signer struct {
 	key ed25519.PrivateKey
 }
 
-func (s ed25519Signer) algorithm() string {
+func (ed25519Signer) algorithm() string {
 	return "ed25519"
 }
 

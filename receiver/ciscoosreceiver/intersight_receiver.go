@@ -181,7 +181,7 @@ func (r *intersightMetricsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 
-	obsCtx := startMetricsOp(r.obs, ctx)
+	obsCtx := startMetricsOp(ctx, r.obs)
 	md, scrapeErr := r.scrape(scrapeCtx)
 	if scrapeErr != nil {
 		r.settings.Logger.Error("Intersight scrape failed", zap.Error(scrapeErr))
@@ -190,7 +190,7 @@ func (r *intersightMetricsReceiver) collect(ctx context.Context) {
 	if consumeErr != nil {
 		r.settings.Logger.Error("Intersight metrics consumer failed", zap.Error(consumeErr))
 	}
-	endMetricsOp(r.obs, obsCtx, metricCount, combineSignalErrors(scrapeErr, consumeErr))
+	endMetricsOp(obsCtx, r.obs, metricCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *intersightMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
@@ -223,8 +223,10 @@ func (r *intersightMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics
 	}
 
 	if r.config.Intersight.Telemetry.Enabled {
-		for _, query := range intersightTelemetryQueries() {
-			if err := r.scrapeTelemetry(ctx, builder, query, now, selector); err != nil {
+		queries := intersightTelemetryQueries()
+		for i := range queries {
+			query := &queries[i]
+			if err := r.scrapeTelemetry(ctx, builder, *query, now, selector); err != nil {
 				if ctx.Err() != nil {
 					partial = true
 					return r.finishScrape(builder, now, partial), ctx.Err()
@@ -380,7 +382,7 @@ func (r *intersightLogsReceiver) collect(ctx context.Context) {
 	defer cancel()
 
 	r.seen.BeginBatch()
-	obsCtx := startLogsOp(r.obs, ctx)
+	obsCtx := startLogsOp(ctx, r.obs)
 	ld, scrapeErr := r.scrape(scrapeCtx)
 	if scrapeErr != nil {
 		r.settings.Logger.Error("Intersight log scrape failed", zap.Error(scrapeErr))
@@ -389,7 +391,7 @@ func (r *intersightLogsReceiver) collect(ctx context.Context) {
 	if consumeErr != nil {
 		r.settings.Logger.Error("Intersight logs consumer failed", zap.Error(consumeErr))
 	}
-	endLogsOp(r.obs, obsCtx, logCount, combineSignalErrors(scrapeErr, consumeErr))
+	endLogsOp(obsCtx, r.obs, logCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *intersightLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
@@ -601,7 +603,7 @@ func (b *intersightMetricsBuilder) recordObject(endpoint intersightEndpoint, obj
 	case "hyperflex":
 		b.recordHyperFlexObject(rb, obj)
 	case "kubernetes":
-		recordStringState(rb, "intersight.kubernetes.cluster.connection_status", "Kubernetes cluster connection status.", status, nil)
+		recordStringState(rb, "intersight.kubernetes.cluster.connection_status", "Kubernetes cluster connection status.", status)
 	case "virtualization":
 		b.recordVirtualizationObject(rb, obj)
 	}
@@ -644,7 +646,7 @@ func (b *intersightMetricsBuilder) recordEventObject(rb *resourceMetricsBuilder,
 	}
 }
 
-func (b *intersightMetricsBuilder) recordInventoryObject(rb *resourceMetricsBuilder, obj intersight.Object, objectType, status string) {
+func (*intersightMetricsBuilder) recordInventoryObject(rb *resourceMetricsBuilder, obj intersight.Object, objectType, status string) {
 	if strings.Contains(objectType, "DeviceRegistration") || strings.Contains(objectType, "Target") || strings.Contains(objectType, "PhysicalSummary") || strings.Contains(objectType, "Blade") || strings.Contains(objectType, "RackUnit") || strings.Contains(objectType, "Network") {
 		if up, ok := upStatus(status); ok {
 			rb.recordInt("cisco.device.up", "Device availability reported by Cisco Intersight.", "1", up, nil)
@@ -654,29 +656,29 @@ func (b *intersightMetricsBuilder) recordInventoryObject(rb *resourceMetricsBuil
 	recordIfInt(rb, obj, "NumThreads", "intersight.compute.thread.count", "Number of CPU threads reported by Intersight.", "{thread}", nil)
 	recordIfInt(rb, obj, "AvailableMemory", "intersight.compute.available_memory", "Available server memory reported by Intersight.", "MBy", nil)
 	recordIfInt(rb, obj, "FaultSummary", "intersight.fault.count", "Faults summarized by Intersight.", "{fault}", nil)
-	recordStringState(rb, "intersight.target.connection_status", "Intersight target connection status.", status, nil)
+	recordStringState(rb, "intersight.target.connection_status", "Intersight target connection status.", status)
 }
 
-func (b *intersightMetricsBuilder) recordStorageObject(rb *resourceMetricsBuilder, obj intersight.Object) {
+func (*intersightMetricsBuilder) recordStorageObject(rb *resourceMetricsBuilder, obj intersight.Object) {
 	recordIfInt(rb, obj, "MediaErrorCount", "intersight.storage.media_error.count", "Storage media errors reported by Intersight.", "{error}", nil)
 	recordIfInt(rb, obj, "PredictiveFailureCount", "intersight.storage.predictive_failure.count", "Storage predictive failures reported by Intersight.", "{failure}", nil)
 	recordIfInt(rb, obj, "PercentLifeLeft", "intersight.storage.life_left", "Storage device remaining life percentage.", "%", nil)
 	recordIfInt(rb, obj, "OperatingTemperature", "intersight.storage.temperature", "Storage device operating temperature.", "Cel", nil)
 	recordIfInt(rb, obj, "PowerOnHours", "intersight.storage.power_on.hours", "Storage device power-on hours.", "h", nil)
 	recordIfInt(rb, obj, "RebuildRatePercent", "intersight.storage.rebuild.rate", "Storage controller rebuild rate.", "%", nil)
-	recordStringState(rb, "intersight.storage.status", "Storage status reported by Intersight.", objectStatus(obj), nil)
+	recordStringState(rb, "intersight.storage.status", "Storage status reported by Intersight.", objectStatus(obj))
 }
 
-func (b *intersightMetricsBuilder) recordHyperFlexObject(rb *resourceMetricsBuilder, obj intersight.Object) {
+func (*intersightMetricsBuilder) recordHyperFlexObject(rb *resourceMetricsBuilder, obj intersight.Object) {
 	recordIfInt(rb, obj, "VmCount", "intersight.virtual_machine.count", "Virtual machines reported by Intersight.", "{vm}", nil)
 	recordIfInt(rb, obj, "FltAggr", "intersight.fault.count", "Faults summarized by HyperFlex.", "{fault}", map[string]string{"intersight.platform": "hyperflex"})
-	recordStringState(rb, "intersight.hyperflex.status", "HyperFlex status reported by Intersight.", objectStatus(obj), nil)
+	recordStringState(rb, "intersight.hyperflex.status", "HyperFlex status reported by Intersight.", objectStatus(obj))
 }
 
-func (b *intersightMetricsBuilder) recordVirtualizationObject(rb *resourceMetricsBuilder, obj intersight.Object) {
+func (*intersightMetricsBuilder) recordVirtualizationObject(rb *resourceMetricsBuilder, obj intersight.Object) {
 	recordIfInt(rb, obj, "Cpu", "intersight.virtual_machine.cpu.count", "Virtual machine CPU count.", "{cpu}", nil)
 	recordIfInt(rb, obj, "Memory", "intersight.virtual_machine.memory", "Virtual machine configured memory.", "MBy", nil)
-	recordStringState(rb, "intersight.virtual_machine.power_state", "Virtual machine power state.", intersight.String(obj, "PowerState"), nil)
+	recordStringState(rb, "intersight.virtual_machine.power_state", "Virtual machine power state.", intersight.String(obj, "PowerState"))
 }
 
 func (b *intersightMetricsBuilder) recordTelemetry(query intersightTelemetryQuery, response any, selector deviceSelectionMatcher) {
@@ -878,7 +880,7 @@ func endpointQuery(endpoint intersightEndpoint, cfg *Config, now time.Time) url.
 	return query
 }
 
-func activeAlarmQuery(cfg *Config, _ time.Time) url.Values {
+func activeAlarmQuery(_ *Config, _ time.Time) url.Values {
 	return intersight.Query(nil, "Acknowledge eq 'None'")
 }
 
@@ -1018,18 +1020,15 @@ func upStatus(status string) (int64, bool) {
 	}
 }
 
-func recordStringState(rb *resourceMetricsBuilder, name, description, status string, attrs map[string]string) {
+func recordStringState(rb *resourceMetricsBuilder, name, description, status string) {
 	if status == "" {
 		return
-	}
-	if attrs == nil {
-		attrs = map[string]string{}
 	}
 	code, ok := statusCode(status)
 	if !ok {
 		return
 	}
-	attrs = withAttr(attrs, "intersight.status", status)
+	attrs := withAttr(nil, "intersight.status", status)
 	rb.recordInt(name, description, "1", code, attrs)
 }
 

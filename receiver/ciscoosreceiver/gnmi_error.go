@@ -13,7 +13,7 @@ import (
 
 // sanitizedGNMISubscribeError preserves stable diagnostic context without
 // reflecting a device-controlled error message into collector logs.
-func sanitizedGNMISubscribeError(protocolErr *gnmi.Error) error {
+func sanitizedGNMISubscribeError(protocolErr *gnmi.Error) error { //nolint:staticcheck // Handles deprecated in-band errors sent by legacy Cisco devices.
 	if protocolErr == nil {
 		return errors.New("subscribe response error")
 	}

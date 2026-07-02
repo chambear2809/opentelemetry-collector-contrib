@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"sort"
 	"strconv"
@@ -26,7 +27,7 @@ type iosXRGNMIUpdateDecoder struct {
 	limits        directGNMIDecodeLimits
 }
 
-func (d *iosXRGNMIUpdateDecoder) decodeNotification(notification *gnmi.Notification, transport string) pmetric.Metrics {
+func (d *iosXRGNMIUpdateDecoder) decodeNotification(notification *gnmi.Notification, transport string) pmetric.Metrics { //nolint:unparam // Explicit transport keeps direct and future replay decoders distinguishable.
 	ts := pcommon.NewTimestampFromTime(time.Now())
 	if notification.GetTimestamp() > 0 {
 		ts = pcommon.Timestamp(notification.GetTimestamp())
@@ -139,12 +140,12 @@ func (d iosXRGNMIUpdateDecoder) decodeTypedValue(metrics *indexedMetricBuilder, 
 			appendIOSXRMetricNumberIndexed(metrics, module, parts, intMetricNumber(0), ts, attrs)
 		}
 	case *gnmi.TypedValue_FloatVal:
-		appendIOSXRMetricNumberIndexed(metrics, module, parts, doubleMetricNumber(float64(v.FloatVal)), ts, attrs)
+		appendIOSXRMetricNumberIndexed(metrics, module, parts, doubleMetricNumber(float64(v.FloatVal)), ts, attrs) //nolint:staticcheck // Legacy Cisco devices still emit the deprecated gNMI float field.
 	case *gnmi.TypedValue_DoubleVal:
 		appendIOSXRMetricNumberIndexed(metrics, module, parts, doubleMetricNumber(v.DoubleVal), ts, attrs)
 	case *gnmi.TypedValue_DecimalVal:
-		if v.DecimalVal != nil {
-			appendIOSXRMetricNumberIndexed(metrics, module, parts, doubleMetricNumber(float64(v.DecimalVal.Digits)/pow10(v.DecimalVal.Precision)), ts, attrs)
+		if v.DecimalVal != nil { //nolint:staticcheck // Legacy Cisco devices still emit the deprecated gNMI decimal field.
+			appendIOSXRMetricNumberIndexed(metrics, module, parts, doubleMetricNumber(float64(v.DecimalVal.Digits)/pow10(v.DecimalVal.Precision)), ts, attrs) //nolint:staticcheck // Preserve compatibility with legacy gNMI decimal payloads.
 		} else {
 			budget.addDecodeError()
 			budget.drop(false)
@@ -211,7 +212,7 @@ func (d iosXRGNMIUpdateDecoder) decodeTypedValue(metrics *indexedMetricBuilder, 
 	}
 }
 
-func (d iosXRGNMIUpdateDecoder) decodeJSONValue(metrics *indexedMetricBuilder, module string, parts []string, raw []byte, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth int) {
+func (iosXRGNMIUpdateDecoder) decodeJSONValue(metrics *indexedMetricBuilder, module string, parts []string, raw []byte, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth int) {
 	if len(raw) > directGNMIHardMaxPayloadBytes {
 		budget.drop(true)
 		return
@@ -370,7 +371,7 @@ func scalarTypedValueString(value *gnmi.TypedValue) string {
 	case *gnmi.TypedValue_BoolVal:
 		return fmt.Sprintf("%t", v.BoolVal)
 	case *gnmi.TypedValue_FloatVal:
-		return fmt.Sprintf("%g", v.FloatVal)
+		return fmt.Sprintf("%g", v.FloatVal) //nolint:staticcheck // Preserve string conversion for legacy gNMI float payloads.
 	case *gnmi.TypedValue_DoubleVal:
 		return fmt.Sprintf("%g", v.DoubleVal)
 	default:
@@ -387,9 +388,7 @@ func pow10(precision uint32) float64 {
 
 func cloneAttrs(attrs map[string]string) map[string]string {
 	out := make(map[string]string, len(attrs)+4)
-	for key, value := range attrs {
-		out[key] = value
-	}
+	maps.Copy(out, attrs)
 	return out
 }
 
@@ -451,7 +450,7 @@ func pathPartsAndAttrs(prefix, update *gnmi.Path, budget *directGNMIDecodeBudget
 				}
 			}
 		}
-		for _, elem := range p.GetElement() {
+		for _, elem := range p.GetElement() { //nolint:staticcheck // Legacy gNMI paths can still use the deprecated Element representation.
 			if !budget.visitField(len(parts) + 1) {
 				return false
 			}
@@ -505,7 +504,8 @@ func gnmiPathToString(p *gnmi.Path) string {
 	}
 	parts := make([]string, 0, len(p.GetElem()))
 	for _, elem := range p.GetElem() {
-		name := elem.GetName()
+		var name strings.Builder
+		name.WriteString(elem.GetName())
 		if len(elem.GetKey()) > 0 {
 			keys := make([]string, 0, len(elem.GetKey()))
 			for key := range elem.GetKey() {
@@ -513,13 +513,13 @@ func gnmiPathToString(p *gnmi.Path) string {
 			}
 			sort.Strings(keys)
 			for _, key := range keys {
-				name += "[" + key + "=" + elem.GetKey()[key] + "]"
+				name.WriteString("[" + key + "=" + elem.GetKey()[key] + "]")
 			}
 		}
-		parts = append(parts, name)
+		parts = append(parts, name.String())
 	}
 	if len(parts) == 0 {
-		parts = append(parts, p.GetElement()...)
+		parts = append(parts, p.GetElement()...) //nolint:staticcheck // Preserve legacy gNMI Element path compatibility.
 	}
 	out := strings.Join(parts, "/")
 	if p.GetOrigin() != "" {

@@ -95,7 +95,7 @@ func TestIOSXRGNMIDecoderScalarsJSONLeaflistsAndDeletes(t *testing.T) {
 
 	resourceAttrs := md.ResourceMetrics().At(0).Resource().Attributes()
 	assert.Equal(t, "core-asr9k-1", attrValue(t, resourceAttrs, "host.name"))
-	assert.Equal(t, []string{"192.0.2.10"}, stringSliceAttrValue(t, resourceAttrs, "host.ip"))
+	assert.Equal(t, []string{"192.0.2.10"}, stringSliceAttrValue(t, resourceAttrs))
 	assert.Equal(t, "ios_xr", attrValue(t, resourceAttrs, "cisco.os.name"))
 	assert.Equal(t, "gnmi_dial_in", attrValue(t, resourceAttrs, "cisco.telemetry.transport"))
 	_, hasResourceModule := resourceAttrs.Get("cisco.yang.module")
@@ -327,7 +327,7 @@ func directTelemetryDataPointCount(md pmetric.Metrics) int {
 func manyLeafJSON(t *testing.T, count int) []byte {
 	t.Helper()
 	value := make(map[string]any, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		value[fmt.Sprintf("field-%06d", i)] = i
 	}
 	raw, err := json.Marshal(value)
@@ -338,7 +338,7 @@ func manyLeafJSON(t *testing.T, count int) []byte {
 func deeplyNestedJSON(t *testing.T, depth int) []byte {
 	t.Helper()
 	var value any = 1
-	for i := 0; i < depth; i++ {
+	for range depth {
 		value = map[string]any{"level": value}
 	}
 	raw, err := json.Marshal(value)
@@ -353,10 +353,10 @@ func attrValue(t *testing.T, attrs pcommon.Map, key string) string {
 	return value.AsString()
 }
 
-func stringSliceAttrValue(t *testing.T, attrs pcommon.Map, key string) []string {
+func stringSliceAttrValue(t *testing.T, attrs pcommon.Map) []string {
 	t.Helper()
-	value, ok := attrs.Get(key)
-	require.True(t, ok, "missing attribute %s", key)
+	value, ok := attrs.Get("host.ip")
+	require.True(t, ok, "missing attribute %s", "host.ip")
 	require.Equal(t, pcommon.ValueTypeSlice, value.Type())
 	values := value.Slice()
 	result := make([]string, 0, values.Len())

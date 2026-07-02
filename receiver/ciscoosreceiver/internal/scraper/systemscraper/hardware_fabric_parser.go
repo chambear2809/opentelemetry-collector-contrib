@@ -6,6 +6,7 @@ package systemscraper
 import (
 	"net"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -104,9 +105,9 @@ func parseHardwareStatusLine(line, component string) (hardwareStatus, bool) {
 		return hardwareStatus{}, false
 	}
 	state := ""
-	for i := len(fields) - 1; i >= 0; i-- {
-		if statusLooksKnown(fields[i]) {
-			state = normalizeTroubleshootingLabel(fields[i])
+	for _, field := range slices.Backward(fields) {
+		if statusLooksKnown(field) {
+			state = normalizeTroubleshootingLabel(field)
 			break
 		}
 	}

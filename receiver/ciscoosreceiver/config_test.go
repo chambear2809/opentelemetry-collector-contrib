@@ -1479,7 +1479,7 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.Equal(t, "password", string(cfg.Catalyst9800.DialIn.Targets[0].Credentials.Password))
 	assert.Equal(t, []string{"wireless-client-oper:client-oper-data/common-oper-data"}, cfg.Catalyst9800.DialIn.Targets[0].Paths.Include)
 	assert.True(t, cfg.Catalyst9800.DialOut.Enabled)
-	assert.Equal(t, "0.0.0.0:57501", cfg.Catalyst9800.DialOut.ServerConfig.NetAddr.Endpoint)
+	assert.Equal(t, "0.0.0.0:57501", cfg.Catalyst9800.DialOut.NetAddr.Endpoint)
 	assert.Equal(t, []string{"10.0.0.0/8"}, cfg.Catalyst9800.DialOut.AllowedClients)
 	assert.True(t, cfg.IOSXR.Enabled)
 	assert.Equal(t, 12000, cfg.IOSXR.MaxDatapointsPerBatch)
@@ -1497,7 +1497,7 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.Equal(t, "admin", cfg.IOSXR.DialIn.Targets[0].Credentials.Username)
 	assert.Equal(t, "password", string(cfg.IOSXR.DialIn.Targets[0].Credentials.Password))
 	assert.True(t, cfg.IOSXR.DialOut.Enabled)
-	assert.Equal(t, "0.0.0.0:57500", cfg.IOSXR.DialOut.ServerConfig.NetAddr.Endpoint)
+	assert.Equal(t, "0.0.0.0:57500", cfg.IOSXR.DialOut.NetAddr.Endpoint)
 	assert.Equal(t, []string{"10.0.0.0/8"}, cfg.IOSXR.DialOut.AllowedClients)
 	assert.Len(t, cfg.Scrapers, 2)
 	assert.Contains(t, cfg.Scrapers, component.MustNewType("system"))
@@ -1599,7 +1599,7 @@ func TestConfigUnmarshalRejectsUnknownSettings(t *testing.T) {
 		{
 			name: "unknown top-level setting",
 			config: map[string]any{
-				"collecton_interval": "1m",
+				"unexpected_setting": "1m",
 			},
 		},
 		{

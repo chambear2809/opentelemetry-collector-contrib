@@ -12,8 +12,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -145,7 +146,7 @@ func NewClient(cfg Config) (*Client, error) {
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	if cfg.InsecureSkipVerify {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // Explicit opt-in for lab Catalyst Center appliances.
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 
 	return &Client{
@@ -248,8 +249,8 @@ func GetPaginatedJSONWithPageLimit[T any](ctx context.Context, c *Client, operat
 		if err != nil {
 			return results, err
 		}
-		if err := byteBudget.Charge(operation, len(body), len(results)); err != nil {
-			return results, err
+		if budgetErr := byteBudget.Charge(operation, len(body), len(results)); budgetErr != nil {
+			return results, budgetErr
 		}
 		pages++
 		var page []T
@@ -313,8 +314,8 @@ func PostPaginatedJSON[T any](ctx context.Context, c *Client, operation, path st
 		if err != nil {
 			return results, err
 		}
-		if err := byteBudget.Charge(operation, len(responseBody), len(results)); err != nil {
-			return results, err
+		if budgetErr := byteBudget.Charge(operation, len(responseBody), len(results)); budgetErr != nil {
+			return results, budgetErr
 		}
 		pages++
 		var page []T
@@ -348,7 +349,7 @@ func (c *Client) pageSizeFor(pageLimit int) int {
 }
 
 func (c *Client) do(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, error) {
-	for authAttempt := 0; authAttempt < 2; authAttempt++ {
+	for authAttempt := range 2 {
 		token, err := c.getToken(ctx)
 		if err != nil {
 			return nil, err
@@ -428,7 +429,7 @@ func (c *Client) doWithToken(ctx context.Context, method, operation, path string
 func (c *Client) doRaw(ctx context.Context, method, operation, path string, query url.Values, payload []byte, token, authorization string) ([]byte, error) {
 	var lastErr error
 	attempts := c.retries + 1
-	for attempt := 0; attempt < attempts; attempt++ {
+	for attempt := range attempts {
 		if err := c.wait(ctx); err != nil {
 			return nil, err
 		}
@@ -472,12 +473,10 @@ func (c *Client) doRaw(ctx context.Context, method, operation, path string, quer
 		bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 		closeErr := resp.Body.Close()
 		if readErr != nil {
-			lastErr = readErr
 			c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
 			return nil, readErr
 		}
 		if closeErr != nil {
-			lastErr = closeErr
 			return nil, closeErr
 		}
 
@@ -578,7 +577,7 @@ func (p pageMetadata) complete(items int, ok bool) bool {
 	if !ok || p.Count <= 0 || p.Offset <= 0 {
 		return false
 	}
-	return p.Offset+items-1 >= p.Count
+	return p.Offset+items > p.Count
 }
 
 func decodePage(body []byte, out any) (pageMetadata, bool, error) {
@@ -651,9 +650,7 @@ func cloneValues(values url.Values) url.Values {
 
 func cloneMap(values map[string]any) map[string]any {
 	out := make(map[string]any, len(values)+1)
-	for key, value := range values {
-		out[key] = value
-	}
+	maps.Copy(out, values)
 	return out
 }
 
@@ -678,7 +675,7 @@ func sleepBeforeRetry(ctx context.Context, attempt int, retryAfter time.Duration
 	delay := retryAfter
 	if delay < 0 {
 		base := time.Duration(1<<attempt) * 200 * time.Millisecond
-		jitter := time.Duration(rand.Int63n(int64(100 * time.Millisecond))) //nolint:gosec // Non-cryptographic retry jitter.
+		jitter := time.Duration(rand.Int64N(int64(100 * time.Millisecond)))
 		delay = base + jitter
 	}
 	if delay <= 0 {

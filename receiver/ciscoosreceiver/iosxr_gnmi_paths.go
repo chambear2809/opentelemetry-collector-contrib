@@ -4,6 +4,7 @@
 package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver"
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -14,7 +15,7 @@ func parseGNMIPath(raw string) (*gnmi.Path, error) {
 	raw = strings.TrimSpace(raw)
 	raw = strings.Trim(raw, "/")
 	if raw == "" {
-		return nil, fmt.Errorf("path cannot be empty")
+		return nil, errors.New("path cannot be empty")
 	}
 	parts, err := splitGNMIPathElements(raw)
 	if err != nil {
@@ -83,28 +84,28 @@ func parseGNMIPathElem(raw string) (*gnmi.PathElem, error) {
 		rest := raw[idx:]
 		for rest != "" {
 			if !strings.HasPrefix(rest, "[") {
-				return nil, fmt.Errorf("unexpected key syntax")
+				return nil, errors.New("unexpected key syntax")
 			}
 			end := strings.Index(rest, "]")
 			if end < 0 {
-				return nil, fmt.Errorf("missing closing bracket")
+				return nil, errors.New("missing closing bracket")
 			}
 			kv := rest[1:end]
 			eq := strings.Index(kv, "=")
 			if eq <= 0 {
-				return nil, fmt.Errorf("key must be key=value")
+				return nil, errors.New("key must be key=value")
 			}
 			key := strings.TrimSpace(kv[:eq])
 			value := stripGNMIPathKeyQuotes(strings.TrimSpace(kv[eq+1:]))
 			if key == "" {
-				return nil, fmt.Errorf("key cannot be empty")
+				return nil, errors.New("key cannot be empty")
 			}
 			keys[key] = value
 			rest = rest[end+1:]
 		}
 	}
 	if name == "" {
-		return nil, fmt.Errorf("element name cannot be empty")
+		return nil, errors.New("element name cannot be empty")
 	}
 	if len(keys) == 0 {
 		keys = nil

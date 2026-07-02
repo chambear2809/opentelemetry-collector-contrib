@@ -6,8 +6,9 @@ package interfacesscraper
 import (
 	"strings"
 
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/scraper/interfacesscraper/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/pcommon"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/scraper/interfacesscraper/internal/metadata"
 )
 
 func (s *interfacesScraper) recordStructuredInterfaceCounters(ts pcommon.Timestamp, intf *Interface) {
@@ -82,11 +83,12 @@ func recordQOSGroupCounter(mb *metadata.MetricsBuilder, ts pcommon.Timestamp, in
 	queue := firstKnownToken(detail, []string{"unicast", "multicast", "broadcast", "oobfc", "queue"})
 	action, reason := qosActionAndReason(detail)
 	direction := qosDirection(detail)
-	if strings.HasSuffix(detail, "_bytes") {
+	switch {
+	case strings.HasSuffix(detail, "_bytes"):
 		mb.RecordCiscoInterfaceQosQueueBytesDataPoint(ts, value, interfaceName, direction, queue, group, action, reason, "queueing")
-	} else if strings.HasSuffix(detail, "_packets") || strings.Contains(detail, "packet") {
+	case strings.HasSuffix(detail, "_packets") || strings.Contains(detail, "packet"):
 		mb.RecordCiscoInterfaceQosQueuePacketsDataPoint(ts, value, interfaceName, direction, queue, group, action, reason, "queueing")
-	} else {
+	default:
 		return false
 	}
 	return true
@@ -106,7 +108,7 @@ func splitQOSGroupCounter(rest string) (string, string, bool) {
 func recordPFCWatchdogCounter(mb *metadata.MetricsBuilder, ts pcommon.Timestamp, interfaceName, counterName string, value int64) bool {
 	rest := strings.TrimPrefix(counterName, "pfc_watchdog_qos_group_")
 	group, detail, ok := strings.Cut(rest, "_")
-	if !ok || !(strings.Contains(detail, "packet") || strings.Contains(detail, "event")) {
+	if !ok || (!strings.Contains(detail, "packet") && !strings.Contains(detail, "event")) {
 		return false
 	}
 	action := "event"
@@ -151,11 +153,12 @@ func recordPolicyCounter(mb *metadata.MetricsBuilder, ts pcommon.Timestamp, inte
 	}
 	action, reason := qosActionAndReason(detail)
 	direction := qosDirection(detail)
-	if strings.HasSuffix(detail, "_bytes") {
+	switch {
+	case strings.HasSuffix(detail, "_bytes"):
 		mb.RecordCiscoInterfaceQosPolicyBytesDataPoint(ts, value, interfaceName, direction, className, action, reason, "policy_map")
-	} else if strings.HasSuffix(detail, "_packets") || strings.Contains(detail, "drop") {
+	case strings.HasSuffix(detail, "_packets") || strings.Contains(detail, "drop"):
 		mb.RecordCiscoInterfaceQosPolicyPacketsDataPoint(ts, value, interfaceName, direction, className, action, reason, "policy_map")
-	} else {
+	default:
 		return false
 	}
 	return true

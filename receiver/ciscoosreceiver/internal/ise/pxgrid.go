@@ -332,12 +332,12 @@ func (c *PxGridClient) subscribeEndpoint(ctx context.Context, wsURL, peerNodeNam
 	defer ws.Close()
 	ws.MaxPayloadBytes = stompMaxFrameBytes
 
-	if err := writeSTOMPContext(ctx, ws, c.ioTimeout, "CONNECT", map[string]string{
+	if writeErr := writeSTOMPContext(ctx, ws, c.ioTimeout, "CONNECT", map[string]string{
 		"accept-version": "1.2",
 		"host":           peerNodeName,
 		"heart-beat":     "30000,30000",
-	}, nil); err != nil {
-		return err
+	}, nil); writeErr != nil {
+		return writeErr
 	}
 	frame, err := readSTOMPContext(ctx, ws, c.ioTimeout)
 	if err != nil {
@@ -613,9 +613,9 @@ func (c *PxGridClient) discoveredRESTClient(endpoint, secret string) (*Client, e
 }
 
 func pxGridTLSConfig(cfg PxGridConfig) (*tls.Config, error) {
-	tlsConfig := &tls.Config{ServerName: cfg.ServerName} //nolint:gosec // InsecureSkipVerify is an explicit receiver setting below.
+	tlsConfig := &tls.Config{ServerName: cfg.ServerName}
 	if cfg.InsecureSkipVerify {
-		tlsConfig.InsecureSkipVerify = true //nolint:gosec // Explicit opt-in for private ISE pxGrid appliances.
+		tlsConfig.InsecureSkipVerify = true
 	}
 	if cfg.CAFile != "" {
 		caBytes, err := os.ReadFile(cfg.CAFile)

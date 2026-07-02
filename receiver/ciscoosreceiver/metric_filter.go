@@ -27,7 +27,7 @@ func newMetricFilteringConsumer(next consumer.Metrics, config *Config) consumer.
 	}
 }
 
-func (c *metricFilteringConsumer) Capabilities() consumer.Capabilities {
+func (*metricFilteringConsumer) Capabilities() consumer.Capabilities {
 	return consumer.Capabilities{MutatesData: true}
 }
 

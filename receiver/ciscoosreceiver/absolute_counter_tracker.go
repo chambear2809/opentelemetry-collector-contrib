@@ -218,7 +218,7 @@ func newAbsoluteCounterTrackingConsumer(next consumer.Metrics) consumer.Metrics 
 	return &absoluteCounterTrackingConsumer{next: next, tracker: newAbsoluteCounterTracker()}
 }
 
-func (c *absoluteCounterTrackingConsumer) Capabilities() consumer.Capabilities {
+func (*absoluteCounterTrackingConsumer) Capabilities() consumer.Capabilities {
 	return consumer.Capabilities{MutatesData: true}
 }
 

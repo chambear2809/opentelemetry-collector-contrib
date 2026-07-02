@@ -40,8 +40,8 @@ func newCatalyst9800MetricsReceiver(set receiver.Settings, conf *Config, next co
 
 	if len(cfg.DialIn.Targets) > 0 {
 		targets := make([]Catalyst9800TargetConfig, 0, len(cfg.DialIn.Targets))
-		for _, target := range cfg.DialIn.Targets {
-			target = target.withDefaults(cfg)
+		for i := range cfg.DialIn.Targets {
+			target := cfg.DialIn.Targets[i].withDefaults(cfg)
 			if selector.allows(catalyst9800TargetIdentity(target)) {
 				targets = append(targets, target)
 			}
@@ -149,13 +149,11 @@ func (r *catalyst9800DialInReceiver) Shutdown(ctx context.Context) error {
 func (r *catalyst9800DialInReceiver) run(ctx context.Context) {
 	defer close(r.done)
 	var wg sync.WaitGroup
-	for _, target := range r.targets {
-		target := target
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for i := range r.targets {
+		target := r.targets[i]
+		wg.Go(func() {
 			r.runTarget(ctx, target)
-		}()
+		})
 	}
 	wg.Wait()
 }
@@ -209,13 +207,8 @@ func (r *catalyst9800DialInReceiver) runTarget(ctx context.Context, target Catal
 	}
 }
 
-func (r *catalyst9800DialInReceiver) subscribeTarget(ctx context.Context, target Catalyst9800TargetConfig) error {
-	_, err := r.subscribeTargetAttempt(ctx, target)
-	return err
-}
-
 func (r *catalyst9800DialInReceiver) subscribeTargetAttempt(ctx context.Context, target Catalyst9800TargetConfig) (bool, error) {
-	conn, err := target.ClientConfig.ToClientConn(ctx, r.host.GetExtensions(), r.settings.TelemetrySettings, configgrpc.WithGrpcDialOption(grpc.WithBlock()))
+	conn, err := target.ToClientConn(ctx, r.host.GetExtensions(), r.settings.TelemetrySettings, configgrpc.WithGrpcDialOption(grpc.WithBlock())) //nolint:staticcheck // Blocking dial is required to make the configured connection timeout authoritative.
 	if err != nil {
 		return false, err
 	}
@@ -250,16 +243,16 @@ func (r *catalyst9800DialInReceiver) subscribeTargetAttempt(ctx context.Context,
 	if err != nil {
 		return false, err
 	}
-	if err := stream.Send(buildCatalyst9800SubscribeRequest(target.Subscription, paths, encoding)); err != nil {
-		return false, err
+	if sendErr := stream.Send(buildCatalyst9800SubscribeRequest(target.Subscription, paths, encoding)); sendErr != nil {
+		return false, sendErr
 	}
 	r.setTargetSubscriptionActive(ctx, target, true)
 	defer r.setTargetSubscriptionActive(ctx, target, false)
 	var progressed atomic.Bool
 
 	if target.Subscription.Mode == iosXRSubscribeModePoll {
-		err := r.recvPoll(streamCtx, cancelStream, target, stream, &progressed)
-		return progressed.Load(), err
+		pollErr := r.recvPoll(streamCtx, cancelStream, target, stream, &progressed)
+		return progressed.Load(), pollErr
 	}
 	if target.Subscription.Mode == iosXRSubscribeModeOnce {
 		if closeErr := stream.CloseSend(); closeErr != nil {
@@ -369,14 +362,14 @@ func (r *catalyst9800DialInReceiver) recvLoop(ctx context.Context, target Cataly
 				r.settings.Logger.Debug("Catalyst 9800 gNMI initial sync complete", zap.String("target", target.Name))
 			}
 		case *gnmi.SubscribeResponse_Error:
-			if body.Error != nil {
-				return sanitizedGNMISubscribeError(body.Error)
+			if body.Error != nil { //nolint:staticcheck // Legacy devices can still populate the deprecated in-band gNMI error.
+				return sanitizedGNMISubscribeError(body.Error) //nolint:staticcheck // Preserve compatibility with legacy in-band gNMI errors.
 			}
 		}
 	}
 }
 
-func (r *catalyst9800DialInReceiver) outgoingContext(ctx context.Context, target Catalyst9800TargetConfig) context.Context {
+func (*catalyst9800DialInReceiver) outgoingContext(ctx context.Context, target Catalyst9800TargetConfig) context.Context {
 	return metadata.AppendToOutgoingContext(ctx,
 		"username", target.Credentials.Username,
 		"password", string(target.Credentials.Password),
@@ -394,14 +387,15 @@ func (r *catalyst9800DialInReceiver) resolveTargetPaths(target Catalyst9800Targe
 	}
 	out := make([]catalyst9800PathDefinition, 0, len(selected))
 	var unsupported []string
-	for _, def := range selected {
+	for i := range selected {
+		def := &selected[i]
 		candidates := catalyst9800ModuleCandidates(def.Path)
 		if len(candidates) == 0 {
-			out = append(out, def)
+			out = append(out, *def)
 			continue
 		}
 		if catalyst9800AnyModelSupported(candidates, supported) {
-			out = append(out, def)
+			out = append(out, *def)
 			continue
 		}
 		unsupported = append(unsupported, def.Path)
@@ -461,7 +455,8 @@ func buildCatalyst9800SubscribeRequest(sub Catalyst9800SubscriptionConfig, paths
 		AllowAggregation: sub.allowAggregation(),
 		Subscription:     make([]*gnmi.Subscription, 0, len(paths)),
 	}
-	for _, def := range paths {
+	for i := range paths {
+		def := &paths[i]
 		if strings.Contains(def.Path, "*") {
 			continue
 		}
@@ -480,10 +475,7 @@ func buildCatalyst9800SubscribeRequest(sub Catalyst9800SubscriptionConfig, paths
 			streamMode = iosXRStreamModeSample
 		}
 		mode := subscriptionStreamMode(streamMode)
-		sampleInterval := sub.SampleInterval
-		if def.MinSampleInterval > sampleInterval {
-			sampleInterval = def.MinSampleInterval
-		}
+		sampleInterval := max(def.MinSampleInterval, sub.SampleInterval)
 		sampleIntervalNanos := uint64(sampleInterval.Nanoseconds())
 		if mode == gnmi.SubscriptionMode_ON_CHANGE {
 			sampleIntervalNanos = 0
@@ -509,7 +501,9 @@ func catalyst9800TargetIdentity(target Catalyst9800TargetConfig) deviceIdentity 
 	}
 }
 
-var _ receiver.Metrics = (*catalyst9800CompositeReceiver)(nil)
-var _ receiver.Metrics = (*catalyst9800DialInReceiver)(nil)
-var _ consumer.Metrics = (*catalyst9800NormalizingConsumer)(nil)
-var _ = pmetric.NewMetrics
+var (
+	_ receiver.Metrics = (*catalyst9800CompositeReceiver)(nil)
+	_ receiver.Metrics = (*catalyst9800DialInReceiver)(nil)
+	_ consumer.Metrics = (*catalyst9800NormalizingConsumer)(nil)
+	_                  = pmetric.NewMetrics
+)

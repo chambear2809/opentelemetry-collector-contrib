@@ -145,7 +145,7 @@ func TestCatalyst9800GNMIDecoderWirelessAliasesAndRawMetrics(t *testing.T) {
 	assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
 	assert.Equal(t, int64(1), dp.IntValue())
 	assert.Equal(t, "AA:BB:CC:DD:EE:FF", attrValue(t, dp.Attributes(), "cisco.wlc.ap.mac"))
-	assert.Equal(t, []string{"192.0.2.21"}, stringSliceAttrValue(t, dp.Attributes(), "host.ip"))
+	assert.Equal(t, []string{"192.0.2.21"}, stringSliceAttrValue(t, dp.Attributes()))
 
 	clientBytes := mustFindIOSXRMetric(t, md, "cisco.wlc.client.network.io")
 	require.Equal(t, pmetric.MetricTypeSum, clientBytes.Type())
@@ -169,7 +169,7 @@ func TestCatalyst9800GNMIDecoderWirelessAliasesAndRawMetrics(t *testing.T) {
 
 	resourceAttrs := md.ResourceMetrics().At(0).Resource().Attributes()
 	assert.Equal(t, "wlc-9800-1", attrValue(t, resourceAttrs, "host.name"))
-	assert.Equal(t, []string{"192.0.2.20"}, stringSliceAttrValue(t, resourceAttrs, "host.ip"))
+	assert.Equal(t, []string{"192.0.2.20"}, stringSliceAttrValue(t, resourceAttrs))
 	assert.Equal(t, "ios_xe", attrValue(t, resourceAttrs, "cisco.os.name"))
 	assert.Equal(t, "catalyst_9800", attrValue(t, resourceAttrs, "cisco.platform.family"))
 	assert.Equal(t, "gnmi_dial_in", attrValue(t, resourceAttrs, "cisco.telemetry.transport"))

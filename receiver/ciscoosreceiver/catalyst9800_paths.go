@@ -5,6 +5,7 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 
 import (
 	"path"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -19,7 +20,7 @@ const (
 	catalyst9800PathGroupAuthSummary      = "auth_summary"
 	catalyst9800PathGroupControllerSystem = "controller_system"
 	catalyst9800PathGroupClientDetail     = "client_detail"
-	catalyst9800PathGroupCAPWAPPackets    = "capwap_packets"
+	catalyst9800PathGroupCAPWAPPackets    = "capwap_packets" //nolint:gosec // CAPWAP is a protocol name, not a credential.
 	catalyst9800PathGroupNeighbors        = "neighbors"
 )
 
@@ -108,7 +109,8 @@ var catalyst9800SafeDefaultPathGroups = map[string]struct{}{
 
 func catalyst9800PathGroupNames() []string {
 	seen := map[string]struct{}{}
-	for _, def := range catalyst9800PathCatalog {
+	for i := range catalyst9800PathCatalog {
+		def := &catalyst9800PathCatalog[i]
 		seen[def.Group] = struct{}{}
 	}
 	out := make([]string, 0, len(seen))
@@ -120,12 +122,7 @@ func catalyst9800PathGroupNames() []string {
 }
 
 func isKnownCatalyst9800PathGroup(name string) bool {
-	for _, group := range catalyst9800PathGroupNames() {
-		if name == group {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(catalyst9800PathGroupNames(), name)
 }
 
 func resolveCatalyst9800PathSelection(globalGroups map[string]Catalyst9800PathGroupConfig, globalPaths Catalyst9800PathOverrideConfig, target *Catalyst9800TargetConfig) []catalyst9800PathDefinition {
@@ -142,10 +139,11 @@ func resolveCatalyst9800PathSelection(globalGroups map[string]Catalyst9800PathGr
 
 	selected := make([]catalyst9800PathDefinition, 0, len(catalyst9800PathCatalog)+len(paths.Include))
 	seen := map[string]struct{}{}
-	for _, def := range catalyst9800PathCatalog {
-		if groups[def.Group].Enabled && !catalyst9800PathExcluded(def, paths.Exclude) {
+	for i := range catalyst9800PathCatalog {
+		def := &catalyst9800PathCatalog[i]
+		if groups[def.Group].Enabled && !catalyst9800PathExcluded(*def, paths.Exclude) {
 			if _, ok := seen[def.Path]; !ok {
-				selected = append(selected, def)
+				selected = append(selected, *def)
 				seen[def.Path] = struct{}{}
 			}
 		}

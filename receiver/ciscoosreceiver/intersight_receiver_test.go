@@ -8,11 +8,9 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -28,7 +26,7 @@ import (
 )
 
 func TestIntersightScrapeEmitsTroubleshootingMetrics(t *testing.T) {
-	server, _ := newIntersightFixtureServer(t, map[string]string{
+	server := newIntersightFixtureServer(t, map[string]string{
 		"/api/v1/asset/DeviceRegistrations": `{"Results":[
 			{"Moid":"reg-1","ObjectType":"asset.DeviceRegistration","DeviceHostname":["fi-a"],"DeviceIpAddress":["10.0.0.10"],"Serial":["FDO1234"],"PlatformType":"UCS-FI","ConnectionStatus":"Connected"}
 		]}`,
@@ -98,7 +96,7 @@ func TestIntersightScrapeEmitsTroubleshootingMetrics(t *testing.T) {
 }
 
 func TestIntersightScrapeAppliesTargetFilters(t *testing.T) {
-	server, _ := newIntersightFixtureServer(t, map[string]string{
+	server := newIntersightFixtureServer(t, map[string]string{
 		"/api/v1/compute/PhysicalSummaries": `{"Results":[
 			{"Moid":"server-1","ObjectType":"compute.PhysicalSummary","Name":"included","Serial":"SERIAL-1","OperState":"ok"},
 			{"Moid":"server-2","ObjectType":"compute.PhysicalSummary","Name":"excluded","Serial":"SERIAL-9","OperState":"ok"}
@@ -179,7 +177,7 @@ func TestIntersightTelemetryRespectsSharedDeviceSelection(t *testing.T) {
 }
 
 func TestIntersightScrapeRecordsPartialSuccess(t *testing.T) {
-	server, _ := newIntersightFixtureServer(t, map[string]string{
+	server := newIntersightFixtureServer(t, map[string]string{
 		"/api/v1/asset/DeviceRegistrations": `{"Results":[
 			{"Moid":"reg-1","ObjectType":"asset.DeviceRegistration","DeviceHostname":["fi-a"],"Serial":["FDO1234"],"ConnectionStatus":"Connected"}
 		]}`,
@@ -198,7 +196,7 @@ func TestIntersightScrapeRecordsPartialSuccess(t *testing.T) {
 }
 
 func TestIntersightLogsEmitEventEvidenceAndDeduplicate(t *testing.T) {
-	server, _ := newIntersightFixtureServer(t, map[string]string{
+	server := newIntersightFixtureServer(t, map[string]string{
 		"/api/v1/aaa/AuditRecords": `{"Results":[
 			{"Moid":"audit-1","ObjectType":"aaa.AuditRecord","Email":"operator@example.com","Timestamp":"2026-05-25T10:01:00Z","InstId":"fabric-profile/update"}
 		]}`,
@@ -422,34 +420,12 @@ func newTestIntersightLogsReceiver(t *testing.T, endpoint string) *intersightLog
 	return receiver
 }
 
-type intersightCapturedRequest struct {
-	method string
-	path   string
-	query  string
-	body   string
-}
-
-type intersightCapturedRequests struct {
-	mu       sync.Mutex
-	requests []intersightCapturedRequest
-}
-
-func (c *intersightCapturedRequests) append(req intersightCapturedRequest) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.requests = append(c.requests, req)
-}
-
-func newIntersightFixtureServer(t *testing.T, routes map[string]string, failures map[string]int) (*httptest.Server, *intersightCapturedRequests) {
+func newIntersightFixtureServer(t *testing.T, routes map[string]string, failures map[string]int) *httptest.Server {
 	t.Helper()
-	requests := &intersightCapturedRequests{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Contains(t, r.Header.Get("Authorization"), `Signature keyId="test-key"`)
 		assert.NotEmpty(t, r.Header.Get("Date"))
 		assert.NotEmpty(t, r.Header.Get("Digest"))
-		body, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
-		requests.append(intersightCapturedRequest{method: r.Method, path: r.URL.Path, query: r.URL.RawQuery, body: string(body)})
 
 		if status := failures[r.URL.Path]; status != 0 {
 			w.Header().Set("Retry-After", "0")
@@ -471,7 +447,7 @@ func newIntersightFixtureServer(t *testing.T, routes map[string]string, failures
 		}
 		_, _ = w.Write([]byte(`{"Results":[]}`))
 	}))
-	return server, requests
+	return server
 }
 
 func intersightTelemetryFixture() string {
@@ -569,9 +545,9 @@ func hasLogRecordAttribute(ld plog.Logs, name, value string) bool {
 	return false
 }
 
-func hasLogResourceAttribute(ld plog.Logs, name, value string) bool {
+func hasLogResourceAttribute(ld plog.Logs, value string) bool {
 	for i := 0; i < ld.ResourceLogs().Len(); i++ {
-		attr, ok := ld.ResourceLogs().At(i).Resource().Attributes().Get(name)
+		attr, ok := ld.ResourceLogs().At(i).Resource().Attributes().Get("host.id")
 		if ok && attr.Str() == value {
 			return true
 		}
