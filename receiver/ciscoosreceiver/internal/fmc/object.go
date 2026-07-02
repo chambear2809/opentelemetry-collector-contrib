@@ -27,12 +27,12 @@ func String(obj Object, keys ...string) string {
 			if strings.TrimSpace(typed) != "" {
 				return typed
 			}
+		case json.Number:
+			return typed.String()
 		case fmt.Stringer:
 			if text := strings.TrimSpace(typed.String()); text != "" {
 				return text
 			}
-		case json.Number:
-			return typed.String()
 		case float64:
 			if typed == float64(int64(typed)) {
 				return strconv.FormatInt(int64(typed), 10)

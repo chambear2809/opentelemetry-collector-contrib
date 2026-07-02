@@ -619,7 +619,7 @@ func TestISEMetricEndpointsStayReadOnlyAndConcrete(t *testing.T) {
 		}
 		assert.NotContains(t, spec.path, "{", spec.operation)
 		assert.NotContains(t, spec.path, "}", spec.operation)
-		for _, segment := range strings.Split(strings.ToLower(spec.path), "/") {
+		for segment := range strings.SplitSeq(strings.ToLower(spec.path), "/") {
 			assert.NotContains(t, []string{
 				"coa",
 				"delete",
@@ -872,8 +872,8 @@ func TestISEPxGridStreamingLogsDeduplicateMessages(t *testing.T) {
 		Body:      []byte(`{"userName":"alice"}`),
 	}
 
-	receiver.consumePxGridMessage(t.Context(), message)
-	receiver.consumePxGridMessage(t.Context(), message)
+	require.NoError(t, receiver.consumePxGridMessage(t.Context(), message))
+	require.NoError(t, receiver.consumePxGridMessage(t.Context(), message))
 
 	assert.Equal(t, 1, sink.LogRecordCount())
 }
@@ -951,16 +951,16 @@ func TestISEPxGridStreamingLogsApplySharedDeviceSelection(t *testing.T) {
 		seen:      newLogDeduplicator(),
 	}
 
-	receiver.consumePxGridMessage(t.Context(), iseinternal.StompMessage{
+	require.NoError(t, receiver.consumePxGridMessage(t.Context(), iseinternal.StompMessage{
 		Topic:     "/topic/discovered/session",
 		MessageID: "message-denied",
 		Body:      []byte(`{"sessions":[{"networkDeviceName":"edge-denied"}]}`),
-	})
-	receiver.consumePxGridMessage(t.Context(), iseinternal.StompMessage{
+	}))
+	require.NoError(t, receiver.consumePxGridMessage(t.Context(), iseinternal.StompMessage{
 		Topic:     "/topic/discovered/session",
 		MessageID: "message-allowed",
 		Body:      []byte(`{"sessions":[{"networkDeviceName":"edge-allowed"}]}`),
-	})
+	}))
 
 	require.Equal(t, 1, sink.LogRecordCount())
 	body := sink.AllLogs()[0].ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).Body().AsString()

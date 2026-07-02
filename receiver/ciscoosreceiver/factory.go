@@ -73,8 +73,9 @@ func createMetricsReceiver(
 	consumer = newMetricFilteringConsumer(newAbsoluteCounterTrackingConsumer(consumer), conf)
 
 	var receivers []receiver.Metrics
-	for _, device := range conf.Devices {
-		if !selector.allows(sshDeviceIdentity(device)) {
+	for i := range conf.Devices {
+		device := &conf.Devices[i]
+		if !selector.allows(sshDeviceIdentity(*device)) {
 			continue
 		}
 		connDevice := connection.DeviceConfig{

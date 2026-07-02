@@ -5,6 +5,7 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 
 import (
 	"path"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -95,7 +96,8 @@ var iosXRPathCatalog = []iosXRPathDefinition{
 
 func iosXRPathGroupNames() []string {
 	seen := map[string]struct{}{}
-	for _, def := range iosXRPathCatalog {
+	for i := range iosXRPathCatalog {
+		def := &iosXRPathCatalog[i]
 		seen[def.Group] = struct{}{}
 	}
 	out := make([]string, 0, len(seen))
@@ -107,12 +109,7 @@ func iosXRPathGroupNames() []string {
 }
 
 func isKnownIOSXRPathGroup(name string) bool {
-	for _, group := range iosXRPathGroupNames() {
-		if name == group {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(iosXRPathGroupNames(), name)
 }
 
 func resolveIOSXRPathSelection(globalGroups map[string]IOSXRPathGroupConfig, globalPaths IOSXRPathOverrideConfig, target *IOSXRTargetConfig) []iosXRPathDefinition {
@@ -129,10 +126,11 @@ func resolveIOSXRPathSelection(globalGroups map[string]IOSXRPathGroupConfig, glo
 
 	selected := make([]iosXRPathDefinition, 0, len(iosXRPathCatalog)+len(paths.Include))
 	seen := map[string]struct{}{}
-	for _, def := range iosXRPathCatalog {
-		if groups[def.Group].Enabled && !iosXRPathExcluded(def, paths.Exclude) {
+	for i := range iosXRPathCatalog {
+		def := &iosXRPathCatalog[i]
+		if groups[def.Group].Enabled && !iosXRPathExcluded(*def, paths.Exclude) {
 			if _, ok := seen[def.Path]; !ok {
-				selected = append(selected, def)
+				selected = append(selected, *def)
 				seen[def.Path] = struct{}{}
 			}
 		}

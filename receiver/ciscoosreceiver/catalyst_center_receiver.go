@@ -129,7 +129,7 @@ func (r *catalystCenterMetricsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 
-	obsCtx := startMetricsOp(r.obs, ctx)
+	obsCtx := startMetricsOp(ctx, r.obs)
 	md, scrapeErr := r.scrape(scrapeCtx)
 	if scrapeErr != nil {
 		r.settings.Logger.Error("Catalyst Center scrape failed", zap.Error(scrapeErr))
@@ -138,7 +138,7 @@ func (r *catalystCenterMetricsReceiver) collect(ctx context.Context) {
 	if consumeErr != nil {
 		r.settings.Logger.Error("Catalyst Center metrics consumer failed", zap.Error(consumeErr))
 	}
-	endMetricsOp(r.obs, obsCtx, metricCount, combineSignalErrors(scrapeErr, consumeErr))
+	endMetricsOp(obsCtx, r.obs, metricCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *catalystCenterMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
@@ -225,11 +225,12 @@ func (r *catalystCenterMetricsReceiver) scrapeInventory(ctx context.Context, bui
 		r.settings.Logger.Warn("Catalyst Center device count endpoint failed", zap.Error(err))
 	}
 	devices, err := catalystcenter.GetPaginatedJSON[catalystcenter.Device](ctx, r.client, "devices", "/dna/intent/api/v1/network-device", nil, r.config.CatalystCenter.Inventory.MaxResults)
-	for _, device := range devices {
-		if !selector.allows(catalystDeviceIdentity(device)) {
+	for i := range devices {
+		device := &devices[i]
+		if !selector.allows(catalystDeviceIdentity(*device)) {
 			continue
 		}
-		rb := builder.deviceResource(device)
+		rb := builder.deviceResource(*device)
 		if reachable, ok := reachableStatus(device.ReachabilityStatus); ok {
 			rb.recordInt("cisco.device.up", "Device availability reported by Catalyst Center.", "1", reachable, nil)
 		}
@@ -259,13 +260,14 @@ func (r *catalystCenterMetricsReceiver) scrapeInterfaces(ctx context.Context, bu
 		r.settings.Logger.Warn("Catalyst Center interface count endpoint failed", zap.Error(err))
 	}
 	interfaces, err := catalystcenter.GetPaginatedJSON[catalystcenter.Interface](ctx, r.client, "interfaces", "/dna/intent/api/v1/interface", nil, r.config.CatalystCenter.Interfaces.MaxResults)
-	for _, iface := range interfaces {
-		device, _ := builder.deviceFor(firstNonEmpty(iface.DeviceID, iface.SerialNo, iface.MacAddress))
-		if !selector.allows(catalystInterfaceIdentity(iface, device)) {
+	for i := range interfaces {
+		iface := &interfaces[i]
+		device := builder.deviceFor(firstNonEmpty(iface.DeviceID, iface.SerialNo, iface.MacAddress))
+		if !selector.allows(catalystInterfaceIdentity(*iface, device)) {
 			continue
 		}
-		rb := builder.interfaceResource(iface)
-		attrs := catalystInterfaceAttrs(iface)
+		rb := builder.interfaceResource(*iface)
+		attrs := catalystInterfaceAttrs(*iface)
 		if connected, ok := connectedStatus(iface.Status); ok {
 			rb.recordInt("system.network.interface.status", "Interface operational status reported by Catalyst Center.", "1", connected, attrs)
 		}
@@ -302,8 +304,8 @@ func (r *catalystCenterMetricsReceiver) scrapeHealth(ctx context.Context, builde
 
 	siteQuery := catalystWindowQuery(r.config.CatalystCenter.Lookback, now)
 	sites, err := catalystcenter.GetPaginatedJSONWithPageLimit[catalystcenter.SiteHealthSummary](ctx, r.client, "site_health", "/dna/data/api/v1/siteHealthSummaries", siteQuery, r.config.CatalystCenter.Health.MaxResults, catalystCenterSiteHealthPageLimit)
-	for _, site := range sites {
-		builder.recordSiteHealth(site)
+	for i := range sites {
+		builder.recordSiteHealth(sites[i])
 	}
 	if err != nil {
 		r.settings.Logger.Warn("Catalyst Center site health endpoint failed", zap.Error(err))
@@ -341,9 +343,10 @@ func (r *catalystCenterMetricsReceiver) scrapeIssues(ctx context.Context, builde
 	}
 	issues, err := catalystcenter.PostPaginatedJSON[catalystcenter.Issue](ctx, r.client, "issues.query", "/dna/data/api/v1/assuranceIssues/query", body, r.config.CatalystCenter.Issues.MaxResults)
 	selectedIssues := 0
-	for _, issue := range issues {
-		device, _ := builder.deviceFor(issue.EntityID)
-		if !selector.allows(catalystIssueIdentity(issue, device)) {
+	for i := range issues {
+		issue := &issues[i]
+		device := builder.deviceFor(issue.EntityID)
+		if !selector.allows(catalystIssueIdentity(*issue, device)) {
 			continue
 		}
 		selectedIssues++
@@ -532,16 +535,16 @@ func (b *catalystCenterMetricsBuilder) interfaceResource(iface catalystcenter.In
 	return rb
 }
 
-func (b *catalystCenterMetricsBuilder) deviceFor(keys ...string) (catalystcenter.Device, bool) {
+func (b *catalystCenterMetricsBuilder) deviceFor(keys ...string) catalystcenter.Device {
 	for _, key := range keys {
 		if key == "" {
 			continue
 		}
 		if device, ok := b.devices[key]; ok {
-			return device, true
+			return device
 		}
 	}
-	return catalystcenter.Device{}, false
+	return catalystcenter.Device{}
 }
 
 func (b *catalystCenterMetricsBuilder) siteResource(site catalystcenter.SiteHealthSummary) *resourceMetricsBuilder {
@@ -658,18 +661,21 @@ func (b *catalystCenterMetricsBuilder) recordNetworkHealth(health catalystcenter
 	if len(distribution) == 0 {
 		distribution = health.HealthDistirubution
 	}
-	for _, item := range distribution {
+	for i := range distribution {
+		item := &distribution[i]
 		attrs := map[string]string{"catalyst_center.device.category": item.Category}
 		rb.recordDouble("catalyst_center.network.health.category.score", "Catalyst Center network health score by device category.", "1", item.HealthScore, attrs)
 	}
 }
 
 func (b *catalystCenterMetricsBuilder) recordClientHealth(health catalystcenter.ClientHealth) {
-	for _, site := range health.Response {
-		for _, score := range site.ScoreDetail {
-			b.recordClientHealthScore(site.SiteID, score)
-			for _, nested := range score.ScoreList {
-				b.recordClientHealthScore(site.SiteID, nested)
+	for i := range health.Response {
+		site := &health.Response[i]
+		for j := range site.ScoreDetail {
+			score := &site.ScoreDetail[j]
+			b.recordClientHealthScore(site.SiteID, *score)
+			for k := range score.ScoreList {
+				b.recordClientHealthScore(site.SiteID, score.ScoreList[k])
 			}
 		}
 	}
@@ -771,7 +777,7 @@ func (b *catalystCenterMetricsBuilder) recordTopology(topology catalystcenter.To
 	nodes := make([]catalystcenter.TopologyNode, 0, len(topology.Nodes))
 	allowedNodeIDs := map[string]struct{}{}
 	for _, node := range topology.Nodes {
-		device, _ := b.deviceFor(node.ID, node.Label)
+		device := b.deviceFor(node.ID, node.Label)
 		if !selector.allows(catalystTopologyNodeIdentity(node, device)) {
 			continue
 		}

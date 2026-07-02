@@ -122,7 +122,7 @@ func (y *yangReceiver) Shutdown(ctx context.Context) error {
 		// Start the forced stop asynchronously as grpc-go serializes Stop with the
 		// already-running GracefulStop; waiting for that lock can itself wait on a
 		// non-cooperative handler. Stop closes listeners and transports as soon as
-		// it acquires the server lock, cancelling every stream context.
+		// it acquires the server lock, canceling every stream context.
 		if y.server != nil {
 			y.forceStopOnce.Do(func() { go y.server.Stop() })
 		}

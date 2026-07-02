@@ -183,7 +183,7 @@ func appendCatalyst9800AliasesForValueIndexed(builder *indexedMetricBuilder, mod
 			builder.getOrCreate(name, metricType).SetUnit(unit[0])
 		}
 	}
-	appendState := func(name, attrName string, extra map[string]string) {
+	appendState := func(name string, extra map[string]string) {
 		next := mergeStringAttrs(aliasAttrs, extra)
 		if numeric {
 			builder.appendNumber(name, pmetric.MetricTypeGauge, numericValue, ts, next)
@@ -192,15 +192,15 @@ func appendCatalyst9800AliasesForValueIndexed(builder *indexedMetricBuilder, mod
 		if textValue == "" {
 			return
 		}
-		next[attrName] = textValue
+		next["state"] = textValue
 		if state, ok := catalyst9800StateNumeric(textValue); ok {
 			builder.appendNumber(name, pmetric.MetricTypeGauge, doubleMetricNumber(state), ts, next)
 			return
 		}
 		builder.appendNumber(name, pmetric.MetricTypeGauge, doubleMetricNumber(1), ts, next)
 	}
-	appendInfo := func(name, attrName string, extra map[string]string) {
-		next := mergeStringAttrs(aliasAttrs, extra)
+	appendInfo := func(name, attrName string) {
+		next := mergeStringAttrs(aliasAttrs, nil)
 		if numeric {
 			textValue = numericValue.String()
 		}
@@ -213,17 +213,17 @@ func appendCatalyst9800AliasesForValueIndexed(builder *indexedMetricBuilder, mod
 
 	switch leaf {
 	case "is_joined":
-		appendState("cisco.wlc.ap.join.status", "state", nil)
+		appendState("cisco.wlc.ap.join.status", nil)
 	case "last_join_failure_type", "last_error_type":
-		appendInfo("cisco.wlc.ap.join.failure.reason.info", "failure.reason", nil)
+		appendInfo("cisco.wlc.ap.join.failure.reason.info", "failure.reason")
 	case "disconnects", "num_disconnects", "ap_disconnect_count":
 		appendNumber("cisco.wlc.ap.disconnect", nil, true)
 	case "disconnect_reason", "ap_disconnect_reason":
-		appendInfo("cisco.wlc.ap.disconnect.reason.info", "reason", nil)
+		appendInfo("cisco.wlc.ap.disconnect.reason.info", "reason")
 	case "ap_operation_state", "capwap_state":
-		appendState("cisco.wlc.ap.capwap.state", "state", nil)
+		appendState("cisco.wlc.ap.capwap.state", nil)
 	case "link_encryption_enabled":
-		appendState("cisco.wlc.ap.capwap.encryption.enabled", "state", nil)
+		appendState("cisco.wlc.ap.capwap.encryption.enabled", nil)
 	case "rx_util_percentage", "tx_util_percentage", "cca_util_percentage", "rx_noise_channel_utilization", "non_wifi_inter", "bss_chan_util":
 		appendNumber("cisco.wlc.rf.channel.utilization", map[string]string{"utilization.type": catalyst9800UtilizationType(leaf)}, false)
 		if strings.Contains(pathText, "ssid_counters") {
@@ -246,19 +246,19 @@ func appendCatalyst9800AliasesForValueIndexed(builder *indexedMetricBuilder, mod
 	case "tx_retries", "tx_retries_data", "rx_retries", "rx_retries_data":
 		appendNumber("cisco.wlc.ssid.retry.count", map[string]string{"direction": catalyst9800Direction(leaf)}, true)
 	case "co_state":
-		appendState("cisco.wlc.client.connection.state", "state", nil)
+		appendState("cisco.wlc.client.connection.state", nil)
 	case "exclude_reason":
-		appendInfo("cisco.wlc.client.auth.failure.reason.info", "failure.reason", nil)
+		appendInfo("cisco.wlc.client.auth.failure.reason.info", "failure.reason")
 	case "most_recent_rssi", "rssi":
 		appendNumber("cisco.wlc.client.wireless.rssi", nil, false)
 	case "most_recent_snr", "snr":
 		appendNumber("cisco.wlc.client.wireless.snr", nil, false)
 	case "dot11_roam_type", "mm_client_roam_type", "roam_type":
-		appendInfo("cisco.wlc.client.roam.type.info", "roam.type", nil)
+		appendInfo("cisco.wlc.client.roam.type.info", "roam.type")
 	case "roam_failure_count":
 		appendNumber("cisco.wlc.client.roam.failure.count", nil, true)
 	case "ulink_status", "peer_status", "link_status", "connection_status":
-		appendState("cisco.wlc.mobility.peer.status", "state", map[string]string{"status.type": strings.TrimSuffix(leaf, "_status")})
+		appendState("cisco.wlc.mobility.peer.status", map[string]string{"status.type": strings.TrimSuffix(leaf, "_status")})
 	case "l2_roam_cnt":
 		appendNumber("cisco.wlc.mobility.roam.count", map[string]string{"roam.layer": "l2"}, true)
 		appendNumber("cisco.wlc.client.roam.count", map[string]string{"roam.layer": "l2"}, true)
@@ -270,9 +270,9 @@ func appendCatalyst9800AliasesForValueIndexed(builder *indexedMetricBuilder, mod
 	case "handoff_sent_fail", "handoff_received_fail", "handoff_fail", "handoff_failure":
 		appendNumber("cisco.wlc.mobility.handoff.failure.count", map[string]string{"handoff.type": leaf}, true)
 	case "ha_state", "peer_state":
-		appendState("cisco.wlc.ha.state", "state", map[string]string{"ha.role": catalyst9800HARole(leaf)})
+		appendState("cisco.wlc.ha.state", map[string]string{"ha.role": catalyst9800HARole(leaf)})
 	case "ha_enabled":
-		appendState("cisco.wlc.ha.enabled", "state", nil)
+		appendState("cisco.wlc.ha.enabled", nil)
 	case "switchover_count":
 		appendNumber("cisco.wlc.ha.switchover.count", nil, true)
 	case "standby_failure_count":
@@ -300,7 +300,7 @@ func appendCatalyst9800AliasesForValueIndexed(builder *indexedMetricBuilder, mod
 	}
 
 	if leaf != "ap_operation_state" && leaf != "capwap_state" && strings.Contains(pathText, "capwap") && strings.HasSuffix(leaf, "state") {
-		appendState("cisco.wlc.ap.capwap.state", "state", nil)
+		appendState("cisco.wlc.ap.capwap.state", nil)
 	}
 	if strings.Contains(pathText, "traffic_stats") {
 		switch leaf {
@@ -348,8 +348,8 @@ func newCatalyst9800AttrLookup(attrs map[string]string) func(...string) string {
 		lower := strings.ToLower(strings.ReplaceAll(key, "-", "_"))
 		normalized[lower] = value
 		normalized[sanitizeMetricSegment(key)] = value
-		if strings.HasPrefix(lower, "cisco.yang.key.") {
-			normalized[strings.TrimPrefix(lower, "cisco.yang.key.")] = value
+		if after, ok := strings.CutPrefix(lower, "cisco.yang.key."); ok {
+			normalized[after] = value
 		}
 		if cleaned := sanitizeMetricSegment(key); strings.HasPrefix(cleaned, "cisco_yang_key_") {
 			normalized[strings.TrimPrefix(cleaned, "cisco_yang_key_")] = value
@@ -461,11 +461,11 @@ type catalyst9800NormalizingConsumer struct {
 	health    *catalyst9800Health
 }
 
-func newCatalyst9800NormalizingConsumer(next consumer.Metrics, config Catalyst9800Config, selector deviceSelectionMatcher, transport string, health *catalyst9800Health) consumer.Metrics {
+func newCatalyst9800NormalizingConsumer(next consumer.Metrics, config Catalyst9800Config, selector deviceSelectionMatcher, transport string, health *catalyst9800Health) consumer.Metrics { //nolint:unparam // Transport remains explicit because the normalizer owns transport attribution.
 	return &catalyst9800NormalizingConsumer{next: next, config: config, selector: selector, transport: transport, health: health}
 }
 
-func (c *catalyst9800NormalizingConsumer) Capabilities() consumer.Capabilities {
+func (*catalyst9800NormalizingConsumer) Capabilities() consumer.Capabilities {
 	return consumer.Capabilities{MutatesData: true}
 }
 
@@ -523,7 +523,7 @@ func (c *catalyst9800NormalizingConsumer) normalize(md pmetric.Metrics) {
 			metrics := sm.Metrics()
 			originalLen := metrics.Len()
 			metricIndex := newIndexedMetricBuilder(sm, nil)
-			for k := 0; k < originalLen; k++ {
+			for k := range originalLen {
 				metric := metrics.At(k)
 				originalName := metric.Name()
 				switch originalName {

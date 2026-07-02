@@ -299,13 +299,13 @@ func splitLinkHeader(header string) []string {
 }
 
 func linkHasRelation(parameters, wanted string) bool {
-	for _, parameter := range strings.Split(parameters, ";") {
+	for parameter := range strings.SplitSeq(parameters, ";") {
 		name, value, ok := strings.Cut(strings.TrimSpace(parameter), "=")
 		if !ok || !strings.EqualFold(strings.TrimSpace(name), "rel") {
 			continue
 		}
 		value = strings.Trim(strings.TrimSpace(value), `"`)
-		for _, relation := range strings.Fields(value) {
+		for relation := range strings.FieldsSeq(value) {
 			if strings.EqualFold(relation, wanted) {
 				return true
 			}

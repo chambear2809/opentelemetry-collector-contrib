@@ -4,7 +4,6 @@
 package ciscoosreceiver
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -42,7 +41,7 @@ func TestMetricFilteringConsumerFiltersAndForwards(t *testing.T) {
 	sm.Metrics().AppendEmpty().SetName("keep")
 	sm.Metrics().AppendEmpty().SetName("drop")
 
-	require.NoError(t, wrapped.ConsumeMetrics(context.Background(), md))
+	require.NoError(t, wrapped.ConsumeMetrics(t.Context(), md))
 	require.Len(t, sink.AllMetrics(), 1)
 	got := sink.AllMetrics()[0]
 	require.Equal(t, 1, got.MetricCount())

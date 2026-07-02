@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
@@ -333,7 +334,7 @@ func (r *fmcMetricsReceiver) run(ctx context.Context) {
 func (r *fmcMetricsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
-	obsCtx := startMetricsOp(r.obs, ctx)
+	obsCtx := startMetricsOp(ctx, r.obs)
 	md, scrapeErr := r.scrape(scrapeCtx)
 	if scrapeErr != nil {
 		r.settings.Logger.Error("FMC scrape failed", zap.Error(scrapeErr))
@@ -342,7 +343,7 @@ func (r *fmcMetricsReceiver) collect(ctx context.Context) {
 	if consumeErr != nil {
 		r.settings.Logger.Error("FMC metrics consumer failed", zap.Error(consumeErr))
 	}
-	endMetricsOp(r.obs, obsCtx, metricCount, combineSignalErrors(scrapeErr, consumeErr))
+	endMetricsOp(obsCtx, r.obs, metricCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
@@ -755,7 +756,7 @@ func (r *fmcLogsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 	r.seen.BeginBatch()
-	obsCtx := startLogsOp(r.obs, ctx)
+	obsCtx := startLogsOp(ctx, r.obs)
 	ld, scrapeErr := r.scrape(scrapeCtx)
 	if scrapeErr != nil {
 		r.settings.Logger.Error("FMC log scrape failed", zap.Error(scrapeErr))
@@ -764,7 +765,7 @@ func (r *fmcLogsReceiver) collect(ctx context.Context) {
 	if consumeErr != nil {
 		r.settings.Logger.Error("FMC logs consumer failed", zap.Error(consumeErr))
 	}
-	endLogsOp(r.obs, obsCtx, logCount, combineSignalErrors(scrapeErr, consumeErr))
+	endLogsOp(obsCtx, r.obs, logCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *fmcLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
@@ -853,7 +854,6 @@ func (r *fmcEStreamerLogsReceiver) run(ctx context.Context) {
 	defer close(r.done)
 	var wg sync.WaitGroup
 	for _, client := range r.clients {
-		client := client
 		client.OnStat = func(stat fmc.EStreamerStat) {
 			if stat.Err != nil {
 				r.settings.Logger.Warn("FMC eStreamer event", zap.String("controller", stat.Controller), zap.String("outcome", stat.Outcome), zap.Error(stat.Err))
@@ -861,11 +861,9 @@ func (r *fmcEStreamerLogsReceiver) run(ctx context.Context) {
 				r.settings.Logger.Debug("FMC eStreamer event", zap.String("controller", stat.Controller), zap.String("outcome", stat.Outcome), zap.Int("events", stat.Events), zap.Int("bytes", stat.Bytes))
 			}
 		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			r.runEStreamerClient(ctx, client)
-		}()
+		})
 	}
 	wg.Wait()
 }
@@ -1028,10 +1026,10 @@ func (r *fmcEStreamerLogsReceiver) consumeEStreamerEvent(ctx context.Context, cl
 	ld := plog.NewLogs()
 	appendFMCEStreamerLog(ld, client.ControllerName(), client.Address(), event, now)
 	if ld.LogRecordCount() > 0 {
-		obsCtx := startLogsOp(r.obs, ctx)
+		obsCtx := startLogsOp(ctx, r.obs)
 		logCount := ld.LogRecordCount()
 		consumeErr := r.consumer.ConsumeLogs(ctx, ld)
-		endLogsOp(r.obs, obsCtx, logCount, consumeErr)
+		endLogsOp(obsCtx, r.obs, logCount, consumeErr)
 		if consumeErr != nil {
 			return consumeErr
 		}
@@ -1470,9 +1468,7 @@ func (c fmcControllerCache) objectsForSource(source string) []fmc.Object {
 func fmcEndpointQuery(endpoint fmcEndpoint, cfg *Config, now time.Time) url.Values {
 	query := fmc.Query(map[string]string{"expanded": "true"})
 	if endpoint.query != nil {
-		for key, values := range endpoint.query(cfg, now) {
-			query[key] = values
-		}
+		maps.Copy(query, endpoint.query(cfg, now))
 	}
 	return query
 }
@@ -1480,9 +1476,7 @@ func fmcEndpointQuery(endpoint fmcEndpoint, cfg *Config, now time.Time) url.Valu
 func fmcScopedEndpointQuery(endpoint fmcScopedEndpoint, cfg *Config, now time.Time, parent fmc.Object) url.Values {
 	query := fmc.Query(map[string]string{"expanded": "true"})
 	if endpoint.query != nil {
-		for key, values := range endpoint.query(cfg, now, parent) {
-			query[key] = values
-		}
+		maps.Copy(query, endpoint.query(cfg, now, parent))
 	}
 	return query
 }
@@ -1662,7 +1656,7 @@ func estreamerEndpointFromFMCController(endpoint string) (string, error) {
 }
 
 func loadFMCEStreamerTLS(cfg FMCEStreamerTLSConfig) (*tls.Config, error) {
-	tlsConfig := &tls.Config{ServerName: cfg.ServerName, InsecureSkipVerify: cfg.InsecureSkipVerify} //nolint:gosec // Explicit opt-in for private FMC appliances.
+	tlsConfig := &tls.Config{ServerName: cfg.ServerName, InsecureSkipVerify: cfg.InsecureSkipVerify}
 	if cfg.CertFile != "" || cfg.KeyFile != "" {
 		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
 		if err != nil {
@@ -1677,7 +1671,7 @@ func loadFMCEStreamerTLS(cfg FMCEStreamerTLSConfig) (*tls.Config, error) {
 		}
 		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM(pemBytes) {
-			return nil, fmt.Errorf("fmc.estreamer.tls.ca_file did not contain PEM certificates")
+			return nil, errors.New("fmc.estreamer.tls.ca_file did not contain PEM certificates")
 		}
 		tlsConfig.RootCAs = pool
 	}

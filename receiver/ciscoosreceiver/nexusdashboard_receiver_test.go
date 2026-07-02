@@ -107,8 +107,8 @@ func TestNexusDashboardLogsApplySharedDeviceSelection(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, 1, ld.LogRecordCount())
-	assert.True(t, hasLogResourceAttribute(ld, "host.id", "N9K-SERIAL-1"))
-	assert.False(t, hasLogResourceAttribute(ld, "host.id", "N9K-SERIAL-9"))
+	assert.True(t, hasLogResourceAttribute(ld, "N9K-SERIAL-1"))
+	assert.False(t, hasLogResourceAttribute(ld, "N9K-SERIAL-9"))
 }
 
 func TestNexusDashboardLogsEmitEvidenceAndDeduplicate(t *testing.T) {

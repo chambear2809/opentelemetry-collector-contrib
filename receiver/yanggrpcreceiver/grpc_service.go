@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"strconv"
 	"strings"
@@ -274,9 +275,7 @@ func (s *grpcService) emitMetrics(sm pmetric.ScopeMetrics, field *pb.TelemetryFi
 			// exactly in an info metric rather than rounding them through float64.
 			value := strconv.FormatUint(uintVal.Uint64Value, 10)
 			overflowCtx := make(map[string]string, len(ctxBag)+1)
-			for key, contextValue := range ctxBag {
-				overflowCtx[key] = contextValue
-			}
+			maps.Copy(overflowCtx, ctxBag)
 			if err := budget.addContextAttribute(overflowCtx, "cisco.value.type", "uint64"); err != nil {
 				return err
 			}

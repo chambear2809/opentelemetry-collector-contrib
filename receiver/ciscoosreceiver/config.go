@@ -647,9 +647,9 @@ func defaultACIConfig() ACIConfig {
 	}
 }
 
-func defaultFMCGroupConfig(enabled bool, maxResults int) FMCGroupConfig {
+func defaultFMCGroupConfig(maxResults int) FMCGroupConfig {
 	return FMCGroupConfig{
-		Enabled:    enabled,
+		Enabled:    true,
 		MaxResults: maxResults,
 	}
 }
@@ -660,15 +660,15 @@ func defaultFMCConfig() FMCConfig {
 		PageSize:      100,
 		MaxRetries:    3,
 		EventLookback: 24 * time.Hour,
-		Manager:       defaultFMCGroupConfig(true, 100),
-		Inventory:     defaultFMCGroupConfig(true, 5000),
-		Interfaces:    defaultFMCGroupConfig(true, 10000),
-		Health:        defaultFMCGroupConfig(true, 2000),
-		VPN:           defaultFMCGroupConfig(true, 10000),
-		HA:            defaultFMCGroupConfig(true, 1000),
-		Policy:        defaultFMCGroupConfig(true, 10000),
-		Deployments:   defaultFMCGroupConfig(true, 5000),
-		Audit:         defaultFMCGroupConfig(true, 1000),
+		Manager:       defaultFMCGroupConfig(100),
+		Inventory:     defaultFMCGroupConfig(5000),
+		Interfaces:    defaultFMCGroupConfig(10000),
+		Health:        defaultFMCGroupConfig(2000),
+		VPN:           defaultFMCGroupConfig(10000),
+		HA:            defaultFMCGroupConfig(1000),
+		Policy:        defaultFMCGroupConfig(10000),
+		Deployments:   defaultFMCGroupConfig(5000),
+		Audit:         defaultFMCGroupConfig(1000),
 		EStreamer: FMCEStreamerConfig{
 			EventTypes:        []string{"connection", "intrusion", "intrusion_packet", "file"},
 			Lookback:          5 * time.Minute,
@@ -779,7 +779,8 @@ func (cfg *Config) Validate() error {
 		}
 	}
 
-	for i, device := range cfg.Devices {
+	for i := range cfg.Devices {
+		device := &cfg.Devices[i]
 		if device.Host == "" {
 			err = multierr.Append(err, fmt.Errorf("devices[%d].host cannot be empty", i))
 		}
@@ -835,7 +836,8 @@ func (cfg *Config) validateMeraki() error {
 		err = multierr.Append(err, errors.New("meraki.base_url must use https"))
 	}
 
-	for i, org := range cfg.Meraki.Organizations {
+	for i := range cfg.Meraki.Organizations {
+		org := &cfg.Meraki.Organizations[i]
 		if strings.TrimSpace(org.OrganizationID) == "" {
 			err = multierr.Append(err, fmt.Errorf("meraki.organizations[%d].organization_id cannot be empty", i))
 		}
@@ -1394,8 +1396,8 @@ func validHostOrIP(value string) bool {
 	if value == "" || len(value) > 253 {
 		return false
 	}
-	if strings.HasSuffix(value, ".") {
-		value = strings.TrimSuffix(value, ".")
+	if before, ok := strings.CutSuffix(value, "."); ok {
+		value = before
 		if value == "" {
 			return false
 		}
@@ -1412,7 +1414,7 @@ func validHostOrIP(value string) bool {
 		return false
 	}
 
-	for _, label := range strings.Split(value, ".") {
+	for label := range strings.SplitSeq(value, ".") {
 		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
 			return false
 		}

@@ -4,7 +4,6 @@
 package sdwan
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -60,7 +59,7 @@ func TestClientBearerList(t *testing.T) {
 	require.NoError(t, err)
 	client.spacing = 0
 
-	objects, err := client.List(context.Background(), "devices", "/device", nil, 0)
+	objects, err := client.List(t.Context(), "devices", "/device", nil, 0)
 	require.NoError(t, err)
 	require.Len(t, objects, 1)
 	assert.Equal(t, "edge-1", String(objects[0], "host-name"))
@@ -104,7 +103,7 @@ func TestClientListPaginatesStatisticsScrollID(t *testing.T) {
 	require.NoError(t, err)
 	client.spacing = 0
 
-	objects, err := client.List(context.Background(), "statistics.interfaces", "/data/device/statistics/interfacestatistics", url.Values{"startDate": {"2026-07-01T00:00:00"}}, 0)
+	objects, err := client.List(t.Context(), "statistics.interfaces", "/data/device/statistics/interfacestatistics", url.Values{"startDate": {"2026-07-01T00:00:00"}}, 0)
 	require.NoError(t, err)
 	require.Len(t, objects, 3)
 	assert.Equal(t, "3", String(objects[2], "id"))
@@ -148,7 +147,7 @@ func TestClientListPaginatesStateFromEndID(t *testing.T) {
 	require.NoError(t, err)
 	client.spacing = 0
 
-	objects, err := client.List(context.Background(), "state.interfaces", "/data/device/state/Interface", url.Values{"deviceId": {"edge-1"}}, 0)
+	objects, err := client.List(t.Context(), "state.interfaces", "/data/device/state/Interface", url.Values{"deviceId": {"edge-1"}}, 0)
 	require.NoError(t, err)
 	require.Len(t, objects, 3)
 	assert.Equal(t, "3", String(objects[2], "id"))
@@ -174,7 +173,7 @@ func TestClientListDetectsContinuationCycle(t *testing.T) {
 	require.NoError(t, err)
 	client.spacing = 0
 
-	objects, err := client.List(context.Background(), "statistics.cycle", "/statistics/cycle", nil, 0)
+	objects, err := client.List(t.Context(), "statistics.cycle", "/statistics/cycle", nil, 0)
 	require.ErrorContains(t, err, "continuation cycle")
 	assert.Len(t, objects, 2)
 	assert.Equal(t, 2, requests)
@@ -193,7 +192,7 @@ func TestClientListRejectsMissingContinuationToken(t *testing.T) {
 	require.NoError(t, err)
 	client.spacing = 0
 
-	objects, err := client.List(context.Background(), "statistics.missing_token", "/statistics/missing-token", nil, 0)
+	objects, err := client.List(t.Context(), "statistics.missing_token", "/statistics/missing-token", nil, 0)
 	require.ErrorContains(t, err, "pageInfo.scrollId is empty")
 	assert.Len(t, objects, 1)
 }
@@ -216,7 +215,7 @@ func TestClientListPreservesLaterPageError(t *testing.T) {
 	client.spacing = 0
 	client.retries = 0
 
-	objects, err := client.List(context.Background(), "statistics.error", "/statistics/error", nil, 0)
+	objects, err := client.List(t.Context(), "statistics.error", "/statistics/error", nil, 0)
 	require.Error(t, err)
 	var apiErr *APIError
 	require.ErrorAs(t, err, &apiErr)
@@ -240,7 +239,7 @@ func TestClientListEnforcesHardResultLimit(t *testing.T) {
 	client.spacing = 0
 	client.maxResults = 2
 
-	objects, err := client.List(context.Background(), "statistics.limit", "/statistics/limit", nil, 0)
+	objects, err := client.List(t.Context(), "statistics.limit", "/statistics/limit", nil, 0)
 	require.ErrorContains(t, err, "exceeded 2 results")
 	assert.Len(t, objects, 2)
 	assert.Equal(t, 1, requests)
@@ -262,7 +261,7 @@ func TestClientListEnforcesPageLimit(t *testing.T) {
 	client.spacing = 0
 	client.maxPages = 1
 
-	objects, err := client.List(context.Background(), "statistics.page_limit", "/statistics/page-limit", nil, 0)
+	objects, err := client.List(t.Context(), "statistics.page_limit", "/statistics/page-limit", nil, 0)
 	require.ErrorContains(t, err, "exceeded 1 pages")
 	assert.Len(t, objects, 1)
 	assert.Equal(t, 1, requests)
@@ -276,7 +275,10 @@ func TestClientPostQueryPaginatesStatisticsScrollID(t *testing.T) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/dataservice/statistics/query", r.URL.Path)
 		body, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			http.Error(w, "failed to read request body", http.StatusBadRequest)
+			return
+		}
 		bodies = append(bodies, body)
 
 		switch r.URL.Query().Get("scrollId") {
@@ -311,7 +313,7 @@ func TestClientPostQueryPaginatesStatisticsScrollID(t *testing.T) {
 	client.spacing = 0
 
 	payload := map[string]any{"query": map[string]any{"field": "entry_time"}, "size": 2}
-	objects, err := client.PostQuery(context.Background(), "statistics.query", "/statistics/query", payload, 0)
+	objects, err := client.PostQuery(t.Context(), "statistics.query", "/statistics/query", payload, 0)
 	require.NoError(t, err)
 	require.Len(t, objects, 3)
 	assert.Equal(t, "3", String(objects[2], "id"))
@@ -340,7 +342,7 @@ func TestClientPostQueryDetectsContinuationCycle(t *testing.T) {
 	require.NoError(t, err)
 	client.spacing = 0
 
-	objects, err := client.PostQuery(context.Background(), "statistics.cycle", "/statistics/cycle", map[string]any{"size": 1}, 0)
+	objects, err := client.PostQuery(t.Context(), "statistics.cycle", "/statistics/cycle", map[string]any{"size": 1}, 0)
 	require.ErrorContains(t, err, "continuation cycle")
 	assert.Len(t, objects, 2)
 	assert.Equal(t, 2, requests)
@@ -365,7 +367,7 @@ func TestClientPostQueryPreservesLaterPageError(t *testing.T) {
 	client.spacing = 0
 	client.retries = 0
 
-	objects, err := client.PostQuery(context.Background(), "statistics.error", "/statistics/error", map[string]any{"size": 1}, 0)
+	objects, err := client.PostQuery(t.Context(), "statistics.error", "/statistics/error", map[string]any{"size": 1}, 0)
 	require.Error(t, err)
 	var apiErr *APIError
 	require.ErrorAs(t, err, &apiErr)
@@ -390,7 +392,7 @@ func TestClientPostQueryEnforcesHardResultLimit(t *testing.T) {
 	client.spacing = 0
 	client.maxResults = 2
 
-	objects, err := client.PostQuery(context.Background(), "statistics.limit", "/statistics/limit", map[string]any{"size": 3}, 10)
+	objects, err := client.PostQuery(t.Context(), "statistics.limit", "/statistics/limit", map[string]any{"size": 3}, 10)
 	require.ErrorContains(t, err, "exceeded 2 results")
 	assert.Len(t, objects, 2)
 	assert.Equal(t, 1, requests)
@@ -411,7 +413,7 @@ func TestClientPreservesLargeJSONIntegers(t *testing.T) {
 	require.NoError(t, err)
 	client.spacing = 0
 
-	objects, err := client.List(context.Background(), "interfaces", "/device/interface", nil, 0)
+	objects, err := client.List(t.Context(), "interfaces", "/device/interface", nil, 0)
 	require.NoError(t, err)
 	require.Len(t, objects, 1)
 	value, ok := Int(objects[0], "rx-packets")
@@ -442,7 +444,7 @@ func TestClientSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {
 	require.NoError(t, err)
 	client.spacing = 0
 
-	objects, err := client.List(context.Background(), "devices", "/device", nil, 0)
+	objects, err := client.List(t.Context(), "devices", "/device", nil, 0)
 	require.NoError(t, err)
 	require.Len(t, objects, 1)
 	assert.Equal(t, "edge-1", String(objects[0], "host-name"))
@@ -472,7 +474,7 @@ func TestClientAutoJWTLogin(t *testing.T) {
 	require.NoError(t, err)
 	client.spacing = 0
 
-	objects, err := client.List(context.Background(), "devices", "/device", nil, 0)
+	objects, err := client.List(t.Context(), "devices", "/device", nil, 0)
 	require.NoError(t, err)
 	require.Len(t, objects, 1)
 	assert.Equal(t, "10.0.0.1", String(objects[0], "system-ip"))
@@ -511,7 +513,7 @@ func TestClientAutoFallsBackToSession(t *testing.T) {
 	require.NoError(t, err)
 	client.spacing = 0
 
-	objects, err := client.PostQuery(context.Background(), "events", "/events", map[string]any{"size": 1}, 0)
+	objects, err := client.PostQuery(t.Context(), "events", "/events", map[string]any{"size": 1}, 0)
 	require.NoError(t, err)
 	require.Len(t, objects, 1)
 	assert.Equal(t, "event-1", String(objects[0], "eventId"))

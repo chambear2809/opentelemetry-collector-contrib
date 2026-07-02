@@ -46,7 +46,7 @@ func TestLogDeduplicatorPendingKeyRemainsEligibleAfterConcurrentStreamDuplicate(
 func TestLogDeduplicatorUsesDefaultEntryCap(t *testing.T) {
 	dedup := newLogDeduplicator()
 	now := time.Unix(100, 0)
-	for i := 0; i < defaultLogDedupMaxEntries+10; i++ {
+	for i := range defaultLogDedupMaxEntries + 10 {
 		assert.True(t, dedup.MarkCommitted(logDedupKey("events", fmt.Sprintf("event-%d", i), nil), now))
 	}
 

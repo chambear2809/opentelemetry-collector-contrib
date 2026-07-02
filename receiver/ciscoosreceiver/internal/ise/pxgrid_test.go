@@ -14,11 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"go.uber.org/goleak"
-	"golang.org/x/net/websocket"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
+	"golang.org/x/net/websocket"
 )
 
 func TestPxGridRESTDiscoversServiceEndpointAndPeerSecret(t *testing.T) {
@@ -33,7 +32,10 @@ func TestPxGridRESTDiscoversServiceEndpointAndPeerSecret(t *testing.T) {
 	serviceServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/pxgrid/mnt/sd/getSessions", r.URL.Path)
 		username, password, ok := r.BasicAuth()
-		require.True(t, ok)
+		if !assert.True(t, ok) {
+			http.Error(w, "missing basic authentication", http.StatusUnauthorized)
+			return
+		}
 		assert.Equal(t, collectorNode, username)
 		assert.Equal(t, serviceSecret, password)
 		assert.NotEqual(t, accountSecret, password)
@@ -48,7 +50,10 @@ func TestPxGridRESTDiscoversServiceEndpointAndPeerSecret(t *testing.T) {
 	)
 	controlServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		username, password, ok := r.BasicAuth()
-		require.True(t, ok)
+		if !assert.True(t, ok) {
+			http.Error(w, "missing basic authentication", http.StatusUnauthorized)
+			return
+		}
 		assert.Equal(t, collectorNode, username)
 		assert.Equal(t, accountSecret, password)
 		switch r.URL.Path {
@@ -56,7 +61,10 @@ func TestPxGridRESTDiscoversServiceEndpointAndPeerSecret(t *testing.T) {
 			var request struct {
 				Name string `json:"name"`
 			}
-			require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+			if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&request)) {
+				http.Error(w, "invalid request body", http.StatusBadRequest)
+				return
+			}
 			mu.Lock()
 			lookedUpService = request.Name
 			mu.Unlock()
@@ -65,7 +73,10 @@ func TestPxGridRESTDiscoversServiceEndpointAndPeerSecret(t *testing.T) {
 			var request struct {
 				PeerNodeName string `json:"peerNodeName"`
 			}
-			require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+			if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&request)) {
+				http.Error(w, "invalid request body", http.StatusBadRequest)
+				return
+			}
 			mu.Lock()
 			secretPeer = request.PeerNodeName
 			mu.Unlock()
@@ -101,7 +112,7 @@ func TestPxGridSubscribeDiscoversPubSubURLTopicAndPeerSecret(t *testing.T) {
 		accountSecret   = "account-password"
 		pubSubService   = "com.cisco.ise.pubsub.discovered"
 		pubSubNode      = "ise-pubsub-2"
-		pubSubSecret    = "pubsub-access-secret"
+		pubSubSecret    = "pubsub-access-secret" //nolint:gosec // Test-only fixture credential.
 		discoveredTopic = "/topic/discovered/session"
 	)
 
@@ -115,7 +126,7 @@ func TestPxGridSubscribeDiscoversPubSubURLTopicAndPeerSecret(t *testing.T) {
 			return
 		}
 		connectFrames <- connect
-		if err := writeSTOMP(ws, "CONNECTED", map[string]string{"version": "1.2"}, nil); err != nil {
+		if writeErr := writeSTOMP(ws, "CONNECTED", map[string]string{"version": "1.2"}, nil); writeErr != nil {
 			return
 		}
 		subscribe, err := readSTOMP(ws)
@@ -136,7 +147,10 @@ func TestPxGridSubscribeDiscoversPubSubURLTopicAndPeerSecret(t *testing.T) {
 	pubSubServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/discovered/ws", r.URL.Path)
 		username, password, ok := r.BasicAuth()
-		require.True(t, ok)
+		if !assert.True(t, ok) {
+			http.Error(w, "missing basic authentication", http.StatusUnauthorized)
+			return
+		}
 		assert.Equal(t, collectorNode, username)
 		assert.Equal(t, pubSubSecret, password)
 		assert.NotEqual(t, accountSecret, password)
@@ -152,7 +166,10 @@ func TestPxGridSubscribeDiscoversPubSubURLTopicAndPeerSecret(t *testing.T) {
 	)
 	controlServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		username, password, ok := r.BasicAuth()
-		require.True(t, ok)
+		if !assert.True(t, ok) {
+			http.Error(w, "missing basic authentication", http.StatusUnauthorized)
+			return
+		}
 		assert.Equal(t, collectorNode, username)
 		assert.Equal(t, accountSecret, password)
 		switch r.URL.Path {
@@ -160,7 +177,10 @@ func TestPxGridSubscribeDiscoversPubSubURLTopicAndPeerSecret(t *testing.T) {
 			var request struct {
 				Name string `json:"name"`
 			}
-			require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+			if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&request)) {
+				http.Error(w, "invalid request body", http.StatusBadRequest)
+				return
+			}
 			mu.Lock()
 			lookups = append(lookups, request.Name)
 			mu.Unlock()
@@ -176,7 +196,10 @@ func TestPxGridSubscribeDiscoversPubSubURLTopicAndPeerSecret(t *testing.T) {
 			var request struct {
 				PeerNodeName string `json:"peerNodeName"`
 			}
-			require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+			if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&request)) {
+				http.Error(w, "invalid request body", http.StatusBadRequest)
+				return
+			}
 			mu.Lock()
 			secretPeers = append(secretPeers, request.PeerNodeName)
 			mu.Unlock()

@@ -26,7 +26,7 @@ type catalyst9800GNMIUpdateDecoder struct {
 	limits        directGNMIDecodeLimits
 }
 
-func (d *catalyst9800GNMIUpdateDecoder) decodeNotification(notification *gnmi.Notification, transport string) pmetric.Metrics {
+func (d *catalyst9800GNMIUpdateDecoder) decodeNotification(notification *gnmi.Notification, transport string) pmetric.Metrics { //nolint:unparam // Explicit transport keeps direct and future replay decoders distinguishable.
 	ts := pcommon.NewTimestampFromTime(time.Now())
 	if notification.GetTimestamp() > 0 {
 		ts = pcommon.Timestamp(notification.GetTimestamp())
@@ -141,12 +141,12 @@ func (d catalyst9800GNMIUpdateDecoder) decodeTypedValue(metrics *indexedMetricBu
 			appendCatalyst9800MetricNumberIndexed(metrics, module, parts, intMetricNumber(0), ts, attrs)
 		}
 	case *gnmi.TypedValue_FloatVal:
-		appendCatalyst9800MetricNumberIndexed(metrics, module, parts, doubleMetricNumber(float64(v.FloatVal)), ts, attrs)
+		appendCatalyst9800MetricNumberIndexed(metrics, module, parts, doubleMetricNumber(float64(v.FloatVal)), ts, attrs) //nolint:staticcheck // Legacy Cisco devices still emit the deprecated gNMI float field.
 	case *gnmi.TypedValue_DoubleVal:
 		appendCatalyst9800MetricNumberIndexed(metrics, module, parts, doubleMetricNumber(v.DoubleVal), ts, attrs)
 	case *gnmi.TypedValue_DecimalVal:
-		if v.DecimalVal != nil {
-			appendCatalyst9800MetricNumberIndexed(metrics, module, parts, doubleMetricNumber(float64(v.DecimalVal.Digits)/pow10(v.DecimalVal.Precision)), ts, attrs)
+		if v.DecimalVal != nil { //nolint:staticcheck // Legacy Cisco devices still emit the deprecated gNMI decimal field.
+			appendCatalyst9800MetricNumberIndexed(metrics, module, parts, doubleMetricNumber(float64(v.DecimalVal.Digits)/pow10(v.DecimalVal.Precision)), ts, attrs) //nolint:staticcheck // Preserve compatibility with legacy gNMI decimal payloads.
 		} else {
 			budget.addDecodeError()
 			budget.drop(false)
@@ -212,7 +212,7 @@ func (d catalyst9800GNMIUpdateDecoder) decodeTypedValue(metrics *indexedMetricBu
 	}
 }
 
-func (d catalyst9800GNMIUpdateDecoder) decodeJSONValue(metrics *indexedMetricBuilder, module string, parts []string, raw []byte, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth int) {
+func (catalyst9800GNMIUpdateDecoder) decodeJSONValue(metrics *indexedMetricBuilder, module string, parts []string, raw []byte, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth int) {
 	if len(raw) > directGNMIHardMaxPayloadBytes {
 		budget.drop(true)
 		return

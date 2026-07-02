@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -115,7 +115,7 @@ func NewClient(cfg Config) (*Client, error) {
 	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	if cfg.InsecureSkipVerify {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // Explicit opt-in for private FMC appliances.
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 	name := cfg.Name
 	if name == "" {
@@ -226,8 +226,8 @@ func (c *Client) list(ctx context.Context, method, operation, path string, query
 		if err != nil {
 			return results, err
 		}
-		if err := byteBudget.Charge(operation, len(body), len(results)); err != nil {
-			return results, err
+		if budgetErr := byteBudget.Charge(operation, len(body), len(results)); budgetErr != nil {
+			return results, budgetErr
 		}
 		pages++
 		pageObjects, next, total, err := decodeObjects(body)
@@ -254,7 +254,7 @@ func (c *Client) list(ctx context.Context, method, operation, path string, query
 func (c *Client) do(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, http.Header, error) {
 	var lastErr error
 	attempts := c.retries + 1
-	for attempt := 0; attempt < attempts; attempt++ {
+	for attempt := range attempts {
 		body, header, status, err := c.doOnce(ctx, method, operation, path, query, payload)
 		if err == nil {
 			return body, header, nil
@@ -302,8 +302,8 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if err := c.ensureToken(ctx); err != nil {
-		return nil, nil, 0, err
+	if tokenErr := c.ensureToken(ctx); tokenErr != nil {
+		return nil, nil, 0, tokenErr
 	}
 	c.tokenMu.Lock()
 	accessToken := c.accessToken
@@ -368,7 +368,7 @@ func (c *Client) generateToken(ctx context.Context) error {
 		return nil
 	}
 	reqURL := c.buildURL("/api/fmc_platform/v1/auth/generatetoken", nil)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, http.NoBody)
 	if err != nil {
 		return err
 	}
@@ -424,7 +424,7 @@ func (c *Client) refresh(ctx context.Context) error {
 	}
 
 	reqURL := c.buildURL("/api/fmc_platform/v1/auth/refreshtoken", nil)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, http.NoBody)
 	if err != nil {
 		return err
 	}
@@ -586,7 +586,7 @@ func retryAfter(value string) time.Duration {
 func sleepBeforeRetry(ctx context.Context, attempt int, retryAfter time.Duration) bool {
 	if retryAfter < 0 {
 		backoff := time.Duration(200*(1<<attempt)) * time.Millisecond
-		jitter := time.Duration(rand.Int63n(int64(100 * time.Millisecond))) //nolint:gosec // Jitter only.
+		jitter := time.Duration(rand.Int64N(int64(100 * time.Millisecond)))
 		retryAfter = backoff + jitter
 	}
 	timer := time.NewTimer(retryAfter)

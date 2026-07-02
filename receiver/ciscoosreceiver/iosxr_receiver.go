@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"strings"
 	"sync"
@@ -61,21 +61,18 @@ func nextDirectGNMIRetryDelay(consecutiveFailures int, random func(time.Duration
 	if random == nil {
 		random = randomDirectGNMIDuration
 	}
-	jitter := random(span)
-	if jitter < 0 {
-		jitter = 0
-	}
+	jitter := max(random(span), 0)
 	if jitter >= span {
 		jitter = span - 1
 	}
 	return half + jitter
 }
 
-func randomDirectGNMIDuration(max time.Duration) time.Duration {
-	if max <= 1 {
+func randomDirectGNMIDuration(upperBound time.Duration) time.Duration {
+	if upperBound <= 1 {
 		return 0
 	}
-	return time.Duration(rand.Int63n(int64(max))) //nolint:gosec // Retry jitter does not require cryptographic randomness.
+	return time.Duration(rand.Int64N(int64(upperBound)))
 }
 
 func waitForDirectGNMIRetry(ctx context.Context, delay time.Duration) bool {
@@ -96,8 +93,8 @@ func newIOSXRMetricsReceiver(set receiver.Settings, conf *Config, next consumer.
 
 	if len(cfg.DialIn.Targets) > 0 {
 		targets := make([]IOSXRTargetConfig, 0, len(cfg.DialIn.Targets))
-		for _, target := range cfg.DialIn.Targets {
-			target = target.withDefaults(cfg)
+		for i := range cfg.DialIn.Targets {
+			target := cfg.DialIn.Targets[i].withDefaults(cfg)
 			if selector.allows(iosXRTargetIdentity(target)) {
 				targets = append(targets, target)
 			}
@@ -205,13 +202,11 @@ func (r *iosXRDialInReceiver) Shutdown(ctx context.Context) error {
 func (r *iosXRDialInReceiver) run(ctx context.Context) {
 	defer close(r.done)
 	var wg sync.WaitGroup
-	for _, target := range r.targets {
-		target := target
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for i := range r.targets {
+		target := r.targets[i]
+		wg.Go(func() {
 			r.runTarget(ctx, target)
-		}()
+		})
 	}
 	wg.Wait()
 }
@@ -271,7 +266,7 @@ func (r *iosXRDialInReceiver) subscribeTarget(ctx context.Context, target IOSXRT
 }
 
 func (r *iosXRDialInReceiver) subscribeTargetAttempt(ctx context.Context, target IOSXRTargetConfig) (bool, error) {
-	conn, err := target.ClientConfig.ToClientConn(ctx, r.host.GetExtensions(), r.settings.TelemetrySettings, configgrpc.WithGrpcDialOption(grpc.WithBlock()))
+	conn, err := target.ToClientConn(ctx, r.host.GetExtensions(), r.settings.TelemetrySettings, configgrpc.WithGrpcDialOption(grpc.WithBlock())) //nolint:staticcheck // Blocking dial is required to make the configured connection timeout authoritative.
 	if err != nil {
 		return false, err
 	}
@@ -306,16 +301,16 @@ func (r *iosXRDialInReceiver) subscribeTargetAttempt(ctx context.Context, target
 	if err != nil {
 		return false, err
 	}
-	if err := stream.Send(buildIOSXRSubscribeRequest(target.Subscription, paths, encoding)); err != nil {
-		return false, err
+	if sendErr := stream.Send(buildIOSXRSubscribeRequest(target.Subscription, paths, encoding)); sendErr != nil {
+		return false, sendErr
 	}
 	r.setTargetSubscriptionActive(ctx, target, true)
 	defer r.setTargetSubscriptionActive(ctx, target, false)
 	var progressed atomic.Bool
 
 	if target.Subscription.Mode == iosXRSubscribeModePoll {
-		err := r.recvPoll(streamCtx, cancelStream, target, stream, &progressed)
-		return progressed.Load(), err
+		pollErr := r.recvPoll(streamCtx, cancelStream, target, stream, &progressed)
+		return progressed.Load(), pollErr
 	}
 	if target.Subscription.Mode == iosXRSubscribeModeOnce {
 		if closeErr := stream.CloseSend(); closeErr != nil {
@@ -429,14 +424,14 @@ func (r *iosXRDialInReceiver) recvLoop(ctx context.Context, target IOSXRTargetCo
 				r.settings.Logger.Debug("IOS XR gNMI initial sync complete", zap.String("target", target.Name))
 			}
 		case *gnmi.SubscribeResponse_Error:
-			if body.Error != nil {
-				return sanitizedGNMISubscribeError(body.Error)
+			if body.Error != nil { //nolint:staticcheck // Legacy devices can still populate the deprecated in-band gNMI error.
+				return sanitizedGNMISubscribeError(body.Error) //nolint:staticcheck // Preserve compatibility with legacy in-band gNMI errors.
 			}
 		}
 	}
 }
 
-func (r *iosXRDialInReceiver) outgoingContext(ctx context.Context, target IOSXRTargetConfig) context.Context {
+func (*iosXRDialInReceiver) outgoingContext(ctx context.Context, target IOSXRTargetConfig) context.Context {
 	return metadata.AppendToOutgoingContext(ctx,
 		"username", target.Credentials.Username,
 		"password", string(target.Credentials.Password),
@@ -454,14 +449,15 @@ func (r *iosXRDialInReceiver) resolveTargetPaths(target IOSXRTargetConfig, caps 
 	}
 	out := make([]iosXRPathDefinition, 0, len(selected))
 	var unsupported []string
-	for _, def := range selected {
+	for i := range selected {
+		def := &selected[i]
 		module := moduleFromYANGPath(def.Path)
 		if module == "" {
-			out = append(out, def)
+			out = append(out, *def)
 			continue
 		}
 		if _, ok := supported[strings.ToLower(module)]; ok {
-			out = append(out, def)
+			out = append(out, *def)
 			continue
 		}
 		unsupported = append(unsupported, def.Path)
@@ -512,14 +508,15 @@ func buildIOSXRSubscribeRequest(sub IOSXRSubscriptionConfig, paths []iosXRPathDe
 		AllowAggregation: sub.allowAggregation(),
 		Subscription:     make([]*gnmi.Subscription, 0, len(paths)),
 	}
-	for _, def := range paths {
+	for i := range paths {
+		def := &paths[i]
 		p, err := parseGNMIPath(def.Path)
 		if err != nil {
 			continue
 		}
 		streamMode := sub.StreamMode
 		// A path's catalog DefaultStreamMode is authoritative: event-style paths
-		// (e.g. neighbor/state changes) are catalogued as on_change and must not
+		// (e.g. neighbor/state changes) are cataloged as on_change and must not
 		// be downgraded to timer sampling by the global stream_mode default.
 		if def.DefaultStreamMode != "" {
 			streamMode = def.DefaultStreamMode
@@ -530,10 +527,7 @@ func buildIOSXRSubscribeRequest(sub IOSXRSubscriptionConfig, paths []iosXRPathDe
 		if streamMode == iosXRStreamModeTargetDefined && !strings.HasPrefix(def.Path, "openconfig-") {
 			streamMode = iosXRStreamModeSample
 		}
-		sampleInterval := sub.SampleInterval
-		if def.MinSampleInterval > sampleInterval {
-			sampleInterval = def.MinSampleInterval
-		}
+		sampleInterval := max(def.MinSampleInterval, sub.SampleInterval)
 		list.Subscription = append(list.Subscription, &gnmi.Subscription{
 			Path:              p,
 			Mode:              subscriptionStreamMode(streamMode),

@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -234,7 +233,10 @@ func TestClientPostJSON(t *testing.T) {
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 		assert.Contains(t, r.Header.Get("Authorization"), `Signature keyId="test-key"`)
 		body, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			http.Error(w, "failed to read request body", http.StatusBadRequest)
+			return
+		}
 		assert.Contains(t, string(body), `"queryType":"groupBy"`)
 		_, _ = w.Write([]byte(`[{"event":{"host.name":"server-1","hw.fan.speed-Sum":12000}}]`))
 	}))
@@ -284,7 +286,7 @@ func TestDecodeListSupportsArrayAndEnvelope(t *testing.T) {
 
 	_, err = decodeList([]byte(`not-json`))
 	require.Error(t, err)
-	assert.True(t, strings.Contains(err.Error(), "invalid character"))
+	assert.Contains(t, err.Error(), "invalid character")
 }
 
 func testPrivateKeyPEM(t *testing.T) string {
