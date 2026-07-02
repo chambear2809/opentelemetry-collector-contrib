@@ -99,8 +99,7 @@ type nexusDashboardLogsReceiver struct {
 	cancel  context.CancelFunc
 	done    chan struct{}
 
-	seenMu sync.Mutex
-	seen   map[string]time.Time
+	seen *logDeduplicator
 }
 
 type nexusDashboardEndpoint struct {
@@ -150,7 +149,7 @@ func newNexusDashboardLogsReceiver(set receiver.Settings, conf *Config, consumer
 		client:   client,
 		obs:      newPlatformObsReport(set, "http"),
 		done:     make(chan struct{}),
-		seen:     map[string]time.Time{},
+		seen:     newLogDeduplicator(),
 	}, nil
 }
 
@@ -220,21 +219,15 @@ func (r *nexusDashboardMetricsReceiver) collect(ctx context.Context) {
 	defer cancel()
 
 	obsCtx := startMetricsOp(r.obs, ctx)
-	md, err := r.scrape(scrapeCtx)
-	if err != nil {
-		r.settings.Logger.Error("Nexus Dashboard scrape failed", zap.Error(err))
-		endMetricsOp(r.obs, obsCtx, md, err)
-		return
+	md, scrapeErr := r.scrape(scrapeCtx)
+	if scrapeErr != nil {
+		r.settings.Logger.Error("Nexus Dashboard scrape failed", zap.Error(scrapeErr))
 	}
-	if md.MetricCount() == 0 {
-		endMetricsOp(r.obs, obsCtx, md, nil)
-		return
-	}
-	consumeErr := r.consumer.ConsumeMetrics(ctx, md)
-	endMetricsOp(r.obs, obsCtx, md, consumeErr)
+	consumeErr := consumeMetricsIfPresent(ctx, r.consumer, md)
 	if consumeErr != nil {
 		r.settings.Logger.Error("Nexus Dashboard metrics consumer failed", zap.Error(consumeErr))
 	}
+	endMetricsOp(r.obs, obsCtx, md, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *nexusDashboardMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
@@ -364,22 +357,17 @@ func (r *nexusDashboardLogsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 
+	r.seen.BeginBatch()
 	obsCtx := startLogsOp(r.obs, ctx)
-	ld, err := r.scrape(scrapeCtx)
-	if err != nil {
-		r.settings.Logger.Error("Nexus Dashboard log scrape failed", zap.Error(err))
-		endLogsOp(r.obs, obsCtx, ld, err)
-		return
+	ld, scrapeErr := r.scrape(scrapeCtx)
+	if scrapeErr != nil {
+		r.settings.Logger.Error("Nexus Dashboard log scrape failed", zap.Error(scrapeErr))
 	}
-	if ld.LogRecordCount() == 0 {
-		endLogsOp(r.obs, obsCtx, ld, nil)
-		return
-	}
-	consumeErr := r.consumer.ConsumeLogs(ctx, ld)
-	endLogsOp(r.obs, obsCtx, ld, consumeErr)
+	consumeErr := consumeDeduplicatedLogs(ctx, r.consumer, r.seen, ld)
 	if consumeErr != nil {
 		r.settings.Logger.Error("Nexus Dashboard logs consumer failed", zap.Error(consumeErr))
 	}
+	endLogsOp(r.obs, obsCtx, ld, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *nexusDashboardLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
@@ -417,13 +405,7 @@ func (r *nexusDashboardLogsReceiver) seenBefore(endpoint nexusDashboardEndpointI
 	if key == endpoint.operation+":" {
 		key = endpoint.operation + ":" + fmt.Sprint(obj)
 	}
-	r.seenMu.Lock()
-	defer r.seenMu.Unlock()
-	if _, ok := r.seen[key]; ok {
-		return true
-	}
-	r.seen[key] = now
-	return false
+	return !r.seen.MarkPending(key, now)
 }
 
 func (r *nexusDashboardLogsReceiver) expireSeen(now time.Time) {
@@ -432,13 +414,7 @@ func (r *nexusDashboardLogsReceiver) expireSeen(now time.Time) {
 		ttl = defaultNexusDashboardConfig().EventLookback
 	}
 	ttl *= 2
-	r.seenMu.Lock()
-	defer r.seenMu.Unlock()
-	for key, ts := range r.seen {
-		if now.Sub(ts) > ttl {
-			delete(r.seen, key)
-		}
-	}
+	r.seen.Expire(now.Add(-ttl), 0)
 }
 
 type nexusDashboardMetricsBuilder struct {
@@ -464,7 +440,7 @@ func newNexusDashboardMetricsBuilder(now time.Time, endpoint string, counters *c
 	return &nexusDashboardMetricsBuilder{
 		metrics:   pmetric.NewMetrics(),
 		now:       ts,
-		start:     ts,
+		start:     pcommon.NewTimestampFromTime(counters.StartTime()),
 		resources: map[string]*resourceMetricsBuilder{},
 		counts:    map[string]*nexusDashboardCount{},
 		endpoint:  endpoint,
@@ -522,12 +498,13 @@ func (b *nexusDashboardMetricsBuilder) resource(key string) *resourceMetricsBuil
 	sm := rm.ScopeMetrics().AppendEmpty()
 	sm.Scope().SetName(nexusDashboardScopeName)
 	rb := &resourceMetricsBuilder{
-		resource: rm.Resource(),
-		scope:    sm,
-		metrics:  map[string]pmetric.Metric{},
-		now:      b.now,
-		start:    b.start,
-		counters: b.counters,
+		resource:         rm.Resource(),
+		scope:            sm,
+		metrics:          map[string]pmetric.Metric{},
+		now:              b.now,
+		start:            b.start,
+		counterNamespace: key,
+		counters:         b.counters,
 	}
 	b.resources[key] = rb
 	return rb

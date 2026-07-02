@@ -175,7 +175,6 @@ func defaultISEConfig() ISEConfig {
 				RadiusFailures: true,
 				Endpoint:       true,
 				TrustSec:       true,
-				SystemHealth:   true,
 			},
 			MaxResults: 5000,
 		},
@@ -247,7 +246,7 @@ func (cfg *Config) validateISE() error {
 	if cfg.ISE.Endpoint == "" {
 		err = multierr.Append(err, errors.New("ise.endpoint must be provided"))
 	} else {
-		err = multierr.Append(err, validateHTTPURL("ise.endpoint", cfg.ISE.Endpoint))
+		err = multierr.Append(err, validateHTTPURL("ise.endpoint", cfg.ISE.Endpoint, cfg.ISE.InsecureSkipVerify))
 	}
 	if cfg.ISE.Auth.Username == "" {
 		err = multierr.Append(err, errors.New("ise.auth.username must be provided"))
@@ -427,7 +426,7 @@ func validateISEPxGrid(cfg ISEPxGridConfig) error {
 	}
 	var err error
 	if cfg.Endpoint != "" {
-		err = multierr.Append(err, validateHTTPURL("ise.pxgrid.endpoint", cfg.Endpoint))
+		err = multierr.Append(err, validateHTTPURL("ise.pxgrid.endpoint", cfg.Endpoint, cfg.InsecureSkipVerify))
 	}
 	if cfg.Enabled {
 		if cfg.NodeName == "" {

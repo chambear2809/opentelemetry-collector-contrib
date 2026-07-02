@@ -5,6 +5,7 @@ package ciscoosreceiver
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configopaque"
+	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
 	"go.opentelemetry.io/collector/scraper/scraperhelper"
 
@@ -943,7 +945,21 @@ func TestConfigValidate(t *testing.T) {
 					component.MustNewType("system"): nil,
 				},
 			},
-			expectedErr: "timeout must not be negative",
+			expectedErr: "timeout must be positive",
+		},
+		{
+			name: "zero timeout",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            0,
+					CollectionInterval: 60 * time.Second,
+				},
+				Devices: []DeviceConfig{validTestDevice()},
+				Scrapers: map[component.Type]component.Config{
+					component.MustNewType("system"): nil,
+				},
+			},
+			expectedErr: "timeout must be positive",
 		},
 		{
 			name: "zero collection interval",
@@ -972,6 +988,66 @@ func TestConfigValidate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidateHostPortOrHost(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		wantErr bool
+	}{
+		{name: "hostname", value: "fmc.example.com"},
+		{name: "hostname with trailing dot", value: "fmc.example.com."},
+		{name: "hostname and port", value: "fmc.example.com:8302"},
+		{name: "bare IPv4", value: "192.0.2.10"},
+		{name: "IPv4 and port", value: "192.0.2.10:8302"},
+		{name: "bare IPv6", value: "2001:db8::10"},
+		{name: "bracketed IPv6 and port", value: "[2001:db8::10]:8302"},
+		{name: "empty", value: "", wantErr: true},
+		{name: "URL", value: "https://fmc.example.com:8302", wantErr: true},
+		{name: "embedded whitespace", value: "fmc.example.com\t:8302", wantErr: true},
+		{name: "missing host", value: ":8302", wantErr: true},
+		{name: "missing port", value: "fmc.example.com:", wantErr: true},
+		{name: "nonnumeric port", value: "fmc.example.com:not-a-port", wantErr: true},
+		{name: "signed port", value: "fmc.example.com:+8302", wantErr: true},
+		{name: "zero port", value: "fmc.example.com:0", wantErr: true},
+		{name: "port too large", value: "fmc.example.com:65536", wantErr: true},
+		{name: "unclosed IPv6 bracket", value: "[2001:db8::10:8302", wantErr: true},
+		{name: "unopened IPv6 bracket", value: "2001:db8::10]:8302", wantErr: true},
+		{name: "bracketed IPv6 without port", value: "[2001:db8::10]", wantErr: true},
+		{name: "bracketed hostname", value: "[fmc.example.com]:8302", wantErr: true},
+		{name: "malformed IPv6", value: "2001:db8::not-ip", wantErr: true},
+		{name: "malformed IPv4", value: "192.0.2.999", wantErr: true},
+		{name: "empty hostname label", value: "fmc..example.com", wantErr: true},
+		{name: "invalid hostname character", value: "fmc/example.com", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateHostPortOrHost("endpoint", tt.value)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestValidateHTTPURLRequiresExplicitInsecureOptIn(t *testing.T) {
+	require.NoError(t, validateHTTPURL("endpoint", "https://controller.example.com", false))
+	require.NoError(t, validateHTTPURL("endpoint", "http://controller.example.com", true))
+	require.ErrorContains(t, validateHTTPURL("endpoint", "http://controller.example.com", false), "must use https")
+	require.Error(t, validateHTTPURL("endpoint", "ftp://controller.example.com", true))
+}
+
+func TestMerakiConfigRejectsPlaintextBaseURL(t *testing.T) {
+	cfg := NewFactory().CreateDefaultConfig().(*Config)
+	cfg.Meraki.Auth.APIKey = configopaque.String("secret")
+	cfg.Meraki.BaseURL = "http://api.example.com"
+	cfg.Meraki.Organizations = []MerakiOrganizationConfig{{OrganizationID: "org-1"}}
+
+	require.ErrorContains(t, cfg.Validate(), "meraki.base_url must use https")
 }
 
 func TestConfigUnmarshal(t *testing.T) {
@@ -1279,4 +1355,35 @@ func TestConfigUnmarshalNil(t *testing.T) {
 	cfg := &Config{}
 	err := cfg.Unmarshal(nil)
 	require.NoError(t, err)
+}
+
+func TestConfigUnmarshalRejectsUnknownSettings(t *testing.T) {
+	tests := []struct {
+		name   string
+		config map[string]any
+	}{
+		{
+			name: "unknown top-level setting",
+			config: map[string]any{
+				"collecton_interval": "1m",
+			},
+		},
+		{
+			name: "unknown nested setting",
+			config: map[string]any{
+				"sdwan": map[string]any{
+					"insecure_skip_verfy": true,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := NewFactory().CreateDefaultConfig().(*Config)
+			err := cfg.Unmarshal(confmap.NewFromStringMap(tt.config))
+			require.Error(t, err)
+			assert.Contains(t, strings.ToLower(err.Error()), "invalid keys")
+		})
+	}
 }

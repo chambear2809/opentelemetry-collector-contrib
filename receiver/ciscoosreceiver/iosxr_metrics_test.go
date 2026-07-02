@@ -4,6 +4,7 @@
 package ciscoosreceiver
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,6 +12,20 @@ import (
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
+
+func TestIOSXRHealthTracksOnlyRunningSubscriptions(t *testing.T) {
+	health := &iosXRHealth{}
+	assert.True(t, health.setTargetSubscriptionActive("xr-1", true))
+	assert.False(t, health.setTargetSubscriptionActive("xr-1", true))
+	assert.True(t, health.setTargetSubscriptionActive("xr-2", true))
+	assert.Equal(t, int64(2), health.snapshot().activeSubscriptions)
+	assert.True(t, health.snapshotForTarget("xr-1").targetActive)
+	assert.True(t, health.setTargetSubscriptionActive("xr-1", false))
+	assert.Equal(t, int64(1), health.snapshot().activeSubscriptions)
+	assert.False(t, health.snapshotForTarget("xr-1").targetActive)
+	assert.True(t, health.setTargetSubscriptionActive("xr-2", false))
+	assert.Equal(t, int64(0), health.snapshot().activeSubscriptions)
+}
 
 func TestIOSXRNormalizingConsumerRenamesDialOutMetricsAndAttributes(t *testing.T) {
 	sink := &consumertest.MetricsSink{}
@@ -24,6 +39,7 @@ func TestIOSXRNormalizingConsumerRenamesDialOutMetricsAndAttributes(t *testing.T
 	)
 
 	raw := rawIOSXRDialOutMetrics("cisco.interface.statistics.rx-pkts", 7, "xr-1")
+	raw.ResourceMetrics().At(0).Resource().Attributes().PutStr("host.ip", "192.0.2.30")
 	raw.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0).Gauge().DataPoints().At(0).Attributes().PutStr("interface", "HundredGigE0/0/0/0")
 	raw.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0).Gauge().DataPoints().At(0).Attributes().PutStr("vrf", "default")
 	raw.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0).Gauge().DataPoints().At(0).Attributes().PutStr("neighbor-address", "192.0.2.2")
@@ -39,6 +55,7 @@ func TestIOSXRNormalizingConsumerRenamesDialOutMetricsAndAttributes(t *testing.T
 	resourceAttrs := md.ResourceMetrics().At(0).Resource().Attributes()
 	assert.Equal(t, "xr-1", attrValue(t, resourceAttrs, "host.name"))
 	assert.Equal(t, "xr-1", attrValue(t, resourceAttrs, "host.id"))
+	assert.Equal(t, []string{"192.0.2.30"}, stringSliceAttrValue(t, resourceAttrs, "host.ip"))
 	assert.Equal(t, "network", attrValue(t, resourceAttrs, "hw.type"))
 	assert.Equal(t, "ios_xr", attrValue(t, resourceAttrs, "cisco.os.name"))
 	assert.Equal(t, "ios_xr", attrValue(t, resourceAttrs, "cisco.platform.family"))
@@ -52,6 +69,53 @@ func TestIOSXRNormalizingConsumerRenamesDialOutMetricsAndAttributes(t *testing.T
 	assert.Equal(t, "HundredGigE0/0/0/0", attrValue(t, dpAttrs, "network.interface.name"))
 	assert.Equal(t, "default", attrValue(t, dpAttrs, "network.vrf.name"))
 	assert.Equal(t, "192.0.2.2", attrValue(t, dpAttrs, "network.peer.address"))
+}
+
+func TestIOSXRNormalizingConsumerCoalescesStreamsAndPreservesIntDatapoints(t *testing.T) {
+	sink := &consumertest.MetricsSink{}
+	normalizer := newIOSXRNormalizingConsumer(
+		sink,
+		defaultIOSXRConfig(),
+		newDeviceSelectionMatcher(DeviceSelectionConfig{}),
+		iosXRTelemetryTransportDialOut,
+		&iosXRHealth{},
+	)
+
+	raw := pmetric.NewMetrics()
+	rm := raw.ResourceMetrics().AppendEmpty()
+	rm.Resource().Attributes().PutStr("cisco.node_id", "xr-1")
+	rm.Resource().Attributes().PutStr("cisco.encoding_path", "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/latest/generic-counters")
+	sm := rm.ScopeMetrics().AppendEmpty()
+	for iface, value := range map[string]int64{
+		"GigabitEthernet0/0": math.MaxInt64,
+		"GigabitEthernet0/1": 42,
+	} {
+		metric := sm.Metrics().AppendEmpty()
+		metric.SetName("cisco.interface.statistics.rx-pkts")
+		dp := metric.SetEmptyGauge().DataPoints().AppendEmpty()
+		dp.SetIntValue(value)
+		dp.Attributes().PutStr("interface", iface)
+	}
+
+	require.NoError(t, normalizer.ConsumeMetrics(t.Context(), raw))
+	require.Len(t, sink.AllMetrics(), 1)
+	const name = "cisco.iosxr.yang.cisco_ios_xr_infra_statsd_oper.interface.statistics.rx_pkts"
+	md := sink.AllMetrics()[0]
+	assert.Equal(t, 1, metricCountNamed(md, name))
+	metric := mustFindIOSXRMetric(t, md, name)
+	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+	dps := metric.Gauge().DataPoints()
+	require.Equal(t, 2, dps.Len())
+	values := make(map[string]int64, dps.Len())
+	for i := 0; i < dps.Len(); i++ {
+		dp := dps.At(i)
+		assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+		values[attrValue(t, dp.Attributes(), "network.interface.name")] = dp.IntValue()
+	}
+	assert.Equal(t, map[string]int64{
+		"GigabitEthernet0/0": math.MaxInt64,
+		"GigabitEthernet0/1": 42,
+	}, values)
 }
 
 func TestIOSXRNormalizingConsumerAppliesDeviceSelection(t *testing.T) {

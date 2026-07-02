@@ -123,6 +123,20 @@ func TestIOSXRConfigValidate(t *testing.T) {
 				cfg.IOSXR.DialIn.Targets[0].Paths.Include = []string{"openconfig-interfaces:interfaces/interface/state"}
 			},
 		},
+		{
+			name: "invalid custom path",
+			mutate: func(cfg *Config) {
+				cfg.IOSXR.DialIn.Targets[0].Paths.Include = []string{"openconfig-interfaces:interfaces/interface[state"}
+			},
+			expectedErr: "must be a valid gNMI path",
+		},
+		{
+			name: "wildcard custom path",
+			mutate: func(cfg *Config) {
+				cfg.IOSXR.DialIn.Targets[0].Paths.Include = []string{"openconfig-interfaces:interfaces/*"}
+			},
+			expectedErr: "cannot contain wildcards",
+		},
 	}
 
 	for _, tt := range tests {

@@ -192,7 +192,10 @@ Gi1/0/2 transceiver is present
 	assert.NotContains(t, names, "cisco.port_channel.status")
 	assert.Equal(t, 1, names["cisco.port_channel.member.status"])
 	assert.Equal(t, 2, names["cisco.transceiver.sensor"])
-	assert.Equal(t, 3, names["cisco.scrape.command.errors"])
+	// The generated metrics builder may aggregate failures with identical
+	// attributes and timestamps into one data point. Validate the cumulative
+	// error value below instead of depending on scheduler/clock granularity.
+	assert.Positive(t, names["cisco.scrape.command.errors"])
 	assert.Equal(t, int64(3), interfaceMetricIntSum(metrics, "cisco.scrape.command.errors"))
 	assert.Equal(t, 1, names["cisco.scrape.partial_success"])
 	assert.Contains(t, fakeClient.calls, "show spanning-tree summary")

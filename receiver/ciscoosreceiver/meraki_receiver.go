@@ -157,21 +157,15 @@ func (r *merakiMetricsReceiver) collect(ctx context.Context) {
 	defer cancel()
 
 	obsCtx := startMetricsOp(r.obs, ctx)
-	md, err := r.scrape(scrapeCtx)
-	if err != nil {
-		r.settings.Logger.Error("Meraki scrape failed", zap.Error(err))
-		endMetricsOp(r.obs, obsCtx, md, err)
-		return
+	md, scrapeErr := r.scrape(scrapeCtx)
+	if scrapeErr != nil {
+		r.settings.Logger.Error("Meraki scrape failed", zap.Error(scrapeErr))
 	}
-	if md.MetricCount() == 0 {
-		endMetricsOp(r.obs, obsCtx, md, nil)
-		return
-	}
-	consumeErr := r.consumer.ConsumeMetrics(ctx, md)
-	endMetricsOp(r.obs, obsCtx, md, consumeErr)
+	consumeErr := consumeMetricsIfPresent(ctx, r.consumer, md)
 	if consumeErr != nil {
 		r.settings.Logger.Error("Meraki metrics consumer failed", zap.Error(consumeErr))
 	}
+	endMetricsOp(r.obs, obsCtx, md, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *merakiMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
@@ -380,8 +374,8 @@ func (r *merakiMetricsReceiver) scrapeSwitchPorts(ctx context.Context, builder *
 				txBits := int64(interval.Bandwidth.Usage.Upstream * 1000)
 				rb.recordInt("cisco.interface.io.rate", "Interface traffic rate.", "bit/s", rxBits, attrsRx)
 				rb.recordInt("cisco.interface.io.rate", "Interface traffic rate.", "bit/s", txBits, attrsTx)
-				rb.recordDouble("meraki.switch.port.usage", "Windowed switch port usage reported by Meraki.", "KBy", interval.Data.Usage.Downstream, attrsRx)
-				rb.recordDouble("meraki.switch.port.usage", "Windowed switch port usage reported by Meraki.", "KBy", interval.Data.Usage.Upstream, attrsTx)
+				rb.recordDouble("meraki.switch.port.usage", "Windowed switch port usage reported by Meraki.", "kBy", interval.Data.Usage.Downstream, attrsRx)
+				rb.recordDouble("meraki.switch.port.usage", "Windowed switch port usage reported by Meraki.", "kBy", interval.Data.Usage.Upstream, attrsTx)
 				if speedBits > 0 {
 					rb.recordDouble("cisco.interface.utilization", "Interface traffic utilization as a ratio from 0 to 1.", "1", float64(rxBits)/float64(speedBits), attrsRx)
 					rb.recordDouble("cisco.interface.utilization", "Interface traffic utilization as a ratio from 0 to 1.", "1", float64(txBits)/float64(speedBits), attrsTx)
@@ -594,8 +588,8 @@ func (r *merakiMetricsReceiver) scrapeVPN(ctx context.Context, builder *merakiMe
 					"meraki.vpn.peer.network_id": peer.NetworkID,
 					"meraki.vpn.peer.name":       peer.NetworkName,
 				}
-				rb.recordInt("meraki.vpn.peer.usage", "Windowed Meraki VPN peer usage.", "KBy", peer.UsageSummary.ReceivedInKilobytes, withAttr(peerAttrs, "network.io.direction", "receive"))
-				rb.recordInt("meraki.vpn.peer.usage", "Windowed Meraki VPN peer usage.", "KBy", peer.UsageSummary.SentInKilobytes, withAttr(peerAttrs, "network.io.direction", "transmit"))
+				rb.recordInt("meraki.vpn.peer.usage", "Windowed Meraki VPN peer usage.", "kBy", peer.UsageSummary.ReceivedInKilobytes, withAttr(peerAttrs, "network.io.direction", "receive"))
+				rb.recordInt("meraki.vpn.peer.usage", "Windowed Meraki VPN peer usage.", "kBy", peer.UsageSummary.SentInKilobytes, withAttr(peerAttrs, "network.io.direction", "transmit"))
 				for _, latency := range peer.LatencySummaries {
 					rb.recordDouble("meraki.vpn.peer.latency", "Meraki VPN peer latency.", "ms", latency.AvgLatencyMS, withVPNUplinks(peerAttrs, latency.SenderUplink, latency.ReceiverUplink))
 				}
@@ -846,12 +840,13 @@ type deviceResource struct {
 }
 
 type resourceMetricsBuilder struct {
-	resource pcommon.Resource
-	scope    pmetric.ScopeMetrics
-	metrics  map[string]pmetric.Metric
-	now      pcommon.Timestamp
-	start    pcommon.Timestamp
-	counters *counterStore
+	resource         pcommon.Resource
+	scope            pmetric.ScopeMetrics
+	metrics          map[string]pmetric.Metric
+	now              pcommon.Timestamp
+	start            pcommon.Timestamp
+	counterNamespace string
+	counters         *counterStore
 }
 
 func newMerakiMetricsBuilder(now time.Time, counters *counterStore) *merakiMetricsBuilder {
@@ -862,7 +857,7 @@ func newMerakiMetricsBuilder(now time.Time, counters *counterStore) *merakiMetri
 	return &merakiMetricsBuilder{
 		metrics:       pmetric.NewMetrics(),
 		now:           ts,
-		start:         ts,
+		start:         pcommon.NewTimestampFromTime(counters.StartTime()),
 		resources:     map[string]*resourceMetricsBuilder{},
 		devices:       map[string]deviceResource{},
 		networkSerial: map[string]string{},
@@ -956,12 +951,13 @@ func (b *merakiMetricsBuilder) resource(key string) *resourceMetricsBuilder {
 	sm := rm.ScopeMetrics().AppendEmpty()
 	sm.Scope().SetName(merakiScopeName)
 	rb := &resourceMetricsBuilder{
-		resource: rm.Resource(),
-		scope:    sm,
-		metrics:  map[string]pmetric.Metric{},
-		now:      b.now,
-		start:    b.start,
-		counters: b.counters,
+		resource:         rm.Resource(),
+		scope:            sm,
+		metrics:          map[string]pmetric.Metric{},
+		now:              b.now,
+		start:            b.start,
+		counterNamespace: key,
+		counters:         b.counters,
 	}
 	b.resources[key] = rb
 	return rb
@@ -995,7 +991,6 @@ func (b *merakiMetricsBuilder) applianceDevices(allowedSerials map[string]struct
 func (rb *resourceMetricsBuilder) recordInt(name, description, unit string, value int64, attrs map[string]string) {
 	dp := rb.gaugeMetric(name, description, unit).Gauge().DataPoints().AppendEmpty()
 	dp.SetTimestamp(rb.now)
-	dp.SetStartTimestamp(rb.start)
 	dp.SetIntValue(value)
 	putAttrs(dp.Attributes(), attrs)
 }
@@ -1003,7 +998,6 @@ func (rb *resourceMetricsBuilder) recordInt(name, description, unit string, valu
 func (rb *resourceMetricsBuilder) recordDouble(name, description, unit string, value float64, attrs map[string]string) {
 	dp := rb.gaugeMetric(name, description, unit).Gauge().DataPoints().AppendEmpty()
 	dp.SetTimestamp(rb.now)
-	dp.SetStartTimestamp(rb.start)
 	dp.SetDoubleValue(value)
 	putAttrs(dp.Attributes(), attrs)
 }
@@ -1013,20 +1007,42 @@ func (rb *resourceMetricsBuilder) recordDouble(name, description, unit string, v
 // counter-style observations (errors, rate-limit hits, packet counts) so
 // SignalFlow rate()/sum_over_time() compute correctly.
 func (rb *resourceMetricsBuilder) recordSum(name, description, unit string, delta int64, attrs map[string]string) {
-	total := rb.counters.Add(name, attrs, float64(delta))
+	total, seriesStart := rb.counters.AddInt(rb.counterNamespace, name, attrs, delta)
 	dp := rb.sumMetric(name, description, unit).Sum().DataPoints().AppendEmpty()
-	dp.SetTimestamp(rb.now)
-	dp.SetStartTimestamp(rb.start)
-	dp.SetIntValue(int64(total))
+	dp.SetTimestamp(counterSeriesDatapointTimestamp(seriesStart, rb.now))
+	dp.SetStartTimestamp(counterSeriesStartTimestamp(seriesStart, rb.start))
+	dp.SetIntValue(total)
 	putAttrs(dp.Attributes(), attrs)
 }
 
 func (rb *resourceMetricsBuilder) recordSumDouble(name, description, unit string, delta float64, attrs map[string]string) {
-	total := rb.counters.Add(name, attrs, delta)
+	total, seriesStart := rb.counters.AddDouble(rb.counterNamespace, name, attrs, delta)
+	dp := rb.sumMetric(name, description, unit).Sum().DataPoints().AppendEmpty()
+	dp.SetTimestamp(counterSeriesDatapointTimestamp(seriesStart, rb.now))
+	dp.SetStartTimestamp(counterSeriesStartTimestamp(seriesStart, rb.start))
+	dp.SetDoubleValue(total)
+	putAttrs(dp.Attributes(), attrs)
+}
+
+func counterSeriesStartTimestamp(seriesStart time.Time, fallback pcommon.Timestamp) pcommon.Timestamp {
+	if seriesStart.IsZero() {
+		return fallback
+	}
+	return pcommon.NewTimestampFromTime(seriesStart)
+}
+
+func counterSeriesDatapointTimestamp(seriesStart time.Time, observedAt pcommon.Timestamp) pcommon.Timestamp {
+	if !seriesStart.IsZero() && seriesStart.After(observedAt.AsTime()) {
+		return pcommon.NewTimestampFromTime(seriesStart)
+	}
+	return observedAt
+}
+
+func (rb *resourceMetricsBuilder) recordAbsoluteSumDouble(name, description, unit string, value float64, attrs map[string]string) {
 	dp := rb.sumMetric(name, description, unit).Sum().DataPoints().AppendEmpty()
 	dp.SetTimestamp(rb.now)
 	dp.SetStartTimestamp(rb.start)
-	dp.SetDoubleValue(total)
+	dp.SetDoubleValue(value)
 	putAttrs(dp.Attributes(), attrs)
 }
 
@@ -1160,8 +1176,11 @@ func memoryUtilization(usage meraki.DeviceMemoryUsage) (float64, bool) {
 
 func recordWirelessPacketLoss(rb *resourceMetricsBuilder, direction string, loss meraki.PacketLossDirection) {
 	attrs := map[string]string{"network.io.direction": direction}
-	rb.recordSum("meraki.wireless.packet.count", "Wireless packets observed by Meraki.", "{packet}", loss.Total, attrs)
-	rb.recordSum("meraki.wireless.packet.loss", "Wireless packets lost by Meraki.", "{packet}", loss.Lost, attrs)
+	// The Dashboard API returns totals for a rolling query window, not
+	// monotonic device counters. Exporting them as cumulative sums would add
+	// the overlapping window again on every scrape.
+	rb.recordInt("meraki.wireless.packet.count", "Wireless packets observed in the Meraki reporting window.", "{packet}", loss.Total, attrs)
+	rb.recordInt("meraki.wireless.packet.loss", "Wireless packets lost in the Meraki reporting window.", "{packet}", loss.Lost, attrs)
 	rb.recordDouble("meraki.wireless.packet.loss_percentage", "Wireless packet loss percentage.", "%", loss.LossPercentage, attrs)
 }
 

@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 
+	merakimodel "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/meraki"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
 )
 
@@ -161,6 +162,22 @@ func TestMerakiScrapeRecordsPartialSuccessOnEndpointFailure(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, intMetricValueExists(md, "cisco.scrape.partial_success", 1))
 	assert.Contains(t, metricNames(md), "meraki.api.request.errors")
+}
+
+func TestRecordWirelessPacketLossUsesWindowGauges(t *testing.T) {
+	builder := newMerakiMetricsBuilder(time.Unix(200, 0), newCounterStoreAt(time.Unix(100, 0))).orgResource("org-a")
+	recordWirelessPacketLoss(builder, "receive", merakimodel.PacketLossDirection{
+		Total:          10,
+		Lost:           2,
+		LossPercentage: 20,
+	})
+
+	packetCount := builder.metrics["meraki.wireless.packet.count"]
+	packetLoss := builder.metrics["meraki.wireless.packet.loss"]
+	require.Equal(t, pmetric.MetricTypeGauge, packetCount.Type())
+	require.Equal(t, pmetric.MetricTypeGauge, packetLoss.Type())
+	assert.Equal(t, int64(10), packetCount.Gauge().DataPoints().At(0).IntValue())
+	assert.Equal(t, int64(2), packetLoss.Gauge().DataPoints().At(0).IntValue())
 }
 
 func newTestMerakiReceiver(t *testing.T, baseURL string, merakiCfg MerakiConfig) *merakiMetricsReceiver {

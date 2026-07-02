@@ -51,7 +51,9 @@ The following settings are available:
 Use the canonical receiver name `cisco_os` in new Collector configs. The deprecated `ciscoos` name remains accepted for existing configs.
 
 For Cisco appliance/controller endpoints that commonly use lab or privately issued TLS certificates, set the corresponding
-`insecure_skip_verify: true` option only when the certificate cannot be verified by a configured CA bundle. Prefer
+`insecure_skip_verify: true` option only when the certificate cannot be verified by a configured CA bundle. REST
+endpoints must use HTTPS; plaintext HTTP is accepted only when that platform's `insecure_skip_verify` setting is
+explicitly enabled for an isolated lab. Meraki Dashboard API endpoints always require HTTPS. Prefer
 `ca_file`/server-name settings where the receiver exposes them. Meraki is intentionally excluded because the Dashboard
 API is Cisco-hosted SaaS with public CA certificates.
 
@@ -857,7 +859,7 @@ state, NX-OS NVE/EVPN fabric metrics, vPC, LACP counters, and detailed QoS queue
 - API and scrape health: `sdwan.api.request.duration`, `sdwan.api.request.errors`, `sdwan.api.rate_limited`, `sdwan.scrape.partial_success`, `sdwan.scrape.last_success`, `sdwan.service.unavailable`, and `sdwan.service.skipped`.
 - Manager and inventory: `sdwan.manager.up`, `sdwan.manager.status`, `sdwan.manager.endpoint.status`, `sdwan.inventory.device.count`, `sdwan.resource.info`, `sdwan.resource.status`, `sdwan.device.reachability.status`, `sdwan.device.validity.status`, `sdwan.device.certificate.status`, `cisco.device.up`, `system.cpu.utilization`, `system.memory.utilization`, and `system.uptime`.
 - Overlay and path health: `sdwan.control.connection.status`, `sdwan.control.connection.count`, `sdwan.control.expected_connections`, `sdwan.control.actual_connections`, `sdwan.bfd.session.status`, `sdwan.bfd.session.count`, `sdwan.bfd.session.transitions`, `sdwan.bfd.session.flap.count`, `sdwan.app_route.latency`, `sdwan.app_route.jitter`, `sdwan.app_route.loss`, and `sdwan.app_route.sla.status`.
-- Interface and transport evidence: `system.network.interface.status`, `sdwan.transport.interface.status`, `cisco.interface.admin.status`, `cisco.interface.speed`, `system.network.io`, `system.network.errors`, and `system.network.packet.dropped`.
+- Interface and transport evidence: `system.network.interface.status`, `sdwan.transport.interface.status`, `cisco.interface.admin.status`, `cisco.interface.speed`, `system.network.io`, `system.network.packet.count`, `system.network.errors`, and `system.network.packet.dropped`.
 - Full-coverage opt-in evidence: advanced groups emit bounded `sdwan.resource.status`, `sdwan.collection.object.count`, `sdwan.service.unavailable`, and `sdwan.service.skipped` signals for realtime details, tunnels, flows, policy/QoS, security, AppQoE, Cloud OnRamp, NWPI, underlay, cellular, hardware/energy, routing services, branch services, lifecycle/compliance, ThousandEyes agent status, and management security endpoint families.
 - Logs: alarms, events, and audit records are emitted as log records with `event.domain=sdwan`, original API object bodies, and bounded correlation attributes such as `sdwan.severity`, `sdwan.status`, `sdwan.system_ip`, `sdwan.site.id`, `sdwan.uuid`, `sdwan.policy.name`, `user.name`, and `user.email`.
 - End-user dashboard views: the SD-WAN Splunk bundle includes service desk, branch/site experience, SaaS/AI critical app experience, and incident commander pages that translate app-route, BFD, interface, event, Cloud OnRamp, AppQoE, policy/security, and telemetry-trust signals into user-impact triage.
@@ -903,7 +905,7 @@ state, NX-OS NVE/EVPN fabric metrics, vPC, LACP counters, and detailed QoS queue
 - `system.network.io` - Number of bytes transmitted and received (with `network.io.direction` attribute: `receive` or `transmit`)
 - `system.network.errors` - Number of errors encountered (with `network.io.direction` attribute: `receive` or `transmit`)
 - `system.network.packet.dropped` - Number of packets dropped (with `network.io.direction` attribute: `receive` or `transmit`)
-- `system.network.packet.count` - Number of packets transmitted or received, categorized by type and direction (with `network.packet.type` attribute: `unicast`, `multicast`, or `broadcast`)
+- `system.network.packet.count` - Number of packets transmitted or received, categorized by direction and, when the source exposes it, packet type (with `network.packet.type` attribute: `unicast`, `multicast`, or `broadcast`)
 - `system.network.interface.status` - Interface operational status (1 = up, 0 = down)
 - `cisco.interface.admin.status` - Interface administrative status (1 = enabled/up, 0 = disabled/down), useful for distinguishing intentionally disabled ports from failed ports.
 - `cisco.interface.speed` - Numeric interface line speed in `bit/s` when the device reports an explicit speed.

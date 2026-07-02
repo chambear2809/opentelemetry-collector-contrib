@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configopaque"
@@ -758,8 +759,8 @@ var (
 func (cfg *Config) Validate() error {
 	var err error
 
-	if cfg.Timeout < 0 {
-		err = multierr.Append(err, errors.New("timeout must not be negative"))
+	if cfg.Timeout <= 0 {
+		err = multierr.Append(err, errors.New("timeout must be positive"))
 	}
 
 	if cfg.CollectionInterval <= 0 {
@@ -833,8 +834,8 @@ func (cfg *Config) validateMeraki() error {
 	parsed, parseErr := url.Parse(baseURL)
 	if parseErr != nil || parsed.Scheme == "" || parsed.Host == "" {
 		err = multierr.Append(err, errors.New("meraki.base_url must be a valid absolute URL"))
-	} else if parsed.Scheme != "https" && parsed.Scheme != "http" {
-		err = multierr.Append(err, errors.New("meraki.base_url scheme must be http or https"))
+	} else if parsed.Scheme != "https" {
+		err = multierr.Append(err, errors.New("meraki.base_url must use https"))
 	}
 
 	for i, org := range cfg.Meraki.Organizations {
@@ -878,8 +879,8 @@ func (cfg *Config) validateIntersight() error {
 	parsed, parseErr := url.Parse(endpoint)
 	if parseErr != nil || parsed.Scheme == "" || parsed.Host == "" {
 		err = multierr.Append(err, errors.New("intersight.endpoint must be a valid absolute URL"))
-	} else if parsed.Scheme != "https" && parsed.Scheme != "http" {
-		err = multierr.Append(err, errors.New("intersight.endpoint scheme must be http or https"))
+	} else if parsed.Scheme != "https" && !(parsed.Scheme == "http" && cfg.Intersight.InsecureSkipVerify) {
+		err = multierr.Append(err, errors.New("intersight.endpoint must use https unless insecure_skip_verify is explicitly enabled"))
 	}
 
 	if cfg.Intersight.PageSize < 0 {
@@ -926,7 +927,7 @@ func (cfg *Config) validateCatalystCenter() error {
 	if cfg.CatalystCenter.Endpoint == "" {
 		err = multierr.Append(err, errors.New("catalyst_center.endpoint must be provided"))
 	} else {
-		err = multierr.Append(err, validateHTTPURL("catalyst_center.endpoint", cfg.CatalystCenter.Endpoint))
+		err = multierr.Append(err, validateHTTPURL("catalyst_center.endpoint", cfg.CatalystCenter.Endpoint, cfg.CatalystCenter.InsecureSkipVerify))
 	}
 
 	switch inferredCatalystCenterAuthMode(cfg.CatalystCenter.Auth) {
@@ -995,7 +996,7 @@ func (cfg *Config) validateSDWAN() error {
 	if cfg.SDWAN.Endpoint == "" {
 		err = multierr.Append(err, errors.New("sdwan.endpoint must be provided"))
 	} else {
-		err = multierr.Append(err, validateHTTPURL("sdwan.endpoint", cfg.SDWAN.Endpoint))
+		err = multierr.Append(err, validateHTTPURL("sdwan.endpoint", cfg.SDWAN.Endpoint, cfg.SDWAN.InsecureSkipVerify))
 	}
 
 	switch inferredSDWANAuthMode(cfg.SDWAN.Auth) {
@@ -1107,7 +1108,7 @@ func (cfg *Config) validateNexusDashboard() error {
 	if cfg.NexusDashboard.Endpoint == "" {
 		err = multierr.Append(err, errors.New("nexus_dashboard.endpoint must be provided"))
 	} else {
-		err = multierr.Append(err, validateHTTPURL("nexus_dashboard.endpoint", cfg.NexusDashboard.Endpoint))
+		err = multierr.Append(err, validateHTTPURL("nexus_dashboard.endpoint", cfg.NexusDashboard.Endpoint, cfg.NexusDashboard.InsecureSkipVerify))
 	}
 
 	authMode := inferredControllerAuthMode(cfg.NexusDashboard.Auth)
@@ -1170,7 +1171,7 @@ func (cfg *Config) validateACI() error {
 			err = multierr.Append(err, fmt.Errorf("aci.controllers[%d].endpoint cannot be empty", i))
 			continue
 		}
-		err = multierr.Append(err, validateHTTPURL(fmt.Sprintf("aci.controllers[%d].endpoint", i), controller.Endpoint))
+		err = multierr.Append(err, validateHTTPURL(fmt.Sprintf("aci.controllers[%d].endpoint", i), controller.Endpoint, cfg.ACI.InsecureSkipVerify))
 	}
 
 	authMode := inferredControllerAuthMode(cfg.ACI.Auth)
@@ -1230,7 +1231,7 @@ func (cfg *Config) validateFMC() error {
 				err = multierr.Append(err, fmt.Errorf("fmc.controllers[%d].endpoint cannot be empty", i))
 				continue
 			}
-			err = multierr.Append(err, validateHTTPURL(fmt.Sprintf("fmc.controllers[%d].endpoint", i), controller.Endpoint))
+			err = multierr.Append(err, validateHTTPURL(fmt.Sprintf("fmc.controllers[%d].endpoint", i), controller.Endpoint, cfg.FMC.InsecureSkipVerify))
 		}
 
 		authMode := inferredControllerAuthMode(cfg.FMC.Auth)
@@ -1319,13 +1320,13 @@ func (cfg *Config) validateFMCEStreamer() error {
 	return err
 }
 
-func validateHTTPURL(name, value string) error {
+func validateHTTPURL(name, value string, allowInsecure bool) error {
 	parsed, parseErr := url.Parse(value)
 	if parseErr != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return fmt.Errorf("%s must be a valid absolute URL", name)
 	}
-	if parsed.Scheme != "https" && parsed.Scheme != "http" {
-		return fmt.Errorf("%s scheme must be http or https", name)
+	if parsed.Scheme != "https" && !(parsed.Scheme == "http" && allowInsecure) {
+		return fmt.Errorf("%s must use https unless insecure_skip_verify is explicitly enabled", name)
 	}
 	return nil
 }
@@ -1338,19 +1339,82 @@ func validateHostPortOrHost(name, value string) error {
 	if strings.Contains(value, "://") {
 		return fmt.Errorf("%s must be host or host:port, not a URL", name)
 	}
-	if strings.Contains(value, " ") {
+	if strings.IndexFunc(value, unicode.IsSpace) >= 0 {
 		return fmt.Errorf("%s must not contain spaces", name)
 	}
-	if host, port, err := net.SplitHostPort(value); err == nil {
-		if strings.TrimSpace(host) == "" {
+
+	// An unbracketed IP address is a host without an explicit port. In
+	// particular, a bare IPv6 address contains colons but is still valid.
+	if net.ParseIP(value) != nil {
+		return nil
+	}
+
+	host, port, splitErr := net.SplitHostPort(value)
+	if splitErr == nil {
+		if host == "" {
 			return fmt.Errorf("%s host cannot be empty", name)
+		}
+		// Brackets are only valid around an IPv6 literal in a host:port pair.
+		if strings.HasPrefix(value, "[") && (net.ParseIP(host) == nil || !strings.Contains(host, ":")) {
+			return fmt.Errorf("%s must use brackets only around an IPv6 address with a port", name)
+		}
+		if !validHostOrIP(host) {
+			return fmt.Errorf("%s host must be a valid hostname or IP address", name)
+		}
+		if port == "" || strings.IndexFunc(port, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
+			return fmt.Errorf("%s port must be between 1 and 65535", name)
 		}
 		parsedPort, parseErr := strconv.Atoi(port)
 		if parseErr != nil || parsedPort < 1 || parsedPort > 65535 {
 			return fmt.Errorf("%s port must be between 1 and 65535", name)
 		}
+		return nil
+	}
+
+	// Any remaining colon or bracket is either a malformed host:port pair or a
+	// malformed IP literal. Valid bare IP addresses were handled above.
+	if strings.ContainsAny(value, ":[]") || !validHostOrIP(value) {
+		return fmt.Errorf("%s must be a valid hostname, IP address, or host:port", name)
 	}
 	return nil
+}
+
+func validHostOrIP(value string) bool {
+	if net.ParseIP(value) != nil {
+		return true
+	}
+	if value == "" || len(value) > 253 {
+		return false
+	}
+	if strings.HasSuffix(value, ".") {
+		value = strings.TrimSuffix(value, ".")
+		if value == "" {
+			return false
+		}
+	}
+
+	looksLikeIPv4 := strings.Contains(value, ".")
+	for _, r := range value {
+		if r != '.' && (r < '0' || r > '9') {
+			looksLikeIPv4 = false
+			break
+		}
+	}
+	if looksLikeIPv4 {
+		return false
+	}
+
+	for _, label := range strings.Split(value, ".") {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, r := range label {
+			if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '-' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func inferredCatalystCenterAuthMode(auth CatalystCenterAuthConfig) string {
@@ -1459,8 +1523,14 @@ func (cfg *Config) Unmarshal(componentParser *confmap.Conf) error {
 		return nil
 	}
 
-	// load the non-dynamic config normally
-	if err := componentParser.Unmarshal(cfg, confmap.WithIgnoreUnused()); err != nil {
+	// Decode the static receiver configuration strictly so misspelled settings
+	// fail startup instead of silently disabling production controls. Scrapers
+	// are factory-dispatched below, so remove only that dynamic section from the
+	// strict pass.
+	staticSettings := componentParser.ToStringMap()
+	delete(staticSettings, "scrapers")
+	type staticConfig Config
+	if err := confmap.NewFromStringMap(staticSettings).Unmarshal((*staticConfig)(cfg)); err != nil {
 		return err
 	}
 

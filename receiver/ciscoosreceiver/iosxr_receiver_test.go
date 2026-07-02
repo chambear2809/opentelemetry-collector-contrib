@@ -5,6 +5,7 @@ package ciscoosreceiver
 
 import (
 	"context"
+	"errors"
 	"net"
 	"sync"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/consumer/consumertest"
+	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 	"google.golang.org/grpc"
 	grpcmetadata "google.golang.org/grpc/metadata"
@@ -55,9 +57,15 @@ func TestIOSXRDialInReceiverSubscribesAndConsumesGNMI(t *testing.T) {
 	target = target.withDefaults(cfg)
 
 	require.NoError(t, receiver.subscribeTarget(t.Context(), target))
-	require.Len(t, sink.AllMetrics(), 1)
-	assertMetricExists(t, sink.AllMetrics()[0], "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets")
-	assert.Equal(t, int64(1), receiver.health.snapshot().updatesReceived)
+	data := metricsBatchWithName(t, sink.AllMetrics(), "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets")
+	assertMetricExists(t, data, "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets")
+	snapshot := receiver.health.snapshotForTarget("xr-1")
+	assert.Equal(t, int64(0), snapshot.activeSubscriptions)
+	assert.False(t, snapshot.targetActive)
+	assert.Equal(t, int64(1), snapshot.updatesReceived)
+	assert.Equal(t, int64(1), snapshot.targetUpdatesReceived)
+	assert.True(t, metricGaugeValueExists(sink.AllMetrics(), "cisco.iosxr.receiver.target.subscription.active", 1))
+	assert.True(t, metricGaugeValueExists(sink.AllMetrics(), "cisco.iosxr.receiver.target.subscription.active", 0))
 
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
@@ -110,7 +118,8 @@ func TestIOSXRDialInReceiverPollSendsInitialPoll(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	require.NoError(t, receiver.subscribeTarget(ctx, target))
-	require.Len(t, sink.AllMetrics(), 1)
+	_ = metricsBatchWithName(t, sink.AllMetrics(), "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets")
+	assert.Equal(t, int64(0), receiver.health.snapshot().activeSubscriptions)
 
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
@@ -194,6 +203,98 @@ func TestBuildIOSXRSubscribeRequestPathDefaultStreamModeOverrides(t *testing.T) 
 	assert.Equal(t, gnmi.SubscriptionMode_ON_CHANGE, subscribe.Subscription[0].Mode)
 	// Path with no catalog default falls back to the global stream_mode.
 	assert.Equal(t, gnmi.SubscriptionMode_SAMPLE, subscribe.Subscription[1].Mode)
+}
+
+func TestDirectGNMIRetryDelayIsBoundedExponentialWithJitter(t *testing.T) {
+	noJitter := func(time.Duration) time.Duration { return 0 }
+	assert.Equal(t, 500*time.Millisecond, nextDirectGNMIRetryDelay(1, noJitter))
+	assert.Equal(t, time.Second, nextDirectGNMIRetryDelay(2, noJitter))
+	assert.Equal(t, 2*time.Second, nextDirectGNMIRetryDelay(3, noJitter))
+	assert.Equal(t, 15*time.Second, nextDirectGNMIRetryDelay(100, noJitter))
+
+	maxJitter := func(max time.Duration) time.Duration { return max - 1 }
+	delay := nextDirectGNMIRetryDelay(100, maxJitter)
+	assert.LessOrEqual(t, delay, directGNMIRetryMax)
+	assert.GreaterOrEqual(t, delay, directGNMIRetryMax/2)
+}
+
+func TestIOSXRRunTargetTracksLifecycleAndResetsRetryBackoff(t *testing.T) {
+	sink := &consumertest.MetricsSink{}
+	receiver := &iosXRDialInReceiver{
+		settings: receivertest.NewNopSettings(componentmetadata.Type),
+		config:   defaultIOSXRConfig(),
+		consumer: sink,
+		health:   &iosXRHealth{},
+	}
+	target := IOSXRTargetConfig{Name: "xr-1", Subscription: IOSXRSubscriptionConfig{Mode: iosXRSubscribeModeStream}}
+	attempts := 0
+	observedActive := int64(0)
+	receiver.subscribeTargetFn = func(ctx context.Context, target IOSXRTargetConfig) (bool, error) {
+		attempts++
+		if attempts < 3 {
+			return false, errors.New("dial failed")
+		}
+		receiver.setTargetSubscriptionActive(ctx, target, true)
+		observedActive = receiver.health.snapshot().activeSubscriptions
+		receiver.setTargetSubscriptionActive(ctx, target, false)
+		return true, errors.New("stream disconnected")
+	}
+	receiver.retryJitterFn = func(time.Duration) time.Duration { return 0 }
+	var delays []time.Duration
+	receiver.retryWaitFn = func(_ context.Context, delay time.Duration) bool {
+		delays = append(delays, delay)
+		return len(delays) < 3
+	}
+
+	receiver.runTarget(t.Context(), target)
+
+	assert.Equal(t, 3, attempts)
+	assert.Equal(t, []time.Duration{500 * time.Millisecond, time.Second, 500 * time.Millisecond}, delays)
+	assert.Equal(t, int64(1), observedActive)
+	snapshot := receiver.health.snapshotForTarget(target.Name)
+	assert.Equal(t, int64(0), snapshot.activeSubscriptions)
+	assert.False(t, snapshot.targetActive)
+	assert.Equal(t, int64(3), snapshot.reconnects)
+	assert.Equal(t, int64(3), snapshot.targetReconnects)
+	assert.True(t, metricGaugeValueExists(sink.AllMetrics(), "cisco.iosxr.receiver.active_subscriptions", 1))
+	assert.True(t, metricGaugeValueExists(sink.AllMetrics(), "cisco.iosxr.receiver.active_subscriptions", 0))
+	assert.True(t, metricGaugeValueExists(sink.AllMetrics(), "cisco.iosxr.receiver.target.subscription.active", 1))
+	assert.True(t, metricGaugeValueExists(sink.AllMetrics(), "cisco.iosxr.receiver.target.subscription.active", 0))
+}
+
+func metricsBatchWithName(t *testing.T, batches []pmetric.Metrics, name string) pmetric.Metrics {
+	t.Helper()
+	for _, md := range batches {
+		if metricCountNamed(md, name) > 0 {
+			return md
+		}
+	}
+	require.FailNowf(t, "metric batch not found", "missing metric %s", name)
+	return pmetric.Metrics{}
+}
+
+func metricGaugeValueExists(batches []pmetric.Metrics, name string, expected float64) bool {
+	for _, md := range batches {
+		for i := 0; i < md.ResourceMetrics().Len(); i++ {
+			sms := md.ResourceMetrics().At(i).ScopeMetrics()
+			for j := 0; j < sms.Len(); j++ {
+				metrics := sms.At(j).Metrics()
+				for k := 0; k < metrics.Len(); k++ {
+					metric := metrics.At(k)
+					if metric.Name() != name || metric.Type() != pmetric.MetricTypeGauge {
+						continue
+					}
+					dps := metric.Gauge().DataPoints()
+					for l := 0; l < dps.Len(); l++ {
+						if dps.At(l).DoubleValue() == expected {
+							return true
+						}
+					}
+				}
+			}
+		}
+	}
+	return false
 }
 
 type fakeGNMIServer struct {

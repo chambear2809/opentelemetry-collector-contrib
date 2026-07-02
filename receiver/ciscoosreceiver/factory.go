@@ -323,11 +323,19 @@ type multiMetricsReceiver struct {
 }
 
 func (m *multiMetricsReceiver) Start(ctx context.Context, host component.Host) error {
-	var err error
-	for _, r := range m.receivers {
-		err = multierr.Append(err, r.Start(ctx, host))
+	return startMetricsReceivers(ctx, host, m.receivers)
+}
+
+func startMetricsReceivers(ctx context.Context, host component.Host, receivers []receiver.Metrics) error {
+	for i, r := range receivers {
+		if err := r.Start(ctx, host); err != nil {
+			for j := i - 1; j >= 0; j-- {
+				err = multierr.Append(err, receivers[j].Shutdown(ctx))
+			}
+			return err
+		}
 	}
-	return err
+	return nil
 }
 
 func (m *multiMetricsReceiver) Shutdown(ctx context.Context) error {
@@ -343,11 +351,15 @@ type multiLogsReceiver struct {
 }
 
 func (m *multiLogsReceiver) Start(ctx context.Context, host component.Host) error {
-	var err error
-	for _, r := range m.receivers {
-		err = multierr.Append(err, r.Start(ctx, host))
+	for i, r := range m.receivers {
+		if err := r.Start(ctx, host); err != nil {
+			for j := i - 1; j >= 0; j-- {
+				err = multierr.Append(err, m.receivers[j].Shutdown(ctx))
+			}
+			return err
+		}
 	}
-	return err
+	return nil
 }
 
 func (m *multiLogsReceiver) Shutdown(ctx context.Context) error {

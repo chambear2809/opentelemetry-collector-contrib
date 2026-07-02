@@ -61,3 +61,11 @@ func TestObjectHelpersHandleNormalizedNestedObjects(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, time.Unix(1_700_000_000, 0).UTC(), ts)
 }
+
+func TestStableIDDoesNotUseNonUniqueMessageCode(t *testing.T) {
+	assert.Empty(t, StableID(Object{"message_code": "5200"}))
+	assert.Empty(t, StableID(Object{"messageCode": "5200"}))
+	assert.Equal(t, "event-123", StableID(Object{"message_code": "5200", "event_id": "event-123"}))
+	assert.Equal(t, "event-123", StableID(Object{"link": "/events", "message_code": "5200", "event_id": "event-123"}))
+	assert.Equal(t, "message-123", StableID(Object{"message_code": "5200", "message_id": "message-123"}))
+}

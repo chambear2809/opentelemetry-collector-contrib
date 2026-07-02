@@ -63,6 +63,18 @@ func TestDeviceSelectionMatchesProviderResourceAttributes(t *testing.T) {
 	assert.True(t, selector.allowsResource(attrs))
 }
 
+func TestDeviceSelectionMatchesSemanticConventionHostIPSlice(t *testing.T) {
+	attrs := pcommon.NewMap()
+	hostIPs := attrs.PutEmptySlice("host.ip")
+	hostIPs.AppendEmpty().SetStr("192.0.2.10")
+	hostIPs.AppendEmpty().SetStr("2001:db8::10")
+	selector := newDeviceSelectionMatcher(DeviceSelectionConfig{
+		Include: DeviceSelectionMatchConfig{HostIPs: []string{"2001:0db8::10"}},
+	})
+
+	assert.True(t, selector.allowsResource(attrs))
+}
+
 func TestDeviceSelectionProviderIdentities(t *testing.T) {
 	selector := newDeviceSelectionMatcher(DeviceSelectionConfig{
 		Include: DeviceSelectionMatchConfig{

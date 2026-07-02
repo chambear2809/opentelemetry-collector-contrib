@@ -4,6 +4,7 @@
 package ciscoosreceiver
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -83,18 +84,72 @@ func TestIOSXRGNMIDecoderScalarsJSONLeaflistsAndDeletes(t *testing.T) {
 	metric := mustFindIOSXRMetric(t, md, "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets")
 	require.Equal(t, pmetric.MetricTypeSum, metric.Type())
 	dp := metric.Sum().DataPoints().At(0)
-	assert.Equal(t, 42.0, dp.DoubleValue())
+	assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+	assert.Equal(t, int64(42), dp.IntValue())
 	iface, ok := dp.Attributes().Get("network.interface.name")
 	require.True(t, ok)
 	assert.Equal(t, "HundredGigE0/0/0/0", iface.AsString())
 
 	resourceAttrs := md.ResourceMetrics().At(0).Resource().Attributes()
 	assert.Equal(t, "core-asr9k-1", attrValue(t, resourceAttrs, "host.name"))
-	assert.Equal(t, "192.0.2.10", attrValue(t, resourceAttrs, "host.ip"))
+	assert.Equal(t, []string{"192.0.2.10"}, stringSliceAttrValue(t, resourceAttrs, "host.ip"))
 	assert.Equal(t, "ios_xr", attrValue(t, resourceAttrs, "cisco.os.name"))
 	assert.Equal(t, "gnmi_dial_in", attrValue(t, resourceAttrs, "cisco.telemetry.transport"))
 	assert.Equal(t, "openconfig-interfaces", attrValue(t, resourceAttrs, "cisco.yang.module"))
 	assert.Equal(t, int64(1), health.snapshot().compactGPBPayloads)
+}
+
+func TestIOSXRGNMIDecoderCoalescesMetricStreamsAndPreservesUint64(t *testing.T) {
+	decoder := iosXRGNMIUpdateDecoder{
+		target: IOSXRTargetConfig{Name: "xr-1"},
+		health: &iosXRHealth{},
+	}
+
+	md := decoder.decodeNotification(&gnmi.Notification{
+		Timestamp: time.Unix(1700000000, 0).UnixNano(),
+		Prefix:    mustParseIOSXRPath(t, "openconfig-interfaces:interfaces"),
+		Update: []*gnmi.Update{
+			{
+				Path: mustParseIOSXRPath(t, "interface[name=GigabitEthernet0/0]/state/counters/in-octets"),
+				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_UintVal{UintVal: math.MaxInt64}},
+			},
+			{
+				Path: mustParseIOSXRPath(t, "interface[name=GigabitEthernet0/1]/state/counters/in-octets"),
+				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_UintVal{UintVal: 42}},
+			},
+			{
+				Path: mustParseIOSXRPath(t, "interface[name=GigabitEthernet0/2]/state/counters/out-octets"),
+				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_UintVal{UintVal: ^uint64(0)}},
+			},
+		},
+	}, iosXRTelemetryTransportDialIn)
+
+	const inOctets = "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets"
+	assert.Equal(t, 1, metricCountNamed(md, inOctets))
+	metric := mustFindIOSXRMetric(t, md, inOctets)
+	require.Equal(t, pmetric.MetricTypeSum, metric.Type())
+	dps := metric.Sum().DataPoints()
+	require.Equal(t, 2, dps.Len())
+
+	values := map[string]int64{}
+	for i := 0; i < dps.Len(); i++ {
+		dp := dps.At(i)
+		assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+		values[attrValue(t, dp.Attributes(), "network.interface.name")] = dp.IntValue()
+	}
+	assert.Equal(t, int64(math.MaxInt64), values["GigabitEthernet0/0"])
+	assert.Equal(t, int64(42), values["GigabitEthernet0/1"])
+
+	const outOctetsInfo = "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.out_octets_info"
+	assert.Equal(t, 1, metricCountNamed(md, outOctetsInfo))
+	overflow := mustFindIOSXRMetric(t, md, outOctetsInfo)
+	require.Equal(t, pmetric.MetricTypeGauge, overflow.Type())
+	require.Equal(t, 1, overflow.Gauge().DataPoints().Len())
+	overflowDP := overflow.Gauge().DataPoints().At(0)
+	assert.Equal(t, "18446744073709551615", attrValue(t, overflowDP.Attributes(), "value"))
+	assert.Equal(t, "uint64", attrValue(t, overflowDP.Attributes(), "cisco.value.type"))
+	assert.Equal(t, "true", attrValue(t, overflowDP.Attributes(), "cisco.value.out_of_range"))
+	assert.Equal(t, "GigabitEthernet0/2", attrValue(t, overflowDP.Attributes(), "network.interface.name"))
 }
 
 func TestIOSXRGNMIDecoderInvalidJSONCountsDecodeErrors(t *testing.T) {
@@ -151,11 +206,41 @@ func mustFindIOSXRMetric(t *testing.T, md pmetric.Metrics, name string) pmetric.
 	return pmetric.Metric{}
 }
 
+func metricCountNamed(md pmetric.Metrics, name string) int {
+	count := 0
+	for i := 0; i < md.ResourceMetrics().Len(); i++ {
+		sms := md.ResourceMetrics().At(i).ScopeMetrics()
+		for j := 0; j < sms.Len(); j++ {
+			metrics := sms.At(j).Metrics()
+			for k := 0; k < metrics.Len(); k++ {
+				if metrics.At(k).Name() == name {
+					count++
+				}
+			}
+		}
+	}
+	return count
+}
+
 func attrValue(t *testing.T, attrs pcommon.Map, key string) string {
 	t.Helper()
 	value, ok := attrs.Get(key)
 	require.True(t, ok, "missing attribute %s", key)
 	return value.AsString()
+}
+
+func stringSliceAttrValue(t *testing.T, attrs pcommon.Map, key string) []string {
+	t.Helper()
+	value, ok := attrs.Get(key)
+	require.True(t, ok, "missing attribute %s", key)
+	require.Equal(t, pcommon.ValueTypeSlice, value.Type())
+	values := value.Slice()
+	result := make([]string, 0, values.Len())
+	for i := 0; i < values.Len(); i++ {
+		require.Equal(t, pcommon.ValueTypeStr, values.At(i).Type())
+		result = append(result, values.At(i).Str())
+	}
+	return result
 }
 
 func mustIOSXRClientConfig(endpoint string) configgrpc.ClientConfig {

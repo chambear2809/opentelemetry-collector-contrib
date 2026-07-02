@@ -55,8 +55,7 @@ type intersightLogsReceiver struct {
 	cancel  context.CancelFunc
 	done    chan struct{}
 
-	seenMu sync.Mutex
-	seen   map[string]time.Time
+	seen *logDeduplicator
 }
 
 type intersightEndpoint struct {
@@ -111,7 +110,7 @@ func newIntersightLogsReceiver(set receiver.Settings, conf *Config, consumer con
 		client:   client,
 		obs:      newPlatformObsReport(set, "http"),
 		done:     make(chan struct{}),
-		seen:     map[string]time.Time{},
+		seen:     newLogDeduplicator(),
 	}, nil
 }
 
@@ -179,21 +178,15 @@ func (r *intersightMetricsReceiver) collect(ctx context.Context) {
 	defer cancel()
 
 	obsCtx := startMetricsOp(r.obs, ctx)
-	md, err := r.scrape(scrapeCtx)
-	if err != nil {
-		r.settings.Logger.Error("Intersight scrape failed", zap.Error(err))
-		endMetricsOp(r.obs, obsCtx, md, err)
-		return
+	md, scrapeErr := r.scrape(scrapeCtx)
+	if scrapeErr != nil {
+		r.settings.Logger.Error("Intersight scrape failed", zap.Error(scrapeErr))
 	}
-	if md.MetricCount() == 0 {
-		endMetricsOp(r.obs, obsCtx, md, nil)
-		return
-	}
-	consumeErr := r.consumer.ConsumeMetrics(ctx, md)
-	endMetricsOp(r.obs, obsCtx, md, consumeErr)
+	consumeErr := consumeMetricsIfPresent(ctx, r.consumer, md)
 	if consumeErr != nil {
 		r.settings.Logger.Error("Intersight metrics consumer failed", zap.Error(consumeErr))
 	}
+	endMetricsOp(r.obs, obsCtx, md, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *intersightMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
@@ -366,22 +359,17 @@ func (r *intersightLogsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 
+	r.seen.BeginBatch()
 	obsCtx := startLogsOp(r.obs, ctx)
-	ld, err := r.scrape(scrapeCtx)
-	if err != nil {
-		r.settings.Logger.Error("Intersight log scrape failed", zap.Error(err))
-		endLogsOp(r.obs, obsCtx, ld, err)
-		return
+	ld, scrapeErr := r.scrape(scrapeCtx)
+	if scrapeErr != nil {
+		r.settings.Logger.Error("Intersight log scrape failed", zap.Error(scrapeErr))
 	}
-	if ld.LogRecordCount() == 0 {
-		endLogsOp(r.obs, obsCtx, ld, nil)
-		return
-	}
-	consumeErr := r.consumer.ConsumeLogs(ctx, ld)
-	endLogsOp(r.obs, obsCtx, ld, consumeErr)
+	consumeErr := consumeDeduplicatedLogs(ctx, r.consumer, r.seen, ld)
 	if consumeErr != nil {
 		r.settings.Logger.Error("Intersight logs consumer failed", zap.Error(consumeErr))
 	}
+	endLogsOp(r.obs, obsCtx, ld, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *intersightLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
@@ -419,13 +407,7 @@ func (r *intersightLogsReceiver) seenBefore(endpoint intersightEndpoint, obj int
 	if key == endpoint.operation+":" {
 		key = endpoint.operation + ":" + fmt.Sprint(obj)
 	}
-	r.seenMu.Lock()
-	defer r.seenMu.Unlock()
-	if _, ok := r.seen[key]; ok {
-		return true
-	}
-	r.seen[key] = now
-	return false
+	return !r.seen.MarkPending(key, now)
 }
 
 func (r *intersightLogsReceiver) expireSeen(now time.Time) {
@@ -434,13 +416,7 @@ func (r *intersightLogsReceiver) expireSeen(now time.Time) {
 		ttl = defaultIntersightConfig().EventLookback
 	}
 	ttl *= 2
-	r.seenMu.Lock()
-	defer r.seenMu.Unlock()
-	for key, ts := range r.seen {
-		if now.Sub(ts) > ttl {
-			delete(r.seen, key)
-		}
-	}
+	r.seen.Expire(now.Add(-ttl), 0)
 }
 
 type intersightMetricsBuilder struct {
@@ -466,7 +442,7 @@ func newIntersightMetricsBuilder(now time.Time, endpoint string, counters *count
 	return &intersightMetricsBuilder{
 		metrics:   pmetric.NewMetrics(),
 		now:       ts,
-		start:     ts,
+		start:     pcommon.NewTimestampFromTime(counters.StartTime()),
 		resources: map[string]*resourceMetricsBuilder{},
 		counts:    map[string]*intersightCount{},
 		endpoint:  endpoint,
@@ -514,12 +490,13 @@ func (b *intersightMetricsBuilder) resource(key string) *resourceMetricsBuilder 
 	sm := rm.ScopeMetrics().AppendEmpty()
 	sm.Scope().SetName(intersightScopeName)
 	rb := &resourceMetricsBuilder{
-		resource: rm.Resource(),
-		scope:    sm,
-		metrics:  map[string]pmetric.Metric{},
-		now:      b.now,
-		start:    b.start,
-		counters: b.counters,
+		resource:         rm.Resource(),
+		scope:            sm,
+		metrics:          map[string]pmetric.Metric{},
+		now:              b.now,
+		start:            b.start,
+		counterNamespace: key,
+		counters:         b.counters,
 	}
 	b.resources[key] = rb
 	return rb
@@ -1065,6 +1042,10 @@ func setLogValue(target pcommon.Map, key string, value any) {
 	if value == nil {
 		return
 	}
+	if isSensitiveLogKey(key) {
+		target.PutStr(key, redactedLogValue)
+		return
+	}
 	switch typed := value.(type) {
 	case string:
 		target.PutStr(key, typed)
@@ -1075,7 +1056,7 @@ func setLogValue(target pcommon.Map, key string, value any) {
 	case int64:
 		target.PutInt(key, typed)
 	case []any, map[string]any:
-		bytes, err := typedJSON(typed)
+		bytes, err := typedJSON(redactLogValue(typed))
 		if err == nil {
 			target.PutStr(key, bytes)
 		}

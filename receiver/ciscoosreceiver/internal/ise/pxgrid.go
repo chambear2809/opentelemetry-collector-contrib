@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -18,11 +19,12 @@ import (
 	"time"
 
 	"golang.org/x/net/websocket"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
 
 const (
 	pxGridDefaultPath      = "/pxgrid"
-	pxGridPubSubPath       = "/pxgrid/ise/pubsub"
 	pxGridDefaultWSOrigin  = "https://localhost/"
 	stompHeartbeatInterval = 30 * time.Second
 )
@@ -45,11 +47,20 @@ type PxGridConfig struct {
 // PxGridClient is a small pxGrid REST and WebSocket/STOMP client.
 type PxGridClient struct {
 	rest      *Client
-	endpoint  *url.URL
 	nodeName  string
-	password  string
 	tlsConfig *tls.Config
 	userAgent string
+}
+
+// PxGridSubscription identifies a service and the ServiceLookup property that
+// contains its topic. AlternateTopicProperties supports documented services
+// that advertise more than one compatible event topic across ISE versions.
+// Topic destinations must always come from ServiceLookup; callers must never
+// put a hard-coded STOMP destination in this descriptor.
+type PxGridSubscription struct {
+	Service                  string
+	TopicProperty            string
+	AlternateTopicProperties []string
 }
 
 // StompMessage is a decoded pxGrid STOMP MESSAGE frame.
@@ -109,9 +120,7 @@ func NewPxGridClient(cfg PxGridConfig) (*PxGridClient, error) {
 	}
 	return &PxGridClient{
 		rest:      rest,
-		endpoint:  parsed,
 		nodeName:  cfg.NodeName,
-		password:  cfg.Password,
 		tlsConfig: tlsConfig,
 		userAgent: userAgent,
 	}, nil
@@ -142,9 +151,58 @@ func (c *PxGridClient) AccessSecret(ctx context.Context, peerNodeName string) (O
 	return c.rest.PostObject(ctx, "pxgrid.access_secret", "/control/AccessSecret", map[string]any{"peerNodeName": peerNodeName})
 }
 
-// PostObjects posts a pxGrid REST query payload and returns normalized objects.
-func (c *PxGridClient) PostObjects(ctx context.Context, operation, path string, payload any, maxResults int) ([]Object, error) {
-	return c.rest.PostQuery(ctx, operation, path, payload, maxResults)
+// PostObjects discovers the requested pxGrid service, obtains an access secret
+// for the service node, and posts to its advertised restBaseUrl.
+func (c *PxGridClient) PostObjects(ctx context.Context, operation, service, path string, payload any, maxResults int) ([]Object, error) {
+	if strings.TrimSpace(service) == "" {
+		return nil, errors.New("pxGrid REST service is required")
+	}
+	if strings.TrimSpace(path) == "" {
+		return nil, errors.New("pxGrid REST operation path is required")
+	}
+	services, err := c.ServiceLookup(ctx, service)
+	if err != nil {
+		return nil, fmt.Errorf("discover pxGrid REST service %q: %w", service, err)
+	}
+	if len(services) == 0 {
+		return nil, fmt.Errorf("pxGrid REST service %q is unavailable", service)
+	}
+
+	var attempts []error
+	for _, discovered := range services {
+		peerNodeName := strings.TrimSpace(String(discovered, "nodeName"))
+		restBaseURL := strings.TrimSpace(pxGridServiceProperty(discovered, "restBaseUrl"))
+		if peerNodeName == "" || restBaseURL == "" {
+			attempts = append(attempts, errors.New("service entry is missing nodeName or properties.restBaseUrl"))
+			continue
+		}
+		if err := validatePxGridURL(restBaseURL, "http", "https"); err != nil {
+			attempts = append(attempts, fmt.Errorf("service node %q: %w", peerNodeName, err))
+			continue
+		}
+		secret, err := c.accessSecret(ctx, peerNodeName)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			attempts = append(attempts, fmt.Errorf("service node %q access secret: %w", peerNodeName, err))
+			continue
+		}
+		serviceClient, err := c.discoveredRESTClient(restBaseURL, secret)
+		if err != nil {
+			attempts = append(attempts, fmt.Errorf("service node %q REST client: %w", peerNodeName, err))
+			continue
+		}
+		objects, err := serviceClient.PostQuery(ctx, operation, path, payload, maxResults)
+		if err == nil {
+			return objects, nil
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		attempts = append(attempts, fmt.Errorf("service node %q request: %w", peerNodeName, err))
+	}
+	return nil, fmt.Errorf("pxGrid REST service %q has no usable endpoint: %w", service, errors.Join(attempts...))
 }
 
 // Version returns the pxGrid controller version.
@@ -152,30 +210,102 @@ func (c *PxGridClient) Version(ctx context.Context) (Object, error) {
 	return c.rest.GetObject(ctx, "pxgrid.version", "/control/version", nil)
 }
 
-// Subscribe subscribes to one pxGrid STOMP topic until ctx is cancelled.
-func (c *PxGridClient) Subscribe(ctx context.Context, topic string, handler func(StompMessage)) error {
-	if topic == "" {
-		return errors.New("pxGrid topic cannot be empty")
+// Subscribe discovers a service's advertised topic and pubsub endpoint, then
+// subscribes until ctx is cancelled. Calling Subscribe again performs fresh
+// discovery so reconnects pick up ISE service changes.
+func (c *PxGridClient) Subscribe(ctx context.Context, subscription PxGridSubscription, handler func(StompMessage)) error {
+	service := strings.TrimSpace(subscription.Service)
+	if service == "" {
+		return errors.New("pxGrid subscription service is required")
 	}
-	wsURL := c.pubSubURL()
+	if handler == nil {
+		return errors.New("pxGrid subscription handler is required")
+	}
+	topicProperties := subscription.topicProperties()
+	if len(topicProperties) == 0 {
+		return fmt.Errorf("pxGrid subscription service %q has no documented topic property", service)
+	}
+	services, err := c.ServiceLookup(ctx, service)
+	if err != nil {
+		return fmt.Errorf("discover pxGrid subscription service %q: %w", service, err)
+	}
+	if len(services) == 0 {
+		return fmt.Errorf("pxGrid subscription service %q is unavailable", service)
+	}
+
+	var attempts []error
+	for _, discovered := range services {
+		pubSubService := strings.TrimSpace(pxGridServiceProperty(discovered, "wsPubsubService"))
+		topic, topicProperty := firstPxGridServiceProperty(discovered, topicProperties...)
+		if pubSubService == "" || topic == "" {
+			attempts = append(attempts, fmt.Errorf("service entry is missing properties.wsPubsubService or topic property %s", strings.Join(topicProperties, ", ")))
+			continue
+		}
+		pubSubServices, lookupErr := c.ServiceLookup(ctx, pubSubService)
+		if lookupErr != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			attempts = append(attempts, fmt.Errorf("discover pubsub service %q: %w", pubSubService, lookupErr))
+			continue
+		}
+		if len(pubSubServices) == 0 {
+			attempts = append(attempts, fmt.Errorf("pubsub service %q is unavailable", pubSubService))
+			continue
+		}
+		for _, pubSub := range pubSubServices {
+			peerNodeName := strings.TrimSpace(String(pubSub, "nodeName"))
+			wsURL := strings.TrimSpace(pxGridServiceProperty(pubSub, "wsUrl"))
+			if peerNodeName == "" || wsURL == "" {
+				attempts = append(attempts, fmt.Errorf("pubsub service %q is missing nodeName or properties.wsUrl", pubSubService))
+				continue
+			}
+			if err := validatePxGridURL(wsURL, "ws", "wss"); err != nil {
+				attempts = append(attempts, fmt.Errorf("pubsub node %q: %w", peerNodeName, err))
+				continue
+			}
+			secret, secretErr := c.accessSecret(ctx, peerNodeName)
+			if secretErr != nil {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				attempts = append(attempts, fmt.Errorf("pubsub node %q access secret: %w", peerNodeName, secretErr))
+				continue
+			}
+			if err := c.subscribeEndpoint(ctx, wsURL, peerNodeName, secret, topic, handler); err != nil {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				attempts = append(attempts, fmt.Errorf("pubsub node %q topic property %q: %w", peerNodeName, topicProperty, err))
+				continue
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("pxGrid subscription service %q has no usable endpoint for topic properties [%s]: %w", service, strings.Join(topicProperties, ", "), errors.Join(attempts...))
+}
+
+func (c *PxGridClient) subscribeEndpoint(ctx context.Context, wsURL, peerNodeName, secret, topic string, handler func(StompMessage)) error {
 	config, err := websocket.NewConfig(wsURL, pxGridDefaultWSOrigin)
 	if err != nil {
 		return err
 	}
 	config.TlsConfig = c.tlsConfig
-	config.Header = http.Header{"User-Agent": []string{c.userAgent}}
+	config.Header = http.Header{
+		"Authorization": []string{"Basic " + base64.StdEncoding.EncodeToString([]byte(c.nodeName+":"+secret))},
+		"User-Agent":    []string{c.userAgent},
+	}
 	config.Protocol = []string{"v12.stomp"}
-	ws, err := websocket.DialConfig(config)
+	ws, err := config.DialContext(ctx)
 	if err != nil {
 		return err
 	}
 	defer ws.Close()
+	ws.MaxPayloadBytes = int(httpclient.MaxResponseBodySize)
 
 	if err := writeSTOMP(ws, "CONNECT", map[string]string{
 		"accept-version": "1.2",
-		"host":           c.endpoint.Host,
-		"login":          c.nodeName,
-		"passcode":       c.password,
+		"host":           peerNodeName,
 		"heart-beat":     "30000,30000",
 	}, nil); err != nil {
 		return err
@@ -197,16 +327,26 @@ func (c *PxGridClient) Subscribe(ctx context.Context, topic string, handler func
 
 	heartbeat := time.NewTicker(stompHeartbeatInterval)
 	defer heartbeat.Stop()
-	errCh := make(chan error, 1)
-	msgCh := make(chan stompFrame, 1)
+	type readResult struct {
+		frame stompFrame
+		err   error
+	}
+	readCh := make(chan readResult, 1)
 	go func() {
 		for {
 			frame, readErr := readSTOMP(ws)
 			if readErr != nil {
-				errCh <- readErr
+				select {
+				case readCh <- readResult{err: readErr}:
+				case <-ctx.Done():
+				}
 				return
 			}
-			msgCh <- frame
+			select {
+			case readCh <- readResult{frame: frame}:
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 	for {
@@ -218,9 +358,14 @@ func (c *PxGridClient) Subscribe(ctx context.Context, topic string, handler func
 			if _, err := ws.Write([]byte("\n")); err != nil {
 				return err
 			}
-		case err := <-errCh:
-			return err
-		case frame := <-msgCh:
+		case result := <-readCh:
+			if result.err != nil {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				return result.err
+			}
+			frame := result.frame
 			if frame.command == "ERROR" {
 				return fmt.Errorf("pxGrid STOMP error: %s", string(frame.body))
 			}
@@ -245,17 +390,106 @@ func pxGridRESTEndpoint(endpoint *url.URL) *url.URL {
 	return &result
 }
 
-func (c *PxGridClient) pubSubURL() string {
-	result := *c.endpoint
-	switch result.Scheme {
-	case "http":
-		result.Scheme = "ws"
-	default:
-		result.Scheme = "wss"
+func (s PxGridSubscription) topicProperties() []string {
+	properties := make([]string, 0, 1+len(s.AlternateTopicProperties))
+	seen := map[string]struct{}{}
+	for _, property := range append([]string{s.TopicProperty}, s.AlternateTopicProperties...) {
+		property = strings.TrimSpace(property)
+		if property == "" {
+			continue
+		}
+		normalized := strings.ToLower(property)
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		properties = append(properties, property)
 	}
-	result.Path = pxGridPubSubPath
-	result.RawQuery = ""
-	return result.String()
+	return properties
+}
+
+func pxGridServiceProperty(service Object, property string) string {
+	properties, ok := service["properties"]
+	if !ok {
+		for key, value := range service {
+			if strings.EqualFold(key, "properties") {
+				properties = value
+				ok = true
+				break
+			}
+		}
+	}
+	if !ok {
+		return ""
+	}
+	switch typed := properties.(type) {
+	case Object:
+		return String(typed, property)
+	case map[string]any:
+		return String(Object(typed), property)
+	case map[string]string:
+		for key, value := range typed {
+			if strings.EqualFold(key, property) {
+				return value
+			}
+		}
+	}
+	return ""
+}
+
+func firstPxGridServiceProperty(service Object, properties ...string) (string, string) {
+	for _, property := range properties {
+		if value := strings.TrimSpace(pxGridServiceProperty(service, property)); value != "" {
+			return value, property
+		}
+	}
+	return "", ""
+}
+
+func validatePxGridURL(rawURL string, allowedSchemes ...string) error {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Host == "" || parsed.User != nil {
+		return fmt.Errorf("invalid discovered pxGrid URL %q", rawURL)
+	}
+	for _, scheme := range allowedSchemes {
+		if strings.EqualFold(parsed.Scheme, scheme) {
+			return nil
+		}
+	}
+	return fmt.Errorf("discovered pxGrid URL %q must use %s", rawURL, strings.Join(allowedSchemes, " or "))
+}
+
+func (c *PxGridClient) accessSecret(ctx context.Context, peerNodeName string) (string, error) {
+	secretObject, err := c.AccessSecret(ctx, peerNodeName)
+	if err != nil {
+		return "", err
+	}
+	secret := strings.TrimSpace(String(secretObject, "secret"))
+	if secret == "" {
+		return "", errors.New("pxGrid AccessSecret response did not contain a secret")
+	}
+	return secret, nil
+}
+
+func (c *PxGridClient) discoveredRESTClient(endpoint, secret string) (*Client, error) {
+	client, err := NewClient(Config{
+		Endpoint:           endpoint,
+		Username:           c.nodeName,
+		Password:           secret,
+		AllowEmptyPassword: false,
+		UserAgent:          c.userAgent,
+		Timeout:            c.rest.client.Timeout,
+		MaxRetries:         c.rest.retries,
+		PageSize:           c.rest.pageSize,
+	})
+	if err != nil {
+		return nil, err
+	}
+	// Reuse the authenticated client's TLS transport so certificate-based
+	// pxGrid accounts and private CA configuration apply to discovered nodes.
+	client.client.Transport = c.rest.client.Transport
+	client.OnRequest = c.rest.OnRequest
+	return client, nil
 }
 
 func pxGridTLSConfig(cfg PxGridConfig) (*tls.Config, error) {

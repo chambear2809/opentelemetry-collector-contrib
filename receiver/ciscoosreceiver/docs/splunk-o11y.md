@@ -72,6 +72,14 @@ Use these dimensions as dashboard variables:
 | `cisco.yang.module` | Direct telemetry YANG module selector for Catalyst 9800 and IOS XR model coverage. |
 | `cisco.telemetry.transport` | Direct telemetry transport selector, such as gNMI dial-in or MDT gRPC dial-out. |
 | `cisco.node.id` | IOS XR node, rack, slot, or location selector when exposed by telemetry. |
+| `storage.vendor` | Storage vendor selector for adjacent Cisco AI POD storage integrations, such as VAST. |
+| `ai.pod.component` | AI POD component selector, such as storage. |
+| `vast.cluster` | VAST cluster selector added by the Collector resource processor. |
+| `view_name` | VAST view selector for storage performance and capacity dashboards. |
+| `tenant_name` | VAST tenant selector for scoped storage dashboards. |
+| `vip` | VAST virtual IP selector for storage path analysis. |
+| `vippool` | VAST VIP pool selector for load-balancing and path analysis. |
+| `pvc_namespace` | Kubernetes namespace selector for VAST CSI mount and provisioning evidence. |
 
 Avoid using high-cardinality fields such as process names, queue names, neighbor names, and drop reasons as global dashboard variables unless the dashboard is specifically for deep investigation.
 

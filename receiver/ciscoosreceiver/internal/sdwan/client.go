@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
 
 const (
@@ -191,7 +193,7 @@ func NewClient(cfg Config) (*Client, error) {
 		jsessionID:  cfg.JSessionID,
 		xsrfToken:   cfg.XSRFToken,
 		userAgent:   userAgent,
-		client:      &http.Client{Timeout: timeout, Transport: transport},
+		client:      &http.Client{Timeout: timeout, Transport: transport, CheckRedirect: httpclient.SameOriginRedirectPolicy(parsed)},
 		retries:     retries,
 		pageSize:    pageSize,
 		spacing:     defaultRequestSpacing,
@@ -269,7 +271,7 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 		if header != nil {
 			retryHeader = header.Get("Retry-After")
 		}
-		if !retryableStatus(status) || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
+		if !retryableStatus(status) || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
 			if ctx.Err() != nil {
 				return nil, nil, ctx.Err()
 			}
@@ -316,7 +318,7 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 	defer resp.Body.Close()
 	stat.StatusCode = resp.StatusCode
 	stat.RateLimited = resp.StatusCode == http.StatusTooManyRequests
-	body, readErr := io.ReadAll(resp.Body)
+	body, readErr := httpclient.ReadResponseBody(resp.Body)
 	if readErr != nil {
 		stat.Outcome = "error"
 		stat.Err = readErr
@@ -412,7 +414,10 @@ func (c *Client) loginJWT(ctx context.Context) error {
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, err := httpclient.ReadResponseBody(resp.Body)
+	if err != nil {
+		return err
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return &APIError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(body))}
 	}
@@ -444,7 +449,10 @@ func (c *Client) loginSession(ctx context.Context) error {
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, err := httpclient.ReadResponseBody(resp.Body)
+	if err != nil {
+		return err
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 || strings.Contains(strings.ToLower(string(body)), "<html") {
 		return &APIError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(body))}
 	}
@@ -467,7 +475,10 @@ func (c *Client) loginSession(ctx context.Context) error {
 		return err
 	}
 	defer tokenResp.Body.Close()
-	tokenBody, _ := io.ReadAll(tokenResp.Body)
+	tokenBody, err := httpclient.ReadResponseBody(tokenResp.Body)
+	if err != nil {
+		return err
+	}
 	if tokenResp.StatusCode < 200 || tokenResp.StatusCode >= 300 {
 		return &APIError{StatusCode: tokenResp.StatusCode, Body: strings.TrimSpace(string(tokenBody))}
 	}
@@ -557,7 +568,9 @@ func (c *Client) emit(stat RequestStat) {
 
 func decodeObject(body []byte) (Object, error) {
 	var obj Object
-	if err := json.Unmarshal(body, &obj); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	if err := decoder.Decode(&obj); err != nil {
 		return nil, err
 	}
 	return obj, nil
@@ -565,7 +578,9 @@ func decodeObject(body []byte) (Object, error) {
 
 func decodeObjects(body []byte, header http.Header) ([]Object, error) {
 	var decoded any
-	if err := json.Unmarshal(body, &decoded); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	if err := decoder.Decode(&decoded); err != nil {
 		return nil, err
 	}
 	return objectsFromAny(decoded), nil

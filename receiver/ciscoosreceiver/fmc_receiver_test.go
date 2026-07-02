@@ -4,6 +4,7 @@
 package ciscoosreceiver
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"go.opentelemetry.io/collector/receiver/receivertest"
 	"go.opentelemetry.io/collector/scraper/scraperhelper"
 
+	fmcinternal "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/fmc"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
 )
 
@@ -88,6 +90,53 @@ func TestLoadFMCEStreamerTLSSupportsInsecureSkipVerify(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "fmc.example.com", tlsConfig.ServerName)
 	assert.True(t, tlsConfig.InsecureSkipVerify)
+}
+
+func TestFMCEStreamerReconnectAdvancesCursorAndSuppressesDeliveredDuplicate(t *testing.T) {
+	initial := time.Unix(1_800_000_000, 0).UTC()
+	client, err := fmcinternal.NewEStreamerClient(fmcinternal.EStreamerConfig{
+		Address:     "fmc.example.test:8302",
+		Name:        "fmc-test",
+		InitialTime: initial,
+	})
+	require.NoError(t, err)
+	deliveryErr := errors.New("downstream unavailable")
+	receiver := &fmcEStreamerLogsReceiver{
+		settings: receivertest.NewNopSettings(metadata.Type),
+		config: &Config{FMC: FMCConfig{
+			SecurityEvents: FMCGroupConfig{Enabled: true},
+		}},
+		consumer: consumertest.NewErr(deliveryErr),
+	}
+	resume := newFMCEStreamerResumeState(client.InitialTime())
+	eventTime := time.Unix(1_800_000_123, 750_000_000).UTC()
+	event := fmcinternal.EStreamerEvent{
+		EventType:  "connection",
+		RecordType: 3,
+		Timestamp:  eventTime,
+		Body: fmcinternal.Object{
+			"eventId":     "event-1",
+			"InitiatorIP": "192.0.2.10",
+		},
+		Raw: `{"eventId":"event-1","InitiatorIP":"192.0.2.10"}`,
+	}
+
+	require.ErrorIs(t, receiver.consumeEStreamerEvent(t.Context(), client, resume, event), deliveryErr)
+	assert.Empty(t, resume.seen)
+	assert.True(t, resume.cursor.IsZero())
+	assert.Equal(t, initial, resume.requestStart())
+
+	sink := &consumertest.LogsSink{}
+	receiver.consumer = sink
+	require.NoError(t, receiver.consumeEStreamerEvent(t.Context(), client, resume, event))
+	assert.Equal(t, 1, sink.LogRecordCount())
+	assert.Equal(t, eventTime, resume.cursor)
+	assert.Equal(t, time.Unix(1_800_000_122, 0).UTC(), resume.requestStart())
+
+	// FMC can replay the inclusive cursor boundary after reconnect. A record
+	// already accepted by the next consumer must not be exported again.
+	require.NoError(t, receiver.consumeEStreamerEvent(t.Context(), client, resume, event))
+	assert.Equal(t, 1, sink.LogRecordCount())
 }
 
 func fmcIntMetricValueExists(md pmetric.Metrics, name string, value int64) bool {

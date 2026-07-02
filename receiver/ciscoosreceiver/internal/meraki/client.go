@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -16,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
 
 const (
@@ -108,7 +109,7 @@ func NewClient(cfg Config) (*Client, error) {
 		apiKey:        cfg.APIKey,
 		baseURL:       parsed,
 		userAgent:     userAgent,
-		client:        &http.Client{Timeout: timeout},
+		client:        &http.Client{Timeout: timeout, CheckRedirect: httpclient.SameOriginRedirectPolicy(parsed)},
 		retries:       retries,
 		sourceLimiter: newLimiter(100),
 		orgLimiters:   map[string]*limiter{},
@@ -152,7 +153,10 @@ func GetPaginatedJSON[T any](ctx context.Context, c *Client, organizationID, ope
 		if nextURL == "" {
 			return results, nil
 		}
-		nextPath, nextQuery = splitNextURL(nextURL)
+		nextPath, nextQuery, err = c.splitNextURL(nextURL)
+		if err != nil {
+			return results, fmt.Errorf("invalid meraki %s pagination link: %w", operation, err)
+		}
 	}
 }
 
@@ -178,7 +182,10 @@ func GetPaginatedItemsJSON[T any](ctx context.Context, c *Client, organizationID
 		if nextURL == "" {
 			return results, nil
 		}
-		nextPath, nextQuery = splitNextURL(nextURL)
+		nextPath, nextQuery, err = c.splitNextURL(nextURL)
+		if err != nil {
+			return results, fmt.Errorf("invalid meraki %s pagination link: %w", operation, err)
+		}
 	}
 }
 
@@ -221,7 +228,7 @@ func (c *Client) do(ctx context.Context, organizationID, operation, path string,
 				Duration:       duration,
 				Err:            err,
 			})
-			if !sleepBeforeRetry(ctx, attempt, -1) {
+			if attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, -1) {
 				if ctx.Err() != nil {
 					return nil, nil, ctx.Err()
 				}
@@ -230,7 +237,7 @@ func (c *Client) do(ctx context.Context, organizationID, operation, path string,
 			continue
 		}
 
-		body, readErr := io.ReadAll(resp.Body)
+		body, readErr := httpclient.ReadResponseBody(resp.Body)
 		closeErr := resp.Body.Close()
 		if readErr != nil {
 			lastErr = readErr
@@ -281,7 +288,7 @@ func (c *Client) do(ctx context.Context, organizationID, operation, path string,
 		if resp.StatusCode != http.StatusTooManyRequests && (resp.StatusCode < 500 || resp.StatusCode > 599) {
 			return nil, resp.Header, apiErr
 		}
-		if !sleepBeforeRetry(ctx, attempt, retryAfter(resp.Header.Get("Retry-After"))) {
+		if attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(resp.Header.Get("Retry-After"))) {
 			if ctx.Err() != nil {
 				return nil, resp.Header, ctx.Err()
 			}
@@ -418,15 +425,16 @@ func nextLink(linkHeader string) string {
 	return ""
 }
 
-func splitNextURL(next string) (string, url.Values) {
+func (c *Client) splitNextURL(next string) (string, url.Values, error) {
 	u, err := url.Parse(next)
 	if err != nil {
-		return next, nil
+		return "", nil, err
 	}
-	if u.IsAbs() {
-		return u.String(), nil
+	resolved := c.baseURL.ResolveReference(u)
+	if !httpclient.SameOrigin(c.baseURL, resolved) {
+		return "", nil, fmt.Errorf("cross-origin URL %q", next)
 	}
-	return u.Path, u.Query()
+	return resolved.Path, resolved.Query(), nil
 }
 
 func cloneValues(values url.Values) url.Values {
