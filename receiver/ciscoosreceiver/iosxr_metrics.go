@@ -206,12 +206,6 @@ func newIOSXRMetrics(ctx iosXRMetricContext) (pmetric.Metrics, pmetric.ScopeMetr
 	if ctx.transport != "" {
 		attrs.PutStr("cisco.telemetry.transport", ctx.transport)
 	}
-	if ctx.yangPath != "" {
-		attrs.PutStr("cisco.yang.path", ctx.yangPath)
-	}
-	if ctx.yangModule != "" {
-		attrs.PutStr("cisco.yang.module", ctx.yangModule)
-	}
 	sm := rm.ScopeMetrics().AppendEmpty()
 	sm.Scope().SetName("github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/iosxr")
 	return md, sm
@@ -263,31 +257,24 @@ func appendIOSXRHealthMetrics(md pmetric.Metrics, health *iosXRHealth, ctx iosXR
 	}
 }
 
-func appendIOSXRNumberMetric(sm pmetric.ScopeMetrics, module string, pathParts []string, value float64, ts pcommon.Timestamp, attrs map[string]string) {
-	appendIOSXRMetricNumber(sm, module, pathParts, doubleMetricNumber(value), ts, attrs)
-}
-
-func appendIOSXRIntMetric(sm pmetric.ScopeMetrics, module string, pathParts []string, value int64, ts pcommon.Timestamp, attrs map[string]string) {
-	appendIOSXRMetricNumber(sm, module, pathParts, intMetricNumber(value), ts, attrs)
-}
-
-func appendIOSXRMetricNumber(sm pmetric.ScopeMetrics, module string, pathParts []string, value metricNumber, ts pcommon.Timestamp, attrs map[string]string) {
-	name := iosXRMetricName(module, pathParts)
-	if isIOSXRCounterMetric(pathParts) {
-		appendMetricNumberSum(sm, name, value, ts, attrs)
+func appendIOSXRMetricNumberIndexed(builder *indexedMetricBuilder, module string, pathParts []string, value metricNumber, ts pcommon.Timestamp, attrs map[string]string) {
+	if builder.budget != nil && !builder.budget.allowMetricName("cisco.iosxr.yang", module, pathParts, "") {
 		return
 	}
-	appendMetricNumberGauge(sm, name, value, ts, attrs)
+	name := iosXRMetricName(module, pathParts)
+	if isIOSXRCounterMetric(pathParts) {
+		builder.appendNumber(name, pmetric.MetricTypeSum, value, ts, attrs)
+		return
+	}
+	builder.appendNumber(name, pmetric.MetricTypeGauge, value, ts, attrs)
 }
 
-func appendIOSXRInfoMetric(sm pmetric.ScopeMetrics, module string, pathParts []string, value string, ts pcommon.Timestamp, attrs map[string]string) {
+func appendIOSXRInfoMetricIndexed(builder *indexedMetricBuilder, module string, pathParts []string, value string, ts pcommon.Timestamp, attrs map[string]string) {
+	if builder.budget != nil && !builder.budget.allowMetricName("cisco.iosxr.yang", module, pathParts, "_info") {
+		return
+	}
 	name := iosXRMetricName(module, pathParts) + "_info"
-	metric := getOrCreateMetric(sm, name, pmetric.MetricTypeGauge)
-	dp := metric.Gauge().DataPoints().AppendEmpty()
-	dp.SetDoubleValue(1)
-	dp.SetTimestamp(ts)
-	dp.Attributes().PutStr("value", value)
-	applyStringAttrs(dp.Attributes(), attrs)
+	builder.appendInfo(name, value, ts, attrs)
 }
 
 func appendGaugeMetric(sm pmetric.ScopeMetrics, name string, value float64, ts pcommon.Timestamp, attrs map[string]string) {
@@ -364,24 +351,7 @@ func sanitizeMetricSegment(value string) string {
 }
 
 func isIOSXRCounterMetric(pathParts []string) bool {
-	pathText := strings.ToLower(strings.Join(pathParts, "."))
-	last := ""
-	if len(pathParts) > 0 {
-		last = strings.ToLower(pathParts[len(pathParts)-1])
-	}
-	if strings.Contains(pathText, "summary") || strings.Contains(pathText, "utilization") || strings.Contains(pathText, "temperature") {
-		return false
-	}
-	counterHints := []string{
-		"counter", "counters", "octets", "bytes", "packets", "pkts", "errors", "drops", "discard", "discards",
-		"crc", "matched", "transmit", "received", "in-", "out-", "rx-", "tx-", "interrupts",
-	}
-	for _, hint := range counterHints {
-		if strings.Contains(last, hint) || strings.Contains(pathText, "."+hint) {
-			return true
-		}
-	}
-	return false
+	return isUnambiguousYANGCounter(pathParts)
 }
 
 func applyStringAttrs(attrs pcommon.Map, values map[string]string) {
@@ -408,6 +378,13 @@ type metricNumber struct {
 	intValue    int64
 	doubleValue float64
 	isInt       bool
+}
+
+func (n metricNumber) String() string {
+	if n.isInt {
+		return strconv.FormatInt(n.intValue, 10)
+	}
+	return strconv.FormatFloat(n.doubleValue, 'g', -1, 64)
 }
 
 func intMetricNumber(value int64) metricNumber {
@@ -523,7 +500,7 @@ func newIOSXRNormalizingConsumer(next consumer.Metrics, config IOSXRConfig, sele
 }
 
 func (c *iosXRNormalizingConsumer) Capabilities() consumer.Capabilities {
-	return c.next.Capabilities()
+	return consumer.Capabilities{MutatesData: true}
 }
 
 func (c *iosXRNormalizingConsumer) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error {
@@ -564,15 +541,17 @@ func (c *iosXRNormalizingConsumer) normalize(md pmetric.Metrics) {
 		encodingPath := ""
 		if v, ok := resAttrs.Get("cisco.encoding_path"); ok {
 			encodingPath = v.AsString()
-			resAttrs.PutStr("cisco.yang.path", encodingPath)
-			if module := moduleFromYANGPath(encodingPath); module != "" {
-				resAttrs.PutStr("cisco.yang.module", module)
-			}
 		}
 		module := ""
 		if v, ok := resAttrs.Get("cisco.yang.module"); ok {
 			module = v.AsString()
 		}
+		if module == "" {
+			module = moduleFromYANGPath(encodingPath)
+		}
+		resAttrs.Remove("cisco.encoding_path")
+		resAttrs.Remove("cisco.yang.path")
+		resAttrs.Remove("cisco.yang.module")
 		sms := rm.ScopeMetrics()
 		for j := 0; j < sms.Len(); j++ {
 			sm := sms.At(j)
@@ -701,9 +680,26 @@ func moduleFromYANGPath(value string) string {
 }
 
 func putIPAttr(attrs pcommon.Map, key, value string) {
-	if net.ParseIP(value) != nil {
-		values := attrs.PutEmptySlice(key)
-		values.AppendEmpty().SetStr(value)
+	putIPAttrs(attrs, key, value)
+}
+
+func putIPAttrs(attrs pcommon.Map, key string, candidates ...string) {
+	valid := uniqueStrings(candidates)
+	if len(valid) == 0 {
+		return
+	}
+	values := make([]string, 0, len(valid))
+	for _, value := range valid {
+		if net.ParseIP(value) != nil {
+			values = append(values, value)
+		}
+	}
+	if len(values) == 0 {
+		return
+	}
+	target := attrs.PutEmptySlice(key)
+	for _, value := range values {
+		target.AppendEmpty().SetStr(value)
 	}
 }
 

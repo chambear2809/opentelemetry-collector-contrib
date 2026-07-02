@@ -413,7 +413,7 @@ func parseQueueingPFCStatsLine(counters map[string]map[string]int64, intfName, l
 }
 
 func recordInterfaceCounter(counters map[string]map[string]int64, intfName, name string, value int64) {
-	if name == "" {
+	if name == "" || !validCounter(value) {
 		return
 	}
 	if _, ok := counters[intfName]; !ok {
@@ -423,7 +423,7 @@ func recordInterfaceCounter(counters map[string]map[string]int64, intfName, name
 }
 
 func recordFlatCounter(counters map[string]int64, name string, value int64) {
-	if name == "" {
+	if name == "" || !validCounter(value) {
 		return
 	}
 	counters[name] = value

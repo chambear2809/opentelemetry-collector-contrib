@@ -6,8 +6,11 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math"
 	"net/url"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,6 +38,7 @@ type intersightMetricsReceiver struct {
 	client   *intersight.Client
 	counters *counterStore
 	obs      *receiverhelper.ObsReport
+	success  scrapeSuccessState
 
 	startMu sync.Mutex
 	cancel  context.CancelFunc
@@ -182,11 +186,11 @@ func (r *intersightMetricsReceiver) collect(ctx context.Context) {
 	if scrapeErr != nil {
 		r.settings.Logger.Error("Intersight scrape failed", zap.Error(scrapeErr))
 	}
-	consumeErr := consumeMetricsIfPresent(ctx, r.consumer, md)
+	metricCount, consumeErr := consumeMetricsIfPresent(ctx, r.consumer, md)
 	if consumeErr != nil {
 		r.settings.Logger.Error("Intersight metrics consumer failed", zap.Error(consumeErr))
 	}
-	endMetricsOp(r.obs, obsCtx, md, combineSignalErrors(scrapeErr, consumeErr))
+	endMetricsOp(r.obs, obsCtx, metricCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *intersightMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
@@ -201,19 +205,20 @@ func (r *intersightMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics
 			continue
 		}
 		objects, err := r.client.List(ctx, endpoint.operation, endpoint.path, endpointQuery(endpoint, r.config, now), intersightGroupMaxResults(r.config.Intersight, endpoint.group))
-		if err != nil {
-			if ctx.Err() != nil {
-				return builder.emit(), ctx.Err()
-			}
-			partial = true
-			r.settings.Logger.Warn("Intersight endpoint failed", zap.String("operation", endpoint.operation), zap.Error(err))
-			continue
-		}
 		for _, obj := range filterIntersightObjects(objects, r.config.Intersight.Targets) {
 			if !selector.allows(intersightObjectIdentity(obj)) {
 				continue
 			}
 			builder.recordObject(endpoint, obj)
+		}
+		if err != nil {
+			if ctx.Err() != nil {
+				partial = true
+				return r.finishScrape(builder, now, partial), ctx.Err()
+			}
+			partial = true
+			r.settings.Logger.Warn("Intersight endpoint failed", zap.String("operation", endpoint.operation), zap.Error(err))
+			continue
 		}
 	}
 
@@ -221,7 +226,8 @@ func (r *intersightMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics
 		for _, query := range intersightTelemetryQueries() {
 			if err := r.scrapeTelemetry(ctx, builder, query, now, selector); err != nil {
 				if ctx.Err() != nil {
-					return builder.emit(), ctx.Err()
+					partial = true
+					return r.finishScrape(builder, now, partial), ctx.Err()
 				}
 				partial = true
 				r.settings.Logger.Warn("Intersight telemetry query failed", zap.String("query", query.name), zap.Error(err))
@@ -229,11 +235,20 @@ func (r *intersightMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics
 		}
 	}
 
+	return r.finishScrape(builder, now, partial), nil
+}
+
+func (r *intersightMetricsReceiver) finishScrape(builder *intersightMetricsBuilder, _ time.Time, partial bool) pmetric.Metrics {
 	r.recordAPIRequestMetrics(builder)
-	builder.accountResource().recordInt("intersight.scrape.partial_success", "Whether one or more Intersight endpoint families failed during the scrape.", "1", boolToInt(partial), nil)
-	builder.accountResource().recordInt("intersight.scrape.last_success", "Unix timestamp of the most recent Intersight scrape completion.", "s", now.Unix(), nil)
+	stats := r.requestStats()
+	outcome := summarizeAPIOutcomes(stats, func(stat intersight.RequestStat) string { return stat.Outcome })
+	rb := builder.accountResource()
+	rb.recordInt("intersight.scrape.partial_success", "Whether one or more Intersight endpoint families failed during the scrape.", "1", boolToInt(partial), nil)
+	if lastSuccess, ok := r.success.observe(time.Now(), !partial && outcome.succeeded); ok {
+		rb.recordInt("intersight.scrape.last_success", "Unix timestamp of the most recent fully successful Intersight scrape.", "s", lastSuccess.Unix(), nil)
+	}
 	builder.flushCounts()
-	return builder.emit(), nil
+	return builder.emit()
 }
 
 func (r *intersightMetricsReceiver) scrapeTelemetry(ctx context.Context, builder *intersightMetricsBuilder, query intersightTelemetryQuery, now time.Time, selector deviceSelectionMatcher) error {
@@ -290,7 +305,9 @@ func (r *intersightMetricsReceiver) requestStats() []intersight.RequestStat {
 }
 
 func (r *intersightMetricsReceiver) recordAPIRequestMetrics(builder *intersightMetricsBuilder) {
-	for _, stat := range r.requestStats() {
+	stats := r.requestStats()
+	observations := make([]apiRequestObservation, 0, len(stats))
+	for _, stat := range stats {
 		attrs := map[string]string{
 			"intersight.api.operation": stat.Operation,
 			"http.request.method":      stat.Method,
@@ -299,13 +316,16 @@ func (r *intersightMetricsReceiver) recordAPIRequestMetrics(builder *intersightM
 		if stat.StatusCode > 0 {
 			attrs["http.response.status_code"] = strconv.Itoa(stat.StatusCode)
 		}
+		observations = append(observations, apiRequestObservation{attrs: attrs, durationSeconds: stat.Duration.Seconds(), failed: stat.Outcome != "success", rateLimited: stat.RateLimited})
+	}
+	for _, aggregate := range aggregateAPIRequestObservations(observations) {
 		rb := builder.accountResource()
-		rb.recordDouble("intersight.api.request.duration", "Duration of Intersight API requests.", "s", stat.Duration.Seconds(), attrs)
-		if stat.Outcome != "success" {
-			rb.recordSum("intersight.api.request.errors", "Intersight API request errors.", "{error}", 1, attrs)
+		rb.recordDouble("intersight.api.request.duration", "Average duration of Intersight API request attempts in this scrape.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
+		if aggregate.errors > 0 {
+			rb.recordSum("intersight.api.request.errors", "Intersight API request errors.", "{error}", aggregate.errors, aggregate.attrs)
 		}
-		if stat.RateLimited {
-			rb.recordSum("intersight.api.rate_limited", "Intersight API requests that were rate limited.", "{request}", 1, attrs)
+		if aggregate.rateLimited > 0 {
+			rb.recordSum("intersight.api.rate_limited", "Intersight API requests that were rate limited.", "{request}", aggregate.rateLimited, aggregate.attrs)
 		}
 	}
 }
@@ -365,29 +385,23 @@ func (r *intersightLogsReceiver) collect(ctx context.Context) {
 	if scrapeErr != nil {
 		r.settings.Logger.Error("Intersight log scrape failed", zap.Error(scrapeErr))
 	}
-	consumeErr := consumeDeduplicatedLogs(ctx, r.consumer, r.seen, ld)
+	logCount, consumeErr := consumeDeduplicatedLogs(ctx, r.consumer, r.seen, ld)
 	if consumeErr != nil {
 		r.settings.Logger.Error("Intersight logs consumer failed", zap.Error(consumeErr))
 	}
-	endLogsOp(r.obs, obsCtx, ld, combineSignalErrors(scrapeErr, consumeErr))
+	endLogsOp(r.obs, obsCtx, logCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *intersightLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 	ld := plog.NewLogs()
 	now := time.Now()
+	var endpointErrors []error
 	selector := newDeviceSelectionMatcher(r.config.DeviceSelection)
 	for _, endpoint := range intersightLogEndpoints() {
 		if !intersightGroupEnabled(r.config.Intersight, endpoint.group) {
 			continue
 		}
 		objects, err := r.client.List(ctx, endpoint.operation, endpoint.path, endpointQuery(endpoint, r.config, now), intersightGroupMaxResults(r.config.Intersight, endpoint.group))
-		if err != nil {
-			if ctx.Err() != nil {
-				return ld, ctx.Err()
-			}
-			r.settings.Logger.Warn("Intersight log endpoint failed", zap.String("operation", endpoint.operation), zap.Error(err))
-			continue
-		}
 		for _, obj := range filterIntersightObjects(objects, r.config.Intersight.Targets) {
 			if !selector.allows(intersightObjectIdentity(obj)) {
 				continue
@@ -397,16 +411,22 @@ func (r *intersightLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) 
 			}
 			appendIntersightLog(ld, endpoint, obj, now)
 		}
+		if err != nil {
+			if ctx.Err() != nil {
+				return ld, ctx.Err()
+			}
+			r.settings.Logger.Warn("Intersight log endpoint failed", zap.String("operation", endpoint.operation), zap.Error(err))
+			endpointErrors = append(endpointErrors, fmt.Errorf("Intersight %s: %w", endpoint.operation, err))
+			continue
+		}
 	}
 	r.expireSeen(now)
-	return ld, nil
+	return ld, errors.Join(endpointErrors...)
 }
 
 func (r *intersightLogsReceiver) seenBefore(endpoint intersightEndpoint, obj intersight.Object, now time.Time) bool {
-	key := endpoint.operation + ":" + intersight.StableID(obj)
-	if key == endpoint.operation+":" {
-		key = endpoint.operation + ":" + fmt.Sprint(obj)
-	}
+	stableID := intersight.String(obj, "Moid", "InstId", "EventId", "EventMoid", "AuditRecordId", "RequestId")
+	key := logDedupKey(endpoint.operation, stableID, obj)
 	return !r.seen.MarkPending(key, now)
 }
 
@@ -471,7 +491,12 @@ func (b *intersightMetricsBuilder) objectResource(objectType string, obj intersi
 	attrs := rb.resource.Attributes()
 	putStr(attrs, "host.id", hostID)
 	putStr(attrs, "host.name", firstNonEmpty(intersight.String(obj, "Name", "HostName"), firstString(intersight.StringSlice(obj, "DeviceHostname")), hostID))
-	putStr(attrs, "host.ip", firstNonEmpty(intersight.String(obj, "MgmtIpAddress", "Ipv4Address", "OutOfBandIpAddress", "InbandIpAddress"), firstString(intersight.StringSlice(obj, "DeviceIpAddress"))))
+	putIPAttrs(attrs, "host.ip", append([]string{
+		intersight.String(obj, "MgmtIpAddress"),
+		intersight.String(obj, "Ipv4Address"),
+		intersight.String(obj, "OutOfBandIpAddress"),
+		intersight.String(obj, "InbandIpAddress"),
+	}, intersight.StringSlice(obj, "DeviceIpAddress")...)...)
 	putStr(attrs, "host.type", firstNonEmpty(intersight.String(obj, "Model", "PlatformType", "SourceObjectType"), objectType))
 	putStr(attrs, "os.name", "Intersight")
 	putStr(attrs, "os.version", firstNonEmpty(intersight.String(obj, "Firmware", "Version", "BundleVersion", "HxdpBuildVersion"), intersight.String(obj, "DisplayVersion")))
@@ -548,8 +573,8 @@ func (b *intersightMetricsBuilder) recordObject(endpoint intersightEndpoint, obj
 	putNonEmpty(infoAttrs, "intersight.model", intersight.String(obj, "Model", "PlatformType"))
 	putNonEmpty(infoAttrs, "intersight.source_object_type", intersight.String(obj, "SourceObjectType", "AffectedMoType", "AffectedObjectType"))
 	rb.recordInt("intersight.resource.info", "Intersight resource metadata.", "1", 1, infoAttrs)
-	if status != "" {
-		rb.recordInt("intersight.resource.status", "Intersight resource status encoded for troubleshooting.", "1", statusCode(status), map[string]string{
+	if code, ok := statusCode(status); ok {
+		rb.recordInt("intersight.resource.status", "Intersight resource status encoded for troubleshooting.", "1", code, map[string]string{
 			"intersight.resource.type": objectType,
 			"intersight.status":        status,
 		})
@@ -568,7 +593,9 @@ func (b *intersightMetricsBuilder) recordObject(endpoint intersightEndpoint, obj
 	case "inventory", "equipment", "network":
 		b.recordInventoryObject(rb, obj, objectType, status)
 	case "firmware":
-		recordStringState(rb, "intersight.firmware.bundle.status", "Firmware bundle/version information.", intersight.String(obj, "BundleVersion", "Version"), nil)
+		if version := intersight.String(obj, "BundleVersion", "Version"); version != "" {
+			rb.recordInt("intersight.firmware.bundle.info", "Firmware bundle/version information.", "1", 1, map[string]string{"intersight.firmware.version": version})
+		}
 	case "storage":
 		b.recordStorageObject(rb, obj)
 	case "hyperflex":
@@ -595,23 +622,33 @@ func (b *intersightMetricsBuilder) recordEventObject(rb *resourceMetricsBuilder,
 		rb.recordInt("intersight.advisory.active", "Active Intersight advisory exposure.", "1", 1, attrs)
 		b.addCount("intersight.advisory.count", attrs)
 	case strings.Contains(endpoint.operation, "hcl"):
-		rb.recordInt("intersight.hcl.status", "Intersight HCL/compliance status.", "1", statusCode(status), attrs)
+		if code, ok := statusCode(status); ok {
+			rb.recordInt("intersight.hcl.status", "Intersight HCL/compliance status.", "1", code, attrs)
+		}
 		b.addCount("intersight.hcl.status.count", attrs)
 	case strings.Contains(endpoint.operation, "task"):
-		rb.recordInt("intersight.task.status", "Intersight task status.", "1", statusCode(status), attrs)
+		if code, ok := statusCode(status); ok {
+			rb.recordInt("intersight.task.status", "Intersight task status.", "1", code, attrs)
+		}
 		b.addCount("intersight.task.count", attrs)
 	case strings.Contains(endpoint.operation, "workflow"):
-		rb.recordInt("intersight.workflow.status", "Intersight workflow status.", "1", statusCode(status), attrs)
+		if code, ok := statusCode(status); ok {
+			rb.recordInt("intersight.workflow.status", "Intersight workflow status.", "1", code, attrs)
+		}
 		b.addCount("intersight.workflow.count", attrs)
 	case strings.Contains(endpoint.operation, "techsupport"):
-		rb.recordInt("intersight.techsupport.status", "Intersight tech-support bundle collection status.", "1", statusCode(status), attrs)
+		if code, ok := statusCode(status); ok {
+			rb.recordInt("intersight.techsupport.status", "Intersight tech-support bundle collection status.", "1", code, attrs)
+		}
 		b.addCount("intersight.techsupport.count", attrs)
 	}
 }
 
 func (b *intersightMetricsBuilder) recordInventoryObject(rb *resourceMetricsBuilder, obj intersight.Object, objectType, status string) {
 	if strings.Contains(objectType, "DeviceRegistration") || strings.Contains(objectType, "Target") || strings.Contains(objectType, "PhysicalSummary") || strings.Contains(objectType, "Blade") || strings.Contains(objectType, "RackUnit") || strings.Contains(objectType, "Network") {
-		rb.recordInt("cisco.device.up", "Device availability reported by Cisco Intersight.", "1", upStatus(status), nil)
+		if up, ok := upStatus(status); ok {
+			rb.recordInt("cisco.device.up", "Device availability reported by Cisco Intersight.", "1", up, nil)
+		}
 	}
 	recordIfInt(rb, obj, "NumCpuCores", "system.cpu.logical.count", "Number of CPU cores reported by Intersight.", "{cpu}", nil)
 	recordIfInt(rb, obj, "NumThreads", "intersight.compute.thread.count", "Number of CPU threads reported by Intersight.", "{thread}", nil)
@@ -674,6 +711,12 @@ func (b *intersightMetricsBuilder) recordTelemetry(query intersightTelemetryQuer
 		putStr(attrs, "intersight.telemetry.device_id", stringFromAny(event["deviceId"]))
 		putStr(attrs, "intersight.serial", firstNonEmpty(stringFromAny(event["serial"]), stringFromAny(event["Serial"]), stringFromAny(event["serialNumber"]), stringFromAny(event["SerialNumber"])))
 		pointAttrs := map[string]string{}
+		if query.metricName == "system.cpu.utilization" {
+			pointAttrs["cpu.mode"] = "user"
+		}
+		if query.metricName == "system.memory.utilization" {
+			pointAttrs["system.memory.state"] = "used"
+		}
 		for _, dim := range query.dimensions {
 			putNonEmpty(pointAttrs, "intersight."+strings.ReplaceAll(dim, ".", "_"), stringFromAny(event[dim]))
 		}
@@ -695,9 +738,9 @@ func appendIntersightLog(ld plog.Logs, endpoint intersightEndpoint, obj intersig
 	record := sl.LogRecords().AppendEmpty()
 	record.SetObservedTimestamp(pcommon.NewTimestampFromTime(now))
 	if ts, ok := logTimestamp(obj); ok {
-		record.SetTimestamp(pcommon.NewTimestampFromTime(ts))
-	} else {
-		record.SetTimestamp(pcommon.NewTimestampFromTime(now))
+		if timestamp, valid := pdataTimestampFromTime(ts); valid {
+			record.SetTimestamp(timestamp)
+		}
 	}
 	status := objectStatus(obj)
 	severity := firstNonEmpty(intersight.String(obj, "Severity", "OrigSeverity"), status)
@@ -949,29 +992,30 @@ func objectStatus(obj intersight.Object) string {
 	)
 }
 
-func statusCode(status string) int64 {
+func statusCode(status string) (int64, bool) {
 	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "", "unknown", "none":
-		return 0
-	case "ok", "online", "connected", "operable", "up", "healthy", "normal", "completed", "complete", "collectioncomplete", "uploadpartscomplete", "on", "powered-on", "poweredon", "ready", "running":
-		return 1
-	case "info", "informational", "pending", "collectioninprogress", "uploadpending", "uploadinprogress", "inprogress", "not-started", "degraded":
-		return 2
-	case "warning", "minor", "medium":
-		return 3
-	case "critical", "error", "failed", "failure", "collectionfailed", "uploadfailed", "fatal", "offline", "disconnected", "inoperable", "down", "unhealthy":
-		return 4
+	case "ok", "online", "connected", "operable", "up", "healthy", "normal", "completed", "complete", "collectioncomplete", "uploadpartscomplete", "on", "powered-on", "poweredon", "ready", "running", "success", "successful", "reachable", "managed", "active", "enabled", "valid", "available", "synchronized", "in-service", "inservice", "passed", "pass", "true", "present", "learned", "established":
+		return 1, true
+	case "info", "informational", "pending", "collectioninprogress", "uploadpending", "uploadinprogress", "inprogress", "in-progress", "not-started", "degraded", "created", "modified", "raised", "powering", "dormant":
+		return 2, true
+	case "warning", "warn", "minor", "medium", "major", "alerting":
+		return 3, true
+	case "critical", "error", "failed", "failure", "collectionfailed", "uploadfailed", "fatal", "offline", "disconnected", "inoperable", "down", "unhealthy", "unreachable", "disabled", "invalid", "inactive", "not-reachable", "false", "unsupported":
+		return 4, true
 	default:
-		return 2
+		return 0, false
 	}
 }
 
-func upStatus(status string) int64 {
-	code := statusCode(status)
-	if code == 0 || code == 1 || code == 2 {
-		return 1
+func upStatus(status string) (int64, bool) {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "ok", "online", "connected", "operable", "up", "healthy", "normal", "on", "powered-on", "poweredon", "ready", "running", "reachable", "managed", "active", "enabled", "available", "synchronized", "in-service", "inservice", "established":
+		return 1, true
+	case "critical", "error", "failed", "failure", "fatal", "offline", "disconnected", "inoperable", "down", "unhealthy", "unreachable", "disabled", "inactive", "not-reachable", "false":
+		return 0, true
+	default:
+		return 0, false
 	}
-	return 0
 }
 
 func recordStringState(rb *resourceMetricsBuilder, name, description, status string, attrs map[string]string) {
@@ -981,8 +1025,12 @@ func recordStringState(rb *resourceMetricsBuilder, name, description, status str
 	if attrs == nil {
 		attrs = map[string]string{}
 	}
+	code, ok := statusCode(status)
+	if !ok {
+		return
+	}
 	attrs = withAttr(attrs, "intersight.status", status)
-	rb.recordInt(name, description, "1", statusCode(status), attrs)
+	rb.recordInt(name, description, "1", code, attrs)
 }
 
 func recordIfInt(rb *resourceMetricsBuilder, obj intersight.Object, key, name, description, unit string, attrs map[string]string) {
@@ -1024,15 +1072,23 @@ func logTimestamp(obj intersight.Object) (time.Time, bool) {
 }
 
 func logSeverityNumber(severity string) plog.SeverityNumber {
-	switch strings.ToLower(severity) {
-	case "critical", "fatal":
+	switch strings.ToLower(strings.TrimSpace(severity)) {
+	case "0", "emergency", "emerg":
+		return plog.SeverityNumberFatal4
+	case "1", "alert":
+		return plog.SeverityNumberFatal3
+	case "2", "critical", "fatal":
 		return plog.SeverityNumberFatal
-	case "error", "failed", "failure":
+	case "3", "error", "failed", "failure", "major":
 		return plog.SeverityNumberError
-	case "warning", "warn", "minor":
+	case "4", "warning", "warn", "minor":
 		return plog.SeverityNumberWarn
-	case "info", "informational", "ok", "completed":
+	case "5", "notice":
+		return plog.SeverityNumberInfo2
+	case "6", "info", "informational", "ok", "completed", "complete", "cleared", "clear", "resolved":
 		return plog.SeverityNumberInfo
+	case "7", "debug":
+		return plog.SeverityNumberDebug
 	default:
 		return plog.SeverityNumberUnspecified
 	}
@@ -1061,6 +1117,14 @@ func setLogValue(target pcommon.Map, key string, value any) {
 			target.PutStr(key, bytes)
 		}
 	default:
+		redacted := redactLogValue(typed)
+		kind := reflect.ValueOf(redacted)
+		if kind.IsValid() && (kind.Kind() == reflect.Map || kind.Kind() == reflect.Slice || kind.Kind() == reflect.Array) {
+			if bytes, err := typedJSON(redacted); err == nil {
+				target.PutStr(key, bytes)
+				return
+			}
+		}
 		target.PutStr(key, fmt.Sprint(typed))
 	}
 }
@@ -1116,14 +1180,17 @@ func stringFromAny(value any) string {
 func numberFromAny(value any) (float64, bool) {
 	switch typed := value.(type) {
 	case float64:
-		return typed, true
+		return typed, !math.IsNaN(typed) && !math.IsInf(typed, 0)
 	case int64:
 		return float64(typed), true
 	case int:
 		return float64(typed), true
+	case json.Number:
+		f, err := typed.Float64()
+		return f, err == nil && !math.IsNaN(f) && !math.IsInf(f, 0)
 	case string:
 		f, err := strconv.ParseFloat(typed, 64)
-		return f, err == nil
+		return f, err == nil && !math.IsNaN(f) && !math.IsInf(f, 0)
 	default:
 		return 0, false
 	}

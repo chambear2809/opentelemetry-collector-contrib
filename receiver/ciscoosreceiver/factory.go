@@ -27,6 +27,8 @@ var scraperFactories = map[component.Type]scraper.Factory{
 	component.MustNewType("interfaces"): interfacesscraper.NewFactory(),
 }
 
+const receiverRollbackTimeout = 30 * time.Second
+
 func NewFactory() receiver.Factory {
 	return xreceiver.NewFactory(
 		metadata.Type,
@@ -68,7 +70,7 @@ func createMetricsReceiver(
 ) (receiver.Metrics, error) {
 	conf := cfg.(*Config)
 	selector := newDeviceSelectionMatcher(conf.DeviceSelection)
-	consumer = newMetricFilteringConsumer(consumer, conf)
+	consumer = newMetricFilteringConsumer(newAbsoluteCounterTrackingConsumer(consumer), conf)
 
 	var receivers []receiver.Metrics
 	for _, device := range conf.Devices {
@@ -329,8 +331,10 @@ func (m *multiMetricsReceiver) Start(ctx context.Context, host component.Host) e
 func startMetricsReceivers(ctx context.Context, host component.Host, receivers []receiver.Metrics) error {
 	for i, r := range receivers {
 		if err := r.Start(ctx, host); err != nil {
+			rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), receiverRollbackTimeout)
+			defer cancel()
 			for j := i - 1; j >= 0; j-- {
-				err = multierr.Append(err, receivers[j].Shutdown(ctx))
+				err = multierr.Append(err, receivers[j].Shutdown(rollbackCtx))
 			}
 			return err
 		}
@@ -353,8 +357,10 @@ type multiLogsReceiver struct {
 func (m *multiLogsReceiver) Start(ctx context.Context, host component.Host) error {
 	for i, r := range m.receivers {
 		if err := r.Start(ctx, host); err != nil {
+			rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), receiverRollbackTimeout)
+			defer cancel()
 			for j := i - 1; j >= 0; j-- {
-				err = multierr.Append(err, m.receivers[j].Shutdown(ctx))
+				err = multierr.Append(err, m.receivers[j].Shutdown(rollbackCtx))
 			}
 			return err
 		}

@@ -4,7 +4,6 @@
 package ise
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -12,6 +11,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -19,37 +19,44 @@ import (
 	"time"
 
 	"golang.org/x/net/websocket"
-
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
 
 const (
 	pxGridDefaultPath      = "/pxgrid"
 	pxGridDefaultWSOrigin  = "https://localhost/"
 	stompHeartbeatInterval = 30 * time.Second
+	stompMaxFrameBytes     = 4 * 1024 * 1024
+	stompMaxBodyBytes      = 4 * 1024 * 1024
+	stompMaxHeaders        = 256
+	stompMaxHeaderBytes    = 64 * 1024
+	stompMaxLineBytes      = 8 * 1024
 )
 
 // PxGridConfig controls the Cisco ISE pxGrid client.
 type PxGridConfig struct {
-	Endpoint           string
-	NodeName           string
-	Password           string
-	CertFile           string
-	KeyFile            string
-	CAFile             string
-	ServerName         string
-	InsecureSkipVerify bool
-	Timeout            time.Duration
-	UserAgent          string
-	MaxRetries         int
+	Endpoint              string
+	NodeName              string
+	Password              string
+	CertFile              string
+	KeyFile               string
+	CAFile                string
+	ServerName            string
+	InsecureSkipVerify    bool
+	AllowedServiceHosts   []string
+	AllowedServiceOrigins []string
+	Timeout               time.Duration
+	UserAgent             string
+	MaxRetries            int
 }
 
 // PxGridClient is a small pxGrid REST and WebSocket/STOMP client.
 type PxGridClient struct {
-	rest      *Client
-	nodeName  string
-	tlsConfig *tls.Config
-	userAgent string
+	rest                  *Client
+	nodeName              string
+	tlsConfig             *tls.Config
+	userAgent             string
+	ioTimeout             time.Duration
+	allowedServiceOrigins map[string]struct{}
 }
 
 // PxGridSubscription identifies a service and the ServiceLookup property that
@@ -77,8 +84,11 @@ func NewPxGridClient(cfg PxGridConfig) (*PxGridClient, error) {
 		return nil, errors.New("pxGrid endpoint is required")
 	}
 	parsed, err := url.Parse(cfg.Endpoint)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return nil, fmt.Errorf("invalid pxGrid endpoint %q", cfg.Endpoint)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil {
+		return nil, errors.New("invalid pxGrid endpoint")
+	}
+	if !strings.EqualFold(parsed.Scheme, "https") {
+		return nil, errors.New("pxGrid endpoint must use https")
 	}
 	if cfg.NodeName == "" {
 		return nil, errors.New("pxGrid node name is required")
@@ -118,11 +128,30 @@ func NewPxGridClient(cfg PxGridConfig) (*PxGridClient, error) {
 	if userAgent == "" {
 		userAgent = defaultUserAgent
 	}
+	allowedServiceOrigins := make(map[string]struct{}, 2+len(cfg.AllowedServiceHosts)*2+len(cfg.AllowedServiceOrigins))
+	controlPort := pxGridOriginPort(parsed)
+	addPxGridOriginPair(allowedServiceOrigins, normalizePxGridHost(parsed.Hostname()), controlPort)
+	for _, host := range cfg.AllowedServiceHosts {
+		normalized := normalizePxGridHost(host)
+		if normalized == "" {
+			return nil, fmt.Errorf("invalid empty pxGrid allowed service host %q", host)
+		}
+		addPxGridOriginPair(allowedServiceOrigins, normalized, controlPort)
+	}
+	for _, origin := range cfg.AllowedServiceOrigins {
+		canonical, err := canonicalPxGridOriginString(origin)
+		if err != nil {
+			return nil, fmt.Errorf("invalid pxGrid allowed service origin: %w", err)
+		}
+		allowedServiceOrigins[canonical] = struct{}{}
+	}
 	return &PxGridClient{
-		rest:      rest,
-		nodeName:  cfg.NodeName,
-		tlsConfig: tlsConfig,
-		userAgent: userAgent,
+		rest:                  rest,
+		nodeName:              cfg.NodeName,
+		tlsConfig:             tlsConfig,
+		userAgent:             userAgent,
+		ioTimeout:             timeout,
+		allowedServiceOrigins: allowedServiceOrigins,
 	}, nil
 }
 
@@ -176,7 +205,7 @@ func (c *PxGridClient) PostObjects(ctx context.Context, operation, service, path
 			attempts = append(attempts, errors.New("service entry is missing nodeName or properties.restBaseUrl"))
 			continue
 		}
-		if err := validatePxGridURL(restBaseURL, "http", "https"); err != nil {
+		if err := c.validateDiscoveredURL(restBaseURL, "https"); err != nil {
 			attempts = append(attempts, fmt.Errorf("service node %q: %w", peerNodeName, err))
 			continue
 		}
@@ -213,7 +242,7 @@ func (c *PxGridClient) Version(ctx context.Context) (Object, error) {
 // Subscribe discovers a service's advertised topic and pubsub endpoint, then
 // subscribes until ctx is cancelled. Calling Subscribe again performs fresh
 // discovery so reconnects pick up ISE service changes.
-func (c *PxGridClient) Subscribe(ctx context.Context, subscription PxGridSubscription, handler func(StompMessage)) error {
+func (c *PxGridClient) Subscribe(ctx context.Context, subscription PxGridSubscription, handler func(StompMessage) error) error {
 	service := strings.TrimSpace(subscription.Service)
 	if service == "" {
 		return errors.New("pxGrid subscription service is required")
@@ -260,7 +289,7 @@ func (c *PxGridClient) Subscribe(ctx context.Context, subscription PxGridSubscri
 				attempts = append(attempts, fmt.Errorf("pubsub service %q is missing nodeName or properties.wsUrl", pubSubService))
 				continue
 			}
-			if err := validatePxGridURL(wsURL, "ws", "wss"); err != nil {
+			if err := c.validateDiscoveredURL(wsURL, "wss"); err != nil {
 				attempts = append(attempts, fmt.Errorf("pubsub node %q: %w", peerNodeName, err))
 				continue
 			}
@@ -285,7 +314,7 @@ func (c *PxGridClient) Subscribe(ctx context.Context, subscription PxGridSubscri
 	return fmt.Errorf("pxGrid subscription service %q has no usable endpoint for topic properties [%s]: %w", service, strings.Join(topicProperties, ", "), errors.Join(attempts...))
 }
 
-func (c *PxGridClient) subscribeEndpoint(ctx context.Context, wsURL, peerNodeName, secret, topic string, handler func(StompMessage)) error {
+func (c *PxGridClient) subscribeEndpoint(ctx context.Context, wsURL, peerNodeName, secret, topic string, handler func(StompMessage) error) error {
 	config, err := websocket.NewConfig(wsURL, pxGridDefaultWSOrigin)
 	if err != nil {
 		return err
@@ -301,61 +330,75 @@ func (c *PxGridClient) subscribeEndpoint(ctx context.Context, wsURL, peerNodeNam
 		return err
 	}
 	defer ws.Close()
-	ws.MaxPayloadBytes = int(httpclient.MaxResponseBodySize)
+	ws.MaxPayloadBytes = stompMaxFrameBytes
 
-	if err := writeSTOMP(ws, "CONNECT", map[string]string{
+	if err := writeSTOMPContext(ctx, ws, c.ioTimeout, "CONNECT", map[string]string{
 		"accept-version": "1.2",
 		"host":           peerNodeName,
 		"heart-beat":     "30000,30000",
 	}, nil); err != nil {
 		return err
 	}
-	frame, err := readSTOMP(ws)
+	frame, err := readSTOMPContext(ctx, ws, c.ioTimeout)
 	if err != nil {
 		return err
 	}
 	if frame.command != "CONNECTED" {
 		return fmt.Errorf("pxGrid STOMP expected CONNECTED, got %s", frame.command)
 	}
-	if err := writeSTOMP(ws, "SUBSCRIBE", map[string]string{
+	if err := writeSTOMPContext(ctx, ws, c.ioTimeout, "SUBSCRIBE", map[string]string{
 		"id":          topic,
 		"destination": topic,
-		"ack":         "auto",
+		"ack":         "client-individual",
 	}, nil); err != nil {
 		return err
 	}
 
 	heartbeat := time.NewTicker(stompHeartbeatInterval)
 	defer heartbeat.Stop()
+	readCtx, cancelRead := context.WithCancel(ctx)
 	type readResult struct {
 		frame stompFrame
 		err   error
 	}
 	readCh := make(chan readResult, 1)
+	readerDone := make(chan struct{})
 	go func() {
+		defer close(readerDone)
 		for {
-			frame, readErr := readSTOMP(ws)
+			frame, readErr := readSTOMPWithDeadline(ws, maxDuration(c.ioTimeout, 2*stompHeartbeatInterval))
 			if readErr != nil {
 				select {
 				case readCh <- readResult{err: readErr}:
-				case <-ctx.Done():
+				case <-readCtx.Done():
 				}
 				return
 			}
 			select {
 			case readCh <- readResult{frame: frame}:
-			case <-ctx.Done():
+			case <-readCtx.Done():
 				return
 			}
 		}
 	}()
+	defer func() {
+		// The reader belongs to this subscription attempt. Cancel pending channel
+		// delivery, close the socket to interrupt a blocked WebSocket read, and
+		// join the goroutine before the caller starts another endpoint attempt.
+		cancelRead()
+		_ = ws.Close()
+		<-readerDone
+	}()
 	for {
 		select {
 		case <-ctx.Done():
-			_ = writeSTOMP(ws, "DISCONNECT", map[string]string{}, nil)
+			// Closing the socket is the only reliable way to interrupt a peer
+			// that completed the WebSocket handshake but stopped reading or
+			// writing STOMP frames.
+			_ = ws.Close()
 			return ctx.Err()
 		case <-heartbeat.C:
-			if _, err := ws.Write([]byte("\n")); err != nil {
+			if err := writeWebSocketContext(ctx, ws, c.ioTimeout, []byte("\n")); err != nil {
 				return err
 			}
 		case result := <-readCh:
@@ -367,17 +410,31 @@ func (c *PxGridClient) subscribeEndpoint(ctx context.Context, wsURL, peerNodeNam
 			}
 			frame := result.frame
 			if frame.command == "ERROR" {
-				return fmt.Errorf("pxGrid STOMP error: %s", string(frame.body))
+				return errors.New("pxGrid STOMP server returned an error frame")
 			}
 			if frame.command != "MESSAGE" {
 				continue
 			}
-			handler(StompMessage{
+			message := StompMessage{
 				Topic:     firstNonEmpty(frame.headers["destination"], topic),
 				MessageID: frame.headers["message-id"],
 				Headers:   frame.headers,
 				Body:      frame.body,
-			})
+			}
+			if err := handler(message); err != nil {
+				// Closing without ACK asks the broker to redeliver the message after
+				// the reconnect loop establishes a new client-individual session.
+				return fmt.Errorf("pxGrid STOMP message delivery failed: %w", err)
+			}
+			ackID := firstNonEmpty(frame.headers["ack"], frame.headers["message-id"])
+			if ackID == "" {
+				return errors.New("pxGrid STOMP MESSAGE did not contain an ACK identifier")
+			}
+			// If shutdown races with ACK, close without acknowledging so pxGrid
+			// redelivers the message under its at-least-once contract.
+			if err := writeSTOMPContext(ctx, ws, c.ioTimeout, "ACK", map[string]string{"id": ackID}, nil); err != nil {
+				return fmt.Errorf("acknowledge pxGrid STOMP message: %w", err)
+			}
 		}
 	}
 }
@@ -449,14 +506,77 @@ func firstPxGridServiceProperty(service Object, properties ...string) (string, s
 func validatePxGridURL(rawURL string, allowedSchemes ...string) error {
 	parsed, err := url.Parse(rawURL)
 	if err != nil || parsed.Host == "" || parsed.User != nil {
-		return fmt.Errorf("invalid discovered pxGrid URL %q", rawURL)
+		return errors.New("invalid discovered pxGrid URL")
 	}
 	for _, scheme := range allowedSchemes {
 		if strings.EqualFold(parsed.Scheme, scheme) {
 			return nil
 		}
 	}
-	return fmt.Errorf("discovered pxGrid URL %q must use %s", rawURL, strings.Join(allowedSchemes, " or "))
+	return fmt.Errorf("discovered pxGrid URL must use %s", strings.Join(allowedSchemes, " or "))
+}
+
+func (c *PxGridClient) validateDiscoveredURL(rawURL string, allowedSchemes ...string) error {
+	if err := validatePxGridURL(rawURL, allowedSchemes...); err != nil {
+		return err
+	}
+	parsed, _ := url.Parse(rawURL)
+	origin, err := canonicalPxGridOrigin(parsed)
+	if err != nil {
+		return err
+	}
+	if _, ok := c.allowedServiceOrigins[origin]; !ok {
+		return errors.New("discovered pxGrid origin is not authorized by allowed_service_origins")
+	}
+	return nil
+}
+
+func canonicalPxGridOriginString(rawOrigin string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(rawOrigin))
+	if err != nil || parsed.Host == "" || parsed.User != nil {
+		return "", errors.New("origin must be an absolute HTTPS or WSS URL without user information")
+	}
+	if parsed.Path != "" && parsed.Path != "/" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", errors.New("origin must not contain a path, query, or fragment")
+	}
+	return canonicalPxGridOrigin(parsed)
+}
+
+func canonicalPxGridOrigin(parsed *url.URL) (string, error) {
+	scheme := strings.ToLower(parsed.Scheme)
+	if scheme != "https" && scheme != "wss" {
+		return "", errors.New("origin scheme must be https or wss")
+	}
+	host := normalizePxGridHost(parsed.Hostname())
+	if host == "" {
+		return "", errors.New("origin host must not be empty")
+	}
+	return scheme + "://" + net.JoinHostPort(host, pxGridOriginPort(parsed)), nil
+}
+
+func pxGridOriginPort(parsed *url.URL) string {
+	if port := parsed.Port(); port != "" {
+		return port
+	}
+	return "443"
+}
+
+func addPxGridOriginPair(origins map[string]struct{}, host, port string) {
+	authority := net.JoinHostPort(host, port)
+	origins["https://"+authority] = struct{}{}
+	origins["wss://"+authority] = struct{}{}
+}
+
+func normalizePxGridHost(value string) string {
+	value = strings.TrimSpace(value)
+	if host, _, err := net.SplitHostPort(value); err == nil {
+		value = host
+	}
+	value = strings.Trim(strings.TrimSuffix(value, "."), "[]")
+	if ip := net.ParseIP(value); ip != nil {
+		return ip.String()
+	}
+	return strings.ToLower(value)
 }
 
 func (c *PxGridClient) accessSecret(ctx context.Context, peerNodeName string) (string, error) {
@@ -544,51 +664,153 @@ func writeSTOMP(ws *websocket.Conn, command string, headers map[string]string, b
 	return err
 }
 
+func writeSTOMPContext(ctx context.Context, ws *websocket.Conn, timeout time.Duration, command string, headers map[string]string, body []byte) error {
+	return withWebSocketWriteContext(ctx, ws, timeout, func() error {
+		return writeSTOMP(ws, command, headers, body)
+	})
+}
+
+func writeWebSocketContext(ctx context.Context, ws *websocket.Conn, timeout time.Duration, payload []byte) error {
+	return withWebSocketWriteContext(ctx, ws, timeout, func() error {
+		_, err := ws.Write(payload)
+		return err
+	})
+}
+
+func withWebSocketWriteContext(ctx context.Context, ws *websocket.Conn, timeout time.Duration, write func() error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if timeout <= 0 {
+		timeout = defaultRequestTimeout
+	}
+	if err := ws.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
+		return err
+	}
+	stopCancelDeadline := context.AfterFunc(ctx, func() {
+		_ = ws.SetWriteDeadline(time.Now())
+	})
+	err := write()
+	stopCancelDeadline()
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
+	return err
+}
+
+type stompReadResult struct {
+	frame stompFrame
+	err   error
+}
+
+func readSTOMPContext(ctx context.Context, ws *websocket.Conn, timeout time.Duration) (stompFrame, error) {
+	result := make(chan stompReadResult, 1)
+	go func() {
+		frame, err := readSTOMPWithDeadline(ws, timeout)
+		result <- stompReadResult{frame: frame, err: err}
+	}()
+	select {
+	case read := <-result:
+		return read.frame, read.err
+	case <-ctx.Done():
+		_ = ws.Close()
+		<-result
+		return stompFrame{}, ctx.Err()
+	}
+}
+
+func readSTOMPWithDeadline(ws *websocket.Conn, timeout time.Duration) (stompFrame, error) {
+	if timeout <= 0 {
+		timeout = defaultRequestTimeout
+	}
+	if err := ws.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+		return stompFrame{}, err
+	}
+	return readSTOMP(ws)
+}
+
+func maxDuration(left, right time.Duration) time.Duration {
+	if left > right {
+		return left
+	}
+	return right
+}
+
 func readSTOMP(ws *websocket.Conn) (stompFrame, error) {
 	var data []byte
 	if err := websocket.Message.Receive(ws, &data); err != nil {
 		return stompFrame{}, err
 	}
+	return parseSTOMPFrame(data)
+}
+
+func parseSTOMPFrame(data []byte) (stompFrame, error) {
+	if len(data) > stompMaxFrameBytes {
+		return stompFrame{}, fmt.Errorf("pxGrid STOMP frame exceeds %d-byte limit", stompMaxFrameBytes)
+	}
 	data = bytes.TrimLeft(data, "\n")
-	data = bytes.TrimRight(data, "\x00")
 	if len(data) == 0 {
 		return stompFrame{command: "HEARTBEAT", headers: map[string]string{}}, nil
 	}
-	reader := bufio.NewReader(bytes.NewReader(data))
-	command, err := reader.ReadString('\n')
+	command, next, err := nextSTOMPLine(data, 0)
 	if err != nil {
 		return stompFrame{}, err
 	}
 	frame := stompFrame{
-		command: strings.TrimSpace(command),
+		command: strings.TrimSpace(string(command)),
 		headers: map[string]string{},
 	}
+	headerCount := 0
+	headerBytes := 0
 	for {
-		line, err := reader.ReadString('\n')
+		lineStart := next
+		line, nextLine, err := nextSTOMPLine(data, next)
 		if err != nil {
 			return stompFrame{}, err
 		}
-		line = strings.TrimRight(line, "\r\n")
-		if line == "" {
+		next = nextLine
+		if len(line) == 0 {
 			break
 		}
-		key, value, found := strings.Cut(line, ":")
-		if found {
-			frame.headers[strings.TrimSpace(key)] = strings.TrimSpace(value)
+		headerCount++
+		if headerCount > stompMaxHeaders {
+			return stompFrame{}, fmt.Errorf("pxGrid STOMP frame exceeds %d-header limit", stompMaxHeaders)
 		}
+		headerBytes += next - lineStart
+		if headerBytes > stompMaxHeaderBytes {
+			return stompFrame{}, fmt.Errorf("pxGrid STOMP headers exceed %d-byte limit", stompMaxHeaderBytes)
+		}
+		key, value, found := bytes.Cut(line, []byte(":"))
+		if !found || len(bytes.TrimSpace(key)) == 0 {
+			return stompFrame{}, errors.New("pxGrid STOMP header is malformed")
+		}
+		frame.headers[strings.TrimSpace(string(key))] = strings.TrimSpace(string(value))
 	}
-	body, err := ioReadAll(reader)
-	if err != nil {
-		return stompFrame{}, err
+	body := bytes.TrimRight(data[next:], "\x00")
+	if len(body) > stompMaxBodyBytes {
+		return stompFrame{}, fmt.Errorf("pxGrid STOMP body exceeds %d-byte limit", stompMaxBodyBytes)
 	}
-	frame.body = bytes.TrimRight(body, "\x00")
+	frame.body = body
 	return frame, nil
 }
 
-func ioReadAll(reader *bufio.Reader) ([]byte, error) {
-	var buffer bytes.Buffer
-	_, err := buffer.ReadFrom(reader)
-	return buffer.Bytes(), err
+func nextSTOMPLine(data []byte, start int) ([]byte, int, error) {
+	if start < 0 || start > len(data) {
+		return nil, start, errors.New("invalid pxGrid STOMP frame offset")
+	}
+	relativeEnd := bytes.IndexByte(data[start:], '\n')
+	if relativeEnd < 0 {
+		return nil, start, errors.New("pxGrid STOMP frame contains an unterminated line")
+	}
+	end := start + relativeEnd
+	line := data[start:end]
+	if len(line) > 0 && line[len(line)-1] == '\r' {
+		line = line[:len(line)-1]
+	}
+	if len(line) > stompMaxLineBytes {
+		return nil, start, fmt.Errorf("pxGrid STOMP line exceeds %d-byte limit", stompMaxLineBytes)
+	}
+	return line, end + 1, nil
 }
 
 func firstNonEmpty(values ...string) string {

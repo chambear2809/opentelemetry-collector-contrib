@@ -73,6 +73,37 @@ func TestSDWANScrapeEmitsCoreMetrics(t *testing.T) {
 	assert.Equal(t, 2, metricDataPointCount(md, "system.network.packet.dropped"))
 }
 
+func TestSDWANAllManagerEndpointsFailWithoutAdvancingLastSuccess(t *testing.T) {
+	failures := map[string]int{
+		"/dataservice/clusterManagement/health/summary": http.StatusServiceUnavailable,
+		"/dataservice/client/server":                    http.StatusServiceUnavailable,
+		"/dataservice/settings/configuration/device":    http.StatusServiceUnavailable,
+	}
+	server, _ := newSDWANFixtureServer(t, nil, failures)
+	defer server.Close()
+
+	receiver := newTestSDWANReceiver(t, server.URL, func(cfg *Config) {
+		cfg.SDWAN.MaxRetries = 0
+		cfg.SDWAN.Inventory.Enabled = false
+		cfg.SDWAN.ControlPlane.Enabled = false
+		cfg.SDWAN.BFD.Enabled = false
+		cfg.SDWAN.AppRoute.Enabled = false
+		cfg.SDWAN.Interfaces.Enabled = false
+		cfg.SDWAN.Alarms.Enabled = false
+		cfg.SDWAN.Events.Enabled = false
+		cfg.SDWAN.Audit.Enabled = false
+	})
+	previousSuccess := time.Unix(1_800_000_000, 0)
+	receiver.success.lastSuccess = previousSuccess
+
+	md, err := receiver.scrape(t.Context())
+	require.NoError(t, err)
+
+	assert.True(t, intMetricValueExists(md, "sdwan.manager.up", 0))
+	assert.True(t, intMetricValueExists(md, "sdwan.scrape.partial_success", 1))
+	assert.True(t, intMetricValueExists(md, "sdwan.scrape.last_success", previousSuccess.Unix()))
+}
+
 func TestSDWANScrapeAppliesTargetAndDeviceSelection(t *testing.T) {
 	server, _ := newSDWANFixtureServer(t, map[string]string{
 		"/dataservice/device": `{"data":[
@@ -213,6 +244,59 @@ func TestSDWANEventMetricsAndLogsApplyNativeAndSharedFilters(t *testing.T) {
 	assert.True(t, logRecordAttributeExists(ld, "sdwan.system_ip", "10.0.0.1"))
 	assert.False(t, logRecordAttributeExists(ld, "sdwan.system_ip", "10.0.0.2"))
 	assert.False(t, logRecordAttributeExists(ld, "sdwan.system_ip", "10.0.0.3"))
+}
+
+func TestSDWANReceiversRetainEarlierPagesWhenLaterPagesFail(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer token", r.Header.Get("Authorization"))
+		switch r.URL.Path {
+		case "/dataservice/device":
+			if r.URL.Query().Get("scrollId") == "next" {
+				http.Error(w, "page failed", http.StatusBadRequest)
+				return
+			}
+			_, _ = w.Write([]byte(`{"data":[{"host-name":"edge-1","system-ip":"10.0.0.1","uuid":"uuid-1","chasisNumber":"SDWAN-SERIAL-1","site-id":"100","personality":"vedge","status":"reachable"}],"pageInfo":{"scrollId":"next","hasMoreData":true,"count":1}}`))
+		case "/dataservice/device/interface/synced":
+			if r.URL.Query().Get("scrollId") == "next" {
+				http.Error(w, "page failed", http.StatusBadRequest)
+				return
+			}
+			_, _ = w.Write([]byte(`{"data":[{"ifname":"ge0/0","oper-status":"up","admin-status":"up"}],"pageInfo":{"scrollId":"next","hasMoreData":true,"count":1}}`))
+		case "/dataservice/alarms":
+			if r.Method == http.MethodGet || r.URL.Query().Get("scrollId") == "next" {
+				http.Error(w, "page failed", http.StatusBadRequest)
+				return
+			}
+			_, _ = w.Write([]byte(`{"data":[{"id":"alarm-1","severity":"critical","status":"active","system-ip":"10.0.0.1","site-id":"100"}],"pageInfo":{"scrollId":"next","hasMoreData":true,"count":1}}`))
+		default:
+			_, _ = w.Write([]byte(`{"data":[]}`))
+		}
+	}))
+	defer server.Close()
+
+	configure := func(cfg *Config) {
+		cfg.SDWAN.Manager.Enabled = false
+		cfg.SDWAN.ControlPlane.Enabled = false
+		cfg.SDWAN.BFD.Enabled = false
+		cfg.SDWAN.AppRoute.Enabled = false
+		cfg.SDWAN.Events.Enabled = false
+		cfg.SDWAN.Audit.Enabled = false
+		cfg.SDWAN.Targets.SiteIDs = []string{"100"}
+	}
+
+	metricsReceiver := newTestSDWANReceiver(t, server.URL, configure)
+	md, err := metricsReceiver.scrape(t.Context())
+	require.NoError(t, err)
+	assert.True(t, hasResourceHostID(md, "SDWAN-SERIAL-1"))
+	assert.Contains(t, metricNames(md), "system.network.interface.status")
+	assert.True(t, intMetricValueExists(md, "sdwan.event.count", 1))
+	assert.True(t, intMetricValueExists(md, "sdwan.scrape.partial_success", 1))
+
+	logsReceiver := newTestSDWANLogsReceiver(t, server.URL, configure)
+	ld, err := logsReceiver.scrape(t.Context())
+	require.Error(t, err)
+	require.Equal(t, 1, ld.LogRecordCount())
+	assert.True(t, logRecordAttributeExists(ld, "sdwan.system_ip", "10.0.0.1"))
 }
 
 func TestMetricFilterDropsConfiguredMetrics(t *testing.T) {

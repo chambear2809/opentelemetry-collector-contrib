@@ -117,6 +117,37 @@ func TestIntersightScrapeAppliesTargetFilters(t *testing.T) {
 	assert.False(t, hasResourceHostID(md, "SERIAL-9"))
 }
 
+func TestIntersightMetricsPreserveEarlierPagesOnLaterPageFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/compute/PhysicalSummaries" {
+			if r.URL.Query().Get("$skip") == "0" {
+				_, _ = w.Write([]byte(`{"Results":[
+					{"Moid":"server-1","ObjectType":"compute.PhysicalSummary","Name":"first","Serial":"SERIAL-1","OperState":"ok"},
+					{"Moid":"server-2","ObjectType":"compute.PhysicalSummary","Name":"second","Serial":"SERIAL-2","OperState":"ok"}
+				]}`))
+				return
+			}
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if r.Method == http.MethodPost {
+			_, _ = w.Write([]byte(`[]`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"Results":[]}`))
+	}))
+	defer server.Close()
+
+	receiver := newTestIntersightMetricsReceiver(t, server.URL, nil)
+	md, err := receiver.scrape(t.Context())
+	require.NoError(t, err)
+
+	assert.True(t, hasResourceHostID(md, "SERIAL-1"))
+	assert.True(t, hasResourceHostID(md, "SERIAL-2"))
+	assert.True(t, intMetricValueExists(md, "intersight.scrape.partial_success", 1))
+}
+
 func TestIntersightTelemetryRespectsSharedDeviceSelection(t *testing.T) {
 	builder := newIntersightMetricsBuilder(time.Now(), "https://intersight.example.com", newCounterStore())
 	selector := newDeviceSelectionMatcher(DeviceSelectionConfig{
@@ -192,6 +223,32 @@ func TestIntersightLogsEmitEventEvidenceAndDeduplicate(t *testing.T) {
 	ld, err = receiver.scrape(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, 0, ld.LogRecordCount())
+}
+
+func TestIntersightLogsPreserveEarlierPagesOnLaterPageFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/aaa/AuditRecords" {
+			if r.URL.Query().Get("$skip") == "0" {
+				_, _ = w.Write([]byte(`{"Results":[
+					{"Moid":"audit-1","ObjectType":"aaa.AuditRecord","Email":"one@example.com","Timestamp":"2026-05-25T10:01:00Z"},
+					{"Moid":"audit-2","ObjectType":"aaa.AuditRecord","Email":"two@example.com","Timestamp":"2026-05-25T10:02:00Z"}
+				]}`))
+				return
+			}
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte(`{"Results":[]}`))
+	}))
+	defer server.Close()
+
+	receiver := newTestIntersightLogsReceiver(t, server.URL)
+	ld, err := receiver.scrape(t.Context())
+	require.Error(t, err)
+	assert.Equal(t, 2, ld.LogRecordCount())
+	assert.True(t, hasLogRecordAttribute(ld, "user.email", "one@example.com"))
+	assert.True(t, hasLogRecordAttribute(ld, "user.email", "two@example.com"))
 }
 
 func TestIntersightEndpointQueriesIncludeSelectAndLookback(t *testing.T) {
@@ -400,6 +457,10 @@ func newIntersightFixtureServer(t *testing.T, routes map[string]string, failures
 			_, _ = w.Write([]byte(`failed`))
 			return
 		}
+		if r.Method == http.MethodGet && r.URL.Query().Get("$skip") != "" && r.URL.Query().Get("$skip") != "0" {
+			_, _ = w.Write([]byte(`{"Results":[]}`))
+			return
+		}
 		if body, ok := routes[r.URL.Path]; ok {
 			_, _ = w.Write([]byte(body))
 			return
@@ -516,6 +577,16 @@ func hasLogResourceAttribute(ld plog.Logs, name, value string) bool {
 		}
 	}
 	return false
+}
+
+func TestLogSeverityNumberCoversCiscoAndSyslogLevels(t *testing.T) {
+	assert.Equal(t, plog.SeverityNumberFatal4, logSeverityNumber("emergency"))
+	assert.Equal(t, plog.SeverityNumberFatal3, logSeverityNumber("1"))
+	assert.Equal(t, plog.SeverityNumberError, logSeverityNumber("major"))
+	assert.Equal(t, plog.SeverityNumberInfo2, logSeverityNumber("notice"))
+	assert.Equal(t, plog.SeverityNumberInfo, logSeverityNumber("cleared"))
+	assert.Equal(t, plog.SeverityNumberDebug, logSeverityNumber("7"))
+	assert.Equal(t, plog.SeverityNumberUnspecified, logSeverityNumber("vendor-specific"))
 }
 
 func testIntersightPrivateKeyPEM(t *testing.T) string {

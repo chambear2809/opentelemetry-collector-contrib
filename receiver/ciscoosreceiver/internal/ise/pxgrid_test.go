@@ -6,12 +6,15 @@ package ise
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"go.uber.org/goleak"
 	"golang.org/x/net/websocket"
 
 	"github.com/stretchr/testify/assert"
@@ -27,7 +30,7 @@ func TestPxGridRESTDiscoversServiceEndpointAndPeerSecret(t *testing.T) {
 		sessionService = "com.cisco.ise.session"
 	)
 
-	serviceServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	serviceServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/pxgrid/mnt/sd/getSessions", r.URL.Path)
 		username, password, ok := r.BasicAuth()
 		require.True(t, ok)
@@ -43,7 +46,7 @@ func TestPxGridRESTDiscoversServiceEndpointAndPeerSecret(t *testing.T) {
 		lookedUpService string
 		secretPeer      string
 	)
-	controlServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	controlServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		username, password, ok := r.BasicAuth()
 		require.True(t, ok)
 		assert.Equal(t, collectorNode, username)
@@ -73,7 +76,13 @@ func TestPxGridRESTDiscoversServiceEndpointAndPeerSecret(t *testing.T) {
 	}))
 	defer controlServer.Close()
 
-	client, err := NewPxGridClient(PxGridConfig{Endpoint: controlServer.URL + "/pxgrid", NodeName: collectorNode, Password: accountSecret})
+	client, err := NewPxGridClient(PxGridConfig{
+		Endpoint:              controlServer.URL + "/pxgrid",
+		NodeName:              collectorNode,
+		Password:              accountSecret,
+		InsecureSkipVerify:    true,
+		AllowedServiceOrigins: []string{serviceServer.URL},
+	})
 	require.NoError(t, err)
 	objects, err := client.PostObjects(t.Context(), "pxgrid.session.get_sessions", sessionService, "/getSessions", map[string]any{}, 10)
 	require.NoError(t, err)
@@ -98,6 +107,7 @@ func TestPxGridSubscribeDiscoversPubSubURLTopicAndPeerSecret(t *testing.T) {
 
 	connectFrames := make(chan stompFrame, 1)
 	subscribeFrames := make(chan stompFrame, 1)
+	ackFrames := make(chan stompFrame, 1)
 	authenticated := make(chan struct{}, 1)
 	wsHandler := websocket.Handler(func(ws *websocket.Conn) {
 		connect, err := readSTOMP(ws)
@@ -116,9 +126,14 @@ func TestPxGridSubscribeDiscoversPubSubURLTopicAndPeerSecret(t *testing.T) {
 		_ = writeSTOMP(ws, "MESSAGE", map[string]string{
 			"destination": discoveredTopic,
 			"message-id":  "message-1",
+			"ack":         "ack-1",
 		}, []byte(`{"id":"session-1"}`))
+		ack, err := readSTOMP(ws)
+		if err == nil {
+			ackFrames <- ack
+		}
 	})
-	pubSubServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	pubSubServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/discovered/ws", r.URL.Path)
 		username, password, ok := r.BasicAuth()
 		require.True(t, ok)
@@ -135,7 +150,7 @@ func TestPxGridSubscribeDiscoversPubSubURLTopicAndPeerSecret(t *testing.T) {
 		lookups     []string
 		secretPeers []string
 	)
-	controlServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	controlServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		username, password, ok := r.BasicAuth()
 		require.True(t, ok)
 		assert.Equal(t, collectorNode, username)
@@ -153,7 +168,7 @@ func TestPxGridSubscribeDiscoversPubSubURLTopicAndPeerSecret(t *testing.T) {
 			case "com.cisco.ise.session":
 				_, _ = w.Write([]byte(`{"services":[{"name":"com.cisco.ise.session","nodeName":"ise-mnt-1","properties":{"wsPubsubService":"` + pubSubService + `","sessionTopic":"` + discoveredTopic + `"}}]}`))
 			case pubSubService:
-				_, _ = w.Write([]byte(`{"services":[{"name":"` + pubSubService + `","nodeName":"` + pubSubNode + `","properties":{"wsUrl":"` + "ws" + pubSubServer.URL[len("http"):] + `/discovered/ws"}}]}`))
+				_, _ = w.Write([]byte(`{"services":[{"name":"` + pubSubService + `","nodeName":"` + pubSubNode + `","properties":{"wsUrl":"` + "wss" + pubSubServer.URL[len("https"):] + `/discovered/ws"}}]}`))
 			default:
 				_, _ = w.Write([]byte(`{"services":[]}`))
 			}
@@ -172,16 +187,22 @@ func TestPxGridSubscribeDiscoversPubSubURLTopicAndPeerSecret(t *testing.T) {
 	}))
 	defer controlServer.Close()
 
-	client, err := NewPxGridClient(PxGridConfig{Endpoint: controlServer.URL + "/pxgrid", NodeName: collectorNode, Password: accountSecret})
+	client, err := NewPxGridClient(PxGridConfig{
+		Endpoint:              controlServer.URL + "/pxgrid",
+		NodeName:              collectorNode,
+		Password:              accountSecret,
+		InsecureSkipVerify:    true,
+		AllowedServiceOrigins: []string{"wss" + pubSubServer.URL[len("https"):]},
+	})
 	require.NoError(t, err)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	messages := make(chan StompMessage, 1)
-	err = client.Subscribe(ctx, PxGridSubscription{Service: "com.cisco.ise.session", TopicProperty: "sessionTopic"}, func(message StompMessage) {
+	err = client.Subscribe(ctx, PxGridSubscription{Service: "com.cisco.ise.session", TopicProperty: "sessionTopic"}, func(message StompMessage) error {
 		messages <- message
-		cancel()
+		return nil
 	})
-	require.ErrorIs(t, err, context.Canceled)
+	require.Error(t, err)
 
 	select {
 	case <-authenticated:
@@ -202,6 +223,13 @@ func TestPxGridSubscribeDiscoversPubSubURLTopicAndPeerSecret(t *testing.T) {
 	message := <-messages
 	assert.Equal(t, discoveredTopic, message.Topic)
 	assert.Equal(t, "message-1", message.MessageID)
+	select {
+	case ack := <-ackFrames:
+		assert.Equal(t, "ACK", ack.command)
+		assert.Equal(t, "ack-1", ack.headers["id"])
+	case <-time.After(2 * time.Second):
+		t.Fatal("pxGrid message was not acknowledged after handler success")
+	}
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -210,32 +238,135 @@ func TestPxGridSubscribeDiscoversPubSubURLTopicAndPeerSecret(t *testing.T) {
 }
 
 func TestPxGridSubscribeFailsWhenAdvertisedTopicPropertyIsAbsent(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/pxgrid/control/ServiceLookup", r.URL.Path)
 		_, _ = w.Write([]byte(`{"services":[{"name":"com.cisco.ise.session","nodeName":"ise-mnt-1","properties":{"wsPubsubService":"com.cisco.ise.pubsub"}}]}`))
 	}))
 	defer server.Close()
 
-	client, err := NewPxGridClient(PxGridConfig{Endpoint: server.URL + "/pxgrid", NodeName: "collector", Password: "account-password"})
+	client, err := NewPxGridClient(PxGridConfig{Endpoint: server.URL + "/pxgrid", NodeName: "collector", Password: "account-password", InsecureSkipVerify: true})
 	require.NoError(t, err)
-	err = client.Subscribe(t.Context(), PxGridSubscription{Service: "com.cisco.ise.session", TopicProperty: "sessionTopic"}, func(StompMessage) {})
+	err = client.Subscribe(t.Context(), PxGridSubscription{Service: "com.cisco.ise.session", TopicProperty: "sessionTopic"}, func(StompMessage) error { return nil })
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "sessionTopic")
 	assert.Contains(t, err.Error(), "no usable endpoint")
+}
+
+func TestPxGridSubscribeDoesNotAckFailedDelivery(t *testing.T) {
+	defer goleak.VerifyNone(t, goleak.IgnoreCurrent())
+
+	serverResult := make(chan stompFrame, 1)
+	serverDone := make(chan struct{})
+	wsHandler := websocket.Handler(func(ws *websocket.Conn) {
+		defer close(serverDone)
+		if _, err := readSTOMP(ws); err != nil {
+			return
+		}
+		if err := writeSTOMP(ws, "CONNECTED", map[string]string{"version": "1.2"}, nil); err != nil {
+			return
+		}
+		if _, err := readSTOMP(ws); err != nil {
+			return
+		}
+		if err := writeSTOMP(ws, "MESSAGE", map[string]string{
+			"destination": "/topic/session",
+			"message-id":  "message-1",
+			"ack":         "ack-1",
+		}, []byte(`{"id":"session-1"}`)); err != nil {
+			return
+		}
+		if frame, err := readSTOMP(ws); err == nil {
+			serverResult <- frame
+		}
+	})
+	server := httptest.NewTLSServer(http.HandlerFunc(wsHandler.ServeHTTP))
+	defer server.Close()
+
+	client, err := NewPxGridClient(PxGridConfig{
+		Endpoint:           server.URL + "/pxgrid",
+		NodeName:           "collector",
+		Password:           "account-password",
+		InsecureSkipVerify: true,
+	})
+	require.NoError(t, err)
+	deliveryErr := errors.New("downstream unavailable")
+	err = client.subscribeEndpoint(t.Context(), "wss"+server.URL[len("https"):], "ise-pubsub", "peer-secret", "/topic/session", func(StompMessage) error {
+		return deliveryErr
+	})
+	require.ErrorIs(t, err, deliveryErr)
+
+	select {
+	case frame := <-serverResult:
+		assert.NotEqual(t, "ACK", frame.command)
+	case <-serverDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("pxGrid WebSocket did not close after failed delivery")
+	}
+}
+
+func TestPxGridSubscribeCancellationInterruptsSTOMPHandshake(t *testing.T) {
+	connectReceived := make(chan struct{})
+	serverDone := make(chan struct{})
+	wsHandler := websocket.Handler(func(ws *websocket.Conn) {
+		defer close(serverDone)
+		if _, err := readSTOMP(ws); err != nil {
+			return
+		}
+		close(connectReceived)
+		// Never send CONNECTED. The client must close the socket when its
+		// context is canceled rather than stranding this read and its worker.
+		_, _ = readSTOMP(ws)
+	})
+	server := httptest.NewTLSServer(http.HandlerFunc(wsHandler.ServeHTTP))
+	defer server.Close()
+
+	client, err := NewPxGridClient(PxGridConfig{
+		Endpoint:           server.URL + "/pxgrid",
+		NodeName:           "collector",
+		Password:           "account-password",
+		InsecureSkipVerify: true,
+		Timeout:            time.Minute,
+	})
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(t.Context())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- client.subscribeEndpoint(ctx, "wss"+server.URL[len("https"):], "ise-pubsub", "peer-secret", "/topic/session", func(StompMessage) error {
+			return nil
+		})
+	}()
+
+	select {
+	case <-connectReceived:
+	case <-time.After(5 * time.Second):
+		t.Fatal("pxGrid client did not send STOMP CONNECT")
+	}
+	cancel()
+	select {
+	case err := <-errCh:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(2 * time.Second):
+		t.Fatal("pxGrid subscription did not stop after cancellation")
+	}
+	select {
+	case <-serverDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("pxGrid WebSocket server remained blocked after cancellation")
+	}
 }
 
 func TestPxGridSubscribeFailsWithoutDocumentedTopicProperty(t *testing.T) {
 	client, err := NewPxGridClient(PxGridConfig{Endpoint: "https://ise.example:8910/pxgrid", NodeName: "collector", Password: "account-password"})
 	require.NoError(t, err)
 
-	err = client.Subscribe(t.Context(), PxGridSubscription{Service: "com.cisco.ise.system"}, func(StompMessage) {})
+	err = client.Subscribe(t.Context(), PxGridSubscription{Service: "com.cisco.ise.system"}, func(StompMessage) error { return nil })
 	require.Error(t, err)
 	assert.Equal(t, `pxGrid subscription service "com.cisco.ise.system" has no documented topic property`, err.Error())
 }
 
 func TestPxGridControlUsesDocumentedPostCalls(t *testing.T) {
 	var methods []string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		methods = append(methods, r.Method+" "+r.URL.Path)
 		switch r.URL.Path {
 		case "/pxgrid/control/AccountActivate":
@@ -253,7 +384,7 @@ func TestPxGridControlUsesDocumentedPostCalls(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewPxGridClient(PxGridConfig{Endpoint: server.URL + "/pxgrid", NodeName: "collector", Password: "account-password"})
+	client, err := NewPxGridClient(PxGridConfig{Endpoint: server.URL + "/pxgrid", NodeName: "collector", Password: "account-password", InsecureSkipVerify: true})
 	require.NoError(t, err)
 	activate, err := client.AccountActivate(t.Context())
 	require.NoError(t, err)
@@ -289,4 +420,125 @@ func TestPxGridSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {
 	version, err := client.Version(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, "2.0", String(version, "version"))
+}
+
+func TestPxGridRejectsPlaintextControlEndpoint(t *testing.T) {
+	_, err := NewPxGridClient(PxGridConfig{
+		Endpoint: "http://ise.example:8910/pxgrid",
+		NodeName: "collector",
+		Password: "account-password",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must use https")
+}
+
+func TestPxGridRejectsUnsafeDiscoveredEndpointBeforeAccessSecret(t *testing.T) {
+	for _, advertised := range []string{
+		"http://127.0.0.1:4444/pxgrid/mnt/sd",
+		"https://127.0.0.1:4444/pxgrid/mnt/sd",
+		"https://attacker.example/pxgrid/mnt/sd",
+	} {
+		t.Run(advertised, func(t *testing.T) {
+			accessSecretCalls := 0
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/pxgrid/control/ServiceLookup":
+					_, _ = w.Write([]byte(`{"services":[{"nodeName":"ise-psn-1","properties":{"restBaseUrl":"` + advertised + `"}}]}`))
+				case "/pxgrid/control/AccessSecret":
+					accessSecretCalls++
+					_, _ = w.Write([]byte(`{"secret":"must-not-be-requested"}`))
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+
+			client, err := NewPxGridClient(PxGridConfig{
+				Endpoint:           server.URL + "/pxgrid",
+				NodeName:           "collector",
+				Password:           "account-password",
+				InsecureSkipVerify: true,
+			})
+			require.NoError(t, err)
+			_, err = client.PostObjects(t.Context(), "sessions", "com.cisco.ise.session", "/getSessions", map[string]any{}, 10)
+			require.Error(t, err)
+			assert.Zero(t, accessSecretCalls)
+		})
+	}
+}
+
+func TestPxGridDiscoveredEndpointRequiresExactAuthorizedOrigin(t *testing.T) {
+	client, err := NewPxGridClient(PxGridConfig{
+		Endpoint:              "https://ise-control.example:8910/pxgrid",
+		NodeName:              "collector",
+		Password:              "account-password",
+		AllowedServiceOrigins: []string{"https://ise-service.example:9443"},
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, client.validateDiscoveredURL("https://ise-control.example:8910/pxgrid/mnt", "https"))
+	require.NoError(t, client.validateDiscoveredURL("wss://ise-control.example:8910/pxgrid/pubsub", "wss"))
+	require.NoError(t, client.validateDiscoveredURL("https://ise-service.example:9443/pxgrid/mnt", "https"))
+	require.ErrorContains(t, client.validateDiscoveredURL("https://ise-control.example:9444/pxgrid/mnt", "https"), "not authorized")
+	require.ErrorContains(t, client.validateDiscoveredURL("wss://ise-service.example:9443/pxgrid/pubsub", "wss"), "not authorized")
+}
+
+func TestNewPxGridClientRejectsMalformedAllowedServiceOrigin(t *testing.T) {
+	for _, origin := range []string{
+		"http://ise.example:8910",
+		"https://user:password@ise.example:8910",
+		"https://ise.example:8910/pxgrid",
+		"https://ise.example:8910?target=other",
+	} {
+		t.Run(origin, func(t *testing.T) {
+			_, err := NewPxGridClient(PxGridConfig{
+				Endpoint:              "https://ise-control.example:8910/pxgrid",
+				NodeName:              "collector",
+				Password:              "account-password",
+				AllowedServiceOrigins: []string{origin},
+			})
+			require.ErrorContains(t, err, "allowed service origin")
+		})
+	}
+}
+
+func TestParseSTOMPFrameEnforcesResourceLimits(t *testing.T) {
+	validHeaders := "MESSAGE\n" + strings.Repeat("x:value\n", stompMaxHeaders) + "\n{}\x00"
+	frame, err := parseSTOMPFrame([]byte(validHeaders))
+	require.NoError(t, err)
+	assert.Equal(t, "MESSAGE", frame.command)
+	assert.Equal(t, []byte("{}"), frame.body)
+
+	tests := []struct {
+		name      string
+		frame     []byte
+		errorPart string
+	}{
+		{
+			name:      "frame bytes",
+			frame:     make([]byte, stompMaxFrameBytes+1),
+			errorPart: "frame exceeds",
+		},
+		{
+			name:      "header count",
+			frame:     []byte("MESSAGE\n" + strings.Repeat("x:value\n", stompMaxHeaders+1) + "\n"),
+			errorPart: "header limit",
+		},
+		{
+			name:      "aggregate header bytes",
+			frame:     []byte("MESSAGE\n" + strings.Repeat("x:"+strings.Repeat("v", stompMaxLineBytes-2)+"\n", stompMaxHeaderBytes/stompMaxLineBytes+1) + "\n"),
+			errorPart: "headers exceed",
+		},
+		{
+			name:      "line bytes",
+			frame:     []byte("MESSAGE\nheader:" + strings.Repeat("v", stompMaxLineBytes) + "\n\n"),
+			errorPart: "line exceeds",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := parseSTOMPFrame(test.frame)
+			require.ErrorContains(t, err, test.errorPart)
+		})
+	}
 }

@@ -94,7 +94,7 @@ func TestGrpcService_ProcessTelemetryData(t *testing.T) {
 	}
 
 	// Process the telemetry data
-	err = service.processTelemetryData(req)
+	err = service.processTelemetryData(t.Context(), req)
 	if err != nil {
 		t.Fatalf("Failed to process telemetry data: %v", err)
 	}
@@ -222,7 +222,7 @@ func TestKvGPBDataParsing(t *testing.T) {
 			}
 
 			// Process
-			err = service.processTelemetryData(req)
+			err = service.processTelemetryData(t.Context(), req)
 			if err != nil {
 				t.Fatalf("Failed to process telemetry data: %v", err)
 			}

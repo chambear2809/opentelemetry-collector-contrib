@@ -284,3 +284,20 @@ func TestParseMemoryUtilizationIOS(t *testing.T) {
 		})
 	}
 }
+
+func TestParseErrorsDoNotExposeDeviceOutput(t *testing.T) {
+	const output = "unparseable device output containing password=super-secret"
+
+	for _, parse := range []func() error{
+		func() error { _, err := parseCPUUtilizationNXOS(output); return err },
+		func() error { _, err := parseCPUUtilizationIOS(output); return err },
+		func() error { _, err := parseMemoryUtilization(output, "IOS"); return err },
+	} {
+		err := parse()
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "length=58")
+		assert.ErrorContains(t, err, "sha256=")
+		assert.NotContains(t, err.Error(), "password")
+		assert.NotContains(t, err.Error(), "super-secret")
+	}
+}

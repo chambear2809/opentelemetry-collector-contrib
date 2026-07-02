@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -103,9 +104,7 @@ func TestFMCEStreamerReconnectAdvancesCursorAndSuppressesDeliveredDuplicate(t *t
 	deliveryErr := errors.New("downstream unavailable")
 	receiver := &fmcEStreamerLogsReceiver{
 		settings: receivertest.NewNopSettings(metadata.Type),
-		config: &Config{FMC: FMCConfig{
-			SecurityEvents: FMCGroupConfig{Enabled: true},
-		}},
+		config:   &Config{FMC: FMCConfig{}},
 		consumer: consumertest.NewErr(deliveryErr),
 	}
 	resume := newFMCEStreamerResumeState(client.InitialTime())
@@ -137,6 +136,15 @@ func TestFMCEStreamerReconnectAdvancesCursorAndSuppressesDeliveredDuplicate(t *t
 	// already accepted by the next consumer must not be exported again.
 	require.NoError(t, receiver.consumeEStreamerEvent(t.Context(), client, resume, event))
 	assert.Equal(t, 1, sink.LogRecordCount())
+}
+
+func TestFMCEStreamerEventKeyHasFixedSizeForControllerIdentifier(t *testing.T) {
+	key := fmcEStreamerEventKey(fmcinternal.EStreamerEvent{
+		EventType:  "connection",
+		RecordType: 3,
+		Body:       fmcinternal.Object{"eventId": strings.Repeat("x", 1_000_000)},
+	})
+	assert.Len(t, key, len("sha256:")+64)
 }
 
 func fmcIntMetricValueExists(md pmetric.Metrics, name string, value int64) bool {

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"go.uber.org/multierr"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/connection"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
 
 // DeviceConfig represents configuration for a single Cisco device in the devices list.
@@ -81,14 +83,16 @@ type MerakiConfig struct {
 	Auth          MerakiAuthConfig           `mapstructure:"auth"`
 	BaseURL       string                     `mapstructure:"base_url"`
 	UserAgent     string                     `mapstructure:"user_agent"`
+	MaxRetries    int                        `mapstructure:"max_retries"`
 	Organizations []MerakiOrganizationConfig `mapstructure:"organizations"`
 	Devices       []MerakiDeviceConfig       `mapstructure:"devices"`
 }
 
 func defaultMerakiConfig() MerakiConfig {
 	return MerakiConfig{
-		BaseURL:   "https://api.meraki.com/api/v1",
-		UserAgent: "opentelemetry-collector-contrib-ciscoosreceiver",
+		BaseURL:    "https://api.meraki.com/api/v1",
+		UserAgent:  "opentelemetry-collector-contrib-ciscoosreceiver",
+		MaxRetries: 3,
 	}
 }
 
@@ -326,8 +330,6 @@ type SDWANConfig struct {
 	MaxRetries          int                `mapstructure:"max_retries"`
 	InsecureSkipVerify  bool               `mapstructure:"insecure_skip_verify"`
 	EventLookback       time.Duration      `mapstructure:"event_lookback"`
-	StatisticsLookback  time.Duration      `mapstructure:"statistics_lookback"`
-	RealtimeLookback    time.Duration      `mapstructure:"realtime_lookback"`
 	Targets             SDWANTargetFilters `mapstructure:"targets"`
 	Manager             SDWANGroupConfig   `mapstructure:"manager"`
 	Inventory           SDWANGroupConfig   `mapstructure:"inventory"`
@@ -369,8 +371,6 @@ func defaultSDWANConfig() SDWANConfig {
 		PageSize:            500,
 		MaxRetries:          3,
 		EventLookback:       24 * time.Hour,
-		StatisticsLookback:  30 * time.Minute,
-		RealtimeLookback:    5 * time.Minute,
 		Manager:             defaultSDWANGroupConfig(true, 1000),
 		Inventory:           defaultSDWANGroupConfig(true, 5000),
 		ControlPlane:        defaultSDWANGroupConfig(true, 10000),
@@ -475,8 +475,6 @@ type NexusDashboardConfig struct {
 	MaxRetries         int                         `mapstructure:"max_retries"`
 	InsecureSkipVerify bool                        `mapstructure:"insecure_skip_verify"`
 	EventLookback      time.Duration               `mapstructure:"event_lookback"`
-	TelemetryLookback  time.Duration               `mapstructure:"telemetry_lookback"`
-	ServiceDiscovery   bool                        `mapstructure:"service_discovery"`
 	Targets            NexusDashboardTargetFilters `mapstructure:"targets"`
 	Platform           NexusControllerGroupConfig  `mapstructure:"platform"`
 	NDFC               NexusControllerGroupConfig  `mapstructure:"ndfc"`
@@ -499,7 +497,6 @@ type ACIConfig struct {
 	MaxRetries         int                        `mapstructure:"max_retries"`
 	InsecureSkipVerify bool                       `mapstructure:"insecure_skip_verify"`
 	EventLookback      time.Duration              `mapstructure:"event_lookback"`
-	StatsLookback      time.Duration              `mapstructure:"stats_lookback"`
 	Targets            ACITargetFilters           `mapstructure:"targets"`
 	Fabric             NexusControllerGroupConfig `mapstructure:"fabric"`
 	ControllerHealth   NexusControllerGroupConfig `mapstructure:"controller_health"`
@@ -581,6 +578,8 @@ type FMCEStreamerConfig struct {
 	MaxMessageBytes   int                        `mapstructure:"max_message_bytes"`
 }
 
+const maxFMCEStreamerMessageBytes = 16 * 1024 * 1024
+
 // FMCConfig defines Secure Firewall Management Center REST and eStreamer settings.
 type FMCConfig struct {
 	// DO NOT USE unkeyed struct initialization
@@ -604,7 +603,6 @@ type FMCConfig struct {
 	Policy             FMCGroupConfig        `mapstructure:"policy"`
 	Deployments        FMCGroupConfig        `mapstructure:"deployments"`
 	Audit              FMCGroupConfig        `mapstructure:"audit"`
-	SecurityEvents     FMCGroupConfig        `mapstructure:"security_events"`
 	EStreamer          FMCEStreamerConfig    `mapstructure:"estreamer"`
 }
 
@@ -617,18 +615,16 @@ func defaultNexusControllerGroupConfig(maxResults int) NexusControllerGroupConfi
 
 func defaultNexusDashboardConfig() NexusDashboardConfig {
 	return NexusDashboardConfig{
-		UserAgent:         "opentelemetry-collector-contrib-ciscoosreceiver",
-		PageSize:          100,
-		MaxRetries:        3,
-		EventLookback:     24 * time.Hour,
-		TelemetryLookback: 30 * time.Minute,
-		ServiceDiscovery:  true,
-		Platform:          defaultNexusControllerGroupConfig(500),
-		NDFC:              defaultNexusControllerGroupConfig(1000),
-		Insights:          defaultNexusControllerGroupConfig(1000),
-		Orchestrator:      defaultNexusControllerGroupConfig(1000),
-		DataBroker:        defaultNexusControllerGroupConfig(1000),
-		Performance:       defaultNexusControllerGroupConfig(1000),
+		UserAgent:     "opentelemetry-collector-contrib-ciscoosreceiver",
+		PageSize:      100,
+		MaxRetries:    3,
+		EventLookback: 24 * time.Hour,
+		Platform:      defaultNexusControllerGroupConfig(500),
+		NDFC:          defaultNexusControllerGroupConfig(1000),
+		Insights:      defaultNexusControllerGroupConfig(1000),
+		Orchestrator:  defaultNexusControllerGroupConfig(1000),
+		DataBroker:    defaultNexusControllerGroupConfig(1000),
+		Performance:   defaultNexusControllerGroupConfig(1000),
 	}
 }
 
@@ -638,7 +634,6 @@ func defaultACIConfig() ACIConfig {
 		PageSize:         100,
 		MaxRetries:       3,
 		EventLookback:    24 * time.Hour,
-		StatsLookback:    30 * time.Minute,
 		Fabric:           defaultNexusControllerGroupConfig(1000),
 		ControllerHealth: defaultNexusControllerGroupConfig(100),
 		Nodes:            defaultNexusControllerGroupConfig(1000),
@@ -661,25 +656,24 @@ func defaultFMCGroupConfig(enabled bool, maxResults int) FMCGroupConfig {
 
 func defaultFMCConfig() FMCConfig {
 	return FMCConfig{
-		UserAgent:      "opentelemetry-collector-contrib-ciscoosreceiver",
-		PageSize:       100,
-		MaxRetries:     3,
-		EventLookback:  24 * time.Hour,
-		Manager:        defaultFMCGroupConfig(true, 100),
-		Inventory:      defaultFMCGroupConfig(true, 5000),
-		Interfaces:     defaultFMCGroupConfig(true, 10000),
-		Health:         defaultFMCGroupConfig(true, 2000),
-		VPN:            defaultFMCGroupConfig(true, 10000),
-		HA:             defaultFMCGroupConfig(true, 1000),
-		Policy:         defaultFMCGroupConfig(true, 10000),
-		Deployments:    defaultFMCGroupConfig(true, 5000),
-		Audit:          defaultFMCGroupConfig(true, 1000),
-		SecurityEvents: defaultFMCGroupConfig(true, 0),
+		UserAgent:     "opentelemetry-collector-contrib-ciscoosreceiver",
+		PageSize:      100,
+		MaxRetries:    3,
+		EventLookback: 24 * time.Hour,
+		Manager:       defaultFMCGroupConfig(true, 100),
+		Inventory:     defaultFMCGroupConfig(true, 5000),
+		Interfaces:    defaultFMCGroupConfig(true, 10000),
+		Health:        defaultFMCGroupConfig(true, 2000),
+		VPN:           defaultFMCGroupConfig(true, 10000),
+		HA:            defaultFMCGroupConfig(true, 1000),
+		Policy:        defaultFMCGroupConfig(true, 10000),
+		Deployments:   defaultFMCGroupConfig(true, 5000),
+		Audit:         defaultFMCGroupConfig(true, 1000),
 		EStreamer: FMCEStreamerConfig{
 			EventTypes:        []string{"connection", "intrusion", "intrusion_packet", "file"},
 			Lookback:          5 * time.Minute,
 			ReconnectInterval: 30 * time.Second,
-			MaxMessageBytes:   16 * 1024 * 1024,
+			MaxMessageBytes:   maxFMCEStreamerMessageBytes,
 		},
 	}
 }
@@ -826,6 +820,7 @@ func (cfg *Config) validateMeraki() error {
 	if cfg.Meraki.Auth.APIKey == "" {
 		err = multierr.Append(err, errors.New("meraki.auth.api_key must be provided"))
 	}
+	err = multierr.Append(err, validateMaxRetries("meraki.max_retries", cfg.Meraki.MaxRetries))
 
 	baseURL := cfg.Meraki.BaseURL
 	if baseURL == "" {
@@ -834,24 +829,30 @@ func (cfg *Config) validateMeraki() error {
 	parsed, parseErr := url.Parse(baseURL)
 	if parseErr != nil || parsed.Scheme == "" || parsed.Host == "" {
 		err = multierr.Append(err, errors.New("meraki.base_url must be a valid absolute URL"))
-	} else if parsed.Scheme != "https" {
+	} else if contentErr := endpointURLContentError("meraki.base_url", parsed); contentErr != nil {
+		err = multierr.Append(err, contentErr)
+	} else if !strings.EqualFold(parsed.Scheme, "https") {
 		err = multierr.Append(err, errors.New("meraki.base_url must use https"))
 	}
 
 	for i, org := range cfg.Meraki.Organizations {
-		if org.OrganizationID == "" {
+		if strings.TrimSpace(org.OrganizationID) == "" {
 			err = multierr.Append(err, fmt.Errorf("meraki.organizations[%d].organization_id cannot be empty", i))
 		}
 		if org.TagsFilterType != "" && org.TagsFilterType != "withAnyTags" && org.TagsFilterType != "withAllTags" {
 			err = multierr.Append(err, fmt.Errorf("meraki.organizations[%d].tags_filter_type must be withAnyTags or withAllTags", i))
 		}
+		err = multierr.Append(err, validateNonEmptyStringList(fmt.Sprintf("meraki.organizations[%d].network_ids", i), org.NetworkIDs))
+		err = multierr.Append(err, validateNonEmptyStringList(fmt.Sprintf("meraki.organizations[%d].serials", i), org.Serials))
+		err = multierr.Append(err, validateNonEmptyStringList(fmt.Sprintf("meraki.organizations[%d].product_types", i), org.ProductTypes))
+		err = multierr.Append(err, validateNonEmptyStringList(fmt.Sprintf("meraki.organizations[%d].tags", i), org.Tags))
 	}
 
 	for i, device := range cfg.Meraki.Devices {
-		if device.OrganizationID == "" {
+		if strings.TrimSpace(device.OrganizationID) == "" {
 			err = multierr.Append(err, fmt.Errorf("meraki.devices[%d].organization_id cannot be empty", i))
 		}
-		if device.Serial == "" {
+		if strings.TrimSpace(device.Serial) == "" {
 			err = multierr.Append(err, fmt.Errorf("meraki.devices[%d].serial cannot be empty", i))
 		}
 	}
@@ -879,22 +880,22 @@ func (cfg *Config) validateIntersight() error {
 	parsed, parseErr := url.Parse(endpoint)
 	if parseErr != nil || parsed.Scheme == "" || parsed.Host == "" {
 		err = multierr.Append(err, errors.New("intersight.endpoint must be a valid absolute URL"))
-	} else if parsed.Scheme != "https" && !(parsed.Scheme == "http" && cfg.Intersight.InsecureSkipVerify) {
-		err = multierr.Append(err, errors.New("intersight.endpoint must use https unless insecure_skip_verify is explicitly enabled"))
+	} else if contentErr := endpointURLContentError("intersight.endpoint", parsed); contentErr != nil {
+		err = multierr.Append(err, contentErr)
+	} else if !strings.EqualFold(parsed.Scheme, "https") {
+		err = multierr.Append(err, errors.New("intersight.endpoint must use https"))
 	}
 
-	if cfg.Intersight.PageSize < 0 {
-		err = multierr.Append(err, errors.New("intersight.page_size must not be negative"))
-	}
-	if cfg.Intersight.MaxRetries < 0 {
-		err = multierr.Append(err, errors.New("intersight.max_retries must not be negative"))
-	}
+	err = multierr.Append(err, validatePageSize("intersight.page_size", cfg.Intersight.PageSize))
+	err = multierr.Append(err, validateMaxRetries("intersight.max_retries", cfg.Intersight.MaxRetries))
 	if cfg.Intersight.EventLookback < 0 {
 		err = multierr.Append(err, errors.New("intersight.event_lookback must not be negative"))
 	}
 	if cfg.Intersight.TelemetryLookback < 0 {
 		err = multierr.Append(err, errors.New("intersight.telemetry_lookback must not be negative"))
 	}
+	err = multierr.Append(err, validateNonEmptyStringList("intersight.targets.serials", cfg.Intersight.Targets.Serials))
+	err = multierr.Append(err, validateNonEmptyStringList("intersight.targets.moids", cfg.Intersight.Targets.MoIDs))
 
 	groups := map[string]IntersightGroupConfig{
 		"inventory":      cfg.Intersight.Inventory,
@@ -910,9 +911,7 @@ func (cfg *Config) validateIntersight() error {
 		"virtualization": cfg.Intersight.Virtualization,
 	}
 	for name, group := range groups {
-		if group.MaxResults < 0 {
-			err = multierr.Append(err, fmt.Errorf("intersight.%s.max_results must not be negative", name))
-		}
+		err = multierr.Append(err, validateMaxResults("intersight."+name+".max_results", group.MaxResults))
 	}
 
 	return err
@@ -949,9 +948,7 @@ func (cfg *Config) validateCatalystCenter() error {
 	if cfg.CatalystCenter.PageSize < 0 || cfg.CatalystCenter.PageSize > 500 {
 		err = multierr.Append(err, errors.New("catalyst_center.page_size must be between 1 and 500 when set"))
 	}
-	if cfg.CatalystCenter.MaxRetries < 0 {
-		err = multierr.Append(err, errors.New("catalyst_center.max_retries must not be negative"))
-	}
+	err = multierr.Append(err, validateMaxRetries("catalyst_center.max_retries", cfg.CatalystCenter.MaxRetries))
 	if cfg.CatalystCenter.Lookback < 0 {
 		err = multierr.Append(err, errors.New("catalyst_center.lookback must not be negative"))
 	}
@@ -960,15 +957,13 @@ func (cfg *Config) validateCatalystCenter() error {
 		if !validCatalystCenterDeviceIdentifier(target.Identifier) {
 			err = multierr.Append(err, fmt.Errorf("catalyst_center.targets.device_details[%d].identifier must be macAddress, nwDeviceName, or uuid", i))
 		}
-		if target.SearchBy == "" {
+		if strings.TrimSpace(target.SearchBy) == "" {
 			err = multierr.Append(err, fmt.Errorf("catalyst_center.targets.device_details[%d].search_by cannot be empty", i))
+		} else if canonicalCatalystCenterDeviceIdentifier(target.Identifier) == "macAddress" {
+			err = multierr.Append(err, validateMACAddress(fmt.Sprintf("catalyst_center.targets.device_details[%d].search_by", i), target.SearchBy))
 		}
 	}
-	for i, mac := range cfg.CatalystCenter.Targets.ClientMACs {
-		if mac == "" {
-			err = multierr.Append(err, fmt.Errorf("catalyst_center.targets.client_macs[%d] cannot be empty", i))
-		}
-	}
+	err = multierr.Append(err, validateMACAddressList("catalyst_center.targets.client_macs", cfg.CatalystCenter.Targets.ClientMACs))
 
 	groups := map[string]CatalystCenterGroupConfig{
 		"inventory":  cfg.CatalystCenter.Inventory,
@@ -979,9 +974,7 @@ func (cfg *Config) validateCatalystCenter() error {
 		"details":    cfg.CatalystCenter.Details,
 	}
 	for name, group := range groups {
-		if group.MaxResults < 0 {
-			err = multierr.Append(err, fmt.Errorf("catalyst_center.%s.max_results must not be negative", name))
-		}
+		err = multierr.Append(err, validateMaxResults("catalyst_center."+name+".max_results", group.MaxResults))
 	}
 
 	return err
@@ -1022,20 +1015,10 @@ func (cfg *Config) validateSDWAN() error {
 		err = multierr.Append(err, errors.New("sdwan.auth.mode must be auto, jwt, session, bearer, or cookie"))
 	}
 
-	if cfg.SDWAN.PageSize < 0 {
-		err = multierr.Append(err, errors.New("sdwan.page_size must not be negative"))
-	}
-	if cfg.SDWAN.MaxRetries < 0 {
-		err = multierr.Append(err, errors.New("sdwan.max_retries must not be negative"))
-	}
+	err = multierr.Append(err, validatePageSize("sdwan.page_size", cfg.SDWAN.PageSize))
+	err = multierr.Append(err, validateMaxRetries("sdwan.max_retries", cfg.SDWAN.MaxRetries))
 	if cfg.SDWAN.EventLookback < 0 {
 		err = multierr.Append(err, errors.New("sdwan.event_lookback must not be negative"))
-	}
-	if cfg.SDWAN.StatisticsLookback < 0 {
-		err = multierr.Append(err, errors.New("sdwan.statistics_lookback must not be negative"))
-	}
-	if cfg.SDWAN.RealtimeLookback < 0 {
-		err = multierr.Append(err, errors.New("sdwan.realtime_lookback must not be negative"))
 	}
 	if cfg.SDWAN.RealtimeDetails.Enabled && !cfg.SDWAN.Targets.hasDeviceScope() {
 		err = multierr.Append(err, errors.New("sdwan.realtime_details requires at least one target filter: site_ids, system_ips, uuids, serials, device_types, personalities, colors, interface_names, vpn_ids, applications, or application_families"))
@@ -1043,7 +1026,6 @@ func (cfg *Config) validateSDWAN() error {
 
 	for name, values := range map[string][]string{
 		"site_ids":             cfg.SDWAN.Targets.SiteIDs,
-		"system_ips":           cfg.SDWAN.Targets.SystemIPs,
 		"uuids":                cfg.SDWAN.Targets.UUIDs,
 		"serials":              cfg.SDWAN.Targets.Serials,
 		"device_types":         cfg.SDWAN.Targets.DeviceTypes,
@@ -1062,6 +1044,7 @@ func (cfg *Config) validateSDWAN() error {
 			}
 		}
 	}
+	err = multierr.Append(err, validateIPAddressList("sdwan.targets.system_ips", cfg.SDWAN.Targets.SystemIPs))
 
 	groups := map[string]SDWANGroupConfig{
 		"manager":              cfg.SDWAN.Manager,
@@ -1091,9 +1074,7 @@ func (cfg *Config) validateSDWAN() error {
 		"management_security":  cfg.SDWAN.ManagementSecurity,
 	}
 	for name, group := range groups {
-		if group.MaxResults < 0 {
-			err = multierr.Append(err, fmt.Errorf("sdwan.%s.max_results must not be negative", name))
-		}
+		err = multierr.Append(err, validateMaxResults("sdwan."+name+".max_results", group.MaxResults))
 	}
 
 	return err
@@ -1131,19 +1112,21 @@ func (cfg *Config) validateNexusDashboard() error {
 		err = multierr.Append(err, errors.New("nexus_dashboard.auth.mode must be api_key or username_password"))
 	}
 
-	if cfg.NexusDashboard.PageSize < 0 {
-		err = multierr.Append(err, errors.New("nexus_dashboard.page_size must not be negative"))
-	}
-	if cfg.NexusDashboard.MaxRetries < 0 {
-		err = multierr.Append(err, errors.New("nexus_dashboard.max_retries must not be negative"))
-	}
+	err = multierr.Append(err, validatePageSize("nexus_dashboard.page_size", cfg.NexusDashboard.PageSize))
+	err = multierr.Append(err, validateMaxRetries("nexus_dashboard.max_retries", cfg.NexusDashboard.MaxRetries))
 	if cfg.NexusDashboard.EventLookback < 0 {
 		err = multierr.Append(err, errors.New("nexus_dashboard.event_lookback must not be negative"))
 	}
-	if cfg.NexusDashboard.TelemetryLookback < 0 {
-		err = multierr.Append(err, errors.New("nexus_dashboard.telemetry_lookback must not be negative"))
+	for name, values := range map[string][]string{
+		"sites":           cfg.NexusDashboard.Targets.Sites,
+		"fabrics":         cfg.NexusDashboard.Targets.Fabrics,
+		"switch_serials":  cfg.NexusDashboard.Targets.SwitchSerials,
+		"switch_ids":      cfg.NexusDashboard.Targets.SwitchIDs,
+		"interface_names": cfg.NexusDashboard.Targets.InterfaceNames,
+		"service_names":   cfg.NexusDashboard.Targets.ServiceNames,
+	} {
+		err = multierr.Append(err, validateNonEmptyStringList("nexus_dashboard.targets."+name, values))
 	}
-
 	groups := map[string]NexusControllerGroupConfig{
 		"platform":     cfg.NexusDashboard.Platform,
 		"ndfc":         cfg.NexusDashboard.NDFC,
@@ -1185,19 +1168,24 @@ func (cfg *Config) validateACI() error {
 		err = multierr.Append(err, errors.New("aci.auth.password must be provided"))
 	}
 
-	if cfg.ACI.PageSize < 0 {
-		err = multierr.Append(err, errors.New("aci.page_size must not be negative"))
-	}
-	if cfg.ACI.MaxRetries < 0 {
-		err = multierr.Append(err, errors.New("aci.max_retries must not be negative"))
-	}
+	err = multierr.Append(err, validatePageSize("aci.page_size", cfg.ACI.PageSize))
+	err = multierr.Append(err, validateMaxRetries("aci.max_retries", cfg.ACI.MaxRetries))
 	if cfg.ACI.EventLookback < 0 {
 		err = multierr.Append(err, errors.New("aci.event_lookback must not be negative"))
 	}
-	if cfg.ACI.StatsLookback < 0 {
-		err = multierr.Append(err, errors.New("aci.stats_lookback must not be negative"))
+	for name, values := range map[string][]string{
+		"sites":           cfg.ACI.Targets.Sites,
+		"fabrics":         cfg.ACI.Targets.Fabrics,
+		"node_ids":        cfg.ACI.Targets.NodeIDs,
+		"serials":         cfg.ACI.Targets.Serials,
+		"tenants":         cfg.ACI.Targets.Tenants,
+		"vrfs":            cfg.ACI.Targets.VRFs,
+		"bridge_domains":  cfg.ACI.Targets.BridgeDomains,
+		"epgs":            cfg.ACI.Targets.EPGs,
+		"interface_names": cfg.ACI.Targets.InterfaceNames,
+	} {
+		err = multierr.Append(err, validateNonEmptyStringList("aci.targets."+name, values))
 	}
-
 	groups := map[string]NexusControllerGroupConfig{
 		"fabric":            cfg.ACI.Fabric,
 		"controller_health": cfg.ACI.ControllerHealth,
@@ -1246,32 +1234,36 @@ func (cfg *Config) validateFMC() error {
 		}
 	}
 
-	if cfg.FMC.PageSize < 0 {
-		err = multierr.Append(err, errors.New("fmc.page_size must not be negative"))
-	}
-	if cfg.FMC.MaxRetries < 0 {
-		err = multierr.Append(err, errors.New("fmc.max_retries must not be negative"))
-	}
+	err = multierr.Append(err, validatePageSize("fmc.page_size", cfg.FMC.PageSize))
+	err = multierr.Append(err, validateMaxRetries("fmc.max_retries", cfg.FMC.MaxRetries))
 	if cfg.FMC.EventLookback < 0 {
 		err = multierr.Append(err, errors.New("fmc.event_lookback must not be negative"))
 	}
+	for name, values := range map[string][]string{
+		"device_ids":      cfg.FMC.Targets.DeviceIDs,
+		"serials":         cfg.FMC.Targets.Serials,
+		"names":           cfg.FMC.Targets.Names,
+		"policy_ids":      cfg.FMC.Targets.PolicyIDs,
+		"policy_names":    cfg.FMC.Targets.PolicyNames,
+		"interface_names": cfg.FMC.Targets.InterfaceNames,
+	} {
+		err = multierr.Append(err, validateNonEmptyStringList("fmc.targets."+name, values))
+	}
+	err = multierr.Append(err, validateIPAddressList("fmc.targets.management_ips", cfg.FMC.Targets.ManagementIPs))
 
 	groups := map[string]FMCGroupConfig{
-		"manager":         cfg.FMC.Manager,
-		"inventory":       cfg.FMC.Inventory,
-		"interfaces":      cfg.FMC.Interfaces,
-		"health":          cfg.FMC.Health,
-		"vpn":             cfg.FMC.VPN,
-		"ha":              cfg.FMC.HA,
-		"policy":          cfg.FMC.Policy,
-		"deployments":     cfg.FMC.Deployments,
-		"audit":           cfg.FMC.Audit,
-		"security_events": cfg.FMC.SecurityEvents,
+		"manager":     cfg.FMC.Manager,
+		"inventory":   cfg.FMC.Inventory,
+		"interfaces":  cfg.FMC.Interfaces,
+		"health":      cfg.FMC.Health,
+		"vpn":         cfg.FMC.VPN,
+		"ha":          cfg.FMC.HA,
+		"policy":      cfg.FMC.Policy,
+		"deployments": cfg.FMC.Deployments,
+		"audit":       cfg.FMC.Audit,
 	}
 	for name, group := range groups {
-		if group.MaxResults < 0 {
-			err = multierr.Append(err, fmt.Errorf("fmc.%s.max_results must not be negative", name))
-		}
+		err = multierr.Append(err, validateMaxResults("fmc."+name+".max_results", group.MaxResults))
 	}
 
 	err = multierr.Append(err, cfg.validateFMCEStreamer())
@@ -1309,8 +1301,8 @@ func (cfg *Config) validateFMCEStreamer() error {
 	if cfg.FMC.EStreamer.ReconnectInterval < 0 {
 		err = multierr.Append(err, errors.New("fmc.estreamer.reconnect_interval must not be negative"))
 	}
-	if cfg.FMC.EStreamer.MaxMessageBytes < 0 {
-		err = multierr.Append(err, errors.New("fmc.estreamer.max_message_bytes must not be negative"))
+	if cfg.FMC.EStreamer.MaxMessageBytes < 0 || cfg.FMC.EStreamer.MaxMessageBytes > maxFMCEStreamerMessageBytes {
+		err = multierr.Append(err, fmt.Errorf("fmc.estreamer.max_message_bytes must be between 1 and %d when set", maxFMCEStreamerMessageBytes))
 	}
 	for i, eventType := range cfg.FMC.EStreamer.EventTypes {
 		if !validFMCEStreamerEventType(eventType) {
@@ -1320,13 +1312,29 @@ func (cfg *Config) validateFMCEStreamer() error {
 	return err
 }
 
-func validateHTTPURL(name, value string, allowInsecure bool) error {
+func validateHTTPURL(name, value string, _ bool) error {
 	parsed, parseErr := url.Parse(value)
 	if parseErr != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return fmt.Errorf("%s must be a valid absolute URL", name)
 	}
-	if parsed.Scheme != "https" && !(parsed.Scheme == "http" && allowInsecure) {
-		return fmt.Errorf("%s must use https unless insecure_skip_verify is explicitly enabled", name)
+	if err := endpointURLContentError(name, parsed); err != nil {
+		return err
+	}
+	if !strings.EqualFold(parsed.Scheme, "https") {
+		return fmt.Errorf("%s must use https", name)
+	}
+	return nil
+}
+
+func endpointURLContentError(name string, parsed *url.URL) error {
+	if parsed.User != nil {
+		return fmt.Errorf("%s must not include user information", name)
+	}
+	if parsed.RawQuery != "" || parsed.ForceQuery {
+		return fmt.Errorf("%s must not include a query string", name)
+	}
+	if parsed.Fragment != "" {
+		return fmt.Errorf("%s must not include a fragment", name)
 	}
 	return nil
 }
@@ -1510,11 +1518,84 @@ func validFMCEStreamerEventType(value string) bool {
 func validateNexusControllerGroups(prefix string, groups map[string]NexusControllerGroupConfig) error {
 	var err error
 	for name, group := range groups {
-		if group.MaxResults < 0 {
-			err = multierr.Append(err, fmt.Errorf("%s.%s.max_results must not be negative", prefix, name))
+		err = multierr.Append(err, validateMaxResults(prefix+"."+name+".max_results", group.MaxResults))
+	}
+	return err
+}
+
+func validatePageSize(name string, value int) error {
+	if value < 0 {
+		return fmt.Errorf("%s must not be negative", name)
+	}
+	if value > httpclient.HardMaxPaginationResults {
+		return fmt.Errorf("%s must not exceed %d", name, httpclient.HardMaxPaginationResults)
+	}
+	return nil
+}
+
+func validateMaxRetries(name string, value int) error {
+	if value < 0 {
+		return fmt.Errorf("%s must not be negative", name)
+	}
+	if value > httpclient.HardMaxRequestRetries {
+		return fmt.Errorf("%s must not exceed %d", name, httpclient.HardMaxRequestRetries)
+	}
+	return nil
+}
+
+func validateMaxResults(name string, value int) error {
+	if value < 0 {
+		return fmt.Errorf("%s must not be negative", name)
+	}
+	if value > httpclient.HardMaxPaginationResults {
+		return fmt.Errorf("%s must not exceed the hard pagination limit of %d", name, httpclient.HardMaxPaginationResults)
+	}
+	return nil
+}
+
+func validateNonEmptyStringList(prefix string, values []string) error {
+	var err error
+	for i, value := range values {
+		if strings.TrimSpace(value) == "" {
+			err = multierr.Append(err, fmt.Errorf("%s[%d] cannot be empty", prefix, i))
 		}
 	}
 	return err
+}
+
+func validateIPAddressList(prefix string, values []string) error {
+	var err error
+	for i, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			err = multierr.Append(err, fmt.Errorf("%s[%d] cannot be empty", prefix, i))
+			continue
+		}
+		if _, parseErr := netip.ParseAddr(value); parseErr != nil {
+			err = multierr.Append(err, fmt.Errorf("%s[%d] must be a valid IP address", prefix, i))
+		}
+	}
+	return err
+}
+
+func validateMACAddressList(prefix string, values []string) error {
+	var err error
+	for i, value := range values {
+		err = multierr.Append(err, validateMACAddress(fmt.Sprintf("%s[%d]", prefix, i), value))
+	}
+	return err
+}
+
+func validateMACAddress(prefix, value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fmt.Errorf("%s cannot be empty", prefix)
+	}
+	mac, parseErr := net.ParseMAC(value)
+	if parseErr != nil || len(mac) != 6 {
+		return fmt.Errorf("%s must be a valid 48-bit MAC address", prefix)
+	}
+	return nil
 }
 
 // Unmarshal a config.Parser into the config struct.

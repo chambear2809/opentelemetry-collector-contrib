@@ -13,6 +13,11 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
 
+func TestIOSXRNormalizingConsumerDeclaresMutation(t *testing.T) {
+	normalizer := newIOSXRNormalizingConsumer(consumertest.NewNop(), defaultIOSXRConfig(), deviceSelectionMatcher{}, iosXRTelemetryTransportDialOut, nil)
+	assert.True(t, normalizer.Capabilities().MutatesData)
+}
+
 func TestIOSXRHealthTracksOnlyRunningSubscriptions(t *testing.T) {
 	health := &iosXRHealth{}
 	assert.True(t, health.setTargetSubscriptionActive("xr-1", true))
@@ -60,7 +65,10 @@ func TestIOSXRNormalizingConsumerRenamesDialOutMetricsAndAttributes(t *testing.T
 	assert.Equal(t, "ios_xr", attrValue(t, resourceAttrs, "cisco.os.name"))
 	assert.Equal(t, "ios_xr", attrValue(t, resourceAttrs, "cisco.platform.family"))
 	assert.Equal(t, "mdt_grpc_dial_out", attrValue(t, resourceAttrs, "cisco.telemetry.transport"))
-	assert.Equal(t, "Cisco-IOS-XR-infra-statsd-oper", attrValue(t, resourceAttrs, "cisco.yang.module"))
+	_, hasResourceModule := resourceAttrs.Get("cisco.yang.module")
+	assert.False(t, hasResourceModule, "YANG paths belong on datapoints so one device is not fragmented into many resources")
+	_, hasResourcePath := resourceAttrs.Get("cisco.yang.path")
+	assert.False(t, hasResourcePath)
 	assert.Equal(t, "xr-1", attrValue(t, resourceAttrs, "cisco.node.id"))
 
 	dpAttrs := metric.Gauge().DataPoints().At(0).Attributes()

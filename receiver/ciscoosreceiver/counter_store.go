@@ -5,6 +5,8 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 
 import (
 	"container/list"
+	"crypto/sha256"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -136,7 +138,15 @@ func (s *counterStore) AddInt(resource, name string, attrs map[string]string, de
 	now := s.now()
 	s.evictExpiredLocked(now)
 	if series := s.intValues[key]; series != nil {
-		series.value += delta
+		if delta > 0 && series.value > math.MaxInt64-delta || delta < 0 && series.value < math.MinInt64-delta {
+			// OTLP integer datapoints are signed int64. Start a new cumulative
+			// epoch instead of wrapping through zero and fabricating a negative
+			// monotonic counter when the in-process accumulator is exhausted.
+			series.value = delta
+			series.startedAt = now
+		} else {
+			series.value += delta
+		}
 		series.lastSeen = now
 		s.lru.MoveToBack(series.lru)
 		return series.value, series.startedAt
@@ -208,19 +218,19 @@ func counterKey(resource, name string, attrs map[string]string) string {
 	b.WriteString(strconv.Quote(resource))
 	b.WriteByte('|')
 	b.WriteString(name)
-	if len(attrs) == 0 {
-		return b.String()
+	if len(attrs) > 0 {
+		keys := make([]string, 0, len(attrs))
+		for k := range attrs {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			b.WriteByte('|')
+			b.WriteString(k)
+			b.WriteByte('=')
+			b.WriteString(strconv.Quote(attrs[k]))
+		}
 	}
-	keys := make([]string, 0, len(attrs))
-	for k := range attrs {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		b.WriteByte('|')
-		b.WriteString(k)
-		b.WriteByte('=')
-		b.WriteString(strconv.Quote(attrs[k]))
-	}
-	return b.String()
+	digest := sha256.Sum256([]byte(b.String()))
+	return string(digest[:])
 }

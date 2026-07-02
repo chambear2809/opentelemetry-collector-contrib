@@ -4,6 +4,7 @@
 package ciscoosreceiver
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -15,9 +16,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/consumer/consumertest"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 	iseinternal "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/ise"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
 )
@@ -51,11 +54,54 @@ func TestISEMetricsReceiverScrapesNetworkDevices(t *testing.T) {
 	assertISEMetricExists(t, md, "ise.scrape.partial_success")
 }
 
+func TestISEMetricsReceiverRetainsEarlierERSPagesWhenLaterPageFails(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("page") {
+		case "1":
+			_, _ = w.Write([]byte(`{"SearchResult":{"total":2,"resources":[{"id":"nad-1","name":"edge-switch-1","ipAddress":"192.0.2.10","status":"enabled"}]}}`))
+		case "2":
+			http.Error(w, "page failed", http.StatusBadRequest)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	cfg := createDefaultConfig().(*Config)
+	cfg.ISE.Enabled = true
+	cfg.ISE.Endpoint = server.URL
+	cfg.ISE.Auth.Username = "admin"
+	cfg.ISE.Auth.Password = configopaque.String("password")
+	cfg.ISE.PageSize = 1
+	disableISEGroups(&cfg.ISE)
+	cfg.ISE.NetworkDevices.Enabled = true
+
+	receiver, err := newISEMetricsReceiver(receivertest.NewNopSettings(metadata.Type), cfg, consumertest.NewNop())
+	require.NoError(t, err)
+	md, err := receiver.scrape(t.Context())
+	require.NoError(t, err)
+
+	assert.True(t, hasResourceHostID(md, "ise:network_device:nad-1"))
+	assert.True(t, intMetricValueExists(md, "ise.network_device.count", 1))
+	assert.True(t, intMetricValueExists(md, "ise.scrape.partial_success", 1))
+}
+
+func TestISEPxGridOnlyOutcomeCanEstablishControllerHealth(t *testing.T) {
+	receiver := &iseMetricsReceiver{}
+	builder := newISEMetricsBuilder(time.Now(), "https://ise.example", nil)
+	md := receiver.finishScrape(builder, time.Now(), false, apiOutcomeSummary{attempted: true, succeeded: true})
+
+	assert.True(t, intMetricValueExists(md, "ise.controller.up", 1))
+	assert.Contains(t, metricNames(md), "ise.scrape.last_success")
+}
+
 func TestISELogsReceiverPreservesOperationalEvidence(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v1/alarms":
+		switch {
+		case r.URL.Path == "/api/v1/alarms":
 			_, _ = w.Write([]byte(`{"response":[{"id":"alarm-1","name":"Switch link down","severity":"critical"}]}`))
+		case strings.HasPrefix(r.URL.Path, "/api/v1/alarms/instances/"):
+			_, _ = w.Write([]byte(`{"response":[]}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -80,6 +126,38 @@ func TestISELogsReceiverPreservesOperationalEvidence(t *testing.T) {
 	domain, ok := record.Attributes().Get("event.domain")
 	require.True(t, ok)
 	assert.Equal(t, "ise", domain.AsString())
+}
+
+func TestISELogsReceiverRetainsEarlierPagesWhenLaterPageFails(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/alarms" && r.URL.Query().Get("cursor") == "":
+			w.Header().Set("Link", `</api/v1/alarms?cursor=next>; rel="next"`)
+			_, _ = w.Write([]byte(`{"response":[{"id":"alarm-1","name":"Switch link down","severity":"critical"}]}`))
+		case r.URL.Path == "/api/v1/alarms" && r.URL.Query().Get("cursor") == "next":
+			http.Error(w, "page failed", http.StatusBadRequest)
+		case strings.HasPrefix(r.URL.Path, "/api/v1/alarms/instances/"):
+			_, _ = w.Write([]byte(`{"response":[]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	cfg := createDefaultConfig().(*Config)
+	cfg.ISE.Enabled = true
+	cfg.ISE.Endpoint = server.URL
+	cfg.ISE.Auth.Username = "admin"
+	cfg.ISE.Auth.Password = configopaque.String("password")
+	disableISEGroups(&cfg.ISE)
+	cfg.ISE.Alarms.Enabled = true
+
+	receiver, err := newISELogsReceiver(receivertest.NewNopSettings(metadata.Type), cfg, &consumertest.LogsSink{})
+	require.NoError(t, err)
+	ld, err := receiver.scrape(t.Context())
+	require.Error(t, err)
+	require.Equal(t, 1, ld.LogRecordCount())
+	assert.Contains(t, ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).Body().AsString(), "alarm-1")
 }
 
 func TestISEMetricsReceiverUsesDocumentedMNTSessionPaths(t *testing.T) {
@@ -148,6 +226,129 @@ func TestISELogsReceiverCollectsWebhookDeliveries(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "openapi.webhook_deliveries", eventName.AsString())
 	assert.NotContains(t, record.Body().AsString(), "ops-webhook")
+}
+
+func TestISEWebhookReceiversRetainEarlierDeliveryPagesWhenLaterPageFails(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/webhooks":
+			_, _ = w.Write([]byte(`{"response":[{"id":"wh-1","name":"ops-webhook"}]}`))
+		case r.URL.Path == "/api/v1/webhooks/wh-1/deliveries" && r.URL.Query().Get("cursor") == "":
+			w.Header().Set("Link", `</api/v1/webhooks/wh-1/deliveries?cursor=next>; rel="next"`)
+			_, _ = w.Write([]byte(`{"response":[{"id":"delivery-1","status":"success","httpStatus":200}]}`))
+		case r.URL.Path == "/api/v1/webhooks/wh-1/deliveries" && r.URL.Query().Get("cursor") == "next":
+			http.Error(w, "page failed", http.StatusBadRequest)
+		case r.URL.Path == "/api/v1/webhooks/alarms":
+			_, _ = w.Write([]byte(`{"response":[]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	newConfig := func() *Config {
+		cfg := createDefaultConfig().(*Config)
+		cfg.ISE.Enabled = true
+		cfg.ISE.Endpoint = server.URL
+		cfg.ISE.Auth.Username = "admin"
+		cfg.ISE.Auth.Password = configopaque.String("password")
+		disableISEGroups(&cfg.ISE)
+		cfg.ISE.Webhooks.Enabled = true
+		return cfg
+	}
+
+	metricsReceiver, err := newISEMetricsReceiver(receivertest.NewNopSettings(metadata.Type), newConfig(), consumertest.NewNop())
+	require.NoError(t, err)
+	md, err := metricsReceiver.scrape(t.Context())
+	require.NoError(t, err)
+	assert.True(t, intMetricValueExists(md, "ise.webhook.delivery.count", 1))
+	assert.True(t, intMetricValueExists(md, "ise.scrape.partial_success", 1))
+
+	logsReceiver, err := newISELogsReceiver(receivertest.NewNopSettings(metadata.Type), newConfig(), &consumertest.LogsSink{})
+	require.NoError(t, err)
+	ld, err := logsReceiver.scrape(t.Context())
+	require.Error(t, err)
+	require.Equal(t, 1, ld.LogRecordCount())
+	eventName, ok := ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).Attributes().Get("event.name")
+	require.True(t, ok)
+	assert.Equal(t, "openapi.webhook_deliveries", eventName.AsString())
+}
+
+func TestISEShutdownHonorsDeadlineWhenDataConnectCloseBlocks(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	newConfig := func() *Config {
+		cfg := createDefaultConfig().(*Config)
+		cfg.ISE.Enabled = true
+		cfg.ISE.Endpoint = server.URL
+		cfg.ISE.Auth.Username = "admin"
+		cfg.ISE.Auth.Password = configopaque.String("password")
+		return cfg
+	}
+
+	tests := map[string]func(t *testing.T, blocker *blockingISEDataConnect) (func(context.Context) error, <-chan struct{}){
+		"metrics": func(t *testing.T, blocker *blockingISEDataConnect) (func(context.Context) error, <-chan struct{}) {
+			receiver, err := newISEMetricsReceiver(receivertest.NewNopSettings(metadata.Type), newConfig(), consumertest.NewNop())
+			require.NoError(t, err)
+			receiver.dataConnect = blocker
+			return receiver.Shutdown, receiver.closeDone
+		},
+		"logs": func(t *testing.T, blocker *blockingISEDataConnect) (func(context.Context) error, <-chan struct{}) {
+			receiver, err := newISELogsReceiver(receivertest.NewNopSettings(metadata.Type), newConfig(), &consumertest.LogsSink{})
+			require.NoError(t, err)
+			receiver.dataConnect = blocker
+			return receiver.Shutdown, receiver.closeDone
+		},
+	}
+
+	for name, setup := range tests {
+		t.Run(name, func(t *testing.T) {
+			blocker := &blockingISEDataConnect{started: make(chan struct{}), release: make(chan struct{})}
+			shutdown, closeDone := setup(t, blocker)
+			ctx, cancel := context.WithTimeout(t.Context(), 25*time.Millisecond)
+			defer cancel()
+
+			startedAt := time.Now()
+			err := shutdown(ctx)
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+			assert.Less(t, time.Since(startedAt), 500*time.Millisecond)
+			select {
+			case <-blocker.started:
+			default:
+				t.Fatal("Data Connect close was not started")
+			}
+
+			close(blocker.release)
+			select {
+			case <-closeDone:
+			case <-time.After(time.Second):
+				t.Fatal("background Data Connect cleanup did not finish after release")
+			}
+			require.NoError(t, shutdown(t.Context()), "repeated shutdown should observe completed cleanup")
+		})
+	}
+}
+
+type blockingISEDataConnect struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (c *blockingISEDataConnect) Close() error {
+	close(c.started)
+	<-c.release
+	return nil
+}
+
+func (*blockingISEDataConnect) Ping(context.Context) error {
+	return nil
+}
+
+func (*blockingISEDataConnect) QueryView(context.Context, iseinternal.DataConnectView) ([]iseinternal.Object, error) {
+	return nil, nil
 }
 
 func TestISEWebhookDeliveriesApplySharedDeviceSelection(t *testing.T) {
@@ -241,6 +442,87 @@ func TestISEDataConnectViewsDeduplicateAndNormalizeOverrides(t *testing.T) {
 	}
 	assert.Equal(t, 1, counts["RADIUS_AUTHENTICATIONS"])
 	assert.Equal(t, 123, maxResults["RADIUS_AUTHENTICATIONS_WEEK"])
+}
+
+func TestISEDataConnectLimitErrorsPreservePartialMetricsRows(t *testing.T) {
+	cfg := defaultISEConfig()
+	disableISEGroups(&cfg)
+	cfg.DataConnect.Enabled = true
+	enableOnlyISEDataConnectView(&cfg, "NODE_LIST")
+	receiver := &iseMetricsReceiver{
+		iseConfig: cfg,
+		dataConnect: &partialISEDataConnect{
+			objects: []iseinternal.Object{{"ID": "row-1", "NAME": "ise-node-1"}},
+			err: &iseinternal.DataConnectResultLimitError{
+				Kind:     "retained byte",
+				Maximum:  64 * 1024 * 1024,
+				Observed: 64*1024*1024 + 1,
+				Rows:     1,
+			},
+		},
+	}
+	builder := newISEMetricsBuilder(time.Now(), "https://ise.example", nil)
+
+	partial := receiver.scrapeDataConnect(
+		t.Context(),
+		builder,
+		newISETargetMatcher(ISETargetFilters{}),
+		newDeviceSelectionMatcher(DeviceSelectionConfig{}),
+	)
+
+	assert.True(t, partial)
+	builder.flushCounts()
+	assert.True(t, intMetricValueExists(builder.emit(), "ise.dataconnect.row.count", 1))
+}
+
+func TestISEDataConnectLimitErrorsPreservePartialLogRows(t *testing.T) {
+	cfg := defaultISEConfig()
+	disableISEGroups(&cfg)
+	cfg.DataConnect.Enabled = true
+	enableOnlyISEDataConnectView(&cfg, "THREAT_EVENTS")
+	receiver := &iseLogsReceiver{
+		settings:  receivertest.NewNopSettings(metadata.Type),
+		iseConfig: cfg,
+		dataConnect: &partialISEDataConnect{
+			objects: []iseinternal.Object{{"ID": "row-1", "LOGGED_AT": time.Now().UTC().Format(time.RFC3339)}},
+			err: &iseinternal.DataConnectResultLimitError{
+				Kind:     "retained byte",
+				Maximum:  64 * 1024 * 1024,
+				Observed: 64*1024*1024 + 1,
+				Rows:     1,
+			},
+		},
+		seen: newLogDeduplicator(),
+	}
+
+	logs, err := receiver.scrape(t.Context())
+	require.Error(t, err)
+	require.Equal(t, 1, logs.LogRecordCount())
+	assert.Contains(t, logs.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).Body().AsString(), "row-1")
+}
+
+type partialISEDataConnect struct {
+	objects []iseinternal.Object
+	err     error
+}
+
+func (*partialISEDataConnect) Close() error {
+	return nil
+}
+
+func (*partialISEDataConnect) Ping(context.Context) error {
+	return nil
+}
+
+func (c *partialISEDataConnect) QueryView(context.Context, iseinternal.DataConnectView) ([]iseinternal.Object, error) {
+	return c.objects, c.err
+}
+
+func enableOnlyISEDataConnectView(cfg *ISEConfig, enabled string) {
+	for name, group := range cfg.DataConnect.Views {
+		group.Enabled = name == enabled
+		cfg.DataConnect.Views[name] = group
+	}
 }
 
 func TestISEDataConnectLogViewsUseOperationalEvidenceAllowlist(t *testing.T) {
@@ -544,6 +826,38 @@ func TestISEEventEvidenceMetricsUseControllerResource(t *testing.T) {
 	assert.Equal(t, "ise:https://ise.example", hostID.AsString())
 }
 
+func TestISEControllerEvidenceRowsHaveUniqueIdentityAndCountsStayAggregated(t *testing.T) {
+	builder := newISEMetricsBuilder(time.Unix(1, 0), "https://ise.example", newCounterStore())
+	spec := iseEndpointSpec{group: "sessions", operation: "mnt.session.auth_list", objectType: "auth_session"}
+	for _, id := range []string{"audit-1", "audit-2"} {
+		builder.recordObject(spec, iseinternal.Object{
+			"auditSessionId": id,
+			"status":         "active",
+		})
+	}
+	builder.flushCounts()
+
+	md := builder.emit()
+	info := mustFindIOSXRMetric(t, md, "ise.resource.info")
+	require.Equal(t, pmetric.MetricTypeGauge, info.Type())
+	require.Equal(t, 2, info.Gauge().DataPoints().Len())
+	rowIDs := map[string]struct{}{}
+	for i := 0; i < info.Gauge().DataPoints().Len(); i++ {
+		rowID := attrValue(t, info.Gauge().DataPoints().At(i).Attributes(), "ise.row.id")
+		assert.NotEmpty(t, rowID)
+		rowIDs[rowID] = struct{}{}
+	}
+	assert.Len(t, rowIDs, 2)
+
+	sessions := mustFindIOSXRMetric(t, md, "ise.session.count")
+	require.Equal(t, pmetric.MetricTypeGauge, sessions.Type())
+	require.Equal(t, 1, sessions.Gauge().DataPoints().Len())
+	dp := sessions.Gauge().DataPoints().At(0)
+	assert.Equal(t, int64(2), dp.IntValue())
+	_, hasRowID := dp.Attributes().Get("ise.row.id")
+	assert.False(t, hasRowID, "aggregate count series must remain low-cardinality")
+}
+
 func TestISEPxGridStreamingLogsDeduplicateMessages(t *testing.T) {
 	sink := &consumertest.LogsSink{}
 	receiver := &iseLogsReceiver{
@@ -562,6 +876,68 @@ func TestISEPxGridStreamingLogsDeduplicateMessages(t *testing.T) {
 	receiver.consumePxGridMessage(t.Context(), message)
 
 	assert.Equal(t, 1, sink.LogRecordCount())
+}
+
+func TestISEPxGridStreamingLogsPreserveLargeJSONInteger(t *testing.T) {
+	sink := &consumertest.LogsSink{}
+	receiver := &iseLogsReceiver{
+		iseConfig: defaultISEConfig(),
+		consumer:  sink,
+		seen:      newLogDeduplicator(),
+	}
+
+	require.NoError(t, receiver.consumePxGridMessage(t.Context(), iseinternal.StompMessage{
+		Topic:     "/topic/com.cisco.ise.session",
+		MessageID: "integer-1",
+		Body:      []byte(`{"counter":9007199254740993}`),
+	}))
+	require.Equal(t, 1, sink.LogRecordCount())
+	body := sink.AllLogs()[0].ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).Body().AsString()
+	assert.Contains(t, body, `"counter":9007199254740993`)
+	assert.NotContains(t, body, "9007199254740992")
+}
+
+func TestISEPxGridStreamingLogsRejectOverlyDeepJSON(t *testing.T) {
+	sink := &consumertest.LogsSink{}
+	receiver := &iseLogsReceiver{
+		iseConfig: defaultISEConfig(),
+		consumer:  sink,
+		seen:      newLogDeduplicator(),
+	}
+	body := `{"nested":` + strings.Repeat("[", httpclient.HardMaxJSONDepth) + "0" + strings.Repeat("]", httpclient.HardMaxJSONDepth) + "}"
+
+	require.NoError(t, receiver.consumePxGridMessage(t.Context(), iseinternal.StompMessage{
+		Topic:     "/topic/com.cisco.ise.session",
+		MessageID: "deep-1",
+		Body:      []byte(body),
+	}))
+	require.Equal(t, 1, sink.LogRecordCount())
+	recordBody := sink.AllLogs()[0].ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).Body().AsString()
+	assert.Contains(t, recordBody, `"body_decode_error":true`)
+}
+
+func TestISEPxGridStreamingLogsDoNotForwardMalformedRawPayload(t *testing.T) {
+	sink := &consumertest.LogsSink{}
+	receiver := &iseLogsReceiver{
+		iseConfig: defaultISEConfig(),
+		consumer:  sink,
+		seen:      newLogDeduplicator(),
+	}
+
+	require.NoError(t, receiver.consumePxGridMessage(t.Context(), iseinternal.StompMessage{
+		Topic:     "/topic/com.cisco.ise.session",
+		MessageID: "malformed-1",
+		Body:      []byte(`{"password":"do-not-export"`),
+	}))
+	require.Equal(t, 1, sink.LogRecordCount())
+	record := sink.AllLogs()[0].ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
+	assert.NotContains(t, record.Body().AsString(), "do-not-export")
+	var body map[string]any
+	require.NoError(t, json.Unmarshal([]byte(record.Body().AsString()), &body))
+	assert.Equal(t, true, body["body_decode_error"])
+	fingerprint, ok := body["body_sha256"].(string)
+	require.True(t, ok)
+	assert.Len(t, fingerprint, 64)
 }
 
 func TestISEPxGridStreamingLogsApplySharedDeviceSelection(t *testing.T) {
@@ -635,18 +1011,16 @@ func TestISEPxGridSubscriptionsUseServiceProperties(t *testing.T) {
 		TrustSec:       true,
 		SystemHealth:   true,
 	})
-	require.Len(t, subscriptions, 5)
+	require.Len(t, subscriptions, 4)
 	assert.Equal(t, "sessionTopic", subscriptions[0].TopicProperty)
 	assert.Equal(t, "failureTopic", subscriptions[1].TopicProperty)
 	assert.Equal(t, "topic", subscriptions[2].TopicProperty)
 	assert.Equal(t, "securityGroupTopic", subscriptions[3].TopicProperty)
 	assert.Contains(t, subscriptions[3].AlternateTopicProperties, "securityGroupAclTopic")
-	assert.Empty(t, subscriptions[4].TopicProperty)
-	for _, subscription := range subscriptions[:4] {
+	for _, subscription := range subscriptions {
 		assert.NotEmpty(t, subscription.Service)
 		assert.NotContains(t, subscription.TopicProperty, "/topic/")
 	}
-	assert.Equal(t, "com.cisco.ise.system#unsupported", isePxGridSubscriptionLabel(subscriptions[4]))
 }
 
 func TestISELogsBuilderUsesSourceTimestampAndCollectionObservedTime(t *testing.T) {
@@ -661,6 +1035,20 @@ func TestISELogsBuilderUsesSourceTimestampAndCollectionObservedTime(t *testing.T
 	record := builder.emit().ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
 	assert.Equal(t, sourceTime, record.Timestamp().AsTime())
 	assert.Equal(t, collectedAt, record.ObservedTimestamp().AsTime())
+}
+
+func TestISELogsBuilderUsesDataConnectTimeAndDoesNotInventEventTime(t *testing.T) {
+	collectedAt := time.Date(2026, 7, 2, 15, 0, 0, 0, time.UTC)
+	sourceTime := time.Date(2026, 7, 2, 14, 59, 30, 0, time.UTC)
+	builder := newISELogsBuilder(collectedAt, "https://ise.example")
+	spec := iseEndpointSpec{group: "data_connect", operation: "data_connect.threat_events", objectType: "security"}
+	builder.recordObject(spec, iseinternal.Object{"ID": "one", "LOGGED_AT": sourceTime.Format(time.RFC3339)})
+	builder.recordObject(spec, iseinternal.Object{"ID": "two"})
+
+	logs := builder.emit().ResourceLogs()
+	assert.Equal(t, sourceTime, logs.At(0).ScopeLogs().At(0).LogRecords().At(0).Timestamp().AsTime())
+	assert.Equal(t, pcommon.Timestamp(0), logs.At(1).ScopeLogs().At(0).LogRecords().At(0).Timestamp())
+	assert.Equal(t, collectedAt, logs.At(1).ScopeLogs().At(0).LogRecords().At(0).ObservedTimestamp().AsTime())
 }
 
 func disableISEGroups(cfg *ISEConfig) {

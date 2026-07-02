@@ -52,12 +52,6 @@ func newCatalyst9800Metrics(ctx catalyst9800MetricContext) (pmetric.Metrics, pme
 	if ctx.transport != "" {
 		attrs.PutStr("cisco.telemetry.transport", ctx.transport)
 	}
-	if ctx.yangPath != "" {
-		attrs.PutStr("cisco.yang.path", ctx.yangPath)
-	}
-	if ctx.yangModule != "" {
-		attrs.PutStr("cisco.yang.module", ctx.yangModule)
-	}
 	sm := rm.ScopeMetrics().AppendEmpty()
 	sm.Scope().SetName("github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/catalyst9800")
 	return md, sm
@@ -111,33 +105,31 @@ func appendCatalyst9800HealthMetrics(md pmetric.Metrics, health *catalyst9800Hea
 	}
 }
 
-func appendCatalyst9800NumberMetric(sm pmetric.ScopeMetrics, module string, pathParts []string, value float64, ts pcommon.Timestamp, attrs map[string]string) {
-	appendCatalyst9800MetricNumber(sm, module, pathParts, doubleMetricNumber(value), ts, attrs)
-}
-
-func appendCatalyst9800IntMetric(sm pmetric.ScopeMetrics, module string, pathParts []string, value int64, ts pcommon.Timestamp, attrs map[string]string) {
-	appendCatalyst9800MetricNumber(sm, module, pathParts, intMetricNumber(value), ts, attrs)
-}
-
-func appendCatalyst9800MetricNumber(sm pmetric.ScopeMetrics, module string, pathParts []string, value metricNumber, ts pcommon.Timestamp, attrs map[string]string) {
-	name := catalyst9800MetricName(module, pathParts)
-	if isCatalyst9800CounterMetric(pathParts) {
-		appendMetricNumberSum(sm, name, value, ts, attrs)
-	} else {
-		appendMetricNumberGauge(sm, name, value, ts, attrs)
+func appendCatalyst9800MetricNumberIndexed(builder *indexedMetricBuilder, module string, pathParts []string, value metricNumber, ts pcommon.Timestamp, attrs map[string]string) {
+	if builder.budget != nil && !builder.budget.allowMetricName("cisco.catalyst9800.yang", module, pathParts, "") {
+		return
 	}
-	appendCatalyst9800AliasesForValue(sm, module, pathParts, value, ts, attrs)
+	name := catalyst9800MetricName(module, pathParts)
+	var appended bool
+	if isCatalyst9800CounterMetric(pathParts) {
+		appended = builder.appendNumber(name, pmetric.MetricTypeSum, value, ts, attrs)
+	} else {
+		appended = builder.appendNumber(name, pmetric.MetricTypeGauge, value, ts, attrs)
+	}
+	if appended {
+		appendCatalyst9800AliasesForValueIndexed(builder, module, pathParts, value, ts, attrs)
+	}
 }
 
-func appendCatalyst9800InfoMetric(sm pmetric.ScopeMetrics, module string, pathParts []string, value string, ts pcommon.Timestamp, attrs map[string]string) {
+func appendCatalyst9800InfoMetricIndexed(builder *indexedMetricBuilder, module string, pathParts []string, value string, ts pcommon.Timestamp, attrs map[string]string) {
+	if builder.budget != nil && !builder.budget.allowMetricName("cisco.catalyst9800.yang", module, pathParts, "_info") {
+		return
+	}
 	name := catalyst9800MetricName(module, pathParts) + "_info"
-	metric := getOrCreateMetric(sm, name, pmetric.MetricTypeGauge)
-	dp := metric.Gauge().DataPoints().AppendEmpty()
-	dp.SetDoubleValue(1)
-	dp.SetTimestamp(ts)
-	dp.Attributes().PutStr("value", value)
-	applyStringAttrs(dp.Attributes(), attrs)
-	appendCatalyst9800AliasesForValue(sm, module, pathParts, value, ts, attrs)
+	if !builder.appendInfo(name, value, ts, attrs) {
+		return
+	}
+	appendCatalyst9800AliasesForValueIndexed(builder, module, pathParts, value, ts, attrs)
 }
 
 func catalyst9800MetricName(module string, pathParts []string) string {
@@ -154,37 +146,14 @@ func catalyst9800MetricName(module string, pathParts []string) string {
 }
 
 func isCatalyst9800CounterMetric(pathParts []string) bool {
-	pathText := catalyst9800CanonicalPath(pathParts)
-	last := ""
-	if len(pathParts) > 0 {
-		last = sanitizeMetricSegment(pathParts[len(pathParts)-1])
-	}
-	if strings.Contains(pathText, "utilization") ||
-		strings.Contains(pathText, "percentage") ||
-		strings.Contains(pathText, "noise") ||
-		strings.Contains(pathText, "rssi") ||
-		strings.Contains(pathText, "snr") ||
-		strings.Contains(pathText, "state") ||
-		strings.Contains(pathText, "status") ||
-		strings.Contains(pathText, "current") ||
-		strings.Contains(pathText, "avg_response_delay") ||
-		strings.Contains(pathText, "max_response_delay") {
-		return false
-	}
-	counterHints := []string{
-		"counter", "counters", "cnt", "count", "counts", "bytes", "octets", "packets", "pkts",
-		"errors", "error", "drops", "discard", "disconnects", "retries", "rejects", "accepts",
-		"timeouts", "responses", "authenticators", "handoff", "roam", "switchover", "failure",
-	}
-	for _, hint := range counterHints {
-		if strings.Contains(last, hint) || strings.Contains(pathText, "."+hint) {
-			return true
-		}
-	}
-	return false
+	return isUnambiguousYANGCounter(pathParts)
 }
 
 func appendCatalyst9800AliasesForValue(sm pmetric.ScopeMetrics, module string, pathParts []string, value any, ts pcommon.Timestamp, attrs map[string]string) {
+	appendCatalyst9800AliasesForValueIndexed(newIndexedMetricBuilder(sm, nil), module, pathParts, value, ts, attrs)
+}
+
+func appendCatalyst9800AliasesForValueIndexed(builder *indexedMetricBuilder, module string, pathParts []string, value any, ts pcommon.Timestamp, attrs map[string]string) {
 	_ = module
 	if len(pathParts) == 0 {
 		return
@@ -203,23 +172,21 @@ func appendCatalyst9800AliasesForValue(sm pmetric.ScopeMetrics, module string, p
 			return
 		}
 		next := mergeStringAttrs(aliasAttrs, extra)
+		metricType := pmetric.MetricTypeGauge
 		if asCounter {
-			appendMetricNumberSum(sm, name, numericValue, ts, next)
-		} else {
-			appendMetricNumberGauge(sm, name, numericValue, ts, next)
+			metricType = pmetric.MetricTypeSum
+		}
+		if !builder.appendNumber(name, metricType, numericValue, ts, next) {
+			return
 		}
 		if len(unit) > 0 && unit[0] != "" {
-			metricType := pmetric.MetricTypeGauge
-			if asCounter {
-				metricType = pmetric.MetricTypeSum
-			}
-			getOrCreateMetric(sm, name, metricType).SetUnit(unit[0])
+			builder.getOrCreate(name, metricType).SetUnit(unit[0])
 		}
 	}
 	appendState := func(name, attrName string, extra map[string]string) {
 		next := mergeStringAttrs(aliasAttrs, extra)
 		if numeric {
-			appendMetricNumberGauge(sm, name, numericValue, ts, next)
+			builder.appendNumber(name, pmetric.MetricTypeGauge, numericValue, ts, next)
 			return
 		}
 		if textValue == "" {
@@ -227,33 +194,32 @@ func appendCatalyst9800AliasesForValue(sm pmetric.ScopeMetrics, module string, p
 		}
 		next[attrName] = textValue
 		if state, ok := catalyst9800StateNumeric(textValue); ok {
-			appendGaugeMetric(sm, name, state, ts, next)
+			builder.appendNumber(name, pmetric.MetricTypeGauge, doubleMetricNumber(state), ts, next)
 			return
 		}
-		appendGaugeMetric(sm, name, 1, ts, next)
+		builder.appendNumber(name, pmetric.MetricTypeGauge, doubleMetricNumber(1), ts, next)
 	}
-	appendEvent := func(name, attrName string, extra map[string]string) {
+	appendInfo := func(name, attrName string, extra map[string]string) {
 		next := mergeStringAttrs(aliasAttrs, extra)
 		if numeric {
-			appendMetricNumberSum(sm, name, numericValue, ts, next)
-			return
+			textValue = numericValue.String()
 		}
 		if textValue == "" {
 			return
 		}
 		next[attrName] = textValue
-		appendGaugeMetric(sm, name, 1, ts, next)
+		builder.appendNumber(name, pmetric.MetricTypeGauge, doubleMetricNumber(1), ts, next)
 	}
 
 	switch leaf {
 	case "is_joined":
 		appendState("cisco.wlc.ap.join.status", "state", nil)
 	case "last_join_failure_type", "last_error_type":
-		appendEvent("cisco.wlc.ap.join.failure", "failure.reason", nil)
+		appendInfo("cisco.wlc.ap.join.failure.reason.info", "failure.reason", nil)
 	case "disconnects", "num_disconnects", "ap_disconnect_count":
 		appendNumber("cisco.wlc.ap.disconnect", nil, true)
 	case "disconnect_reason", "ap_disconnect_reason":
-		appendEvent("cisco.wlc.ap.disconnect", "reason", nil)
+		appendInfo("cisco.wlc.ap.disconnect.reason.info", "reason", nil)
 	case "ap_operation_state", "capwap_state":
 		appendState("cisco.wlc.ap.capwap.state", "state", nil)
 	case "link_encryption_enabled":
@@ -282,13 +248,13 @@ func appendCatalyst9800AliasesForValue(sm pmetric.ScopeMetrics, module string, p
 	case "co_state":
 		appendState("cisco.wlc.client.connection.state", "state", nil)
 	case "exclude_reason":
-		appendEvent("cisco.wlc.client.auth.failure", "failure.reason", nil)
+		appendInfo("cisco.wlc.client.auth.failure.reason.info", "failure.reason", nil)
 	case "most_recent_rssi", "rssi":
 		appendNumber("cisco.wlc.client.wireless.rssi", nil, false)
 	case "most_recent_snr", "snr":
 		appendNumber("cisco.wlc.client.wireless.snr", nil, false)
 	case "dot11_roam_type", "mm_client_roam_type", "roam_type":
-		appendEvent("cisco.wlc.client.roam.count", "roam.type", nil)
+		appendInfo("cisco.wlc.client.roam.type.info", "roam.type", nil)
 	case "roam_failure_count":
 		appendNumber("cisco.wlc.client.roam.failure.count", nil, true)
 	case "ulink_status", "peer_status", "link_status", "connection_status":
@@ -333,7 +299,7 @@ func appendCatalyst9800AliasesForValue(sm pmetric.ScopeMetrics, module string, p
 		appendNumber("cisco.wlc.controller.memory.bytes", map[string]string{"state": catalyst9800MemoryState(leaf)}, false)
 	}
 
-	if strings.Contains(pathText, "capwap") && strings.HasSuffix(leaf, "state") {
+	if leaf != "ap_operation_state" && leaf != "capwap_state" && strings.Contains(pathText, "capwap") && strings.HasSuffix(leaf, "state") {
 		appendState("cisco.wlc.ap.capwap.state", "state", nil)
 	}
 	if strings.Contains(pathText, "traffic_stats") {
@@ -500,7 +466,7 @@ func newCatalyst9800NormalizingConsumer(next consumer.Metrics, config Catalyst98
 }
 
 func (c *catalyst9800NormalizingConsumer) Capabilities() consumer.Capabilities {
-	return c.next.Capabilities()
+	return consumer.Capabilities{MutatesData: true}
 }
 
 func (c *catalyst9800NormalizingConsumer) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error {
@@ -540,20 +506,23 @@ func (c *catalyst9800NormalizingConsumer) normalize(md pmetric.Metrics) {
 		encodingPath := ""
 		if v, ok := resAttrs.Get("cisco.encoding_path"); ok {
 			encodingPath = v.AsString()
-			resAttrs.PutStr("cisco.yang.path", encodingPath)
-			if module := moduleFromYANGPath(encodingPath); module != "" {
-				resAttrs.PutStr("cisco.yang.module", module)
-			}
 		}
 		module := ""
 		if v, ok := resAttrs.Get("cisco.yang.module"); ok {
 			module = v.AsString()
 		}
+		if module == "" {
+			module = moduleFromYANGPath(encodingPath)
+		}
+		resAttrs.Remove("cisco.encoding_path")
+		resAttrs.Remove("cisco.yang.path")
+		resAttrs.Remove("cisco.yang.module")
 		sms := rm.ScopeMetrics()
 		for j := 0; j < sms.Len(); j++ {
 			sm := sms.At(j)
 			metrics := sm.Metrics()
 			originalLen := metrics.Len()
+			metricIndex := newIndexedMetricBuilder(sm, nil)
 			for k := 0; k < originalLen; k++ {
 				metric := metrics.At(k)
 				originalName := metric.Name()
@@ -567,7 +536,7 @@ func (c *catalyst9800NormalizingConsumer) normalize(md pmetric.Metrics) {
 					if strings.HasPrefix(originalName, "cisco.") && !strings.HasPrefix(originalName, "cisco.catalyst9800.") && !strings.HasPrefix(originalName, "cisco.wlc.") {
 						name := strings.TrimPrefix(originalName, "cisco.")
 						parts := strings.Split(name, ".")
-						appendCatalyst9800AliasesFromMetric(sm, metric, module, parts, encodingPath, c.transport)
+						appendCatalyst9800AliasesFromMetric(metricIndex, metric, module, parts, encodingPath, c.transport)
 						metric.SetName(catalyst9800MetricName(module, parts))
 					}
 				}
@@ -582,7 +551,7 @@ func (c *catalyst9800NormalizingConsumer) normalize(md pmetric.Metrics) {
 	})
 }
 
-func appendCatalyst9800AliasesFromMetric(sm pmetric.ScopeMetrics, metric pmetric.Metric, module string, parts []string, yangPath, transport string) {
+func appendCatalyst9800AliasesFromMetric(builder *indexedMetricBuilder, metric pmetric.Metric, module string, parts []string, yangPath, transport string) {
 	ts := pcommon.NewTimestampFromTime(time.Now())
 	aliasParts := parts
 	if len(aliasParts) > 0 && strings.HasSuffix(aliasParts[len(aliasParts)-1], "_info") {
@@ -612,11 +581,11 @@ func appendCatalyst9800AliasesFromMetric(sm pmetric.ScopeMetrics, metric pmetric
 			}
 			if strings.HasSuffix(metric.Name(), "_info") {
 				if v, ok := dp.Attributes().Get("value"); ok {
-					appendCatalyst9800AliasesForValue(sm, module, aliasParts, v.AsString(), ts, addCommonAttrs(dp.Attributes()))
+					appendCatalyst9800AliasesForValueIndexed(builder, module, aliasParts, v.AsString(), ts, addCommonAttrs(dp.Attributes()))
 				}
 				continue
 			}
-			appendCatalyst9800AliasesForValue(sm, module, aliasParts, numberDatapointValue(dp), ts, addCommonAttrs(dp.Attributes()))
+			appendCatalyst9800AliasesForValueIndexed(builder, module, aliasParts, numberDatapointValue(dp), ts, addCommonAttrs(dp.Attributes()))
 		}
 	case pmetric.MetricTypeSum:
 		dps := metric.Sum().DataPoints()
@@ -625,7 +594,7 @@ func appendCatalyst9800AliasesFromMetric(sm pmetric.ScopeMetrics, metric pmetric
 			if dp.Timestamp() != 0 {
 				ts = dp.Timestamp()
 			}
-			appendCatalyst9800AliasesForValue(sm, module, aliasParts, numberDatapointValue(dp), ts, addCommonAttrs(dp.Attributes()))
+			appendCatalyst9800AliasesForValueIndexed(builder, module, aliasParts, numberDatapointValue(dp), ts, addCommonAttrs(dp.Attributes()))
 		}
 	}
 }

@@ -3,9 +3,17 @@
 
 package ciscoosreceiver
 
-import "strings"
+import (
+	"reflect"
+	"strings"
+)
 
 const redactedLogValue = "[REDACTED]"
+
+const (
+	maxLogRedactionDepth = 128
+	truncatedLogValue    = "[TRUNCATED]"
+)
 
 // isSensitiveLogKey deliberately favors preventing credential disclosure over
 // retaining fields whose names are ambiguous. Controller event payloads are
@@ -28,6 +36,11 @@ func isSensitiveLogKey(key string) bool {
 		"apikey",
 		"authorization",
 		"privatekey",
+		"accesskey",
+		"sharedkey",
+		"encryptionkey",
+		"signingkey",
+		"keymaterial",
 		"credential",
 		"bearer",
 		"cookie",
@@ -41,6 +54,13 @@ func isSensitiveLogKey(key string) bool {
 }
 
 func redactLogValue(value any) any {
+	return redactLogValueAtDepth(value, 0)
+}
+
+func redactLogValueAtDepth(value any, depth int) any {
+	if depth >= maxLogRedactionDepth {
+		return truncatedLogValue
+	}
 	switch typed := value.(type) {
 	case map[string]any:
 		redacted := make(map[string]any, len(typed))
@@ -48,7 +68,7 @@ func redactLogValue(value any) any {
 			if isSensitiveLogKey(key) {
 				redacted[key] = redactedLogValue
 			} else {
-				redacted[key] = redactLogValue(nested)
+				redacted[key] = redactLogValueAtDepth(nested, depth+1)
 			}
 		}
 		return redacted
@@ -65,13 +85,54 @@ func redactLogValue(value any) any {
 	case []any:
 		redacted := make([]any, len(typed))
 		for i, nested := range typed {
-			redacted[i] = redactLogValue(nested)
+			redacted[i] = redactLogValueAtDepth(nested, depth+1)
 		}
 		return redacted
 	case []map[string]any:
 		redacted := make([]any, len(typed))
 		for i, nested := range typed {
-			redacted[i] = redactLogValue(nested)
+			redacted[i] = redactLogValueAtDepth(nested, depth+1)
+		}
+		return redacted
+	}
+
+	// Vendor SDKs commonly define aliases such as type Object map[string]any.
+	// Reflection keeps those aliases on the same recursive redaction path
+	// instead of falling through to fmt.Sprint with their secrets intact.
+	reflected := reflect.ValueOf(value)
+	for reflected.IsValid() && (reflected.Kind() == reflect.Interface || reflected.Kind() == reflect.Pointer) {
+		depth++
+		if depth >= maxLogRedactionDepth {
+			return truncatedLogValue
+		}
+		if reflected.IsNil() {
+			return nil
+		}
+		reflected = reflected.Elem()
+	}
+	if !reflected.IsValid() {
+		return nil
+	}
+	switch reflected.Kind() {
+	case reflect.Map:
+		if reflected.Type().Key().Kind() != reflect.String {
+			return value
+		}
+		redacted := make(map[string]any, reflected.Len())
+		iterator := reflected.MapRange()
+		for iterator.Next() {
+			key := iterator.Key().String()
+			if isSensitiveLogKey(key) {
+				redacted[key] = redactedLogValue
+			} else {
+				redacted[key] = redactLogValueAtDepth(iterator.Value().Interface(), depth+1)
+			}
+		}
+		return redacted
+	case reflect.Slice, reflect.Array:
+		redacted := make([]any, reflected.Len())
+		for i := 0; i < reflected.Len(); i++ {
+			redacted[i] = redactLogValueAtDepth(reflected.Index(i).Interface(), depth+1)
 		}
 		return redacted
 	default:

@@ -37,10 +37,11 @@ func newTestDevice(name, host string) DeviceConfig {
 }
 
 type lifecycleTestReceiver struct {
-	name        string
-	events      *[]string
-	startErr    error
-	shutdownErr error
+	name               string
+	events             *[]string
+	startErr           error
+	shutdownErr        error
+	shutdownContextErr *error
 }
 
 func (r *lifecycleTestReceiver) Start(_ context.Context, _ component.Host) error {
@@ -48,8 +49,11 @@ func (r *lifecycleTestReceiver) Start(_ context.Context, _ component.Host) error
 	return r.startErr
 }
 
-func (r *lifecycleTestReceiver) Shutdown(_ context.Context) error {
+func (r *lifecycleTestReceiver) Shutdown(ctx context.Context) error {
 	*r.events = append(*r.events, r.name+".shutdown")
+	if r.shutdownContextErr != nil {
+		*r.shutdownContextErr = ctx.Err()
+	}
 	return r.shutdownErr
 }
 
@@ -451,4 +455,25 @@ func TestMultiLogsReceiverStartFailureRollsBackStartedReceivers(t *testing.T) {
 		"second.shutdown",
 		"first.shutdown",
 	}, events)
+}
+
+func TestMultiMetricsReceiverRollbackOutlivesCanceledStartContext(t *testing.T) {
+	startErr := errors.New("start failed")
+	events := []string{}
+	var shutdownContextErr error
+	first := &lifecycleTestReceiver{
+		name:               "first",
+		events:             &events,
+		shutdownContextErr: &shutdownContextErr,
+	}
+	failing := &lifecycleTestReceiver{name: "failing", events: &events, startErr: startErr}
+	receiver := &multiMetricsReceiver{receivers: []receiver.Metrics{first, failing}}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	err := receiver.Start(ctx, componenttest.NewNopHost())
+
+	require.ErrorIs(t, err, startErr)
+	assert.NoError(t, shutdownContextErr)
+	assert.Equal(t, []string{"first.start", "failing.start", "first.shutdown"}, events)
 }

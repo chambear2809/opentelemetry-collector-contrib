@@ -4,6 +4,8 @@
 package ciscoosreceiver
 
 import (
+	"encoding/json"
+	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/config/configgrpc"
+	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
@@ -95,7 +98,9 @@ func TestIOSXRGNMIDecoderScalarsJSONLeaflistsAndDeletes(t *testing.T) {
 	assert.Equal(t, []string{"192.0.2.10"}, stringSliceAttrValue(t, resourceAttrs, "host.ip"))
 	assert.Equal(t, "ios_xr", attrValue(t, resourceAttrs, "cisco.os.name"))
 	assert.Equal(t, "gnmi_dial_in", attrValue(t, resourceAttrs, "cisco.telemetry.transport"))
-	assert.Equal(t, "openconfig-interfaces", attrValue(t, resourceAttrs, "cisco.yang.module"))
+	_, hasResourceModule := resourceAttrs.Get("cisco.yang.module")
+	assert.False(t, hasResourceModule)
+	assert.Equal(t, "openconfig-interfaces", attrValue(t, dp.Attributes(), "cisco.yang.module"))
 	assert.Equal(t, int64(1), health.snapshot().compactGPBPayloads)
 }
 
@@ -164,7 +169,84 @@ func TestIOSXRGNMIDecoderInvalidJSONCountsDecodeErrors(t *testing.T) {
 	}, iosXRTelemetryTransportDialIn)
 
 	assert.Equal(t, int64(1), health.snapshot().decodeErrors)
+	assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
 	assertMetricExists(t, md, "cisco.iosxr.receiver.decode_errors")
+	assertMetricExists(t, md, "cisco.iosxr.receiver.dropped_datapoints")
+}
+
+func TestIOSXRGNMIDecoderBoundsAdversarialJSON(t *testing.T) {
+	t.Run("many leaves stop at datapoint budget", func(t *testing.T) {
+		health := &iosXRHealth{}
+		decoder := iosXRGNMIUpdateDecoder{
+			target:        IOSXRTargetConfig{Name: "xr-1"},
+			health:        health,
+			maxDatapoints: 5,
+		}
+		md := decoder.decodeNotification(&gnmi.Notification{
+			Prefix: mustParseIOSXRPath(t, "openconfig-system:system/state"),
+			Update: []*gnmi.Update{{
+				Path: mustParseIOSXRPath(t, "wide"),
+				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: manyLeafJSON(t, 1_000)}},
+			}},
+		}, iosXRTelemetryTransportDialIn)
+
+		assert.Equal(t, 5, directTelemetryDataPointCount(md))
+		assert.Positive(t, health.snapshot().droppedDatapoints)
+		assert.Zero(t, health.snapshot().decodeErrors)
+		assertMetricExists(t, md, "cisco.iosxr.receiver.dropped_datapoints")
+	})
+
+	t.Run("excessive depth is dropped before append", func(t *testing.T) {
+		health := &iosXRHealth{}
+		decoder := iosXRGNMIUpdateDecoder{
+			target: IOSXRTargetConfig{Name: "xr-1"},
+			health: health,
+			limits: directGNMIDecodeLimits{maxDepth: 4},
+		}
+		md := decoder.decodeNotification(&gnmi.Notification{
+			Prefix: mustParseIOSXRPath(t, "openconfig-system:system/state"),
+			Update: []*gnmi.Update{{
+				Path: mustParseIOSXRPath(t, "deep"),
+				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: deeplyNestedJSON(t, 32)}},
+			}},
+		}, iosXRTelemetryTransportDialIn)
+
+		assert.Zero(t, directTelemetryDataPointCount(md))
+		assert.Positive(t, health.snapshot().droppedDatapoints)
+		assert.Zero(t, health.snapshot().decodeErrors)
+	})
+}
+
+func TestIOSXRGNMIDecoderRecreationDoesNotAdvanceCounterEpoch(t *testing.T) {
+	sink := &consumertest.MetricsSink{}
+	tracked := newAbsoluteCounterTrackingConsumer(sink)
+	times := []time.Time{time.Unix(100, 0), time.Unix(200, 0)}
+	values := []uint64{100, 150}
+
+	for i := range times {
+		// recvLoop constructs a new decoder after every reconnect. Counter epoch
+		// state belongs to the receiver-level tracking consumer, not this decoder.
+		decoder := iosXRGNMIUpdateDecoder{
+			target: IOSXRTargetConfig{Name: "xr-1"},
+			health: &iosXRHealth{},
+		}
+		md := decoder.decodeNotification(&gnmi.Notification{
+			Timestamp: times[i].UnixNano(),
+			Prefix:    mustParseIOSXRPath(t, "openconfig-interfaces:interfaces/interface[name=GigabitEthernet0/0]/state"),
+			Update: []*gnmi.Update{{
+				Path: mustParseIOSXRPath(t, "counters/in-octets"),
+				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_UintVal{UintVal: values[i]}},
+			}},
+		}, iosXRTelemetryTransportDialIn)
+		require.NoError(t, tracked.ConsumeMetrics(t.Context(), md))
+	}
+
+	require.Len(t, sink.AllMetrics(), 2)
+	const metricName = "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets"
+	for _, md := range sink.AllMetrics() {
+		dp := mustFindIOSXRMetric(t, md, metricName).Sum().DataPoints().At(0)
+		assert.True(t, times[0].Equal(dp.StartTimestamp().AsTime()))
+	}
 }
 
 func mustParseIOSXRPath(t *testing.T, raw string) *gnmi.Path {
@@ -220,6 +302,48 @@ func metricCountNamed(md pmetric.Metrics, name string) int {
 		}
 	}
 	return count
+}
+
+func directTelemetryDataPointCount(md pmetric.Metrics) int {
+	if md.ResourceMetrics().Len() == 0 {
+		return 0
+	}
+	count := 0
+	sms := md.ResourceMetrics().At(0).ScopeMetrics()
+	for i := 0; i < sms.Len(); i++ {
+		metrics := sms.At(i).Metrics()
+		for j := 0; j < metrics.Len(); j++ {
+			switch metrics.At(j).Type() {
+			case pmetric.MetricTypeGauge:
+				count += metrics.At(j).Gauge().DataPoints().Len()
+			case pmetric.MetricTypeSum:
+				count += metrics.At(j).Sum().DataPoints().Len()
+			}
+		}
+	}
+	return count
+}
+
+func manyLeafJSON(t *testing.T, count int) []byte {
+	t.Helper()
+	value := make(map[string]any, count)
+	for i := 0; i < count; i++ {
+		value[fmt.Sprintf("field-%06d", i)] = i
+	}
+	raw, err := json.Marshal(value)
+	require.NoError(t, err)
+	return raw
+}
+
+func deeplyNestedJSON(t *testing.T, depth int) []byte {
+	t.Helper()
+	var value any = 1
+	for i := 0; i < depth; i++ {
+		value = map[string]any{"level": value}
+	}
+	raw, err := json.Marshal(value)
+	require.NoError(t, err)
+	return raw
 }
 
 func attrValue(t *testing.T, attrs pcommon.Map, key string) string {

@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -76,6 +77,7 @@ type aciMetricsReceiver struct {
 	clients  []*aci.Client
 	counters *counterStore
 	obs      *receiverhelper.ObsReport
+	success  scrapeSuccessState
 
 	startMu sync.Mutex
 	cancel  context.CancelFunc
@@ -241,11 +243,11 @@ func (r *aciMetricsReceiver) collect(ctx context.Context) {
 	if scrapeErr != nil {
 		r.settings.Logger.Error("ACI scrape failed", zap.Error(scrapeErr))
 	}
-	consumeErr := consumeMetricsIfPresent(ctx, r.consumer, md)
+	metricCount, consumeErr := consumeMetricsIfPresent(ctx, r.consumer, md)
 	if consumeErr != nil {
 		r.settings.Logger.Error("ACI metrics consumer failed", zap.Error(consumeErr))
 	}
-	endMetricsOp(r.obs, obsCtx, md, combineSignalErrors(scrapeErr, consumeErr))
+	endMetricsOp(r.obs, obsCtx, metricCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *aciMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
@@ -256,15 +258,21 @@ func (r *aciMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 	partial := false
 
 	for _, client := range r.clients {
-		builder.controllerResource(client.ControllerName(), client.Endpoint()).recordInt("aci.controller.up", "APIC controller API availability for this scrape.", "1", 1, nil)
 		for _, endpoint := range aciMetricEndpoints() {
 			if !aciGroupEnabled(r.config.ACI, endpoint.group) {
 				continue
 			}
 			objects, err := client.ListClass(ctx, endpoint.operation, endpoint.className, aciEndpointQuery(endpoint, r.config, now), aciGroupMaxResults(r.config.ACI, endpoint.group))
+			for _, obj := range filterACIObjects(objects, r.config.ACI.Targets) {
+				if !selector.allows(aciObjectIdentity(obj)) {
+					continue
+				}
+				builder.recordObject(client.ControllerName(), client.Endpoint(), endpoint, obj)
+			}
 			if err != nil {
 				if ctx.Err() != nil {
-					return builder.emit(), ctx.Err()
+					partial = true
+					return r.finishScrape(builder, now, partial), ctx.Err()
 				}
 				partial = true
 				r.settings.Logger.Warn("ACI endpoint failed", zap.String("controller", client.ControllerName()), zap.String("operation", endpoint.operation), zap.Error(err))
@@ -275,19 +283,38 @@ func (r *aciMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 				})
 				continue
 			}
-			for _, obj := range filterACIObjects(objects, r.config.ACI.Targets) {
-				if !selector.allows(aciObjectIdentity(obj)) {
-					continue
-				}
-				builder.recordObject(client.ControllerName(), client.Endpoint(), endpoint, obj)
-			}
 		}
 	}
+	return r.finishScrape(builder, now, partial), nil
+}
+
+func (r *aciMetricsReceiver) finishScrape(builder *aciMetricsBuilder, _ time.Time, partial bool) pmetric.Metrics {
+	r.statsMu.Lock()
+	stats := append([]aci.RequestStat(nil), r.stats...)
+	r.statsMu.Unlock()
 	r.recordAPIRequestMetrics(builder)
-	builder.globalResource().recordInt("aci.scrape.partial_success", "Whether one or more APIC endpoint families failed during the scrape.", "1", boolToInt(partial), nil)
-	builder.globalResource().recordInt("aci.scrape.last_success", "Unix timestamp of the most recent ACI scrape completion.", "s", now.Unix(), nil)
+
+	for _, client := range r.clients {
+		controllerStats := make([]aci.RequestStat, 0, len(stats))
+		for _, stat := range stats {
+			if stat.Controller == client.ControllerName() {
+				controllerStats = append(controllerStats, stat)
+			}
+		}
+		outcome := summarizeAPIOutcomes(controllerStats, func(stat aci.RequestStat) string { return stat.Outcome })
+		if availability, ok := outcome.availability(); ok {
+			builder.controllerResource(client.ControllerName(), client.Endpoint()).recordInt("aci.controller.up", "APIC controller API availability for this scrape.", "1", availability, nil)
+		}
+	}
+
+	overall := summarizeAPIOutcomes(stats, func(stat aci.RequestStat) string { return stat.Outcome })
+	rb := builder.globalResource()
+	rb.recordInt("aci.scrape.partial_success", "Whether one or more APIC endpoint families failed during the scrape.", "1", boolToInt(partial), nil)
+	if lastSuccess, ok := r.success.observe(time.Now(), !partial && overall.succeeded); ok {
+		rb.recordInt("aci.scrape.last_success", "Unix timestamp of the most recent fully successful ACI scrape.", "s", lastSuccess.Unix(), nil)
+	}
 	builder.flushCounts()
-	return builder.emit(), nil
+	return builder.emit()
 }
 
 func (r *aciMetricsReceiver) recordRequest(stat aci.RequestStat) {
@@ -306,6 +333,7 @@ func (r *aciMetricsReceiver) recordAPIRequestMetrics(builder *aciMetricsBuilder)
 	r.statsMu.Lock()
 	stats := append([]aci.RequestStat(nil), r.stats...)
 	r.statsMu.Unlock()
+	observations := make([]apiRequestObservation, 0, len(stats))
 	for _, stat := range stats {
 		attrs := map[string]string{
 			"aci.controller.name": stat.Controller,
@@ -317,13 +345,16 @@ func (r *aciMetricsReceiver) recordAPIRequestMetrics(builder *aciMetricsBuilder)
 		if stat.StatusCode > 0 {
 			attrs["http.response.status_code"] = strconv.Itoa(stat.StatusCode)
 		}
-		rb := builder.controllerResource(stat.Controller, "")
-		rb.recordDouble("aci.api.request.duration", "Duration of APIC API requests.", "s", stat.Duration.Seconds(), attrs)
-		if stat.Outcome != "success" {
-			rb.recordSum("aci.api.request.errors", "APIC API request errors.", "{error}", 1, attrs)
+		observations = append(observations, apiRequestObservation{resource: stat.Controller, attrs: attrs, durationSeconds: stat.Duration.Seconds(), failed: stat.Outcome != "success", rateLimited: stat.RateLimited})
+	}
+	for _, aggregate := range aggregateAPIRequestObservations(observations) {
+		rb := builder.controllerResource(aggregate.resource, "")
+		rb.recordDouble("aci.api.request.duration", "Average duration of APIC API request attempts in this scrape.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
+		if aggregate.errors > 0 {
+			rb.recordSum("aci.api.request.errors", "APIC API request errors.", "{error}", aggregate.errors, aggregate.attrs)
 		}
-		if stat.RateLimited {
-			rb.recordSum("aci.api.rate_limited", "APIC API requests that were rate limited.", "{request}", 1, attrs)
+		if aggregate.rateLimited > 0 {
+			rb.recordSum("aci.api.rate_limited", "APIC API requests that were rate limited.", "{request}", aggregate.rateLimited, aggregate.attrs)
 		}
 	}
 }
@@ -389,16 +420,17 @@ func (r *aciLogsReceiver) collect(ctx context.Context) {
 	if scrapeErr != nil {
 		r.settings.Logger.Error("ACI log scrape failed", zap.Error(scrapeErr))
 	}
-	consumeErr := consumeDeduplicatedLogs(ctx, r.consumer, r.seen, ld)
+	logCount, consumeErr := consumeDeduplicatedLogs(ctx, r.consumer, r.seen, ld)
 	if consumeErr != nil {
 		r.settings.Logger.Error("ACI logs consumer failed", zap.Error(consumeErr))
 	}
-	endLogsOp(r.obs, obsCtx, ld, combineSignalErrors(scrapeErr, consumeErr))
+	endLogsOp(r.obs, obsCtx, logCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *aciLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 	ld := plog.NewLogs()
 	now := time.Now()
+	var endpointErrors []error
 	selector := newDeviceSelectionMatcher(r.config.DeviceSelection)
 	for _, client := range r.clients {
 		for _, endpoint := range aciLogEndpoints() {
@@ -406,13 +438,6 @@ func (r *aciLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 				continue
 			}
 			objects, err := client.ListClass(ctx, endpoint.operation, endpoint.className, aciEndpointQuery(endpoint, r.config, now), aciGroupMaxResults(r.config.ACI, endpoint.group))
-			if err != nil {
-				if ctx.Err() != nil {
-					return ld, ctx.Err()
-				}
-				r.settings.Logger.Warn("ACI log endpoint failed", zap.String("controller", client.ControllerName()), zap.String("operation", endpoint.operation), zap.Error(err))
-				continue
-			}
 			for _, obj := range filterACIObjects(objects, r.config.ACI.Targets) {
 				if !selector.allows(aciObjectIdentity(obj)) {
 					continue
@@ -422,17 +447,23 @@ func (r *aciLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 				}
 				appendACILog(ld, client.ControllerName(), client.Endpoint(), endpoint, obj, now)
 			}
+			if err != nil {
+				if ctx.Err() != nil {
+					return ld, ctx.Err()
+				}
+				r.settings.Logger.Warn("ACI log endpoint failed", zap.String("controller", client.ControllerName()), zap.String("operation", endpoint.operation), zap.Error(err))
+				endpointErrors = append(endpointErrors, fmt.Errorf("ACI %s %s: %w", client.ControllerName(), endpoint.operation, err))
+				continue
+			}
 		}
 	}
 	r.expireSeen(now)
-	return ld, nil
+	return ld, errors.Join(endpointErrors...)
 }
 
 func (r *aciLogsReceiver) seenBefore(controller string, endpoint aciEndpoint, obj aci.Object, now time.Time) bool {
-	key := controller + ":" + endpoint.operation + ":" + aci.StableID(obj)
-	if key == controller+":"+endpoint.operation+":" {
-		key = controller + ":" + endpoint.operation + ":" + aci.FallbackKey(obj)
-	}
+	stableID := aci.String(obj, "id", "uuid", "eventId", "eventID", "recordId", "dn")
+	key := logDedupKey(controller+":"+endpoint.operation, stableID, obj)
 	return !r.seen.MarkPending(key, now)
 }
 
@@ -520,7 +551,7 @@ func (b *aciMetricsBuilder) objectResource(controllerName, controllerEndpoint st
 	attrs := rb.resource.Attributes()
 	putStr(attrs, "host.id", hostID)
 	putStr(attrs, "host.name", firstNonEmpty(aci.String(obj, "name", "hostName", "nodeName"), aciNodeName(nodeID), hostID))
-	putStr(attrs, "host.ip", aci.String(obj, "address", "oobMgmtAddr", "inbMgmtAddr", "ip"))
+	putIPAttrs(attrs, "host.ip", aci.String(obj, "address"), aci.String(obj, "oobMgmtAddr"), aci.String(obj, "inbMgmtAddr"), aci.String(obj, "ip"))
 	putStr(attrs, "host.type", firstNonEmpty(aci.String(obj, "model", "role", "type"), endpoint.objectType))
 	putStr(attrs, "hw.type", "network")
 	putStr(attrs, "os.name", "Cisco ACI")
@@ -570,8 +601,8 @@ func (b *aciMetricsBuilder) recordObject(controllerName, controllerEndpoint stri
 		"aci.severity":      severity,
 	})
 	rb.recordInt("aci.resource.info", "ACI managed object metadata.", "1", 1, attrs)
-	if status != "" {
-		rb.recordInt("aci.resource.status", "ACI managed object status encoded for troubleshooting.", "1", statusCode(status), attrs)
+	if code, ok := statusCode(status); ok {
+		rb.recordInt("aci.resource.status", "ACI managed object status encoded for troubleshooting.", "1", code, attrs)
 	}
 	b.addCount("aci.resource.count", attrs)
 	evidenceAttrs := compactAttrs(map[string]string{
@@ -606,11 +637,11 @@ func (b *aciMetricsBuilder) recordObject(controllerName, controllerEndpoint stri
 
 func (b *aciMetricsBuilder) recordFabricObject(rb *resourceMetricsBuilder, obj aci.Object, status string) {
 	if aci.String(obj, "serial") != "" || aci.String(obj, "nodeId", "id") != "" {
-		rb.recordInt("cisco.device.up", "ACI node availability reported by APIC.", "1", upStatus(status), nil)
+		if up, ok := upStatus(status); ok {
+			rb.recordInt("cisco.device.up", "ACI node availability reported by APIC.", "1", up, nil)
+		}
 	}
-	recordACINumeric(rb, obj, "cur", "aci.fabric.health", "ACI fabric, pod, node, or tenant health score.", "1", nil, 1)
-	recordACINumeric(rb, obj, "health", "aci.fabric.health", "ACI fabric, pod, node, or tenant health score.", "1", nil, 1)
-	recordACINumeric(rb, obj, "healthScore", "aci.fabric.health", "ACI fabric, pod, node, or tenant health score.", "1", nil, 1)
+	recordACIFirstNumeric(rb, obj, []string{"cur", "health", "healthScore"}, "aci.fabric.health", "ACI fabric, pod, node, or tenant health score.", "1", nil, 1)
 }
 
 func (b *aciMetricsBuilder) recordFaultObject(rb *resourceMetricsBuilder, obj aci.Object, severity string) {
@@ -628,15 +659,17 @@ func (b *aciMetricsBuilder) recordStatsObject(rb *resourceMetricsBuilder, obj ac
 	if ifName := interfaceNameFromACIDN(aci.String(obj, "dn", "id", "name")); ifName != "" {
 		attrs := interfaceAttrs(ifName, "", aci.String(obj, "descr"), aci.String(obj, "speed", "ethpmCfgSpeed"))
 		if status := aciObjectStatus(obj); status != "" {
-			rb.recordInt("system.network.interface.status", "ACI interface operational status.", "1", upStatus(status), attrs)
+			if up, ok := upStatus(status); ok {
+				rb.recordInt("system.network.interface.status", "ACI interface operational status.", "1", up, attrs)
+			}
 		}
-		recordACINumeric(rb, obj, "bytesRate", "cisco.interface.io.rate", "Interface traffic rate.", "By/s", attrs, 1)
-		recordACINumeric(rb, obj, "pktsRate", "system.network.packets", "Interface packet rate.", "{packet}/s", attrs, 1)
+		recordACINumeric(rb, obj, "bytesRate", "cisco.interface.io.rate", "Interface traffic rate.", "bit/s", attrs, 8)
+		recordACINumeric(rb, obj, "pktsRate", "cisco.interface.packet.rate", "Interface packet rate.", "{packet}/s", attrs, 1)
 		recordACINumeric(rb, obj, "dropRate", "cisco.interface.drop.rate", "Interface drop rate.", "{drop}/s", attrs, 1)
 	}
-	recordACINumeric(rb, obj, "userLast", "system.cpu.utilization", "CPU utilization reported by APIC.", "1", nil, 0.01)
+	recordACINumeric(rb, obj, "userLast", "system.cpu.utilization", "CPU utilization reported by APIC.", "1", map[string]string{"cpu.mode": "user"}, 0.01)
 	recordACINumeric(rb, obj, "kernelLast", "system.cpu.utilization", "CPU utilization reported by APIC.", "1", map[string]string{"cpu.mode": "kernel"}, 0.01)
-	recordACINumeric(rb, obj, "usedLast", "system.memory.utilization", "Memory utilization reported by APIC.", "1", nil, 0.01)
+	recordACINumeric(rb, obj, "usedLast", "system.memory.utilization", "Memory utilization reported by APIC.", "1", map[string]string{"system.memory.state": "used"}, 0.01)
 }
 
 func (b *aciMetricsBuilder) recordEndpointObject(rb *resourceMetricsBuilder, obj aci.Object) {
@@ -728,9 +761,9 @@ func appendACILog(ld plog.Logs, controllerName, controllerEndpoint string, endpo
 	record := sl.LogRecords().AppendEmpty()
 	record.SetObservedTimestamp(pcommon.NewTimestampFromTime(now))
 	if ts, ok := aciLogTimestamp(obj); ok {
-		record.SetTimestamp(pcommon.NewTimestampFromTime(ts))
-	} else {
-		record.SetTimestamp(pcommon.NewTimestampFromTime(now))
+		if timestamp, valid := pdataTimestampFromTime(ts); valid {
+			record.SetTimestamp(timestamp)
+		}
 	}
 	status := aciObjectStatus(obj)
 	severity := firstNonEmpty(aci.String(obj, "severity", "lc", "type"), status)
@@ -905,7 +938,20 @@ func recordACINumeric(rb *resourceMetricsBuilder, obj aci.Object, key, name, des
 	if multiplier != 0 && multiplier != 1 {
 		value *= multiplier
 	}
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return
+	}
 	rb.recordDouble(name, description, unit, value, attrs)
+}
+
+func recordACIFirstNumeric(rb *resourceMetricsBuilder, obj aci.Object, keys []string, name, description, unit string, attrs map[string]string, multiplier float64) {
+	for _, key := range keys {
+		if _, ok := aci.Float64(obj, key); !ok {
+			continue
+		}
+		recordACINumeric(rb, obj, key, name, description, unit, attrs, multiplier)
+		return
+	}
 }
 
 func aciLogTimestamp(obj aci.Object) (time.Time, bool) {

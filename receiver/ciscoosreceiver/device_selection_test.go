@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -88,4 +89,41 @@ func TestDeviceSelectionProviderIdentities(t *testing.T) {
 	assert.True(t, selector.allows(nexusDashboardObjectIdentity(map[string]any{"switchId": "switch-101"})))
 	assert.True(t, selector.allows(aciObjectIdentity(map[string]any{"serial": "ACI-SERIAL-1"})))
 	assert.False(t, selector.allows(merakiDeviceIdentity(deviceResource{Serial: "Q234-ABCD-9999"})))
+}
+
+func TestDeviceSelectionConfigValidate(t *testing.T) {
+	require.NoError(t, (DeviceSelectionConfig{
+		Include: DeviceSelectionMatchConfig{
+			HostNames: []string{" edge-1 "},
+			HostIPs:   []string{"192.0.2.10", "2001:db8::10"},
+		},
+	}).Validate())
+
+	tests := []struct {
+		name    string
+		config  DeviceSelectionConfig
+		wantErr string
+	}{
+		{
+			name:    "blank include",
+			config:  DeviceSelectionConfig{Include: DeviceSelectionMatchConfig{Serials: []string{" "}}},
+			wantErr: "include.serials[0] cannot be empty",
+		},
+		{
+			name:    "blank exclude",
+			config:  DeviceSelectionConfig{Exclude: DeviceSelectionMatchConfig{DeviceIDs: []string{"\t"}}},
+			wantErr: "exclude.device_ids[0] cannot be empty",
+		},
+		{
+			name:    "invalid include IP",
+			config:  DeviceSelectionConfig{Include: DeviceSelectionMatchConfig{HostIPs: []string{"192.0.2.999"}}},
+			wantErr: "include.host_ips[0] must be a valid IP address",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.ErrorContains(t, tt.config.Validate(), tt.wantErr)
+		})
+	}
 }

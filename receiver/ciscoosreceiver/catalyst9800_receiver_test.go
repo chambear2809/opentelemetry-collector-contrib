@@ -6,12 +6,14 @@ package ciscoosreceiver
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	gnmi "github.com/openconfig/gnmi/proto/gnmi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver/receivertest"
@@ -54,7 +56,9 @@ func TestBuildCatalyst9800SubscribeRequestModesAndGuardrails(t *testing.T) {
 		StreamMode:        iosXRStreamModeTargetDefined,
 		SampleInterval:    10 * time.Second,
 		HeartbeatInterval: 30 * time.Second,
-		SuppressRedundant: true,
+		SuppressRedundant: configoptional.Some(true),
+		UpdatesOnly:       configoptional.Some(true),
+		AllowAggregation:  configoptional.Some(true),
 	}, []catalyst9800PathDefinition{
 		{
 			ID:                "capwap",
@@ -72,6 +76,8 @@ func TestBuildCatalyst9800SubscribeRequestModesAndGuardrails(t *testing.T) {
 	require.NotNil(t, sub)
 	require.Len(t, sub.Subscription, 1)
 	assert.Equal(t, gnmi.Encoding_JSON_IETF, sub.Encoding)
+	assert.True(t, sub.UpdatesOnly)
+	assert.True(t, sub.AllowAggregation)
 	assert.Equal(t, gnmi.SubscriptionMode_SAMPLE, sub.Subscription[0].Mode)
 	assert.Equal(t, uint64((15 * time.Minute).Nanoseconds()), sub.Subscription[0].SampleInterval)
 	assert.Equal(t, uint64((30 * time.Second).Nanoseconds()), sub.Subscription[0].HeartbeatInterval)
@@ -143,6 +149,61 @@ func TestCatalyst9800RunTargetTracksLifecycleAndResetsRetryBackoff(t *testing.T)
 	assert.True(t, metricGaugeValueExists(sink.AllMetrics(), "cisco.catalyst9800.receiver.target.subscription.active", 0))
 }
 
+func TestCatalyst9800DialInReceiverPollJoinsReaderOnCancellation(t *testing.T) {
+	streamCtx, cancelStream := context.WithCancel(t.Context())
+	next := &releaseBlockingMetricsConsumer{started: make(chan struct{}), release: make(chan struct{})}
+	t.Cleanup(next.Release)
+	receiver := &catalyst9800DialInReceiver{
+		settings: receivertest.NewNopSettings(componentmetadata.Type),
+		config:   defaultCatalyst9800Config(),
+		consumer: next,
+		health:   &catalyst9800Health{},
+	}
+	target := Catalyst9800TargetConfig{
+		Name: "wlc-1",
+		Subscription: Catalyst9800SubscriptionConfig{
+			Mode:         iosXRSubscribeModePoll,
+			PollInterval: time.Hour,
+		},
+	}
+	stream := &singleUpdateGNMIClientStream{ctx: streamCtx, response: testDirectGNMIUpdate()}
+	result := make(chan error, 1)
+	go func() {
+		var progressed atomic.Bool
+		result <- receiver.recvPoll(streamCtx, cancelStream, target, stream, &progressed)
+	}()
+
+	select {
+	case <-next.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("gNMI POLL reader did not reach the downstream consumer")
+	}
+	cancelStream()
+	select {
+	case err := <-result:
+		t.Fatalf("recvPoll returned before its reader exited: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	next.Release()
+	select {
+	case err := <-result:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(5 * time.Second):
+		t.Fatal("recvPoll did not join its reader after downstream returned")
+	}
+}
+
+func TestCatalyst9800DialInReceiverPollPreservesSendError(t *testing.T) {
+	streamCtx, cancelStream := context.WithCancel(t.Context())
+	sendErr := errors.New("poll send failed")
+	stream := &singleUpdateGNMIClientStream{ctx: streamCtx, sendErr: sendErr, sendErrAt: 2}
+	target := Catalyst9800TargetConfig{Subscription: Catalyst9800SubscriptionConfig{Mode: iosXRSubscribeModePoll, PollInterval: time.Millisecond}}
+	var progressed atomic.Bool
+
+	err := (&catalyst9800DialInReceiver{}).recvPoll(streamCtx, cancelStream, target, stream, &progressed)
+	require.ErrorIs(t, err, sendErr)
+}
+
 func TestCatalyst9800NormalizingConsumerRenamesDialOutMetricsAndAddsAliases(t *testing.T) {
 	sink := &consumertest.MetricsSink{}
 	normalizer := newCatalyst9800NormalizingConsumer(
@@ -169,7 +230,10 @@ func TestCatalyst9800NormalizingConsumerRenamesDialOutMetricsAndAddsAliases(t *t
 	assert.Equal(t, "ios_xe", attrValue(t, resourceAttrs, "cisco.os.name"))
 	assert.Equal(t, "catalyst_9800", attrValue(t, resourceAttrs, "cisco.platform.family"))
 	assert.Equal(t, "mdt_grpc_dial_out", attrValue(t, resourceAttrs, "cisco.telemetry.transport"))
-	assert.Equal(t, "wireless-rrm-oper", attrValue(t, resourceAttrs, "cisco.yang.module"))
+	_, hasResourceModule := resourceAttrs.Get("cisco.yang.module")
+	assert.False(t, hasResourceModule)
+	metric := requireMetricByName(t, md, "cisco.catalyst9800.yang.wireless_rrm_oper.rrm_oper_data.rrm_measurement.cca_util_percentage")
+	assert.Equal(t, "wireless-rrm-oper", attrValue(t, metric.Gauge().DataPoints().At(0).Attributes(), "cisco.yang.module"))
 }
 
 func TestCatalyst9800NormalizingConsumerAllowsRootMetricPatternFilteringAfterAliases(t *testing.T) {

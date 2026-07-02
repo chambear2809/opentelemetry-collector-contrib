@@ -7,17 +7,17 @@ import (
 	"context"
 
 	"go.opentelemetry.io/collector/consumer"
-	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/collector/receiver/receiverhelper"
 )
 
-func consumeMetricsIfPresent(ctx context.Context, next consumer.Metrics, md pmetric.Metrics) error {
+func consumeMetricsIfPresent(ctx context.Context, next consumer.Metrics, md pmetric.Metrics) (int, error) {
+	count := md.DataPointCount()
 	if md.MetricCount() == 0 {
-		return nil
+		return count, nil
 	}
-	return next.ConsumeMetrics(ctx, md)
+	return count, next.ConsumeMetrics(ctx, md)
 }
 
 const obsReportFormat = "ciscoosreceiver"
@@ -47,11 +47,11 @@ func startMetricsOp(obs *receiverhelper.ObsReport, ctx context.Context) context.
 }
 
 // endMetricsOp closes the metrics operation started by startMetricsOp.
-func endMetricsOp(obs *receiverhelper.ObsReport, ctx context.Context, md pmetric.Metrics, err error) {
+func endMetricsOp(obs *receiverhelper.ObsReport, ctx context.Context, count int, err error) {
 	if obs == nil {
 		return
 	}
-	obs.EndMetricsOp(ctx, obsReportFormat, md.DataPointCount(), err)
+	obs.EndMetricsOp(ctx, obsReportFormat, count, err)
 }
 
 // startLogsOp begins an obsreport logs operation. Safe to call when obs is
@@ -64,9 +64,9 @@ func startLogsOp(obs *receiverhelper.ObsReport, ctx context.Context) context.Con
 }
 
 // endLogsOp closes the logs operation started by startLogsOp.
-func endLogsOp(obs *receiverhelper.ObsReport, ctx context.Context, ld plog.Logs, err error) {
+func endLogsOp(obs *receiverhelper.ObsReport, ctx context.Context, count int, err error) {
 	if obs == nil {
 		return
 	}
-	obs.EndLogsOp(ctx, obsReportFormat, ld.LogRecordCount(), err)
+	obs.EndLogsOp(ctx, obsReportFormat, count, err)
 }

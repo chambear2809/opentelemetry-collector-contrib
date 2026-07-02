@@ -5,7 +5,11 @@ package ciscoosreceiver
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -13,6 +17,8 @@ import (
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/plog"
 )
+
+const defaultLogDedupMaxEntries = 100_000
 
 // logDeduplicator provides transactional deduplication for polled event APIs.
 // Keys discovered by a scrape are committed only after the resulting batch is
@@ -23,17 +29,18 @@ type logDeduplicator struct {
 	pending map[string]struct{}
 }
 
-func consumeDeduplicatedLogs(ctx context.Context, next consumer.Logs, dedup *logDeduplicator, logs plog.Logs) error {
-	if logs.LogRecordCount() == 0 {
+func consumeDeduplicatedLogs(ctx context.Context, next consumer.Logs, dedup *logDeduplicator, logs plog.Logs) (int, error) {
+	count := logs.LogRecordCount()
+	if count == 0 {
 		dedup.RollbackBatch()
-		return nil
+		return count, nil
 	}
 	if err := next.ConsumeLogs(ctx, logs); err != nil {
 		dedup.RollbackBatch()
-		return err
+		return count, err
 	}
 	dedup.CommitBatch()
-	return nil
+	return count, nil
 }
 
 func combineSignalErrors(scrapeErr, consumeErr error) error {
@@ -110,7 +117,10 @@ func (d *logDeduplicator) Expire(cutoff time.Time, maxEntries int) {
 			delete(d.pending, key)
 		}
 	}
-	if maxEntries <= 0 || len(d.seen) <= maxEntries {
+	if maxEntries <= 0 {
+		maxEntries = defaultLogDedupMaxEntries
+	}
+	if len(d.seen) <= maxEntries {
 		return
 	}
 	type entry struct {
@@ -126,4 +136,30 @@ func (d *logDeduplicator) Expire(cutoff time.Time, maxEntries int) {
 		delete(d.seen, item.key)
 		delete(d.pending, item.key)
 	}
+}
+
+// logDedupKey returns a fixed-size key even when a controller supplies a very
+// large identifier or event body. Both the stable identifier and canonical
+// object content are included: exact replays are suppressed while a fault,
+// alarm, session, or workflow that keeps its ID but changes state is emitted.
+// The namespace remains part of the digest so identical vendor identifiers
+// from different endpoints cannot collide.
+func logDedupKey(namespace, stableID string, fallback any) string {
+	hash := sha256.New()
+	_, _ = hash.Write([]byte(namespace))
+	_, _ = hash.Write([]byte{0})
+	if stableID != "" {
+		_, _ = hash.Write([]byte("id:"))
+		_, _ = hash.Write([]byte(stableID))
+		_, _ = hash.Write([]byte{0})
+	}
+	if fallback != nil {
+		_, _ = hash.Write([]byte("object:"))
+		encoded, err := json.Marshal(fallback)
+		if err != nil {
+			encoded = []byte(fmt.Sprintf("%T:%v", fallback, fallback))
+		}
+		_, _ = hash.Write(encoded)
+	}
+	return hex.EncodeToString(hash.Sum(nil))
 }

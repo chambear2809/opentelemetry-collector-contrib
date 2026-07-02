@@ -433,7 +433,7 @@
         {
           "name": "ACI Interface Traffic And Drops",
           "description": "Value: correlates optional APIC interface traffic, packet, and drop-rate counters. Interpretation: traffic silence, packet spikes, or drops near affected nodes explain workload impact.",
-          "signalflow": "data('cisco.interface.io.rate', filter=filter('cisco.controller.type', 'apic')).mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Interface rate'); data('system.network.packets', filter=filter('cisco.controller.type', 'apic')).mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Packets'); data('cisco.interface.drop.rate', filter=filter('cisco.controller.type', 'apic')).mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Drops')",
+          "signalflow": "data('cisco.interface.io.rate', filter=filter('cisco.controller.type', 'apic')).mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Interface rate'); data('cisco.interface.packet.rate', filter=filter('cisco.controller.type', 'apic')).mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Packets/sec'); data('cisco.interface.drop.rate', filter=filter('cisco.controller.type', 'apic')).mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Drops')",
           "legend_dimension": "network.interface.name"
         },
         {

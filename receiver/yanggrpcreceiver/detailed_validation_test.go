@@ -209,13 +209,13 @@ func TestDetailedTelemetryValidation(t *testing.T) {
 							gauge := metric.Gauge()
 							dataPoints := gauge.DataPoints()
 							if dataPoints.Len() > 0 {
-								metricValue = dataPoints.At(0).DoubleValue()
+								metricValue = testNumberDataPointValue(dataPoints.At(0))
 							}
 						case pmetric.MetricTypeSum:
 							sum := metric.Sum()
 							dataPoints := sum.DataPoints()
 							if dataPoints.Len() > 0 {
-								metricValue = dataPoints.At(0).DoubleValue()
+								metricValue = testNumberDataPointValue(dataPoints.At(0))
 							}
 						}
 
@@ -315,8 +315,8 @@ func sendDetailedTelemetryData(endpoint, nodeID, interfaceName string, rxPkts, t
 		Subscription:        &pb.Telemetry_SubscriptionIdStr{SubscriptionIdStr: "interface-stats"},
 		EncodingPath:        "Cisco-IOS-XE-interfaces-oper:interfaces/interface/statistics",
 		CollectionId:        1,
-		CollectionStartTime: uint64(time.Now().UnixNano()),
-		MsgTimestamp:        uint64(time.Now().UnixNano()),
+		CollectionStartTime: uint64(time.Now().UnixMilli()),
+		MsgTimestamp:        uint64(time.Now().UnixMilli()),
 		DataGpbkv: []*pb.TelemetryField{
 			{
 				Name: "interface",

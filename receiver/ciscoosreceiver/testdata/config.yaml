@@ -166,8 +166,6 @@ ciscoos:
     page_size: 300
     max_retries: 2
     event_lookback: 9h
-    statistics_lookback: 20m
-    realtime_lookback: 3m
     auth:
       mode: "jwt"
       username: "admin"
@@ -206,8 +204,6 @@ ciscoos:
     page_size: 75
     max_retries: 2
     event_lookback: 8h
-    telemetry_lookback: 20m
-    service_discovery: true
     auth:
       mode: "api_key"
       username: "admin"
@@ -240,7 +236,6 @@ ciscoos:
     max_retries: 2
     insecure_skip_verify: true
     event_lookback: 10h
-    stats_lookback: 25m
     auth:
       username: "admin"
       password: "password"
@@ -361,7 +356,16 @@ ciscoos:
       enabled: true
       endpoint: "0.0.0.0:57501"
       transport: "tcp"
+      tls:
+        cert_file: "/etc/otelcol/catalyst9800-server.crt"
+        key_file: "/etc/otelcol/catalyst9800-server.key"
+        client_ca_file: "/etc/otelcol/cisco-client-ca.crt"
       allowed_clients: ["10.0.0.0/8"]
+      rate_limiting:
+        enabled: true
+        requests_per_second: 100
+        burst_size: 10
+        cleanup_interval: 1m
   ios_xr:
     enabled: true
     max_datapoints_per_batch: 12000
@@ -394,7 +398,16 @@ ciscoos:
       enabled: true
       endpoint: "0.0.0.0:57500"
       transport: "tcp"
+      tls:
+        cert_file: "/etc/otelcol/iosxr-server.crt"
+        key_file: "/etc/otelcol/iosxr-server.key"
+        client_ca_file: "/etc/otelcol/cisco-client-ca.crt"
       allowed_clients: ["10.0.0.0/8"]
+      rate_limiting:
+        enabled: true
+        requests_per_second: 100
+        burst_size: 10
+        cleanup_interval: 1m
   fmc:
     enabled: true
     controllers:
@@ -441,8 +454,6 @@ ciscoos:
     audit:
       enabled: true
       max_results: 100
-    security_events:
-      enabled: true
     estreamer:
       enabled: true
       targets:

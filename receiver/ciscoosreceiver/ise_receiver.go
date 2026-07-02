@@ -5,6 +5,7 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,10 +27,17 @@ import (
 	"go.opentelemetry.io/collector/receiver/receiverhelper"
 	"go.uber.org/zap"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/ise"
 )
 
 const iseScopeName = "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/ise"
+
+type iseDataConnectClient interface {
+	Close() error
+	Ping(context.Context) error
+	QueryView(context.Context, ise.DataConnectView) ([]ise.Object, error)
+}
 
 // classifyISEError buckets a client error returned by ISE into a small enum
 // suitable for use as a metric attribute. Free-form err.Error() text would blow
@@ -77,13 +85,16 @@ type iseMetricsReceiver struct {
 	consumer    consumer.Metrics
 	client      *ise.Client
 	pxGrid      *ise.PxGridClient
-	dataConnect *ise.DataConnectClient
+	dataConnect iseDataConnectClient
 	counters    *counterStore
 	obs         *receiverhelper.ObsReport
+	success     scrapeSuccessState
 
-	startMu sync.Mutex
-	cancel  context.CancelFunc
-	done    chan struct{}
+	startMu   sync.Mutex
+	cancel    context.CancelFunc
+	done      chan struct{}
+	closeOnce sync.Once
+	closeDone chan struct{}
 
 	statsMu sync.Mutex
 	stats   []ise.RequestStat
@@ -99,13 +110,15 @@ type iseLogsReceiver struct {
 	consumer    consumer.Logs
 	client      *ise.Client
 	pxGrid      *ise.PxGridClient
-	dataConnect *ise.DataConnectClient
+	dataConnect iseDataConnectClient
 	obs         *receiverhelper.ObsReport
 
-	startMu sync.Mutex
-	cancel  context.CancelFunc
-	done    chan struct{}
-	workers sync.WaitGroup
+	startMu   sync.Mutex
+	cancel    context.CancelFunc
+	done      chan struct{}
+	workers   sync.WaitGroup
+	closeOnce sync.Once
+	closeDone chan struct{}
 
 	seen *logDeduplicator
 }
@@ -149,6 +162,7 @@ func newISEMetricsReceiver(set receiver.Settings, conf *Config, consumer consume
 		counters:  newCounterStore(),
 		obs:       newPlatformObsReport(set, "http"),
 		done:      make(chan struct{}),
+		closeDone: make(chan struct{}),
 	}
 	client.OnRequest = r.recordRequest
 	if iseCfg.PxGrid.Enabled {
@@ -184,6 +198,7 @@ func newISELogsReceiver(set receiver.Settings, conf *Config, consumer consumer.L
 		client:    client,
 		obs:       newPlatformObsReport(set, "http"),
 		done:      make(chan struct{}),
+		closeDone: make(chan struct{}),
 		seen:      newLogDeduplicator(),
 	}
 	if iseCfg.PxGrid.Enabled {
@@ -224,17 +239,19 @@ func newISEPxGridClient(conf *Config, iseCfg ISEConfig) (*ise.PxGridClient, erro
 		endpoint = defaultISEPxGridEndpoint(iseCfg.Endpoint)
 	}
 	return ise.NewPxGridClient(ise.PxGridConfig{
-		Endpoint:           endpoint,
-		NodeName:           iseCfg.PxGrid.NodeName,
-		Password:           string(iseCfg.PxGrid.Password),
-		CertFile:           iseCfg.PxGrid.CertFile,
-		KeyFile:            iseCfg.PxGrid.KeyFile,
-		CAFile:             iseCfg.PxGrid.CAFile,
-		ServerName:         iseCfg.PxGrid.ServerName,
-		InsecureSkipVerify: iseCfg.PxGrid.InsecureSkipVerify || iseCfg.InsecureSkipVerify,
-		Timeout:            conf.Timeout,
-		UserAgent:          iseCfg.UserAgent,
-		MaxRetries:         iseCfg.MaxRetries,
+		Endpoint:              endpoint,
+		NodeName:              iseCfg.PxGrid.NodeName,
+		Password:              string(iseCfg.PxGrid.Password),
+		CertFile:              iseCfg.PxGrid.CertFile,
+		KeyFile:               iseCfg.PxGrid.KeyFile,
+		CAFile:                iseCfg.PxGrid.CAFile,
+		ServerName:            iseCfg.PxGrid.ServerName,
+		InsecureSkipVerify:    iseCfg.PxGrid.InsecureSkipVerify,
+		AllowedServiceHosts:   iseCfg.PxGrid.AllowedServiceHosts,
+		AllowedServiceOrigins: iseCfg.PxGrid.AllowedServiceOrigins,
+		Timeout:               conf.Timeout,
+		UserAgent:             iseCfg.UserAgent,
+		MaxRetries:            iseCfg.MaxRetries,
 	})
 }
 
@@ -286,22 +303,31 @@ func (r *iseMetricsReceiver) Shutdown(ctx context.Context) error {
 	r.startMu.Lock()
 	cancel := r.cancel
 	r.startMu.Unlock()
-	if cancel == nil {
-		r.close()
-		return nil
+	var workerDone <-chan struct{}
+	if cancel != nil {
+		cancel()
+		workerDone = r.done
 	}
-	cancel()
-	defer r.close()
-	select {
-	case <-r.done:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return waitForISEShutdown(ctx, workerDone, r.beginClose())
+}
+
+func (r *iseMetricsReceiver) beginClose() <-chan struct{} {
+	r.closeOnce.Do(func() {
+		if r.closeDone == nil {
+			r.closeDone = make(chan struct{})
+		}
+		go func() {
+			defer close(r.closeDone)
+			r.close()
+		}()
+	})
+	return r.closeDone
 }
 
 func (r *iseMetricsReceiver) close() {
-	r.client.CloseIdleConnections()
+	if r.client != nil {
+		r.client.CloseIdleConnections()
+	}
 	if r.pxGrid != nil {
 		r.pxGrid.CloseIdleConnections()
 	}
@@ -336,11 +362,11 @@ func (r *iseMetricsReceiver) collect(ctx context.Context) {
 	if scrapeErr != nil {
 		r.settings.Logger.Error("ISE scrape failed", zap.Error(scrapeErr))
 	}
-	consumeErr := consumeMetricsIfPresent(ctx, r.consumer, md)
+	metricCount, consumeErr := consumeMetricsIfPresent(ctx, r.consumer, md)
 	if consumeErr != nil {
 		r.settings.Logger.Error("ISE metrics consumer failed", zap.Error(consumeErr))
 	}
-	endMetricsOp(r.obs, obsCtx, md, combineSignalErrors(scrapeErr, consumeErr))
+	endMetricsOp(r.obs, obsCtx, metricCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *iseMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
@@ -352,7 +378,6 @@ func (r *iseMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 	targets := newISETargetMatcher(r.iseConfig.Targets)
 	partial := false
 
-	builder.controllerResource().recordInt("ise.controller.up", "Cisco ISE collector target is configured and scrape is running.", "1", 1, nil)
 	for _, spec := range iseMetricEndpoints() {
 		if !iseGroupEnabled(r.iseConfig, spec.group) {
 			continue
@@ -360,17 +385,20 @@ func (r *iseMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 		objects, err := r.fetchEndpoint(ctx, spec, now)
 		if err != nil {
 			if ctx.Err() != nil {
-				return builder.emit(), ctx.Err()
+				partial = true
+				return r.finishScrape(builder, now, partial, apiOutcomeSummary{}), ctx.Err()
 			}
 			partial = true
 			builder.recordEndpointError(iseEndpointSpecWithPath(r.config, spec, now), err)
 			r.settings.Logger.Warn("ISE endpoint failed", zap.String("operation", spec.operation), zap.Error(err))
-			continue
 		}
 		for _, obj := range objects {
 			if spec.operation == "openapi.webhooks" {
 				if r.scrapeWebhookDeliveries(ctx, builder, obj, targets, selector, now) {
 					partial = true
+					if ctx.Err() != nil {
+						return r.finishScrape(builder, now, partial, apiOutcomeSummary{}), ctx.Err()
+					}
 				}
 			}
 			if !iseObjectSelected(obj, targets, selector) {
@@ -379,18 +407,42 @@ func (r *iseMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 			builder.recordObject(spec, obj)
 		}
 	}
-	if r.scrapePxGrid(ctx, builder, targets, selector, now) {
+	pxGridPartial, pxGridOutcome := r.scrapePxGrid(ctx, builder, targets, selector, now)
+	if pxGridPartial {
 		partial = true
 	}
 	if r.scrapeDataConnect(ctx, builder, targets, selector) {
 		partial = true
 	}
+	return r.finishScrape(builder, now, partial, pxGridOutcome), nil
+}
+
+func (r *iseMetricsReceiver) finishScrape(builder *iseMetricsBuilder, _ time.Time, partial bool, pxGridOutcome apiOutcomeSummary) pmetric.Metrics {
+	r.statsMu.Lock()
+	stats := append([]ise.RequestStat(nil), r.stats...)
+	r.statsMu.Unlock()
+	r.queryMu.Lock()
+	queries := append([]ise.DataConnectStat(nil), r.queries...)
+	r.queryMu.Unlock()
 	r.recordAPIRequestMetrics(builder)
 	r.recordDataConnectMetrics(builder)
-	builder.controllerResource().recordInt("ise.scrape.partial_success", "Whether one or more ISE endpoint families failed or were skipped during the scrape.", "1", boolToInt(partial), nil)
-	builder.controllerResource().recordInt("ise.scrape.last_success", "Unix timestamp of the most recent ISE scrape completion.", "s", now.Unix(), nil)
+
+	outcome := summarizeAPIOutcomes(stats, func(stat ise.RequestStat) string { return stat.Outcome })
+	dataConnectOutcome := summarizeAPIOutcomes(queries, func(stat ise.DataConnectStat) string { return stat.Outcome })
+	outcome.attempted = outcome.attempted || dataConnectOutcome.attempted
+	outcome.succeeded = outcome.succeeded || dataConnectOutcome.succeeded
+	outcome.attempted = outcome.attempted || pxGridOutcome.attempted
+	outcome.succeeded = outcome.succeeded || pxGridOutcome.succeeded
+	rb := builder.controllerResource()
+	if availability, ok := outcome.availability(); ok {
+		rb.recordInt("ise.controller.up", "Cisco ISE API availability for this scrape.", "1", availability, nil)
+	}
+	rb.recordInt("ise.scrape.partial_success", "Whether one or more ISE endpoint families failed or were skipped during the scrape.", "1", boolToInt(partial), nil)
+	if lastSuccess, ok := r.success.observe(time.Now(), !partial && outcome.succeeded); ok {
+		rb.recordInt("ise.scrape.last_success", "Unix timestamp of the most recent fully successful ISE scrape.", "s", lastSuccess.Unix(), nil)
+	}
 	builder.flushCounts()
-	return builder.emit(), nil
+	return builder.emit()
 }
 
 func (r *iseMetricsReceiver) scrapeWebhookDeliveries(ctx context.Context, builder *iseMetricsBuilder, webhook ise.Object, targets iseTargetMatcher, selector deviceSelectionMatcher, now time.Time) bool {
@@ -402,14 +454,16 @@ func (r *iseMetricsReceiver) scrapeWebhookDeliveries(ctx context.Context, builde
 	if err != nil {
 		builder.recordEndpointError(iseEndpointSpecWithPath(r.config, spec, now), err)
 		r.settings.Logger.Warn("ISE webhook delivery endpoint failed", zap.String("operation", spec.operation), zap.Error(err))
-		return true
+		if ctx.Err() != nil {
+			return true
+		}
 	}
 	for _, obj := range objects {
 		if iseObjectSelected(obj, targets, selector) {
 			builder.recordObject(spec, obj)
 		}
 	}
-	return false
+	return err != nil
 }
 
 func (r *iseMetricsReceiver) fetchEndpoint(ctx context.Context, spec iseEndpointSpec, now time.Time) ([]ise.Object, error) {
@@ -445,28 +499,34 @@ func iseEndpointPath(conf *Config, spec iseEndpointSpec, now time.Time) string {
 	return spec.path
 }
 
-func (r *iseMetricsReceiver) scrapePxGrid(ctx context.Context, builder *iseMetricsBuilder, targets iseTargetMatcher, selector deviceSelectionMatcher, now time.Time) bool {
+func (r *iseMetricsReceiver) scrapePxGrid(ctx context.Context, builder *iseMetricsBuilder, targets iseTargetMatcher, selector deviceSelectionMatcher, now time.Time) (bool, apiOutcomeSummary) {
+	outcome := apiOutcomeSummary{}
 	if r.pxGrid == nil {
 		if r.iseConfig.PxGrid.Enabled {
 			builder.recordServiceSkipped("pxgrid", "pxgrid.client", "pxGrid client not configured")
-			return true
+			outcome.attempted = true
+			return true, outcome
 		}
-		return false
+		return false, outcome
 	}
 	partial := false
 	if r.iseConfig.PxGrid.AutoActivate {
+		outcome.attempted = true
 		obj, err := r.pxGrid.AccountActivate(ctx)
 		if err != nil {
 			partial = true
 			builder.recordServiceUnavailable("pxgrid", "pxgrid.account_activate", err)
 		} else {
+			outcome.succeeded = true
 			builder.recordObject(iseEndpointSpec{group: "pxgrid", operation: "pxgrid.account_activate", objectType: "pxgrid_account", mode: iseEndpointGet}, obj)
 		}
 	}
+	outcome.attempted = true
 	if obj, err := r.pxGrid.Version(ctx); err != nil {
 		partial = true
 		builder.recordServiceUnavailable("pxgrid", "pxgrid.version", err)
 	} else {
+		outcome.succeeded = true
 		builder.recordObject(iseEndpointSpec{group: "pxgrid", operation: "pxgrid.version", objectType: "pxgrid_version", mode: iseEndpointGet}, obj)
 	}
 	services := r.iseConfig.Targets.PxGridServices
@@ -474,6 +534,7 @@ func (r *iseMetricsReceiver) scrapePxGrid(ctx context.Context, builder *iseMetri
 		services = []string{"com.cisco.ise.session", "com.cisco.ise.radius", "com.cisco.ise.system", "com.cisco.ise.config.trustsec", "com.cisco.ise.endpoint"}
 	}
 	for _, service := range services {
+		outcome.attempted = true
 		objects, err := r.pxGrid.ServiceLookup(ctx, service)
 		spec := iseEndpointSpec{group: "pxgrid", operation: "pxgrid.service_lookup", objectType: "pxgrid_service", mode: iseEndpointList}
 		if err != nil {
@@ -481,6 +542,7 @@ func (r *iseMetricsReceiver) scrapePxGrid(ctx context.Context, builder *iseMetri
 			builder.recordServiceUnavailable("pxgrid", "pxgrid.service_lookup", err)
 			continue
 		}
+		outcome.succeeded = true
 		if len(objects) == 0 {
 			builder.recordServiceSkipped("pxgrid", "pxgrid.service_lookup", service)
 		}
@@ -491,12 +553,14 @@ func (r *iseMetricsReceiver) scrapePxGrid(ctx context.Context, builder *iseMetri
 		}
 	}
 	for _, query := range isePxGridRESTQueries(r.iseConfig, now) {
+		outcome.attempted = true
 		objects, err := r.pxGrid.PostObjects(ctx, query.operation, query.service, query.path, query.payload, r.iseConfig.PxGrid.MaxResults)
 		if err != nil {
 			partial = true
 			builder.recordServiceUnavailable("pxgrid", query.operation, err)
 			continue
 		}
+		outcome.succeeded = true
 		for _, obj := range objects {
 			if iseObjectSelected(obj, targets, selector) {
 				builder.recordObject(iseEndpointSpec{group: "pxgrid", operation: query.operation, objectType: query.objectType, mode: iseEndpointList}, obj)
@@ -508,7 +572,7 @@ func (r *iseMetricsReceiver) scrapePxGrid(ctx context.Context, builder *iseMetri
 			builder.controllerResource().recordInt("ise.pxgrid.subscription.status", "Configured Cisco ISE pxGrid subscription status.", "1", 1, map[string]string{"ise.pxgrid.topic": isePxGridSubscriptionLabel(subscription)})
 		}
 	}
-	return partial
+	return partial, outcome
 }
 
 func (r *iseMetricsReceiver) scrapeDataConnect(ctx context.Context, builder *iseMetricsBuilder, targets iseTargetMatcher, selector deviceSelectionMatcher) bool {
@@ -526,7 +590,9 @@ func (r *iseMetricsReceiver) scrapeDataConnect(ctx context.Context, builder *ise
 		if err != nil {
 			partial = true
 			builder.recordServiceUnavailable("data_connect", spec.operation, err)
-			continue
+			if ctx.Err() != nil {
+				return true
+			}
 		}
 		for _, obj := range objects {
 			if iseObjectSelected(obj, targets, selector) {
@@ -553,6 +619,7 @@ func (r *iseMetricsReceiver) recordAPIRequestMetrics(builder *iseMetricsBuilder)
 	r.statsMu.Lock()
 	stats := append([]ise.RequestStat(nil), r.stats...)
 	r.statsMu.Unlock()
+	observations := make([]apiRequestObservation, 0, len(stats))
 	for _, stat := range stats {
 		attrs := map[string]string{
 			"ise.api.operation":   stat.Operation,
@@ -563,12 +630,16 @@ func (r *iseMetricsReceiver) recordAPIRequestMetrics(builder *iseMetricsBuilder)
 		if stat.StatusCode > 0 {
 			attrs["http.response.status_code"] = strconv.Itoa(stat.StatusCode)
 		}
-		builder.controllerResource().recordDouble("ise.api.request.duration", "Duration of Cisco ISE API requests.", "s", stat.Duration.Seconds(), attrs)
-		if stat.Outcome != "success" {
-			builder.controllerResource().recordSum("ise.api.request.errors", "Cisco ISE API request errors.", "{error}", 1, attrs)
+		observations = append(observations, apiRequestObservation{attrs: attrs, durationSeconds: stat.Duration.Seconds(), failed: stat.Outcome != "success", rateLimited: stat.RateLimited})
+	}
+	for _, aggregate := range aggregateAPIRequestObservations(observations) {
+		rb := builder.controllerResource()
+		rb.recordDouble("ise.api.request.duration", "Average duration of Cisco ISE API request attempts in this scrape.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
+		if aggregate.errors > 0 {
+			rb.recordSum("ise.api.request.errors", "Cisco ISE API request errors.", "{error}", aggregate.errors, aggregate.attrs)
 		}
-		if stat.RateLimited {
-			builder.controllerResource().recordSum("ise.api.rate_limited", "Cisco ISE API requests that were rate limited.", "{request}", 1, attrs)
+		if aggregate.rateLimited > 0 {
+			rb.recordSum("ise.api.rate_limited", "Cisco ISE API requests that were rate limited.", "{request}", aggregate.rateLimited, aggregate.attrs)
 		}
 	}
 }
@@ -635,22 +706,31 @@ func (r *iseLogsReceiver) Shutdown(ctx context.Context) error {
 	r.startMu.Lock()
 	cancel := r.cancel
 	r.startMu.Unlock()
-	if cancel == nil {
-		r.close()
-		return nil
+	var workerDone <-chan struct{}
+	if cancel != nil {
+		cancel()
+		workerDone = r.done
 	}
-	cancel()
-	defer r.close()
-	select {
-	case <-r.done:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return waitForISEShutdown(ctx, workerDone, r.beginClose())
+}
+
+func (r *iseLogsReceiver) beginClose() <-chan struct{} {
+	r.closeOnce.Do(func() {
+		if r.closeDone == nil {
+			r.closeDone = make(chan struct{})
+		}
+		go func() {
+			defer close(r.closeDone)
+			r.close()
+		}()
+	})
+	return r.closeDone
 }
 
 func (r *iseLogsReceiver) close() {
-	r.client.CloseIdleConnections()
+	if r.client != nil {
+		r.client.CloseIdleConnections()
+	}
 	if r.pxGrid != nil {
 		r.pxGrid.CloseIdleConnections()
 	}
@@ -659,6 +739,20 @@ func (r *iseLogsReceiver) close() {
 			r.settings.Logger.Warn("ISE Data Connect close failed", zap.Error(err))
 		}
 	}
+}
+
+func waitForISEShutdown(ctx context.Context, workerDone, closeDone <-chan struct{}) error {
+	for workerDone != nil || closeDone != nil {
+		select {
+		case <-workerDone:
+			workerDone = nil
+		case <-closeDone:
+			closeDone = nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
 }
 
 func (r *iseLogsReceiver) run(ctx context.Context) {
@@ -684,16 +778,17 @@ func (r *iseLogsReceiver) collect(ctx context.Context) {
 	if scrapeErr != nil {
 		r.settings.Logger.Error("ISE log scrape failed", zap.Error(scrapeErr))
 	}
-	consumeErr := consumeDeduplicatedLogs(ctx, r.consumer, r.seen, ld)
+	logCount, consumeErr := consumeDeduplicatedLogs(ctx, r.consumer, r.seen, ld)
 	if consumeErr != nil {
 		r.settings.Logger.Error("ISE logs consumer failed", zap.Error(consumeErr))
 	}
-	endLogsOp(r.obs, obsCtx, ld, combineSignalErrors(scrapeErr, consumeErr))
+	endLogsOp(r.obs, obsCtx, logCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *iseLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 	now := time.Now()
 	builder := newISELogsBuilder(now, r.iseConfig.Endpoint)
+	var endpointErrors []error
 	selector := newISEDeviceSelectionMatcher(r.config)
 	targets := newISETargetMatcher(r.iseConfig.Targets)
 	r.pruneSeen(now)
@@ -707,13 +802,18 @@ func (r *iseLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 				return builder.emit(), ctx.Err()
 			}
 			r.settings.Logger.Warn("ISE log endpoint failed", zap.String("operation", spec.operation), zap.Error(err))
-			continue
+			endpointErrors = append(endpointErrors, fmt.Errorf("ISE %s: %w", spec.operation, err))
 		}
 		for _, obj := range objects {
 			if spec.operation == "openapi.webhooks" {
 				// Webhook definitions are configuration and may contain delivery
 				// credentials. Use them only to discover event deliveries.
-				r.scrapeWebhookDeliveryLogs(ctx, builder, obj, targets, selector, now)
+				if err := r.scrapeWebhookDeliveryLogs(ctx, builder, obj, targets, selector, now); err != nil {
+					if ctx.Err() != nil {
+						return builder.emit(), ctx.Err()
+					}
+					endpointErrors = append(endpointErrors, err)
+				}
 				continue
 			}
 			if !iseObjectSelected(obj, targets, selector) {
@@ -729,7 +829,11 @@ func (r *iseLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 		for _, query := range isePxGridLogQueries(r.iseConfig, now) {
 			objects, err := r.pxGrid.PostObjects(ctx, query.operation, query.service, query.path, query.payload, r.iseConfig.PxGrid.MaxResults)
 			if err != nil {
+				if ctx.Err() != nil {
+					return builder.emit(), ctx.Err()
+				}
 				r.settings.Logger.Warn("ISE pxGrid REST log endpoint failed", zap.String("operation", query.operation), zap.Error(err))
+				endpointErrors = append(endpointErrors, fmt.Errorf("ISE pxGrid %s: %w", query.operation, err))
 				continue
 			}
 			spec := iseEndpointSpec{group: "pxgrid", operation: query.operation, objectType: query.objectType}
@@ -743,9 +847,12 @@ func (r *iseLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 	if r.dataConnect != nil {
 		for _, view := range iseDataConnectLogViews(r.iseConfig) {
 			objects, err := r.dataConnect.QueryView(ctx, view)
+			if err != nil && ctx.Err() != nil {
+				return builder.emit(), ctx.Err()
+			}
 			if err != nil {
 				r.settings.Logger.Warn("ISE Data Connect log view failed", zap.String("view", view.Name), zap.Error(err))
-				continue
+				endpointErrors = append(endpointErrors, fmt.Errorf("ISE Data Connect %s: %w", view.Name, err))
 			}
 			spec := iseEndpointSpec{group: "data_connect", operation: "data_connect." + strings.ToLower(view.Name), objectType: "data_connect_" + strings.ToLower(view.Category)}
 			for _, obj := range objects {
@@ -755,24 +862,30 @@ func (r *iseLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 			}
 		}
 	}
-	return builder.emit(), nil
+	return builder.emit(), errors.Join(endpointErrors...)
 }
 
-func (r *iseLogsReceiver) scrapeWebhookDeliveryLogs(ctx context.Context, builder *iseLogsBuilder, webhook ise.Object, targets iseTargetMatcher, selector deviceSelectionMatcher, now time.Time) {
+func (r *iseLogsReceiver) scrapeWebhookDeliveryLogs(ctx context.Context, builder *iseLogsBuilder, webhook ise.Object, targets iseTargetMatcher, selector deviceSelectionMatcher, now time.Time) error {
 	spec, ok := iseWebhookDeliveriesSpec(webhook)
 	if !ok {
-		return
+		return nil
 	}
 	objects, err := r.fetchEndpoint(ctx, spec, now)
 	if err != nil {
 		r.settings.Logger.Warn("ISE webhook delivery log endpoint failed", zap.String("operation", spec.operation), zap.Error(err))
-		return
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 	}
 	for _, obj := range objects {
 		if iseObjectSelected(obj, targets, selector) && r.markSeen(spec, obj, now) {
 			builder.recordObject(spec, obj)
 		}
 	}
+	if err != nil {
+		return fmt.Errorf("ISE %s: %w", spec.operation, err)
+	}
+	return nil
 }
 
 func (r *iseLogsReceiver) fetchEndpoint(ctx context.Context, spec iseEndpointSpec, now time.Time) ([]ise.Object, error) {
@@ -801,8 +914,8 @@ func (r *iseLogsReceiver) runPxGridSubscription(ctx context.Context, subscriptio
 		if ctx.Err() != nil {
 			return
 		}
-		err := r.pxGrid.Subscribe(ctx, subscription, func(message ise.StompMessage) {
-			r.consumePxGridMessage(ctx, message)
+		err := r.pxGrid.Subscribe(ctx, subscription, func(message ise.StompMessage) error {
+			return r.consumePxGridMessage(ctx, message)
 		})
 		if ctx.Err() != nil {
 			return
@@ -818,7 +931,7 @@ func (r *iseLogsReceiver) runPxGridSubscription(ctx context.Context, subscriptio
 	}
 }
 
-func (r *iseLogsReceiver) consumePxGridMessage(ctx context.Context, message ise.StompMessage) {
+func (r *iseLogsReceiver) consumePxGridMessage(ctx context.Context, message ise.StompMessage) error {
 	now := time.Now()
 	builder := newISELogsBuilder(now, r.iseConfig.Endpoint)
 	obj := ise.Object{"topic": message.Topic, "message_id": message.MessageID}
@@ -827,27 +940,31 @@ func (r *iseLogsReceiver) consumePxGridMessage(ctx context.Context, message ise.
 	}
 	if len(message.Body) > 0 {
 		var body ise.Object
-		if err := json.Unmarshal(message.Body, &body); err == nil {
+		if err := httpclient.DecodeJSON(message.Body, &body); err == nil {
 			for key, value := range body {
 				obj[key] = value
 			}
 		} else {
-			obj["body"] = string(message.Body)
+			fingerprint := sha256.Sum256(message.Body)
+			obj["body_decode_error"] = true
+			obj["body_sha256"] = fmt.Sprintf("%x", fingerprint)
 		}
 	}
 	if !newISEDeviceSelectionMatcher(r.config).allows(iseObjectIdentity(obj)) {
-		return
+		return nil
 	}
 	spec := iseEndpointSpec{group: "pxgrid", operation: "pxgrid.subscription", objectType: "pxgrid_message"}
 	key := iseSeenKey(spec, obj)
 	if !r.seen.MarkCommitted(key, now) {
-		return
+		return nil
 	}
 	builder.recordObject(spec, obj)
 	if err := r.consumer.ConsumeLogs(ctx, builder.emit()); err != nil {
 		r.seen.Forget(key)
 		r.settings.Logger.Error("ISE pxGrid log consumer failed", zap.Error(err))
+		return err
 	}
+	return nil
 }
 
 func (r *iseLogsReceiver) markSeen(spec iseEndpointSpec, obj ise.Object, now time.Time) bool {
@@ -855,7 +972,7 @@ func (r *iseLogsReceiver) markSeen(spec iseEndpointSpec, obj ise.Object, now tim
 }
 
 func iseSeenKey(spec iseEndpointSpec, obj ise.Object) string {
-	return spec.operation + ":" + firstNonEmpty(ise.StableID(obj), mustJSON(redactISELogObject(obj)))
+	return logDedupKey(spec.operation, ise.StableID(obj), redactISELogObject(obj))
 }
 
 // iseSeenMaxEntries caps the dedup map so a deployment with large config
@@ -924,7 +1041,7 @@ func (b *iseMetricsBuilder) objectResource(spec iseEndpointSpec, obj ise.Object)
 	attrs := rb.resource.Attributes()
 	putStr(attrs, "host.id", "ise:"+spec.objectType+":"+id)
 	putStr(attrs, "host.name", firstNonEmpty(ise.String(obj, "name", "Name", "hostname", "nodeName", "network_device_name"), id))
-	putStr(attrs, "host.ip", ise.String(obj, "ipaddress", "ipAddress", "nas_ip_address", "device_ip_address"))
+	putIPAttrs(attrs, "host.ip", ise.String(obj, "ipaddress"), ise.String(obj, "ipAddress"), ise.String(obj, "nas_ip_address"), ise.String(obj, "device_ip_address"))
 	putStr(attrs, "hw.type", "network")
 	putStr(attrs, "os.name", "Cisco ISE")
 	putStr(attrs, "cisco.controller.type", "ise")
@@ -965,55 +1082,42 @@ func (b *iseMetricsBuilder) recordObject(spec iseEndpointSpec, obj ise.Object) {
 	rb := b.objectResource(spec, obj)
 	status := iseObjectStatus(obj)
 	attrs := iseMetricObjectAttrs(spec, obj)
-	rb.recordInt("ise.resource.info", "Cisco ISE resource inventory and evidence information.", "1", 1, attrs)
-	if status != "" {
-		rb.recordInt("ise.resource.status", "Cisco ISE resource status encoded as a numeric state.", "1", statusCode(status), withAttr(attrs, "ise.status", status))
-	}
+	evidenceAttrs := iseMetricEvidenceAttrs(spec, obj, attrs)
+	rb.recordInt("ise.resource.info", "Cisco ISE resource inventory and evidence information.", "1", 1, evidenceAttrs)
+	recordISEStatus(rb, "ise.resource.status", "Cisco ISE resource status encoded as a numeric state.", status, withAttr(evidenceAttrs, "ise.status", status))
 	switch spec.group {
 	case "deployment":
 		if spec.objectType == "deployment" || strings.Contains(spec.objectType, "node") {
 			b.addCount("ise.deployment.node.count", withAttr(attrs, "ise.status", status), 1)
-			if status != "" {
-				rb.recordInt("ise.deployment.node.status", "Cisco ISE deployment node or persona status.", "1", statusCode(status), withAttr(attrs, "ise.status", status))
-			}
+			recordISEStatus(rb, "ise.deployment.node.status", "Cisco ISE deployment node or persona status.", status, withAttr(attrs, "ise.status", status))
 		}
 	case "network_devices":
 		if spec.objectType == "network_device" {
 			b.addCount("ise.network_device.count", withAttr(attrs, "ise.status", status), 1)
-			if status != "" {
-				rb.recordInt("ise.network_device.status", "Cisco ISE network access device status.", "1", statusCode(status), withAttr(attrs, "ise.status", status))
-			}
+			recordISEStatus(rb, "ise.network_device.status", "Cisco ISE network access device status.", status, withAttr(attrs, "ise.status", status))
 		}
 	case "endpoints":
 		if spec.objectType == "endpoint" || spec.objectType == "rejected_endpoint" {
 			b.addCount("ise.endpoint.count", withAttr(attrs, "ise.status", status), 1)
-			if status != "" {
-				rb.recordInt("ise.endpoint.status", "Cisco ISE endpoint status.", "1", statusCode(status), withAttr(attrs, "ise.status", status))
-			}
+			recordISEStatus(rb, "ise.endpoint.status", "Cisco ISE endpoint status.", status, withAttr(attrs, "ise.status", status))
 		}
 	case "sessions":
-		b.recordSessionObject(rb, obj, attrs)
+		b.recordSessionObject(rb, obj, attrs, evidenceAttrs)
 	case "auth_failures":
-		b.recordAuthFailureObject(rb, obj, attrs)
+		b.recordAuthFailureObject(rb, obj, attrs, evidenceAttrs)
 	case "accounting":
 		b.addCount("ise.accounting.session.count", attrs, 1)
 	case "policy":
 		b.addCount("ise.policy.object.count", attrs, 1)
-		if status != "" {
-			rb.recordInt("ise.policy.status", "Cisco ISE policy object status.", "1", statusCode(status), withAttr(attrs, "ise.status", status))
-		}
+		recordISEStatus(rb, "ise.policy.status", "Cisco ISE policy object status.", status, withAttr(attrs, "ise.status", status))
 	case "posture":
 		b.addCount("ise.endpoint.posture.count", withAttr(attrs, "ise.posture.status", firstNonEmpty(status, ise.String(obj, "posture_status", "postureStatus"))), 1)
 	case "profiler":
 		b.addCount("ise.endpoint.profile.count", attrs, 1)
-		if status != "" {
-			rb.recordInt("ise.profiler.policy.status", "Cisco ISE profiler policy status.", "1", statusCode(status), withAttr(attrs, "ise.status", status))
-		}
+		recordISEStatus(rb, "ise.profiler.policy.status", "Cisco ISE profiler policy status.", status, withAttr(attrs, "ise.status", status))
 	case "trustsec":
 		b.addCount("ise.trustsec.resource.count", attrs, 1)
-		if status != "" {
-			rb.recordInt("ise.trustsec.resource.status", "Cisco ISE TrustSec resource status.", "1", statusCode(status), withAttr(attrs, "ise.status", status))
-		}
+		recordISEStatus(rb, "ise.trustsec.resource.status", "Cisco ISE TrustSec resource status.", status, withAttr(attrs, "ise.status", status))
 	case "alarms":
 		b.addCount("ise.alarm.count", withAttr(attrs, "ise.severity", firstNonEmpty(ise.String(obj, "severity", "Severity"), status)), 1)
 	case "certificates":
@@ -1023,9 +1127,7 @@ func (b *iseMetricsBuilder) recordObject(spec iseEndpointSpec, obj ise.Object) {
 		}
 	case "licensing":
 		b.addCount("ise.license.count", withAttr(attrs, "ise.status", status), 1)
-		if status != "" {
-			rb.recordInt("ise.license.status", "Cisco ISE license status.", "1", statusCode(status), withAttr(attrs, "ise.status", status))
-		}
+		recordISEStatus(rb, "ise.license.status", "Cisco ISE license status.", status, withAttr(attrs, "ise.status", status))
 	case "webhooks":
 		if spec.objectType == "webhook_delivery" {
 			b.addCount("ise.webhook.delivery.count", withAttr(attrs, "ise.status", status), 1)
@@ -1033,25 +1135,30 @@ func (b *iseMetricsBuilder) recordObject(spec iseEndpointSpec, obj ise.Object) {
 	case "pxgrid":
 		b.addCount("ise.pxgrid.message.count", attrs, 1)
 		if strings.Contains(spec.objectType, "service") || strings.Contains(spec.operation, "service") {
-			rb.recordInt("ise.pxgrid.service.status", "Cisco ISE pxGrid service lookup status.", "1", 1, attrs)
+			rb.recordInt("ise.pxgrid.service.status", "Cisco ISE pxGrid service lookup status.", "1", 1, evidenceAttrs)
 		}
 	case "data_connect":
 		b.addCount("ise.dataconnect.row.count", attrs, 1)
 	}
 }
 
-func (b *iseMetricsBuilder) recordSessionObject(rb *resourceMetricsBuilder, obj ise.Object, attrs map[string]string) {
+func (b *iseMetricsBuilder) recordSessionObject(rb *resourceMetricsBuilder, obj ise.Object, attrs, evidenceAttrs map[string]string) {
 	if count, ok := ise.Float64(obj, "count", "activeCount", "active_count", "total"); ok {
-		rb.recordDouble("ise.session.active.count", "Cisco ISE active session count.", "{session}", count, attrs)
+		rb.recordDouble("ise.session.active.count", "Cisco ISE active session count.", "{session}", count, evidenceAttrs)
 		return
 	}
 	b.addCount("ise.session.count", withAttr(attrs, "ise.posture.status", ise.String(obj, "posture_status", "postureStatus")), 1)
-	if posture := ise.String(obj, "posture_status", "postureStatus"); posture != "" {
-		rb.recordInt("ise.endpoint.posture.status", "Cisco ISE endpoint posture status.", "1", statusCode(posture), withAttr(attrs, "ise.posture.status", posture))
+	posture := ise.String(obj, "posture_status", "postureStatus")
+	recordISEStatus(rb, "ise.endpoint.posture.status", "Cisco ISE endpoint posture status.", posture, withAttr(evidenceAttrs, "ise.posture.status", posture))
+}
+
+func recordISEStatus(rb *resourceMetricsBuilder, name, description, value string, attrs map[string]string) {
+	if code, ok := statusCode(value); ok {
+		rb.recordInt(name, description, "1", code, attrs)
 	}
 }
 
-func (b *iseMetricsBuilder) recordAuthFailureObject(rb *resourceMetricsBuilder, obj ise.Object, attrs map[string]string) {
+func (b *iseMetricsBuilder) recordAuthFailureObject(rb *resourceMetricsBuilder, obj ise.Object, attrs, evidenceAttrs map[string]string) {
 	protocol := strings.ToLower(firstNonEmpty(ise.String(obj, "authentication_protocol", "authenticationProtocol", "protocol"), "radius"))
 	if strings.Contains(protocol, "tacacs") {
 		b.addCount("ise.tacacs.failure.count", attrs, 1)
@@ -1059,7 +1166,7 @@ func (b *iseMetricsBuilder) recordAuthFailureObject(rb *resourceMetricsBuilder, 
 	}
 	b.addCount("ise.radius.failure.count", attrs, 1)
 	if reason := ise.String(obj, "failure_reason", "failureReason", "cause"); reason != "" {
-		rb.recordInt("ise.auth.failure.reason.info", "Cisco ISE authentication failure reason evidence.", "1", 1, withAttr(attrs, "ise.failure.reason", reason))
+		rb.recordInt("ise.auth.failure.reason.info", "Cisco ISE authentication failure reason evidence.", "1", 1, withAttr(evidenceAttrs, "ise.failure.reason", reason))
 	}
 }
 
@@ -1136,9 +1243,10 @@ func (b *iseLogsBuilder) recordObject(spec iseEndpointSpec, obj ise.Object) {
 	sl := rl.ScopeLogs().AppendEmpty()
 	sl.Scope().SetName(iseScopeName)
 	record := sl.LogRecords().AppendEmpty()
-	record.SetTimestamp(b.now)
-	if sourceTime, ok := ise.Time(obj, "timestamp", "eventTimestamp", "createTime", "updateTime"); ok {
-		record.SetTimestamp(pcommon.NewTimestampFromTime(sourceTime))
+	if sourceTime, ok := ise.Time(obj, "timestamp", "eventTimestamp", "createTime", "updateTime", "LOGGED_AT", "LOGGED_TIME"); ok {
+		if timestamp, valid := pdataTimestampFromTime(sourceTime); valid {
+			record.SetTimestamp(timestamp)
+		}
 	}
 	record.SetObservedTimestamp(b.now)
 	record.Body().SetStr(mustJSON(redactISELogObject(obj)))
@@ -1531,14 +1639,6 @@ func isePxGridSubscriptions(subscriptions ISEPxGridSubscriptionConfig) []ise.PxG
 			AlternateTopicProperties: []string{"securityGroupAclTopic", "securityGroupVnVlanTopic"},
 		})
 	}
-	if subscriptions.SystemHealth {
-		// Cisco documents the System service REST operations but no standard
-		// streaming topic property. Keep the configured service visible, but let
-		// Subscribe fail explicitly rather than guessing a property or destination.
-		configured = append(configured, ise.PxGridSubscription{
-			Service: "com.cisco.ise.system",
-		})
-	}
 	return configured
 }
 
@@ -1793,6 +1893,29 @@ func iseMetricObjectAttrs(spec iseEndpointSpec, obj ise.Object) map[string]strin
 		delete(attrs, key)
 	}
 	return attrs
+}
+
+// iseMetricEvidenceAttrs keeps low-cardinality aggregate dimensions while
+// assigning each controller-level evidence row a stable, opaque identity.
+// Without this identity, multiple sessions or Data Connect rows can produce
+// indistinguishable datapoints with the same resource, metric, attributes, and
+// timestamp in a single OTLP batch.
+func iseMetricEvidenceAttrs(spec iseEndpointSpec, obj ise.Object, attrs map[string]string) map[string]string {
+	if !iseControllerResourceMetricGroup(spec.group) {
+		return attrs
+	}
+	evidenceAttrs := cloneAttrs(attrs)
+	stableID := ise.StableID(obj)
+	var fallback any
+	if stableID == "" {
+		fallback = obj
+	}
+	evidenceAttrs["ise.row.id"] = logDedupKey(
+		"ise.metric."+spec.group+"."+spec.operation+"."+spec.objectType,
+		stableID,
+		fallback,
+	)
+	return evidenceAttrs
 }
 
 func iseObjectStatus(obj ise.Object) string {

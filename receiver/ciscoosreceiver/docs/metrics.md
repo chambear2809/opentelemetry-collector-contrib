@@ -107,7 +107,7 @@ For most users, start with these metrics before enabling the larger troubleshoot
 | `cisco.catalyst9800.receiver.decode_errors` | Shows Catalyst 9800 gNMI/gRPC decode failures. |
 | `cisco.wlc.ap.join.status` | Shows whether APs are joined to the WLC. |
 | `cisco.wlc.rf.channel.utilization` | Shows wireless channel utilization for RF congestion views. |
-| `cisco.wlc.client.auth.failure` | Shows client exclusion/auth failure reasons. |
+| `cisco.wlc.client.auth.failure.reason.info` | Shows client exclusion/auth failure reasons. |
 | `cisco.iosxr.receiver.decode_errors` | Shows gNMI/MDT decode failures for IOS XR telemetry. |
 | `cisco.iosxr.receiver.unsupported_paths` | Shows configured IOS XR paths pruned or rejected by capabilities. |
 | `cisco.iosxr.receiver.reconnects` | Shows IOS XR gNMI reconnects. |
@@ -146,14 +146,17 @@ Meraki-specific gauges for cloud-only or windowed values.
 
 | Metric | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
-| `meraki.api.request.duration` | Gauge, double | `s` | Duration of each Dashboard API request by operation and outcome. | Detect slow API responses or endpoint families that need tuning. |
-| `meraki.api.request.errors` | Gauge, int | `{error}` | Dashboard API request failures. | Alert on broken credentials, endpoint failures, or repeated API errors. |
-| `meraki.api.request.rate_limited` | Gauge, int | `{request}` | Requests that received HTTP 429. | Confirm the receiver is encountering Dashboard API rate limits. |
+| `meraki.api.request.duration` | Gauge, double | `s` | Average duration of Dashboard API request attempts within the scrape for each matching request-attribute set. | Detect slow API responses or endpoint families that need tuning. |
+| `meraki.api.request.errors` | Sum, int, cumulative | `{error}` | Dashboard API request failures. | Alert on broken credentials, endpoint failures, or repeated API errors. |
+| `meraki.api.request.rate_limited` | Sum, int, cumulative | `{request}` | Requests that received HTTP 429. | Confirm the receiver is encountering Dashboard API rate limits. |
+| `meraki.controller.up` | Gauge, int | `1` | Whether at least one Dashboard API request for the organization succeeded in the current scrape. | Distinguish an API outage from partial endpoint coverage. |
+| `meraki.scrape.last_success` | Gauge, int | `s` | Unix timestamp of the most recent fully successful scrape for the organization. | Detect stale data without treating a partial scrape as fresh. |
 | `meraki.device.status` | Gauge, int | `1` | Dashboard device status code with the original status as an attribute. | Distinguish online, alerting, dormant, and offline devices. |
 | `meraki.uplink.status` | Gauge, int | `1` | WAN/uplink active state. | Alert on failed appliance uplinks. |
 | `meraki.uplink.loss` | Gauge, double | `%` | Latest Dashboard uplink packet-loss sample. | Detect WAN degradation before a full outage. |
 | `meraki.uplink.latency` | Gauge, double | `ms` | Latest Dashboard uplink latency sample. | Track WAN performance and ISP issues. |
 | `meraki.switch.port.usage` | Gauge, double | `KBy` | Windowed switch port usage. | See recent port usage without treating it as a cumulative counter. |
+| `meraki.switch.port.alert.active` | Gauge, int | `1` | Current port warning or error state by severity and reason. | Alert on persistent port faults without incrementing a synthetic counter on every poll. |
 | `meraki.wireless.client.count` | Gauge, int | `{client}` | Wireless client counts by status. | Monitor AP load and client connectivity. |
 | `meraki.wireless.channel_utilization` | Gauge, double | `%` | Wi-Fi, non-Wi-Fi, and total channel utilization by band. | Find RF congestion. |
 | `meraki.wireless.packet.loss_percentage` | Gauge, double | `%` | Wireless packet loss percentage by direction. | Detect poor wireless quality. |
@@ -176,8 +179,8 @@ fields such as descriptions, affected object names, failure reasons, and audit p
 
 | Metric | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
-| `intersight.api.request.duration` | Gauge, double | `s` | Duration of each Intersight API request by operation and outcome. | Detect slow API responses, permission gaps, or endpoint families that need tuning. |
-| `intersight.api.request.errors` | Gauge, int | `{error}` | Intersight API request failures. | Alert on broken credentials, signing failures, endpoint errors, or repeated API failures. |
+| `intersight.api.request.duration` | Gauge, double | `s` | Average duration of Intersight API request attempts within the scrape for each matching request-attribute set. | Detect slow API responses, permission gaps, or endpoint families that need tuning. |
+| `intersight.api.request.errors` | Sum, int, cumulative | `{error}` | Intersight API request failures. | Alert on broken credentials, signing failures, endpoint errors, or repeated API failures. |
 | `intersight.api.rate_limited` | Gauge, int | `{request}` | Requests that received HTTP 429. | Confirm the receiver is hitting Intersight rate limits. |
 | `intersight.scrape.partial_success` | Gauge, int | `1` | Whether one or more Intersight endpoint families failed during a scrape. | Keep dashboards honest when part of the API surface is unavailable. |
 | `intersight.scrape.last_success` | Gauge, int | `s` | Unix timestamp of the most recent completed Intersight scrape. | Detect stale Intersight data. |
@@ -192,7 +195,7 @@ fields such as descriptions, affected object names, failure reasons, and audit p
 | `intersight.task.status` | Gauge, int | `1` | Workflow task execution status. | Find the specific failed step behind a workflow problem. |
 | `intersight.techsupport.status` | Gauge, int | `1` | Tech-support collection/upload status. | Track evidence bundle creation for support cases. |
 | `intersight.audit.record.count` | Gauge, int | `1` | Recent audit/config-change records by user. | Correlate configuration changes with incidents. |
-| `intersight.firmware.bundle.status` | Gauge, int | `1` | Encoded firmware bundle/version state. | Find firmware drift or unknown bundle state. |
+| `intersight.firmware.bundle.info` | Gauge, int | `1` | Firmware bundle identity with the version in `intersight.firmware.version`. | Find firmware drift without encoding arbitrary version strings as status codes. |
 | `intersight.target.connection_status` | Gauge, int | `1` | Target connection state reported by Intersight. | Detect disconnected targets and device connector issues. |
 | `intersight.compute.available_memory` | Gauge, int | `MBy` | Available server memory reported by Intersight. | Spot capacity constraints on managed compute. |
 | `intersight.compute.thread.count` | Gauge, int | `{thread}` | CPU thread count reported by Intersight. | Inventory compute capacity. |
@@ -275,8 +278,8 @@ without turning every endpoint into a high-cardinality metric series.
 
 | Metric | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
-| `catalyst_center.api.request.duration` | Gauge, double | `s` | Duration of each Catalyst Center API request by operation and outcome. | Detect slow Assurance APIs, auth problems, and endpoint failures. |
-| `catalyst_center.api.request.errors` | Gauge, int | `{error}` | Catalyst Center API request failures. | Alert on broken credentials, permission gaps, rate limits, or repeated API failures. |
+| `catalyst_center.api.request.duration` | Gauge, double | `s` | Average duration of Catalyst Center API request attempts within the scrape for each matching request-attribute set. | Detect slow Assurance APIs, auth problems, and endpoint failures. |
+| `catalyst_center.api.request.errors` | Sum, int, cumulative | `{error}` | Catalyst Center API request failures. | Alert on broken credentials, permission gaps, rate limits, or repeated API failures. |
 | `catalyst_center.api.rate_limited` | Gauge, int | `{request}` | Requests that received HTTP 429. | Confirm polling pressure against Catalyst Center. |
 | `catalyst_center.scrape.partial_success` | Gauge, int | `1` | Whether one or more Catalyst Center endpoint families failed during a scrape. | Keep dashboards honest when only part of Assurance data was collected. |
 | `catalyst_center.scrape.last_success` | Gauge, int | `s` | Unix timestamp of the most recent completed Catalyst Center scrape. | Detect stale Catalyst Center data. |
@@ -324,8 +327,8 @@ Realtime and high-cardinality feature areas are opt-in and report `sdwan.service
 
 | Metric | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
-| `sdwan.api.request.duration` | Gauge, double | `s` | Duration of each SD-WAN Manager API request by operation and outcome. | Detect slow Manager APIs before trusting SD-WAN telemetry. |
-| `sdwan.api.request.errors` | Gauge, int | `{error}` | API, auth, permission, timeout, or decode failures. | Alert on broken credentials, role gaps, endpoint failures, or rate limits. |
+| `sdwan.api.request.duration` | Gauge, double | `s` | Average duration of SD-WAN Manager API request attempts within the scrape for each matching request-attribute set. | Detect slow Manager APIs before trusting SD-WAN telemetry. |
+| `sdwan.api.request.errors` | Sum, int, cumulative | `{error}` | API, auth, permission, timeout, or decode failures. | Alert on broken credentials, role gaps, endpoint failures, or rate limits. |
 | `sdwan.api.rate_limited` | Gauge, int | `{request}` | Requests that received HTTP 429. | Confirm the receiver is hitting SD-WAN Manager rate limits. |
 | `sdwan.scrape.partial_success` | Gauge, int | `1` | Whether one or more SD-WAN endpoint families failed or were skipped. | Keep dashboards honest when only part of SD-WAN data was collected. |
 | `sdwan.scrape.last_success` | Gauge, int | `s` | Unix timestamp of the most recent completed SD-WAN scrape. | Detect stale SD-WAN data. |
@@ -375,8 +378,8 @@ management-plane coverage gaps.
 
 | Metric | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
-| `nexus_dashboard.api.request.duration` | Gauge, double | `s` | Duration of each Nexus Dashboard API request by operation and outcome. | Detect slow or failing controller APIs before trusting fabric data. |
-| `nexus_dashboard.api.request.errors` | Gauge, int | `{error}` | Nexus Dashboard API request failures. | Alert on broken credentials, permission gaps, rate limits, or app/API failures. |
+| `nexus_dashboard.api.request.duration` | Gauge, double | `s` | Average duration of Nexus Dashboard API request attempts within the scrape for each matching request-attribute set. | Detect slow or failing controller APIs before trusting fabric data. |
+| `nexus_dashboard.api.request.errors` | Sum, int, cumulative | `{error}` | Nexus Dashboard API request failures. | Alert on broken credentials, permission gaps, rate limits, or app/API failures. |
 | `nexus_dashboard.api.rate_limited` | Gauge, int | `{request}` | Requests that received HTTP 429. | Detect polling pressure against the controller. |
 | `nexus_dashboard.scrape.partial_success` | Gauge, int | `1` | Whether one or more endpoint families failed or were skipped. | Keep dashboards honest when an ND service is absent or a target filter is missing. |
 | `nexus_dashboard.service.unavailable` | Gauge, int | `1` | ND service endpoint unavailable, disabled, unauthorized, or not installed. | Explain why Insights, NDFC, NDO, or Data Broker charts are empty. |
@@ -411,8 +414,8 @@ symptoms, and audit/event rollups; high-cardinality fault, audit, and event evid
 
 | Metric | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
-| `aci.api.request.duration` | Gauge, double | `s` | Duration of each APIC API request by controller, operation, and outcome. | Detect slow APICs, auth problems, and API endpoint failures. |
-| `aci.api.request.errors` | Gauge, int | `{error}` | APIC API request failures. | Alert on broken credentials, permission gaps, or repeated APIC errors. |
+| `aci.api.request.duration` | Gauge, double | `s` | Average duration of APIC API request attempts within the scrape for each matching request-attribute set. | Detect slow APICs, auth problems, and API endpoint failures. |
+| `aci.api.request.errors` | Sum, int, cumulative | `{error}` | APIC API request failures. | Alert on broken credentials, permission gaps, or repeated APIC errors. |
 | `aci.controller.up` | Gauge, int | `1` | Whether an APIC controller API was reachable for the scrape. | Separate APIC reachability issues from fabric faults. |
 | `aci.scrape.partial_success` | Gauge, int | `1` | Whether one or more APIC endpoint families failed during the scrape. | Keep dashboards honest when only part of APIC data was collected. |
 | `aci.resource.info` | Gauge, int | `1` | Bounded metadata for APIC managed objects. | Build inventory and object drilldowns. |
@@ -443,8 +446,8 @@ wireless, SD-WAN, Nexus, ACI, and firewall telemetry. REST-safe APIs default on;
 
 | Metric | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
-| `ise.api.request.duration` | Gauge, double | `s` | Duration of ISE REST/OpenAPI/ERS/MnT and pxGrid REST requests by operation and outcome. | Detect slow or failing ISE APIs before trusting identity data. |
-| `ise.api.request.errors` | Gauge, int | `{error}` | ISE API request failures. | Alert on broken credentials, disabled API services, permission gaps, and endpoint errors. |
+| `ise.api.request.duration` | Gauge, double | `s` | Average duration of ISE REST/OpenAPI/ERS/MnT and pxGrid REST request attempts within the scrape for each matching request-attribute set. | Detect slow or failing ISE APIs before trusting identity data. |
+| `ise.api.request.errors` | Sum, int, cumulative | `{error}` | ISE API request failures. | Alert on broken credentials, disabled API services, permission gaps, and endpoint errors. |
 | `ise.api.rate_limited` | Gauge, int | `{request}` | ISE API requests that were rate limited. | Tune collection interval, page size, and enabled groups. |
 | `ise.api.endpoint.error` | Gauge, int | `{error}` | Endpoint-family scrape failures. | Show exactly which ISE service failed while preserving partial data. |
 | `ise.scrape.partial_success` | Gauge, int | `1` | Whether one or more ISE endpoint families failed or were skipped. | Keep dashboards honest when only part of ISE data was collected. |
@@ -491,8 +494,8 @@ records, not bounded scrape metrics.
 
 | Metric | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
-| `fmc.api.request.duration` | Gauge, double | `s` | Duration of each FMC REST request by controller, operation, and outcome. | Detect slow FMC APIs, endpoint failures, and auth/token pressure. |
-| `fmc.api.request.errors` | Gauge, int | `{error}` | FMC REST request failures. | Alert on broken credentials, permission gaps, missing endpoint families, or repeated FMC errors. |
+| `fmc.api.request.duration` | Gauge, double | `s` | Average duration of FMC REST request attempts within the scrape for each matching request-attribute set. | Detect slow FMC APIs, endpoint failures, and auth/token pressure. |
+| `fmc.api.request.errors` | Sum, int, cumulative | `{error}` | FMC REST request failures. | Alert on broken credentials, permission gaps, missing endpoint families, or repeated FMC errors. |
 | `fmc.api.endpoint.error` | Gauge, int | `{error}` | FMC endpoint-family scrape failures. | Show exactly which REST family failed while preserving partial data from other groups. |
 | `fmc.api.rate_limited` | Gauge, int | `{request}` | FMC REST requests that were rate limited. | Tune page size, collection interval, and enabled groups before data goes stale. |
 | `fmc.manager.up` | Gauge, int | `1` | Whether the FMC REST API was reachable for the scrape. | Separate controller reachability issues from firewall health issues. |
@@ -523,11 +526,12 @@ gRPC KV-GPB inputs.
 
 | Metric Pattern | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
-| `cisco.catalyst9800.yang.<module>.<path>.<leaf>` | Gauge or sum, double | model-defined | Numeric YANG leaves from Cisco IOS XE wireless/controller models. Known counters are cumulative sums; other values are gauges. | Keep full C9800 model coverage without waiting for a custom parser per leaf. |
+| `cisco.catalyst9800.yang.<module>.<path>.<leaf>` | Gauge or sum, int or double | model-defined | Numeric YANG leaves from Cisco IOS XE wireless/controller models. Integral values are preserved as int64 datapoints when representable; other numeric values use double datapoints. Known counters are cumulative sums; other values are gauges. | Keep full C9800 model coverage without waiting for a custom parser per leaf. |
 | `cisco.catalyst9800.yang.<module>.<path>.<leaf>_info` | Gauge, int | `1` | String, enum, identity, and list leaves with the original value on the `value` attribute. | Preserve AP, client, HA, CAPWAP, and mobility states as bounded info metrics. |
 | `cisco.wlc.ap.join.status` | Gauge, double | `1` | Whether an AP is joined. | Alert on APs that leave the controller. |
-| `cisco.wlc.ap.join.failure` | Gauge or sum | `{failure}` | AP join failure events or current failure reason. | Find certificate, discovery, authorization, or CAPWAP join issues. |
-| `cisco.wlc.ap.disconnect` | Gauge or sum | `{disconnect}` | AP disconnect counters or disconnect reasons. | Detect unstable AP/WLC connectivity. |
+| `cisco.wlc.ap.join.failure.reason.info` | Gauge | `1` | Current AP join failure reason evidence. | Find certificate, discovery, authorization, or CAPWAP join issues. |
+| `cisco.wlc.ap.disconnect` | Sum | `{disconnect}` | AP disconnect counter. | Detect unstable AP/WLC connectivity. |
+| `cisco.wlc.ap.disconnect.reason.info` | Gauge | `1` | Current AP disconnect reason evidence. | Explain unstable AP/WLC connectivity. |
 | `cisco.wlc.ap.capwap.state` | Gauge | `1` | CAPWAP/AP operational state with state text as an attribute. | Confirm AP control tunnels are operational. |
 | `cisco.wlc.rf.channel.utilization` | Gauge, double | `%` | RF/channel utilization by utilization type. | Find congested or noisy channels. |
 | `cisco.wlc.rf.noise_floor` | Gauge, double | `dBm` | RF noise floor. | Detect interference and RF health problems. |
@@ -538,8 +542,9 @@ gRPC KV-GPB inputs.
 | `cisco.wlc.ssid.network.io` | Sum, double | `By` | SSID traffic by direction. | Trend wireless traffic volume by WLAN. |
 | `cisco.wlc.ssid.retry.count` | Sum, double | `{retry}` | SSID retry counters. | Detect poor airtime quality or client retries. |
 | `cisco.wlc.client.connection.state` | Gauge | `1` | Client connection state. | Detect clients stuck before run/connected state. |
-| `cisco.wlc.client.auth.failure` | Gauge | `1` | Client auth/exclusion failure reason. | Troubleshoot RADIUS, policy, and exclusion problems. |
-| `cisco.wlc.client.roam.count` | Sum or gauge | `{roam}` | Client or mobility roam counters/types. | Track roaming activity and unexpected churn. |
+| `cisco.wlc.client.auth.failure.reason.info` | Gauge | `1` | Client auth/exclusion failure reason. | Troubleshoot RADIUS, policy, and exclusion problems. |
+| `cisco.wlc.client.roam.count` | Sum | `{roam}` | Client or mobility roam counter. | Track roaming activity and unexpected churn. |
+| `cisco.wlc.client.roam.type.info` | Gauge | `1` | Current client roam type evidence. | Explain roaming behavior without treating enum values as counters. |
 | `cisco.wlc.client.roam.failure.count` | Sum, double | `{failure}` | Client roam failure counters. | Detect roaming issues across APs or mobility peers. |
 | `cisco.wlc.client.wireless.rssi` | Gauge, double | `dBm` | Client RSSI. | Find weak-signal clients. |
 | `cisco.wlc.client.wireless.snr` | Gauge, double | `dB` | Client SNR. | Diagnose poor client RF quality. |
@@ -568,7 +573,7 @@ every leaf.
 
 | Metric Pattern | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
-| `cisco.iosxr.yang.<module>.<path>.<leaf>` | Gauge or sum, double | model-defined | Numeric YANG leaves from OpenConfig or Cisco IOS XR native models. Known counters are cumulative sums; other values are gauges. | Build coverage for interfaces, optics, routing, FIB, BGP, ISIS, MPLS, SR/SRv6, QoS, ASIC, and platform health without waiting for a custom parser per leaf. |
+| `cisco.iosxr.yang.<module>.<path>.<leaf>` | Gauge or sum, int or double | model-defined | Numeric YANG leaves from OpenConfig or Cisco IOS XR native models. Integral values are preserved as int64 datapoints when representable; other numeric values use double datapoints. Known counters are cumulative sums; other values are gauges. | Build coverage for interfaces, optics, routing, FIB, BGP, ISIS, MPLS, SR/SRv6, QoS, ASIC, and platform health without waiting for a custom parser per leaf. |
 | `cisco.iosxr.yang.<module>.<path>.<leaf>_info` | Gauge, int | `1` | String, enum, identity, and list leaves with the original value on the `value` attribute. | Preserve states such as admin/oper status, neighbor state, alarm text, and component identity as bounded info metrics. |
 | `cisco.iosxr.receiver.active_subscriptions` | Gauge, int | `{subscription}` | Active gNMI dial-in targets. | Detect target selection mistakes or subscriptions that never start. |
 | `cisco.iosxr.receiver.updates` | Sum, int, cumulative | `{update}` | gNMI updates and deletes received. | Confirm that subscriptions are producing telemetry. |

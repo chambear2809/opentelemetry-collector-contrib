@@ -4,6 +4,7 @@
 package systemscraper // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/scraper/systemscraper"
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -32,7 +33,7 @@ func parseCPUUtilizationNXOS(output string) (float64, error) {
 		}
 	}
 
-	return 0, fmt.Errorf("failed to parse CPU utilization from NX-OS output: %s", output)
+	return 0, fmt.Errorf("failed to parse CPU utilization from NX-OS output (%s)", sanitizedOutputContext(output))
 }
 
 // parseCPUUtilizationIOS parses IOS CPU stats using 5-second average (fraction 0-1)
@@ -55,7 +56,7 @@ func parseCPUUtilizationIOS(output string) (float64, error) {
 		}
 	}
 
-	return 0, fmt.Errorf("failed to parse CPU utilization from IOS output: %s", output)
+	return 0, fmt.Errorf("failed to parse CPU utilization from IOS output (%s)", sanitizedOutputContext(output))
 }
 
 // parseMemoryUtilization parses memory stats based on OS type (fraction 0-1)
@@ -83,7 +84,7 @@ func parseMemoryUtilization(output, osType string) (float64, error) {
 			}
 
 			if total == 0 {
-				return 0, fmt.Errorf("total memory is zero in %s output: %s", osType, output)
+				return 0, fmt.Errorf("total memory is zero in %s output (%s)", osType, sanitizedOutputContext(output))
 			}
 
 			// Memory utilization as fraction
@@ -92,5 +93,10 @@ func parseMemoryUtilization(output, osType string) (float64, error) {
 		}
 	}
 
-	return 0, fmt.Errorf("failed to parse memory utilization from %s output: %s", osType, output)
+	return 0, fmt.Errorf("failed to parse memory utilization from %s output (%s)", osType, sanitizedOutputContext(output))
+}
+
+func sanitizedOutputContext(output string) string {
+	fingerprint := sha256.Sum256([]byte(output))
+	return fmt.Sprintf("length=%d sha256=%x", len(output), fingerprint)
 }
