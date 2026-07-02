@@ -6,6 +6,7 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/url"
 	"sort"
 	"strconv"
@@ -41,6 +42,9 @@ type merakiMetricsReceiver struct {
 
 	statsMu sync.Mutex
 	stats   []meraki.RequestStat
+
+	successMu             sync.Mutex
+	successByOrganization map[string]*scrapeSuccessState
 }
 
 type merakiTarget struct {
@@ -54,55 +58,57 @@ type merakiTarget struct {
 
 func newMerakiMetricsReceiver(set receiver.Settings, conf *Config, consumer consumer.Metrics) (*merakiMetricsReceiver, error) {
 	client, err := meraki.NewClient(meraki.Config{
-		APIKey:    string(conf.Meraki.Auth.APIKey),
-		BaseURL:   conf.Meraki.BaseURL,
-		UserAgent: conf.Meraki.UserAgent,
-		Timeout:   conf.Timeout,
+		APIKey:     string(conf.Meraki.Auth.APIKey),
+		BaseURL:    conf.Meraki.BaseURL,
+		UserAgent:  conf.Meraki.UserAgent,
+		Timeout:    conf.Timeout,
+		MaxRetries: conf.Meraki.MaxRetries,
 	})
 	if err != nil {
 		return nil, err
 	}
 	r := &merakiMetricsReceiver{
-		settings: set,
-		config:   conf,
-		consumer: consumer,
-		client:   client,
-		targets:  normalizeMerakiTargets(conf.Meraki),
-		counters: newCounterStore(),
-		obs:      newPlatformObsReport(set, "http"),
-		done:     make(chan struct{}),
+		settings:              set,
+		config:                conf,
+		consumer:              consumer,
+		client:                client,
+		targets:               normalizeMerakiTargets(conf.Meraki),
+		counters:              newCounterStore(),
+		obs:                   newPlatformObsReport(set, "http"),
+		done:                  make(chan struct{}),
+		successByOrganization: make(map[string]*scrapeSuccessState),
 	}
 	client.OnRequest = r.recordRequest
 	return r, nil
 }
 
 func normalizeMerakiTargets(cfg MerakiConfig) []merakiTarget {
-	targets := make([]merakiTarget, 0, len(cfg.Organizations)+1)
+	byOrganization := make(map[string]merakiTarget, len(cfg.Organizations)+len(cfg.Devices))
 	for _, org := range cfg.Organizations {
-		targets = append(targets, merakiTarget{
-			OrganizationID: org.OrganizationID,
-			NetworkIDs:     uniqueStrings(org.NetworkIDs),
-			Serials:        uniqueStrings(org.Serials),
-			ProductTypes:   uniqueStrings(org.ProductTypes),
-			Tags:           uniqueStrings(org.Tags),
-			TagsFilterType: org.TagsFilterType,
-		})
+		target := byOrganization[org.OrganizationID]
+		target.OrganizationID = org.OrganizationID
+		target.NetworkIDs = uniqueStrings(append(target.NetworkIDs, org.NetworkIDs...))
+		target.Serials = uniqueStrings(append(target.Serials, org.Serials...))
+		target.ProductTypes = uniqueStrings(append(target.ProductTypes, org.ProductTypes...))
+		target.Tags = uniqueStrings(append(target.Tags, org.Tags...))
+		target.TagsFilterType = firstNonEmpty(target.TagsFilterType, org.TagsFilterType)
+		byOrganization[org.OrganizationID] = target
 	}
 
-	serialsByOrg := map[string][]string{}
 	for _, device := range cfg.Devices {
-		serialsByOrg[device.OrganizationID] = append(serialsByOrg[device.OrganizationID], device.Serial)
+		target := byOrganization[device.OrganizationID]
+		target.OrganizationID = device.OrganizationID
+		target.Serials = uniqueStrings(append(target.Serials, device.Serial))
+		byOrganization[device.OrganizationID] = target
 	}
-	orgs := make([]string, 0, len(serialsByOrg))
-	for orgID := range serialsByOrg {
+	orgs := make([]string, 0, len(byOrganization))
+	for orgID := range byOrganization {
 		orgs = append(orgs, orgID)
 	}
 	sort.Strings(orgs)
+	targets := make([]merakiTarget, 0, len(orgs))
 	for _, orgID := range orgs {
-		targets = append(targets, merakiTarget{
-			OrganizationID: orgID,
-			Serials:        uniqueStrings(serialsByOrg[orgID]),
-		})
+		targets = append(targets, byOrganization[orgID])
 	}
 	return targets
 }
@@ -161,30 +167,82 @@ func (r *merakiMetricsReceiver) collect(ctx context.Context) {
 	if scrapeErr != nil {
 		r.settings.Logger.Error("Meraki scrape failed", zap.Error(scrapeErr))
 	}
-	consumeErr := consumeMetricsIfPresent(ctx, r.consumer, md)
+	metricCount, consumeErr := consumeMetricsIfPresent(ctx, r.consumer, md)
 	if consumeErr != nil {
 		r.settings.Logger.Error("Meraki metrics consumer failed", zap.Error(consumeErr))
 	}
-	endMetricsOp(r.obs, obsCtx, md, combineSignalErrors(scrapeErr, consumeErr))
+	endMetricsOp(r.obs, obsCtx, metricCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *merakiMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
 	r.resetRequestStats()
-	builder := newMerakiMetricsBuilder(time.Now(), r.counters)
-	partial := false
+	now := time.Now()
+	builder := newMerakiMetricsBuilder(now, r.counters)
+	partialByOrganization := make(map[string]bool, len(r.targets))
+	var scrapeErr error
 
-	for _, target := range r.targets {
+	for i, target := range r.targets {
 		targetPartial, err := r.scrapeTarget(ctx, builder, target)
+		partialByOrganization[target.OrganizationID] = targetPartial || err != nil
 		if err != nil {
-			return builder.emit(), err
+			scrapeErr = err
+			// The shared scrape context is no longer usable. Mark targets that
+			// could not be attempted as partial instead of silently reporting
+			// them as successful.
+			for _, remaining := range r.targets[i+1:] {
+				partialByOrganization[remaining.OrganizationID] = true
+			}
+			break
 		}
-		partial = partial || targetPartial
 	}
+
+	return r.finishScrape(builder, partialByOrganization), scrapeErr
+}
+
+func (r *merakiMetricsReceiver) finishScrape(builder *merakiMetricsBuilder, partialByOrganization map[string]bool) pmetric.Metrics {
 	r.recordAPIRequestMetrics(builder)
+	stats := r.requestStats()
 	for _, target := range r.targets {
-		builder.orgResource(target.OrganizationID).recordInt("cisco.scrape.partial_success", "Whether one or more Meraki endpoint families failed during the scrape.", "1", boolToInt(partial), nil)
+		rb := builder.orgResource(target.OrganizationID)
+		partial := partialByOrganization[target.OrganizationID]
+		rb.recordInt("cisco.scrape.partial_success", "Whether one or more Meraki endpoint families failed during the scrape.", "1", boolToInt(partial), nil)
+		outcome := merakiOrganizationOutcome(stats, target.OrganizationID)
+		if availability, ok := outcome.availability(); ok {
+			rb.recordInt("meraki.controller.up", "Meraki Dashboard API availability for this organization and scrape.", "1", availability, nil)
+		}
+		if lastSuccess, ok := r.successState(target.OrganizationID).observe(time.Now(), !partial && outcome.succeeded); ok {
+			rb.recordInt("meraki.scrape.last_success", "Unix timestamp of the most recent fully successful Meraki scrape for this organization.", "s", lastSuccess.Unix(), nil)
+		}
 	}
-	return builder.emit(), nil
+	return builder.emit()
+}
+
+func merakiOrganizationOutcome(stats []meraki.RequestStat, organizationID string) apiOutcomeSummary {
+	summary := apiOutcomeSummary{}
+	for _, stat := range stats {
+		if stat.OrganizationID != organizationID {
+			continue
+		}
+		summary.attempted = true
+		if stat.Outcome == "success" {
+			summary.succeeded = true
+		}
+	}
+	return summary
+}
+
+func (r *merakiMetricsReceiver) successState(organizationID string) *scrapeSuccessState {
+	r.successMu.Lock()
+	defer r.successMu.Unlock()
+	if r.successByOrganization == nil {
+		r.successByOrganization = make(map[string]*scrapeSuccessState)
+	}
+	state := r.successByOrganization[organizationID]
+	if state == nil {
+		state = &scrapeSuccessState{}
+		r.successByOrganization[organizationID] = state
+	}
+	return state
 }
 
 func (r *merakiMetricsReceiver) scrapeTarget(ctx context.Context, builder *merakiMetricsBuilder, target merakiTarget) (bool, error) {
@@ -197,28 +255,24 @@ func (r *merakiMetricsReceiver) scrapeTarget(ctx context.Context, builder *merak
 			return partial, ctx.Err()
 		}
 		partial = true
-		if target.hasInventoryScopedFilters() && allowedSerials == nil {
-			allowedSerials = map[string]struct{}{}
-		}
 		r.settings.Logger.Warn("Meraki device inventory endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
-	} else {
-		inventorySerials := make(map[string]struct{}, len(devices))
-		for _, device := range devices {
-			if device.Serial == "" {
-				continue
-			}
-			resource := deviceResourceFromInventory(device)
-			if !selector.allows(merakiDeviceIdentity(resource)) {
-				continue
-			}
-			inventorySerials[device.Serial] = struct{}{}
-			builder.deviceResource(resource)
+	}
+	inventorySerials := make(map[string]struct{}, len(devices))
+	for _, device := range devices {
+		if device.Serial == "" {
+			continue
 		}
-		if len(inventorySerials) > 0 {
-			allowedSerials = inventorySerials
-		} else if len(target.Serials) == 0 {
-			allowedSerials = map[string]struct{}{}
+		resource := deviceResourceFromInventory(device)
+		if !selector.allows(merakiDeviceIdentity(resource)) {
+			continue
 		}
+		inventorySerials[device.Serial] = struct{}{}
+		builder.deviceResource(resource)
+	}
+	if len(inventorySerials) > 0 {
+		allowedSerials = inventorySerials
+	} else if len(target.Serials) == 0 {
+		allowedSerials = map[string]struct{}{}
 	}
 
 	if r.scrapeDeviceStatuses(ctx, builder, target, allowedSerials, selector) {
@@ -252,6 +306,9 @@ func (r *merakiMetricsReceiver) scrapeTarget(ctx context.Context, builder *merak
 		partial = true
 	}
 
+	if ctx.Err() != nil {
+		return true, ctx.Err()
+	}
 	return partial, nil
 }
 
@@ -259,7 +316,9 @@ func (r *merakiMetricsReceiver) scrapeDeviceStatuses(ctx context.Context, builde
 	statuses, err := meraki.GetPaginatedJSON[meraki.DeviceStatus](ctx, r.client, target.OrganizationID, "device_statuses", meraki.OrganizationPath(target.OrganizationID, "/devices/statuses"), target.deviceQuery())
 	if err != nil {
 		r.settings.Logger.Warn("Meraki device status endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
-		return true
+		if ctx.Err() != nil {
+			return true
+		}
 	}
 	for _, status := range statuses {
 		if !allowsSerial(allowedSerials, status.Serial) {
@@ -270,20 +329,26 @@ func (r *merakiMetricsReceiver) scrapeDeviceStatuses(ctx context.Context, builde
 			continue
 		}
 		rb := builder.deviceResource(resource)
-		rb.recordInt("cisco.device.up", "Device availability (1 = up, 0 = down).", "1", merakiDeviceUp(status.Status), nil)
-		rb.recordInt("meraki.device.status", "Meraki Dashboard device status.", "1", merakiStatusCode(status.Status), map[string]string{
-			"meraki.device.status":       status.Status,
-			"meraki.device.product_type": status.ProductType,
-		})
+		if up, ok := merakiDeviceUp(status.Status); ok {
+			rb.recordInt("cisco.device.up", "Device availability (1 = up, 0 = down).", "1", up, nil)
+		}
+		if code, ok := merakiStatusCode(status.Status); ok {
+			rb.recordInt("meraki.device.status", "Meraki Dashboard device status.", "1", code, map[string]string{
+				"meraki.device.status":       status.Status,
+				"meraki.device.product_type": status.ProductType,
+			})
+		}
 	}
-	return false
+	return err != nil
 }
 
 func (r *merakiMetricsReceiver) scrapeMemoryUsage(ctx context.Context, builder *merakiMetricsBuilder, target merakiTarget, allowedSerials map[string]struct{}, selector deviceSelectionMatcher) bool {
 	usages, err := meraki.GetPaginatedItemsJSON[meraki.DeviceMemoryUsage](ctx, r.client, target.OrganizationID, "device_memory", meraki.OrganizationPath(target.OrganizationID, "/devices/system/memory/usage/history/byInterval"), target.deviceQuery())
 	if err != nil {
 		r.settings.Logger.Warn("Meraki memory usage endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
-		return true
+		if ctx.Err() != nil {
+			return true
+		}
 	}
 	for _, usage := range usages {
 		if !allowsSerial(allowedSerials, usage.Serial) {
@@ -295,10 +360,10 @@ func (r *merakiMetricsReceiver) scrapeMemoryUsage(ctx context.Context, builder *
 		}
 		rb := builder.deviceResource(resource)
 		if value, ok := memoryUtilization(usage); ok {
-			rb.recordDouble("system.memory.utilization", "Memory utilization as a ratio from 0 to 1.", "1", value, nil)
+			rb.recordDouble("system.memory.utilization", "Memory utilization as a ratio from 0 to 1.", "1", value, map[string]string{"system.memory.state": "used"})
 		}
 	}
-	return false
+	return err != nil
 }
 
 func (r *merakiMetricsReceiver) scrapeSwitchPorts(ctx context.Context, builder *merakiMetricsBuilder, target merakiTarget, allowedSerials map[string]struct{}, selector deviceSelectionMatcher) bool {
@@ -307,37 +372,41 @@ func (r *merakiMetricsReceiver) scrapeSwitchPorts(ctx context.Context, builder *
 	if err != nil {
 		r.settings.Logger.Warn("Meraki switch port status endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
 		partial = true
-	} else {
-		for _, sw := range statuses {
-			if !allowsSerial(allowedSerials, sw.Serial) {
-				continue
+		if ctx.Err() != nil {
+			return true
+		}
+	}
+	for _, sw := range statuses {
+		if !allowsSerial(allowedSerials, sw.Serial) {
+			continue
+		}
+		resource := deviceResourceFromSwitch(sw)
+		if !selector.allows(merakiDeviceIdentity(resource)) {
+			continue
+		}
+		rb := builder.deviceResource(resource)
+		for _, port := range sw.Ports {
+			speedBits, speedString := parseMerakiSpeed(port.Speed)
+			if speedBits > 0 {
+				builder.setPortSpeed(sw.Serial, port.PortID, speedBits)
+				rb.recordInt("cisco.interface.speed", "Interface line speed.", "bit/s", speedBits, interfaceAttrs(port.PortID, sw.MAC, "", speedString))
 			}
-			resource := deviceResourceFromSwitch(sw)
-			if !selector.allows(merakiDeviceIdentity(resource)) {
-				continue
+			if connected, ok := connectedStatus(port.Status); ok {
+				rb.recordInt("system.network.interface.status", "Interface operational status (1 = up, 0 = down).", "1", connected, interfaceAttrs(port.PortID, sw.MAC, "", speedString))
 			}
-			rb := builder.deviceResource(resource)
-			for _, port := range sw.Ports {
-				speedBits, speedString := parseMerakiSpeed(port.Speed)
-				if speedBits > 0 {
-					builder.setPortSpeed(sw.Serial, port.PortID, speedBits)
-					rb.recordInt("cisco.interface.speed", "Interface line speed.", "bit/s", speedBits, interfaceAttrs(port.PortID, sw.MAC, "", speedString))
-				}
-				rb.recordInt("system.network.interface.status", "Interface operational status (1 = up, 0 = down).", "1", connectedStatus(port.Status), interfaceAttrs(port.PortID, sw.MAC, "", speedString))
-				rb.recordInt("cisco.interface.admin.status", "Interface administrative status (1 = enabled, 0 = disabled).", "1", boolToInt(port.Enabled), interfaceAttrs(port.PortID, sw.MAC, "", speedString))
-				rb.recordInt("meraki.switch.port.poe.allocated", "Whether Meraki reports PoE as allocated on the switch port.", "1", boolToInt(port.PoE.IsAllocated), interfaceAttrs(port.PortID, sw.MAC, "", speedString))
-				for _, reason := range port.Errors {
-					attrs := interfaceAttrs(port.PortID, sw.MAC, "", speedString)
-					attrs["meraki.switch.port.alert.severity"] = "error"
-					attrs["meraki.switch.port.alert.reason"] = reason
-					rb.recordSum("meraki.switch.port.alert", "Meraki switch port error or warning.", "1", 1, attrs)
-				}
-				for _, reason := range port.Warnings {
-					attrs := interfaceAttrs(port.PortID, sw.MAC, "", speedString)
-					attrs["meraki.switch.port.alert.severity"] = "warning"
-					attrs["meraki.switch.port.alert.reason"] = reason
-					rb.recordSum("meraki.switch.port.alert", "Meraki switch port error or warning.", "1", 1, attrs)
-				}
+			rb.recordInt("cisco.interface.admin.status", "Interface administrative status (1 = enabled, 0 = disabled).", "1", boolToInt(port.Enabled), interfaceAttrs(port.PortID, sw.MAC, "", speedString))
+			rb.recordInt("meraki.switch.port.poe.allocated", "Whether Meraki reports PoE as allocated on the switch port.", "1", boolToInt(port.PoE.IsAllocated), interfaceAttrs(port.PortID, sw.MAC, "", speedString))
+			for _, reason := range port.Errors {
+				attrs := interfaceAttrs(port.PortID, sw.MAC, "", speedString)
+				attrs["meraki.switch.port.alert.severity"] = "error"
+				attrs["meraki.switch.port.alert.reason"] = reason
+				rb.recordInt("meraki.switch.port.alert.active", "Current Meraki switch port error or warning.", "1", 1, attrs)
+			}
+			for _, reason := range port.Warnings {
+				attrs := interfaceAttrs(port.PortID, sw.MAC, "", speedString)
+				attrs["meraki.switch.port.alert.severity"] = "warning"
+				attrs["meraki.switch.port.alert.reason"] = reason
+				rb.recordInt("meraki.switch.port.alert.active", "Current Meraki switch port error or warning.", "1", 1, attrs)
 			}
 		}
 	}
@@ -346,40 +415,42 @@ func (r *merakiMetricsReceiver) scrapeSwitchPorts(ctx context.Context, builder *
 	if err != nil {
 		r.settings.Logger.Warn("Meraki switch port usage endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
 		partial = true
-	} else {
-		for _, sw := range usages {
-			if !allowsSerial(allowedSerials, sw.Serial) {
+		if ctx.Err() != nil {
+			return true
+		}
+	}
+	for _, sw := range usages {
+		if !allowsSerial(allowedSerials, sw.Serial) {
+			continue
+		}
+		resource := deviceResourceFromSwitchUsage(sw)
+		if !selector.allows(merakiDeviceIdentity(resource)) {
+			continue
+		}
+		rb := builder.deviceResource(resource)
+		for _, port := range sw.Ports {
+			if len(port.Intervals) == 0 {
 				continue
 			}
-			resource := deviceResourceFromSwitchUsage(sw)
-			if !selector.allows(merakiDeviceIdentity(resource)) {
-				continue
+			interval := port.Intervals[len(port.Intervals)-1]
+			speedBits := builder.portSpeed(sw.Serial, port.PortID)
+			speedString := ""
+			if speedBits > 0 {
+				speedString = strconv.FormatInt(speedBits, 10)
 			}
-			rb := builder.deviceResource(resource)
-			for _, port := range sw.Ports {
-				if len(port.Intervals) == 0 {
-					continue
-				}
-				interval := port.Intervals[len(port.Intervals)-1]
-				speedBits := builder.portSpeed(sw.Serial, port.PortID)
-				speedString := ""
-				if speedBits > 0 {
-					speedString = strconv.FormatInt(speedBits, 10)
-				}
-				attrsRx := interfaceAttrs(port.PortID, sw.MAC, "", speedString)
-				attrsRx["network.io.direction"] = "receive"
-				attrsTx := interfaceAttrs(port.PortID, sw.MAC, "", speedString)
-				attrsTx["network.io.direction"] = "transmit"
-				rxBits := int64(interval.Bandwidth.Usage.Downstream * 1000)
-				txBits := int64(interval.Bandwidth.Usage.Upstream * 1000)
-				rb.recordInt("cisco.interface.io.rate", "Interface traffic rate.", "bit/s", rxBits, attrsRx)
-				rb.recordInt("cisco.interface.io.rate", "Interface traffic rate.", "bit/s", txBits, attrsTx)
-				rb.recordDouble("meraki.switch.port.usage", "Windowed switch port usage reported by Meraki.", "kBy", interval.Data.Usage.Downstream, attrsRx)
-				rb.recordDouble("meraki.switch.port.usage", "Windowed switch port usage reported by Meraki.", "kBy", interval.Data.Usage.Upstream, attrsTx)
-				if speedBits > 0 {
-					rb.recordDouble("cisco.interface.utilization", "Interface traffic utilization as a ratio from 0 to 1.", "1", float64(rxBits)/float64(speedBits), attrsRx)
-					rb.recordDouble("cisco.interface.utilization", "Interface traffic utilization as a ratio from 0 to 1.", "1", float64(txBits)/float64(speedBits), attrsTx)
-				}
+			attrsRx := interfaceAttrs(port.PortID, sw.MAC, "", speedString)
+			attrsRx["network.io.direction"] = "receive"
+			attrsTx := interfaceAttrs(port.PortID, sw.MAC, "", speedString)
+			attrsTx["network.io.direction"] = "transmit"
+			rxBits := int64(interval.Bandwidth.Usage.Downstream * 1000)
+			txBits := int64(interval.Bandwidth.Usage.Upstream * 1000)
+			rb.recordInt("cisco.interface.io.rate", "Interface traffic rate.", "bit/s", rxBits, attrsRx)
+			rb.recordInt("cisco.interface.io.rate", "Interface traffic rate.", "bit/s", txBits, attrsTx)
+			rb.recordDouble("meraki.switch.port.usage", "Windowed switch port usage reported by Meraki.", "kBy", interval.Data.Usage.Downstream, attrsRx)
+			rb.recordDouble("meraki.switch.port.usage", "Windowed switch port usage reported by Meraki.", "kBy", interval.Data.Usage.Upstream, attrsTx)
+			if speedBits > 0 {
+				rb.recordDouble("cisco.interface.utilization", "Interface traffic utilization as a ratio from 0 to 1.", "1", float64(rxBits)/float64(speedBits), attrsRx)
+				rb.recordDouble("cisco.interface.utilization", "Interface traffic utilization as a ratio from 0 to 1.", "1", float64(txBits)/float64(speedBits), attrsTx)
 			}
 		}
 	}
@@ -393,30 +464,34 @@ func (r *merakiMetricsReceiver) scrapeUplinks(ctx context.Context, builder *mera
 	if err != nil {
 		r.settings.Logger.Warn("Meraki uplink status endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
 		partial = true
-	} else {
-		for _, device := range statuses {
-			if !allowsSerial(allowedSerials, device.Serial) {
-				continue
+		if ctx.Err() != nil {
+			return true
+		}
+	}
+	for _, device := range statuses {
+		if !allowsSerial(allowedSerials, device.Serial) {
+			continue
+		}
+		resource := deviceResourceFromUplinkStatus(device)
+		if !selector.allows(merakiDeviceIdentity(resource)) {
+			continue
+		}
+		rb := builder.deviceResource(resource)
+		for _, uplink := range device.Uplinks {
+			attrs := map[string]string{
+				"meraki.uplink.interface":       uplink.Interface,
+				"meraki.uplink.status":          uplink.Status,
+				"meraki.uplink.provider":        uplink.Provider,
+				"meraki.uplink.connection_type": uplink.ConnectionType,
 			}
-			resource := deviceResourceFromUplinkStatus(device)
-			if !selector.allows(merakiDeviceIdentity(resource)) {
-				continue
+			if active, ok := activeStatus(uplink.Status); ok {
+				rb.recordInt("meraki.uplink.status", "Meraki uplink status.", "1", active, attrs)
 			}
-			rb := builder.deviceResource(resource)
-			for _, uplink := range device.Uplinks {
-				attrs := map[string]string{
-					"meraki.uplink.interface":       uplink.Interface,
-					"meraki.uplink.status":          uplink.Status,
-					"meraki.uplink.provider":        uplink.Provider,
-					"meraki.uplink.connection_type": uplink.ConnectionType,
-				}
-				rb.recordInt("meraki.uplink.status", "Meraki uplink status.", "1", activeStatus(uplink.Status), attrs)
-				if rsrp, ok := parseFloatString(uplink.SignalStat.RSRP); ok {
-					rb.recordDouble("meraki.uplink.cellular.signal.rsrp", "Cellular uplink RSRP.", "dBm", rsrp, attrs)
-				}
-				if rsrq, ok := parseFloatString(uplink.SignalStat.RSRQ); ok {
-					rb.recordDouble("meraki.uplink.cellular.signal.rsrq", "Cellular uplink RSRQ.", "dB", rsrq, attrs)
-				}
+			if rsrp, ok := parseFloatString(uplink.SignalStat.RSRP); ok {
+				rb.recordDouble("meraki.uplink.cellular.signal.rsrp", "Cellular uplink RSRP.", "dBm", rsrp, attrs)
+			}
+			if rsrq, ok := parseFloatString(uplink.SignalStat.RSRQ); ok {
+				rb.recordDouble("meraki.uplink.cellular.signal.rsrq", "Cellular uplink RSRQ.", "dB", rsrq, attrs)
 			}
 		}
 	}
@@ -450,19 +525,21 @@ func (r *merakiMetricsReceiver) scrapeWireless(ctx context.Context, builder *mer
 	if err != nil {
 		r.settings.Logger.Warn("Meraki wireless clients endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
 		partial = true
-	} else {
-		for _, device := range clients {
-			if !allowsSerial(allowedSerials, device.Serial) {
-				continue
-			}
-			resource := deviceResource{Serial: device.Serial, NetworkID: device.Network.ID, OSName: "Meraki"}
-			if !selector.allows(merakiDeviceIdentity(resource)) {
-				continue
-			}
-			rb := builder.deviceResource(resource)
-			for status, count := range device.Counts.ByStatus {
-				rb.recordInt("meraki.wireless.client.count", "Wireless client count by status.", "{client}", count, map[string]string{"meraki.wireless.client.status": status})
-			}
+		if ctx.Err() != nil {
+			return true
+		}
+	}
+	for _, device := range clients {
+		if !allowsSerial(allowedSerials, device.Serial) {
+			continue
+		}
+		resource := deviceResource{Serial: device.Serial, NetworkID: device.Network.ID, OSName: "Meraki"}
+		if !selector.allows(merakiDeviceIdentity(resource)) {
+			continue
+		}
+		rb := builder.deviceResource(resource)
+		for status, count := range device.Counts.ByStatus {
+			rb.recordInt("meraki.wireless.client.count", "Wireless client count by status.", "{client}", count, map[string]string{"meraki.wireless.client.status": status})
 		}
 	}
 
@@ -470,22 +547,24 @@ func (r *merakiMetricsReceiver) scrapeWireless(ctx context.Context, builder *mer
 	if err != nil {
 		r.settings.Logger.Warn("Meraki wireless channel utilization endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
 		partial = true
-	} else {
-		for _, device := range channels {
-			if !allowsSerial(allowedSerials, device.Serial) {
-				continue
-			}
-			resource := deviceResource{Serial: device.Serial, MAC: device.MAC, NetworkID: device.Network.ID, OSName: "Meraki"}
-			if !selector.allows(merakiDeviceIdentity(resource)) {
-				continue
-			}
-			rb := builder.deviceResource(resource)
-			for _, band := range device.ByBand {
-				attrs := map[string]string{"meraki.wireless.band": band.Band}
-				rb.recordDouble("meraki.wireless.channel_utilization", "Wireless channel utilization percentage.", "%", band.Total.Percentage, withAttr(attrs, "meraki.wireless.utilization.type", "total"))
-				rb.recordDouble("meraki.wireless.channel_utilization", "Wireless channel utilization percentage.", "%", band.WiFi.Percentage, withAttr(attrs, "meraki.wireless.utilization.type", "wifi"))
-				rb.recordDouble("meraki.wireless.channel_utilization", "Wireless channel utilization percentage.", "%", band.NonWiFi.Percentage, withAttr(attrs, "meraki.wireless.utilization.type", "non_wifi"))
-			}
+		if ctx.Err() != nil {
+			return true
+		}
+	}
+	for _, device := range channels {
+		if !allowsSerial(allowedSerials, device.Serial) {
+			continue
+		}
+		resource := deviceResource{Serial: device.Serial, MAC: device.MAC, NetworkID: device.Network.ID, OSName: "Meraki"}
+		if !selector.allows(merakiDeviceIdentity(resource)) {
+			continue
+		}
+		rb := builder.deviceResource(resource)
+		for _, band := range device.ByBand {
+			attrs := map[string]string{"meraki.wireless.band": band.Band}
+			rb.recordDouble("meraki.wireless.channel_utilization", "Wireless channel utilization percentage.", "%", band.Total.Percentage, withAttr(attrs, "meraki.wireless.utilization.type", "total"))
+			rb.recordDouble("meraki.wireless.channel_utilization", "Wireless channel utilization percentage.", "%", band.WiFi.Percentage, withAttr(attrs, "meraki.wireless.utilization.type", "wifi"))
+			rb.recordDouble("meraki.wireless.channel_utilization", "Wireless channel utilization percentage.", "%", band.NonWiFi.Percentage, withAttr(attrs, "meraki.wireless.utilization.type", "non_wifi"))
 		}
 	}
 
@@ -493,45 +572,49 @@ func (r *merakiMetricsReceiver) scrapeWireless(ctx context.Context, builder *mer
 	if err != nil {
 		r.settings.Logger.Warn("Meraki wireless packet loss endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
 		partial = true
-	} else {
-		for _, device := range packetLoss {
-			if !allowsSerial(allowedSerials, device.Device.Serial) {
-				continue
-			}
-			resource := deviceResource{Serial: device.Device.Serial, Name: device.Device.Name, MAC: device.Device.MAC, NetworkID: device.Network.ID, OSName: "Meraki"}
-			if !selector.allows(merakiDeviceIdentity(resource)) {
-				continue
-			}
-			rb := builder.deviceResource(resource)
-			recordWirelessPacketLoss(rb, "receive", device.Downstream)
-			recordWirelessPacketLoss(rb, "transmit", device.Upstream)
+		if ctx.Err() != nil {
+			return true
 		}
+	}
+	for _, device := range packetLoss {
+		if !allowsSerial(allowedSerials, device.Device.Serial) {
+			continue
+		}
+		resource := deviceResource{Serial: device.Device.Serial, Name: device.Device.Name, MAC: device.Device.MAC, NetworkID: device.Network.ID, OSName: "Meraki"}
+		if !selector.allows(merakiDeviceIdentity(resource)) {
+			continue
+		}
+		rb := builder.deviceResource(resource)
+		recordWirelessPacketLoss(rb, "receive", device.Downstream)
+		recordWirelessPacketLoss(rb, "transmit", device.Upstream)
 	}
 
 	ssids, err := meraki.GetPaginatedItemsJSON[meraki.WirelessSSIDStatus](ctx, r.client, target.OrganizationID, "wireless_ssids", meraki.OrganizationPath(target.OrganizationID, "/wireless/ssids/statuses/byDevice"), target.networkSerialQuery())
 	if err != nil {
 		r.settings.Logger.Warn("Meraki wireless SSID status endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
 		partial = true
-	} else {
-		for _, device := range ssids {
-			if !allowsSerial(allowedSerials, device.Serial) {
-				continue
+		if ctx.Err() != nil {
+			return true
+		}
+	}
+	for _, device := range ssids {
+		if !allowsSerial(allowedSerials, device.Serial) {
+			continue
+		}
+		resource := deviceResource{Serial: device.Serial, Name: device.Name, NetworkID: device.Network.ID, OSName: "Meraki"}
+		if !selector.allows(merakiDeviceIdentity(resource)) {
+			continue
+		}
+		rb := builder.deviceResource(resource)
+		for _, bss := range device.BasicServiceSets {
+			attrs := map[string]string{
+				"meraki.wireless.ssid.name":   bss.SSID.Name,
+				"meraki.wireless.ssid.number": strconv.FormatInt(bss.SSID.Number, 10),
+				"meraki.wireless.bssid":       bss.BSSID,
+				"meraki.wireless.band":        bss.Radio.Band,
+				"meraki.wireless.radio.index": bss.Radio.Index,
 			}
-			resource := deviceResource{Serial: device.Serial, Name: device.Name, NetworkID: device.Network.ID, OSName: "Meraki"}
-			if !selector.allows(merakiDeviceIdentity(resource)) {
-				continue
-			}
-			rb := builder.deviceResource(resource)
-			for _, bss := range device.BasicServiceSets {
-				attrs := map[string]string{
-					"meraki.wireless.ssid.name":   bss.SSID.Name,
-					"meraki.wireless.ssid.number": strconv.FormatInt(bss.SSID.Number, 10),
-					"meraki.wireless.bssid":       bss.BSSID,
-					"meraki.wireless.band":        bss.Radio.Band,
-					"meraki.wireless.radio.index": bss.Radio.Index,
-				}
-				rb.recordInt("meraki.wireless.ssid.status", "Wireless SSID enabled, advertised, and broadcasting status.", "1", boolToInt(bss.SSID.Enabled && bss.SSID.Advertised && bss.Radio.IsBroadcasting), attrs)
-			}
+			rb.recordInt("meraki.wireless.ssid.status", "Wireless SSID enabled, advertised, and broadcasting status.", "1", boolToInt(bss.SSID.Enabled && bss.SSID.Advertised && bss.Radio.IsBroadcasting), attrs)
 		}
 	}
 
@@ -544,26 +627,32 @@ func (r *merakiMetricsReceiver) scrapeVPN(ctx context.Context, builder *merakiMe
 	if err != nil {
 		r.settings.Logger.Warn("Meraki VPN status endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
 		partial = true
-	} else {
-		for _, status := range statuses {
-			if !allowsSerial(allowedSerials, status.DeviceSerial) {
-				continue
-			}
-			resource := deviceResource{Serial: status.DeviceSerial, Name: status.NetworkName, NetworkID: status.NetworkID, OSName: "Meraki"}
-			if !selector.allows(merakiDeviceIdentity(resource)) {
-				continue
-			}
-			rb := builder.deviceResource(resource)
-			for _, peer := range status.MerakiVPNPeers {
-				rb.recordInt("meraki.vpn.peer.status", "Meraki VPN peer reachability.", "1", reachableStatus(peer.Reachability), map[string]string{
+		if ctx.Err() != nil {
+			return true
+		}
+	}
+	for _, status := range statuses {
+		if !allowsSerial(allowedSerials, status.DeviceSerial) {
+			continue
+		}
+		resource := deviceResource{Serial: status.DeviceSerial, Name: status.NetworkName, NetworkID: status.NetworkID, OSName: "Meraki"}
+		if !selector.allows(merakiDeviceIdentity(resource)) {
+			continue
+		}
+		rb := builder.deviceResource(resource)
+		for _, peer := range status.MerakiVPNPeers {
+			if reachable, ok := reachableStatus(peer.Reachability); ok {
+				rb.recordInt("meraki.vpn.peer.status", "Meraki VPN peer reachability.", "1", reachable, map[string]string{
 					"meraki.vpn.peer.type":         "meraki",
 					"meraki.vpn.peer.network_id":   peer.NetworkID,
 					"meraki.vpn.peer.name":         peer.NetworkName,
 					"meraki.vpn.peer.reachability": peer.Reachability,
 				})
 			}
-			for _, peer := range status.ThirdPartyVPNPeers {
-				rb.recordInt("meraki.vpn.peer.status", "Meraki VPN peer reachability.", "1", reachableStatus(peer.Reachability), map[string]string{
+		}
+		for _, peer := range status.ThirdPartyVPNPeers {
+			if reachable, ok := reachableStatus(peer.Reachability); ok {
+				rb.recordInt("meraki.vpn.peer.status", "Meraki VPN peer reachability.", "1", reachable, map[string]string{
 					"meraki.vpn.peer.type":         "third_party",
 					"meraki.vpn.peer.name":         peer.Name,
 					"meraki.vpn.peer.public_ip":    peer.PublicIP,
@@ -577,31 +666,33 @@ func (r *merakiMetricsReceiver) scrapeVPN(ctx context.Context, builder *merakiMe
 	if err != nil {
 		r.settings.Logger.Warn("Meraki VPN stats endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
 		partial = true
-	} else {
-		for _, stat := range stats {
-			if !builder.networkAllowed(stat.NetworkID, stat.NetworkName, selector) {
-				continue
+		if ctx.Err() != nil {
+			return true
+		}
+	}
+	for _, stat := range stats {
+		if !builder.networkAllowed(stat.NetworkID, stat.NetworkName, selector) {
+			continue
+		}
+		rb := builder.networkResource(stat.NetworkID, stat.NetworkName, target.OrganizationID)
+		for _, peer := range stat.MerakiVPNPeers {
+			peerAttrs := map[string]string{
+				"meraki.vpn.peer.network_id": peer.NetworkID,
+				"meraki.vpn.peer.name":       peer.NetworkName,
 			}
-			rb := builder.networkResource(stat.NetworkID, stat.NetworkName, target.OrganizationID)
-			for _, peer := range stat.MerakiVPNPeers {
-				peerAttrs := map[string]string{
-					"meraki.vpn.peer.network_id": peer.NetworkID,
-					"meraki.vpn.peer.name":       peer.NetworkName,
-				}
-				rb.recordInt("meraki.vpn.peer.usage", "Windowed Meraki VPN peer usage.", "kBy", peer.UsageSummary.ReceivedInKilobytes, withAttr(peerAttrs, "network.io.direction", "receive"))
-				rb.recordInt("meraki.vpn.peer.usage", "Windowed Meraki VPN peer usage.", "kBy", peer.UsageSummary.SentInKilobytes, withAttr(peerAttrs, "network.io.direction", "transmit"))
-				for _, latency := range peer.LatencySummaries {
-					rb.recordDouble("meraki.vpn.peer.latency", "Meraki VPN peer latency.", "ms", latency.AvgLatencyMS, withVPNUplinks(peerAttrs, latency.SenderUplink, latency.ReceiverUplink))
-				}
-				for _, loss := range peer.LossPercentageSummaries {
-					rb.recordDouble("meraki.vpn.peer.loss", "Meraki VPN peer packet loss percentage.", "%", loss.AvgLossPercentage, withVPNUplinks(peerAttrs, loss.SenderUplink, loss.ReceiverUplink))
-				}
-				for _, jitter := range peer.JitterSummaries {
-					rb.recordDouble("meraki.vpn.peer.jitter", "Meraki VPN peer jitter.", "ms", jitter.AvgJitter, withVPNUplinks(peerAttrs, jitter.SenderUplink, jitter.ReceiverUplink))
-				}
-				for _, mos := range peer.MOSSummaries {
-					rb.recordDouble("meraki.vpn.peer.mos", "Meraki VPN peer MOS score.", "1", mos.AvgMOS, withVPNUplinks(peerAttrs, mos.SenderUplink, mos.ReceiverUplink))
-				}
+			rb.recordInt("meraki.vpn.peer.usage", "Windowed Meraki VPN peer usage.", "kBy", peer.UsageSummary.ReceivedInKilobytes, withAttr(peerAttrs, "network.io.direction", "receive"))
+			rb.recordInt("meraki.vpn.peer.usage", "Windowed Meraki VPN peer usage.", "kBy", peer.UsageSummary.SentInKilobytes, withAttr(peerAttrs, "network.io.direction", "transmit"))
+			for _, latency := range peer.LatencySummaries {
+				rb.recordDouble("meraki.vpn.peer.latency", "Meraki VPN peer latency.", "ms", latency.AvgLatencyMS, withVPNUplinks(peerAttrs, latency.SenderUplink, latency.ReceiverUplink))
+			}
+			for _, loss := range peer.LossPercentageSummaries {
+				rb.recordDouble("meraki.vpn.peer.loss", "Meraki VPN peer packet loss percentage.", "%", loss.AvgLossPercentage, withVPNUplinks(peerAttrs, loss.SenderUplink, loss.ReceiverUplink))
+			}
+			for _, jitter := range peer.JitterSummaries {
+				rb.recordDouble("meraki.vpn.peer.jitter", "Meraki VPN peer jitter.", "ms", jitter.AvgJitter, withVPNUplinks(peerAttrs, jitter.SenderUplink, jitter.ReceiverUplink))
+			}
+			for _, mos := range peer.MOSSummaries {
+				rb.recordDouble("meraki.vpn.peer.mos", "Meraki VPN peer MOS score.", "1", mos.AvgMOS, withVPNUplinks(peerAttrs, mos.SenderUplink, mos.ReceiverUplink))
 			}
 		}
 	}
@@ -612,7 +703,9 @@ func (r *merakiMetricsReceiver) scrapePowerModules(ctx context.Context, builder 
 	statuses, err := meraki.GetPaginatedJSON[meraki.PowerModuleStatus](ctx, r.client, target.OrganizationID, "power_modules", meraki.OrganizationPath(target.OrganizationID, "/devices/powerModules/statuses/byDevice"), target.inventoryQuery())
 	if err != nil {
 		r.settings.Logger.Warn("Meraki power module endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
-		return true
+		if ctx.Err() != nil {
+			return true
+		}
 	}
 	for _, device := range statuses {
 		if !allowsSerial(allowedSerials, device.Serial) {
@@ -624,22 +717,26 @@ func (r *merakiMetricsReceiver) scrapePowerModules(ctx context.Context, builder 
 		}
 		rb := builder.deviceResource(resource)
 		for _, slot := range device.Slots {
-			rb.recordInt("meraki.power.module.status", "Meraki power module status.", "1", powerModuleStatus(slot.Status), map[string]string{
-				"meraki.power.slot":          strconv.FormatInt(slot.Number, 10),
-				"meraki.power.module.serial": slot.Serial,
-				"meraki.power.module.model":  slot.Model,
-				"meraki.power.module.status": slot.Status,
-			})
+			if code, ok := powerModuleStatus(slot.Status); ok {
+				rb.recordInt("meraki.power.module.status", "Meraki power module status.", "1", code, map[string]string{
+					"meraki.power.slot":          strconv.FormatInt(slot.Number, 10),
+					"meraki.power.module.serial": slot.Serial,
+					"meraki.power.module.model":  slot.Model,
+					"meraki.power.module.status": slot.Status,
+				})
+			}
 		}
 	}
-	return false
+	return err != nil
 }
 
 func (r *merakiMetricsReceiver) scrapeTopology(ctx context.Context, builder *merakiMetricsBuilder, target merakiTarget, allowedSerials map[string]struct{}, selector deviceSelectionMatcher) bool {
 	devices, err := meraki.GetPaginatedItemsJSON[meraki.TopologyDiscovery](ctx, r.client, target.OrganizationID, "switch_topology", meraki.OrganizationPath(target.OrganizationID, "/switch/ports/topology/discovery/byDevice"), target.networkSerialQuery())
 	if err != nil {
 		r.settings.Logger.Warn("Meraki topology discovery endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
-		return true
+		if ctx.Err() != nil {
+			return true
+		}
 	}
 	for _, device := range devices {
 		if !allowsSerial(allowedSerials, device.Serial) {
@@ -655,14 +752,16 @@ func (r *merakiMetricsReceiver) scrapeTopology(ctx context.Context, builder *mer
 			recordTopologyProtocol(rb, "lldp", port.PortID, port.LLDP)
 		}
 	}
-	return false
+	return err != nil
 }
 
 func (r *merakiMetricsReceiver) scrapeTransceivers(ctx context.Context, builder *merakiMetricsBuilder, target merakiTarget, allowedSerials map[string]struct{}, selector deviceSelectionMatcher) bool {
 	devices, err := meraki.GetPaginatedItemsJSON[meraki.TransceiverReadings](ctx, r.client, target.OrganizationID, "transceivers", meraki.OrganizationPath(target.OrganizationID, "/appliance/devices/ports/transceivers/readings/history/byDevice"), target.windowedDeviceQuery())
 	if err != nil {
 		r.settings.Logger.Warn("Meraki transceiver endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
-		return true
+		if ctx.Err() != nil {
+			return true
+		}
 	}
 	for _, device := range devices {
 		if !allowsSerial(allowedSerials, device.Serial) {
@@ -685,7 +784,7 @@ func (r *merakiMetricsReceiver) scrapeTransceivers(ctx context.Context, builder 
 			}
 		}
 	}
-	return false
+	return err != nil
 }
 
 func (r *merakiMetricsReceiver) scrapeAppliancePerformance(ctx context.Context, builder *merakiMetricsBuilder, target merakiTarget, allowedSerials map[string]struct{}, selector deviceSelectionMatcher) bool {
@@ -718,12 +817,16 @@ func (r *merakiMetricsReceiver) resetRequestStats() {
 	r.stats = nil
 }
 
-func (r *merakiMetricsReceiver) recordAPIRequestMetrics(builder *merakiMetricsBuilder) {
+func (r *merakiMetricsReceiver) requestStats() []meraki.RequestStat {
 	r.statsMu.Lock()
-	stats := append([]meraki.RequestStat(nil), r.stats...)
-	r.statsMu.Unlock()
+	defer r.statsMu.Unlock()
+	return append([]meraki.RequestStat(nil), r.stats...)
+}
+
+func (r *merakiMetricsReceiver) recordAPIRequestMetrics(builder *merakiMetricsBuilder) {
+	stats := r.requestStats()
+	observations := make([]apiRequestObservation, 0, len(stats))
 	for _, stat := range stats {
-		rb := builder.orgResource(stat.OrganizationID)
 		attrs := map[string]string{
 			"meraki.api.operation":   stat.Operation,
 			"meraki.api.method":      stat.Method,
@@ -734,12 +837,16 @@ func (r *merakiMetricsReceiver) recordAPIRequestMetrics(builder *merakiMetricsBu
 		if stat.StatusCode > 0 {
 			attrs["http.response.status_code"] = strconv.Itoa(stat.StatusCode)
 		}
-		rb.recordDouble("meraki.api.request.duration", "Meraki API request duration.", "s", stat.Duration.Seconds(), attrs)
-		if stat.Err != nil {
-			rb.recordSum("meraki.api.request.errors", "Meraki API request errors.", "{error}", 1, attrs)
+		observations = append(observations, apiRequestObservation{resource: stat.OrganizationID, attrs: attrs, durationSeconds: stat.Duration.Seconds(), failed: stat.Err != nil, rateLimited: stat.RateLimited})
+	}
+	for _, aggregate := range aggregateAPIRequestObservations(observations) {
+		rb := builder.orgResource(aggregate.resource)
+		rb.recordDouble("meraki.api.request.duration", "Average Meraki API request duration for attempts in this scrape.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
+		if aggregate.errors > 0 {
+			rb.recordSum("meraki.api.request.errors", "Meraki API request errors.", "{error}", aggregate.errors, aggregate.attrs)
 		}
-		if stat.RateLimited {
-			rb.recordSum("meraki.api.request.rate_limited", "Meraki API requests that received HTTP 429.", "{request}", 1, attrs)
+		if aggregate.rateLimited > 0 {
+			rb.recordSum("meraki.api.request.rate_limited", "Meraki API requests that received HTTP 429.", "{request}", aggregate.rateLimited, aggregate.attrs)
 		}
 	}
 }
@@ -809,10 +916,6 @@ func (t merakiTarget) serialSet() map[string]struct{} {
 		}
 	}
 	return out
-}
-
-func (t merakiTarget) hasInventoryScopedFilters() bool {
-	return len(t.ProductTypes) > 0 || len(t.Tags) > 0 || t.TagsFilterType != ""
 }
 
 type merakiMetricsBuilder struct {
@@ -887,7 +990,7 @@ func (b *merakiMetricsBuilder) deviceResource(device deviceResource) *resourceMe
 	rb := b.resource(key)
 	attrs := rb.resource.Attributes()
 	putStr(attrs, "host.id", device.Serial)
-	putStr(attrs, "host.ip", firstNonEmpty(device.LANIP, device.PublicIP))
+	putIPAttrs(attrs, "host.ip", device.LANIP, device.PublicIP)
 	putStr(attrs, "host.name", device.Name)
 	putStr(attrs, "host.type", firstNonEmpty(device.Model, device.ProductType))
 	putStr(attrs, "hw.type", "network")
@@ -996,6 +1099,9 @@ func (rb *resourceMetricsBuilder) recordInt(name, description, unit string, valu
 }
 
 func (rb *resourceMetricsBuilder) recordDouble(name, description, unit string, value float64, attrs map[string]string) {
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return
+	}
 	dp := rb.gaugeMetric(name, description, unit).Gauge().DataPoints().AppendEmpty()
 	dp.SetTimestamp(rb.now)
 	dp.SetDoubleValue(value)
@@ -1016,6 +1122,9 @@ func (rb *resourceMetricsBuilder) recordSum(name, description, unit string, delt
 }
 
 func (rb *resourceMetricsBuilder) recordSumDouble(name, description, unit string, delta float64, attrs map[string]string) {
+	if math.IsNaN(delta) || math.IsInf(delta, 0) {
+		return
+	}
 	total, seriesStart := rb.counters.AddDouble(rb.counterNamespace, name, attrs, delta)
 	dp := rb.sumMetric(name, description, unit).Sum().DataPoints().AppendEmpty()
 	dp.SetTimestamp(counterSeriesDatapointTimestamp(seriesStart, rb.now))
@@ -1039,6 +1148,9 @@ func counterSeriesDatapointTimestamp(seriesStart time.Time, observedAt pcommon.T
 }
 
 func (rb *resourceMetricsBuilder) recordAbsoluteSumDouble(name, description, unit string, value float64, attrs map[string]string) {
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return
+	}
 	dp := rb.sumMetric(name, description, unit).Sum().DataPoints().AppendEmpty()
 	dp.SetTimestamp(rb.now)
 	dp.SetStartTimestamp(rb.start)
@@ -1206,7 +1318,9 @@ func recordTransceiverValue(rb *resourceMetricsBuilder, base map[string]string, 
 	attrs := cloneStringMap(base)
 	attrs["cisco.transceiver.sensor"] = sensor
 	attrs["cisco.transceiver.sensor.unit"] = unit
-	rb.recordDouble("cisco.transceiver.sensor", "Transceiver DOM sensor value.", unit, value.Median, attrs)
+	// One OTLP metric descriptor cannot change unit between datapoints. The
+	// physical unit remains explicit on each sensor datapoint.
+	rb.recordDouble("cisco.transceiver.sensor", "Transceiver DOM sensor value; physical unit is in cisco.transceiver.sensor.unit.", "1", value.Median, attrs)
 }
 
 func topologyValue(values []meraki.NameValue, names ...string) string {
@@ -1252,6 +1366,12 @@ func cloneStringMap(attrs map[string]string) map[string]string {
 
 func putAttrs(target pcommon.Map, attrs map[string]string) {
 	for key, value := range attrs {
+		if key == "http.response.status_code" {
+			if status, err := strconv.ParseInt(value, 10, 64); err == nil {
+				target.PutInt(key, status)
+				continue
+			}
+		}
 		putStr(target, key, value)
 	}
 }
@@ -1313,59 +1433,73 @@ func boolToInt(value bool) int64 {
 	return 0
 }
 
-func merakiDeviceUp(status string) int64 {
-	switch strings.ToLower(status) {
+func merakiDeviceUp(status string) (int64, bool) {
+	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "online", "alerting":
-		return 1
+		return 1, true
+	case "offline", "dormant":
+		return 0, true
 	default:
-		return 0
+		return 0, false
 	}
 }
 
-func merakiStatusCode(status string) int64 {
-	switch strings.ToLower(status) {
+func merakiStatusCode(status string) (int64, bool) {
+	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "online":
-		return 1
+		return 1, true
 	case "alerting":
-		return 2
+		return 2, true
 	case "dormant":
-		return 3
+		return 3, true
+	case "offline":
+		return 4, true
 	default:
-		return 0
+		return 0, false
 	}
 }
 
-func connectedStatus(status string) int64 {
-	switch strings.ToLower(status) {
+func connectedStatus(status string) (int64, bool) {
+	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "connected", "up", "active", "ready":
-		return 1
+		return 1, true
+	case "disconnected", "down", "inactive", "disabled", "offline", "not connected":
+		return 0, true
 	default:
-		return 0
+		return 0, false
 	}
 }
 
-func activeStatus(status string) int64 {
-	switch strings.ToLower(status) {
+func activeStatus(status string) (int64, bool) {
+	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "active", "ready", "online":
-		return 1
+		return 1, true
+	case "connecting", "failed", "not connected", "inactive", "offline", "down", "disabled":
+		return 0, true
 	default:
-		return 0
+		return 0, false
 	}
 }
 
-func reachableStatus(status string) int64 {
-	if strings.EqualFold(status, "reachable") {
-		return 1
+func reachableStatus(status string) (int64, bool) {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "reachable":
+		return 1, true
+	case "unreachable", "not reachable", "not-reachable":
+		return 0, true
+	default:
+		return 0, false
 	}
-	return 0
 }
 
-func powerModuleStatus(status string) int64 {
-	switch strings.ToLower(status) {
+func powerModuleStatus(status string) (int64, bool) {
+	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "connected", "powering", "ok", "present":
-		return 1
+		return 1, true
+	case "not connected", "disconnected", "failed", "fault", "absent", "not present":
+		return 0, true
 	default:
-		return 0
+		return 0, false
 	}
 }
 

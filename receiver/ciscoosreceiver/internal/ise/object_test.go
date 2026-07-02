@@ -4,6 +4,7 @@
 package ise
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -17,6 +18,14 @@ func TestDecodeObjectsExtractsISESearchResultJSON(t *testing.T) {
 	assert.Equal(t, 2, total)
 	require.Len(t, objects, 2)
 	assert.Equal(t, "nad-1", String(objects[0], "name"))
+}
+
+func TestDecodeObjectPreservesLargeGenericInteger(t *testing.T) {
+	obj, err := decodeObject([]byte(`{"counter":9007199254740993}`))
+	require.NoError(t, err)
+	number, ok := obj["counter"].(json.Number)
+	require.True(t, ok)
+	assert.Equal(t, "9007199254740993", number.String())
 }
 
 func TestDecodeObjectsExtractsERSXMLResources(t *testing.T) {

@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/config/configgrpc"
 	"go.opentelemetry.io/collector/config/configopaque"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -277,7 +278,7 @@ func newIOSXRDialInE2EConfig(t *testing.T) *Config {
 			StreamMode:        iosXRStreamModeSample,
 			SampleInterval:    durationEnv(t, ciscoOSE2ECollectionIntEnv, time.Minute),
 			HeartbeatInterval: durationEnv(t, ciscoOSE2ECollectionIntEnv, time.Minute),
-			SuppressRedundant: true,
+			SuppressRedundant: configoptional.Some(true),
 		},
 	}}
 	require.NoError(t, cfg.Validate())

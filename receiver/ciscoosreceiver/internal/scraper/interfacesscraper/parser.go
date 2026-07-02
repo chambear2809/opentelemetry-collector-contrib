@@ -19,8 +19,10 @@ type Interface struct {
 	MACAddress  string
 	Description string
 
-	AdminStatus string
-	OperStatus  string
+	AdminStatus    string
+	OperStatus     string
+	HasAdminStatus bool
+	HasOperStatus  bool
 
 	InputErrors  int64
 	OutputErrors int64
@@ -56,6 +58,8 @@ type Interface struct {
 	Counters map[string]int64
 }
 
+const invalidCounterValue = int64(math.MinInt64)
+
 const (
 	StatusUp   = "up"
 	StatusDown = "down"
@@ -63,10 +67,18 @@ const (
 
 func NewInterface(name string) *Interface {
 	return &Interface{
-		Name:        name,
-		AdminStatus: StatusDown,
-		OperStatus:  StatusDown,
-		Counters:    map[string]int64{},
+		Name:          name,
+		AdminStatus:   StatusDown,
+		OperStatus:    StatusDown,
+		InputErrors:   invalidCounterValue,
+		OutputErrors:  invalidCounterValue,
+		InputDrops:    invalidCounterValue,
+		OutputDrops:   invalidCounterValue,
+		InputBytes:    invalidCounterValue,
+		OutputBytes:   invalidCounterValue,
+		InputPackets:  invalidCounterValue,
+		OutputPackets: invalidCounterValue,
+		Counters:      map[string]int64{},
 	}
 }
 
@@ -168,27 +180,40 @@ func str2float64(s string) float64 {
 	return 0
 }
 
-// str2int64 converts a Cisco counter string to int64 without float64 precision loss.
-// Values that cannot be parsed (dashes, empty, non-numeric) are returned as 0.
+// str2int64 converts a Cisco counter string to int64 without float64 precision
+// loss. Invalid and unsigned values outside OTLP's signed int64 range use a
+// sentinel so callers can omit them rather than manufacturing zeroes or
+// clamping a device counter.
 func str2int64(s string) int64 {
 	if s == "-" || s == "" {
-		return 0
+		return invalidCounterValue
 	}
 	s = strings.ReplaceAll(s, ",", "")
 	if val, err := strconv.ParseInt(s, 10, 64); err == nil {
+		if val < 0 {
+			return invalidCounterValue
+		}
 		return val
 	}
-	// ParseInt rejects values >= 2^63; try unsigned and clamp to MaxInt64.
+	// ParseInt rejects values >= 2^63; accept only unsigned values representable
+	// in OTLP's signed int64 datapoint type.
 	if val, err := strconv.ParseUint(s, 10, 64); err == nil {
 		if val > math.MaxInt64 {
-			return math.MaxInt64
+			return invalidCounterValue
 		}
 		return int64(val)
 	}
-	return 0
+	return invalidCounterValue
+}
+
+func validCounter(value int64) bool {
+	return value != invalidCounterValue
 }
 
 func recordCounter(intf *Interface, name string, value int64) {
+	if !validCounter(value) {
+		return
+	}
 	if intf.Counters == nil {
 		intf.Counters = map[string]int64{}
 	}
@@ -303,12 +328,16 @@ func parseInterfaces(output string, logger *zap.Logger) []*Interface {
 				current.AdminStatus = StatusDown
 			}
 			current.OperStatus = parseStatus(matches[3])
+			current.HasAdminStatus = true
+			current.HasOperStatus = true
 		case nxosOperStatusRegexp.MatchString(line):
 			matches := nxosOperStatusRegexp.FindStringSubmatch(line)
 			current.OperStatus = parseStatus(matches[1])
+			current.HasOperStatus = true
 		case nxosAdminStatusRegexp.MatchString(line):
 			matches := nxosAdminStatusRegexp.FindStringSubmatch(line)
 			current.AdminStatus = parseStatus(matches[1])
+			current.HasAdminStatus = true
 		case descRegexp.MatchString(line):
 			matches := descRegexp.FindStringSubmatch(line)
 			current.Description = matches[1]
@@ -382,7 +411,7 @@ func parseInterfaces(output string, logger *zap.Logger) []*Interface {
 			}
 			current.InputRateBits = str2int64(matches[1])
 			current.InputRatePackets = str2int64(matches[2])
-			current.HasInputRate = true
+			current.HasInputRate = validCounter(current.InputRateBits) && validCounter(current.InputRatePackets)
 		case outputRateRegexp.MatchString(line):
 			matches := outputRateRegexp.FindStringSubmatch(line)
 			if matches[1] == "-" || matches[2] == "-" {
@@ -390,7 +419,7 @@ func parseInterfaces(output string, logger *zap.Logger) []*Interface {
 			}
 			current.OutputRateBits = str2int64(matches[1])
 			current.OutputRatePackets = str2int64(matches[2])
-			current.HasOutputRate = true
+			current.HasOutputRate = validCounter(current.OutputRateBits) && validCounter(current.OutputRatePackets)
 		case speedRegexp.MatchString(line):
 			matches := speedRegexp.FindStringSubmatch(line)
 			current.SpeedString = matches[2] + " " + matches[3]
@@ -407,7 +436,9 @@ func parseInterfaces(output string, logger *zap.Logger) []*Interface {
 		case nxTxPacketSummaryRegexp.MatchString(line):
 			matches := nxTxPacketSummaryRegexp.FindStringSubmatch(line)
 			current.OutputPackets = str2int64(matches[1])
-			current.OutputUnicast = str2int64(matches[2])
+			if matches[2] != "" {
+				current.OutputUnicast = str2int64(matches[2])
+			}
 			current.OutputMulticast = str2int64(matches[3])
 			current.HasOutputPacketTypes = true
 		case packetTypesNXOS.MatchString(line):
@@ -597,12 +628,12 @@ func parseInterfaces(output string, logger *zap.Logger) []*Interface {
 			if !current.HasInputRate {
 				current.InputRateBits = str2int64(matches[1])
 				current.InputRatePackets = str2int64(matches[2])
-				current.HasInputRate = true
+				current.HasInputRate = validCounter(current.InputRateBits) && validCounter(current.InputRatePackets)
 			}
 			if !current.HasOutputRate {
 				current.OutputRateBits = str2int64(matches[3])
 				current.OutputRatePackets = str2int64(matches[4])
-				current.HasOutputRate = true
+				current.HasOutputRate = validCounter(current.OutputRateBits) && validCounter(current.OutputRatePackets)
 			}
 		}
 	}
@@ -649,7 +680,9 @@ func parseInterfaceCounterTables(output string, logger *zap.Logger) map[string]m
 			if _, ok := counterTables[intfName]; !ok {
 				counterTables[intfName] = map[string]int64{}
 			}
-			counterTables[intfName][counterName] = str2int64(fields[idx])
+			if value := str2int64(fields[idx]); validCounter(value) {
+				counterTables[intfName][counterName] = value
+			}
 		}
 	}
 

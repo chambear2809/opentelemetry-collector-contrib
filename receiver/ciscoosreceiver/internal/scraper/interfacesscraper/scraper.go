@@ -100,19 +100,28 @@ func (s *interfacesScraper) ScrapeMetrics(ctx context.Context) (pmetric.Metrics,
 			speedString = formatSpeed(intf.Speed)
 		}
 
-		if intf.OperStatus == "" {
-			s.logger.Warn("Interface has empty OperStatus, setting to down", zap.String("interface", intf.Name))
-			intf.OperStatus = StatusDown
+		if !intf.HasOperStatus {
+			s.logger.Warn("Interface operational status was not present; omitting status metric", zap.String("interface", intf.Name))
 		}
 
-		s.mb.RecordSystemNetworkIoDataPoint(timestamp, intf.InputBytes, metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
-		s.mb.RecordSystemNetworkIoDataPoint(timestamp, intf.OutputBytes, metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
-
-		s.mb.RecordSystemNetworkErrorsDataPoint(timestamp, intf.InputErrors, metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
-		s.mb.RecordSystemNetworkErrorsDataPoint(timestamp, intf.OutputErrors, metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
-
-		s.mb.RecordSystemNetworkPacketDroppedDataPoint(timestamp, intf.InputDrops, metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
-		s.mb.RecordSystemNetworkPacketDroppedDataPoint(timestamp, intf.OutputDrops, metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
+		if validCounter(intf.InputBytes) {
+			s.mb.RecordSystemNetworkIoDataPoint(timestamp, intf.InputBytes, metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
+		}
+		if validCounter(intf.OutputBytes) {
+			s.mb.RecordSystemNetworkIoDataPoint(timestamp, intf.OutputBytes, metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
+		}
+		if validCounter(intf.InputErrors) {
+			s.mb.RecordSystemNetworkErrorsDataPoint(timestamp, intf.InputErrors, metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
+		}
+		if validCounter(intf.OutputErrors) {
+			s.mb.RecordSystemNetworkErrorsDataPoint(timestamp, intf.OutputErrors, metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
+		}
+		if validCounter(intf.InputDrops) {
+			s.mb.RecordSystemNetworkPacketDroppedDataPoint(timestamp, intf.InputDrops, metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
+		}
+		if validCounter(intf.OutputDrops) {
+			s.mb.RecordSystemNetworkPacketDroppedDataPoint(timestamp, intf.OutputDrops, metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
+		}
 
 		recordPacketCounts(s.mb, timestamp, intf, description, macAddress, speedString)
 
@@ -135,8 +144,12 @@ func (s *interfacesScraper) ScrapeMetrics(ctx context.Context) (pmetric.Metrics,
 			s.mb.RecordCiscoInterfacePacketRateDataPoint(timestamp, intf.OutputRatePackets, metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
 		}
 
-		s.mb.RecordSystemNetworkInterfaceStatusDataPoint(timestamp, intf.GetOperStatusInt(), description, macAddress, intf.Name, speedString)
-		s.mb.RecordCiscoInterfaceAdminStatusDataPoint(timestamp, intf.GetAdminStatusInt(), description, macAddress, intf.Name, speedString)
+		if intf.HasOperStatus {
+			s.mb.RecordSystemNetworkInterfaceStatusDataPoint(timestamp, intf.GetOperStatusInt(), description, macAddress, intf.Name, speedString)
+		}
+		if intf.HasAdminStatus {
+			s.mb.RecordCiscoInterfaceAdminStatusDataPoint(timestamp, intf.GetAdminStatusInt(), description, macAddress, intf.Name, speedString)
+		}
 	}
 
 	optionalCtx, cancelOptional := context.WithTimeout(ctx, s.optionalCollectionBudget())
@@ -166,26 +179,32 @@ func (s *interfacesScraper) ScrapeMetrics(ctx context.Context) (pmetric.Metrics,
 }
 
 func recordPacketCounts(mb *metadata.MetricsBuilder, timestamp pcommon.Timestamp, intf *Interface, description, macAddress, speedString string) {
-	if intf.HasInputPacketTypes && intf.InputUnicast == 0 {
+	if intf.HasInputPacketTypes && validCounter(intf.InputPackets) && validCounter(intf.InputUnicast) && validCounter(intf.InputMulticast) && validCounter(intf.InputBroadcast) && intf.InputUnicast == 0 {
 		if sum := intf.InputMulticast + intf.InputBroadcast; intf.InputPackets >= sum {
 			intf.InputUnicast = intf.InputPackets - sum
 		}
 	}
-	if intf.HasOutputPacketTypes && intf.OutputUnicast == 0 {
+	if intf.HasOutputPacketTypes && validCounter(intf.OutputPackets) && validCounter(intf.OutputUnicast) && validCounter(intf.OutputMulticast) && validCounter(intf.OutputBroadcast) && intf.OutputUnicast == 0 {
 		if sum := intf.OutputMulticast + intf.OutputBroadcast; intf.OutputPackets >= sum {
 			intf.OutputUnicast = intf.OutputPackets - sum
 		}
 	}
 
 	if intf.HasInputPacketTypes {
-		mb.RecordSystemNetworkPacketCountDataPoint(timestamp, intf.InputUnicast, metadata.AttributeNetworkIoDirectionReceive, metadata.AttributeNetworkPacketTypeUnicast, description, macAddress, intf.Name, speedString)
-		mb.RecordSystemNetworkPacketCountDataPoint(timestamp, intf.InputMulticast, metadata.AttributeNetworkIoDirectionReceive, metadata.AttributeNetworkPacketTypeMulticast, description, macAddress, intf.Name, speedString)
-		mb.RecordSystemNetworkPacketCountDataPoint(timestamp, intf.InputBroadcast, metadata.AttributeNetworkIoDirectionReceive, metadata.AttributeNetworkPacketTypeBroadcast, description, macAddress, intf.Name, speedString)
+		recordPacketCountIfValid(mb, timestamp, intf.InputUnicast, metadata.AttributeNetworkIoDirectionReceive, metadata.AttributeNetworkPacketTypeUnicast, description, macAddress, intf.Name, speedString)
+		recordPacketCountIfValid(mb, timestamp, intf.InputMulticast, metadata.AttributeNetworkIoDirectionReceive, metadata.AttributeNetworkPacketTypeMulticast, description, macAddress, intf.Name, speedString)
+		recordPacketCountIfValid(mb, timestamp, intf.InputBroadcast, metadata.AttributeNetworkIoDirectionReceive, metadata.AttributeNetworkPacketTypeBroadcast, description, macAddress, intf.Name, speedString)
 	}
 	if intf.HasOutputPacketTypes {
-		mb.RecordSystemNetworkPacketCountDataPoint(timestamp, intf.OutputUnicast, metadata.AttributeNetworkIoDirectionTransmit, metadata.AttributeNetworkPacketTypeUnicast, description, macAddress, intf.Name, speedString)
-		mb.RecordSystemNetworkPacketCountDataPoint(timestamp, intf.OutputMulticast, metadata.AttributeNetworkIoDirectionTransmit, metadata.AttributeNetworkPacketTypeMulticast, description, macAddress, intf.Name, speedString)
-		mb.RecordSystemNetworkPacketCountDataPoint(timestamp, intf.OutputBroadcast, metadata.AttributeNetworkIoDirectionTransmit, metadata.AttributeNetworkPacketTypeBroadcast, description, macAddress, intf.Name, speedString)
+		recordPacketCountIfValid(mb, timestamp, intf.OutputUnicast, metadata.AttributeNetworkIoDirectionTransmit, metadata.AttributeNetworkPacketTypeUnicast, description, macAddress, intf.Name, speedString)
+		recordPacketCountIfValid(mb, timestamp, intf.OutputMulticast, metadata.AttributeNetworkIoDirectionTransmit, metadata.AttributeNetworkPacketTypeMulticast, description, macAddress, intf.Name, speedString)
+		recordPacketCountIfValid(mb, timestamp, intf.OutputBroadcast, metadata.AttributeNetworkIoDirectionTransmit, metadata.AttributeNetworkPacketTypeBroadcast, description, macAddress, intf.Name, speedString)
+	}
+}
+
+func recordPacketCountIfValid(mb *metadata.MetricsBuilder, timestamp pcommon.Timestamp, value int64, direction metadata.AttributeNetworkIoDirection, packetType metadata.AttributeNetworkPacketType, description, macAddress, name, speedString string) {
+	if validCounter(value) {
+		mb.RecordSystemNetworkPacketCountDataPoint(timestamp, value, direction, packetType, description, macAddress, name, speedString)
 	}
 }
 

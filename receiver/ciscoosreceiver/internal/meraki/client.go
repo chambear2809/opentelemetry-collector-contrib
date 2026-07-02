@@ -5,7 +5,6 @@ package meraki // import "github.com/open-telemetry/opentelemetry-collector-cont
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -23,7 +22,6 @@ const (
 	defaultBaseURL        = "https://api.meraki.com/api/v1"
 	defaultUserAgent      = "opentelemetry-collector-contrib-ciscoosreceiver"
 	defaultRequestTimeout = 30 * time.Second
-	defaultMaxRetries     = 3
 )
 
 // Config controls the Meraki Dashboard API client.
@@ -51,14 +49,10 @@ type RequestStat struct {
 // APIError is returned for non-success Meraki API responses.
 type APIError struct {
 	StatusCode int
-	Body       string
 }
 
 func (e *APIError) Error() string {
-	if e.Body == "" {
-		return fmt.Sprintf("meraki API returned HTTP %d", e.StatusCode)
-	}
-	return fmt.Sprintf("meraki API returned HTTP %d: %s", e.StatusCode, e.Body)
+	return httpclient.StatusError("meraki", e.StatusCode)
 }
 
 // Client is a small Meraki Dashboard API HTTP client.
@@ -97,12 +91,9 @@ func NewClient(cfg Config) (*Client, error) {
 	if userAgent == "" {
 		userAgent = defaultUserAgent
 	}
-	retries := cfg.MaxRetries
-	if retries < 0 {
-		retries = 0
-	}
-	if retries == 0 {
-		retries = defaultMaxRetries
+	retries, err := httpclient.RetryCount(cfg.MaxRetries)
+	if err != nil {
+		return nil, fmt.Errorf("invalid meraki max retries: %w", err)
 	}
 
 	return &Client{
@@ -128,7 +119,7 @@ func GetJSON[T any](ctx context.Context, c *Client, organizationID, operation, p
 	if err != nil {
 		return out, err
 	}
-	if err := json.Unmarshal(body, &out); err != nil {
+	if err := httpclient.DecodeJSON(body, &out); err != nil {
 		return out, fmt.Errorf("decode meraki %s response: %w", operation, err)
 	}
 	return out, nil
@@ -139,17 +130,29 @@ func GetPaginatedJSON[T any](ctx context.Context, c *Client, organizationID, ope
 	var results []T
 	nextPath := path
 	nextQuery := cloneValues(query)
+	visited := map[string]struct{}{c.buildURL(nextPath, nextQuery): {}}
+	pages := 0
+	var byteBudget httpclient.PaginationByteBudget
 	for {
+		pages++
 		body, header, err := c.do(ctx, organizationID, operation, nextPath, nextQuery)
 		if err != nil {
 			return results, err
 		}
+		if err := byteBudget.Charge(operation, len(body), len(results)); err != nil {
+			return results, err
+		}
 		var page []T
-		if err := json.Unmarshal(body, &page); err != nil {
+		if err := httpclient.DecodeJSON(body, &page); err != nil {
 			return results, fmt.Errorf("decode meraki %s page: %w", operation, err)
 		}
+		if len(page) > httpclient.HardMaxPaginationResults-len(results) {
+			remaining := httpclient.HardMaxPaginationResults - len(results)
+			results = append(results, page[:remaining]...)
+			return results, httpclient.NewPaginationLimitError(operation, "result", httpclient.HardMaxPaginationResults, len(results))
+		}
 		results = append(results, page...)
-		nextURL := nextLink(header.Get("Link"))
+		nextURL := httpclient.NextLink(header.Get("Link"))
 		if nextURL == "" {
 			return results, nil
 		}
@@ -157,6 +160,14 @@ func GetPaginatedJSON[T any](ctx context.Context, c *Client, organizationID, ope
 		if err != nil {
 			return results, fmt.Errorf("invalid meraki %s pagination link: %w", operation, err)
 		}
+		if pages >= httpclient.HardMaxPaginationPages {
+			return results, httpclient.NewPaginationLimitError(operation, "page", httpclient.HardMaxPaginationPages, len(results))
+		}
+		key := c.buildURL(nextPath, nextQuery)
+		if _, exists := visited[key]; exists {
+			return results, fmt.Errorf("meraki %s pagination link cycle detected", operation)
+		}
+		visited[key] = struct{}{}
 	}
 }
 
@@ -166,19 +177,31 @@ func GetPaginatedItemsJSON[T any](ctx context.Context, c *Client, organizationID
 	var results []T
 	nextPath := path
 	nextQuery := cloneValues(query)
+	visited := map[string]struct{}{c.buildURL(nextPath, nextQuery): {}}
+	pages := 0
+	var byteBudget httpclient.PaginationByteBudget
 	for {
+		pages++
 		body, header, err := c.do(ctx, organizationID, operation, nextPath, nextQuery)
 		if err != nil {
+			return results, err
+		}
+		if err := byteBudget.Charge(operation, len(body), len(results)); err != nil {
 			return results, err
 		}
 		var page struct {
 			Items []T `json:"items"`
 		}
-		if err := json.Unmarshal(body, &page); err != nil {
+		if err := httpclient.DecodeJSON(body, &page); err != nil {
 			return results, fmt.Errorf("decode meraki %s page: %w", operation, err)
 		}
+		if len(page.Items) > httpclient.HardMaxPaginationResults-len(results) {
+			remaining := httpclient.HardMaxPaginationResults - len(results)
+			results = append(results, page.Items[:remaining]...)
+			return results, httpclient.NewPaginationLimitError(operation, "result", httpclient.HardMaxPaginationResults, len(results))
+		}
 		results = append(results, page.Items...)
-		nextURL := nextLink(header.Get("Link"))
+		nextURL := httpclient.NextLink(header.Get("Link"))
 		if nextURL == "" {
 			return results, nil
 		}
@@ -186,6 +209,14 @@ func GetPaginatedItemsJSON[T any](ctx context.Context, c *Client, organizationID
 		if err != nil {
 			return results, fmt.Errorf("invalid meraki %s pagination link: %w", operation, err)
 		}
+		if pages >= httpclient.HardMaxPaginationPages {
+			return results, httpclient.NewPaginationLimitError(operation, "page", httpclient.HardMaxPaginationPages, len(results))
+		}
+		key := c.buildURL(nextPath, nextQuery)
+		if _, exists := visited[key]; exists {
+			return results, fmt.Errorf("meraki %s pagination link cycle detected", operation)
+		}
+		visited[key] = struct{}{}
 	}
 }
 
@@ -271,7 +302,7 @@ func (c *Client) do(ctx context.Context, organizationID, operation, path string,
 			return body, resp.Header, nil
 		}
 
-		apiErr := &APIError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(body))}
+		apiErr := &APIError{StatusCode: resp.StatusCode}
 		lastErr = apiErr
 		rateLimited := resp.StatusCode == http.StatusTooManyRequests
 		c.record(RequestStat{
@@ -408,21 +439,6 @@ func sleepBeforeRetry(ctx context.Context, attempt int, serverDelay time.Duratio
 	case <-timer.C:
 		return true
 	}
-}
-
-func nextLink(linkHeader string) string {
-	for _, part := range strings.Split(linkHeader, ",") {
-		part = strings.TrimSpace(part)
-		if !strings.Contains(part, `rel="next"`) && !strings.Contains(part, "rel=next") {
-			continue
-		}
-		start := strings.Index(part, "<")
-		end := strings.Index(part, ">")
-		if start >= 0 && end > start {
-			return part[start+1 : end]
-		}
-	}
-	return ""
 }
 
 func (c *Client) splitNextURL(next string) (string, url.Values, error) {

@@ -10,6 +10,8 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
+	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -34,6 +36,140 @@ func withFailingDialer(t *testing.T) *string {
 		dialSSH = previousDialer
 	})
 	return &capturedAddress
+}
+
+type stalledSSHAcceptResult struct {
+	conn net.Conn
+	err  error
+}
+
+func startStalledSSHServer(t *testing.T) (string, <-chan stalledSSHAcceptResult, <-chan error) {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = listener.Close()
+	})
+
+	accepted := make(chan stalledSSHAcceptResult, 1)
+	remoteClosed := make(chan error, 1)
+	go func() {
+		conn, acceptErr := listener.Accept()
+		accepted <- stalledSSHAcceptResult{conn: conn, err: acceptErr}
+		if acceptErr != nil {
+			return
+		}
+		defer conn.Close()
+
+		buffer := make([]byte, 256)
+		for {
+			if _, readErr := conn.Read(buffer); readErr != nil {
+				remoteClosed <- readErr
+				return
+			}
+		}
+	}()
+
+	return listener.Addr().String(), accepted, remoteClosed
+}
+
+func waitForStalledSSHAccept(t *testing.T, accepted <-chan stalledSSHAcceptResult) net.Conn {
+	t.Helper()
+
+	select {
+	case result := <-accepted:
+		require.NoError(t, result.err)
+		require.NotNil(t, result.conn)
+		t.Cleanup(func() {
+			_ = result.conn.Close()
+		})
+		return result.conn
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for stalled SSH server to accept connection")
+		return nil
+	}
+}
+
+func requirePromptRemoteClose(t *testing.T, remoteClosed <-chan error) {
+	t.Helper()
+
+	select {
+	case err := <-remoteClosed:
+		require.Error(t, err)
+		assert.ErrorIs(t, err, io.EOF)
+	case <-time.After(2 * time.Second):
+		t.Fatal("SSH client did not promptly close the stalled server connection")
+	}
+}
+
+func TestDialSSHContextCancellationClosesStalledHandshake(t *testing.T) {
+	address, accepted, remoteClosed := startStalledSSHServer(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	config := &cryptossh.ClientConfig{
+		User:            "test-user",
+		HostKeyCallback: cryptossh.InsecureIgnoreHostKey(), // #nosec G106 -- loopback-only stalled test server
+		Timeout:         10 * time.Second,
+	}
+	dialDone := make(chan error, 1)
+	go func() {
+		client, err := dialSSH(ctx, "tcp", address, config)
+		if client != nil {
+			_ = client.Close()
+		}
+		dialDone <- err
+	}()
+
+	waitForStalledSSHAccept(t, accepted)
+	cancelStarted := time.Now()
+	cancel()
+
+	select {
+	case err := <-dialDone:
+		require.ErrorIs(t, err, context.Canceled)
+		assert.Less(t, time.Since(cancelStarted), time.Second)
+	case <-time.After(2 * time.Second):
+		t.Fatal("SSH handshake did not return promptly after context cancellation")
+	}
+	requirePromptRemoteClose(t, remoteClosed)
+}
+
+func TestDialSSHHandshakeTimeoutClosesStalledConnection(t *testing.T) {
+	address, accepted, remoteClosed := startStalledSSHServer(t)
+	config := &cryptossh.ClientConfig{
+		User:            "test-user",
+		HostKeyCallback: cryptossh.InsecureIgnoreHostKey(), // #nosec G106 -- loopback-only stalled test server
+		Timeout:         250 * time.Millisecond,
+	}
+
+	type dialResult struct {
+		client *cryptossh.Client
+		err    error
+	}
+	dialDone := make(chan dialResult, 1)
+	dialStarted := time.Now()
+	go func() {
+		client, err := dialSSH(context.Background(), "tcp", address, config)
+		dialDone <- dialResult{client: client, err: err}
+	}()
+
+	waitForStalledSSHAccept(t, accepted)
+	select {
+	case result := <-dialDone:
+		if result.client != nil {
+			_ = result.client.Close()
+		}
+		require.Error(t, result.err)
+		var netErr net.Error
+		require.ErrorAs(t, result.err, &netErr)
+		assert.True(t, netErr.Timeout())
+		assert.Less(t, time.Since(dialStarted), 2*time.Second)
+	case <-time.After(2 * time.Second):
+		t.Fatal("SSH handshake did not honor the configured timeout")
+	}
+	requirePromptRemoteClose(t, remoteClosed)
 }
 
 // Helper function to create DeviceConfig for tests

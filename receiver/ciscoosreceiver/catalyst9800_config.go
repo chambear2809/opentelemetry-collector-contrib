@@ -12,7 +12,10 @@ import (
 
 	"go.opentelemetry.io/collector/config/configgrpc"
 	"go.opentelemetry.io/collector/config/configopaque"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.uber.org/multierr"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/yanggrpcreceiver"
 )
 
 // Catalyst9800CredentialsConfig represents Catalyst 9800 gNMI metadata credentials.
@@ -46,14 +49,14 @@ type Catalyst9800SubscriptionConfig struct {
 	// DO NOT USE unkeyed struct initialization
 	_ struct{} `mapstructure:"-"`
 
-	Mode              string        `mapstructure:"mode"`
-	StreamMode        string        `mapstructure:"stream_mode"`
-	SampleInterval    time.Duration `mapstructure:"sample_interval"`
-	HeartbeatInterval time.Duration `mapstructure:"heartbeat_interval"`
-	PollInterval      time.Duration `mapstructure:"poll_interval"`
-	SuppressRedundant bool          `mapstructure:"suppress_redundant"`
-	UpdatesOnly       bool          `mapstructure:"updates_only"`
-	AllowAggregation  bool          `mapstructure:"allow_aggregation"`
+	Mode              string                        `mapstructure:"mode"`
+	StreamMode        string                        `mapstructure:"stream_mode"`
+	SampleInterval    time.Duration                 `mapstructure:"sample_interval"`
+	HeartbeatInterval time.Duration                 `mapstructure:"heartbeat_interval"`
+	PollInterval      time.Duration                 `mapstructure:"poll_interval"`
+	SuppressRedundant configoptional.Optional[bool] `mapstructure:"suppress_redundant"`
+	UpdatesOnly       configoptional.Optional[bool] `mapstructure:"updates_only"`
+	AllowAggregation  configoptional.Optional[bool] `mapstructure:"allow_aggregation"`
 }
 
 // Catalyst9800TargetConfig identifies one Catalyst 9800 gNMI dial-in target.
@@ -88,9 +91,10 @@ type Catalyst9800DialOutConfig struct {
 	// DO NOT USE unkeyed struct initialization
 	_ struct{} `mapstructure:"-"`
 
-	Enabled        bool     `mapstructure:"enabled"`
-	AllowedClients []string `mapstructure:"allowed_clients"`
-	ModulePaths    []string `mapstructure:"module_paths"`
+	Enabled        bool                                `mapstructure:"enabled"`
+	AllowedClients []string                            `mapstructure:"allowed_clients"`
+	ModulePaths    []string                            `mapstructure:"module_paths"`
+	RateLimiting   yanggrpcreceiver.RateLimitingConfig `mapstructure:"rate_limiting"`
 }
 
 // Catalyst9800Config defines direct Catalyst 9800 WLC telemetry settings.
@@ -119,12 +123,19 @@ func defaultCatalyst9800Config() Catalyst9800Config {
 	server.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault().Timeout = 10 * time.Second
 
 	return Catalyst9800Config{
-		PathGroups:            defaultCatalyst9800PathGroups(),
-		DialOut:               Catalyst9800DialOutConfig{ServerConfig: server},
+		PathGroups: defaultCatalyst9800PathGroups(),
+		DialOut: Catalyst9800DialOutConfig{
+			ServerConfig: server,
+			RateLimiting: yanggrpcreceiver.RateLimitingConfig{
+				RequestsPerSecond: 100,
+				BurstSize:         10,
+				CleanupInterval:   time.Minute,
+			},
+		},
 		UnsupportedPathAction: iosXRUnsupportedWarn,
 		EncodingPreference:    []string{"json_ietf", "json"},
 		Subscription:          defaultCatalyst9800SubscriptionConfig(),
-		MaxDatapointsPerBatch: 50000,
+		MaxDatapointsPerBatch: directGNMIDefaultMaxDatapoints,
 	}
 }
 
@@ -153,7 +164,9 @@ func defaultCatalyst9800SubscriptionConfig() Catalyst9800SubscriptionConfig {
 		StreamMode:        iosXRStreamModeSample,
 		SampleInterval:    time.Minute,
 		HeartbeatInterval: time.Minute,
-		SuppressRedundant: true,
+		SuppressRedundant: configoptional.Some(true),
+		UpdatesOnly:       configoptional.Some(false),
+		AllowAggregation:  configoptional.Some(false),
 	}
 }
 
@@ -176,6 +189,8 @@ func (cfg *Config) validateCatalyst9800() error {
 	}
 	if wlc.MaxDatapointsPerBatch < 0 {
 		err = multierr.Append(err, errors.New("catalyst_9800.max_datapoints_per_batch must not be negative"))
+	} else if wlc.MaxDatapointsPerBatch > directGNMIHardMaxDatapoints {
+		err = multierr.Append(err, fmt.Errorf("catalyst_9800.max_datapoints_per_batch must not exceed %d", directGNMIHardMaxDatapoints))
 	}
 	err = multierr.Append(err, validateCatalyst9800Encodings("catalyst_9800.encoding_preference", wlc.EncodingPreference))
 	err = multierr.Append(err, validateCatalyst9800Subscription("catalyst_9800.subscription", wlc.Subscription))
@@ -203,6 +218,12 @@ func (cfg *Config) validateCatalyst9800() error {
 		} else if _, _, splitErr := net.SplitHostPort(target.Endpoint); splitErr != nil {
 			err = multierr.Append(err, fmt.Errorf("%s.endpoint must be host:port", prefix))
 		}
+		if grpcErr := target.ClientConfig.Validate(); grpcErr != nil {
+			err = multierr.Append(err, fmt.Errorf("%s: %w", prefix, grpcErr))
+		}
+		if target.TLS.Insecure {
+			err = multierr.Append(err, fmt.Errorf("%s.tls.insecure must be false because gNMI credentials require TLS", prefix))
+		}
 		if target.Credentials.Username == "" {
 			err = multierr.Append(err, fmt.Errorf("%s.credentials.username cannot be empty", prefix))
 		}
@@ -219,8 +240,10 @@ func (cfg *Config) validateCatalyst9800() error {
 	}
 
 	if wlc.DialOut.Enabled {
-		if grpcErr := wlc.DialOut.ServerConfig.Validate(); grpcErr != nil {
-			err = multierr.Append(err, fmt.Errorf("catalyst_9800.dial_out: %w", grpcErr))
+		security := yanggrpcreceiver.SecurityConfig{AllowedClients: wlc.DialOut.AllowedClients, RateLimiting: wlc.DialOut.RateLimiting}
+		yangConfig := yanggrpcreceiver.Config{ServerConfig: wlc.DialOut.ServerConfig, Security: security}
+		if validationErr := yangConfig.Validate(); validationErr != nil {
+			err = multierr.Append(err, fmt.Errorf("catalyst_9800.dial_out: %w", validationErr))
 		}
 	}
 
@@ -282,10 +305,34 @@ func (sub Catalyst9800SubscriptionConfig) withDefaults(defaults Catalyst9800Subs
 	if sub.HeartbeatInterval == 0 {
 		sub.HeartbeatInterval = defaults.HeartbeatInterval
 	}
+	if !sub.SuppressRedundant.HasValue() {
+		sub.SuppressRedundant = defaults.SuppressRedundant
+	}
+	if !sub.UpdatesOnly.HasValue() {
+		sub.UpdatesOnly = defaults.UpdatesOnly
+	}
+	if !sub.AllowAggregation.HasValue() {
+		sub.AllowAggregation = defaults.AllowAggregation
+	}
 	if sub.PollInterval == 0 {
 		sub.PollInterval = sub.SampleInterval
 	}
 	return sub
+}
+
+func (sub Catalyst9800SubscriptionConfig) suppressRedundant() bool {
+	value := sub.SuppressRedundant.Get()
+	return value != nil && *value
+}
+
+func (sub Catalyst9800SubscriptionConfig) updatesOnly() bool {
+	value := sub.UpdatesOnly.Get()
+	return value != nil && *value
+}
+
+func (sub Catalyst9800SubscriptionConfig) allowAggregation() bool {
+	value := sub.AllowAggregation.Get()
+	return value != nil && *value
 }
 
 func validateCatalyst9800Encodings(prefix string, values []string) error {

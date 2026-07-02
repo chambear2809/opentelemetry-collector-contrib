@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,6 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/config/configopaque"
+	"go.opentelemetry.io/collector/config/configoptional"
+	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver/receivertest"
@@ -128,6 +131,61 @@ func TestIOSXRDialInReceiverPollSendsInitialPoll(t *testing.T) {
 	assert.NotNil(t, fake.requests[1].GetPoll())
 }
 
+func TestIOSXRDialInReceiverPollJoinsReaderOnCancellation(t *testing.T) {
+	streamCtx, cancelStream := context.WithCancel(t.Context())
+	next := &releaseBlockingMetricsConsumer{started: make(chan struct{}), release: make(chan struct{})}
+	t.Cleanup(next.Release)
+	receiver := &iosXRDialInReceiver{
+		settings: receivertest.NewNopSettings(componentmetadata.Type),
+		config:   defaultIOSXRConfig(),
+		consumer: next,
+		health:   &iosXRHealth{},
+	}
+	target := IOSXRTargetConfig{
+		Name: "xr-1",
+		Subscription: IOSXRSubscriptionConfig{
+			Mode:         iosXRSubscribeModePoll,
+			PollInterval: time.Hour,
+		},
+	}
+	stream := &singleUpdateGNMIClientStream{ctx: streamCtx, response: testDirectGNMIUpdate()}
+	result := make(chan error, 1)
+	go func() {
+		var progressed atomic.Bool
+		result <- receiver.recvPoll(streamCtx, cancelStream, target, stream, &progressed)
+	}()
+
+	select {
+	case <-next.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("gNMI POLL reader did not reach the downstream consumer")
+	}
+	cancelStream()
+	select {
+	case err := <-result:
+		t.Fatalf("recvPoll returned before its reader exited: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	next.Release()
+	select {
+	case err := <-result:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(5 * time.Second):
+		t.Fatal("recvPoll did not join its reader after downstream returned")
+	}
+}
+
+func TestIOSXRDialInReceiverPollPreservesSendError(t *testing.T) {
+	streamCtx, cancelStream := context.WithCancel(t.Context())
+	sendErr := errors.New("poll send failed")
+	stream := &singleUpdateGNMIClientStream{ctx: streamCtx, sendErr: sendErr, sendErrAt: 2}
+	target := IOSXRTargetConfig{Subscription: IOSXRSubscriptionConfig{Mode: iosXRSubscribeModePoll, PollInterval: time.Millisecond}}
+	var progressed atomic.Bool
+
+	err := (&iosXRDialInReceiver{}).recvPoll(streamCtx, cancelStream, target, stream, &progressed)
+	require.ErrorIs(t, err, sendErr)
+}
+
 func TestIOSXRResolveTargetPathsHonorsUnsupportedAction(t *testing.T) {
 	cfg := defaultIOSXRConfig()
 	cfg.Enabled = true
@@ -168,7 +226,9 @@ func TestBuildIOSXRSubscribeRequestModesAndGuardrails(t *testing.T) {
 		StreamMode:        iosXRStreamModeTargetDefined,
 		SampleInterval:    30 * time.Second,
 		HeartbeatInterval: 10 * time.Second,
-		SuppressRedundant: true,
+		SuppressRedundant: configoptional.Some(true),
+		UpdatesOnly:       configoptional.Some(true),
+		AllowAggregation:  configoptional.Some(true),
 	}, []iosXRPathDefinition{
 		{ID: "oc", Path: "openconfig-interfaces:interfaces/interface/state", MinSampleInterval: time.Minute},
 		{ID: "native", Path: "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/latest/generic-counters", MinSampleInterval: time.Minute},
@@ -178,6 +238,8 @@ func TestBuildIOSXRSubscribeRequestModesAndGuardrails(t *testing.T) {
 	require.NotNil(t, subscribe)
 	assert.Equal(t, gnmi.SubscriptionList_POLL, subscribe.Mode)
 	assert.Equal(t, gnmi.Encoding_JSON, subscribe.Encoding)
+	assert.True(t, subscribe.UpdatesOnly)
+	assert.True(t, subscribe.AllowAggregation)
 	require.Len(t, subscribe.Subscription, 2)
 	assert.Equal(t, gnmi.SubscriptionMode_TARGET_DEFINED, subscribe.Subscription[0].Mode)
 	assert.Equal(t, gnmi.SubscriptionMode_SAMPLE, subscribe.Subscription[1].Mode)
@@ -384,4 +446,74 @@ func mustParseIOSXRPathForServer(raw string) *gnmi.Path {
 		panic(err)
 	}
 	return path
+}
+
+type releaseBlockingMetricsConsumer struct {
+	started     chan struct{}
+	release     chan struct{}
+	once        sync.Once
+	releaseOnce sync.Once
+}
+
+func (*releaseBlockingMetricsConsumer) Capabilities() consumer.Capabilities {
+	return consumer.Capabilities{MutatesData: false}
+}
+
+func (c *releaseBlockingMetricsConsumer) ConsumeMetrics(context.Context, pmetric.Metrics) error {
+	c.once.Do(func() { close(c.started) })
+	<-c.release
+	return nil
+}
+
+func (c *releaseBlockingMetricsConsumer) Release() {
+	c.releaseOnce.Do(func() { close(c.release) })
+}
+
+type singleUpdateGNMIClientStream struct {
+	ctx       context.Context
+	response  *gnmi.SubscribeResponse
+	mu        sync.Mutex
+	sendErr   error
+	sendErrAt int
+	sendCalls int
+}
+
+func (s *singleUpdateGNMIClientStream) Send(*gnmi.SubscribeRequest) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sendCalls++
+	if s.sendErrAt > 0 && s.sendCalls >= s.sendErrAt {
+		return s.sendErr
+	}
+	return nil
+}
+
+func (s *singleUpdateGNMIClientStream) Recv() (*gnmi.SubscribeResponse, error) {
+	s.mu.Lock()
+	response := s.response
+	s.response = nil
+	s.mu.Unlock()
+	if response != nil {
+		return response, nil
+	}
+	<-s.ctx.Done()
+	return nil, s.ctx.Err()
+}
+
+func (*singleUpdateGNMIClientStream) Header() (grpcmetadata.MD, error) { return nil, nil }
+func (*singleUpdateGNMIClientStream) Trailer() grpcmetadata.MD         { return nil }
+func (*singleUpdateGNMIClientStream) CloseSend() error                 { return nil }
+func (s *singleUpdateGNMIClientStream) Context() context.Context       { return s.ctx }
+func (*singleUpdateGNMIClientStream) SendMsg(any) error                { return nil }
+func (*singleUpdateGNMIClientStream) RecvMsg(any) error                { return errors.New("unused") }
+
+func testDirectGNMIUpdate() *gnmi.SubscribeResponse {
+	return &gnmi.SubscribeResponse{Response: &gnmi.SubscribeResponse_Update{Update: &gnmi.Notification{
+		Timestamp: time.Unix(1700000000, 0).UnixNano(),
+		Prefix:    mustParseIOSXRPathForServer("openconfig-interfaces:interfaces/interface[name=HundredGigE0/0/0/0]/state"),
+		Update: []*gnmi.Update{{
+			Path: mustParseIOSXRPathForServer("counters/in-octets"),
+			Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_UintVal{UintVal: 123}},
+		}},
+	}}}
 }

@@ -4,6 +4,8 @@
 package ciscoosreceiver
 
 import (
+	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,6 +34,13 @@ func TestCounterStoreIsolatesResourcesAndCanonicalizesAttributes(t *testing.T) {
 	assert.Equal(t, start, seriesStart)
 }
 
+func TestCounterKeyHasFixedSizeForUntrustedDimensions(t *testing.T) {
+	key := counterKey(strings.Repeat("resource", 10_000), "requests", map[string]string{
+		"controller.id": strings.Repeat("x", 10_000),
+	})
+	assert.Len(t, key, 32)
+}
+
 func TestCounterStorePreservesIntegersAboveFloatPrecision(t *testing.T) {
 	start := time.Unix(100, 0)
 	store := newCounterStoreAt(start)
@@ -43,6 +52,22 @@ func TestCounterStorePreservesIntegersAboveFloatPrecision(t *testing.T) {
 	total, seriesStart = store.AddInt("resource-a", "packets", nil, 2)
 	assert.Equal(t, aboveFloatPrecision+2, total)
 	assert.Equal(t, start, seriesStart)
+}
+
+func TestCounterStoreStartsNewEpochInsteadOfOverflowingInt64(t *testing.T) {
+	now := time.Unix(100, 0)
+	store := newCounterStoreWithConfig(now, counterStoreConfig{
+		now: func() time.Time { return now },
+	})
+
+	total, seriesStart := store.AddInt("resource-a", "packets", nil, math.MaxInt64-1)
+	assert.Equal(t, int64(math.MaxInt64-1), total)
+	assert.Equal(t, time.Unix(100, 0), seriesStart)
+
+	now = time.Unix(200, 0)
+	total, seriesStart = store.AddInt("resource-a", "packets", nil, 2)
+	assert.Equal(t, int64(2), total)
+	assert.Equal(t, now, seriesStart)
 }
 
 func TestCounterStoreKeepsIntegerAndDoubleSeriesSeparate(t *testing.T) {
@@ -182,4 +207,15 @@ func TestResourceMetricsBuilderDoesNotSetGaugeStartTime(t *testing.T) {
 
 	dp := builder.metrics["test.gauge"].Gauge().DataPoints().At(0)
 	assert.Equal(t, pcommon.Timestamp(0), dp.StartTimestamp())
+}
+
+func TestResourceMetricsBuilderDropsNonFiniteDoubleValues(t *testing.T) {
+	builder := newMerakiMetricsBuilder(time.Unix(200, 0), newCounterStore()).orgResource("org-a")
+	builder.recordDouble("test.nan", "test", "1", math.NaN(), nil)
+	builder.recordSumDouble("test.inf_sum", "test", "1", math.Inf(1), nil)
+	builder.recordAbsoluteSumDouble("test.inf_absolute", "test", "1", math.Inf(-1), nil)
+
+	assert.NotContains(t, builder.metrics, "test.nan")
+	assert.NotContains(t, builder.metrics, "test.inf_sum")
+	assert.NotContains(t, builder.metrics, "test.inf_absolute")
 }

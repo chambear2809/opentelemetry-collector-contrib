@@ -462,7 +462,7 @@
           "secondary_visualization": "Sparkline",
           "name": "Switch Port Alerts",
           "description": "Value: surfaces Dashboard port warnings and errors such as PoE overload, CRC issues, or authentication progress. Interpretation: each row is an alert reason by port; non-zero rows should be correlated with status, utilization, and client impact.",
-          "signalflow": "data('meraki.switch.port.alert').sum(by=['host.name', 'host.id', 'network.interface.name', 'meraki.switch.port.alert.severity', 'meraki.switch.port.alert.reason']).publish(label='Port alerts')",
+          "signalflow": "data('meraki.switch.port.alert.active').sum(by=['host.name', 'host.id', 'network.interface.name', 'meraki.switch.port.alert.severity', 'meraki.switch.port.alert.reason']).publish(label='Port alerts')",
           "legend_dimension": "meraki.switch.port.alert.reason",
           "publish_label_options": [
             {

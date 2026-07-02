@@ -8,13 +8,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"go.uber.org/zap"
 	cryptossh "golang.org/x/crypto/ssh"
 )
+
+const defaultMaxSSHCommandOutputBytes = 16 * 1024 * 1024
+
+var errSSHCommandOutputTooLarge = errors.New("SSH command output exceeds limit")
 
 // Client represents SSH client connection to Cisco device
 type Client struct {
@@ -27,6 +33,72 @@ type Client struct {
 	address        string
 	config         *cryptossh.ClientConfig
 	reconnectCount int64
+	connectionMu   sync.Mutex
+	reconnectMu    sync.Mutex
+	closed         bool
+	// maxCommandOutputBytes is test-injectable; zero uses the production cap.
+	maxCommandOutputBytes int
+}
+
+type commandOutputLimit struct {
+	mu        sync.Mutex
+	remaining int
+	exceeded  bool
+	overflow  chan struct{}
+}
+
+type boundedCommandBuffer struct {
+	mu    sync.Mutex
+	buf   bytes.Buffer
+	limit *commandOutputLimit
+}
+
+func newCommandOutputCapture(limit int) (*boundedCommandBuffer, *boundedCommandBuffer, *commandOutputLimit) {
+	state := &commandOutputLimit{remaining: limit, overflow: make(chan struct{})}
+	return &boundedCommandBuffer{limit: state}, &boundedCommandBuffer{limit: state}, state
+}
+
+func (b *boundedCommandBuffer) Write(payload []byte) (int, error) {
+	allowed := b.limit.claim(len(payload))
+	if allowed > 0 {
+		b.mu.Lock()
+		_, _ = b.buf.Write(payload[:allowed])
+		b.mu.Unlock()
+	}
+	// Report the full write as consumed so the SSH transport continues draining
+	// until the caller closes the session after observing the overflow signal.
+	return len(payload), nil
+}
+
+func (b *boundedCommandBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func (l *commandOutputLimit) claim(requested int) int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	allowed := min(requested, l.remaining)
+	l.remaining -= allowed
+	if allowed < requested && !l.exceeded {
+		l.exceeded = true
+		close(l.overflow)
+	}
+	return allowed
+}
+
+func (l *commandOutputLimit) Exceeded() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.exceeded
+}
+
+func (s *Client) commandOutputLimit() int {
+	if s.maxCommandOutputBytes > 0 {
+		return s.maxCommandOutputBytes
+	}
+	return defaultMaxSSHCommandOutputBytes
 }
 
 // DisablePaging disables CLI pagination so command output is not truncated.
@@ -62,21 +134,28 @@ func (s *Client) executeCommand(ctx context.Context, command string, ignoreExitS
 	if err != nil {
 		return "", fmt.Errorf("failed to create SSH session: %w", err)
 	}
+	return s.executeCommandWithSession(ctx, session, command, ignoreExitStatus)
+}
 
+// executeCommandWithSession executes an exec request on a session that has
+// already been opened. Keeping session acquisition out of this helper lets a
+// reconnect initialize the new connection without recursively triggering
+// another reconnect through newSession.
+func (s *Client) executeCommandWithSession(ctx context.Context, session *cryptossh.Session, command string, ignoreExitStatus bool) (string, error) {
 	type result struct {
 		output string
 		err    error
 	}
 	resultChan := make(chan result, 1)
+	stdout, stderr, outputLimit := newCommandOutputCapture(s.commandOutputLimit())
 
 	go func() {
 		// Capture stdout and stderr together so Cisco error lines (e.g. "% Invalid
 		// input detected") are visible in parser output. We use Run rather than
 		// Output so that non-zero exit codes do not discard the output — Cisco IOS
 		// frequently exits non-zero even for successful commands.
-		var stdout, stderr bytes.Buffer
-		session.Stdout = &stdout
-		session.Stderr = &stderr
+		session.Stdout = stdout
+		session.Stderr = stderr
 		execErr := session.Run(command)
 		out := stdout.String() + stderr.String()
 		// Treat non-zero exit codes from the device as non-fatal: return the
@@ -95,6 +174,9 @@ func (s *Client) executeCommand(ctx context.Context, command string, ignoreExitS
 	select {
 	case r := <-resultChan:
 		session.Close()
+		if outputLimit.Exceeded() {
+			return "", fmt.Errorf("%w: limit is %d bytes", errSSHCommandOutputTooLarge, s.commandOutputLimit())
+		}
 		if r.err != nil {
 			return "", fmt.Errorf("command execution failed: %w", r.err)
 		}
@@ -107,6 +189,10 @@ func (s *Client) executeCommand(ctx context.Context, command string, ignoreExitS
 		// Close the session to unblock the goroutine reading from the device.
 		session.Close()
 		return "", fmt.Errorf("command execution timeout: %w", ctx.Err())
+
+	case <-outputLimit.overflow:
+		session.Close()
+		return "", fmt.Errorf("%w: limit is %d bytes", errSSHCommandOutputTooLarge, s.commandOutputLimit())
 	}
 }
 
@@ -136,9 +222,9 @@ func (s *Client) executeCommandInShell(ctx context.Context, command string, enab
 		return "", fmt.Errorf("failed to open SSH stdin pipe: %w", err)
 	}
 
-	var stdout, stderr bytes.Buffer
-	session.Stdout = &stdout
-	session.Stderr = &stderr
+	stdout, stderr, outputLimit := newCommandOutputCapture(s.commandOutputLimit())
+	session.Stdout = stdout
+	session.Stderr = stderr
 	if err := session.Shell(); err != nil {
 		session.Close()
 		return "", fmt.Errorf("failed to start SSH shell: %w", err)
@@ -181,6 +267,9 @@ func (s *Client) executeCommandInShell(ctx context.Context, command string, enab
 	select {
 	case r := <-resultChan:
 		session.Close()
+		if outputLimit.Exceeded() {
+			return "", fmt.Errorf("%w: limit is %d bytes", errSSHCommandOutputTooLarge, s.commandOutputLimit())
+		}
 		if r.err != nil {
 			return "", fmt.Errorf("command execution failed: %w", r.err)
 		}
@@ -192,6 +281,10 @@ func (s *Client) executeCommandInShell(ctx context.Context, command string, enab
 	case <-ctx.Done():
 		session.Close()
 		return "", fmt.Errorf("command execution timeout: %w", ctx.Err())
+
+	case <-outputLimit.overflow:
+		session.Close()
+		return "", fmt.Errorf("%w: limit is %d bytes", errSSHCommandOutputTooLarge, s.commandOutputLimit())
 	}
 }
 
@@ -200,14 +293,22 @@ func outputNeedsInteractiveShell(output string) bool {
 }
 
 func (s *Client) newSession(ctx context.Context) (*cryptossh.Session, error) {
-	if s.Connection == nil {
-		if err := s.reconnect(ctx); err != nil {
+	conn, closed := s.currentConnection()
+	if closed {
+		return nil, net.ErrClosed
+	}
+	if conn == nil {
+		if err := s.reconnect(ctx, nil); err != nil {
 			return nil, err
 		}
-		return s.openSession(ctx)
+		conn, closed = s.currentConnection()
+		if closed || conn == nil {
+			return nil, net.ErrClosed
+		}
+		return s.openSession(ctx, conn)
 	}
 
-	session, err := s.openSession(ctx)
+	session, err := s.openSession(ctx, conn)
 	if err == nil {
 		return session, nil
 	}
@@ -221,25 +322,32 @@ func (s *Client) newSession(ctx context.Context) (*cryptossh.Session, error) {
 	s.Logger.Debug("Failed to create SSH session; reconnecting before retry",
 		zap.String("target", s.Target),
 		zap.Error(err))
-	if reconnectErr := s.reconnect(ctx); reconnectErr != nil {
+	if reconnectErr := s.reconnect(ctx, conn); reconnectErr != nil {
 		return nil, fmt.Errorf("failed to reconnect after session creation failed: %w (original error: %v)", reconnectErr, err)
 	}
 
-	session, retryErr := s.openSession(ctx)
+	conn, closed = s.currentConnection()
+	if closed || conn == nil {
+		return nil, fmt.Errorf("failed to create SSH session after reconnect: %w (original error: %v)", net.ErrClosed, err)
+	}
+	session, retryErr := s.openSession(ctx, conn)
 	if retryErr != nil {
 		return nil, fmt.Errorf("failed to create SSH session after reconnect: %w (original error: %v)", retryErr, err)
 	}
 	return session, nil
 }
 
-func (s *Client) openSession(ctx context.Context) (*cryptossh.Session, error) {
+func (s *Client) openSession(ctx context.Context, conn *cryptossh.Client) (*cryptossh.Session, error) {
+	if conn == nil {
+		return nil, net.ErrClosed
+	}
 	type sessionResult struct {
 		session *cryptossh.Session
 		err     error
 	}
 	resultChan := make(chan sessionResult, 1)
 	go func() {
-		session, err := s.Connection.NewSession()
+		session, err := conn.NewSession()
 		resultChan <- sessionResult{session: session, err: err}
 	}()
 
@@ -247,10 +355,8 @@ func (s *Client) openSession(ctx context.Context) (*cryptossh.Session, error) {
 	case r := <-resultChan:
 		return r.session, r.err
 	case <-ctx.Done():
-		if s.Connection != nil {
-			_ = s.Connection.Close()
-			s.Connection = nil
-		}
+		_ = conn.Close()
+		s.clearConnection(conn)
 		go func() {
 			if r := <-resultChan; r.session != nil {
 				_ = r.session.Close()
@@ -260,18 +366,77 @@ func (s *Client) openSession(ctx context.Context) (*cryptossh.Session, error) {
 	}
 }
 
-func (s *Client) reconnect(ctx context.Context) error {
+func (s *Client) currentConnection() (*cryptossh.Client, bool) {
+	s.connectionMu.Lock()
+	defer s.connectionMu.Unlock()
+	return s.Connection, s.closed
+}
+
+func (s *Client) clearConnection(conn *cryptossh.Client) {
+	s.connectionMu.Lock()
+	defer s.connectionMu.Unlock()
+	if s.Connection == conn {
+		s.Connection = nil
+	}
+}
+
+func (s *Client) reconnect(ctx context.Context, failedConn *cryptossh.Client) error {
 	if s.config == nil || s.address == "" || s.network == "" {
 		return errors.New("SSH reconnect is not configured")
 	}
-	if s.Connection != nil {
-		_ = s.Connection.Close()
+	s.reconnectMu.Lock()
+	defer s.reconnectMu.Unlock()
+
+	s.connectionMu.Lock()
+	if s.closed {
+		s.connectionMu.Unlock()
+		return net.ErrClosed
 	}
+	current := s.Connection
+	// A concurrent caller may already have installed a replacement while this
+	// caller waited for reconnectMu. Reuse it rather than tearing it down.
+	if current != nil && (failedConn == nil || current != failedConn) {
+		s.connectionMu.Unlock()
+		return nil
+	}
+	s.Connection = nil
+	s.connectionMu.Unlock()
+	if current != nil {
+		_ = current.Close()
+	}
+
 	conn, err := dialSSH(ctx, s.network, s.address, s.config)
 	if err != nil {
 		return err
 	}
+
+	// Cisco pagination settings are scoped to the SSH connection. Reapply the
+	// same initialization performed for the original connection before a show
+	// command is allowed to use this replacement connection. Open the session
+	// directly rather than calling DisablePaging, which would route back through
+	// newSession and could recurse into reconnect.
+	pagingSession, err := s.openSession(ctx, conn)
+	if err == nil {
+		_, err = s.executeCommandWithSession(ctx, pagingSession, "terminal length 0", true)
+	}
+	if err != nil {
+		_ = conn.Close()
+		return fmt.Errorf("failed to disable CLI pagination after SSH reconnect: %w", err)
+	}
+
+	s.connectionMu.Lock()
+	if s.closed {
+		s.connectionMu.Unlock()
+		_ = conn.Close()
+		return net.ErrClosed
+	}
+	stale := s.Connection
 	s.Connection = conn
+	s.connectionMu.Unlock()
+	if stale != nil && stale != conn {
+		_ = stale.Close()
+	}
+
 	atomic.AddInt64(&s.reconnectCount, 1)
 	return nil
 }
@@ -330,8 +495,13 @@ func detectOSTypeFromShowVersion(output string) string {
 
 // Close closes SSH connection
 func (s *Client) Close() error {
-	if s.Connection != nil {
-		return s.Connection.Close()
+	s.connectionMu.Lock()
+	conn := s.Connection
+	s.Connection = nil
+	s.closed = true
+	s.connectionMu.Unlock()
+	if conn != nil {
+		return conn.Close()
 	}
 	return nil
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/config/configgrpc"
+	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
 
@@ -100,7 +101,7 @@ func TestCatalyst9800GNMIDecoderWirelessAliasesAndRawMetrics(t *testing.T) {
 	assertMetricExists(t, md, "cisco.catalyst9800.yang.wireless_ap_global_oper.ap_global_oper_data.ap_join_stats.ap_join_info.is_joined")
 	for _, name := range []string{
 		"cisco.wlc.ap.join.status",
-		"cisco.wlc.ap.join.failure",
+		"cisco.wlc.ap.join.failure.reason.info",
 		"cisco.wlc.ap.disconnect",
 		"cisco.wlc.ap.capwap.state",
 		"cisco.wlc.rf.channel.utilization",
@@ -112,7 +113,7 @@ func TestCatalyst9800GNMIDecoderWirelessAliasesAndRawMetrics(t *testing.T) {
 		"cisco.wlc.ssid.network.io",
 		"cisco.wlc.ssid.retry.count",
 		"cisco.wlc.client.connection.state",
-		"cisco.wlc.client.auth.failure",
+		"cisco.wlc.client.auth.failure.reason.info",
 		"cisco.wlc.client.roam.count",
 		"cisco.wlc.client.roam.failure.count",
 		"cisco.wlc.client.wireless.rssi",
@@ -237,7 +238,84 @@ func TestCatalyst9800GNMIDecoderInvalidJSONCountsDecodeErrors(t *testing.T) {
 	}, catalyst9800TelemetryTransportDialIn)
 
 	assert.Equal(t, int64(1), health.snapshot().decodeErrors)
+	assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
 	assertMetricExists(t, md, "cisco.catalyst9800.receiver.decode_errors")
+	assertMetricExists(t, md, "cisco.catalyst9800.receiver.dropped_datapoints")
+}
+
+func TestCatalyst9800GNMIDecoderBoundsAdversarialJSON(t *testing.T) {
+	t.Run("many leaves stop at datapoint budget", func(t *testing.T) {
+		health := &catalyst9800Health{}
+		decoder := catalyst9800GNMIUpdateDecoder{
+			target:        Catalyst9800TargetConfig{Name: "wlc-1"},
+			health:        health,
+			maxDatapoints: 5,
+		}
+		md := decoder.decodeNotification(&gnmi.Notification{
+			Prefix: mustParseIOSXRPath(t, "wireless-access-point-oper:access-point-oper-data"),
+			Update: []*gnmi.Update{{
+				Path: mustParseIOSXRPath(t, "wide"),
+				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: manyLeafJSON(t, 1_000)}},
+			}},
+		}, catalyst9800TelemetryTransportDialIn)
+
+		assert.Equal(t, 5, directTelemetryDataPointCount(md))
+		assert.Positive(t, health.snapshot().droppedDatapoints)
+		assert.Zero(t, health.snapshot().decodeErrors)
+		assertMetricExists(t, md, "cisco.catalyst9800.receiver.dropped_datapoints")
+	})
+
+	t.Run("excessive depth is dropped before append", func(t *testing.T) {
+		health := &catalyst9800Health{}
+		decoder := catalyst9800GNMIUpdateDecoder{
+			target: Catalyst9800TargetConfig{Name: "wlc-1"},
+			health: health,
+			limits: directGNMIDecodeLimits{maxDepth: 4},
+		}
+		md := decoder.decodeNotification(&gnmi.Notification{
+			Prefix: mustParseIOSXRPath(t, "wireless-access-point-oper:access-point-oper-data"),
+			Update: []*gnmi.Update{{
+				Path: mustParseIOSXRPath(t, "deep"),
+				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: deeplyNestedJSON(t, 32)}},
+			}},
+		}, catalyst9800TelemetryTransportDialIn)
+
+		assert.Zero(t, directTelemetryDataPointCount(md))
+		assert.Positive(t, health.snapshot().droppedDatapoints)
+		assert.Zero(t, health.snapshot().decodeErrors)
+	})
+}
+
+func TestCatalyst9800GNMIDecoderRecreationDoesNotAdvanceCounterEpoch(t *testing.T) {
+	sink := &consumertest.MetricsSink{}
+	tracked := newAbsoluteCounterTrackingConsumer(sink)
+	times := []time.Time{time.Unix(100, 0), time.Unix(200, 0)}
+	values := []uint64{100, 150}
+
+	for i := range times {
+		// recvLoop constructs a new decoder after every reconnect. Counter epoch
+		// state belongs to the receiver-level tracking consumer, not this decoder.
+		decoder := catalyst9800GNMIUpdateDecoder{
+			target: Catalyst9800TargetConfig{Name: "wlc-1"},
+			health: &catalyst9800Health{},
+		}
+		md := decoder.decodeNotification(&gnmi.Notification{
+			Timestamp: times[i].UnixNano(),
+			Prefix:    mustParseIOSXRPath(t, "wireless-access-point-oper:access-point-oper-data"),
+			Update: []*gnmi.Update{{
+				Path: catalyst9800SSIDCounterPath("AA:BB:CC:DD:EE:FF", "tx-bytes-data"),
+				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_UintVal{UintVal: values[i]}},
+			}},
+		}, catalyst9800TelemetryTransportDialIn)
+		require.NoError(t, tracked.ConsumeMetrics(t.Context(), md))
+	}
+
+	require.Len(t, sink.AllMetrics(), 2)
+	const metricName = "cisco.catalyst9800.yang.wireless_access_point_oper.access_point_oper_data.ssid_counters.tx_bytes_data"
+	for _, md := range sink.AllMetrics() {
+		dp := mustFindIOSXRMetric(t, md, metricName).Sum().DataPoints().At(0)
+		assert.True(t, times[0].Equal(dp.StartTimestamp().AsTime()))
+	}
 }
 
 func catalyst9800JSONNotification(t *testing.T, prefix, updatePath, body string) *gnmi.Notification {

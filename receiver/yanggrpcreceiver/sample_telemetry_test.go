@@ -237,8 +237,8 @@ func sendInterfaceTelemetryData(endpoint, nodeID, subscription, encodingPath str
 		Subscription:        &pb.Telemetry_SubscriptionIdStr{SubscriptionIdStr: subscription},
 		EncodingPath:        encodingPath,
 		CollectionId:        1,
-		CollectionStartTime: uint64(time.Now().UnixNano()),
-		MsgTimestamp:        uint64(time.Now().UnixNano()),
+		CollectionStartTime: uint64(time.Now().UnixMilli()),
+		MsgTimestamp:        uint64(time.Now().UnixMilli()),
 		DataGpbkv: []*pb.TelemetryField{
 			{
 				Name: "interface",
@@ -337,7 +337,7 @@ func analyzeResults(t *testing.T, consumer *metricsCapture, sampleData SampleTel
 						if metric.Type() == pmetric.MetricTypeGauge {
 							gauge := metric.Gauge()
 							if gauge.DataPoints().Len() > 0 {
-								metricValue = gauge.DataPoints().At(0).DoubleValue()
+								metricValue = testNumberDataPointValue(gauge.DataPoints().At(0))
 							}
 						}
 

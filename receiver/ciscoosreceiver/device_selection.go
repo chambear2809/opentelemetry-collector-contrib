@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.uber.org/multierr"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/aci"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/catalystcenter"
@@ -37,6 +38,42 @@ type DeviceSelectionMatchConfig struct {
 	HostIPs   []string `mapstructure:"host_ips"`
 	Serials   []string `mapstructure:"serials"`
 	DeviceIDs []string `mapstructure:"device_ids"`
+}
+
+// Validate prevents an apparently active include selector from becoming empty
+// after normalization and unintentionally broadening collection to all devices.
+func (cfg DeviceSelectionConfig) Validate() error {
+	var err error
+	err = multierr.Append(err, validateDeviceSelectionMatch("include", cfg.Include))
+	err = multierr.Append(err, validateDeviceSelectionMatch("exclude", cfg.Exclude))
+	return err
+}
+
+func validateDeviceSelectionMatch(prefix string, cfg DeviceSelectionMatchConfig) error {
+	var err error
+	for name, values := range map[string][]string{
+		"host_names": cfg.HostNames,
+		"host_ids":   cfg.HostIDs,
+		"serials":    cfg.Serials,
+		"device_ids": cfg.DeviceIDs,
+	} {
+		for i, value := range values {
+			if strings.TrimSpace(value) == "" {
+				err = multierr.Append(err, fmt.Errorf("%s.%s[%d] cannot be empty", prefix, name, i))
+			}
+		}
+	}
+	for i, value := range cfg.HostIPs {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			err = multierr.Append(err, fmt.Errorf("%s.host_ips[%d] cannot be empty", prefix, i))
+			continue
+		}
+		if _, parseErr := netip.ParseAddr(value); parseErr != nil {
+			err = multierr.Append(err, fmt.Errorf("%s.host_ips[%d] must be a valid IP address", prefix, i))
+		}
+	}
+	return err
 }
 
 type deviceSelectionMatcher struct {

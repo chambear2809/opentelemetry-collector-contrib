@@ -25,7 +25,6 @@ import (
 const (
 	defaultUserAgent      = "opentelemetry-collector-contrib-ciscoosreceiver"
 	defaultRequestTimeout = 30 * time.Second
-	defaultMaxRetries     = 3
 	defaultPageSize       = 100
 )
 
@@ -59,14 +58,10 @@ type RequestStat struct {
 // APIError is returned for non-success APIC API responses.
 type APIError struct {
 	StatusCode int
-	Body       string
 }
 
 func (e *APIError) Error() string {
-	if e.Body == "" {
-		return fmt.Sprintf("apic API returned HTTP %d", e.StatusCode)
-	}
-	return fmt.Sprintf("apic API returned HTTP %d: %s", e.StatusCode, e.Body)
+	return httpclient.StatusError("apic", e.StatusCode)
 }
 
 // Client is a compact Cisco APIC REST API client.
@@ -133,12 +128,9 @@ func NewClient(cfg Config) (*Client, error) {
 	if userAgent == "" {
 		userAgent = defaultUserAgent
 	}
-	retries := cfg.MaxRetries
-	if retries < 0 {
-		retries = 0
-	}
-	if retries == 0 {
-		retries = defaultMaxRetries
+	retries, err := httpclient.RetryCount(cfg.MaxRetries)
+	if err != nil {
+		return nil, fmt.Errorf("invalid apic max retries: %w", err)
 	}
 	pageSize := cfg.PageSize
 	if pageSize <= 0 {
@@ -205,18 +197,25 @@ func (c *Client) List(ctx context.Context, operation, path string, query url.Val
 		query = url.Values{}
 	}
 	var results []Object
+	resultLimit, hardResultLimit := httpclient.EffectivePaginationResultLimit(maxResults)
 	page := 0
+	pages := 0
+	var byteBudget httpclient.PaginationByteBudget
+	seenRequests := make(map[string]struct{})
 	for {
+		if len(results) >= resultLimit {
+			if hardResultLimit {
+				return results, httpclient.NewPaginationLimitError(operation, "result", resultLimit, len(results))
+			}
+			return results, nil
+		}
+		if pages >= httpclient.HardMaxPaginationPages {
+			return results, httpclient.NewPaginationLimitError(operation, "page", httpclient.HardMaxPaginationPages, len(results))
+		}
 		pageQuery := cloneValues(query)
 		pageSize := c.pageSize
-		if maxResults > 0 {
-			remaining := maxResults - len(results)
-			if remaining <= 0 {
-				return results, nil
-			}
-			if remaining < pageSize {
-				pageSize = remaining
-			}
+		if remaining := resultLimit - len(results); remaining < pageSize {
+			pageSize = remaining
 		}
 		if _, ok := pageQuery["page-size"]; !ok {
 			pageQuery.Set("page-size", strconv.Itoa(pageSize))
@@ -224,23 +223,35 @@ func (c *Client) List(ctx context.Context, operation, path string, query url.Val
 		if _, ok := pageQuery["page"]; !ok {
 			pageQuery.Set("page", strconv.Itoa(page))
 		}
+		requestKey := path + "?" + pageQuery.Encode()
+		if _, seen := seenRequests[requestKey]; seen {
+			return results, fmt.Errorf("paginate apic %s response: detected continuation cycle after %d partial results", operation, len(results))
+		}
+		seenRequests[requestKey] = struct{}{}
 		body, header, err := c.do(ctx, http.MethodGet, operation, path, pageQuery, nil)
 		if err != nil {
 			return results, err
 		}
+		if err := byteBudget.Charge(operation, len(body), len(results)); err != nil {
+			return results, err
+		}
+		pages++
 		pageObjects, total, err := decodeObjects(body)
 		if err != nil {
 			return results, fmt.Errorf("decode apic %s response: %w", operation, err)
 		}
 		results = append(results, pageObjects...)
-		if maxResults > 0 && len(results) >= maxResults {
-			return results[:maxResults], nil
-		}
-		next := nextLink(header.Get("Link"))
-		if len(pageObjects) == 0 || len(pageObjects) < pageSize || total > -1 && len(results) >= total {
+		next := httpclient.NextLink(header.Get("Link"))
+		complete := len(pageObjects) == 0 || len(pageObjects) < pageSize || total > -1 && len(results) >= total || total < 0 && next == ""
+		truncated := len(results) > resultLimit
+		if len(results) >= resultLimit {
+			results = results[:resultLimit]
+			if hardResultLimit && (truncated || !complete) {
+				return results, httpclient.NewPaginationLimitError(operation, "result", resultLimit, len(results))
+			}
 			return results, nil
 		}
-		if total < 0 && next == "" {
+		if complete {
 			return results, nil
 		}
 		page++
@@ -325,7 +336,7 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "success", StatusCode: resp.StatusCode, Duration: duration})
 		return bodyBytes, resp.Header, resp.StatusCode, nil
 	}
-	apiErr := &APIError{StatusCode: resp.StatusCode, Body: string(bodyBytes)}
+	apiErr := &APIError{StatusCode: resp.StatusCode}
 	c.record(RequestStat{
 		Controller:  c.name,
 		Operation:   operation,
@@ -437,7 +448,7 @@ func (c *Client) login(ctx context.Context) (string, error) {
 		return "", closeErr
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		apiErr := &APIError{StatusCode: resp.StatusCode, Body: string(bodyBytes)}
+		apiErr := &APIError{StatusCode: resp.StatusCode}
 		c.record(RequestStat{Controller: c.name, Operation: "aaaLogin", Method: http.MethodPost, Path: "/api/aaaLogin.json", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: apiErr})
 		return "", apiErr
 	}
@@ -497,7 +508,7 @@ func decodeObjects(body []byte) ([]Object, int, error) {
 		TotalCount string           `json:"totalCount"`
 		IMData     []map[string]any `json:"imdata"`
 	}
-	if err := json.Unmarshal(body, &envelope); err == nil && envelope.IMData != nil {
+	if err := httpclient.DecodeJSON(body, &envelope); err == nil && envelope.IMData != nil {
 		out := make([]Object, 0, len(envelope.IMData))
 		for _, item := range envelope.IMData {
 			for className, raw := range item {
@@ -525,11 +536,11 @@ func decodeObjects(body []byte) ([]Object, int, error) {
 	}
 
 	var array []Object
-	if err := json.Unmarshal(body, &array); err == nil {
+	if err := httpclient.DecodeJSON(body, &array); err == nil {
 		return array, len(array), nil
 	}
 	var obj Object
-	if err := json.Unmarshal(body, &obj); err != nil {
+	if err := httpclient.DecodeJSON(body, &obj); err != nil {
 		return nil, -1, err
 	}
 	return []Object{obj}, 1, nil
@@ -582,17 +593,4 @@ func sleepBeforeRetry(ctx context.Context, attempt int, retryAfter time.Duration
 	case <-timer.C:
 		return true
 	}
-}
-
-func nextLink(header string) string {
-	for _, part := range strings.Split(header, ",") {
-		sections := strings.Split(part, ";")
-		if len(sections) < 2 {
-			continue
-		}
-		if strings.Contains(sections[1], `rel="next"`) {
-			return strings.Trim(strings.TrimSpace(sections[0]), "<>")
-		}
-	}
-	return ""
 }

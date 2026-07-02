@@ -21,7 +21,20 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
+
+func TestClientRetryValidationPreservesExplicitZero(t *testing.T) {
+	key := testPrivateKeyPEM(t)
+	client, err := NewClient(Config{Endpoint: "https://intersight.example.test", KeyID: "key-id", KeyPEM: key, MaxRetries: 0})
+	require.NoError(t, err)
+	assert.Zero(t, client.retries)
+	for _, retries := range []int{-1, httpclient.HardMaxRequestRetries + 1} {
+		_, err = NewClient(Config{Endpoint: "https://intersight.example.test", KeyID: "key-id", KeyPEM: key, MaxRetries: retries})
+		require.ErrorContains(t, err, "invalid intersight max retries")
+	}
+}
 
 func TestClientSignsRequestsAndEncodesODataQuery(t *testing.T) {
 	var sawRequest atomic.Bool
@@ -58,6 +71,15 @@ func TestClientSignsRequestsAndEncodesODataQuery(t *testing.T) {
 	require.Len(t, got, 1)
 	assert.Equal(t, "moid-1", got[0]["Moid"])
 	assert.True(t, sawRequest.Load())
+}
+
+func TestDecodeListPreservesLargeInteger(t *testing.T) {
+	objects, err := decodeList([]byte(`{"Results":[{"Bytes":9007199254740993}]}`))
+	require.NoError(t, err)
+	require.Len(t, objects, 1)
+	value, ok := Int64(objects[0], "Bytes")
+	require.True(t, ok)
+	assert.Equal(t, int64(9007199254740993), value)
 }
 
 func TestClientSignsECDSARequestsWithHS2019(t *testing.T) {
@@ -128,6 +150,51 @@ func TestClientPaginatesWithTopSkipAndMaxResults(t *testing.T) {
 	require.Len(t, got, 3)
 	assert.Equal(t, int64(2), attempts.Load())
 	assert.Equal(t, "third", got[2]["Moid"])
+}
+
+func TestClientMaxResultsCapsOverReturnedPage(t *testing.T) {
+	var attempts atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts.Add(1)
+		assert.Equal(t, "2", r.URL.Query().Get("$top"))
+		_, _ = w.Write([]byte(`{"Results":[{"Moid":"first"},{"Moid":"second"},{"Moid":"unexpected"}]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{KeyID: "test-key", KeyPEM: testPrivateKeyPEM(t), Endpoint: server.URL, Timeout: time.Second, MaxRetries: 1})
+	require.NoError(t, err)
+
+	got, err := client.List(t.Context(), "asset.targets", "/api/v1/asset/Targets", nil, 2)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, "second", got[1]["Moid"])
+	assert.Equal(t, int64(1), attempts.Load())
+}
+
+func TestClientPaginationHardPageLimitReturnsPartialResults(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		_, _ = w.Write([]byte(`{"Results":[{"Moid":"` + r.URL.Query().Get("$skip") + `"}]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		KeyID:      "test-key",
+		KeyPEM:     testPrivateKeyPEM(t),
+		Endpoint:   server.URL,
+		Timeout:    time.Second,
+		MaxRetries: 1,
+		PageSize:   1,
+	})
+	require.NoError(t, err)
+
+	got, err := client.List(t.Context(), "asset.targets", "/api/v1/asset/Targets", nil, 0)
+	var limitErr *httpclient.PaginationLimitError
+	require.ErrorAs(t, err, &limitErr)
+	assert.Equal(t, "page", limitErr.Kind)
+	assert.Len(t, got, httpclient.HardMaxPaginationPages)
+	assert.Equal(t, int64(httpclient.HardMaxPaginationPages), requests.Load())
 }
 
 func TestClientRetriesRateLimitsAndRecordsStats(t *testing.T) {

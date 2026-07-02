@@ -25,9 +25,11 @@ import (
 const (
 	defaultUserAgent      = "opentelemetry-collector-contrib-ciscoosreceiver"
 	defaultRequestTimeout = 30 * time.Second
-	defaultMaxRetries     = 3
 	defaultPageSize       = 500
 	defaultRequestSpacing = 10 * time.Millisecond
+	defaultMaxPages       = 100
+	defaultMaxResults     = 100000
+	maxPageSize           = 10000
 )
 
 // Config controls the Catalyst SD-WAN Manager API client.
@@ -61,14 +63,10 @@ type RequestStat struct {
 // APIError is returned for non-success Catalyst SD-WAN Manager API responses.
 type APIError struct {
 	StatusCode int
-	Body       string
 }
 
 func (e *APIError) Error() string {
-	if e.Body == "" {
-		return fmt.Sprintf("sdwan API returned HTTP %d", e.StatusCode)
-	}
-	return fmt.Sprintf("sdwan API returned HTTP %d: %s", e.StatusCode, e.Body)
+	return httpclient.StatusError("sdwan", e.StatusCode)
 }
 
 // Client is a compact Catalyst SD-WAN Manager REST client.
@@ -85,6 +83,8 @@ type Client struct {
 	retries     int
 	pageSize    int
 	spacing     time.Duration
+	maxPages    int
+	maxResults  int
 
 	authMu        sync.Mutex
 	loginInflight chan struct{}
@@ -167,16 +167,16 @@ func NewClient(cfg Config) (*Client, error) {
 	if userAgent == "" {
 		userAgent = defaultUserAgent
 	}
-	retries := cfg.MaxRetries
-	if retries < 0 {
-		retries = 0
-	}
-	if retries == 0 {
-		retries = defaultMaxRetries
+	retries, err := httpclient.RetryCount(cfg.MaxRetries)
+	if err != nil {
+		return nil, fmt.Errorf("invalid sdwan max retries: %w", err)
 	}
 	pageSize := cfg.PageSize
 	if pageSize <= 0 {
 		pageSize = defaultPageSize
+	}
+	if pageSize > maxPageSize {
+		pageSize = maxPageSize
 	}
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
@@ -197,6 +197,8 @@ func NewClient(cfg Config) (*Client, error) {
 		retries:     retries,
 		pageSize:    pageSize,
 		spacing:     defaultRequestSpacing,
+		maxPages:    defaultMaxPages,
+		maxResults:  defaultMaxResults,
 	}, nil
 }
 
@@ -220,15 +222,7 @@ func (c *Client) GetObject(ctx context.Context, operation, path string, query ur
 
 // List fetches generic objects from an SD-WAN endpoint.
 func (c *Client) List(ctx context.Context, operation, path string, query url.Values, maxResults int) ([]Object, error) {
-	body, header, err := c.do(ctx, http.MethodGet, operation, path, query, nil)
-	if err != nil {
-		return nil, err
-	}
-	objects, err := decodeObjects(body, header)
-	if err != nil {
-		return nil, fmt.Errorf("decode sdwan %s response: %w", operation, err)
-	}
-	return capObjects(objects, maxResults), nil
+	return c.collectPages(ctx, http.MethodGet, operation, path, cloneValues(query), nil, maxResults)
 }
 
 // PostQuery fetches generic objects with a POST JSON payload.
@@ -237,15 +231,63 @@ func (c *Client) PostQuery(ctx context.Context, operation, path string, payload 
 	if err != nil {
 		return nil, err
 	}
-	body, header, err := c.do(ctx, http.MethodPost, operation, path, nil, bodyBytes)
-	if err != nil {
-		return nil, err
+	return c.collectPages(ctx, http.MethodPost, operation, path, url.Values{}, bodyBytes, maxResults)
+}
+
+func (c *Client) collectPages(ctx context.Context, method, operation, path string, pageQuery url.Values, payload []byte, maxResults int) ([]Object, error) {
+	seenRequests := make(map[string]struct{})
+	results := make([]Object, 0)
+	var byteBudget httpclient.PaginationByteBudget
+
+	for page := 0; ; page++ {
+		if page >= c.maxPages {
+			return results, fmt.Errorf("paginate sdwan %s response: exceeded %d pages", operation, c.maxPages)
+		}
+		requestKey := method + " " + path + "?" + pageQuery.Encode()
+		if _, seen := seenRequests[requestKey]; seen {
+			return results, fmt.Errorf("paginate sdwan %s response: detected continuation cycle", operation)
+		}
+		seenRequests[requestKey] = struct{}{}
+
+		body, header, err := c.do(ctx, method, operation, path, pageQuery, payload)
+		if err != nil {
+			return results, err
+		}
+		if err := byteBudget.Charge(operation, len(body), len(results)); err != nil {
+			return results, err
+		}
+		objects, pageInfo, err := decodeObjectsPage(body, header)
+		if err != nil {
+			return results, fmt.Errorf("decode sdwan %s response: %w", operation, err)
+		}
+		results = append(results, objects...)
+		if len(results) > c.maxResults {
+			return results[:c.maxResults], fmt.Errorf("paginate sdwan %s response: exceeded %d results", operation, c.maxResults)
+		}
+		if maxResults > 0 && len(results) >= maxResults {
+			return results[:maxResults], nil
+		}
+
+		continuationPageSize := c.pageSize
+		remaining := c.maxResults - len(results)
+		if maxResults > 0 && maxResults-len(results) < remaining {
+			remaining = maxResults - len(results)
+		}
+		if remaining > 0 && remaining < continuationPageSize {
+			continuationPageSize = remaining
+		}
+		nextQuery, more, err := pageInfo.nextQuery(pageQuery, continuationPageSize)
+		if err != nil {
+			return results, fmt.Errorf("paginate sdwan %s response: %w", operation, err)
+		}
+		if !more {
+			return results, nil
+		}
+		if len(results) >= c.maxResults {
+			return results, fmt.Errorf("paginate sdwan %s response: exceeded %d results", operation, c.maxResults)
+		}
+		pageQuery = nextQuery
 	}
-	objects, err := decodeObjects(body, header)
-	if err != nil {
-		return nil, fmt.Errorf("decode sdwan %s response: %w", operation, err)
-	}
-	return capObjects(objects, maxResults), nil
 }
 
 func (c *Client) do(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, http.Header, error) {
@@ -326,7 +368,7 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 		return nil, resp.Header, resp.StatusCode, readErr
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		apiErr := &APIError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(body))}
+		apiErr := &APIError{StatusCode: resp.StatusCode}
 		stat.Outcome = "http_error"
 		stat.Err = apiErr
 		c.emit(stat)
@@ -419,10 +461,10 @@ func (c *Client) loginJWT(ctx context.Context) error {
 		return err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return &APIError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(body))}
+		return &APIError{StatusCode: resp.StatusCode}
 	}
 	var decoded map[string]any
-	if err := json.Unmarshal(body, &decoded); err != nil {
+	if err := httpclient.DecodeJSON(body, &decoded); err != nil {
 		return err
 	}
 	token := firstStringValue(decoded, "token", "access_token", "accessToken", "jwt", "id_token")
@@ -454,7 +496,7 @@ func (c *Client) loginSession(ctx context.Context) error {
 		return err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 || strings.Contains(strings.ToLower(string(body)), "<html") {
-		return &APIError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(body))}
+		return &APIError{StatusCode: resp.StatusCode}
 	}
 	for _, cookie := range resp.Cookies() {
 		if strings.EqualFold(cookie.Name, "JSESSIONID") && cookie.Value != "" {
@@ -480,7 +522,7 @@ func (c *Client) loginSession(ctx context.Context) error {
 		return err
 	}
 	if tokenResp.StatusCode < 200 || tokenResp.StatusCode >= 300 {
-		return &APIError{StatusCode: tokenResp.StatusCode, Body: strings.TrimSpace(string(tokenBody))}
+		return &APIError{StatusCode: tokenResp.StatusCode}
 	}
 	c.xsrfToken = strings.TrimSpace(string(tokenBody))
 	return nil
@@ -568,22 +610,110 @@ func (c *Client) emit(stat RequestStat) {
 
 func decodeObject(body []byte) (Object, error) {
 	var obj Object
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.UseNumber()
-	if err := decoder.Decode(&obj); err != nil {
+	if err := httpclient.DecodeJSON(body, &obj); err != nil {
 		return nil, err
 	}
 	return obj, nil
 }
 
-func decodeObjects(body []byte, header http.Header) ([]Object, error) {
+type responsePageInfo struct {
+	scrollID      string
+	startID       string
+	endID         string
+	hasMoreData   bool
+	hasMoreDataOK bool
+	moreEntries   bool
+	moreEntriesOK bool
+	count         int64
+}
+
+func decodeObjectsPage(body []byte, _ http.Header) ([]Object, responsePageInfo, error) {
 	var decoded any
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.UseNumber()
-	if err := decoder.Decode(&decoded); err != nil {
-		return nil, err
+	if err := httpclient.DecodeJSON(body, &decoded); err != nil {
+		return nil, responsePageInfo{}, err
 	}
-	return objectsFromAny(decoded), nil
+	pageInfo := responsePageInfo{}
+	if root, ok := decoded.(map[string]any); ok {
+		for _, key := range []string{"pageInfo", "PageInfo"} {
+			rawPage, ok := root[key].(map[string]any)
+			if !ok {
+				continue
+			}
+			pageInfo.scrollID = strings.TrimSpace(firstStringValue(rawPage, "scrollId", "scrollID"))
+			pageInfo.startID = strings.TrimSpace(firstStringValue(rawPage, "startId", "startID"))
+			pageInfo.endID = strings.TrimSpace(firstStringValue(rawPage, "endId", "endID"))
+			pageInfo.hasMoreData, pageInfo.hasMoreDataOK = booleanValue(rawPage["hasMoreData"])
+			pageInfo.moreEntries, pageInfo.moreEntriesOK = booleanValue(rawPage["moreEntries"])
+			if count, ok := integerValue(rawPage["count"]); ok && count > 0 {
+				pageInfo.count = count
+			}
+			break
+		}
+	}
+	return objectsFromAny(decoded), pageInfo, nil
+}
+
+func (p responsePageInfo) nextQuery(current url.Values, pageSize int) (url.Values, bool, error) {
+	if p.hasMoreDataOK {
+		if !p.hasMoreData {
+			return nil, false, nil
+		}
+		if p.scrollID == "" {
+			return nil, false, errors.New("pageInfo.hasMoreData is true but pageInfo.scrollId is empty")
+		}
+		next := url.Values{"scrollId": {p.scrollID}}
+		if count := continuationCount(current.Get("count"), p.count, pageSize); count > 0 {
+			next.Set("count", strconv.FormatInt(count, 10))
+		}
+		return next, true, nil
+	}
+
+	if p.moreEntriesOK {
+		if !p.moreEntries {
+			return nil, false, nil
+		}
+		if p.endID == "" {
+			return nil, false, fmt.Errorf("pageInfo.moreEntries is true but pageInfo.endId is empty (startId %q)", p.startID)
+		}
+		next := cloneValues(current)
+		next.Del("scrollId")
+		next.Set("startId", p.endID)
+		if count := continuationCount(current.Get("count"), p.count, pageSize); count > 0 {
+			next.Set("count", strconv.FormatInt(count, 10))
+		}
+		return next, true, nil
+	}
+
+	return nil, false, nil
+}
+
+func paginationCount(responseCount int64, pageSize int) int64 {
+	if responseCount > maxPageSize {
+		responseCount = maxPageSize
+	}
+	if pageSize > 0 && (responseCount <= 0 || responseCount > int64(pageSize)) {
+		return int64(pageSize)
+	}
+	return responseCount
+}
+
+func continuationCount(current string, responseCount int64, pageSize int) int64 {
+	if parsed, err := strconv.ParseInt(strings.TrimSpace(current), 10, 64); err == nil && parsed > 0 {
+		responseCount = parsed
+	}
+	return paginationCount(responseCount, pageSize)
+}
+
+func booleanValue(value any) (bool, bool) {
+	switch typed := value.(type) {
+	case bool:
+		return typed, true
+	case string:
+		parsed, err := strconv.ParseBool(strings.TrimSpace(typed))
+		return parsed, err == nil
+	default:
+		return false, false
+	}
 }
 
 func objectsFromAny(value any) []Object {
@@ -615,11 +745,12 @@ func objectsFromArray(values []any) []Object {
 	return out
 }
 
-func capObjects(objects []Object, maxResults int) []Object {
-	if maxResults > 0 && len(objects) > maxResults {
-		return objects[:maxResults]
+func cloneValues(values url.Values) url.Values {
+	cloned := make(url.Values, len(values))
+	for key, current := range values {
+		cloned[key] = append([]string(nil), current...)
 	}
-	return objects
+	return cloned
 }
 
 func firstStringValue(obj map[string]any, keys ...string) string {

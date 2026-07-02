@@ -24,10 +24,68 @@ func TestDataConnectQueryViewUsesAllowlistedLookbackAndRowCap(t *testing.T) {
 	rows, err := client.QueryView(t.Context(), DataConnectView{Name: "THREAT_EVENTS", Category: "security", TimeColumn: "LOGGED_AT", MaxResults: 3})
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
+	assert.Equal(t, "1", rows[0]["ID"])
+	assert.Equal(t, time.Unix(100, 0).UTC().Format(time.RFC3339Nano), rows[0]["LOGGED_AT"])
 	assert.Contains(t, connector.query, "SELECT * FROM THREAT_EVENTS WHERE LOGGED_AT >= :1 ORDER BY LOGGED_AT DESC FETCH FIRST 3 ROWS ONLY")
 	require.Len(t, connector.args, 1)
 	_, ok := connector.args[0].Value.(time.Time)
 	assert.True(t, ok)
+}
+
+func TestNewDataConnectClientRejectsPlaintextCredentials(t *testing.T) {
+	client, err := NewDataConnectClient(DataConnectConfig{
+		Host:        "ise.example.test",
+		ServiceName: "cpm10",
+		Username:    "dataconnect",
+		Password:    "secret",
+	})
+	require.Error(t, err)
+	assert.Nil(t, client)
+	assert.ErrorContains(t, err, "SSL must be enabled")
+}
+
+func TestDataConnectQueryViewRejectsExcessiveColumnCount(t *testing.T) {
+	columns := make([]string, maxDataConnectResultColumns+1)
+	for i := range columns {
+		columns[i] = "COLUMN"
+	}
+	connector := &captureConnector{rows: &staticRows{columns: columns}}
+	client := &DataConnectClient{db: sql.OpenDB(connector), rowLimit: 10}
+	defer client.Close()
+
+	objects, err := client.QueryView(t.Context(), DataConnectView{Name: "NODE_LIST"})
+	require.Empty(t, objects)
+	var limitErr *DataConnectResultLimitError
+	require.ErrorAs(t, err, &limitErr)
+	assert.Equal(t, "column count", limitErr.Kind)
+	assert.Equal(t, maxDataConnectResultColumns, limitErr.Maximum)
+	assert.Equal(t, maxDataConnectResultColumns+1, limitErr.Observed)
+	assert.Zero(t, limitErr.Rows)
+}
+
+func TestScanRowsReturnsCompleteRowsBeforeAggregateByteLimit(t *testing.T) {
+	connector := &captureConnector{rows: &staticRows{
+		columns: []string{"ID", "PAYLOAD"},
+		values: [][]driver.Value{
+			{"one", []byte("normal")},
+			{"two", []byte(strings.Repeat("x", 512))},
+		},
+	}}
+	db := sql.OpenDB(connector)
+	defer db.Close()
+	dbRows, err := db.QueryContext(t.Context(), "SELECT * FROM NODE_LIST")
+	require.NoError(t, err)
+	defer dbRows.Close()
+
+	objects, err := scanRowsWithBudget(dbRows, &dataConnectResultBudget{maximum: 400})
+	require.Len(t, objects, 1)
+	assert.Equal(t, "one", objects[0]["ID"])
+	assert.Equal(t, "normal", objects[0]["PAYLOAD"])
+	var limitErr *DataConnectResultLimitError
+	require.ErrorAs(t, err, &limitErr)
+	assert.Equal(t, "retained byte", limitErr.Kind)
+	assert.Equal(t, 400, limitErr.Maximum)
+	assert.Equal(t, 1, limitErr.Rows)
 }
 
 func TestDataConnectQueryViewRejectsUnsafeIdentifiersBeforeSQL(t *testing.T) {
@@ -43,6 +101,7 @@ func TestDataConnectQueryViewRejectsUnsafeIdentifiersBeforeSQL(t *testing.T) {
 type captureConnector struct {
 	query string
 	args  []driver.NamedValue
+	rows  driver.Rows
 }
 
 func (c *captureConnector) Connect(context.Context) (driver.Conn, error) {
@@ -78,6 +137,9 @@ func (*captureConn) Begin() (driver.Tx, error) {
 func (c *captureConn) QueryContext(_ context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 	c.connector.query = strings.Join(strings.Fields(query), " ")
 	c.connector.args = append([]driver.NamedValue(nil), args...)
+	if c.connector.rows != nil {
+		return c.connector.rows, nil
+	}
 	return &captureRows{}, nil
 }
 
@@ -100,5 +162,28 @@ func (r *captureRows) Next(dest []driver.Value) error {
 	r.sent = true
 	dest[0] = "1"
 	dest[1] = time.Unix(100, 0).UTC()
+	return nil
+}
+
+type staticRows struct {
+	columns []string
+	values  [][]driver.Value
+	index   int
+}
+
+func (r *staticRows) Columns() []string {
+	return r.columns
+}
+
+func (*staticRows) Close() error {
+	return nil
+}
+
+func (r *staticRows) Next(dest []driver.Value) error {
+	if r.index >= len(r.values) {
+		return io.EOF
+	}
+	copy(dest, r.values[r.index])
+	r.index++
 	return nil
 }

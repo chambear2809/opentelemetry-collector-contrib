@@ -4,7 +4,9 @@
 package intersight
 
 import (
+	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -76,7 +78,13 @@ func Int64(obj Object, key string) (int64, bool) {
 		return int64(typed), true
 	case int64:
 		return typed, true
+	case json.Number:
+		i, err := typed.Int64()
+		return i, err == nil
 	case float64:
+		if math.IsNaN(typed) || math.IsInf(typed, 0) || math.Trunc(typed) != typed || typed < float64(math.MinInt64) || typed >= float64(math.MaxInt64) {
+			return 0, false
+		}
 		return int64(typed), true
 	case string:
 		i, err := strconv.ParseInt(typed, 10, 64)
@@ -94,16 +102,20 @@ func Float64(obj Object, key string) (float64, bool) {
 	}
 	switch typed := value.(type) {
 	case float64:
-		return typed, true
+		return typed, !math.IsNaN(typed) && !math.IsInf(typed, 0)
 	case float32:
-		return float64(typed), true
+		value := float64(typed)
+		return value, !math.IsNaN(value) && !math.IsInf(value, 0)
 	case int:
 		return float64(typed), true
 	case int64:
 		return float64(typed), true
+	case json.Number:
+		f, err := typed.Float64()
+		return f, err == nil && !math.IsNaN(f) && !math.IsInf(f, 0)
 	case string:
 		f, err := strconv.ParseFloat(typed, 64)
-		return f, err == nil
+		return f, err == nil && !math.IsNaN(f) && !math.IsInf(f, 0)
 	default:
 		return 0, false
 	}

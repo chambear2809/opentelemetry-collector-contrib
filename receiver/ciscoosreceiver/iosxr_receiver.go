@@ -12,6 +12,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	gnmi "github.com/openconfig/gnmi/proto/gnmi"
@@ -148,6 +149,7 @@ func newIOSXRDialOutReceiver(set receiver.Settings, cfg IOSXRConfig, selector de
 	yangCfg := factory.CreateDefaultConfig().(*yanggrpcreceiver.Config)
 	yangCfg.ServerConfig = cfg.DialOut.ServerConfig
 	yangCfg.Security.AllowedClients = cfg.DialOut.AllowedClients
+	yangCfg.Security.RateLimiting = cfg.DialOut.RateLimiting
 	yangCfg.YANG.ModulePaths = cfg.DialOut.ModulePaths
 	health := &iosXRHealth{}
 	normalizer := newIOSXRNormalizingConsumer(next, cfg, selector, iosXRTelemetryTransportDialOut, health)
@@ -298,7 +300,9 @@ func (r *iosXRDialInReceiver) subscribeTargetAttempt(ctx context.Context, target
 		return false, err
 	}
 
-	stream, err := client.Subscribe(r.outgoingContext(ctx, target))
+	streamCtx, cancelStream := context.WithCancel(r.outgoingContext(ctx, target))
+	defer cancelStream()
+	stream, err := client.Subscribe(streamCtx)
 	if err != nil {
 		return false, err
 	}
@@ -307,16 +311,19 @@ func (r *iosXRDialInReceiver) subscribeTargetAttempt(ctx context.Context, target
 	}
 	r.setTargetSubscriptionActive(ctx, target, true)
 	defer r.setTargetSubscriptionActive(ctx, target, false)
+	var progressed atomic.Bool
 
 	if target.Subscription.Mode == iosXRSubscribeModePoll {
-		return true, r.recvPoll(ctx, target, stream)
+		err := r.recvPoll(streamCtx, cancelStream, target, stream, &progressed)
+		return progressed.Load(), err
 	}
 	if target.Subscription.Mode == iosXRSubscribeModeOnce {
 		if closeErr := stream.CloseSend(); closeErr != nil {
 			r.settings.Logger.Debug("IOS XR gNMI once close send failed", zap.Error(closeErr))
 		}
 	}
-	return true, r.recvLoop(ctx, target, stream)
+	err = r.recvLoop(ctx, target, stream, &progressed)
+	return progressed.Load(), err
 }
 
 func (r *iosXRDialInReceiver) setTargetSubscriptionActive(ctx context.Context, target IOSXRTargetConfig, active bool) {
@@ -342,7 +349,7 @@ func (r *iosXRDialInReceiver) emitTargetHealth(ctx context.Context, target IOSXR
 	}
 }
 
-func (r *iosXRDialInReceiver) recvPoll(ctx context.Context, target IOSXRTargetConfig, stream grpc.BidiStreamingClient[gnmi.SubscribeRequest, gnmi.SubscribeResponse]) error {
+func (r *iosXRDialInReceiver) recvPoll(ctx context.Context, cancelStream context.CancelFunc, target IOSXRTargetConfig, stream grpc.BidiStreamingClient[gnmi.SubscribeRequest, gnmi.SubscribeResponse], progressed *atomic.Bool) error {
 	interval := target.Subscription.PollInterval
 	if interval <= 0 {
 		interval = target.Subscription.SampleInterval
@@ -356,7 +363,18 @@ func (r *iosXRDialInReceiver) recvPoll(ctx context.Context, target IOSXRTargetCo
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- r.recvLoop(ctx, target, stream)
+		errCh <- r.recvLoop(ctx, target, stream, progressed)
+	}()
+	readerJoined := false
+	defer func() {
+		// CloseSend only closes the client-to-server half of a gNMI stream. Cancel
+		// the exact context passed to Subscribe so grpc-go also interrupts Recv,
+		// then join the reader before this subscription attempt can reconnect or
+		// report itself fully shut down.
+		cancelStream()
+		if !readerJoined {
+			<-errCh
+		}
 	}()
 
 	for {
@@ -364,6 +382,7 @@ func (r *iosXRDialInReceiver) recvPoll(ctx context.Context, target IOSXRTargetCo
 		case <-ctx.Done():
 			return ctx.Err()
 		case err := <-errCh:
+			readerJoined = true
 			return err
 		case <-ticker.C:
 			if err := stream.Send(&gnmi.SubscribeRequest{Request: &gnmi.SubscribeRequest_Poll{Poll: &gnmi.Poll{}}}); err != nil {
@@ -373,8 +392,8 @@ func (r *iosXRDialInReceiver) recvPoll(ctx context.Context, target IOSXRTargetCo
 	}
 }
 
-func (r *iosXRDialInReceiver) recvLoop(ctx context.Context, target IOSXRTargetConfig, stream grpc.BidiStreamingClient[gnmi.SubscribeRequest, gnmi.SubscribeResponse]) error {
-	decoder := iosXRGNMIUpdateDecoder{target: target, health: r.health}
+func (r *iosXRDialInReceiver) recvLoop(ctx context.Context, target IOSXRTargetConfig, stream grpc.BidiStreamingClient[gnmi.SubscribeRequest, gnmi.SubscribeResponse], progressed *atomic.Bool) error {
+	decoder := iosXRGNMIUpdateDecoder{target: target, health: r.health, maxDatapoints: r.config.MaxDatapointsPerBatch}
 	for {
 		resp, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
@@ -391,6 +410,7 @@ func (r *iosXRDialInReceiver) recvLoop(ctx context.Context, target IOSXRTargetCo
 			r.health.addTargetUpdates(target.Name, int64(len(body.Update.GetUpdate())+len(body.Update.GetDelete())))
 			md := decoder.decodeNotification(body.Update, iosXRTelemetryTransportDialIn)
 			if md.MetricCount() == 0 {
+				progressed.Store(true)
 				continue
 			}
 			if r.config.MaxDatapointsPerBatch > 0 {
@@ -402,13 +422,15 @@ func (r *iosXRDialInReceiver) recvLoop(ctx context.Context, target IOSXRTargetCo
 			if err := r.consumer.ConsumeMetrics(ctx, md); err != nil {
 				return err
 			}
+			progressed.Store(true)
 		case *gnmi.SubscribeResponse_SyncResponse:
 			if body.SyncResponse {
+				progressed.Store(true)
 				r.settings.Logger.Debug("IOS XR gNMI initial sync complete", zap.String("target", target.Name))
 			}
 		case *gnmi.SubscribeResponse_Error:
 			if body.Error != nil {
-				return fmt.Errorf("subscribe response error: %s", body.Error.GetMessage())
+				return sanitizedGNMISubscribeError(body.Error)
 			}
 		}
 	}
@@ -486,8 +508,8 @@ func buildIOSXRSubscribeRequest(sub IOSXRSubscriptionConfig, paths []iosXRPathDe
 	list := &gnmi.SubscriptionList{
 		Mode:             subscriptionListMode(sub.Mode),
 		Encoding:         encoding,
-		UpdatesOnly:      sub.UpdatesOnly,
-		AllowAggregation: sub.AllowAggregation,
+		UpdatesOnly:      sub.updatesOnly(),
+		AllowAggregation: sub.allowAggregation(),
 		Subscription:     make([]*gnmi.Subscription, 0, len(paths)),
 	}
 	for _, def := range paths {
@@ -516,7 +538,7 @@ func buildIOSXRSubscribeRequest(sub IOSXRSubscriptionConfig, paths []iosXRPathDe
 			Path:              p,
 			Mode:              subscriptionStreamMode(streamMode),
 			SampleInterval:    uint64(sampleInterval.Nanoseconds()),
-			SuppressRedundant: sub.SuppressRedundant,
+			SuppressRedundant: sub.suppressRedundant(),
 			HeartbeatInterval: uint64(sub.HeartbeatInterval.Nanoseconds()),
 		})
 	}

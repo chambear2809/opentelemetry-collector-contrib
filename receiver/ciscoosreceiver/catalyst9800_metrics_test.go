@@ -6,12 +6,19 @@ package ciscoosreceiver
 import (
 	"math"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/consumer/consumertest"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
+
+func TestCatalyst9800NormalizingConsumerDeclaresMutation(t *testing.T) {
+	normalizer := newCatalyst9800NormalizingConsumer(consumertest.NewNop(), defaultCatalyst9800Config(), deviceSelectionMatcher{}, catalyst9800TelemetryTransportDialOut, nil)
+	assert.True(t, normalizer.Capabilities().MutatesData)
+}
 
 func TestCatalyst9800NormalizingConsumerCoalescesStreamsAndPreservesIntDatapoints(t *testing.T) {
 	sink := &consumertest.MetricsSink{}
@@ -57,6 +64,43 @@ func TestCatalyst9800NormalizingConsumerCoalescesStreamsAndPreservesIntDatapoint
 		"AA:BB:CC:DD:EE:01": math.MaxInt64,
 		"AA:BB:CC:DD:EE:02": 42,
 	})
+}
+
+func TestCatalyst9800ReasonAliasesRemainGaugeInfoForNumericEnums(t *testing.T) {
+	md, sm := newCatalyst9800Metrics(catalyst9800MetricContext{targetName: "wlc-1"})
+	ts := pcommon.NewTimestampFromTime(time.Unix(1, 0))
+	path := []string{"ap-join-info", "last-join-failure-type"}
+	appendCatalyst9800AliasesForValue(sm, "wireless-ap-global-oper", path, int64(7), ts, nil)
+	appendCatalyst9800AliasesForValue(sm, "wireless-ap-global-oper", path, "certificate-error", ts, nil)
+
+	metric := mustFindIOSXRMetric(t, md, "cisco.wlc.ap.join.failure.reason.info")
+	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+	require.Equal(t, 2, metric.Gauge().DataPoints().Len())
+	assert.Equal(t, "7", attrValue(t, metric.Gauge().DataPoints().At(0).Attributes(), "failure.reason"))
+	assert.Equal(t, "certificate-error", attrValue(t, metric.Gauge().DataPoints().At(1).Attributes(), "failure.reason"))
+	assert.False(t, isCatalyst9800CounterMetric(path))
+}
+
+func TestCatalyst9800CAPWAPStateAliasesEmitOneDatapoint(t *testing.T) {
+	for _, leaf := range []string{"ap_operation_state", "capwap_state"} {
+		t.Run(leaf, func(t *testing.T) {
+			md, sm := newCatalyst9800Metrics(catalyst9800MetricContext{targetName: "wlc-1"})
+			ts := pcommon.NewTimestampFromTime(time.Unix(1, 0))
+
+			appendCatalyst9800AliasesForValue(
+				sm,
+				"wireless-access-point-oper",
+				[]string{"capwap_data", leaf},
+				"registered",
+				ts,
+				map[string]string{"wtp-mac": "AA:BB:CC:DD:EE:FF"},
+			)
+
+			metric := mustFindIOSXRMetric(t, md, "cisco.wlc.ap.capwap.state")
+			require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+			require.Equal(t, 1, metric.Gauge().DataPoints().Len())
+		})
+	}
 }
 
 func assertIntGaugeDatapointsByAttr(t *testing.T, metric pmetric.Metric, attr string, expected map[string]int64) {

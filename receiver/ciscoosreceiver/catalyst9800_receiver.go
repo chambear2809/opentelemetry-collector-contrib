@@ -11,6 +11,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	gnmi "github.com/openconfig/gnmi/proto/gnmi"
@@ -92,6 +93,7 @@ func newCatalyst9800DialOutReceiver(set receiver.Settings, cfg Catalyst9800Confi
 	yangCfg := factory.CreateDefaultConfig().(*yanggrpcreceiver.Config)
 	yangCfg.ServerConfig = cfg.DialOut.ServerConfig
 	yangCfg.Security.AllowedClients = cfg.DialOut.AllowedClients
+	yangCfg.Security.RateLimiting = cfg.DialOut.RateLimiting
 	yangCfg.YANG.ModulePaths = cfg.DialOut.ModulePaths
 	health := &catalyst9800Health{}
 	normalizer := newCatalyst9800NormalizingConsumer(next, cfg, selector, catalyst9800TelemetryTransportDialOut, health)
@@ -242,7 +244,9 @@ func (r *catalyst9800DialInReceiver) subscribeTargetAttempt(ctx context.Context,
 		return false, err
 	}
 
-	stream, err := client.Subscribe(r.outgoingContext(ctx, target))
+	streamCtx, cancelStream := context.WithCancel(r.outgoingContext(ctx, target))
+	defer cancelStream()
+	stream, err := client.Subscribe(streamCtx)
 	if err != nil {
 		return false, err
 	}
@@ -251,16 +255,19 @@ func (r *catalyst9800DialInReceiver) subscribeTargetAttempt(ctx context.Context,
 	}
 	r.setTargetSubscriptionActive(ctx, target, true)
 	defer r.setTargetSubscriptionActive(ctx, target, false)
+	var progressed atomic.Bool
 
 	if target.Subscription.Mode == iosXRSubscribeModePoll {
-		return true, r.recvPoll(ctx, target, stream)
+		err := r.recvPoll(streamCtx, cancelStream, target, stream, &progressed)
+		return progressed.Load(), err
 	}
 	if target.Subscription.Mode == iosXRSubscribeModeOnce {
 		if closeErr := stream.CloseSend(); closeErr != nil {
 			r.settings.Logger.Debug("Catalyst 9800 gNMI once close send failed", zap.Error(closeErr))
 		}
 	}
-	return true, r.recvLoop(ctx, target, stream)
+	err = r.recvLoop(ctx, target, stream, &progressed)
+	return progressed.Load(), err
 }
 
 func (r *catalyst9800DialInReceiver) setTargetSubscriptionActive(ctx context.Context, target Catalyst9800TargetConfig, active bool) {
@@ -286,7 +293,7 @@ func (r *catalyst9800DialInReceiver) emitTargetHealth(ctx context.Context, targe
 	}
 }
 
-func (r *catalyst9800DialInReceiver) recvPoll(ctx context.Context, target Catalyst9800TargetConfig, stream grpc.BidiStreamingClient[gnmi.SubscribeRequest, gnmi.SubscribeResponse]) error {
+func (r *catalyst9800DialInReceiver) recvPoll(ctx context.Context, cancelStream context.CancelFunc, target Catalyst9800TargetConfig, stream grpc.BidiStreamingClient[gnmi.SubscribeRequest, gnmi.SubscribeResponse], progressed *atomic.Bool) error {
 	interval := target.Subscription.PollInterval
 	if interval <= 0 {
 		interval = target.Subscription.SampleInterval
@@ -300,7 +307,14 @@ func (r *catalyst9800DialInReceiver) recvPoll(ctx context.Context, target Cataly
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- r.recvLoop(ctx, target, stream)
+		errCh <- r.recvLoop(ctx, target, stream, progressed)
+	}()
+	readerJoined := false
+	defer func() {
+		cancelStream()
+		if !readerJoined {
+			<-errCh
+		}
 	}()
 
 	for {
@@ -308,6 +322,7 @@ func (r *catalyst9800DialInReceiver) recvPoll(ctx context.Context, target Cataly
 		case <-ctx.Done():
 			return ctx.Err()
 		case err := <-errCh:
+			readerJoined = true
 			return err
 		case <-ticker.C:
 			if err := stream.Send(&gnmi.SubscribeRequest{Request: &gnmi.SubscribeRequest_Poll{Poll: &gnmi.Poll{}}}); err != nil {
@@ -317,8 +332,8 @@ func (r *catalyst9800DialInReceiver) recvPoll(ctx context.Context, target Cataly
 	}
 }
 
-func (r *catalyst9800DialInReceiver) recvLoop(ctx context.Context, target Catalyst9800TargetConfig, stream grpc.BidiStreamingClient[gnmi.SubscribeRequest, gnmi.SubscribeResponse]) error {
-	decoder := catalyst9800GNMIUpdateDecoder{target: target, health: r.health}
+func (r *catalyst9800DialInReceiver) recvLoop(ctx context.Context, target Catalyst9800TargetConfig, stream grpc.BidiStreamingClient[gnmi.SubscribeRequest, gnmi.SubscribeResponse], progressed *atomic.Bool) error {
+	decoder := catalyst9800GNMIUpdateDecoder{target: target, health: r.health, maxDatapoints: r.config.MaxDatapointsPerBatch}
 	for {
 		resp, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
@@ -335,6 +350,7 @@ func (r *catalyst9800DialInReceiver) recvLoop(ctx context.Context, target Cataly
 			r.health.addTargetUpdates(target.Name, int64(len(body.Update.GetUpdate())+len(body.Update.GetDelete())))
 			md := decoder.decodeNotification(body.Update, catalyst9800TelemetryTransportDialIn)
 			if md.MetricCount() == 0 {
+				progressed.Store(true)
 				continue
 			}
 			if r.config.MaxDatapointsPerBatch > 0 {
@@ -346,13 +362,15 @@ func (r *catalyst9800DialInReceiver) recvLoop(ctx context.Context, target Cataly
 			if err := r.consumer.ConsumeMetrics(ctx, md); err != nil {
 				return err
 			}
+			progressed.Store(true)
 		case *gnmi.SubscribeResponse_SyncResponse:
 			if body.SyncResponse {
+				progressed.Store(true)
 				r.settings.Logger.Debug("Catalyst 9800 gNMI initial sync complete", zap.String("target", target.Name))
 			}
 		case *gnmi.SubscribeResponse_Error:
 			if body.Error != nil {
-				return fmt.Errorf("subscribe response error: %s", body.Error.GetMessage())
+				return sanitizedGNMISubscribeError(body.Error)
 			}
 		}
 	}
@@ -439,8 +457,8 @@ func buildCatalyst9800SubscribeRequest(sub Catalyst9800SubscriptionConfig, paths
 	list := &gnmi.SubscriptionList{
 		Mode:             subscriptionListMode(sub.Mode),
 		Encoding:         encoding,
-		UpdatesOnly:      sub.UpdatesOnly,
-		AllowAggregation: sub.AllowAggregation,
+		UpdatesOnly:      sub.updatesOnly(),
+		AllowAggregation: sub.allowAggregation(),
 		Subscription:     make([]*gnmi.Subscription, 0, len(paths)),
 	}
 	for _, def := range paths {
@@ -474,7 +492,7 @@ func buildCatalyst9800SubscribeRequest(sub Catalyst9800SubscriptionConfig, paths
 			Path:              p,
 			Mode:              mode,
 			SampleInterval:    sampleIntervalNanos,
-			SuppressRedundant: sub.SuppressRedundant,
+			SuppressRedundant: sub.suppressRedundant(),
 			HeartbeatInterval: uint64(sub.HeartbeatInterval.Nanoseconds()),
 		})
 	}

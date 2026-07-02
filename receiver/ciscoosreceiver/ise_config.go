@@ -6,6 +6,7 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -68,19 +69,21 @@ type ISEPxGridConfig struct {
 	// DO NOT USE unkeyed struct initialization
 	_ struct{} `mapstructure:"-"`
 
-	Enabled            bool                        `mapstructure:"enabled"`
-	Endpoint           string                      `mapstructure:"endpoint"`
-	NodeName           string                      `mapstructure:"node_name"`
-	Password           configopaque.String         `mapstructure:"password"`
-	CertFile           string                      `mapstructure:"cert_file"`
-	KeyFile            string                      `mapstructure:"key_file"`
-	CAFile             string                      `mapstructure:"ca_file"`
-	ServerName         string                      `mapstructure:"server_name"`
-	InsecureSkipVerify bool                        `mapstructure:"insecure_skip_verify"`
-	AutoActivate       bool                        `mapstructure:"auto_activate"`
-	Streaming          bool                        `mapstructure:"streaming"`
-	Subscriptions      ISEPxGridSubscriptionConfig `mapstructure:"subscriptions"`
-	MaxResults         int                         `mapstructure:"max_results"`
+	Enabled               bool                        `mapstructure:"enabled"`
+	Endpoint              string                      `mapstructure:"endpoint"`
+	NodeName              string                      `mapstructure:"node_name"`
+	Password              configopaque.String         `mapstructure:"password"`
+	CertFile              string                      `mapstructure:"cert_file"`
+	KeyFile               string                      `mapstructure:"key_file"`
+	CAFile                string                      `mapstructure:"ca_file"`
+	ServerName            string                      `mapstructure:"server_name"`
+	InsecureSkipVerify    bool                        `mapstructure:"insecure_skip_verify"`
+	AllowedServiceHosts   []string                    `mapstructure:"allowed_service_hosts"`
+	AllowedServiceOrigins []string                    `mapstructure:"allowed_service_origins"`
+	AutoActivate          bool                        `mapstructure:"auto_activate"`
+	Streaming             bool                        `mapstructure:"streaming"`
+	Subscriptions         ISEPxGridSubscriptionConfig `mapstructure:"subscriptions"`
+	MaxResults            int                         `mapstructure:"max_results"`
 }
 
 // ISEDataConnectConfig controls Cisco ISE Data Connect read-only database access.
@@ -257,24 +260,24 @@ func (cfg *Config) validateISE() error {
 	if ise.PageSize < 1 || ise.PageSize > maxISEERSPageSize {
 		err = multierr.Append(err, fmt.Errorf("ise.page_size must be between 1 and %d", maxISEERSPageSize))
 	}
-	if ise.MaxRetries < 0 {
-		err = multierr.Append(err, errors.New("ise.max_retries must not be negative"))
-	}
+	err = multierr.Append(err, validateMaxRetries("ise.max_retries", ise.MaxRetries))
 	if ise.EventLookback < 0 {
 		err = multierr.Append(err, errors.New("ise.event_lookback must not be negative"))
 	}
 	if ise.SessionLookback < 0 {
 		err = multierr.Append(err, errors.New("ise.session_lookback must not be negative"))
 	}
-	if ise.MaxResults < 0 {
-		err = multierr.Append(err, errors.New("ise.max_results must not be negative"))
-	}
+	err = multierr.Append(err, validateMaxResults("ise.max_results", ise.MaxResults))
 	if !ise.anyCollectionGroupEnabled() {
 		err = multierr.Append(err, errors.New("ise requires at least one enabled collection group"))
 	}
 	err = multierr.Append(err, validateISETargets("ise.targets", ise.Targets))
 	err = multierr.Append(err, validateISEGroups("ise", ise.groups()))
-	err = multierr.Append(err, validateISEPxGrid(ise.PxGrid))
+	pxGrid := ise.PxGrid
+	if pxGrid.hasTarget() && pxGrid.Endpoint == "" {
+		pxGrid.Endpoint = defaultISEPxGridEndpoint(ise.Endpoint)
+	}
+	err = multierr.Append(err, validateISEPxGrid(pxGrid))
 	err = multierr.Append(err, validateISEDataConnect(ise.DataConnect))
 	return err
 }
@@ -286,9 +289,6 @@ func (cfg ISEConfig) withDefaults() ISEConfig {
 	}
 	if cfg.PageSize == 0 {
 		cfg.PageSize = defaults.PageSize
-	}
-	if cfg.MaxRetries == 0 {
-		cfg.MaxRetries = defaults.MaxRetries
 	}
 	if cfg.EventLookback == 0 {
 		cfg.EventLookback = defaults.EventLookback
@@ -319,9 +319,6 @@ func (cfg ISEConfig) withDefaults() ISEConfig {
 }
 
 func (cfg ISEGroupConfig) withDefault(defaults ISEGroupConfig) ISEGroupConfig {
-	if !cfg.Enabled && cfg.MaxResults == 0 {
-		return defaults
-	}
 	if cfg.MaxResults == 0 {
 		cfg.MaxResults = defaults.MaxResults
 	}
@@ -331,9 +328,6 @@ func (cfg ISEGroupConfig) withDefault(defaults ISEGroupConfig) ISEGroupConfig {
 func (cfg ISEPxGridConfig) withDefault(defaults ISEPxGridConfig) ISEPxGridConfig {
 	if cfg.MaxResults == 0 {
 		cfg.MaxResults = defaults.MaxResults
-	}
-	if cfg.Subscriptions == (ISEPxGridSubscriptionConfig{}) {
-		cfg.Subscriptions = defaults.Subscriptions
 	}
 	return cfg
 }
@@ -385,9 +379,7 @@ func (cfg ISEConfig) groups() map[string]ISEGroupConfig {
 func validateISEGroups(prefix string, groups map[string]ISEGroupConfig) error {
 	var err error
 	for name, group := range groups {
-		if group.MaxResults < 0 {
-			err = multierr.Append(err, fmt.Errorf("%s.%s.max_results must not be negative", prefix, name))
-		}
+		err = multierr.Append(err, validateMaxResults(prefix+"."+name+".max_results", group.MaxResults))
 	}
 	return err
 }
@@ -397,8 +389,6 @@ func validateISETargets(prefix string, targets ISETargetFilters) error {
 	for name, values := range map[string][]string{
 		"node_names":           targets.NodeNames,
 		"network_device_names": targets.NetworkDeviceNames,
-		"network_device_ips":   targets.NetworkDeviceIPs,
-		"endpoint_macs":        targets.EndpointMACs,
 		"usernames":            targets.Usernames,
 		"policy_names":         targets.PolicyNames,
 		"security_group_names": targets.SecurityGroupNames,
@@ -417,6 +407,8 @@ func validateISETargets(prefix string, targets ISETargetFilters) error {
 			seen[normalized] = struct{}{}
 		}
 	}
+	err = multierr.Append(err, validateIPAddressList(prefix+".network_device_ips", targets.NetworkDeviceIPs))
+	err = multierr.Append(err, validateMACAddressList(prefix+".endpoint_macs", targets.EndpointMACs))
 	return err
 }
 
@@ -426,7 +418,20 @@ func validateISEPxGrid(cfg ISEPxGridConfig) error {
 	}
 	var err error
 	if cfg.Endpoint != "" {
-		err = multierr.Append(err, validateHTTPURL("ise.pxgrid.endpoint", cfg.Endpoint, cfg.InsecureSkipVerify))
+		err = multierr.Append(err, validateHTTPURL("ise.pxgrid.endpoint", cfg.Endpoint, false))
+	}
+	for i, host := range cfg.AllowedServiceHosts {
+		if !validHostOrIP(strings.TrimSpace(host)) {
+			err = multierr.Append(err, fmt.Errorf("ise.pxgrid.allowed_service_hosts[%d] must be a valid hostname or IP address", i))
+		}
+	}
+	for i, origin := range cfg.AllowedServiceOrigins {
+		parsed, parseErr := url.Parse(strings.TrimSpace(origin))
+		if parseErr != nil || parsed.Host == "" || parsed.User != nil ||
+			(parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" ||
+			(!strings.EqualFold(parsed.Scheme, "https") && !strings.EqualFold(parsed.Scheme, "wss")) {
+			err = multierr.Append(err, fmt.Errorf("ise.pxgrid.allowed_service_origins[%d] must be an HTTPS or WSS origin without a path, query, fragment, or user information", i))
+		}
 	}
 	if cfg.Enabled {
 		if cfg.NodeName == "" {
@@ -442,9 +447,10 @@ func validateISEPxGrid(cfg ISEPxGridConfig) error {
 	if cfg.Streaming && !cfg.Enabled {
 		err = multierr.Append(err, errors.New("ise.pxgrid.streaming requires ise.pxgrid.enabled"))
 	}
-	if cfg.MaxResults < 0 {
-		err = multierr.Append(err, errors.New("ise.pxgrid.max_results must not be negative"))
+	if cfg.Streaming && cfg.Subscriptions.SystemHealth {
+		err = multierr.Append(err, errors.New("ise.pxgrid.subscriptions.system_health is not supported for streaming because Cisco ISE does not advertise a standard System topic"))
 	}
+	err = multierr.Append(err, validateMaxResults("ise.pxgrid.max_results", cfg.MaxResults))
 	return err
 }
 
@@ -469,13 +475,14 @@ func validateISEDataConnect(cfg ISEDataConnectConfig) error {
 		if cfg.Password == "" {
 			err = multierr.Append(err, errors.New("ise.data_connect.password must be provided when Data Connect is enabled"))
 		}
+		if !cfg.SSL {
+			err = multierr.Append(err, errors.New("ise.data_connect.ssl must be true because Data Connect credentials require TLS"))
+		}
 	}
 	if cfg.Lookback < 0 {
 		err = multierr.Append(err, errors.New("ise.data_connect.lookback must not be negative"))
 	}
-	if cfg.RowLimit < 0 {
-		err = multierr.Append(err, errors.New("ise.data_connect.row_limit must not be negative"))
-	}
+	err = multierr.Append(err, validateMaxResults("ise.data_connect.row_limit", cfg.RowLimit))
 	err = multierr.Append(err, validateISEGroups("ise.data_connect.views", cfg.Views))
 	for view := range cfg.Views {
 		normalized := strings.ToUpper(strings.TrimSpace(view))
