@@ -27,6 +27,8 @@ var scraperFactories = map[component.Type]scraper.Factory{
 	component.MustNewType("interfaces"): interfacesscraper.NewFactory(),
 }
 
+const receiverRollbackTimeout = 30 * time.Second
+
 func NewFactory() receiver.Factory {
 	return xreceiver.NewFactory(
 		metadata.Type,
@@ -68,7 +70,7 @@ func createMetricsReceiver(
 ) (receiver.Metrics, error) {
 	conf := cfg.(*Config)
 	selector := newDeviceSelectionMatcher(conf.DeviceSelection)
-	consumer = newMetricFilteringConsumer(consumer, conf)
+	consumer = newMetricFilteringConsumer(newAbsoluteCounterTrackingConsumer(consumer), conf)
 
 	var receivers []receiver.Metrics
 	for _, device := range conf.Devices {
@@ -323,11 +325,21 @@ type multiMetricsReceiver struct {
 }
 
 func (m *multiMetricsReceiver) Start(ctx context.Context, host component.Host) error {
-	var err error
-	for _, r := range m.receivers {
-		err = multierr.Append(err, r.Start(ctx, host))
+	return startMetricsReceivers(ctx, host, m.receivers)
+}
+
+func startMetricsReceivers(ctx context.Context, host component.Host, receivers []receiver.Metrics) error {
+	for i, r := range receivers {
+		if err := r.Start(ctx, host); err != nil {
+			rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), receiverRollbackTimeout)
+			defer cancel()
+			for j := i - 1; j >= 0; j-- {
+				err = multierr.Append(err, receivers[j].Shutdown(rollbackCtx))
+			}
+			return err
+		}
 	}
-	return err
+	return nil
 }
 
 func (m *multiMetricsReceiver) Shutdown(ctx context.Context) error {
@@ -343,11 +355,17 @@ type multiLogsReceiver struct {
 }
 
 func (m *multiLogsReceiver) Start(ctx context.Context, host component.Host) error {
-	var err error
-	for _, r := range m.receivers {
-		err = multierr.Append(err, r.Start(ctx, host))
+	for i, r := range m.receivers {
+		if err := r.Start(ctx, host); err != nil {
+			rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), receiverRollbackTimeout)
+			defer cancel()
+			for j := i - 1; j >= 0; j-- {
+				err = multierr.Append(err, m.receivers[j].Shutdown(rollbackCtx))
+			}
+			return err
+		}
 	}
-	return err
+	return nil
 }
 
 func (m *multiLogsReceiver) Shutdown(ctx context.Context) error {

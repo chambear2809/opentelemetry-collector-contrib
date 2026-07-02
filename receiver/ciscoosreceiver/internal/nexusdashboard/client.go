@@ -18,12 +18,13 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
 
 const (
 	defaultUserAgent      = "opentelemetry-collector-contrib-ciscoosreceiver"
 	defaultRequestTimeout = 30 * time.Second
-	defaultMaxRetries     = 3
 	defaultPageSize       = 100
 )
 
@@ -57,14 +58,10 @@ type RequestStat struct {
 // APIError is returned for non-success Nexus Dashboard API responses.
 type APIError struct {
 	StatusCode int
-	Body       string
 }
 
 func (e *APIError) Error() string {
-	if e.Body == "" {
-		return fmt.Sprintf("nexus dashboard API returned HTTP %d", e.StatusCode)
-	}
-	return fmt.Sprintf("nexus dashboard API returned HTTP %d: %s", e.StatusCode, e.Body)
+	return httpclient.StatusError("nexus dashboard", e.StatusCode)
 }
 
 // Client is a compact Nexus Dashboard API client.
@@ -124,12 +121,9 @@ func NewClient(cfg Config) (*Client, error) {
 	if userAgent == "" {
 		userAgent = defaultUserAgent
 	}
-	retries := cfg.MaxRetries
-	if retries < 0 {
-		retries = 0
-	}
-	if retries == 0 {
-		retries = defaultMaxRetries
+	retries, err := httpclient.RetryCount(cfg.MaxRetries)
+	if err != nil {
+		return nil, fmt.Errorf("invalid nexus dashboard max retries: %w", err)
 	}
 	pageSize := cfg.PageSize
 	if pageSize <= 0 {
@@ -153,7 +147,7 @@ func NewClient(cfg Config) (*Client, error) {
 		apiKey:    cfg.APIKey,
 		domain:    domain,
 		userAgent: userAgent,
-		client:    &http.Client{Timeout: timeout, Transport: transport},
+		client:    &http.Client{Timeout: timeout, Transport: transport, CheckRedirect: httpclient.SameOriginRedirectPolicy(parsed)},
 		retries:   retries,
 		pageSize:  pageSize,
 	}, nil
@@ -181,18 +175,25 @@ func (c *Client) List(ctx context.Context, operation, path string, query url.Val
 		query = url.Values{}
 	}
 	var results []Object
+	resultLimit, hardResultLimit := httpclient.EffectivePaginationResultLimit(maxResults)
 	offset := 0
+	pages := 0
+	var byteBudget httpclient.PaginationByteBudget
+	seenRequests := make(map[string]struct{})
 	for {
+		if len(results) >= resultLimit {
+			if hardResultLimit {
+				return results, httpclient.NewPaginationLimitError(operation, "result", resultLimit, len(results))
+			}
+			return results, nil
+		}
+		if pages >= httpclient.HardMaxPaginationPages {
+			return results, httpclient.NewPaginationLimitError(operation, "page", httpclient.HardMaxPaginationPages, len(results))
+		}
 		pageQuery := cloneValues(query)
 		pageSize := c.pageSize
-		if maxResults > 0 {
-			remaining := maxResults - len(results)
-			if remaining <= 0 {
-				return results, nil
-			}
-			if remaining < pageSize {
-				pageSize = remaining
-			}
+		if remaining := resultLimit - len(results); remaining < pageSize {
+			pageSize = remaining
 		}
 		if _, hasMax := pageQuery["max"]; !hasMax {
 			pageQuery.Set("max", strconv.Itoa(pageSize))
@@ -200,28 +201,40 @@ func (c *Client) List(ctx context.Context, operation, path string, query url.Val
 		if _, hasOffset := pageQuery["offset"]; !hasOffset {
 			pageQuery.Set("offset", strconv.Itoa(offset))
 		}
+		requestKey := path + "?" + pageQuery.Encode()
+		if _, seen := seenRequests[requestKey]; seen {
+			return results, fmt.Errorf("paginate nexus dashboard %s response: detected continuation cycle after %d partial results", operation, len(results))
+		}
+		seenRequests[requestKey] = struct{}{}
 
 		body, header, err := c.do(ctx, http.MethodGet, operation, path, pageQuery, nil)
 		if err != nil {
 			return results, err
 		}
+		if err := byteBudget.Charge(operation, len(body), len(results)); err != nil {
+			return results, err
+		}
+		pages++
 		page, next, remaining, err := decodeObjects(body, header)
 		if err != nil {
 			return results, fmt.Errorf("decode nexus dashboard %s response: %w", operation, err)
 		}
 		results = append(results, page...)
-		if maxResults > 0 && len(results) >= maxResults {
-			return results[:maxResults], nil
+		complete := next == "" && (len(page) == 0 || len(page) < pageSize || remaining <= 0)
+		truncated := len(results) > resultLimit
+		if len(results) >= resultLimit {
+			results = results[:resultLimit]
+			if hardResultLimit && (truncated || !complete) {
+				return results, httpclient.NewPaginationLimitError(operation, "result", resultLimit, len(results))
+			}
+			return results, nil
 		}
 		if next != "" {
 			path, query = splitNextURL(next)
 			offset = 0
 			continue
 		}
-		if len(page) == 0 || len(page) < pageSize || remaining == 0 {
-			return results, nil
-		}
-		if remaining < 0 {
+		if complete {
 			return results, nil
 		}
 		offset += len(page)
@@ -254,7 +267,7 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 		if header != nil {
 			retryHeader = header.Get("Retry-After")
 		}
-		if !retryableStatus(status) || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
+		if !retryableStatus(status) || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
 			if ctx.Err() != nil {
 				return nil, nil, ctx.Err()
 			}
@@ -293,7 +306,7 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 		c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", Duration: duration, Err: err})
 		return nil, nil, 0, err
 	}
-	bodyBytes, readErr := io.ReadAll(resp.Body)
+	bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
 		c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
@@ -306,7 +319,7 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 		c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "success", StatusCode: resp.StatusCode, Duration: duration})
 		return bodyBytes, resp.Header, resp.StatusCode, nil
 	}
-	apiErr := &APIError{StatusCode: resp.StatusCode, Body: string(bodyBytes)}
+	apiErr := &APIError{StatusCode: resp.StatusCode}
 	c.record(RequestStat{
 		Operation:   operation,
 		Method:      method,
@@ -368,7 +381,7 @@ func (c *Client) ensureToken(ctx context.Context) (string, error) {
 		c.record(RequestStat{Operation: "infra.login", Method: http.MethodPost, Path: "/api/v1/infra/login", Outcome: "error", Duration: duration, Err: err})
 		return "", err
 	}
-	bodyBytes, readErr := io.ReadAll(resp.Body)
+	bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
 		c.record(RequestStat{Operation: "infra.login", Method: http.MethodPost, Path: "/api/v1/infra/login", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
@@ -378,7 +391,7 @@ func (c *Client) ensureToken(ctx context.Context) (string, error) {
 		return "", closeErr
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		apiErr := &APIError{StatusCode: resp.StatusCode, Body: string(bodyBytes)}
+		apiErr := &APIError{StatusCode: resp.StatusCode}
 		c.record(RequestStat{Operation: "infra.login", Method: http.MethodPost, Path: "/api/v1/infra/login", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: apiErr})
 		return "", apiErr
 	}
@@ -429,11 +442,11 @@ func (c *Client) record(stat RequestStat) {
 
 func decodeObjects(body []byte, header http.Header) ([]Object, string, int, error) {
 	var value any
-	if err := json.Unmarshal(body, &value); err != nil {
+	if err := httpclient.DecodeJSON(body, &value); err != nil {
 		return nil, "", 0, err
 	}
 	objects := objectsFromValue(value)
-	next := nextLink(header.Get("Link"))
+	next := httpclient.NextLink(header.Get("Link"))
 	remaining := -1
 	if root, ok := value.(map[string]any); ok {
 		next = firstNonEmpty(next, stringFromPath(root, "meta", "links", "next"), stringFromPath(root, "links", "next"), stringFromPath(root, "pagination", "next"))
@@ -531,20 +544,6 @@ func sleepBeforeRetry(ctx context.Context, attempt int, retryAfter time.Duration
 	case <-timer.C:
 		return true
 	}
-}
-
-func nextLink(header string) string {
-	for _, part := range strings.Split(header, ",") {
-		sections := strings.Split(part, ";")
-		if len(sections) < 2 {
-			continue
-		}
-		if !strings.Contains(sections[1], `rel="next"`) {
-			continue
-		}
-		return strings.Trim(strings.TrimSpace(sections[0]), "<>")
-	}
-	return ""
 }
 
 func splitNextURL(nextURL string) (string, url.Values) {

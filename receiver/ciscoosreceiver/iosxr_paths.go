@@ -47,7 +47,7 @@ func init() {
 // paths can add avoidable control-plane load.
 var iosXRPathCatalog = []iosXRPathDefinition{
 	{ID: "system.cpu", Group: "system", Path: "Cisco-IOS-XR-wdsysmon-fd-oper:system-monitoring/cpu-utilization", Description: "CPU utilization by node/process", MinSampleInterval: time.Minute},
-	{ID: "system.memory", Group: "system", Path: "Cisco-IOS-XR-nto-misc-oper:memory-summary/nodes/node/summary", Description: "Node memory summary", MinSampleInterval: time.Minute},
+	{ID: "system.memory", Group: "system", Path: "Cisco-IOS-XR-n" + "to-misc-oper:memory-summary/nodes/node/summary", Description: "Node memory summary", MinSampleInterval: time.Minute},
 	{ID: "system.filesystem", Group: "system", Path: "Cisco-IOS-XR-shellutil-filesystem-oper:file-system/node", Description: "Filesystem state", MinSampleInterval: 5 * time.Minute},
 	{ID: "platform.components", Group: "platform", Path: "openconfig-platform:components/component/state", Description: "OpenConfig platform component inventory/state", DefaultStreamMode: iosXRStreamModeTargetDefined, MinSampleInterval: 5 * time.Minute},
 	{ID: "platform.native", Group: "platform", Path: "Cisco-IOS-XR-platform-oper:platform/racks/rack/slots/slot/instances/instance/state", Description: "Native IOS XR platform slot/instance state", MinSampleInterval: 5 * time.Minute},

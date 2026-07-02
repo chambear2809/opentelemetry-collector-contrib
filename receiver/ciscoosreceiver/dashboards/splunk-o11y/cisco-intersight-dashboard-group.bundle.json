@@ -208,7 +208,7 @@
           "secondary_visualization": "Sparkline",
           "name": "Firmware Bundle Status",
           "description": "Value: shows firmware bundle status for lifecycle and upgrade risk. Interpretation: non-healthy bundle states can explain maintenance windows, upgrade failures, or compatibility issues.",
-          "signalflow": "data('intersight.firmware.bundle.status').mean(by=['host.name', 'intersight.status']).publish(label='Firmware status')",
+          "signalflow": "data('intersight.firmware.bundle.info').mean(by=['host.name', 'intersight.firmware.version']).publish(label='Firmware bundle')",
           "legend_dimension": "host.name"
         }
       ]

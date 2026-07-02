@@ -72,6 +72,14 @@ Use these dimensions as dashboard variables:
 | `cisco.yang.module` | Direct telemetry YANG module selector for Catalyst 9800 and IOS XR model coverage. |
 | `cisco.telemetry.transport` | Direct telemetry transport selector, such as gNMI dial-in or MDT gRPC dial-out. |
 | `cisco.node.id` | IOS XR node, rack, slot, or location selector when exposed by telemetry. |
+| `storage.vendor` | Storage vendor selector for adjacent Cisco AI POD storage integrations, such as VAST. |
+| `ai.pod.component` | AI POD component selector, such as storage. |
+| `vast.cluster` | VAST cluster selector added by the Collector resource processor. |
+| `view_name` | VAST view selector for storage performance and capacity dashboards. |
+| `tenant_name` | VAST tenant selector for scoped storage dashboards. |
+| `vip` | VAST virtual IP selector for storage path analysis. |
+| `vippool` | VAST VIP pool selector for load-balancing and path analysis. |
+| `pvc_namespace` | Kubernetes namespace selector for VAST CSI mount and provisioning evidence. |
 
 Avoid using high-cardinality fields such as process names, queue names, neighbor names, and drop reasons as global dashboard variables unless the dashboard is specifically for deep investigation.
 
@@ -203,8 +211,8 @@ Start with these detectors before adding organization-specific thresholds:
 | Catalyst Center site unhealthy | `catalyst_center.site.network_device.health.percentage` or `catalyst_center.site.client.health.percentage` | Site health falls below policy or drops sharply from baseline. |
 | Catalyst Center active issues | `catalyst_center.issue.active.count` | P1/P2 or high-severity issue counts are greater than 0. |
 | Catalyst 9800 telemetry degraded | `cisco.catalyst9800.receiver.decode_errors`, `cisco.catalyst9800.receiver.unsupported_paths`, or `cisco.catalyst9800.receiver.dropped_datapoints` | Decode, model coverage, or cardinality guardrail counters rise for 2-3 scrapes. |
-| Catalyst 9800 AP or CAPWAP issue | `cisco.wlc.ap.join.status`, `cisco.wlc.ap.capwap.state`, `cisco.wlc.ap.join.failure`, or `cisco.wlc.ap.disconnect` | Important APs are not joined, CAPWAP is unhealthy, or join/disconnect evidence rises. |
-| Catalyst 9800 client or AAA issue | `cisco.wlc.client.connection.state`, `cisco.wlc.client.auth.failure`, `cisco.wlc.auth.radius.access.reject.count`, or `cisco.wlc.auth.radius.timeout.count` | Clients fail to connect, auth failures rise, RADIUS rejects/timeouts increase, or response delay degrades. |
+| Catalyst 9800 AP or CAPWAP issue | `cisco.wlc.ap.join.status`, `cisco.wlc.ap.capwap.state`, `cisco.wlc.ap.join.failure.reason.info`, or `cisco.wlc.ap.disconnect` | Important APs are not joined, CAPWAP is unhealthy, or join/disconnect evidence rises. |
+| Catalyst 9800 client or AAA issue | `cisco.wlc.client.connection.state`, `cisco.wlc.client.auth.failure.reason.info`, `cisco.wlc.auth.radius.access.reject.count`, or `cisco.wlc.auth.radius.timeout.count` | Clients fail to connect, auth failures rise, RADIUS rejects/timeouts increase, or response delay degrades. |
 | SD-WAN API degraded | `sdwan.api.request.errors`, `sdwan.scrape.partial_success`, `sdwan.service.unavailable`, or `sdwan.service.skipped` | Errors, partial success, unavailable feature groups, or missing target scope repeat for 2-3 scrapes. |
 | SD-WAN overlay degraded | `sdwan.control.connection.status`, `sdwan.control.actual_connections`, `sdwan.control.expected_connections`, or `sdwan.bfd.session.status` | Control connections or BFD sessions are down, partial, or below expected count. |
 | SD-WAN app SLA violation | `sdwan.app_route.latency`, `sdwan.app_route.jitter`, `sdwan.app_route.loss`, or `sdwan.app_route.sla.status` | Critical app, SaaS, or AI/model path exceeds SLA thresholds or enters failed/degraded state. |

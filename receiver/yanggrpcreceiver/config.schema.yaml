@@ -14,7 +14,7 @@ $defs:
         description: Enabled indicates whether rate limiting should be enabled
         type: boolean
       requests_per_second:
-        description: RequestsPerSecond is the maximum number of requests per second per client
+        description: RequestsPerSecond is the maximum number of received messages per second per client.
         type: number
         x-customType: float64
   security_config:
@@ -26,13 +26,6 @@ $defs:
         type: array
         items:
           type: string
-      connection_timeout:
-        description: ConnectionTimeout is the maximum time to wait for new connections
-        type: string
-        format: duration
-      enable_metrics:
-        description: EnableMetrics enables security-related metrics collection
-        type: boolean
       rate_limiting:
         description: RateLimiting contains rate limiting configuration
         $ref: rate_limiting_config
@@ -40,15 +33,6 @@ $defs:
     description: YANGConfig contains YANG parser configuration
     type: object
     properties:
-      cache_modules:
-        description: CacheModules enables caching of discovered YANG modules
-        type: boolean
-      enable_rfc_parser:
-        description: EnableRFCParser enables the RFC 6020/7950 compliant YANG parser
-        type: boolean
-      max_modules:
-        description: MaxModules is the maximum number of YANG modules to cache
-        type: integer
       module_paths:
         description: ModulePaths defines the directories where .yang files are stored. This is used by the internal parser to resolve Cisco-specific schemas.
         type: array

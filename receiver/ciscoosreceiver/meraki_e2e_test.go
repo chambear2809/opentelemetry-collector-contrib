@@ -277,7 +277,7 @@ func intersightE2EHasAPIStatus(md pmetric.Metrics, status string) bool {
 				points := metric.Gauge().DataPoints()
 				for l := 0; l < points.Len(); l++ {
 					value, ok := points.At(l).Attributes().Get("http.response.status_code")
-					if ok && value.Str() == status {
+					if ok && value.AsString() == status {
 						return true
 					}
 				}
@@ -302,7 +302,7 @@ func catalystCenterE2EAPIStatuses(md pmetric.Metrics) map[string]int {
 				for l := 0; l < points.Len(); l++ {
 					status := "none"
 					if value, ok := points.At(l).Attributes().Get("http.response.status_code"); ok {
-						status = value.Str()
+						status = value.AsString()
 					}
 					statuses[status]++
 				}
@@ -332,7 +332,7 @@ func catalystCenterE2EAPIErrors(md pmetric.Metrics) map[string]int {
 					}
 					status := "none"
 					if value, ok := attrs.Get("http.response.status_code"); ok {
-						status = value.Str()
+						status = value.AsString()
 					}
 					errors[operation+"/"+status]++
 				}

@@ -1,0 +1,371 @@
+{
+  "schema": "com.cisco.opentelemetry.ciscoosreceiver.splunk-o11y.dashboard-bundle/v1",
+  "group": {
+    "name": "VAST Storage For Cisco AI PODs",
+    "description": "Dashboard group for VAST Storage metrics collected through Prometheus endpoints in Cisco AI POD environments. It covers VMS scrape trust, cluster capacity, view and VIP performance, physical media health, CSI provisioning and mount health, and switch-side AI fabric correlation."
+  },
+  "default_time_range_ms": 3600000,
+  "default_tags": [
+    "vast-storage",
+    "cisco-ai-pods",
+    "storage",
+    "itops",
+    "netops"
+  ],
+  "default_filters": {
+    "variables": [
+      {
+        "property": "vast.cluster",
+        "alias": "VAST Cluster",
+        "description": "VAST cluster identifier added by the Collector resource processor.",
+        "applyIfExists": true
+      },
+      {
+        "property": "storage.vendor",
+        "alias": "Storage Vendor",
+        "description": "Storage vendor resource attribute. Expected value is vast.",
+        "applyIfExists": true
+      },
+      {
+        "property": "k8s.cluster.name",
+        "alias": "Kubernetes Cluster",
+        "description": "Kubernetes cluster running the AI pod or CSI driver.",
+        "applyIfExists": true
+      },
+      {
+        "property": "environment",
+        "alias": "Environment",
+        "description": "Deployment environment dimension.",
+        "applyIfExists": true
+      },
+      {
+        "property": "job",
+        "alias": "Scrape Job",
+        "description": "Prometheus scrape job name.",
+        "applyIfExists": true
+      },
+      {
+        "property": "instance",
+        "alias": "Instance",
+        "description": "Prometheus scrape instance.",
+        "applyIfExists": true
+      }
+    ]
+  },
+  "dashboards": [
+    {
+      "name": "00 VAST Collection Trust",
+      "description": "Value: first-response dashboard for VAST VMS and CSI scrape trust before storage symptoms are interpreted.",
+      "value": "Use this page to prove whether VAST VMS and CSI metrics are being scraped successfully, which endpoint families are active, and whether missing dashboard data is caused by collection, auth, TLS, endpoint availability, or disabled metrics.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to use VAST collection trust. Interpretation: start with scrape target up state and sample volume before reading storage capacity, performance, media, or CSI panels.",
+          "markdown": "## Value Provided\nUse this page first for VAST Storage incidents in Cisco AI PODs. It separates collection failures from storage symptoms by showing VMS and CSI scrape health, endpoint coverage, sample volume, and basic cluster online state.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "VAST Scrape Targets Up",
+          "description": "Value: proves whether VMS and CSI scrape targets are reachable. Interpretation: 1 means the scrape target is up; 0 means collection, auth, TLS, service discovery, or endpoint reachability must be fixed before interpreting downstream charts.",
+          "signalflow": "data('up', filter=filter('storage.vendor', 'vast')).mean(by=['job', 'instance']).publish(label='Target up')",
+          "legend_dimension": "job"
+        },
+        {
+          "name": "Scrape Samples",
+          "description": "Value: shows whether each VAST endpoint family is producing data. Interpretation: sudden drops by job indicate endpoint removal, permission changes, version mismatch, or high-cardinality filters.",
+          "signalflow": "data('scrape_samples_scraped', filter=filter('storage.vendor', 'vast')).mean(by=['job', 'instance']).publish(label='Samples scraped'); data('scrape_samples_post_metric_relabeling', filter=filter('storage.vendor', 'vast')).mean(by=['job', 'instance']).publish(label='Samples after relabel')",
+          "legend_dimension": "job"
+        },
+        {
+          "name": "Scrape Duration",
+          "description": "Value: identifies slow VAST endpoint families before they time out. Interpretation: durations near scrape timeout suggest splitting endpoints, increasing timeout, or reducing high-cardinality families.",
+          "signalflow": "data('scrape_duration_seconds', filter=filter('storage.vendor', 'vast')).mean(by=['job', 'instance']).publish(label='Scrape duration')",
+          "legend_dimension": "job"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "VAST Cluster Online",
+          "description": "Value: gives a simple VMS-reported cluster online indicator. Interpretation: values below online state should be treated as a storage control-plane or cluster-health issue after scrape trust is confirmed.",
+          "signalflow": "data('vast_cluster_online').mean(by=['vast.cluster', 'instance']).publish(label='Cluster online')",
+          "legend_dimension": "vast.cluster"
+        },
+        {
+          "name": "CSI Operation Volume",
+          "description": "Value: proves whether CSI node and controller metrics are active. Interpretation: missing operation counters indicate CSI metrics are disabled, service discovery did not match, or the Collector cannot reach the metrics ports.",
+          "signalflow": "data('csi_plugin_operations_total', filter=filter('storage.vendor', 'vast')).rate().sum(by=['vast.csi.role', 'grpc_method', 'method_name', 'status']).publish(label='CSI operations/sec')",
+          "legend_dimension": "vast.csi.role"
+        }
+      ]
+    },
+    {
+      "name": "01 VAST Cluster Health And Capacity",
+      "description": "Value: cluster capacity and node health dashboard for VAST Storage in Cisco AI PODs.",
+      "value": "Use this page to confirm that the VAST cluster has capacity headroom and that CNodes, DNodes, NVRAMs, SSDs, NICs, and fans are not reporting failed or inactive state.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains capacity and fleet health triage. Interpretation: confirm the cluster is online, then compare logical and physical usage with node and media state.",
+          "markdown": "## Value Provided\nThis page gives infrastructure owners a capacity and health landing page for VAST. It correlates logical/physical space, data reduction, CNode/DNode state, SSD/NVRAM state, NIC/fan health, and CNode scheduler utilization.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "Cluster Logical And Physical Space",
+          "description": "Value: shows total and used logical/physical capacity. Interpretation: rising used capacity or shrinking headroom can explain provisioning failures, quota pressure, or workload throttling.",
+          "signalflow": "data('vast_cluster_logical_space').mean(by=['vast.cluster']).publish(label='Logical total'); data('vast_cluster_logical_space_in_use').mean(by=['vast.cluster']).publish(label='Logical used'); data('vast_cluster_physical_space').mean(by=['vast.cluster']).publish(label='Physical total'); data('vast_cluster_physical_space_in_use').mean(by=['vast.cluster']).publish(label='Physical used')",
+          "legend_dimension": "vast.cluster"
+        },
+        {
+          "name": "Data Reduction Ratio",
+          "description": "Value: shows VAST data reduction behavior. Interpretation: major shifts can change physical capacity burn rate and should be correlated with workload or dataset changes.",
+          "signalflow": "data('vast_cluster_drr').mean(by=['vast.cluster']).publish(label='DRR')",
+          "legend_dimension": "vast.cluster"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Active VAST Alarms",
+          "description": "Value: surfaces VMS alarm telemetry collected from /api/prometheusmetrics/alarms. Interpretation: active alarms should be cleared or explained before treating capacity, media, or performance symptoms as isolated workload pressure.",
+          "signalflow": "data('vast_vms_alarms').sum(by=['vast.cluster', 'name', 'severity']).publish(label='Active alarms')",
+          "legend_dimension": "name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "CNode And DNode State",
+          "description": "Value: identifies compute or data nodes that are active, inactive, or failed. Interpretation: failed or inactive nodes reduce storage service health and can explain latency, rebuild, or capacity symptoms.",
+          "signalflow": "data('vast_cnode_active').mean(by=['vast.cluster', 'cnode']).publish(label='CNode active'); data('vast_cnode_failed').mean(by=['vast.cluster', 'cnode']).publish(label='CNode failed'); data('vast_dnode_active').mean(by=['vast.cluster', 'dnode']).publish(label='DNode active'); data('vast_dnode_failed').mean(by=['vast.cluster', 'dnode']).publish(label='DNode failed')",
+          "legend_dimension": "cnode"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "SSD And NVRAM State",
+          "description": "Value: surfaces failed or inactive media. Interpretation: failed SSDs or NVRAMs should be investigated before treating latency or capacity charts as normal workload pressure.",
+          "signalflow": "data('vast_ssd_active').mean(by=['vast.cluster', 'ssd']).publish(label='SSD active'); data('vast_ssd_failed').mean(by=['vast.cluster', 'ssd']).publish(label='SSD failed'); data('vast_nvram_active').mean(by=['vast.cluster', 'nvram']).publish(label='NVRAM active'); data('vast_nvram_failed').mean(by=['vast.cluster', 'nvram']).publish(label='NVRAM failed')",
+          "legend_dimension": "ssd"
+        },
+        {
+          "name": "CNode Scheduler Utilization",
+          "description": "Value: compares frontend ingest and normal/background utilization per CNode. Interpretation: sustained values above policy thresholds or imbalance across CNodes can indicate saturation, skew, or backend activity.",
+          "signalflow": "data('vast_cnode_metrics_SchedulerMetrics_window_runtime_pct_ingest_only_silos_avg').mean(by=['vast.cluster', 'cnode']).publish(label='Ingest silo %'); data('vast_cnode_metrics_SchedulerMetrics_window_runtime_pct_normal_silos_avg').mean(by=['vast.cluster', 'cnode']).publish(label='Normal silo %')",
+          "legend_dimension": "cnode"
+        },
+        {
+          "name": "Quota Capacity",
+          "description": "Value: shows quota usage and limits when quota metrics are enabled. Interpretation: quota exhaustion can explain application write failures even when cluster-level capacity looks healthy.",
+          "signalflow": "data('vast_quota_used_capacity').mean(by=['vast.cluster', 'tenant_name', 'view_name']).publish(label='Quota used'); data('vast_quota_hard_limit').mean(by=['vast.cluster', 'tenant_name', 'view_name']).publish(label='Hard limit'); data('vast_quota_soft_limit').mean(by=['vast.cluster', 'tenant_name', 'view_name']).publish(label='Soft limit')",
+          "legend_dimension": "view_name"
+        }
+      ]
+    },
+    {
+      "name": "02 VAST IOPS Bandwidth And Latency",
+      "description": "Value: performance dashboard for VAST view, VIP, protocol, and QoS signals.",
+      "value": "Use this page when AI workloads, Kubernetes storage, RAG data reads, checkpoints, or object/file operations slow down and the question is whether VAST is seeing pressure by view, VIP, or protocol.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains VAST storage performance triage. Interpretation: compare view and VIP IOPS/bandwidth with latency and QoS wait before escalating to fabric or workload owners.",
+          "markdown": "## Value Provided\nThis page focuses on storage performance as observed by VAST. View and VIP panels show where workload pressure lands, protocol panels separate NFS/S3/Kafka-style demand, and QoS wait highlights throttling or budget pressure.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "View Read And Write IOPS",
+          "description": "Value: shows per-view read/write operation pressure. Interpretation: rising IOPS with rising latency usually indicates storage or fabric pressure; rising IOPS with stable latency is expected workload growth.",
+          "signalflow": "data('vast_view_metrics_ViewMetrics_read_iops_count').rate().sum(by=['vast.cluster', 'tenant_name', 'view_name']).publish(label='Read IOPS'); data('vast_view_metrics_ViewMetrics_write_iops_count').rate().sum(by=['vast.cluster', 'tenant_name', 'view_name']).publish(label='Write IOPS')",
+          "legend_dimension": "view_name"
+        },
+        {
+          "name": "View Read And Write Bandwidth",
+          "description": "Value: shows bytes/sec by view. Interpretation: bandwidth spikes during model checkpointing, data loading, or object reads should be correlated with VIP latency and switch congestion.",
+          "signalflow": "data('vast_view_metrics_ViewMetrics_read_bw_sum').rate().sum(by=['vast.cluster', 'tenant_name', 'view_name']).publish(label='Read bytes/sec'); data('vast_view_metrics_ViewMetrics_write_bw_sum').rate().sum(by=['vast.cluster', 'tenant_name', 'view_name']).publish(label='Write bytes/sec')",
+          "legend_dimension": "view_name"
+        },
+        {
+          "name": "View Read And Write Latency Events",
+          "description": "Value: shows latency event volume by view. Interpretation: increases show where read or write latency is being measured; pair with sum/count calculations or derived VAST averages in custom charts for exact latency.",
+          "signalflow": "data('vast_view_metrics_ViewMetrics_read_latency_count').rate().sum(by=['vast.cluster', 'tenant_name', 'view_name']).publish(label='Read latency events/sec'); data('vast_view_metrics_ViewMetrics_write_latency_count').rate().sum(by=['vast.cluster', 'tenant_name', 'view_name']).publish(label='Write latency events/sec')",
+          "legend_dimension": "view_name"
+        },
+        {
+          "name": "VIP Read And Write IOPS",
+          "description": "Value: identifies VIPs or VIP pools carrying storage demand. Interpretation: skewed VIP pressure can point to client routing, VIP pool balancing, or fabric locality issues.",
+          "signalflow": "data('vast_vip_read_iops').mean(by=['vast.cluster', 'vip']).publish(label='VIP read IOPS'); data('vast_vip_write_iops').mean(by=['vast.cluster', 'vip']).publish(label='VIP write IOPS'); data('vast_vippool_read_iops').mean(by=['vast.cluster', 'vippool']).publish(label='VIP pool read IOPS'); data('vast_vippool_write_iops').mean(by=['vast.cluster', 'vippool']).publish(label='VIP pool write IOPS')",
+          "legend_dimension": "vip"
+        },
+        {
+          "name": "VIP Bandwidth And Latency",
+          "description": "Value: correlates VIP bandwidth with read/write latency. Interpretation: high bandwidth plus high latency can indicate congestion, backend pressure, or client/VIP imbalance.",
+          "signalflow": "data('vast_vip_read_bw').mean(by=['vast.cluster', 'vip']).publish(label='VIP read BW'); data('vast_vip_write_bw').mean(by=['vast.cluster', 'vip']).publish(label='VIP write BW'); data('vast_vip_read_latency').mean(by=['vast.cluster', 'vip']).publish(label='VIP read latency'); data('vast_vip_write_latency').mean(by=['vast.cluster', 'vip']).publish(label='VIP write latency')",
+          "legend_dimension": "vip"
+        },
+        {
+          "name": "QoS Wait For Budget",
+          "description": "Value: shows QoS budget wait pressure by view. Interpretation: non-zero wait explains storage-side throttling even when fabric and physical media look healthy.",
+          "signalflow": "data('vast_view_metrics_ViewMetrics_qos_wait_for_budget_time_sum').rate().sum(by=['vast.cluster', 'tenant_name', 'view_name']).publish(label='QoS wait seconds/sec'); data('vast_view_metrics_ViewMetrics_qos_wait_for_budget_time_count').rate().sum(by=['vast.cluster', 'tenant_name', 'view_name']).publish(label='QoS wait events/sec')",
+          "legend_dimension": "view_name"
+        }
+      ]
+    },
+    {
+      "name": "03 VAST Physical Devices And Media",
+      "description": "Value: physical device and media dashboard for VAST CNodes, DNodes, SSDs, NVRAMs, NICs, fans, and temperatures.",
+      "value": "Use this page when media degradation, thermal pressure, failed hardware, or NIC issues might explain application storage symptoms.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains physical health triage. Interpretation: check media and node status before attributing latency to workload demand alone.",
+          "markdown": "## Value Provided\nThis page focuses on VAST physical health. It brings together media state, CNode/DNode temperature, memory utilization, NIC state, NIC traffic, fan state, and RDMA link signals so storage operators can spot hardware causes behind workload symptoms.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "SSD And NVRAM Temperature",
+          "description": "Value: shows media temperature. Interpretation: thermal drift can precede throttling, media faults, or data-node instability.",
+          "signalflow": "data('vast_ssd_metrics_Hardware_temperature').mean(by=['vast.cluster', 'ssd']).publish(label='SSD temperature'); data('vast_nvram_metrics_Hardware_temperature').mean(by=['vast.cluster', 'nvram']).publish(label='NVRAM temperature')",
+          "legend_dimension": "ssd"
+        },
+        {
+          "name": "CNode And DNode Temperature",
+          "description": "Value: shows compute and data node thermal state. Interpretation: high node temperatures should be correlated with fans, rack airflow, and workload bursts.",
+          "signalflow": "data('vast_cnode_metrics_Hardware_cpu_temp').mean(by=['vast.cluster', 'cnode']).publish(label='CNode CPU temp'); data('vast_dnode_metrics_Hardware_cpu_temp').mean(by=['vast.cluster', 'dnode']).publish(label='DNode CPU temp')",
+          "legend_dimension": "cnode"
+        },
+        {
+          "name": "Node Memory Utilization",
+          "description": "Value: shows node memory pressure. Interpretation: sustained high memory use can explain management or service slowness and should be correlated with CNode scheduler utilization.",
+          "signalflow": "data('vast_cnode_metrics_Hardware_mem_percent').mean(by=['vast.cluster', 'cnode']).publish(label='CNode memory %'); data('vast_dnode_metrics_Hardware_mem_percent').mean(by=['vast.cluster', 'dnode']).publish(label='DNode memory %')",
+          "legend_dimension": "cnode"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "NIC And Fan State",
+          "description": "Value: identifies failed or inactive NIC and fan components. Interpretation: NIC or fan state changes can explain path instability, thermal pressure, or service degradation.",
+          "signalflow": "data('vast_nic_active').mean(by=['vast.cluster', 'nic']).publish(label='NIC active'); data('vast_fan_active').mean(by=['vast.cluster', 'fan']).publish(label='Fan active')",
+          "legend_dimension": "nic"
+        },
+        {
+          "name": "NIC Traffic",
+          "description": "Value: shows bytes received and transmitted by VAST NICs when exposed. Interpretation: imbalance or silence on expected NICs can point to path, switch, or NIC health issues.",
+          "signalflow": "data('vast_nic_metrics_Hardware_bytes_recv').rate().sum(by=['vast.cluster', 'nic']).publish(label='NIC RX bytes/sec'); data('vast_nic_metrics_Hardware_bytes_sent').rate().sum(by=['vast.cluster', 'nic']).publish(label='NIC TX bytes/sec')",
+          "legend_dimension": "nic"
+        },
+        {
+          "name": "CNode RDMA Links",
+          "description": "Value: shows active RPC/RDMA link count where exposed by VAST. Interpretation: link count drops should be correlated with Cisco switch interface, PFC, ECN, and queue-drop evidence.",
+          "signalflow": "data('vast_cnode_metrics_RpcRdmaMetrics_active_links').mean(by=['vast.cluster', 'cnode']).publish(label='Active RDMA links')",
+          "legend_dimension": "cnode"
+        }
+      ]
+    },
+    {
+      "name": "04 VAST CSI Provisioning And Mount Health",
+      "description": "Value: Kubernetes CSI dashboard for VAST provisioning, controller calls, node mounts, mount duration, and NFS transport health.",
+      "value": "Use this page when pods are stuck starting, PVC operations are slow, mounts fail, or NFS transport queues build up on Kubernetes nodes.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains CSI troubleshooting. Interpretation: distinguish controller provisioning failures from node mount failures and NFS transport backlog.",
+          "markdown": "## Value Provided\nThis page follows the Kubernetes storage control path. CSI controller operation counters identify provisioning and publish failures; node mount counters and duration identify node-side mount pain; NFS transport metrics show pending requests, backlog, and active mounts per node or VIP.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "CSI Controller And Node Operations",
+          "description": "Value: shows CSI gRPC operation volume and outcomes. Interpretation: failure or timeout status by method points to provisioning, publish, attach, or node operation ownership.",
+          "signalflow": "data('csi_plugin_operations_total', filter=filter('storage.vendor', 'vast')).rate().sum(by=['vast.csi.role', 'grpc_method', 'method_name', 'status']).publish(label='CSI operations/sec')",
+          "legend_dimension": "method_name"
+        },
+        {
+          "name": "CSI Mount Operations",
+          "description": "Value: shows mount and unmount outcomes by namespace and node. Interpretation: failures or timeouts explain pods stuck in ContainerCreating or workloads losing volume access.",
+          "signalflow": "data('csi_node_mount_operations_total', filter=filter('storage.vendor', 'vast')).rate().sum(by=['node_name', 'hostname', 'pvc_namespace', 'operation_type', 'status']).publish(label='Mount operations/sec')",
+          "legend_dimension": "status"
+        },
+        {
+          "name": "CSI Mount Duration",
+          "description": "Value: tracks mount duration sum and count. Interpretation: rising duration with stable success count points to slow mount path; rising failures point to access, network, DNS, or VAST endpoint issues.",
+          "signalflow": "data('csi_node_mount_duration_seconds_sum', filter=filter('storage.vendor', 'vast')).rate().sum(by=['node_name', 'hostname', 'pvc_namespace', 'operation_type']).publish(label='Mount duration seconds/sec'); data('csi_node_mount_duration_seconds_count', filter=filter('storage.vendor', 'vast')).rate().sum(by=['node_name', 'hostname', 'pvc_namespace', 'operation_type']).publish(label='Mount duration events/sec')",
+          "legend_dimension": "node_name"
+        },
+        {
+          "name": "NFS Transport Pending And Backlog",
+          "description": "Value: shows NFS transport pending requests and backlog depth. Interpretation: backlog or pending requests rising on one node or VIP points to node, client path, or network pressure.",
+          "signalflow": "data('csi_node_nfs_xprt_pending_requests', filter=filter('storage.vendor', 'vast')).mean(by=['node_name', 'hostname', 'vip']).publish(label='Pending requests'); data('csi_node_nfs_xprt_backlog_depth', filter=filter('storage.vendor', 'vast')).mean(by=['node_name', 'hostname', 'vip']).publish(label='Backlog depth')",
+          "legend_dimension": "node_name"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "NFS Transport Mounts And Locked State",
+          "description": "Value: shows active NFS mounts and locked transport state. Interpretation: unexpected locked state or mount count changes can explain application storage stalls.",
+          "signalflow": "data('csi_node_nfs_xprt_mounts', filter=filter('storage.vendor', 'vast')).mean(by=['node_name', 'hostname', 'vip']).publish(label='Active mounts'); data('csi_node_nfs_xprt_locked_state', filter=filter('storage.vendor', 'vast')).mean(by=['node_name', 'hostname', 'vip']).publish(label='Locked state')",
+          "legend_dimension": "node_name"
+        }
+      ]
+    },
+    {
+      "name": "05 Cisco AI POD Storage Fabric Correlation",
+      "description": "Value: correlation dashboard for VAST storage symptoms and Cisco switch-side AI/RDMA congestion evidence.",
+      "value": "Use this page when VAST latency, CSI mount delays, or workload storage slowdown need to be correlated with Cisco fabric congestion, pause frames, ECN marks, queue drops, link errors, and optics.",
+      "chart_density": "HIGH",
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains Cisco AI POD storage-fabric correlation. Interpretation: compare VAST view/VIP latency and CSI backlog with Cisco interface, QoS, PFC, ECN, and optics evidence during the same incident window.",
+          "markdown": "## Value Provided\nThis page joins the two halves of AI POD storage troubleshooting. VAST shows storage demand, latency, CSI mount behavior, and NFS transport backlog. Cisco switch metrics show whether the storage path is also experiencing congestion, backpressure, queue drops, link errors, or optics drift.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "name": "Storage Demand And CSI Backlog",
+          "description": "Value: overlays VAST view bandwidth with CSI NFS backlog. Interpretation: backlog rising with storage bandwidth usually means client path pressure; backlog without storage load points to node, network, or mount path issues.",
+          "signalflow": "data('vast_view_metrics_ViewMetrics_read_bw_sum').rate().sum(by=['vast.cluster']).publish(label='VAST read bytes/sec'); data('vast_view_metrics_ViewMetrics_write_bw_sum').rate().sum(by=['vast.cluster']).publish(label='VAST write bytes/sec'); data('csi_node_nfs_xprt_backlog_depth', filter=filter('storage.vendor', 'vast')).mean(by=['node_name', 'hostname']).publish(label='CSI NFS backlog')",
+          "legend_dimension": "vast.cluster"
+        },
+        {
+          "name": "Cisco Interface Storage Path Pressure",
+          "description": "Value: shows Cisco switch interface utilization and traffic around VAST incidents. Interpretation: saturation or traffic shifts on storage-facing ports can explain VAST latency or CSI backlog.",
+          "signalflow": "data('cisco.interface.utilization', filter=filter('hw.type', 'network')).mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Interface utilization'); data('system.network.io', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Interface bytes/sec')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "name": "PFC Pause And ECN Marks",
+          "description": "Value: shows lossless fabric congestion control evidence. Interpretation: ECN should warn before pause or drops; PFC spikes during VAST latency indicate backpressure on storage or AI fabric paths.",
+          "signalflow": "data('cisco.interface.pause.frames', filter=filter('cisco.pause.type', 'pfc')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'cisco.qos.priority']).publish(label='PFC pause/sec'); data('cisco.interface.qos.policy.packets', filter=filter('cisco.qos.action', 'mark')).rate().sum(by=['host.name', 'network.interface.name', 'cisco.qos.class']).publish(label='ECN marks/sec')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "name": "Queue Drops And Interface Errors",
+          "description": "Value: correlates Cisco queue drops and link errors with VAST symptoms. Interpretation: queue drops during rising VAST latency indicate fabric loss; errors without queue drops point to physical or optics issues.",
+          "signalflow": "data('cisco.interface.qos.queue.packets', filter=filter('cisco.qos.action', 'drop')).rate().sum(by=['host.name', 'network.interface.name', 'cisco.qos.group', 'cisco.qos.drop.reason']).publish(label='Queue drops/sec'); data('system.network.errors', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Interface errors/sec'); data('system.network.packet.dropped', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Interface drops/sec')",
+          "legend_dimension": "network.interface.name"
+        },
+        {
+          "name": "Optics And VAST Media Temperature",
+          "description": "Value: compares Cisco optics drift with VAST media temperature. Interpretation: physical-layer or thermal symptoms can explain errors and latency before logical storage metrics clearly fail.",
+          "signalflow": "data('cisco.transceiver.sensor', filter=filter('sensor.type', 'rx_power')).mean(by=['host.name', 'network.interface.name']).publish(label='Cisco RX power'); data('cisco.transceiver.sensor', filter=filter('sensor.type', 'tx_power')).mean(by=['host.name', 'network.interface.name']).publish(label='Cisco TX power'); data('vast_ssd_metrics_Hardware_temperature').mean(by=['vast.cluster', 'ssd']).publish(label='VAST SSD temp')",
+          "legend_dimension": "network.interface.name"
+        }
+      ]
+    }
+  ]
+}

@@ -12,7 +12,10 @@ import (
 
 	"go.opentelemetry.io/collector/config/configgrpc"
 	"go.opentelemetry.io/collector/config/configopaque"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.uber.org/multierr"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/yanggrpcreceiver"
 )
 
 const (
@@ -60,14 +63,14 @@ type IOSXRSubscriptionConfig struct {
 	// DO NOT USE unkeyed struct initialization
 	_ struct{} `mapstructure:"-"`
 
-	Mode              string        `mapstructure:"mode"`
-	StreamMode        string        `mapstructure:"stream_mode"`
-	SampleInterval    time.Duration `mapstructure:"sample_interval"`
-	HeartbeatInterval time.Duration `mapstructure:"heartbeat_interval"`
-	PollInterval      time.Duration `mapstructure:"poll_interval"`
-	SuppressRedundant bool          `mapstructure:"suppress_redundant"`
-	UpdatesOnly       bool          `mapstructure:"updates_only"`
-	AllowAggregation  bool          `mapstructure:"allow_aggregation"`
+	Mode              string                        `mapstructure:"mode"`
+	StreamMode        string                        `mapstructure:"stream_mode"`
+	SampleInterval    time.Duration                 `mapstructure:"sample_interval"`
+	HeartbeatInterval time.Duration                 `mapstructure:"heartbeat_interval"`
+	PollInterval      time.Duration                 `mapstructure:"poll_interval"`
+	SuppressRedundant configoptional.Optional[bool] `mapstructure:"suppress_redundant"`
+	UpdatesOnly       configoptional.Optional[bool] `mapstructure:"updates_only"`
+	AllowAggregation  configoptional.Optional[bool] `mapstructure:"allow_aggregation"`
 }
 
 // IOSXRTargetConfig identifies one IOS XR gNMI dial-in target.
@@ -102,9 +105,10 @@ type IOSXRDialOutConfig struct {
 	// DO NOT USE unkeyed struct initialization
 	_ struct{} `mapstructure:"-"`
 
-	Enabled        bool     `mapstructure:"enabled"`
-	AllowedClients []string `mapstructure:"allowed_clients"`
-	ModulePaths    []string `mapstructure:"module_paths"`
+	Enabled        bool                                `mapstructure:"enabled"`
+	AllowedClients []string                            `mapstructure:"allowed_clients"`
+	ModulePaths    []string                            `mapstructure:"module_paths"`
+	RateLimiting   yanggrpcreceiver.RateLimitingConfig `mapstructure:"rate_limiting"`
 }
 
 // IOSXRConfig defines IOS XR gNMI/MDT telemetry settings.
@@ -133,12 +137,19 @@ func defaultIOSXRConfig() IOSXRConfig {
 	server.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault().Timeout = 10 * time.Second
 
 	return IOSXRConfig{
-		PathGroups:            defaultIOSXRPathGroups(),
-		DialOut:               IOSXRDialOutConfig{ServerConfig: server},
+		PathGroups: defaultIOSXRPathGroups(),
+		DialOut: IOSXRDialOutConfig{
+			ServerConfig: server,
+			RateLimiting: yanggrpcreceiver.RateLimitingConfig{
+				RequestsPerSecond: 100,
+				BurstSize:         10,
+				CleanupInterval:   time.Minute,
+			},
+		},
 		UnsupportedPathAction: iosXRUnsupportedWarn,
 		EncodingPreference:    []string{"json_ietf", "json", "proto"},
 		Subscription:          defaultIOSXRSubscriptionConfig(),
-		MaxDatapointsPerBatch: 50000,
+		MaxDatapointsPerBatch: directGNMIDefaultMaxDatapoints,
 	}
 }
 
@@ -165,7 +176,9 @@ func defaultIOSXRSubscriptionConfig() IOSXRSubscriptionConfig {
 		StreamMode:        iosXRStreamModeSample,
 		SampleInterval:    time.Minute,
 		HeartbeatInterval: time.Minute,
-		SuppressRedundant: true,
+		SuppressRedundant: configoptional.Some(true),
+		UpdatesOnly:       configoptional.Some(false),
+		AllowAggregation:  configoptional.Some(false),
 	}
 }
 
@@ -188,6 +201,8 @@ func (cfg *Config) validateIOSXR() error {
 	}
 	if iosxr.MaxDatapointsPerBatch < 0 {
 		err = multierr.Append(err, errors.New("ios_xr.max_datapoints_per_batch must not be negative"))
+	} else if iosxr.MaxDatapointsPerBatch > directGNMIHardMaxDatapoints {
+		err = multierr.Append(err, fmt.Errorf("ios_xr.max_datapoints_per_batch must not exceed %d", directGNMIHardMaxDatapoints))
 	}
 	err = multierr.Append(err, validateIOSXREncodings("ios_xr.encoding_preference", iosxr.EncodingPreference))
 	err = multierr.Append(err, validateIOSXRSubscription("ios_xr.subscription", iosxr.Subscription, false))
@@ -215,6 +230,12 @@ func (cfg *Config) validateIOSXR() error {
 		} else if _, _, splitErr := net.SplitHostPort(target.Endpoint); splitErr != nil {
 			err = multierr.Append(err, fmt.Errorf("%s.endpoint must be host:port", prefix))
 		}
+		if grpcErr := target.ClientConfig.Validate(); grpcErr != nil {
+			err = multierr.Append(err, fmt.Errorf("%s: %w", prefix, grpcErr))
+		}
+		if target.TLS.Insecure {
+			err = multierr.Append(err, fmt.Errorf("%s.tls.insecure must be false because gNMI credentials require TLS", prefix))
+		}
 		if target.Credentials.Username == "" {
 			err = multierr.Append(err, fmt.Errorf("%s.credentials.username cannot be empty", prefix))
 		}
@@ -231,8 +252,10 @@ func (cfg *Config) validateIOSXR() error {
 	}
 
 	if iosxr.DialOut.Enabled {
-		if grpcErr := iosxr.DialOut.ServerConfig.Validate(); grpcErr != nil {
-			err = multierr.Append(err, fmt.Errorf("ios_xr.dial_out: %w", grpcErr))
+		security := yanggrpcreceiver.SecurityConfig{AllowedClients: iosxr.DialOut.AllowedClients, RateLimiting: iosxr.DialOut.RateLimiting}
+		yangConfig := yanggrpcreceiver.Config{ServerConfig: iosxr.DialOut.ServerConfig, Security: security}
+		if validationErr := yangConfig.Validate(); validationErr != nil {
+			err = multierr.Append(err, fmt.Errorf("ios_xr.dial_out: %w", validationErr))
 		}
 	}
 
@@ -294,10 +317,34 @@ func (sub IOSXRSubscriptionConfig) withDefaults(defaults IOSXRSubscriptionConfig
 	if sub.HeartbeatInterval == 0 {
 		sub.HeartbeatInterval = defaults.HeartbeatInterval
 	}
+	if !sub.SuppressRedundant.HasValue() {
+		sub.SuppressRedundant = defaults.SuppressRedundant
+	}
+	if !sub.UpdatesOnly.HasValue() {
+		sub.UpdatesOnly = defaults.UpdatesOnly
+	}
+	if !sub.AllowAggregation.HasValue() {
+		sub.AllowAggregation = defaults.AllowAggregation
+	}
 	if sub.PollInterval == 0 {
 		sub.PollInterval = sub.SampleInterval
 	}
 	return sub
+}
+
+func (sub IOSXRSubscriptionConfig) suppressRedundant() bool {
+	value := sub.SuppressRedundant.Get()
+	return value != nil && *value
+}
+
+func (sub IOSXRSubscriptionConfig) updatesOnly() bool {
+	value := sub.UpdatesOnly.Get()
+	return value != nil && *value
+}
+
+func (sub IOSXRSubscriptionConfig) allowAggregation() bool {
+	value := sub.AllowAggregation.Get()
+	return value != nil && *value
 }
 
 func validIOSXRUnsupportedAction(action string) bool {
@@ -365,8 +412,17 @@ func validateIOSXRPathGroups(prefix string, groups map[string]IOSXRPathGroupConf
 func validateIOSXRPaths(prefix string, paths IOSXRPathOverrideConfig) error {
 	var err error
 	for i, path := range paths.Include {
-		if strings.TrimSpace(path) == "" {
+		path = strings.TrimSpace(path)
+		if path == "" {
 			err = multierr.Append(err, fmt.Errorf("%s.include[%d] cannot be empty", prefix, i))
+			continue
+		}
+		if strings.Contains(path, "*") {
+			err = multierr.Append(err, fmt.Errorf("%s.include[%d] cannot contain wildcards because IOS XR gNMI does not support wildcard paths", prefix, i))
+			continue
+		}
+		if _, parseErr := parseGNMIPath(path); parseErr != nil {
+			err = multierr.Append(err, fmt.Errorf("%s.include[%d] must be a valid gNMI path: %w", prefix, i, parseErr))
 		}
 	}
 	for i, path := range paths.Exclude {

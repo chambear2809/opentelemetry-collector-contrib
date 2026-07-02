@@ -151,6 +151,8 @@ $defs:
         type: array
         items:
           type: string
+      rate_limiting:
+        $ref: yanggrpc_rate_limiting_config
     allOf:
       - $ref: go.opentelemetry.io/collector/config/configgrpc.server_config
   catalyst_9800_path_group_config:
@@ -630,6 +632,8 @@ $defs:
         type: array
         items:
           type: string
+      rate_limiting:
+        $ref: yanggrpc_rate_limiting_config
     allOf:
       - $ref: go.opentelemetry.io/collector/config/configgrpc.server_config
   iosxr_path_group_config:
@@ -1193,6 +1197,20 @@ $defs:
         type: array
         items:
           type: string
+  yanggrpc_rate_limiting_config:
+    description: Per-client, per-message rate limiting for Cisco MDT dial-out streams.
+    type: object
+    properties:
+      burst_size:
+        type: integer
+      cleanup_interval:
+        type: string
+        format: duration
+      enabled:
+        type: boolean
+      requests_per_second:
+        type: number
+        x-customType: float64
 description: Config defines configuration for Cisco OS receiver.
 type: object
 properties:
@@ -1239,5 +1257,13 @@ properties:
   sdwan:
     description: SDWAN contains Cisco Catalyst SD-WAN Manager API polling settings.
     $ref: sdwan_config
+  scrapers:
+    description: Map of scrapers to be run, keyed by scraper type.
+    type: object
+    properties:
+      interfaces:
+        $ref: ./internal/scraper/interfacesscraper.config
+      system:
+        $ref: ./internal/scraper/systemscraper.config
 allOf:
   - $ref: go.opentelemetry.io/collector/scraper/scraperhelper.controller_config

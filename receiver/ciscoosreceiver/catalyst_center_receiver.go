@@ -5,6 +5,7 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 
 import (
 	"context"
+	"math"
 	"net/url"
 	"sort"
 	"strconv"
@@ -35,6 +36,7 @@ type catalystCenterMetricsReceiver struct {
 	client   *catalystcenter.Client
 	counters *counterStore
 	obs      *receiverhelper.ObsReport
+	success  scrapeSuccessState
 
 	startMu sync.Mutex
 	cancel  context.CancelFunc
@@ -128,21 +130,15 @@ func (r *catalystCenterMetricsReceiver) collect(ctx context.Context) {
 	defer cancel()
 
 	obsCtx := startMetricsOp(r.obs, ctx)
-	md, err := r.scrape(scrapeCtx)
-	if err != nil {
-		r.settings.Logger.Error("Catalyst Center scrape failed", zap.Error(err))
-		endMetricsOp(r.obs, obsCtx, md, err)
-		return
+	md, scrapeErr := r.scrape(scrapeCtx)
+	if scrapeErr != nil {
+		r.settings.Logger.Error("Catalyst Center scrape failed", zap.Error(scrapeErr))
 	}
-	if md.MetricCount() == 0 {
-		endMetricsOp(r.obs, obsCtx, md, nil)
-		return
-	}
-	consumeErr := r.consumer.ConsumeMetrics(ctx, md)
-	endMetricsOp(r.obs, obsCtx, md, consumeErr)
+	metricCount, consumeErr := consumeMetricsIfPresent(ctx, r.consumer, md)
 	if consumeErr != nil {
 		r.settings.Logger.Error("Catalyst Center metrics consumer failed", zap.Error(consumeErr))
 	}
+	endMetricsOp(r.obs, obsCtx, metricCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *catalystCenterMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
@@ -153,18 +149,22 @@ func (r *catalystCenterMetricsReceiver) scrape(ctx context.Context) (pmetric.Met
 	partial := false
 
 	if r.config.CatalystCenter.Inventory.Enabled {
-		if err := r.scrapeInventory(ctx, builder, selector); err != nil {
+		groupPartial, err := r.scrapeInventory(ctx, builder, selector)
+		partial = partial || groupPartial
+		if err != nil {
 			if ctx.Err() != nil {
-				return builder.emit(), ctx.Err()
+				return r.finishScrape(builder, now, true), ctx.Err()
 			}
 			partial = true
 			r.settings.Logger.Warn("Catalyst Center inventory endpoint failed", zap.Error(err))
 		}
 	}
 	if r.config.CatalystCenter.Interfaces.Enabled {
-		if err := r.scrapeInterfaces(ctx, builder, selector); err != nil {
+		groupPartial, err := r.scrapeInterfaces(ctx, builder, selector)
+		partial = partial || groupPartial
+		if err != nil {
 			if ctx.Err() != nil {
-				return builder.emit(), ctx.Err()
+				return r.finishScrape(builder, now, true), ctx.Err()
 			}
 			partial = true
 			r.settings.Logger.Warn("Catalyst Center interface endpoint failed", zap.Error(err))
@@ -178,16 +178,18 @@ func (r *catalystCenterMetricsReceiver) scrape(ctx context.Context) (pmetric.Met
 	if r.config.CatalystCenter.Topology.Enabled {
 		if err := r.scrapeTopology(ctx, builder, selector); err != nil {
 			if ctx.Err() != nil {
-				return builder.emit(), ctx.Err()
+				return r.finishScrape(builder, now, true), ctx.Err()
 			}
 			partial = true
 			r.settings.Logger.Warn("Catalyst Center topology endpoint failed", zap.Error(err))
 		}
 	}
 	if r.config.CatalystCenter.Issues.Enabled {
-		if err := r.scrapeIssues(ctx, builder, now, selector); err != nil {
+		groupPartial, err := r.scrapeIssues(ctx, builder, now, selector)
+		partial = partial || groupPartial
+		if err != nil {
 			if ctx.Err() != nil {
-				return builder.emit(), ctx.Err()
+				return r.finishScrape(builder, now, true), ctx.Err()
 			}
 			partial = true
 			r.settings.Logger.Warn("Catalyst Center issues endpoint failed", zap.Error(err))
@@ -199,27 +201,38 @@ func (r *catalystCenterMetricsReceiver) scrape(ctx context.Context) (pmetric.Met
 		}
 	}
 
-	r.recordAPIRequestMetrics(builder)
-	builder.accountResource().recordInt("catalyst_center.scrape.partial_success", "Whether one or more Catalyst Center endpoint families failed during the scrape.", "1", boolToInt(partial), nil)
-	builder.accountResource().recordInt("catalyst_center.scrape.last_success", "Unix timestamp of the most recent Catalyst Center scrape completion.", "s", now.Unix(), nil)
-	builder.flushCounts()
-	return builder.emit(), nil
+	return r.finishScrape(builder, now, partial), nil
 }
 
-func (r *catalystCenterMetricsReceiver) scrapeInventory(ctx context.Context, builder *catalystCenterMetricsBuilder, selector deviceSelectionMatcher) error {
+func (r *catalystCenterMetricsReceiver) finishScrape(builder *catalystCenterMetricsBuilder, _ time.Time, partial bool) pmetric.Metrics {
+	r.recordAPIRequestMetrics(builder)
+	outcome := summarizeAPIOutcomes(r.requestStats(), func(stat catalystcenter.RequestStat) string { return stat.Outcome })
+	rb := builder.accountResource()
+	rb.recordInt("catalyst_center.scrape.partial_success", "Whether one or more Catalyst Center endpoint families failed during the scrape.", "1", boolToInt(partial), nil)
+	if lastSuccess, ok := r.success.observe(time.Now(), !partial && outcome.succeeded); ok {
+		rb.recordInt("catalyst_center.scrape.last_success", "Unix timestamp of the most recent fully successful Catalyst Center scrape.", "s", lastSuccess.Unix(), nil)
+	}
+	builder.flushCounts()
+	return builder.emit()
+}
+
+func (r *catalystCenterMetricsReceiver) scrapeInventory(ctx context.Context, builder *catalystCenterMetricsBuilder, selector deviceSelectionMatcher) (bool, error) {
+	partial := false
 	if count, err := catalystcenter.GetCount(ctx, r.client, "devices.count", "/dna/intent/api/v1/network-device/count", nil); err == nil {
 		builder.accountResource().recordInt("catalyst_center.inventory.device.count", "Catalyst Center network-device inventory count.", "{device}", count, nil)
+	} else {
+		partial = true
+		r.settings.Logger.Warn("Catalyst Center device count endpoint failed", zap.Error(err))
 	}
 	devices, err := catalystcenter.GetPaginatedJSON[catalystcenter.Device](ctx, r.client, "devices", "/dna/intent/api/v1/network-device", nil, r.config.CatalystCenter.Inventory.MaxResults)
-	if err != nil {
-		return err
-	}
 	for _, device := range devices {
 		if !selector.allows(catalystDeviceIdentity(device)) {
 			continue
 		}
 		rb := builder.deviceResource(device)
-		rb.recordInt("cisco.device.up", "Device availability reported by Catalyst Center.", "1", reachableStatus(device.ReachabilityStatus), nil)
+		if reachable, ok := reachableStatus(device.ReachabilityStatus); ok {
+			rb.recordInt("cisco.device.up", "Device availability reported by Catalyst Center.", "1", reachable, nil)
+		}
 		recordCatalystStatus(rb, "catalyst_center.device.reachability.status", "Catalyst Center device reachability status.", device.ReachabilityStatus, map[string]string{
 			"catalyst_center.device.collection_status": device.CollectionStatus,
 		})
@@ -231,17 +244,21 @@ func (r *catalystCenterMetricsReceiver) scrapeInventory(ctx context.Context, bui
 			rb.recordInt("catalyst_center.device.uptime", "Device uptime reported by Catalyst Center.", "s", device.UptimeSeconds, nil)
 		}
 	}
-	return nil
+	if err != nil {
+		return true, err
+	}
+	return partial, nil
 }
 
-func (r *catalystCenterMetricsReceiver) scrapeInterfaces(ctx context.Context, builder *catalystCenterMetricsBuilder, selector deviceSelectionMatcher) error {
+func (r *catalystCenterMetricsReceiver) scrapeInterfaces(ctx context.Context, builder *catalystCenterMetricsBuilder, selector deviceSelectionMatcher) (bool, error) {
+	partial := false
 	if count, err := catalystcenter.GetCount(ctx, r.client, "interfaces.count", "/dna/intent/api/v1/interface/count", nil); err == nil {
 		builder.accountResource().recordInt("catalyst_center.interface.count", "Catalyst Center interface inventory count.", "{interface}", count, nil)
+	} else {
+		partial = true
+		r.settings.Logger.Warn("Catalyst Center interface count endpoint failed", zap.Error(err))
 	}
 	interfaces, err := catalystcenter.GetPaginatedJSON[catalystcenter.Interface](ctx, r.client, "interfaces", "/dna/intent/api/v1/interface", nil, r.config.CatalystCenter.Interfaces.MaxResults)
-	if err != nil {
-		return err
-	}
 	for _, iface := range interfaces {
 		device, _ := builder.deviceFor(firstNonEmpty(iface.DeviceID, iface.SerialNo, iface.MacAddress))
 		if !selector.allows(catalystInterfaceIdentity(iface, device)) {
@@ -249,17 +266,20 @@ func (r *catalystCenterMetricsReceiver) scrapeInterfaces(ctx context.Context, bu
 		}
 		rb := builder.interfaceResource(iface)
 		attrs := catalystInterfaceAttrs(iface)
-		if iface.Status != "" {
-			rb.recordInt("system.network.interface.status", "Interface operational status reported by Catalyst Center.", "1", connectedStatus(iface.Status), attrs)
+		if connected, ok := connectedStatus(iface.Status); ok {
+			rb.recordInt("system.network.interface.status", "Interface operational status reported by Catalyst Center.", "1", connected, attrs)
 		}
-		if iface.AdminStatus != "" {
-			rb.recordInt("cisco.interface.admin.status", "Interface administrative status reported by Catalyst Center.", "1", connectedStatus(iface.AdminStatus), attrs)
+		if connected, ok := connectedStatus(iface.AdminStatus); ok {
+			rb.recordInt("cisco.interface.admin.status", "Interface administrative status reported by Catalyst Center.", "1", connected, attrs)
 		}
 		if speed, speedText := parseCatalystSpeed(iface.Speed); speed > 0 {
 			rb.recordInt("cisco.interface.speed", "Interface line speed reported by Catalyst Center.", "bit/s", speed, withAttr(attrs, "network.interface.speed", speedText))
 		}
 	}
-	return nil
+	if err != nil {
+		return true, err
+	}
+	return partial, nil
 }
 
 func (r *catalystCenterMetricsReceiver) scrapeHealth(ctx context.Context, builder *catalystCenterMetricsBuilder, now time.Time) bool {
@@ -282,13 +302,12 @@ func (r *catalystCenterMetricsReceiver) scrapeHealth(ctx context.Context, builde
 
 	siteQuery := catalystWindowQuery(r.config.CatalystCenter.Lookback, now)
 	sites, err := catalystcenter.GetPaginatedJSONWithPageLimit[catalystcenter.SiteHealthSummary](ctx, r.client, "site_health", "/dna/data/api/v1/siteHealthSummaries", siteQuery, r.config.CatalystCenter.Health.MaxResults, catalystCenterSiteHealthPageLimit)
+	for _, site := range sites {
+		builder.recordSiteHealth(site)
+	}
 	if err != nil {
 		r.settings.Logger.Warn("Catalyst Center site health endpoint failed", zap.Error(err))
 		partial = true
-	} else {
-		for _, site := range sites {
-			builder.recordSiteHealth(site)
-		}
 	}
 	return partial
 }
@@ -302,11 +321,15 @@ func (r *catalystCenterMetricsReceiver) scrapeTopology(ctx context.Context, buil
 	return nil
 }
 
-func (r *catalystCenterMetricsReceiver) scrapeIssues(ctx context.Context, builder *catalystCenterMetricsBuilder, now time.Time, selector deviceSelectionMatcher) error {
+func (r *catalystCenterMetricsReceiver) scrapeIssues(ctx context.Context, builder *catalystCenterMetricsBuilder, now time.Time, selector deviceSelectionMatcher) (bool, error) {
+	partial := false
 	query := catalystWindowQuery(r.config.CatalystCenter.Lookback, now)
 	if selector.empty() {
 		if count, err := catalystcenter.GetCount(ctx, r.client, "issues.count", "/dna/data/api/v1/assuranceIssues/count", query); err == nil {
 			builder.accountResource().recordInt("catalyst_center.issue.count", "Catalyst Center assurance issue count in the configured lookback window.", "{issue}", count, map[string]string{"catalyst_center.issue.window": "lookback"})
+		} else {
+			partial = true
+			r.settings.Logger.Warn("Catalyst Center issue count endpoint failed", zap.Error(err))
 		}
 	}
 	startTime, _ := strconv.ParseInt(query.Get("startTime"), 10, 64)
@@ -317,9 +340,6 @@ func (r *catalystCenterMetricsReceiver) scrapeIssues(ctx context.Context, builde
 		"filters":   []any{},
 	}
 	issues, err := catalystcenter.PostPaginatedJSON[catalystcenter.Issue](ctx, r.client, "issues.query", "/dna/data/api/v1/assuranceIssues/query", body, r.config.CatalystCenter.Issues.MaxResults)
-	if err != nil {
-		return err
-	}
 	selectedIssues := 0
 	for _, issue := range issues {
 		device, _ := builder.deviceFor(issue.EntityID)
@@ -337,10 +357,13 @@ func (r *catalystCenterMetricsReceiver) scrapeIssues(ctx context.Context, builde
 			"catalyst_center.site.name":         issue.SiteName,
 		}))
 	}
-	if !selector.empty() {
+	if !selector.empty() && err == nil {
 		builder.accountResource().recordInt("catalyst_center.issue.count", "Catalyst Center assurance issue count in the configured lookback window.", "{issue}", int64(selectedIssues), map[string]string{"catalyst_center.issue.window": "lookback"})
 	}
-	return nil
+	if err != nil {
+		return true, err
+	}
+	return partial, nil
 }
 
 func (r *catalystCenterMetricsReceiver) scrapeDetails(ctx context.Context, builder *catalystCenterMetricsBuilder, selector deviceSelectionMatcher) bool {
@@ -398,7 +421,9 @@ func (r *catalystCenterMetricsReceiver) requestStats() []catalystcenter.RequestS
 }
 
 func (r *catalystCenterMetricsReceiver) recordAPIRequestMetrics(builder *catalystCenterMetricsBuilder) {
-	for _, stat := range r.requestStats() {
+	stats := r.requestStats()
+	observations := make([]apiRequestObservation, 0, len(stats))
+	for _, stat := range stats {
 		attrs := map[string]string{
 			"catalyst_center.api.operation": stat.Operation,
 			"http.request.method":           stat.Method,
@@ -408,13 +433,16 @@ func (r *catalystCenterMetricsReceiver) recordAPIRequestMetrics(builder *catalys
 		if stat.StatusCode > 0 {
 			attrs["http.response.status_code"] = strconv.Itoa(stat.StatusCode)
 		}
+		observations = append(observations, apiRequestObservation{attrs: attrs, durationSeconds: stat.Duration.Seconds(), failed: stat.Outcome != "success", rateLimited: stat.RateLimited})
+	}
+	for _, aggregate := range aggregateAPIRequestObservations(observations) {
 		rb := builder.accountResource()
-		rb.recordDouble("catalyst_center.api.request.duration", "Duration of Catalyst Center API requests.", "s", stat.Duration.Seconds(), attrs)
-		if stat.Outcome != "success" {
-			rb.recordSum("catalyst_center.api.request.errors", "Catalyst Center API request errors.", "{error}", 1, attrs)
+		rb.recordDouble("catalyst_center.api.request.duration", "Average duration of Catalyst Center API request attempts in this scrape.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
+		if aggregate.errors > 0 {
+			rb.recordSum("catalyst_center.api.request.errors", "Catalyst Center API request errors.", "{error}", aggregate.errors, aggregate.attrs)
 		}
-		if stat.RateLimited {
-			rb.recordSum("catalyst_center.api.rate_limited", "Catalyst Center API requests that were rate limited.", "{request}", 1, attrs)
+		if aggregate.rateLimited > 0 {
+			rb.recordSum("catalyst_center.api.rate_limited", "Catalyst Center API requests that were rate limited.", "{request}", aggregate.rateLimited, aggregate.attrs)
 		}
 	}
 }
@@ -438,7 +466,7 @@ func newCatalystCenterMetricsBuilder(now time.Time, endpoint string, counters *c
 	return &catalystCenterMetricsBuilder{
 		metrics:   pmetric.NewMetrics(),
 		now:       ts,
-		start:     ts,
+		start:     pcommon.NewTimestampFromTime(counters.StartTime()),
 		resources: map[string]*resourceMetricsBuilder{},
 		devices:   map[string]catalystcenter.Device{},
 		counts:    map[string]*catalystCenterCount{},
@@ -475,7 +503,7 @@ func (b *catalystCenterMetricsBuilder) deviceResource(device catalystcenter.Devi
 	attrs := rb.resource.Attributes()
 	putStr(attrs, "host.id", hostID)
 	putStr(attrs, "host.name", firstNonEmpty(device.Hostname, hostID))
-	putStr(attrs, "host.ip", firstNonEmpty(device.ManagementIPAddress, device.DNSResolvedManagementAddr, device.APManagerInterfaceIP))
+	putIPAttrs(attrs, "host.ip", device.ManagementIPAddress, device.DNSResolvedManagementAddr, device.APManagerInterfaceIP)
 	putStr(attrs, "host.type", firstNonEmpty(device.PlatformID, device.Type, device.Family))
 	putStr(attrs, "hw.type", "network")
 	putStr(attrs, "os.name", "Catalyst Center")
@@ -536,7 +564,7 @@ func (b *catalystCenterMetricsBuilder) clientResource(mac string, detail catalys
 	attrs := rb.resource.Attributes()
 	putStr(attrs, "host.id", hostID)
 	putStr(attrs, "host.name", catalystObjectString(detail, "hostName", "userId", "id"))
-	putStr(attrs, "host.ip", firstNonEmpty(catalystObjectString(detail, "hostIpV4"), catalystObjectString(detail, "hostIpV6")))
+	putIPAttrs(attrs, "host.ip", catalystObjectString(detail, "hostIpV4"), catalystObjectString(detail, "hostIpV6"))
 	putStr(attrs, "os.name", catalystObjectString(detail, "hostOs"))
 	putStr(attrs, "catalyst_center.client.mac", hostID)
 	putStr(attrs, "catalyst_center.client.type", catalystObjectString(detail, "hostType", "subType"))
@@ -551,12 +579,13 @@ func (b *catalystCenterMetricsBuilder) resource(key string) *resourceMetricsBuil
 	sm := rm.ScopeMetrics().AppendEmpty()
 	sm.Scope().SetName(catalystCenterScopeName)
 	rb := &resourceMetricsBuilder{
-		resource: rm.Resource(),
-		scope:    sm,
-		metrics:  map[string]pmetric.Metric{},
-		now:      b.now,
-		start:    b.start,
-		counters: b.counters,
+		resource:         rm.Resource(),
+		scope:            sm,
+		metrics:          map[string]pmetric.Metric{},
+		now:              b.now,
+		start:            b.start,
+		counterNamespace: key,
+		counters:         b.counters,
 	}
 	b.resources[key] = rb
 	return rb
@@ -787,8 +816,8 @@ func (b *catalystCenterMetricsBuilder) recordDeviceDetail(target CatalystCenterD
 		"catalyst_center.detail.identifier": target.Identifier,
 	}
 	recordObjectDouble(rb, detail, "overallHealth", "catalyst_center.device.detail.health.score", "Catalyst Center device detail overall health score.", "1", attrs)
-	recordObjectDouble(rb, detail, "cpu", "system.cpu.utilization", "CPU utilization reported by Catalyst Center device detail.", "1", attrs)
-	recordObjectDouble(rb, detail, "memory", "system.memory.utilization", "Memory utilization reported by Catalyst Center device detail.", "1", attrs)
+	recordObjectRatio(rb, detail, "cpu", "system.cpu.utilization", "CPU utilization reported by Catalyst Center device detail.", withAttr(attrs, "cpu.mode", "total"))
+	recordObjectRatio(rb, detail, "memory", "system.memory.utilization", "Memory utilization reported by Catalyst Center device detail.", withAttr(attrs, "system.memory.state", "used"))
 	recordCatalystStatus(rb, "catalyst_center.device.detail.communication.status", "Catalyst Center device communication status.", catalystObjectString(detail, "communicationState", "opState"), attrs)
 }
 
@@ -876,18 +905,22 @@ func recordCatalystStatus(rb *resourceMetricsBuilder, name, description, status 
 	if status == "" {
 		return
 	}
+	code, ok := catalystStatusCode(status)
+	if !ok {
+		return
+	}
 	if attrs == nil {
 		attrs = map[string]string{}
 	}
-	rb.recordInt(name, description, "1", catalystStatusCode(status), withAttr(attrs, "catalyst_center.status", status))
+	rb.recordInt(name, description, "1", code, withAttr(attrs, "catalyst_center.status", status))
 }
 
-func catalystStatusCode(status string) int64 {
+func catalystStatusCode(status string) (int64, bool) {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "reachable", "managed", "success", "collectioncomplete", "synchronized":
-		return 1
+		return 1, true
 	case "unreachable", "incomplete", "partialcollectionfailure", "collectionfailure", "collectionfailed":
-		return 4
+		return 4, true
 	default:
 		return statusCode(status)
 	}
@@ -921,6 +954,17 @@ func recordObjectDouble(rb *resourceMetricsBuilder, obj catalystcenter.Object, k
 		return
 	}
 	rb.recordDouble(name, description, unit, value, attrs)
+}
+
+func recordObjectRatio(rb *resourceMetricsBuilder, obj catalystcenter.Object, key, name, description string, attrs map[string]string) {
+	value, ok := numberFromAny(obj[key])
+	if !ok || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 100 {
+		return
+	}
+	if value > 1 {
+		value /= 100
+	}
+	rb.recordDouble(name, description, "1", value, attrs)
 }
 
 func recordObjectInt(rb *resourceMetricsBuilder, obj catalystcenter.Object, key, name, description, unit string, attrs map[string]string) {

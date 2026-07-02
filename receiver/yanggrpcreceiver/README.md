@@ -25,7 +25,7 @@ The **YANG gRPC Receiver** collects Model-Driven Telemetry (MDT) from network de
 - **Context-Aware Processing**: Automatically discovers dimensions (labels) like Interface names, VRF IDs, or BGP neighbors by traversing the telemetry tree.
 - **YANG-Driven Mapping**: Uses Cisco YANG models to distinguish between Counters (monotonic sums) and Gauges (instantaneous values).
 - **Smart Fallback**: Works out-of-the-box using naming heuristics (detecting keys like `name`, `id`, `address`) even if local YANG files are not provided.
-- **OTLP Compliance**: Normalizes all Cisco numeric types into `float64` and handles string values as descriptive `_info` metrics.
+- **OTLP Compliance**: Preserves signed and exactly representable unsigned integers as OTLP integers, rejects non-finite floating-point values, and represents unsigned values above `int64` range exactly as descriptive `_info` metrics.
 - **Security Hardening**: Includes built-in support for client IP allow-listing and ingestion rate limiting.
 
 ---
@@ -71,6 +71,9 @@ service:
 
 See [configgrpc](https://pkg.go.dev/go.opentelemetry.io/collector/config/configgrpc).
 
+The default loopback listener is plaintext for local development. Validation rejects a listener bound to a non-loopback address unless TLS, per-message rate limiting, and either mutual TLS or an `allowed_clients` allowlist are configured.
+`max_recv_msg_size_mib` must be between 1 and 16, and `max_concurrent_streams` must be between 1 and 1000. The defaults are 4 MiB and 100 streams.
+
 ## Default Configuration
 ```yaml
 yang_grpc:
@@ -85,28 +88,29 @@ yang_grpc:
 ```
 
 ## Security Configuration (security)
-* `rate_limiting`: enabled (default: false), requests_per_second (100.0), burst_size (10).
-* `access_control`: allowed_clients (list of IP/CIDR), max_connections (1000).
+* `rate_limiting`: per-client, per-message limiting with enabled (default: false), requests_per_second (100.0), burst_size (10), and cleanup_interval (1m).
+* `allowed_clients`: optional list of exact client IPs or CIDR ranges.
+
+Every payload also has non-configurable safety ceilings: 100,000 GPB-KV fields, 50,000 emitted metrics, 64 attributes per metric, 250,000 total attributes, and 16 MiB of copied attribute data. A payload that exceeds a ceiling is rejected with `ResourceExhausted` and its stream is closed.
 
 ## YANG Parser Settings (yang)
-* `enable_rfc_parser`: Enable RFC 6020/7950 compliant parsing.
-* `cache_modules`: Local directories containing Cisco/IETF `.yang` files for accurate parsing. Cache discovered YANG modules to reduce CPU overhead. 
+* `module_paths`: local directories containing Cisco/IETF `.yang` files used to enrich metric type and key interpretation.
 
 ## Production Deployment Example
 ```YAML
 yang_grpc:
   endpoint: "0.0.0.0:57500"
   tls:
-    enabled: true
     cert_file: "/etc/otel/certs/server.crt"
     key_file: "/etc/otel/certs/server.key"
+    client_ca_file: "/etc/otel/certs/client-ca.crt"
   security:
     rate_limiting:
       enabled: true
     allowed_clients: 
       - "10.0.0.0/8"
   yang:
-    cache_modules: true
+    module_paths: ["/etc/otelcol/yang"]
 ```
 
 ---

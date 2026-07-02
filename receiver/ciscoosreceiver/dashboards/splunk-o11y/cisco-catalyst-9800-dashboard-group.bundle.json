@@ -140,7 +140,7 @@
         {
           "name": "AP Join Failures And Disconnects",
           "description": "Value: explains why APs are absent, flapping, or recently unavailable. Interpretation: rising join failures or disconnects by reason identify controller, network path, certificate, image, or AP-side causes to investigate.",
-          "signalflow": "data('cisco.wlc.ap.join.failure').sum(by=['host.name', 'cisco.wlc.ap.name', 'failure.reason']).publish(label='Join failures'); data('cisco.wlc.ap.disconnect').rate().sum(by=['host.name', 'cisco.wlc.ap.name', 'reason']).publish(label='Disconnects/sec')",
+          "signalflow": "data('cisco.wlc.ap.join.failure.reason.info').sum(by=['host.name', 'cisco.wlc.ap.name', 'failure.reason']).publish(label='Join failure reason'); data('cisco.wlc.ap.disconnect').rate().sum(by=['host.name', 'cisco.wlc.ap.name']).publish(label='Disconnects/sec')",
           "legend_dimension": "cisco.wlc.ap.name"
         },
         {
@@ -199,8 +199,8 @@
         },
         {
           "name": "Client Auth Failures And Network IO",
-          "description": "Value: ties client auth-failure reasons to whether clients still pass traffic after association. Interpretation: auth failures explain access denial; client I/O silence after successful state can point toward policy, VLAN, upstream, or DHCP issues.",
-          "signalflow": "data('cisco.wlc.client.auth.failure').sum(by=['host.name', 'cisco.wlc.client.mac', 'cisco.wlc.ssid', 'failure.reason']).publish(label='Auth failures'); data('cisco.wlc.client.network.io').rate().sum(by=['host.name', 'cisco.wlc.client.mac', 'cisco.wlc.ssid', 'direction', 'unit']).publish(label='Client IO/sec')",
+          "description": "Value: ties client auth-failure reasons to whether clients still pass bytes and packets after association. Interpretation: auth failures explain access denial; byte or packet silence after successful state can point toward policy, VLAN, upstream, or DHCP issues.",
+          "signalflow": "data('cisco.wlc.client.auth.failure.reason.info').sum(by=['host.name', 'cisco.wlc.client.mac', 'cisco.wlc.ssid', 'failure.reason']).publish(label='Auth failure reason'); data('cisco.wlc.client.network.io').rate().sum(by=['host.name', 'cisco.wlc.client.mac', 'cisco.wlc.ssid', 'direction']).publish(label='Client bytes/sec'); data('cisco.wlc.client.network.packets').rate().sum(by=['host.name', 'cisco.wlc.client.mac', 'cisco.wlc.ssid', 'direction']).publish(label='Client packets/sec')",
           "legend_dimension": "cisco.wlc.client.mac"
         }
       ]

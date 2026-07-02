@@ -4,7 +4,12 @@
 package interfacesscraper // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/scraper/interfacesscraper"
 
 import (
+	"fmt"
+	"path"
+	"strings"
 	"time"
+
+	"go.uber.org/multierr"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/connection"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/scraper/interfacesscraper/internal/metadata"
@@ -102,6 +107,45 @@ func defaultTransceiverConfig() TransceiverConfig {
 	return TransceiverConfig{
 		MaxInterfaces: 256,
 	}
+}
+
+// Validate rejects invalid limits and globs instead of allowing them to be
+// silently interpreted as defaults, unlimited collection, or non-matches.
+func (cfg *Config) Validate() error {
+	var err error
+	for name, value := range map[string]int{
+		"counters.max_per_interface": cfg.Counters.MaxPerInterface,
+		"counters.max_interfaces":    cfg.Counters.MaxInterfaces,
+		"l2_topology.max_interfaces": cfg.L2Topology.MaxInterfaces,
+		"l2_topology.max_vlans":      cfg.L2Topology.MaxVLANs,
+		"transceiver.max_interfaces": cfg.Transceiver.MaxInterfaces,
+	} {
+		if value < 0 {
+			err = multierr.Append(err, fmt.Errorf("%s must not be negative", name))
+		}
+	}
+	err = multierr.Append(err, validateGlobPatterns("counters.include", cfg.Counters.Include))
+	err = multierr.Append(err, validateGlobPatterns("counters.exclude", cfg.Counters.Exclude))
+	err = multierr.Append(err, validateGlobPatterns("l2_topology.include", cfg.L2Topology.Include))
+	err = multierr.Append(err, validateGlobPatterns("l2_topology.exclude", cfg.L2Topology.Exclude))
+	err = multierr.Append(err, validateGlobPatterns("transceiver.include", cfg.Transceiver.Include))
+	err = multierr.Append(err, validateGlobPatterns("transceiver.exclude", cfg.Transceiver.Exclude))
+	return err
+}
+
+func validateGlobPatterns(prefix string, patterns []string) error {
+	var err error
+	for i, value := range patterns {
+		pattern := strings.TrimSpace(value)
+		if pattern == "" {
+			err = multierr.Append(err, fmt.Errorf("%s[%d] cannot be empty", prefix, i))
+			continue
+		}
+		if _, matchErr := path.Match(normalizeGlobSlashes(pattern), ""); matchErr != nil {
+			err = multierr.Append(err, fmt.Errorf("%s[%d] must be a valid glob: %w", prefix, i, matchErr))
+		}
+	}
+	return err
 }
 
 func (cfg L2TopologyConfig) emitsMetrics() bool {

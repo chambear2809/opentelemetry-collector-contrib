@@ -4,7 +4,10 @@
 package systemscraper // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/scraper/systemscraper"
 
 import (
+	"fmt"
 	"time"
+
+	"go.uber.org/multierr"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/connection"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/scraper/systemscraper/internal/metadata"
@@ -130,6 +133,55 @@ type FabricCommandsConfig struct {
 	NVEPeers   bool `mapstructure:"nve_peers"`
 	NVEVNIs    bool `mapstructure:"nve_vnis"`
 	EVPNRoutes bool `mapstructure:"evpn_routes"`
+}
+
+// Validate rejects values that would otherwise be silently replaced by a
+// default and VRF names that are interpolated into device CLI commands.
+func (cfg *Config) Validate() error {
+	var err error
+	for name, value := range map[string]int{
+		"control_plane.process_top_n":     cfg.ControlPlane.ProcessTopN,
+		"routing_forwarding.max_vrfs":     cfg.RoutingForwarding.MaxVRFs,
+		"hardware_health.max_components":  cfg.HardwareHealth.MaxComponents,
+		"routing_neighbors.max_vrfs":      cfg.RoutingNeighbors.MaxVRFs,
+		"routing_neighbors.max_neighbors": cfg.RoutingNeighbors.MaxNeighbors,
+		"fabric.max_peers":                cfg.Fabric.MaxPeers,
+		"fabric.max_vnis":                 cfg.Fabric.MaxVNIs,
+	} {
+		if value < 0 {
+			err = multierr.Append(err, fmt.Errorf("%s must not be negative", name))
+		}
+	}
+	err = multierr.Append(err, validateVRFNames("routing_forwarding.vrfs", cfg.RoutingForwarding.VRFs))
+	err = multierr.Append(err, validateVRFNames("routing_neighbors.vrfs", cfg.RoutingNeighbors.VRFs))
+	return err
+}
+
+func validateVRFNames(prefix string, values []string) error {
+	var err error
+	for i, value := range values {
+		if value == "" {
+			err = multierr.Append(err, fmt.Errorf("%s[%d] cannot be empty", prefix, i))
+			continue
+		}
+		if len(value) > 255 {
+			err = multierr.Append(err, fmt.Errorf("%s[%d] must not exceed 255 characters", prefix, i))
+			continue
+		}
+		for _, r := range value {
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+				continue
+			}
+			switch r {
+			case '.', '_', '-', ':':
+				continue
+			default:
+				err = multierr.Append(err, fmt.Errorf("%s[%d] must contain only letters, digits, '.', '_', '-', or ':'", prefix, i))
+			}
+			break
+		}
+	}
+	return err
 }
 
 func defaultControlPlaneConfig() ControlPlaneConfig {

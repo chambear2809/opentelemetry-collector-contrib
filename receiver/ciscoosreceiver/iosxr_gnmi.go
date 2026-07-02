@@ -7,7 +7,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,11 +20,13 @@ import (
 )
 
 type iosXRGNMIUpdateDecoder struct {
-	target IOSXRTargetConfig
-	health *iosXRHealth
+	target        IOSXRTargetConfig
+	health        *iosXRHealth
+	maxDatapoints int
+	limits        directGNMIDecodeLimits
 }
 
-func (d iosXRGNMIUpdateDecoder) decodeNotification(notification *gnmi.Notification, transport string) pmetric.Metrics {
+func (d *iosXRGNMIUpdateDecoder) decodeNotification(notification *gnmi.Notification, transport string) pmetric.Metrics {
 	ts := pcommon.NewTimestampFromTime(time.Now())
 	if notification.GetTimestamp() > 0 {
 		ts = pcommon.Timestamp(notification.GetTimestamp())
@@ -40,23 +45,60 @@ func (d iosXRGNMIUpdateDecoder) decodeNotification(notification *gnmi.Notificati
 		yangPath:       prefixText,
 		yangModule:     module,
 	})
+	budget := newDirectGNMIDecodeBudget(d.limits, d.maxDatapoints)
+	metrics := newIndexedMetricBuilder(sm, budget)
 
 	for _, deleted := range notification.GetDelete() {
-		parts, attrs := pathPartsAndAttrs(prefix, deleted)
+		if !budget.visitField(1) {
+			break
+		}
+		parts, attrs, ok := pathPartsAndAttrs(prefix, deleted, budget)
+		if !ok {
+			if budget.exhausted {
+				break
+			}
+			continue
+		}
 		if len(parts) == 0 {
 			continue
 		}
 		attrs["deleted"] = "true"
-		appendIOSXRInfoMetric(sm, moduleFromParts(module, parts), parts, "deleted", ts, attrs)
+		deleteModule := moduleFromParts(module, parts)
+		putNonEmpty(attrs, "cisco.yang.path", prefixText)
+		putNonEmpty(attrs, "cisco.yang.module", deleteModule)
+		appendIOSXRInfoMetricIndexed(metrics, deleteModule, parts, "deleted", ts, attrs)
 	}
 
 	for _, update := range notification.GetUpdate() {
-		parts, attrs := pathPartsAndAttrs(prefix, update.GetPath())
+		if !budget.visitField(1) {
+			break
+		}
+		parts, attrs, ok := pathPartsAndAttrs(prefix, update.GetPath(), budget)
+		if !ok {
+			if budget.exhausted {
+				break
+			}
+			continue
+		}
 		updateModule := moduleFromParts(module, parts)
 		if updateModule == "" {
 			updateModule = moduleFromGNMIPath(update.GetPath())
 		}
-		d.decodeTypedValue(sm, updateModule, parts, update.GetVal(), ts, attrs)
+		putNonEmpty(attrs, "cisco.yang.path", prefixText)
+		putNonEmpty(attrs, "cisco.yang.module", updateModule)
+		depth := len(parts)
+		if depth == 0 {
+			depth = 1
+		}
+		d.decodeTypedValue(metrics, updateModule, parts, update.GetVal(), ts, attrs, budget, depth)
+	}
+	if d.health != nil {
+		if budget.decodeErrors > 0 {
+			d.health.addDecodeErrors(budget.decodeErrors)
+		}
+		if budget.dropped > 0 {
+			d.health.addDroppedDatapoints(budget.dropped)
+		}
 	}
 
 	appendIOSXRHealthMetrics(md, d.health, iosXRMetricContext{
@@ -68,75 +110,142 @@ func (d iosXRGNMIUpdateDecoder) decodeNotification(notification *gnmi.Notificati
 	return md
 }
 
-func (d iosXRGNMIUpdateDecoder) decodeTypedValue(sm pmetric.ScopeMetrics, module string, parts []string, value *gnmi.TypedValue, ts pcommon.Timestamp, attrs map[string]string) {
-	if value == nil {
+func (d iosXRGNMIUpdateDecoder) decodeTypedValue(metrics *indexedMetricBuilder, module string, parts []string, value *gnmi.TypedValue, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth int) {
+	if value == nil || value.GetValue() == nil {
+		budget.addDecodeError()
+		budget.drop(false)
 		return
 	}
 	switch v := value.GetValue().(type) {
 	case *gnmi.TypedValue_StringVal:
-		appendIOSXRInfoMetric(sm, module, parts, v.StringVal, ts, attrs)
+		appendIOSXRInfoMetricIndexed(metrics, module, parts, v.StringVal, ts, attrs)
 	case *gnmi.TypedValue_AsciiVal:
-		appendIOSXRInfoMetric(sm, module, parts, v.AsciiVal, ts, attrs)
+		appendIOSXRInfoMetricIndexed(metrics, module, parts, v.AsciiVal, ts, attrs)
 	case *gnmi.TypedValue_IntVal:
-		appendIOSXRNumberMetric(sm, module, parts, float64(v.IntVal), ts, attrs)
+		appendIOSXRMetricNumberIndexed(metrics, module, parts, intMetricNumber(v.IntVal), ts, attrs)
 	case *gnmi.TypedValue_UintVal:
-		appendIOSXRNumberMetric(sm, module, parts, float64(v.UintVal), ts, attrs)
+		if v.UintVal <= math.MaxInt64 {
+			appendIOSXRMetricNumberIndexed(metrics, module, parts, intMetricNumber(int64(v.UintVal)), ts, attrs)
+		} else {
+			overflowAttrs := cloneAttrs(attrs)
+			overflowAttrs["cisco.value.type"] = "uint64"
+			overflowAttrs["cisco.value.out_of_range"] = "true"
+			appendIOSXRInfoMetricIndexed(metrics, module, parts, strconv.FormatUint(v.UintVal, 10), ts, overflowAttrs)
+		}
 	case *gnmi.TypedValue_BoolVal:
 		if v.BoolVal {
-			appendIOSXRNumberMetric(sm, module, parts, 1, ts, attrs)
+			appendIOSXRMetricNumberIndexed(metrics, module, parts, intMetricNumber(1), ts, attrs)
 		} else {
-			appendIOSXRNumberMetric(sm, module, parts, 0, ts, attrs)
+			appendIOSXRMetricNumberIndexed(metrics, module, parts, intMetricNumber(0), ts, attrs)
 		}
 	case *gnmi.TypedValue_FloatVal:
-		appendIOSXRNumberMetric(sm, module, parts, float64(v.FloatVal), ts, attrs)
+		appendIOSXRMetricNumberIndexed(metrics, module, parts, doubleMetricNumber(float64(v.FloatVal)), ts, attrs)
 	case *gnmi.TypedValue_DoubleVal:
-		appendIOSXRNumberMetric(sm, module, parts, v.DoubleVal, ts, attrs)
+		appendIOSXRMetricNumberIndexed(metrics, module, parts, doubleMetricNumber(v.DoubleVal), ts, attrs)
 	case *gnmi.TypedValue_DecimalVal:
 		if v.DecimalVal != nil {
-			appendIOSXRNumberMetric(sm, module, parts, float64(v.DecimalVal.Digits)/pow10(v.DecimalVal.Precision), ts, attrs)
+			appendIOSXRMetricNumberIndexed(metrics, module, parts, doubleMetricNumber(float64(v.DecimalVal.Digits)/pow10(v.DecimalVal.Precision)), ts, attrs)
+		} else {
+			budget.addDecodeError()
+			budget.drop(false)
 		}
 	case *gnmi.TypedValue_LeaflistVal:
-		values := make([]string, 0, len(v.LeaflistVal.GetElement()))
-		for _, elem := range v.LeaflistVal.GetElement() {
-			values = append(values, scalarTypedValueString(elem))
+		if v.LeaflistVal == nil {
+			budget.addDecodeError()
+			budget.drop(false)
+			return
 		}
-		appendIOSXRInfoMetric(sm, module, parts, strings.Join(values, ","), ts, attrs)
+		elements := v.LeaflistVal.GetElement()
+		if !budget.consumeChildFields(len(elements), depth+1) {
+			return
+		}
+		if len(elements)-1 > budget.limits.maxAttributeValueBytes {
+			budget.drop(false)
+			return
+		}
+		values := make([]string, 0, len(elements))
+		joinedBytes := 0
+		for _, elem := range elements {
+			value := scalarTypedValueString(elem)
+			separatorBytes := 0
+			if len(values) > 0 {
+				separatorBytes = 1
+			}
+			if len(value)+separatorBytes > budget.limits.maxAttributeValueBytes-joinedBytes {
+				budget.drop(false)
+				return
+			}
+			joinedBytes += len(value) + separatorBytes
+			values = append(values, value)
+		}
+		joined := strings.Join(values, ",")
+		appendIOSXRInfoMetricIndexed(metrics, module, parts, joined, ts, attrs)
 	case *gnmi.TypedValue_JsonIetfVal:
-		d.decodeJSONValue(sm, module, parts, v.JsonIetfVal, ts, attrs)
+		d.decodeJSONValue(metrics, module, parts, v.JsonIetfVal, ts, attrs, budget, depth+1)
 	case *gnmi.TypedValue_JsonVal:
-		d.decodeJSONValue(sm, module, parts, v.JsonVal, ts, attrs)
+		d.decodeJSONValue(metrics, module, parts, v.JsonVal, ts, attrs, budget, depth+1)
 	case *gnmi.TypedValue_BytesVal:
-		appendIOSXRInfoMetric(sm, module, append(parts, "bytes"), fmt.Sprintf("%x", v.BytesVal), ts, attrs)
+		if len(v.BytesVal) > budget.limits.maxAttributeValueBytes/2 {
+			budget.drop(false)
+			return
+		}
+		appendIOSXRInfoMetricIndexed(metrics, module, append(parts, "bytes"), fmt.Sprintf("%x", v.BytesVal), ts, attrs)
 	case *gnmi.TypedValue_ProtoBytes:
 		if d.health != nil {
 			d.health.addCompactGPBPayloads(1)
 		}
-		appendGaugeMetric(sm, "cisco.iosxr.receiver.compact_gpb_payloads", 1, ts, attrs)
+		metrics.appendNumber("cisco.iosxr.receiver.compact_gpb_payloads", pmetric.MetricTypeGauge, doubleMetricNumber(1), ts, attrs)
 	case *gnmi.TypedValue_AnyVal:
-		appendIOSXRInfoMetric(sm, module, append(parts, "any"), v.AnyVal.String(), ts, attrs)
+		if v.AnyVal == nil {
+			budget.addDecodeError()
+			budget.drop(false)
+			return
+		}
+		if len(v.AnyVal.GetTypeUrl())+len(v.AnyVal.GetValue()) > budget.limits.maxAttributeValueBytes {
+			budget.drop(false)
+			return
+		}
+		appendIOSXRInfoMetricIndexed(metrics, module, append(parts, "any"), v.AnyVal.String(), ts, attrs)
 	default:
-		appendIOSXRInfoMetric(sm, module, parts, value.String(), ts, attrs)
+		appendIOSXRInfoMetricIndexed(metrics, module, parts, value.String(), ts, attrs)
 	}
 }
 
-func (d iosXRGNMIUpdateDecoder) decodeJSONValue(sm pmetric.ScopeMetrics, module string, parts []string, raw []byte, ts pcommon.Timestamp, attrs map[string]string) {
+func (d iosXRGNMIUpdateDecoder) decodeJSONValue(metrics *indexedMetricBuilder, module string, parts []string, raw []byte, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth int) {
+	if len(raw) > directGNMIHardMaxPayloadBytes {
+		budget.drop(true)
+		return
+	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
 	var value any
 	if err := decoder.Decode(&value); err != nil {
-		if d.health != nil {
-			d.health.addDecodeErrors(1)
-		}
+		budget.addDecodeError()
+		budget.drop(false)
 		return
 	}
-	walkIOSXRJSON(sm, module, parts, value, ts, attrs)
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		budget.addDecodeError()
+		budget.drop(false)
+		return
+	}
+	walkIOSXRJSON(metrics, module, parts, value, ts, attrs, budget, depth)
 }
 
-func walkIOSXRJSON(sm pmetric.ScopeMetrics, module string, parts []string, value any, ts pcommon.Timestamp, attrs map[string]string) {
+func walkIOSXRJSON(metrics *indexedMetricBuilder, module string, parts []string, value any, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth int) bool {
+	if !budget.visitField(depth) {
+		return false
+	}
 	switch v := value.(type) {
 	case map[string]any:
+		if !budget.ensureChildFieldCapacity(len(v), depth+1) {
+			return false
+		}
 		nextAttrs := cloneAttrs(attrs)
-		extractJSONIdentityAttrs(v, nextAttrs)
+		if !extractJSONIdentityAttrs(v, nextAttrs, budget) {
+			return !budget.exhausted
+		}
 		keys := make([]string, 0, len(v))
 		for key := range v {
 			keys = append(keys, key)
@@ -144,25 +253,36 @@ func walkIOSXRJSON(sm pmetric.ScopeMetrics, module string, parts []string, value
 		sort.Strings(keys)
 		for _, key := range keys {
 			nextModule, part := splitYANGQualifiedName(module, key)
-			walkIOSXRJSON(sm, nextModule, append(parts, part), v[key], ts, nextAttrs)
+			if !walkIOSXRJSON(metrics, nextModule, append(parts, part), v[key], ts, nextAttrs, budget, depth+1) && budget.exhausted {
+				return false
+			}
 		}
 	case []any:
+		if !budget.ensureChildFieldCapacity(len(v), depth+1) {
+			return false
+		}
 		if allJSONScalars(v) {
-			appendIOSXRInfoMetric(sm, module, parts, valueToInfoString(v), ts, attrs)
-			return
+			if !budget.consumeChildFields(len(v), depth+1) {
+				return false
+			}
+			appendIOSXRInfoMetricIndexed(metrics, module, parts, valueToInfoString(v), ts, attrs)
+			return !budget.exhausted
 		}
 		for _, elem := range v {
-			walkIOSXRJSON(sm, module, parts, elem, ts, attrs)
+			if !walkIOSXRJSON(metrics, module, parts, elem, ts, attrs, budget, depth+1) && budget.exhausted {
+				return false
+			}
 		}
 	default:
 		if n, ok := typedNumericValue(v); ok {
-			appendIOSXRNumberMetric(sm, module, parts, n, ts, attrs)
-			return
+			appendIOSXRMetricNumberIndexed(metrics, module, parts, n, ts, attrs)
+			return !budget.exhausted
 		}
 		if value := valueToInfoString(v); value != "" {
-			appendIOSXRInfoMetric(sm, module, parts, value, ts, attrs)
+			appendIOSXRInfoMetricIndexed(metrics, module, parts, value, ts, attrs)
 		}
 	}
+	return !budget.exhausted
 }
 
 func allJSONScalars(values []any) bool {
@@ -175,7 +295,7 @@ func allJSONScalars(values []any) bool {
 	return true
 }
 
-func extractJSONIdentityAttrs(value map[string]any, attrs map[string]string) {
+func extractJSONIdentityAttrs(value map[string]any, attrs map[string]string, budget *directGNMIDecodeBudget) bool {
 	for key, attrName := range map[string]string{
 		"name":             "name",
 		"id":               "id",
@@ -193,6 +313,10 @@ func extractJSONIdentityAttrs(value map[string]any, attrs map[string]string) {
 	} {
 		if raw, ok := value[key]; ok {
 			if text := scalarJSONIdentity(raw); text != "" {
+				if len(text) > budget.limits.maxAttributeValueBytes {
+					budget.drop(false)
+					return false
+				}
 				attrs[attrName] = text
 				if key == "name" && attrs["network.interface.name"] == "" && looksLikeInterfaceName(text) {
 					attrs["network.interface.name"] = text
@@ -200,6 +324,7 @@ func extractJSONIdentityAttrs(value map[string]any, attrs map[string]string) {
 			}
 		}
 	}
+	return true
 }
 
 func scalarJSONIdentity(value any) string {
@@ -254,11 +379,10 @@ func scalarTypedValueString(value *gnmi.TypedValue) string {
 }
 
 func pow10(precision uint32) float64 {
-	out := 1.0
-	for i := uint32(0); i < precision; i++ {
-		out *= 10
+	if precision > 308 {
+		return math.Inf(1)
 	}
-	return out
+	return math.Pow10(int(precision))
 }
 
 func cloneAttrs(attrs map[string]string) map[string]string {
@@ -269,41 +393,76 @@ func cloneAttrs(attrs map[string]string) map[string]string {
 	return out
 }
 
-func pathPartsAndAttrs(prefix, update *gnmi.Path) ([]string, map[string]string) {
+func pathPartsAndAttrs(prefix, update *gnmi.Path, budget *directGNMIDecodeBudget) ([]string, map[string]string, bool) {
 	parts := make([]string, 0, len(prefix.GetElem())+len(update.GetElem()))
 	attrs := map[string]string{}
-	add := func(p *gnmi.Path) {
+	putAttr := func(key, value string) bool {
+		if value == "" {
+			return true
+		}
+		if !budget.validAttribute(key, value) {
+			budget.drop(false)
+			return false
+		}
+		if _, exists := attrs[key]; !exists && len(attrs) >= budget.limits.maxAttributes {
+			budget.drop(false)
+			return false
+		}
+		attrs[key] = value
+		return true
+	}
+	add := func(p *gnmi.Path) bool {
 		if p == nil {
-			return
+			return true
 		}
 		for _, elem := range p.GetElem() {
+			if !budget.visitField(len(parts) + 1) {
+				return false
+			}
 			_, name := splitYANGQualifiedName("", elem.GetName())
 			if name == "" {
 				continue
 			}
 			parts = append(parts, name)
 			for key, value := range elem.GetKey() {
+				if len(key)+len("cisco.yang.key.") > budget.limits.maxAttributeKeyBytes {
+					budget.drop(false)
+					return false
+				}
 				attr := "cisco.yang.key." + sanitizeMetricSegment(key)
-				attrs[attr] = value
+				if !putAttr(attr, value) {
+					return false
+				}
 				switch strings.ToLower(key) {
 				case "name", "interface-name":
 					if looksLikeInterfaceName(value) {
-						attrs["network.interface.name"] = value
+						if !putAttr("network.interface.name", value) {
+							return false
+						}
 					}
 				case "vrf", "vrf-name":
-					attrs["network.vrf.name"] = value
+					if !putAttr("network.vrf.name", value) {
+						return false
+					}
 				case "neighbor", "neighbor-address":
-					attrs["network.peer.address"] = value
+					if !putAttr("network.peer.address", value) {
+						return false
+					}
 				}
 			}
 		}
 		for _, elem := range p.GetElement() {
+			if !budget.visitField(len(parts) + 1) {
+				return false
+			}
 			parts = append(parts, elem)
 		}
+		return true
 	}
-	add(prefix)
-	add(update)
-	return parts, attrs
+	if !add(prefix) || !add(update) {
+		return nil, nil, false
+	}
+	return parts, attrs, true
 }
 
 func moduleFromParts(current string, parts []string) string {

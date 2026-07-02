@@ -16,11 +16,6 @@ import (
 func createValidTestConfig() *Config {
 	return &Config{
 		ServerConfig: configgrpc.NewDefaultServerConfig(),
-		YANG: YANGConfig{
-			EnableRFCParser: true,
-			CacheModules:    true,
-			MaxModules:      1000,
-		},
 	}
 }
 

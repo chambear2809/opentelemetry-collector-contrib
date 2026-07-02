@@ -1,0 +1,168 @@
+# Example Splunk Distribution of the OpenTelemetry Collector configuration for
+# VAST Storage in Cisco AI POD environments.
+#
+# This file scrapes VAST Management System (VMS) Prometheus endpoints directly.
+# It intentionally does not scrape /api/prometheusmetrics/all by default because
+# that endpoint can be expensive on large clusters.
+
+receivers:
+  prometheus/vast_vms:
+    config:
+      global:
+        scrape_interval: 1m
+        scrape_timeout: 30s
+      scrape_configs:
+        # Available in VAST 5.4.3+. Remove this job on older clusters.
+        - job_name: vast_vms_basic_no_views
+          scheme: https
+          metrics_path: /api/prometheusmetrics/basic_no_views
+          static_configs:
+            - targets: ["${env:VAST_VMS_VIP}:443"]
+          basic_auth:
+            username: ${env:VAST_VMS_USERNAME}
+            password: ${env:VAST_VMS_PASSWORD}
+          tls_config:
+            ca_file: ${env:VAST_VMS_CA_FILE}
+            insecure_skip_verify: false
+
+        - job_name: vast_vms_cluster
+          scheme: https
+          metrics_path: /api/prometheusmetrics/
+          static_configs:
+            - targets: ["${env:VAST_VMS_VIP}:443"]
+          basic_auth:
+            username: ${env:VAST_VMS_USERNAME}
+            password: ${env:VAST_VMS_PASSWORD}
+          tls_config:
+            ca_file: ${env:VAST_VMS_CA_FILE}
+            insecure_skip_verify: false
+
+        - job_name: vast_vms_devices
+          scheme: https
+          metrics_path: /api/prometheusmetrics/devices
+          scrape_interval: 1m
+          static_configs:
+            - targets: ["${env:VAST_VMS_VIP}:443"]
+          basic_auth:
+            username: ${env:VAST_VMS_USERNAME}
+            password: ${env:VAST_VMS_PASSWORD}
+          tls_config:
+            ca_file: ${env:VAST_VMS_CA_FILE}
+            insecure_skip_verify: false
+
+        - job_name: vast_vms_alarms
+          scheme: https
+          metrics_path: /api/prometheusmetrics/alarms
+          scrape_interval: 1m
+          static_configs:
+            - targets: ["${env:VAST_VMS_VIP}:443"]
+          basic_auth:
+            username: ${env:VAST_VMS_USERNAME}
+            password: ${env:VAST_VMS_PASSWORD}
+          tls_config:
+            ca_file: ${env:VAST_VMS_CA_FILE}
+            insecure_skip_verify: false
+
+        - job_name: vast_vms_views
+          scheme: https
+          metrics_path: /api/prometheusmetrics/views
+          scrape_interval: 2m
+          scrape_timeout: 60s
+          static_configs:
+            - targets: ["${env:VAST_VMS_VIP}:443"]
+          basic_auth:
+            username: ${env:VAST_VMS_USERNAME}
+            password: ${env:VAST_VMS_PASSWORD}
+          tls_config:
+            ca_file: ${env:VAST_VMS_CA_FILE}
+            insecure_skip_verify: false
+
+        - job_name: vast_vms_vips
+          scheme: https
+          metrics_path: /api/prometheusmetrics/vips
+          scrape_interval: 2m
+          scrape_timeout: 60s
+          static_configs:
+            - targets: ["${env:VAST_VMS_VIP}:443"]
+          basic_auth:
+            username: ${env:VAST_VMS_USERNAME}
+            password: ${env:VAST_VMS_PASSWORD}
+          tls_config:
+            ca_file: ${env:VAST_VMS_CA_FILE}
+            insecure_skip_verify: false
+
+        - job_name: vast_vms_quotas
+          scheme: https
+          metrics_path: /api/prometheusmetrics/quotas
+          scrape_interval: 5m
+          scrape_timeout: 60s
+          static_configs:
+            - targets: ["${env:VAST_VMS_VIP}:443"]
+          basic_auth:
+            username: ${env:VAST_VMS_USERNAME}
+            password: ${env:VAST_VMS_PASSWORD}
+          tls_config:
+            ca_file: ${env:VAST_VMS_CA_FILE}
+            insecure_skip_verify: false
+
+processors:
+  memory_limiter:
+    check_interval: 2s
+    limit_mib: 512
+
+  resource/vast_storage:
+    attributes:
+      - key: storage.vendor
+        value: vast
+        action: upsert
+      - key: ai.pod.component
+        value: storage
+        action: upsert
+      - key: vast.cluster
+        value: ${env:VAST_CLUSTER}
+        action: upsert
+      - key: k8s.cluster.name
+        value: ${env:CLUSTER_NAME}
+        action: upsert
+      - key: deployment.environment
+        value: ${env:ENVIRONMENT_NAME}
+        action: upsert
+      - key: environment
+        value: ${env:ENVIRONMENT_NAME}
+        action: upsert
+
+  # Uncomment to drop high-cardinality VAST families before exporting to Splunk
+  # Observability Cloud. Prefer endpoint selection first; use metric filtering as
+  # a last-mile cost control.
+  #
+  # filter/vast_storage_cardinality:
+  #   error_mode: ignore
+  #   metric_conditions:
+  #     - conditions:
+  #         - IsMatch(metric.name, "^vast_user_.*")
+  #         - IsMatch(metric.name, "^vast_user_view_.*")
+  #         - IsMatch(metric.name, "^vast_host_view_.*")
+  #         - IsMatch(metric.name, "^vast_vip_view_.*")
+
+  batch:
+
+exporters:
+  signalfx:
+    access_token: ${env:SPLUNK_ACCESS_TOKEN}
+    realm: ${env:SPLUNK_REALM}
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    metrics/vast-storage:
+      receivers:
+        - prometheus/vast_vms
+      processors:
+        - memory_limiter
+        - resource/vast_storage
+        - batch
+      exporters:
+        - signalfx
+        # Keep debug during validation, then remove it in production.
+        - debug

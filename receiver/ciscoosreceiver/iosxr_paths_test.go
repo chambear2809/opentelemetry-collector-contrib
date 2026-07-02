@@ -49,6 +49,18 @@ func TestIOSXRPathCatalogCoverage(t *testing.T) {
 	assert.Equal(t, expectedGroups, actualGroups)
 }
 
+func TestIOSXRSystemMemoryPath(t *testing.T) {
+	const expectedPath = "Cisco-IOS-XR-n" + "to-misc-oper:memory-summary/nodes/node/summary"
+
+	for _, def := range iosXRPathCatalog {
+		if def.ID == "system.memory" {
+			assert.Equal(t, expectedPath, def.Path)
+			return
+		}
+	}
+	t.Fatal("system.memory path is missing from the IOS XR path catalog")
+}
+
 func TestResolveIOSXRPathSelectionDeduplicatesAndExcludes(t *testing.T) {
 	groups := defaultIOSXRPathGroups()
 	groups["interfaces"] = IOSXRPathGroupConfig{Enabled: true}
@@ -84,4 +96,14 @@ func TestParseGNMIPathSupportsOriginAndKeys(t *testing.T) {
 	assert.Equal(t, "HundredGigE0/0/0/0", parsed.Elem[1].Key["name"])
 	assert.Equal(t, "counters", parsed.Elem[3].Name)
 	assert.Equal(t, "openconfig-interfaces", moduleFromYANGPath("/openconfig-interfaces:interfaces/interface/state"))
+}
+
+func TestParseGNMIPathDoesNotTreatKeyColonAsOrigin(t *testing.T) {
+	parsed, err := parseGNMIPath("ssid-counters[wtp-mac=AA:BB:CC:DD:EE:FF]/bytes")
+	require.NoError(t, err)
+
+	assert.Empty(t, parsed.Origin)
+	require.Len(t, parsed.Elem, 2)
+	assert.Equal(t, "ssid-counters", parsed.Elem[0].Name)
+	assert.Equal(t, "AA:BB:CC:DD:EE:FF", parsed.Elem[0].Key["wtp-mac"])
 }

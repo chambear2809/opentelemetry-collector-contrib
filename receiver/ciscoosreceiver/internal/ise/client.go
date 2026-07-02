@@ -20,14 +20,17 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
 
 const (
 	defaultUserAgent      = "opentelemetry-collector-contrib-ciscoosreceiver"
 	defaultRequestTimeout = 30 * time.Second
-	defaultMaxRetries     = 3
 	defaultPageSize       = 100
 	defaultRequestSpacing = 20 * time.Millisecond
+	defaultMaxPages       = 100
+	defaultMaxResults     = 100000
 )
 
 // Config controls the Cisco ISE REST/OpenAPI/ERS/MnT client.
@@ -60,14 +63,10 @@ type RequestStat struct {
 // APIError is returned for non-success Cisco ISE API responses.
 type APIError struct {
 	StatusCode int
-	Body       string
 }
 
 func (e *APIError) Error() string {
-	if e.Body == "" {
-		return fmt.Sprintf("ise API returned HTTP %d", e.StatusCode)
-	}
-	return fmt.Sprintf("ise API returned HTTP %d: %s", e.StatusCode, e.Body)
+	return httpclient.StatusError("ise", e.StatusCode)
 }
 
 // IsUnavailable reports whether err means an ISE API family is missing, disabled, or unauthorized.
@@ -84,14 +83,16 @@ func IsUnavailable(err error) bool {
 
 // Client is a compact Cisco ISE REST/OpenAPI/ERS/MnT client.
 type Client struct {
-	endpoint  *url.URL
-	username  string
-	password  string
-	userAgent string
-	client    *http.Client
-	retries   int
-	pageSize  int
-	spacing   time.Duration
+	endpoint   *url.URL
+	username   string
+	password   string
+	userAgent  string
+	client     *http.Client
+	retries    int
+	pageSize   int
+	spacing    time.Duration
+	maxPages   int
+	maxResults int
 
 	limitMu  sync.Mutex
 	nextSend time.Time
@@ -119,12 +120,9 @@ func NewClient(cfg Config) (*Client, error) {
 	if userAgent == "" {
 		userAgent = defaultUserAgent
 	}
-	retries := cfg.MaxRetries
-	if retries < 0 {
-		retries = 0
-	}
-	if retries == 0 {
-		retries = defaultMaxRetries
+	retries, err := httpclient.RetryCount(cfg.MaxRetries)
+	if err != nil {
+		return nil, fmt.Errorf("invalid ise max retries: %w", err)
 	}
 	pageSize := cfg.PageSize
 	if pageSize <= 0 {
@@ -142,14 +140,16 @@ func NewClient(cfg Config) (*Client, error) {
 		transport.TLSClientConfig = tlsConfig
 	}
 	return &Client{
-		endpoint:  parsed,
-		username:  cfg.Username,
-		password:  cfg.Password,
-		userAgent: userAgent,
-		client:    &http.Client{Timeout: timeout, Transport: transport},
-		retries:   retries,
-		pageSize:  pageSize,
-		spacing:   defaultRequestSpacing,
+		endpoint:   parsed,
+		username:   cfg.Username,
+		password:   cfg.Password,
+		userAgent:  userAgent,
+		client:     &http.Client{Timeout: timeout, Transport: transport, CheckRedirect: httpclient.SameOriginRedirectPolicy(parsed)},
+		retries:    retries,
+		pageSize:   pageSize,
+		spacing:    defaultRequestSpacing,
+		maxPages:   defaultMaxPages,
+		maxResults: defaultMaxResults,
 	}, nil
 }
 
@@ -212,15 +212,55 @@ func (c *Client) GetObject(ctx context.Context, operation, path string, query ur
 
 // List fetches generic objects from a Cisco ISE endpoint.
 func (c *Client) List(ctx context.Context, operation, path string, query url.Values, maxResults int) ([]Object, error) {
-	body, _, err := c.do(ctx, http.MethodGet, operation, path, query, nil)
-	if err != nil {
-		return nil, err
+	pagePath := path
+	pageQuery := cloneValues(query)
+	seenRequests := make(map[string]struct{})
+	results := make([]Object, 0)
+	var byteBudget httpclient.PaginationByteBudget
+
+	for page := 0; ; page++ {
+		if page >= c.maxPages {
+			return results, fmt.Errorf("paginate ise %s response: exceeded %d pages", operation, c.maxPages)
+		}
+		requestKey := c.resolve(pagePath, pageQuery)
+		if _, seen := seenRequests[requestKey]; seen {
+			return results, fmt.Errorf("paginate ise %s response: detected continuation cycle", operation)
+		}
+		seenRequests[requestKey] = struct{}{}
+
+		body, header, err := c.do(ctx, http.MethodGet, operation, pagePath, pageQuery, nil)
+		if err != nil {
+			return results, err
+		}
+		if err := byteBudget.Charge(operation, len(body), len(results)); err != nil {
+			return results, err
+		}
+		objects, _, err := decodeObjects(body)
+		if err != nil {
+			return results, fmt.Errorf("decode ise %s response: %w", operation, err)
+		}
+		results = append(results, objects...)
+		if len(results) > c.maxResults {
+			return results[:c.maxResults], fmt.Errorf("paginate ise %s response: exceeded %d results", operation, c.maxResults)
+		}
+		if maxResults > 0 && len(results) >= maxResults {
+			return results[:maxResults], nil
+		}
+
+		pagination := paginationFromResponse(body, header)
+		nextPath, nextQuery, more, err := c.nextListPage(pagePath, pageQuery, pagination, len(objects))
+		if err != nil {
+			return results, fmt.Errorf("paginate ise %s response: %w", operation, err)
+		}
+		if !more {
+			return results, nil
+		}
+		if len(results) >= c.maxResults {
+			return results, fmt.Errorf("paginate ise %s response: exceeded %d results", operation, c.maxResults)
+		}
+		pagePath = nextPath
+		pageQuery = nextQuery
 	}
-	objects, _, err := decodeObjects(body)
-	if err != nil {
-		return nil, fmt.Errorf("decode ise %s response: %w", operation, err)
-	}
-	return capObjects(objects, maxResults), nil
 }
 
 // ListERS fetches ERS search endpoints using ISE page/size pagination.
@@ -228,10 +268,23 @@ func (c *Client) ListERS(ctx context.Context, operation, path string, query url.
 	if query == nil {
 		query = url.Values{}
 	}
+	startPage := 1
+	if configuredPage, err := strconv.Atoi(query.Get("page")); err == nil && configuredPage >= 1 {
+		startPage = configuredPage
+	}
+	configuredPageSize := c.pageSize
+	if requestedSize, err := strconv.Atoi(query.Get("size")); err == nil && requestedSize > 0 && requestedSize <= defaultPageSize {
+		configuredPageSize = requestedSize
+	}
+	seenRequests := make(map[string]struct{})
 	var results []Object
-	for page := 1; ; page++ {
+	var byteBudget httpclient.PaginationByteBudget
+	for requestNumber, page := 0, startPage; ; requestNumber, page = requestNumber+1, page+1 {
+		if requestNumber >= c.maxPages {
+			return results, fmt.Errorf("paginate ise %s response: exceeded %d pages", operation, c.maxPages)
+		}
 		pageQuery := cloneValues(query)
-		pageSize := c.pageSize
+		pageSize := configuredPageSize
 		if maxResults > 0 {
 			remaining := maxResults - len(results)
 			if remaining <= 0 {
@@ -241,14 +294,23 @@ func (c *Client) ListERS(ctx context.Context, operation, path string, query url.
 				pageSize = remaining
 			}
 		}
-		if _, ok := pageQuery["page"]; !ok {
-			pageQuery.Set("page", strconv.Itoa(page))
+		if remaining := c.maxResults - len(results); remaining <= 0 {
+			return results, fmt.Errorf("paginate ise %s response: exceeded %d results", operation, c.maxResults)
+		} else if remaining < pageSize {
+			pageSize = remaining
 		}
-		if _, ok := pageQuery["size"]; !ok {
-			pageQuery.Set("size", strconv.Itoa(pageSize))
+		pageQuery.Set("page", strconv.Itoa(page))
+		pageQuery.Set("size", strconv.Itoa(pageSize))
+		requestKey := c.resolve(path, pageQuery)
+		if _, seen := seenRequests[requestKey]; seen {
+			return results, fmt.Errorf("paginate ise %s response: detected continuation cycle", operation)
 		}
+		seenRequests[requestKey] = struct{}{}
 		body, _, err := c.do(ctx, http.MethodGet, operation, path, pageQuery, nil)
 		if err != nil {
+			return results, err
+		}
+		if err := byteBudget.Charge(operation, len(body), len(results)); err != nil {
 			return results, err
 		}
 		objects, total, err := decodeObjects(body)
@@ -256,11 +318,17 @@ func (c *Client) ListERS(ctx context.Context, operation, path string, query url.
 			return results, fmt.Errorf("decode ise %s response: %w", operation, err)
 		}
 		results = append(results, objects...)
+		if len(results) > c.maxResults {
+			return results[:c.maxResults], fmt.Errorf("paginate ise %s response: exceeded %d results", operation, c.maxResults)
+		}
 		if maxResults > 0 && len(results) >= maxResults {
 			return results[:maxResults], nil
 		}
 		if len(objects) == 0 || len(objects) < pageSize || total > -1 && len(results) >= total {
 			return results, nil
+		}
+		if len(results) >= c.maxResults {
+			return results, fmt.Errorf("paginate ise %s response: exceeded %d results", operation, c.maxResults)
 		}
 	}
 }
@@ -297,6 +365,257 @@ func (c *Client) PostObject(ctx context.Context, operation, path string, payload
 		return nil, fmt.Errorf("decode ise %s response: %w", operation, err)
 	}
 	return obj, nil
+}
+
+type responsePagination struct {
+	nextLink string
+	offset   int
+	limit    int
+	total    int
+	hasRange bool
+}
+
+func paginationFromResponse(body []byte, header http.Header) responsePagination {
+	pagination := responsePagination{nextLink: nextLink(header.Get("Link"))}
+	root, err := decodeObject(body)
+	if err != nil {
+		return pagination
+	}
+	if pagination.nextLink == "" {
+		pagination.nextLink = bodyNextLink(root)
+	}
+
+	candidates := []Object{root}
+	for _, key := range []string{"pagination", "pageInfo", "meta"} {
+		if nested, ok := objectField(root, key); ok {
+			candidates = append(candidates, nested)
+		}
+	}
+	for _, candidate := range candidates {
+		offset, hasOffset := integerField(candidate, "offset")
+		limit, hasLimit := integerField(candidate, "limit")
+		total, hasTotal := integerField(candidate, "total", "totalCount", "total_count", "totalItemsCount", "totalResultsCount")
+		if hasOffset && hasLimit && hasTotal && offset >= 0 && limit > 0 && total >= 0 {
+			pagination.offset = offset
+			pagination.limit = limit
+			pagination.total = total
+			pagination.hasRange = true
+			break
+		}
+	}
+	return pagination
+}
+
+func (c *Client) nextListPage(currentPath string, currentQuery url.Values, pagination responsePagination, objectCount int) (string, url.Values, bool, error) {
+	if pagination.nextLink != "" {
+		nextPath, nextQuery, err := c.splitNextURL(currentPath, currentQuery, pagination.nextLink)
+		if err != nil {
+			return "", nil, false, err
+		}
+		return nextPath, nextQuery, true, nil
+	}
+	if !pagination.hasRange {
+		return "", nil, false, nil
+	}
+	nextOffset := pagination.offset + objectCount
+	if nextOffset >= pagination.total {
+		return "", nil, false, nil
+	}
+	if objectCount == 0 || nextOffset <= pagination.offset {
+		return "", nil, false, errors.New("offset pagination did not advance")
+	}
+	nextQuery := cloneValues(currentQuery)
+	nextQuery.Set("offset", strconv.Itoa(nextOffset))
+	limit := pagination.limit
+	if c.pageSize > 0 && limit > c.pageSize {
+		limit = c.pageSize
+	}
+	nextQuery.Set("limit", strconv.Itoa(limit))
+	return currentPath, nextQuery, true, nil
+}
+
+func (c *Client) splitNextURL(currentPath string, currentQuery url.Values, next string) (string, url.Values, error) {
+	currentURL, err := url.Parse(c.resolve(currentPath, currentQuery))
+	if err != nil {
+		return "", nil, err
+	}
+	nextReference, err := url.Parse(strings.TrimSpace(next))
+	if err != nil {
+		return "", nil, fmt.Errorf("invalid next-page URL: %w", err)
+	}
+	resolved := currentURL.ResolveReference(nextReference)
+	if resolved.User != nil {
+		return "", nil, errors.New("next-page URL must not contain user information")
+	}
+	if !httpclient.SameOrigin(c.endpoint, resolved) {
+		return "", nil, errors.New("cross-origin next-page URL")
+	}
+	return resolved.Path, resolved.Query(), nil
+}
+
+func bodyNextLink(root Object) string {
+	candidates := []Object{root}
+	for _, key := range []string{"SearchResult", "searchResult", "ERSResponse", "ersResponse"} {
+		if nested, ok := objectField(root, key); ok {
+			candidates = append(candidates, nested)
+		}
+	}
+	for _, candidate := range candidates {
+		if value, ok := valueForKey(candidate, "nextPage"); ok {
+			if link := linkFromValue(value); link != "" {
+				return link
+			}
+		}
+		for _, key := range []string{"_links", "links", "pagination", "pageInfo"} {
+			container, ok := objectField(candidate, key)
+			if !ok {
+				continue
+			}
+			if value, ok := valueForKey(container, "next"); ok {
+				if link := linkFromValue(value); link != "" {
+					return link
+				}
+			}
+		}
+		if meta, ok := objectField(candidate, "meta"); ok {
+			if links, ok := objectField(meta, "links"); ok {
+				if value, ok := valueForKey(links, "next"); ok {
+					if link := linkFromValue(value); link != "" {
+						return link
+					}
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func linkFromValue(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case Object:
+		return strings.TrimSpace(String(typed, "href", "@href", "url", "value"))
+	case map[string]any:
+		return strings.TrimSpace(String(Object(typed), "href", "@href", "url", "value"))
+	default:
+		return ""
+	}
+}
+
+func objectField(obj Object, key string) (Object, bool) {
+	value, ok := valueForKey(obj, key)
+	if !ok {
+		return nil, false
+	}
+	switch typed := value.(type) {
+	case Object:
+		return typed, true
+	case map[string]any:
+		return Object(typed), true
+	default:
+		return nil, false
+	}
+}
+
+func integerField(obj Object, keys ...string) (int, bool) {
+	for _, key := range keys {
+		value, ok := valueForKey(obj, key)
+		if !ok {
+			continue
+		}
+		var text string
+		switch typed := value.(type) {
+		case json.Number:
+			text = typed.String()
+		case string:
+			text = strings.TrimSpace(typed)
+		case int:
+			return typed, true
+		case int64:
+			if int64(int(typed)) == typed {
+				return int(typed), true
+			}
+		case float64:
+			if typed == float64(int(typed)) {
+				return int(typed), true
+			}
+		}
+		if text != "" {
+			parsed, err := strconv.Atoi(text)
+			if err == nil {
+				return parsed, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func nextLink(linkHeader string) string {
+	for _, part := range splitLinkHeader(linkHeader) {
+		part = strings.TrimSpace(part)
+		start := strings.Index(part, "<")
+		end := strings.Index(part, ">")
+		if start >= 0 && end > start && linkHasNextRelation(part[end+1:]) {
+			return strings.TrimSpace(part[start+1 : end])
+		}
+	}
+	return ""
+}
+
+func splitLinkHeader(header string) []string {
+	var parts []string
+	start := 0
+	inAngle := false
+	inQuote := false
+	escaped := false
+	for index, char := range header {
+		if escaped {
+			escaped = false
+			continue
+		}
+		if char == '\\' && inQuote {
+			escaped = true
+			continue
+		}
+		switch char {
+		case '<':
+			if !inQuote {
+				inAngle = true
+			}
+		case '>':
+			if !inQuote {
+				inAngle = false
+			}
+		case '"':
+			if !inAngle {
+				inQuote = !inQuote
+			}
+		case ',':
+			if !inAngle && !inQuote {
+				parts = append(parts, header[start:index])
+				start = index + 1
+			}
+		}
+	}
+	parts = append(parts, header[start:])
+	return parts
+}
+
+func linkHasNextRelation(parameters string) bool {
+	for _, parameter := range strings.Split(parameters, ";") {
+		name, value, ok := strings.Cut(strings.TrimSpace(parameter), "=")
+		if !ok || !strings.EqualFold(strings.TrimSpace(name), "rel") {
+			continue
+		}
+		value = strings.Trim(strings.TrimSpace(value), `"`)
+		for _, relation := range strings.Fields(value) {
+			if strings.EqualFold(relation, "next") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (c *Client) do(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, http.Header, error) {
@@ -352,13 +671,13 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 	}
 	defer resp.Body.Close()
 
-	respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 16*1024*1024))
+	respBody, readErr := httpclient.ReadResponseBody(resp.Body)
 	if readErr != nil {
 		c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
 		return nil, resp.Header, resp.StatusCode, readErr
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		apiErr := &APIError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(respBody))}
+		apiErr := &APIError{StatusCode: resp.StatusCode}
 		c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, RateLimited: resp.StatusCode == http.StatusTooManyRequests, Err: apiErr})
 		return nil, resp.Header, resp.StatusCode, apiErr
 	}

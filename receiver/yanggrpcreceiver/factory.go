@@ -37,13 +37,6 @@ func createDefaultConfig() component.Config {
 				BurstSize:         10,
 				CleanupInterval:   time.Minute,
 			},
-			ConnectionTimeout: 30 * time.Second,
-			EnableMetrics:     true,
-		},
-		YANG: YANGConfig{
-			EnableRFCParser: true,
-			CacheModules:    true,
-			MaxModules:      1000,
 		},
 	}
 	config.NetAddr.Transport = "tcp"

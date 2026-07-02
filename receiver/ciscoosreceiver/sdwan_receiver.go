@@ -5,7 +5,9 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"sort"
 	"strconv"
@@ -34,6 +36,7 @@ type sdwanMetricsReceiver struct {
 	client   *sdwan.Client
 	counters *counterStore
 	obs      *receiverhelper.ObsReport
+	success  scrapeSuccessState
 
 	startMu sync.Mutex
 	cancel  context.CancelFunc
@@ -54,8 +57,7 @@ type sdwanLogsReceiver struct {
 	cancel  context.CancelFunc
 	done    chan struct{}
 
-	seenMu sync.Mutex
-	seen   map[string]time.Time
+	seen *logDeduplicator
 }
 
 type sdwanCount struct {
@@ -99,7 +101,7 @@ func newSDWANLogsReceiver(set receiver.Settings, conf *Config, consumer consumer
 		consumer: consumer,
 		client:   client,
 		done:     make(chan struct{}),
-		seen:     map[string]time.Time{},
+		seen:     newLogDeduplicator(),
 		obs:      newPlatformObsReport(set, "http"),
 	}, nil
 }
@@ -171,21 +173,15 @@ func (r *sdwanMetricsReceiver) collect(ctx context.Context) {
 	defer cancel()
 
 	obsCtx := startMetricsOp(r.obs, ctx)
-	md, err := r.scrape(scrapeCtx)
-	if err != nil {
-		r.settings.Logger.Error("SD-WAN scrape failed", zap.Error(err))
-		endMetricsOp(r.obs, obsCtx, md, err)
-		return
+	md, scrapeErr := r.scrape(scrapeCtx)
+	if scrapeErr != nil {
+		r.settings.Logger.Error("SD-WAN scrape failed", zap.Error(scrapeErr))
 	}
-	if md.MetricCount() == 0 {
-		endMetricsOp(r.obs, obsCtx, md, nil)
-		return
-	}
-	consumeErr := r.consumer.ConsumeMetrics(ctx, md)
-	endMetricsOp(r.obs, obsCtx, md, consumeErr)
+	metricCount, consumeErr := consumeMetricsIfPresent(ctx, r.consumer, md)
 	if consumeErr != nil {
 		r.settings.Logger.Error("SD-WAN metrics consumer failed", zap.Error(consumeErr))
 	}
+	endMetricsOp(r.obs, obsCtx, metricCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *sdwanMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error) {
@@ -197,9 +193,11 @@ func (r *sdwanMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, err
 	partial := false
 
 	if r.config.SDWAN.Manager.Enabled {
-		if err := r.scrapeManager(ctx, builder); err != nil {
+		groupPartial, err := r.scrapeManager(ctx, builder)
+		partial = partial || groupPartial
+		if err != nil {
 			if ctx.Err() != nil {
-				return builder.emit(), ctx.Err()
+				return r.finishScrape(builder, now, true), ctx.Err()
 			}
 			partial = true
 			r.settings.Logger.Warn("SD-WAN Manager endpoint failed", zap.Error(err))
@@ -208,46 +206,76 @@ func (r *sdwanMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, err
 	if r.config.SDWAN.Inventory.Enabled {
 		if err := r.scrapeInventory(ctx, builder, selector, targets); err != nil {
 			if ctx.Err() != nil {
-				return builder.emit(), ctx.Err()
+				return r.finishScrape(builder, now, true), ctx.Err()
 			}
 			partial = true
 			r.settings.Logger.Warn("SD-WAN inventory endpoint failed", zap.Error(err))
+		}
+	}
+	if sdwanEventGroupsEnabled(r.config.SDWAN) && (!selector.empty() || targets.hasAny()) && !builder.inventoryLoaded {
+		if err := r.loadSDWANEventFilterInventory(ctx, builder); err != nil {
+			if ctx.Err() != nil {
+				return r.finishScrape(builder, now, true), ctx.Err()
+			}
+			partial = true
+			r.settings.Logger.Warn("SD-WAN event filter inventory endpoint failed", zap.Error(err))
 		}
 	}
 	if r.config.SDWAN.ControlPlane.Enabled {
 		if r.scrapeDeviceGroup(ctx, builder, selector, targets, r.config.SDWAN.ControlPlane, sdwanControlPlaneSpecs(), r.recordControlPlaneObject) {
 			partial = true
 		}
+		if ctx.Err() != nil {
+			return r.finishScrape(builder, now, true), ctx.Err()
+		}
 	}
 	if r.config.SDWAN.BFD.Enabled {
 		if r.scrapeDeviceGroup(ctx, builder, selector, targets, r.config.SDWAN.BFD, sdwanBFDSpecs(), r.recordBFDObject) {
 			partial = true
+		}
+		if ctx.Err() != nil {
+			return r.finishScrape(builder, now, true), ctx.Err()
 		}
 	}
 	if r.config.SDWAN.AppRoute.Enabled {
 		if r.scrapeDeviceGroup(ctx, builder, selector, targets, r.config.SDWAN.AppRoute, sdwanAppRouteSpecs(), r.recordAppRouteObject) {
 			partial = true
 		}
+		if ctx.Err() != nil {
+			return r.finishScrape(builder, now, true), ctx.Err()
+		}
 	}
 	if r.config.SDWAN.Interfaces.Enabled {
 		if r.scrapeDeviceGroup(ctx, builder, selector, targets, r.config.SDWAN.Interfaces, sdwanInterfaceSpecs(), r.recordInterfaceObject) {
 			partial = true
 		}
+		if ctx.Err() != nil {
+			return r.finishScrape(builder, now, true), ctx.Err()
+		}
 	}
 	if r.config.SDWAN.Alarms.Enabled {
-		if err := r.scrapeEventMetricGroup(ctx, builder, "alarms", "/alarms", r.config.SDWAN.Alarms); err != nil {
+		if err := r.scrapeEventMetricGroup(ctx, builder, selector, targets, "alarms", "/alarms", r.config.SDWAN.Alarms); err != nil {
+			if ctx.Err() != nil {
+				return r.finishScrape(builder, now, true), ctx.Err()
+			}
 			partial = true
 			r.settings.Logger.Warn("SD-WAN alarms endpoint failed", zap.Error(err))
 		}
 	}
 	if r.config.SDWAN.Events.Enabled {
-		if err := r.scrapeEventMetricGroup(ctx, builder, "events", "/events", r.config.SDWAN.Events); err != nil {
+		if err := r.scrapeEventMetricGroup(ctx, builder, selector, targets, "events", "/events", r.config.SDWAN.Events); err != nil {
+			if ctx.Err() != nil {
+				return r.finishScrape(builder, now, true), ctx.Err()
+			}
 			partial = true
 			r.settings.Logger.Warn("SD-WAN events endpoint failed", zap.Error(err))
 		}
 	}
 	if r.config.SDWAN.Audit.Enabled {
-		if err := r.scrapeEventMetricGroup(ctx, builder, "audit", "/auditlog", r.config.SDWAN.Audit); err != nil {
+		if err := r.scrapeEventMetricGroup(ctx, builder, selector, targets, "audit", "/auditlog", r.config.SDWAN.Audit); err != nil {
+			if ctx.Err() != nil {
+				return r.finishScrape(builder, now, true), ctx.Err()
+			}
 			partial = true
 			r.settings.Logger.Warn("SD-WAN audit endpoint failed", zap.Error(err))
 		}
@@ -255,16 +283,30 @@ func (r *sdwanMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, err
 	if r.scrapeOptInGroups(ctx, builder, selector, targets) {
 		partial = true
 	}
+	if ctx.Err() != nil {
+		return r.finishScrape(builder, now, true), ctx.Err()
+	}
 
-	r.recordAPIRequestMetrics(builder)
-	builder.managerResource().recordInt("sdwan.scrape.partial_success", "Whether one or more SD-WAN endpoint families failed or were skipped during the scrape.", "1", boolToInt(partial), nil)
-	builder.managerResource().recordInt("sdwan.scrape.last_success", "Unix timestamp of the most recent SD-WAN scrape completion.", "s", now.Unix(), nil)
-	builder.flushCounts()
-	return builder.emit(), nil
+	return r.finishScrape(builder, now, partial), nil
 }
 
-func (r *sdwanMetricsReceiver) scrapeManager(ctx context.Context, builder *sdwanMetricsBuilder) error {
-	builder.managerResource().recordInt("sdwan.manager.up", "SD-WAN Manager collector target is configured and scrape is running.", "1", 1, nil)
+func (r *sdwanMetricsReceiver) finishScrape(builder *sdwanMetricsBuilder, _ time.Time, partial bool) pmetric.Metrics {
+	r.recordAPIRequestMetrics(builder)
+	outcome := summarizeAPIOutcomes(r.requestStats(), func(stat sdwan.RequestStat) string { return stat.Outcome })
+	rb := builder.managerResource()
+	rb.recordInt("sdwan.scrape.partial_success", "Whether one or more SD-WAN endpoint families failed or were skipped during the scrape.", "1", boolToInt(partial), nil)
+	if lastSuccess, ok := r.success.observe(time.Now(), !partial && outcome.succeeded); ok {
+		rb.recordInt("sdwan.scrape.last_success", "Unix timestamp of the most recent fully successful SD-WAN scrape.", "s", lastSuccess.Unix(), nil)
+	}
+	builder.flushCounts()
+	return builder.emit()
+}
+
+func (r *sdwanMetricsReceiver) scrapeManager(ctx context.Context, builder *sdwanMetricsBuilder) (partial bool, err error) {
+	succeeded := false
+	defer func() {
+		builder.managerResource().recordInt("sdwan.manager.up", "SD-WAN Manager API availability for this scrape.", "1", boolToInt(succeeded), nil)
+	}()
 	for _, spec := range []sdwanEndpointSpec{
 		{group: "manager", operation: "manager.cluster_health", path: "/clusterManagement/health/summary"},
 		{group: "manager", operation: "manager.server_info", path: "/client/server"},
@@ -272,27 +314,46 @@ func (r *sdwanMetricsReceiver) scrapeManager(ctx context.Context, builder *sdwan
 	} {
 		obj, err := r.client.GetObject(ctx, spec.operation, spec.path, nil)
 		if err != nil {
+			partial = true
 			builder.recordServiceUnavailable(spec.group, spec.operation, err)
+			if ctx.Err() != nil {
+				return true, ctx.Err()
+			}
 			continue
 		}
+		succeeded = true
 		builder.recordManagerObject(spec.operation, obj)
 	}
-	return nil
+	return partial, nil
 }
 
 func (r *sdwanMetricsReceiver) scrapeInventory(ctx context.Context, builder *sdwanMetricsBuilder, selector deviceSelectionMatcher, targets sdwanTargetMatcher) error {
 	devices, err := r.client.List(ctx, "inventory.devices", "/device", nil, r.config.SDWAN.Inventory.MaxResults)
-	if err != nil {
-		return err
+	if err != nil && ctx.Err() != nil {
+		return ctx.Err()
 	}
+	builder.inventoryLoaded = err == nil || len(devices) > 0
 	for _, device := range devices {
+		builder.inventory.add(device)
 		if !targets.allowsDevice(device) || !selector.allows(sdwanObjectIdentity(device)) {
 			continue
 		}
 		builder.recordDevice(device)
 	}
 	builder.managerResource().recordInt("sdwan.inventory.device.count", "SD-WAN Manager device inventory count after target and shared device selection.", "{device}", int64(len(builder.devicesForDetail())), nil)
-	return nil
+	return err
+}
+
+func (r *sdwanMetricsReceiver) loadSDWANEventFilterInventory(ctx context.Context, builder *sdwanMetricsBuilder) error {
+	devices, err := r.client.List(ctx, "events.filter_inventory", "/device", nil, r.config.SDWAN.Inventory.MaxResults)
+	if err != nil && ctx.Err() != nil {
+		return ctx.Err()
+	}
+	builder.inventoryLoaded = err == nil || len(devices) > 0
+	for _, device := range devices {
+		builder.inventory.add(device)
+	}
+	return err
 }
 
 func (r *sdwanMetricsReceiver) scrapeDeviceGroup(
@@ -321,7 +382,9 @@ func (r *sdwanMetricsReceiver) scrapeDeviceGroup(
 			if err != nil {
 				builder.recordServiceUnavailable(spec.group, spec.operation, err)
 				partial = true
-				continue
+				if ctx.Err() != nil {
+					return true
+				}
 			}
 			builder.addCount("sdwan.collection.object.count", compactAttrs(map[string]string{
 				"sdwan.collection.group":     spec.group,
@@ -345,7 +408,9 @@ func (r *sdwanMetricsReceiver) scrapeDeviceGroup(
 			if err != nil {
 				builder.recordServiceUnavailable(spec.group, spec.operation, err)
 				partial = true
-				continue
+				if ctx.Err() != nil {
+					return true
+				}
 			}
 			builder.addCount("sdwan.collection.object.count", compactAttrs(map[string]string{
 				"sdwan.collection.group":     spec.group,
@@ -363,15 +428,33 @@ func (r *sdwanMetricsReceiver) scrapeDeviceGroup(
 	return partial
 }
 
-func (r *sdwanMetricsReceiver) scrapeEventMetricGroup(ctx context.Context, builder *sdwanMetricsBuilder, name, path string, group SDWANGroupConfig) error {
+func (r *sdwanMetricsReceiver) scrapeEventMetricGroup(
+	ctx context.Context,
+	builder *sdwanMetricsBuilder,
+	selector deviceSelectionMatcher,
+	targets sdwanTargetMatcher,
+	name, path string,
+	group SDWANGroupConfig,
+) error {
 	objects, err := r.client.PostQuery(ctx, "events."+name, path, sdwanLookbackQuery(r.config.SDWAN.EventLookback, group.MaxResults), group.MaxResults)
 	if err != nil {
-		objects, err = r.client.List(ctx, "events."+name+".get", path, nil, group.MaxResults)
-		if err != nil {
-			return err
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		// A non-empty result means POST succeeded for at least one page. Keep
+		// that valid prefix and surface the pagination failure; GET is only a
+		// compatibility fallback when POST produced no usable data at all.
+		if len(objects) == 0 {
+			objects, err = r.client.List(ctx, "events."+name+".get", path, nil, group.MaxResults)
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 		}
 	}
 	for _, obj := range objects {
+		if !sdwanEventAllowed(obj, builder.inventory, selector, targets) {
+			continue
+		}
 		attrs := compactAttrs(map[string]string{
 			"sdwan.event.type":     name,
 			"sdwan.severity":       strings.ToLower(sdwan.String(obj, "severity", "severity_level", "severityLevel")),
@@ -383,7 +466,7 @@ func (r *sdwanMetricsReceiver) scrapeEventMetricGroup(ctx context.Context, build
 		})
 		builder.addCount("sdwan.event.count", attrs, 1)
 	}
-	return nil
+	return err
 }
 
 func (r *sdwanMetricsReceiver) scrapeOptInGroups(ctx context.Context, builder *sdwanMetricsBuilder, selector deviceSelectionMatcher, targets sdwanTargetMatcher) bool {
@@ -411,9 +494,11 @@ func (r *sdwanMetricsReceiver) recordControlPlaneObject(builder *sdwanMetricsBui
 	rb := builder.deviceResource(device)
 	attrs := sdwanPathAttrs(device, obj)
 	putNonEmpty(attrs, "sdwan.peer.type", sdwan.String(obj, "peer-type", "peerType", "peer_type", "personality"))
-	state := firstNonEmpty(sdwan.String(obj, "state", "status", "local-state", "localState"), "unknown")
-	rb.recordInt("sdwan.control.connection.status", "SD-WAN control connection status.", "1", statusCode(state), withAttr(attrs, "sdwan.status", state))
-	builder.addCount("sdwan.control.connection.count", withAttr(attrs, "sdwan.status", state), 1)
+	state := sdwan.String(obj, "state", "status", "local-state", "localState")
+	if code, ok := statusCode(state); ok {
+		rb.recordInt("sdwan.control.connection.status", "SD-WAN control connection status.", "1", code, withAttr(attrs, "sdwan.status", state))
+	}
+	builder.addCount("sdwan.control.connection.count", withAttr(attrs, "sdwan.status", firstNonEmpty(state, "unknown")), 1)
 	if expected, ok := sdwan.Int(obj, "expected", "expectedControlConnections", "expectedConnections"); ok {
 		rb.recordInt("sdwan.control.expected_connections", "Expected SD-WAN control connections.", "{connection}", expected, attrs)
 	}
@@ -428,11 +513,13 @@ func (r *sdwanMetricsReceiver) recordBFDObject(builder *sdwanMetricsBuilder, dev
 	}
 	rb := builder.deviceResource(device)
 	attrs := sdwanPathAttrs(device, obj)
-	state := firstNonEmpty(sdwan.String(obj, "state", "status", "session-state", "sessionState"), "unknown")
-	rb.recordInt("sdwan.bfd.session.status", "SD-WAN BFD session status.", "1", statusCode(state), withAttr(attrs, "sdwan.status", state))
-	builder.addCount("sdwan.bfd.session.count", withAttr(attrs, "sdwan.status", state), 1)
-	recordSDWANInt(rb, obj, "transitions", "sdwan.bfd.session.transitions", "SD-WAN BFD session transition count.", "{transition}", attrs, "transitions", "state-transitions", "stateTransitions")
-	recordSDWANInt(rb, obj, "flaps", "sdwan.bfd.session.flap.count", "SD-WAN BFD session flap count.", "{flap}", attrs, "flaps", "flapCount")
+	state := sdwan.String(obj, "state", "status", "session-state", "sessionState")
+	if code, ok := statusCode(state); ok {
+		rb.recordInt("sdwan.bfd.session.status", "SD-WAN BFD session status.", "1", code, withAttr(attrs, "sdwan.status", state))
+	}
+	builder.addCount("sdwan.bfd.session.count", withAttr(attrs, "sdwan.status", firstNonEmpty(state, "unknown")), 1)
+	recordSDWANAbsoluteSumInt(rb, obj, "transitions", "sdwan.bfd.session.transitions", "SD-WAN BFD session transition count.", "{transition}", attrs, "transitions", "state-transitions", "stateTransitions")
+	recordSDWANAbsoluteSumInt(rb, obj, "flaps", "sdwan.bfd.session.flap.count", "SD-WAN BFD session flap count.", "{flap}", attrs, "flaps", "flapCount")
 }
 
 func (r *sdwanMetricsReceiver) recordAppRouteObject(builder *sdwanMetricsBuilder, device, obj sdwan.Object, spec sdwanEndpointSpec) {
@@ -448,8 +535,8 @@ func (r *sdwanMetricsReceiver) recordAppRouteObject(builder *sdwanMetricsBuilder
 	recordSDWANDouble(rb, obj, "jitter", "sdwan.app_route.jitter", "SD-WAN application-aware routing jitter.", "ms", attrs, "jitter", "jitter-average", "jitterAvg")
 	recordSDWANDouble(rb, obj, "loss", "sdwan.app_route.loss", "SD-WAN application-aware routing loss.", "%", attrs, "loss", "loss_percentage", "lossPercentage", "loss-percent")
 	state := sdwan.String(obj, "sla-state", "slaState", "state", "status")
-	if state != "" {
-		rb.recordInt("sdwan.app_route.sla.status", "SD-WAN application-aware routing SLA status.", "1", statusCode(state), withAttr(attrs, "sdwan.status", state))
+	if code, ok := statusCode(state); ok {
+		rb.recordInt("sdwan.app_route.sla.status", "SD-WAN application-aware routing SLA status.", "1", code, withAttr(attrs, "sdwan.status", state))
 	}
 }
 
@@ -466,21 +553,27 @@ func (r *sdwanMetricsReceiver) recordInterfaceObject(builder *sdwanMetricsBuilde
 		"sdwan.collection.group": spec.group,
 	})
 	status := firstNonEmpty(sdwan.String(obj, "oper-status", "operStatus", "status", "state"), "")
-	if status != "" {
-		rb.recordInt("system.network.interface.status", "SD-WAN interface operational status.", "1", upStatus(status), withAttr(attrs, "sdwan.status", status))
-		rb.recordInt("sdwan.transport.interface.status", "SD-WAN transport or service interface status.", "1", statusCode(status), withAttr(attrs, "sdwan.status", status))
+	if up, ok := upStatus(status); ok {
+		rb.recordInt("system.network.interface.status", "SD-WAN interface operational status.", "1", up, withAttr(attrs, "sdwan.status", status))
+	}
+	if code, ok := statusCode(status); ok {
+		rb.recordInt("sdwan.transport.interface.status", "SD-WAN transport or service interface status.", "1", code, withAttr(attrs, "sdwan.status", status))
 	}
 	admin := sdwan.String(obj, "admin-status", "adminStatus", "admin_state")
-	if admin != "" {
-		rb.recordInt("cisco.interface.admin.status", "SD-WAN interface administrative status.", "1", upStatus(admin), withAttr(attrs, "sdwan.status", admin))
+	if up, ok := upStatus(admin); ok {
+		rb.recordInt("cisco.interface.admin.status", "SD-WAN interface administrative status.", "1", up, withAttr(attrs, "sdwan.status", admin))
 	}
-	recordSDWANInt(rb, obj, "speed", "cisco.interface.speed", "SD-WAN interface speed.", "bit/s", attrs, "speed-mbps", "speedMbps", "speed")
-	recordSDWANDouble(rb, obj, "rx-bytes", "system.network.io", "SD-WAN interface received bytes.", "By", withAttr(attrs, "network.io.direction", "receive"), "rx-kbps", "rx-bytes", "rxBytes", "rx_octets")
-	recordSDWANDouble(rb, obj, "tx-bytes", "system.network.io", "SD-WAN interface transmitted bytes.", "By", withAttr(attrs, "network.io.direction", "transmit"), "tx-kbps", "tx-bytes", "txBytes", "tx_octets")
-	recordSDWANDouble(rb, obj, "rx-errors", "system.network.errors", "SD-WAN interface receive errors.", "{error}", withAttr(attrs, "network.io.direction", "receive"), "rx-errors", "rxErrors", "rx_errors")
-	recordSDWANDouble(rb, obj, "tx-errors", "system.network.errors", "SD-WAN interface transmit errors.", "{error}", withAttr(attrs, "network.io.direction", "transmit"), "tx-errors", "txErrors", "tx_errors")
-	recordSDWANDouble(rb, obj, "rx-drops", "system.network.packet.dropped", "SD-WAN interface receive drops.", "{packet}", withAttr(attrs, "network.io.direction", "receive"), "rx-drops", "rxDrops", "rx_drops")
-	recordSDWANDouble(rb, obj, "tx-drops", "system.network.packet.dropped", "SD-WAN interface transmit drops.", "{packet}", withAttr(attrs, "network.io.direction", "transmit"), "tx-drops", "txDrops", "tx_drops")
+	recordSDWANInterfaceSpeed(rb, obj, attrs)
+	recordSDWANInterfaceRate(rb, obj, "rx-kbps", withAttr(attrs, "network.io.direction", "receive"), "rx-kbps", "rxKbps")
+	recordSDWANInterfaceRate(rb, obj, "tx-kbps", withAttr(attrs, "network.io.direction", "transmit"), "tx-kbps", "txKbps")
+	recordSDWANAbsoluteSumInt(rb, obj, "rx-bytes", "system.network.io", "SD-WAN interface received bytes.", "By", withAttr(attrs, "network.io.direction", "receive"), "rx-bytes", "rxBytes", "rx_octets")
+	recordSDWANAbsoluteSumInt(rb, obj, "tx-bytes", "system.network.io", "SD-WAN interface transmitted bytes.", "By", withAttr(attrs, "network.io.direction", "transmit"), "tx-bytes", "txBytes", "tx_octets")
+	recordSDWANAbsoluteSumInt(rb, obj, "rx-packets", "system.network.packet.count", "SD-WAN interface received packets.", "{packet}", withAttr(attrs, "network.io.direction", "receive"), "rx-packets", "rxPackets", "rx-pkts", "rxPkts", "rx_pkts", "rx_packets")
+	recordSDWANAbsoluteSumInt(rb, obj, "tx-packets", "system.network.packet.count", "SD-WAN interface transmitted packets.", "{packet}", withAttr(attrs, "network.io.direction", "transmit"), "tx-packets", "txPackets", "tx-pkts", "txPkts", "tx_pkts", "tx_packets")
+	recordSDWANAbsoluteSumInt(rb, obj, "rx-errors", "system.network.errors", "SD-WAN interface receive errors.", "{error}", withAttr(attrs, "network.io.direction", "receive"), "rx-errors", "rxErrors", "rx_errors")
+	recordSDWANAbsoluteSumInt(rb, obj, "tx-errors", "system.network.errors", "SD-WAN interface transmit errors.", "{error}", withAttr(attrs, "network.io.direction", "transmit"), "tx-errors", "txErrors", "tx_errors")
+	recordSDWANAbsoluteSumInt(rb, obj, "rx-drops", "system.network.packet.dropped", "SD-WAN interface receive drops.", "{packet}", withAttr(attrs, "network.io.direction", "receive"), "rx-drops", "rxDrops", "rx_drops")
+	recordSDWANAbsoluteSumInt(rb, obj, "tx-drops", "system.network.packet.dropped", "SD-WAN interface transmit drops.", "{packet}", withAttr(attrs, "network.io.direction", "transmit"), "tx-drops", "txDrops", "tx_drops")
 }
 
 func (r *sdwanMetricsReceiver) recordGenericObject(builder *sdwanMetricsBuilder, device, obj sdwan.Object, spec sdwanEndpointSpec) {
@@ -488,12 +581,14 @@ func (r *sdwanMetricsReceiver) recordGenericObject(builder *sdwanMetricsBuilder,
 	attrs := sdwanPathAttrs(device, obj)
 	putNonEmpty(attrs, "sdwan.collection.group", spec.group)
 	putNonEmpty(attrs, "sdwan.collection.operation", spec.operation)
-	status := firstNonEmpty(sdwan.String(obj, "status", "state", "oper-status", "operState"), "present")
-	rb.recordInt("sdwan.resource.status", "SD-WAN resource status from an opt-in collection group.", "1", statusCode(status), withAttr(attrs, "sdwan.status", status))
+	status := sdwan.String(obj, "status", "state", "oper-status", "operState")
+	if code, ok := statusCode(status); ok {
+		rb.recordInt("sdwan.resource.status", "SD-WAN resource status from an opt-in collection group.", "1", code, withAttr(attrs, "sdwan.status", status))
+	}
 	builder.addCount("sdwan.collection.object.count", compactAttrs(map[string]string{
 		"sdwan.collection.group":     spec.group,
 		"sdwan.collection.operation": spec.operation,
-		"sdwan.status":               status,
+		"sdwan.status":               firstNonEmpty(status, "present"),
 	}), 1)
 }
 
@@ -516,7 +611,9 @@ func (r *sdwanMetricsReceiver) requestStats() []sdwan.RequestStat {
 }
 
 func (r *sdwanMetricsReceiver) recordAPIRequestMetrics(builder *sdwanMetricsBuilder) {
-	for _, stat := range r.requestStats() {
+	stats := r.requestStats()
+	observations := make([]apiRequestObservation, 0, len(stats))
+	for _, stat := range stats {
 		attrs := map[string]string{
 			"sdwan.api.operation": stat.Operation,
 			"http.request.method": stat.Method,
@@ -526,13 +623,16 @@ func (r *sdwanMetricsReceiver) recordAPIRequestMetrics(builder *sdwanMetricsBuil
 		if stat.StatusCode > 0 {
 			attrs["http.response.status_code"] = strconv.Itoa(stat.StatusCode)
 		}
+		observations = append(observations, apiRequestObservation{attrs: attrs, durationSeconds: stat.Duration.Seconds(), failed: stat.Outcome != "success", rateLimited: stat.RateLimited})
+	}
+	for _, aggregate := range aggregateAPIRequestObservations(observations) {
 		rb := builder.managerResource()
-		rb.recordDouble("sdwan.api.request.duration", "Duration of SD-WAN Manager API requests.", "s", stat.Duration.Seconds(), attrs)
-		if stat.Outcome != "success" {
-			rb.recordSum("sdwan.api.request.errors", "SD-WAN Manager API request errors.", "{error}", 1, attrs)
+		rb.recordDouble("sdwan.api.request.duration", "Average duration of SD-WAN Manager API request attempts in this scrape.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
+		if aggregate.errors > 0 {
+			rb.recordSum("sdwan.api.request.errors", "SD-WAN Manager API request errors.", "{error}", aggregate.errors, aggregate.attrs)
 		}
-		if stat.RateLimited {
-			rb.recordSum("sdwan.api.rate_limited", "SD-WAN Manager API requests that were rate limited.", "{request}", 1, attrs)
+		if aggregate.rateLimited > 0 {
+			rb.recordSum("sdwan.api.rate_limited", "SD-WAN Manager API requests that were rate limited.", "{request}", aggregate.rateLimited, aggregate.attrs)
 		}
 	}
 }
@@ -586,27 +686,39 @@ func (r *sdwanLogsReceiver) collect(ctx context.Context) {
 	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 
+	r.seen.BeginBatch()
 	obsCtx := startLogsOp(r.obs, ctx)
-	ld, err := r.scrape(scrapeCtx)
-	if err != nil {
-		r.settings.Logger.Error("SD-WAN logs scrape failed", zap.Error(err))
-		endLogsOp(r.obs, obsCtx, ld, err)
-		return
+	ld, scrapeErr := r.scrape(scrapeCtx)
+	if scrapeErr != nil {
+		r.settings.Logger.Error("SD-WAN logs scrape failed", zap.Error(scrapeErr))
 	}
-	if ld.LogRecordCount() == 0 {
-		endLogsOp(r.obs, obsCtx, ld, nil)
-		return
-	}
-	consumeErr := r.consumer.ConsumeLogs(ctx, ld)
-	endLogsOp(r.obs, obsCtx, ld, consumeErr)
+	logCount, consumeErr := consumeDeduplicatedLogs(ctx, r.consumer, r.seen, ld)
 	if consumeErr != nil {
 		r.settings.Logger.Error("SD-WAN logs consumer failed", zap.Error(consumeErr))
 	}
+	endLogsOp(r.obs, obsCtx, logCount, combineSignalErrors(scrapeErr, consumeErr))
 }
 
 func (r *sdwanLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 	now := time.Now()
 	builder := newSDWANLogsBuilder(now, r.config.SDWAN.Endpoint)
+	var endpointErrors []error
+	selector := newDeviceSelectionMatcher(r.config.DeviceSelection)
+	targets := newSDWANTargetMatcher(r.config.SDWAN.Targets)
+	inventory := sdwanDeviceIndex{}
+	if !selector.empty() || targets.hasAny() {
+		devices, err := r.client.List(ctx, "logs.filter_inventory", "/device", nil, r.config.SDWAN.Inventory.MaxResults)
+		if err != nil {
+			if ctx.Err() != nil {
+				return builder.emit(), ctx.Err()
+			}
+			r.settings.Logger.Warn("SD-WAN logs filter inventory endpoint failed", zap.Error(err))
+			endpointErrors = append(endpointErrors, fmt.Errorf("SD-WAN filter inventory: %w", err))
+		}
+		for _, device := range devices {
+			inventory.add(device)
+		}
+	}
 	for _, endpoint := range []struct {
 		enabled bool
 		name    string
@@ -622,13 +734,26 @@ func (r *sdwanLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 		}
 		objects, err := r.client.PostQuery(ctx, "logs."+endpoint.name, endpoint.path, sdwanLookbackQuery(r.config.SDWAN.EventLookback, endpoint.group.MaxResults), endpoint.group.MaxResults)
 		if err != nil {
-			objects, err = r.client.List(ctx, "logs."+endpoint.name+".get", endpoint.path, nil, endpoint.group.MaxResults)
+			if ctx.Err() != nil {
+				return builder.emit(), ctx.Err()
+			}
+			// Preserve a valid POST prefix on later-page failures. Fall back to
+			// GET only when POST did not return any usable objects.
+			if len(objects) == 0 {
+				objects, err = r.client.List(ctx, "logs."+endpoint.name+".get", endpoint.path, nil, endpoint.group.MaxResults)
+				if ctx.Err() != nil {
+					return builder.emit(), ctx.Err()
+				}
+			}
 			if err != nil {
 				r.settings.Logger.Warn("SD-WAN logs endpoint failed", zap.String("endpoint", endpoint.name), zap.Error(err))
-				continue
+				endpointErrors = append(endpointErrors, fmt.Errorf("SD-WAN %s: %w", endpoint.name, err))
 			}
 		}
 		for _, obj := range objects {
+			if !sdwanEventAllowed(obj, inventory, selector, targets) {
+				continue
+			}
 			if r.seenBefore(endpoint.name, obj, now) {
 				continue
 			}
@@ -636,22 +761,13 @@ func (r *sdwanLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 		}
 	}
 	r.expireSeen(now)
-	return builder.emit(), nil
+	return builder.emit(), errors.Join(endpointErrors...)
 }
 
 func (r *sdwanLogsReceiver) seenBefore(endpoint string, obj sdwan.Object, now time.Time) bool {
-	key := endpoint + ":" + firstNonEmpty(
-		sdwan.String(obj, "uuid", "id", "eventId", "event-id", "entry_uuid", "entryUuid"),
-		sdwan.String(obj, "entry_time", "entryTime", "timestamp", "time"),
-		fmt.Sprint(obj),
-	)
-	r.seenMu.Lock()
-	defer r.seenMu.Unlock()
-	if _, ok := r.seen[key]; ok {
-		return true
-	}
-	r.seen[key] = now
-	return false
+	stableID := sdwan.String(obj, "uuid", "id", "eventId", "event-id", "entry_uuid", "entryUuid")
+	key := logDedupKey(endpoint, stableID, obj)
+	return !r.seen.MarkPending(key, now)
 }
 
 func (r *sdwanLogsReceiver) expireSeen(now time.Time) {
@@ -659,25 +775,21 @@ func (r *sdwanLogsReceiver) expireSeen(now time.Time) {
 	if ttl <= 0 {
 		ttl = 48 * time.Hour
 	}
-	r.seenMu.Lock()
-	defer r.seenMu.Unlock()
-	for key, seenAt := range r.seen {
-		if now.Sub(seenAt) > ttl {
-			delete(r.seen, key)
-		}
-	}
+	r.seen.Expire(now.Add(-ttl), 0)
 }
 
 type sdwanMetricsBuilder struct {
-	metrics    pmetric.Metrics
-	now        pcommon.Timestamp
-	start      pcommon.Timestamp
-	resources  map[string]*resourceMetricsBuilder
-	devices    map[string]sdwan.Object
-	deviceKeys []string
-	counts     map[string]*sdwanCount
-	endpoint   string
-	counters   *counterStore
+	metrics         pmetric.Metrics
+	now             pcommon.Timestamp
+	start           pcommon.Timestamp
+	resources       map[string]*resourceMetricsBuilder
+	devices         map[string]sdwan.Object
+	deviceKeys      []string
+	inventory       sdwanDeviceIndex
+	inventoryLoaded bool
+	counts          map[string]*sdwanCount
+	endpoint        string
+	counters        *counterStore
 }
 
 func newSDWANMetricsBuilder(now time.Time, endpoint string, counters *counterStore) *sdwanMetricsBuilder {
@@ -688,9 +800,10 @@ func newSDWANMetricsBuilder(now time.Time, endpoint string, counters *counterSto
 	return &sdwanMetricsBuilder{
 		metrics:   pmetric.NewMetrics(),
 		now:       ts,
-		start:     ts,
+		start:     pcommon.NewTimestampFromTime(counters.StartTime()),
 		resources: map[string]*resourceMetricsBuilder{},
 		devices:   map[string]sdwan.Object{},
+		inventory: sdwanDeviceIndex{},
 		counts:    map[string]*sdwanCount{},
 		endpoint:  endpoint,
 		counters:  counters,
@@ -719,7 +832,7 @@ func (b *sdwanMetricsBuilder) deviceResource(device sdwan.Object) *resourceMetri
 	attrs := rb.resource.Attributes()
 	putStr(attrs, "host.id", hostID)
 	putStr(attrs, "host.name", firstNonEmpty(sdwanHostName(device), hostID))
-	putStr(attrs, "host.ip", firstNonEmpty(sdwanSystemIP(device), sdwan.String(device, "managementIp", "mgmt-ip", "local-system-ip")))
+	putIPAttrs(attrs, "host.ip", sdwanSystemIP(device), sdwan.String(device, "managementIp"), sdwan.String(device, "mgmt-ip"), sdwan.String(device, "local-system-ip"))
 	putStr(attrs, "host.type", firstNonEmpty(sdwanDeviceModel(device), sdwanDeviceType(device)))
 	putStr(attrs, "hw.type", "network")
 	putStr(attrs, "os.name", sdwanOSName(device))
@@ -743,10 +856,24 @@ func (b *sdwanMetricsBuilder) recordManagerObject(operation string, obj sdwan.Ob
 	rb := b.managerResource()
 	rb.recordInt("sdwan.manager.endpoint.status", "SD-WAN Manager endpoint family returned data.", "1", 1, map[string]string{"sdwan.api.operation": operation})
 	for key, metric := range map[string]string{
-		"cpuLoad":        "system.cpu.utilization",
-		"cpu-load":       "system.cpu.utilization",
-		"memUsage":       "system.memory.utilization",
-		"mem-usage":      "system.memory.utilization",
+		"cpuLoad":   "system.cpu.utilization",
+		"cpu-load":  "system.cpu.utilization",
+		"memUsage":  "system.memory.utilization",
+		"mem-usage": "system.memory.utilization",
+	} {
+		if value, ok := sdwan.Number(obj, key); ok {
+			if ratio, valid := sdwanPercentRatio(value); valid {
+				attrs := map[string]string{"sdwan.api.operation": operation, "sdwan.manager.field": key}
+				if metric == "system.cpu.utilization" {
+					attrs["cpu.mode"] = "total"
+				} else {
+					attrs["system.memory.state"] = "used"
+				}
+				rb.recordDouble(metric, "SD-WAN Manager resource utilization as a ratio from 0 to 1.", "1", ratio, attrs)
+			}
+		}
+	}
+	for key, metric := range map[string]string{
 		"clusterHealth":  "sdwan.manager.health.score",
 		"cluster-health": "sdwan.manager.health.score",
 		"vmanageHealth":  "sdwan.manager.health.score",
@@ -756,11 +883,14 @@ func (b *sdwanMetricsBuilder) recordManagerObject(operation string, obj sdwan.Ob
 			rb.recordDouble(metric, "SD-WAN Manager health or resource value.", "1", value, map[string]string{"sdwan.api.operation": operation, "sdwan.manager.field": key})
 		}
 	}
-	state := firstNonEmpty(sdwan.String(obj, "status", "state", "health", "clusterStatus"), "present")
-	rb.recordInt("sdwan.manager.status", "SD-WAN Manager status.", "1", statusCode(state), map[string]string{"sdwan.status": state, "sdwan.api.operation": operation})
+	state := sdwan.String(obj, "status", "state", "health", "clusterStatus")
+	if code, ok := statusCode(state); ok {
+		rb.recordInt("sdwan.manager.status", "SD-WAN Manager status.", "1", code, map[string]string{"sdwan.status": state, "sdwan.api.operation": operation})
+	}
 }
 
 func (b *sdwanMetricsBuilder) recordDevice(device sdwan.Object) {
+	b.inventory.add(device)
 	for _, key := range []string{sdwanSystemIP(device), sdwan.String(device, "uuid", "deviceId"), sdwanSerial(device), sdwanHostName(device)} {
 		if key != "" {
 			if _, exists := b.devices[key]; !exists {
@@ -775,17 +905,25 @@ func (b *sdwanMetricsBuilder) recordDevice(device sdwan.Object) {
 		"sdwan.status":        sdwanDeviceStatus(device),
 	})
 	rb.recordInt("sdwan.resource.info", "SD-WAN resource identity information.", "1", 1, attrs)
-	rb.recordInt("sdwan.resource.status", "SD-WAN resource status.", "1", statusCode(sdwanDeviceStatus(device)), attrs)
-	rb.recordInt("sdwan.device.reachability.status", "SD-WAN device reachability status.", "1", upStatus(sdwan.String(device, "reachability", "reachabilityStatus", "status")), attrs)
-	rb.recordInt("cisco.device.up", "Device availability reported by SD-WAN Manager.", "1", upStatus(sdwan.String(device, "reachability", "reachabilityStatus", "status")), attrs)
+	if code, ok := statusCode(sdwanDeviceStatus(device)); ok {
+		rb.recordInt("sdwan.resource.status", "SD-WAN resource status.", "1", code, attrs)
+	}
+	if up, ok := upStatus(sdwan.String(device, "reachability", "reachabilityStatus", "status")); ok {
+		rb.recordInt("sdwan.device.reachability.status", "SD-WAN device reachability status.", "1", up, attrs)
+		rb.recordInt("cisco.device.up", "Device availability reported by SD-WAN Manager.", "1", up, attrs)
+	}
 	if validity := sdwan.String(device, "validity", "validity-status", "validityStatus"); validity != "" {
-		rb.recordInt("sdwan.device.validity.status", "SD-WAN device validity status.", "1", statusCode(validity), withAttr(attrs, "sdwan.validity", validity))
+		if code, ok := statusCode(validity); ok {
+			rb.recordInt("sdwan.device.validity.status", "SD-WAN device validity status.", "1", code, withAttr(attrs, "sdwan.validity", validity))
+		}
 	}
 	if cert := sdwan.String(device, "certificateValidity", "certificate-validity", "cert-validity"); cert != "" {
-		rb.recordInt("sdwan.device.certificate.status", "SD-WAN device certificate status.", "1", statusCode(cert), withAttr(attrs, "sdwan.certificate.validity", cert))
+		if code, ok := statusCode(cert); ok {
+			rb.recordInt("sdwan.device.certificate.status", "SD-WAN device certificate status.", "1", code, withAttr(attrs, "sdwan.certificate.validity", cert))
+		}
 	}
-	recordSDWANDouble(rb, device, "cpu", "system.cpu.utilization", "SD-WAN device CPU utilization.", "1", attrs, "cpuLoad", "cpu-load", "cpuUtilization", "cpu")
-	recordSDWANDouble(rb, device, "memory", "system.memory.utilization", "SD-WAN device memory utilization.", "1", attrs, "memUsage", "mem-usage", "memoryUtilization", "memory")
+	recordSDWANPercentRatio(rb, device, "cpu", "system.cpu.utilization", "SD-WAN device CPU utilization as a ratio from 0 to 1.", withAttr(attrs, "cpu.mode", "total"), "cpuLoad", "cpu-load", "cpuUtilization", "cpu")
+	recordSDWANPercentRatio(rb, device, "memory", "system.memory.utilization", "SD-WAN device memory utilization as a ratio from 0 to 1.", withAttr(attrs, "system.memory.state", "used"), "memUsage", "mem-usage", "memoryUtilization", "memory")
 	recordSDWANInt(rb, device, "uptime", "system.uptime", "SD-WAN device uptime.", "s", attrs, "uptime-date", "uptimeSeconds", "upTime")
 	b.addCount("sdwan.inventory.device.count", compactAttrs(map[string]string{
 		"sdwan.personality":  sdwanPersonality(device),
@@ -820,12 +958,13 @@ func (b *sdwanMetricsBuilder) resource(key string) *resourceMetricsBuilder {
 	sm := rm.ScopeMetrics().AppendEmpty()
 	sm.Scope().SetName(sdwanScopeName)
 	rb := &resourceMetricsBuilder{
-		resource: rm.Resource(),
-		scope:    sm,
-		metrics:  map[string]pmetric.Metric{},
-		now:      b.now,
-		start:    b.start,
-		counters: b.counters,
+		resource:         rm.Resource(),
+		scope:            sm,
+		metrics:          map[string]pmetric.Metric{},
+		now:              b.now,
+		start:            b.start,
+		counterNamespace: key,
+		counters:         b.counters,
 	}
 	b.resources[key] = rb
 	return rb
@@ -905,7 +1044,7 @@ func (b *sdwanLogsBuilder) emit() plog.Logs {
 func (b *sdwanLogsBuilder) appendEvent(name string, obj sdwan.Object) {
 	sl := b.scope("manager")
 	lr := sl.LogRecords().AppendEmpty()
-	lr.SetTimestamp(sdwanLogTimestamp(obj, b.now))
+	lr.SetTimestamp(sdwanLogTimestamp(obj))
 	lr.SetObservedTimestamp(b.now)
 	severity := firstNonEmpty(sdwan.String(obj, "severity", "severity_level", "severityLevel"), "info")
 	lr.SetSeverityNumber(logSeverityNumber(severity))
@@ -957,6 +1096,47 @@ type sdwanTargetMatcher struct {
 	applicationFamilies map[string]struct{}
 	cloudProviders      map[string]struct{}
 	serviceTypes        map[string]struct{}
+}
+
+type sdwanDeviceIndex map[string]sdwan.Object
+
+func (idx sdwanDeviceIndex) add(device sdwan.Object) {
+	for _, key := range sdwanDeviceLookupKeys(device) {
+		idx[key] = device
+	}
+}
+
+func (idx sdwanDeviceIndex) enrich(obj sdwan.Object) (sdwan.Object, bool) {
+	for _, key := range sdwanDeviceLookupKeys(obj) {
+		device, ok := idx[key]
+		if !ok {
+			continue
+		}
+		merged := make(sdwan.Object, len(device)+len(obj))
+		for field, value := range device {
+			merged[field] = value
+		}
+		for field, value := range obj {
+			merged[field] = value
+		}
+		return merged, true
+	}
+	return obj, false
+}
+
+func sdwanDeviceLookupKeys(obj sdwan.Object) []string {
+	keys := make([]string, 0, 4)
+	add := func(kind, value string) {
+		value = normalizeSelectorText(value)
+		if value != "" {
+			keys = append(keys, kind+":"+value)
+		}
+	}
+	add("ip", sdwanSystemIP(obj))
+	add("uuid", sdwan.String(obj, "uuid", "deviceId"))
+	add("serial", sdwanSerial(obj))
+	add("host", sdwanHostName(obj))
+	return keys
 }
 
 func newSDWANTargetMatcher(cfg SDWANTargetFilters) sdwanTargetMatcher {
@@ -1014,6 +1194,51 @@ func (m sdwanTargetMatcher) allowsApplicationPath(obj sdwan.Object) bool {
 	return m.allowsPath(obj) &&
 		targetMatch(m.applications, []string{sdwan.String(obj, "application", "app", "app-name", "appName")}, normalizeSelectorText) &&
 		targetMatch(m.applicationFamilies, []string{sdwan.String(obj, "application-family", "applicationFamily", "app-family", "appFamily")}, normalizeSelectorText)
+}
+
+func (m sdwanTargetMatcher) allowsEvent(obj sdwan.Object) bool {
+	return m.allowsDevice(obj) &&
+		targetMatch(m.colors, []string{
+			sdwan.String(obj, "color", "local-color", "localColor"),
+			sdwan.String(obj, "remote-color", "remoteColor"),
+		}, normalizeSelectorText) &&
+		targetMatch(m.interfaceNames, []string{sdwan.String(obj, "ifname", "interface", "interfaceName", "name", "if-name")}, normalizeSelectorText) &&
+		targetMatch(m.vpnIDs, []string{sdwan.String(obj, "vpn-id", "vpnId", "vpn")}, normalizeSelectorText) &&
+		targetMatch(m.applications, []string{sdwan.String(obj, "application", "app", "app-name", "appName")}, normalizeSelectorText) &&
+		targetMatch(m.applicationFamilies, []string{sdwan.String(obj, "application-family", "applicationFamily", "app-family", "appFamily")}, normalizeSelectorText) &&
+		targetMatch(m.cloudProviders, []string{sdwan.String(obj, "cloud-provider", "cloudProvider", "provider")}, normalizeSelectorText) &&
+		targetMatch(m.serviceTypes, []string{sdwan.String(obj, "service-type", "serviceType", "service")}, normalizeSelectorText)
+}
+
+func sdwanEventAllowed(obj sdwan.Object, inventory sdwanDeviceIndex, selector deviceSelectionMatcher, targets sdwanTargetMatcher) bool {
+	enriched, matchedInventory := inventory.enrich(obj)
+	if !targets.allowsEvent(enriched) {
+		return false
+	}
+	if selector.empty() {
+		return true
+	}
+	// Event records commonly contain only a system IP. Requiring inventory
+	// enrichment before evaluating shared filters prevents a serial, host-name,
+	// or device-ID exclusion from being bypassed by that reduced event shape.
+	if !matchedInventory {
+		return false
+	}
+	return selector.allows(sdwanEventIdentity(enriched))
+}
+
+func sdwanEventIdentity(obj sdwan.Object) deviceIdentity {
+	serial := sdwanSerial(obj)
+	systemIP := sdwanSystemIP(obj)
+	uuid := sdwan.String(obj, "uuid", "deviceId")
+	siteID := sdwanSiteID(obj)
+	return deviceIdentity{
+		hostNames: []string{sdwanHostName(obj)},
+		hostIDs:   []string{serial, uuid, systemIP, siteID},
+		hostIPs:   []string{systemIP, sdwan.String(obj, "managementIp", "mgmt-ip", "local-system-ip")},
+		serials:   []string{serial},
+		deviceIDs: []string{uuid, systemIP, siteID, sdwanDeviceModel(obj), sdwanPersonality(obj)},
+	}
 }
 
 func targetMatch(set map[string]struct{}, values []string, normalize func(string) string) bool {
@@ -1136,6 +1361,10 @@ func sdwanLookbackQuery(lookback time.Duration, maxResults int) map[string]any {
 	}
 }
 
+func sdwanEventGroupsEnabled(cfg SDWANConfig) bool {
+	return cfg.Alarms.Enabled || cfg.Events.Enabled || cfg.Audit.Enabled
+}
+
 func sdwanPathAttrs(device, obj sdwan.Object) map[string]string {
 	return compactAttrs(map[string]string{
 		"sdwan.system_ip":        sdwanSystemIP(device),
@@ -1181,7 +1410,7 @@ func sdwanDeviceModel(obj sdwan.Object) string {
 }
 
 func sdwanDeviceStatus(obj sdwan.Object) string {
-	return firstNonEmpty(sdwan.String(obj, "status", "state", "reachability", "reachabilityStatus"), "present")
+	return sdwan.String(obj, "status", "state", "reachability", "reachabilityStatus")
 }
 
 func sdwanOSName(obj sdwan.Object) string {
@@ -1206,12 +1435,78 @@ func recordSDWANDouble(rb *resourceMetricsBuilder, obj sdwan.Object, field, name
 	rb.recordDouble(name, description, unit, value, withAttr(attrs, "sdwan.field", field))
 }
 
+func recordSDWANAbsoluteSumInt(rb *resourceMetricsBuilder, obj sdwan.Object, field, name, description, unit string, attrs map[string]string, keys ...string) {
+	value, ok := sdwan.Int(obj, keys...)
+	if !ok || value < 0 {
+		return
+	}
+	rb.recordAbsoluteSumInt(name, description, unit, value, withAttr(attrs, "sdwan.field", field))
+}
+
 func recordSDWANInt(rb *resourceMetricsBuilder, obj sdwan.Object, field, name, description, unit string, attrs map[string]string, keys ...string) {
 	value, ok := sdwan.Int(obj, keys...)
 	if !ok {
 		return
 	}
 	rb.recordInt(name, description, unit, value, withAttr(attrs, "sdwan.field", field))
+}
+
+func recordSDWANPercentRatio(rb *resourceMetricsBuilder, obj sdwan.Object, field, name, description string, attrs map[string]string, keys ...string) {
+	value, ok := sdwan.Number(obj, keys...)
+	if !ok {
+		return
+	}
+	ratio, ok := sdwanPercentRatio(value)
+	if !ok {
+		return
+	}
+	rb.recordDouble(name, description, "1", ratio, withAttr(attrs, "sdwan.field", field))
+}
+
+func sdwanPercentRatio(value float64) (float64, bool) {
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 100 {
+		return 0, false
+	}
+	if value <= 1 {
+		return value, true
+	}
+	return value / 100, true
+}
+
+func recordSDWANInterfaceSpeed(rb *resourceMetricsBuilder, obj sdwan.Object, attrs map[string]string) {
+	const bitsPerMegabit = int64(1_000_000)
+	if speedMbps, ok := sdwan.Int(obj, "speed-mbps", "speedMbps"); ok && speedMbps >= 0 && speedMbps <= math.MaxInt64/bitsPerMegabit {
+		rb.recordInt("cisco.interface.speed", "SD-WAN interface speed.", "bit/s", speedMbps*bitsPerMegabit, withAttr(attrs, "sdwan.field", "speed-mbps"))
+		return
+	}
+	if speedMbps, ok := sdwan.Number(obj, "speed-mbps", "speedMbps"); ok && speedMbps >= 0 && !math.IsNaN(speedMbps) && !math.IsInf(speedMbps, 0) {
+		speedBits := speedMbps * float64(bitsPerMegabit)
+		if !math.IsInf(speedBits, 0) {
+			rb.recordDouble("cisco.interface.speed", "SD-WAN interface speed.", "bit/s", speedBits, withAttr(attrs, "sdwan.field", "speed-mbps"))
+			return
+		}
+	}
+	recordSDWANInt(rb, obj, "speed", "cisco.interface.speed", "SD-WAN interface speed.", "bit/s", attrs, "speed")
+}
+
+func recordSDWANInterfaceRate(rb *resourceMetricsBuilder, obj sdwan.Object, field string, attrs map[string]string, keys ...string) {
+	value, ok := sdwan.Number(obj, keys...)
+	if !ok || value < 0 || math.IsNaN(value) || math.IsInf(value, 0) {
+		return
+	}
+	rate := value * 1000
+	if math.IsInf(rate, 0) {
+		return
+	}
+	rb.recordDouble("cisco.interface.io.rate", "SD-WAN interface traffic rate.", "bit/s", rate, withAttr(attrs, "sdwan.field", field))
+}
+
+func (rb *resourceMetricsBuilder) recordAbsoluteSumInt(name, description, unit string, value int64, attrs map[string]string) {
+	dp := rb.sumMetric(name, description, unit).Sum().DataPoints().AppendEmpty()
+	dp.SetTimestamp(rb.now)
+	dp.SetStartTimestamp(rb.start)
+	dp.SetIntValue(value)
+	putAttrs(dp.Attributes(), attrs)
 }
 
 func sdwanCountDescription(name string) string {
@@ -1242,23 +1537,31 @@ func sanitizeError(err error) string {
 	return msg
 }
 
-func sdwanLogTimestamp(obj sdwan.Object, fallback pcommon.Timestamp) pcommon.Timestamp {
+func sdwanLogTimestamp(obj sdwan.Object) pcommon.Timestamp {
 	for _, key := range []string{"entry_time", "entryTime", "timestamp", "time", "createTime", "eventTime"} {
 		raw := sdwan.String(obj, key)
 		if raw == "" {
 			continue
 		}
 		if parsed, err := strconv.ParseInt(raw, 10, 64); err == nil {
+			var candidate time.Time
 			if parsed > 1_000_000_000_000 {
-				return pcommon.NewTimestampFromTime(time.UnixMilli(parsed))
+				candidate = time.UnixMilli(parsed)
+			} else {
+				candidate = time.Unix(parsed, 0)
 			}
-			return pcommon.NewTimestampFromTime(time.Unix(parsed, 0))
+			if timestamp, valid := pdataTimestampFromTime(candidate); valid {
+				return timestamp
+			}
+			continue
 		}
 		if ts, err := time.Parse(time.RFC3339, raw); err == nil {
-			return pcommon.NewTimestampFromTime(ts)
+			if timestamp, valid := pdataTimestampFromTime(ts); valid {
+				return timestamp
+			}
 		}
 	}
-	return fallback
+	return 0
 }
 
 func putSDWANLogObject(target pcommon.Map, obj sdwan.Object) {

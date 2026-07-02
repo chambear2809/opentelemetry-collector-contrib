@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/collector/receiver/receivertest"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/nexusdashboard"
 )
 
 func TestNexusDashboardScrapeEmitsTroubleshootingMetrics(t *testing.T) {
@@ -163,6 +164,18 @@ func TestNexusDashboardCatalogCoversTroubleshootingDomains(t *testing.T) {
 	} {
 		assert.True(t, operations[operation], "missing Nexus Dashboard operation %q", operation)
 	}
+}
+
+func TestNexusDashboardFabricHealthUsesFirstPresentSynonym(t *testing.T) {
+	builder := newNexusDashboardMetricsBuilder(time.Now(), "test", nil)
+	builder.recordNDFCObject(builder.controllerResource(), nexusdashboard.Object{
+		"health":      float64(92),
+		"healthScore": float64(71),
+	}, "")
+
+	metric := requireMetricByName(t, builder.emit(), "nexus_dashboard.fabric.health")
+	require.Equal(t, 1, metric.Gauge().DataPoints().Len())
+	assert.Equal(t, float64(92), metric.Gauge().DataPoints().At(0).DoubleValue())
 }
 
 func newTestNexusDashboardMetricsReceiver(t *testing.T, endpoint string) *nexusDashboardMetricsReceiver {

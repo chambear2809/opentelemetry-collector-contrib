@@ -41,3 +41,8 @@ componentOverrides:
     configName: 'WindowsLogConfig'
   connector/signaltometrics:
     configName: 'config.Config'
+  receiver/cisco_os:
+    factoryMaps:
+      - property: scrapers
+        factoriesVar: scraperFactories
+        description: Map of scrapers to be run, keyed by scraper type.

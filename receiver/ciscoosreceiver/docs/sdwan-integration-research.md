@@ -54,8 +54,6 @@ receivers:
         username: ${env:SDWAN_MANAGER_USERNAME}
         password: ${env:SDWAN_MANAGER_PASSWORD}
       event_lookback: 24h
-      statistics_lookback: 30m
-      realtime_lookback: 5m
       targets:
         site_ids: []
         system_ips: []
@@ -151,7 +149,7 @@ Core API and scrape metrics:
 
 | Metric | Unit | Purpose |
 | --- | --- | --- |
-| `sdwan.api.request.duration` | `s` | Duration by operation, method, outcome, path family, status code. |
+| `sdwan.api.request.duration` | `s` | Per-scrape average duration for each matching operation, method, outcome, path-family, and status-code attribute set. |
 | `sdwan.api.request.errors` | `{error}` | API/auth/permission/timeout/parse failures. |
 | `sdwan.api.rate_limited` | `{request}` | HTTP 429 pressure. |
 | `sdwan.scrape.partial_success` | `1` | One or more endpoint families failed or were skipped. |

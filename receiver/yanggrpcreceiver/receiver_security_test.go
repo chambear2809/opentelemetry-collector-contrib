@@ -1,0 +1,292 @@
+// Copyright The OpenTelemetry Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package yanggrpcreceiver
+
+import (
+	"context"
+	"errors"
+	"io"
+	"net"
+	"path/filepath"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/component/componenttest"
+	"go.opentelemetry.io/collector/confmap"
+	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/consumer/consumertest"
+	"go.opentelemetry.io/collector/pdata/pmetric"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+
+	pb "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/yanggrpcreceiver/internal/proto/generated/proto"
+)
+
+func TestReceiverStreamSecurityInterceptor(t *testing.T) {
+	tests := []struct {
+		name           string
+		allowedClients []string
+		wantCode       codes.Code
+	}{
+		{
+			name:           "allowed peer",
+			allowedClients: []string{"127.0.0.1"},
+			wantCode:       codes.OK,
+		},
+		{
+			name:           "denied peer",
+			allowedClients: []string{"192.0.2.10"},
+			wantCode:       codes.PermissionDenied,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			endpoint := unusedLocalEndpoint(t)
+			cfg := createDefaultConfig().(*Config)
+			cfg.NetAddr.Endpoint = endpoint
+			cfg.Security.AllowedClients = tt.allowedClients
+
+			rcvr := createMetricsReceiver(t.Context(), createTestSettings(), cfg, consumertest.NewNop())
+			require.NoError(t, rcvr.Start(t.Context(), componenttest.NewNopHost()))
+			t.Cleanup(func() {
+				require.NoError(t, rcvr.Shutdown(context.Background()))
+			})
+
+			conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				require.NoError(t, conn.Close())
+			})
+
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			stream, err := pb.NewGRPCMdtDialoutClient(conn).MdtDialout(ctx)
+			require.NoError(t, err)
+			require.NoError(t, stream.CloseSend())
+			_, err = stream.Recv()
+
+			if tt.wantCode == codes.OK {
+				require.True(t, errors.Is(err, io.EOF), "expected an accepted stream to close normally, got %v", err)
+				return
+			}
+			require.Equal(t, tt.wantCode, status.Code(err))
+		})
+	}
+}
+
+func TestReceiverRateLimitsEachStreamMessage(t *testing.T) {
+	endpoint := unusedLocalEndpoint(t)
+	cfg := createDefaultConfig().(*Config)
+	cfg.NetAddr.Endpoint = endpoint
+	cfg.Security.RateLimiting.Enabled = true
+	cfg.Security.RateLimiting.RequestsPerSecond = 0.000001
+	cfg.Security.RateLimiting.BurstSize = 1
+	rcvr := createMetricsReceiver(t.Context(), createTestSettings(), cfg, consumertest.NewNop())
+	require.NoError(t, rcvr.Start(t.Context(), componenttest.NewNopHost()))
+	t.Cleanup(func() { require.NoError(t, rcvr.Shutdown(context.Background())) })
+
+	conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	stream, err := pb.NewGRPCMdtDialoutClient(conn).MdtDialout(ctx)
+	require.NoError(t, err)
+	payload, err := proto.Marshal(&pb.Telemetry{MsgTimestamp: 1})
+	require.NoError(t, err)
+	require.NoError(t, stream.Send(&pb.MdtDialoutArgs{Data: payload}))
+	require.NoError(t, stream.Send(&pb.MdtDialoutArgs{Data: payload}))
+	require.NoError(t, stream.CloseSend())
+	_, err = stream.Recv()
+	require.Error(t, err)
+	assert.Equal(t, codes.ResourceExhausted, status.Code(err))
+}
+
+func TestReceiverStartFailureCleansUpSecurityAndListener(t *testing.T) {
+	endpoint := unusedLocalEndpoint(t)
+	cfg := createDefaultConfig().(*Config)
+	cfg.NetAddr.Endpoint = endpoint
+	cfg.Security.RateLimiting.Enabled = true
+
+	missingPEM := filepath.Join(t.TempDir(), "missing.pem")
+	tlsConfig := confmap.NewFromStringMap(map[string]any{
+		"tls": map[string]any{
+			"cert_file": missingPEM,
+			"key_file":  missingPEM,
+		},
+	})
+	require.NoError(t, tlsConfig.Unmarshal(cfg))
+
+	rcvr := createMetricsReceiver(t.Context(), createTestSettings(), cfg, consumertest.NewNop())
+	require.Error(t, rcvr.Start(t.Context(), componenttest.NewNopHost()))
+	require.NoError(t, rcvr.Shutdown(context.Background()))
+
+	listener, err := net.Listen("tcp", endpoint)
+	require.NoError(t, err, "failed Start must release the listener")
+	require.NoError(t, listener.Close())
+}
+
+func TestReceiverModuleLoadFailureCleansUpSecurityAndListener(t *testing.T) {
+	endpoint := unusedLocalEndpoint(t)
+	cfg := createDefaultConfig().(*Config)
+	cfg.NetAddr.Endpoint = endpoint
+	cfg.Security.RateLimiting.Enabled = true
+	cfg.YANG.ModulePaths = []string{filepath.Join(t.TempDir(), "missing")}
+
+	rcvr := createMetricsReceiver(t.Context(), createTestSettings(), cfg, consumertest.NewNop())
+	require.ErrorContains(t, rcvr.Start(t.Context(), componenttest.NewNopHost()), "load YANG modules")
+	require.NoError(t, rcvr.Shutdown(context.Background()))
+
+	listener, err := net.Listen("tcp", endpoint)
+	require.NoError(t, err, "failed Start must release the listener")
+	require.NoError(t, listener.Close())
+}
+
+func TestReceiverShutdownDeadlineCancelsActiveStream(t *testing.T) {
+	endpoint := unusedLocalEndpoint(t)
+	cfg := createDefaultConfig().(*Config)
+	cfg.NetAddr.Endpoint = endpoint
+	next := &blockingMetricsConsumer{started: make(chan struct{}), canceled: make(chan struct{})}
+	rcvr := createMetricsReceiver(t.Context(), createTestSettings(), cfg, next)
+	require.NoError(t, rcvr.Start(t.Context(), componenttest.NewNopHost()))
+
+	conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+	stream, err := pb.NewGRPCMdtDialoutClient(conn).MdtDialout(t.Context())
+	require.NoError(t, err)
+	payload, err := proto.Marshal(&pb.Telemetry{MsgTimestamp: 1})
+	require.NoError(t, err)
+	require.NoError(t, stream.Send(&pb.MdtDialoutArgs{Data: payload}))
+
+	select {
+	case <-next.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("telemetry consumer did not start")
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	err = rcvr.Shutdown(shutdownCtx)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	select {
+	case <-next.canceled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("forced shutdown did not cancel the stream consumer context")
+	}
+}
+
+func TestReceiverShutdownDeadlineDoesNotWaitForBlockedDownstream(t *testing.T) {
+	endpoint := unusedLocalEndpoint(t)
+	cfg := createDefaultConfig().(*Config)
+	cfg.NetAddr.Endpoint = endpoint
+	next := &nonCooperativeMetricsConsumer{
+		started:  make(chan struct{}),
+		release:  make(chan struct{}),
+		finished: make(chan struct{}),
+	}
+	t.Cleanup(next.Release)
+	rcvr := createMetricsReceiver(t.Context(), createTestSettings(), cfg, next)
+	require.NoError(t, rcvr.Start(t.Context(), componenttest.NewNopHost()))
+
+	conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+	stream, err := pb.NewGRPCMdtDialoutClient(conn).MdtDialout(t.Context())
+	require.NoError(t, err)
+	payload, err := proto.Marshal(&pb.Telemetry{MsgTimestamp: 1})
+	require.NoError(t, err)
+	require.NoError(t, stream.Send(&pb.MdtDialoutArgs{Data: payload}))
+
+	select {
+	case <-next.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("telemetry consumer did not start")
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	shutdownResult := make(chan error, 1)
+	go func() {
+		shutdownResult <- rcvr.Shutdown(shutdownCtx)
+	}()
+
+	select {
+	case err := <-shutdownResult:
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+	case <-time.After(2 * time.Second):
+		next.Release()
+		select {
+		case <-shutdownResult:
+		case <-time.After(5 * time.Second):
+		}
+		t.Fatal("receiver shutdown remained blocked after its deadline")
+	}
+
+	next.Release()
+	select {
+	case <-next.finished:
+	case <-time.After(5 * time.Second):
+		t.Fatal("blocked downstream consumer did not finish after release")
+	}
+	// Join the graceful-stop goroutine after the intentionally non-cooperative
+	// consumer is released so this test itself leaves no background work behind.
+	require.NoError(t, rcvr.Shutdown(context.Background()))
+}
+
+type blockingMetricsConsumer struct {
+	started  chan struct{}
+	canceled chan struct{}
+}
+
+type nonCooperativeMetricsConsumer struct {
+	started     chan struct{}
+	release     chan struct{}
+	finished    chan struct{}
+	once        sync.Once
+	releaseOnce sync.Once
+}
+
+func (*nonCooperativeMetricsConsumer) Capabilities() consumer.Capabilities {
+	return consumer.Capabilities{MutatesData: false}
+}
+
+func (c *nonCooperativeMetricsConsumer) ConsumeMetrics(context.Context, pmetric.Metrics) error {
+	c.once.Do(func() { close(c.started) })
+	<-c.release
+	close(c.finished)
+	return nil
+}
+
+func (c *nonCooperativeMetricsConsumer) Release() {
+	c.releaseOnce.Do(func() { close(c.release) })
+}
+
+func (*blockingMetricsConsumer) Capabilities() consumer.Capabilities {
+	return consumer.Capabilities{MutatesData: false}
+}
+
+func (c *blockingMetricsConsumer) ConsumeMetrics(ctx context.Context, _ pmetric.Metrics) error {
+	close(c.started)
+	<-ctx.Done()
+	close(c.canceled)
+	return ctx.Err()
+}
+
+func unusedLocalEndpoint(t *testing.T) string {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	endpoint := listener.Addr().String()
+	require.NoError(t, listener.Close())
+	return endpoint
+}

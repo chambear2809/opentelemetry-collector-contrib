@@ -271,7 +271,7 @@ Root `metrics` entries do not affect logs. Several controller platforms emit log
 To control logs:
 
 - omit the receiver from the `logs` pipeline,
-- disable collection groups that produce event logs, such as `sdwan.audit`, `aci.events`, `intersight.audit`, `fmc.audit`, or `fmc.security_events`,
+- disable collection groups that produce event logs, such as `sdwan.audit`, `aci.events`, `intersight.audit`, or `fmc.audit`; disable `fmc.estreamer.enabled` to stop eStreamer event ingestion,
 - use a log processor downstream if an organization needs log-specific filtering.
 
 ## Validation Workflow
