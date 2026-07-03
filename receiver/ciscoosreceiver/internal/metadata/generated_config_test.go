@@ -350,6 +350,318 @@ func TestMetricsBuilderConfig(t *testing.T) {
 	}
 }
 
+func TestCiscoInterfaceAdminStatusMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoInterfaceAdminStatus
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoInterfaceAdminStatusMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.interface.admin.status doesn't have an attribute invalid, valid attributes: [network.interface.name]")
+
+	cfg = DefaultMetricsConfig().CiscoInterfaceAdminStatus
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoInterfaceIoRateMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoInterfaceIoRate
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoInterfaceIoRateMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.interface.io.rate doesn't have an attribute invalid, valid attributes: [network.io.direction, network.interface.name]")
+
+	cfg = DefaultMetricsConfig().CiscoInterfaceIoRate
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoInterfacePacketRateMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoInterfacePacketRate
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoInterfacePacketRateMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.interface.packet.rate doesn't have an attribute invalid, valid attributes: [network.io.direction, network.interface.name]")
+
+	cfg = DefaultMetricsConfig().CiscoInterfacePacketRate
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoInterfaceSpeedMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoInterfaceSpeed
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoInterfaceSpeedMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.interface.speed doesn't have an attribute invalid, valid attributes: [network.interface.name]")
+
+	cfg = DefaultMetricsConfig().CiscoInterfaceSpeed
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoInterfaceUtilizationMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoInterfaceUtilization
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoInterfaceUtilizationMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.interface.utilization doesn't have an attribute invalid, valid attributes: [network.io.direction, network.interface.name]")
+
+	cfg = DefaultMetricsConfig().CiscoInterfaceUtilization
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoOpticsChromaticDispersionMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoOpticsChromaticDispersion
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoOpticsChromaticDispersionMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.optics.chromatic_dispersion doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]")
+
+	cfg = DefaultMetricsConfig().CiscoOpticsChromaticDispersion
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoOpticsDgdMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoOpticsDgd
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoOpticsDgdMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.optics.dgd doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]")
+
+	cfg = DefaultMetricsConfig().CiscoOpticsDgd
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoOpticsEsnrMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoOpticsEsnr
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoOpticsEsnrMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.optics.esnr doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]")
+
+	cfg = DefaultMetricsConfig().CiscoOpticsEsnr
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoOpticsLaserBiasCurrentMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoOpticsLaserBiasCurrent
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoOpticsLaserBiasCurrentMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.optics.laser_bias_current doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]")
+
+	cfg = DefaultMetricsConfig().CiscoOpticsLaserBiasCurrent
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoOpticsOsnrMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoOpticsOsnr
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoOpticsOsnrMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.optics.osnr doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]")
+
+	cfg = DefaultMetricsConfig().CiscoOpticsOsnr
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoOpticsPreFecBerMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoOpticsPreFecBer
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoOpticsPreFecBerMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.optics.pre_fec_ber doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]")
+
+	cfg = DefaultMetricsConfig().CiscoOpticsPreFecBer
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoOpticsPresentMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoOpticsPresent
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoOpticsPresentMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.optics.present doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.profile, cisco.optics.experimental]")
+
+	cfg = DefaultMetricsConfig().CiscoOpticsPresent
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoOpticsQFactorMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoOpticsQFactor
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoOpticsQFactorMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.optics.q_factor doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]")
+
+	cfg = DefaultMetricsConfig().CiscoOpticsQFactor
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoOpticsQMarginMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoOpticsQMargin
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoOpticsQMarginMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.optics.q_margin doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]")
+
+	cfg = DefaultMetricsConfig().CiscoOpticsQMargin
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoOpticsRxPowerMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoOpticsRxPower
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoOpticsRxPowerMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.optics.rx_power doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]")
+
+	cfg = DefaultMetricsConfig().CiscoOpticsRxPower
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoOpticsTdecqMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoOpticsTdecq
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoOpticsTdecqMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.optics.tdecq doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]")
+
+	cfg = DefaultMetricsConfig().CiscoOpticsTdecq
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoOpticsTecCurrentMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoOpticsTecCurrent
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoOpticsTecCurrentMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.optics.tec_current doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]")
+
+	cfg = DefaultMetricsConfig().CiscoOpticsTecCurrent
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoOpticsTecUtilizationMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoOpticsTecUtilization
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoOpticsTecUtilizationMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.optics.tec_utilization doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]")
+
+	cfg = DefaultMetricsConfig().CiscoOpticsTecUtilization
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoOpticsTemperatureMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoOpticsTemperature
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoOpticsTemperatureMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.optics.temperature doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]")
+
+	cfg = DefaultMetricsConfig().CiscoOpticsTemperature
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoOpticsTxPowerMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoOpticsTxPower
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoOpticsTxPowerMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.optics.tx_power doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]")
+
+	cfg = DefaultMetricsConfig().CiscoOpticsTxPower
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoOpticsVoltageMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoOpticsVoltage
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoOpticsVoltageMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.optics.voltage doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]")
+
+	cfg = DefaultMetricsConfig().CiscoOpticsVoltage
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestSystemNetworkErrorsMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().SystemNetworkErrors
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []SystemNetworkErrorsMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric system.network.errors doesn't have an attribute invalid, valid attributes: [network.io.direction, network.interface.name]")
+
+	cfg = DefaultMetricsConfig().SystemNetworkErrors
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestSystemNetworkInterfaceStatusMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().SystemNetworkInterfaceStatus
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []SystemNetworkInterfaceStatusMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric system.network.interface.status doesn't have an attribute invalid, valid attributes: [network.interface.name]")
+
+	cfg = DefaultMetricsConfig().SystemNetworkInterfaceStatus
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestSystemNetworkIoMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().SystemNetworkIo
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []SystemNetworkIoMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric system.network.io doesn't have an attribute invalid, valid attributes: [network.io.direction, network.interface.name]")
+
+	cfg = DefaultMetricsConfig().SystemNetworkIo
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestSystemNetworkPacketCountMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().SystemNetworkPacketCount
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []SystemNetworkPacketCountMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric system.network.packet.count doesn't have an attribute invalid, valid attributes: [network.io.direction, network.packet.type, network.interface.name]")
+
+	cfg = DefaultMetricsConfig().SystemNetworkPacketCount
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestSystemNetworkPacketDroppedMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().SystemNetworkPacketDropped
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []SystemNetworkPacketDroppedMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric system.network.packet.dropped doesn't have an attribute invalid, valid attributes: [network.io.direction, network.interface.name]")
+
+	cfg = DefaultMetricsConfig().SystemNetworkPacketDropped
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
 func loadMetricsBuilderConfig(t *testing.T, name string) MetricsBuilderConfig {
 	cm, err := confmaptest.LoadConf(filepath.Join("testdata", "config.yaml"))
 	require.NoError(t, err)

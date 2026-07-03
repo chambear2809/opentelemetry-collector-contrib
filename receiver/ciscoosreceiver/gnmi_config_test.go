@@ -368,8 +368,10 @@ func TestGNMIStreamCaps(t *testing.T) {
 	require.ErrorContains(t, cfg.validateGNMI(), "max_streams must be between 1 and 8")
 
 	cfg = validGNMITestConfig()
-	cfg.GNMI.Targets[0].MaxRecvMsgSizeMiB = gnmiMaxRecvMsgSizeMiB + 1
-	require.ErrorContains(t, cfg.validateGNMI(), "max_recv_msg_size_mib must not exceed")
+	cfg.GNMI.Targets[0].MaxRecvMsgSizeMiB = 16
+	require.NoError(t, cfg.validateGNMI())
+	cfg.GNMI.Targets[0].MaxRecvMsgSizeMiB = 17
+	require.ErrorContains(t, cfg.validateGNMI(), "max_recv_msg_size_mib must not exceed 16")
 }
 
 func TestGNMIHardResourceLimits(t *testing.T) {

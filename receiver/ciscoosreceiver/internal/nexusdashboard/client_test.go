@@ -4,8 +4,11 @@
 package nexusdashboard
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -24,6 +27,364 @@ func TestClientRetryValidationPreservesExplicitZero(t *testing.T) {
 		_, err = NewClient(Config{Endpoint: "https://nexus.example.test", AuthMode: "api_key", Username: "admin", APIKey: "key", MaxRetries: retries})
 		require.ErrorContains(t, err, "invalid nexus dashboard max retries")
 	}
+}
+
+func TestClientAuthenticationRetryPolicy(t *testing.T) {
+	tests := []struct {
+		name             string
+		authenticate     func(http.ResponseWriter, int64)
+		wantErr          string
+		wantAuthRequests int64
+	}{
+		{
+			name: "rejected credentials",
+			authenticate: func(w http.ResponseWriter, _ int64) {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+			},
+			wantErr:          "HTTP 401",
+			wantAuthRequests: 1,
+		},
+		{
+			name: "invalid successful login response",
+			authenticate: func(w http.ResponseWriter, _ int64) {
+				_, _ = w.Write([]byte(`{"not_token":"missing"}`))
+			},
+			wantErr:          "did not include a token",
+			wantAuthRequests: 1,
+		},
+		{
+			name: "transient authentication server failure",
+			authenticate: func(w http.ResponseWriter, attempt int64) {
+				if attempt == 1 {
+					http.Error(w, "unavailable", http.StatusServiceUnavailable)
+					return
+				}
+				_, _ = w.Write([]byte(`{"token":"nd-token"}`))
+			},
+			wantAuthRequests: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var authRequests atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/v1/infra/login" {
+					tt.authenticate(w, authRequests.Add(1))
+					return
+				}
+				_, _ = w.Write([]byte(`{"items":[]}`))
+			}))
+			defer server.Close()
+
+			client, err := NewClient(Config{
+				Endpoint:   server.URL,
+				AuthMode:   "username_password",
+				Username:   "admin",
+				Password:   "password",
+				Timeout:    time.Second,
+				MaxRetries: 1,
+			})
+			require.NoError(t, err)
+
+			_, err = client.List(t.Context(), "fabrics", "/api/v1/manage/fabrics", nil, 1)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tt.wantErr)
+			}
+			assert.Equal(t, tt.wantAuthRequests, authRequests.Load())
+		})
+	}
+}
+
+func TestClientRetriesAuthenticationTransportFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/infra/login" {
+			_, _ = w.Write([]byte(`{"token":"nd-token"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"items":[]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:   server.URL,
+		AuthMode:   "username_password",
+		Username:   "admin",
+		Password:   "password",
+		Timeout:    time.Second,
+		MaxRetries: 1,
+	})
+	require.NoError(t, err)
+	transport := &failOnceTransport{next: client.client.Transport, path: "/api/v1/infra/login"}
+	client.client.Transport = transport
+
+	_, err = client.List(t.Context(), "fabrics", "/api/v1/manage/fabrics", nil, 1)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), transport.attempts.Load())
+}
+
+func TestClientAuthenticationFailuresEnterSharedBackoff(t *testing.T) {
+	tests := []struct {
+		name          string
+		handleLogin   func(http.ResponseWriter)
+		handleData    func(http.ResponseWriter)
+		wantDataCalls int64
+	}{
+		{
+			name: "login rejected",
+			handleLogin: func(w http.ResponseWriter) {
+				http.Error(w, "invalid credentials", http.StatusUnauthorized)
+			},
+			handleData: func(w http.ResponseWriter) {
+				_, _ = w.Write([]byte(`{"items":[]}`))
+			},
+		},
+		{
+			name: "issued token rejected",
+			handleLogin: func(w http.ResponseWriter) {
+				_, _ = w.Write([]byte(`{"token":"rejected-token"}`))
+			},
+			handleData: func(w http.ResponseWriter) {
+				http.Error(w, "token rejected", http.StatusUnauthorized)
+			},
+			wantDataCalls: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var loginCalls atomic.Int64
+			var dataCalls atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/v1/infra/login" {
+					loginCalls.Add(1)
+					tt.handleLogin(w)
+					return
+				}
+				dataCalls.Add(1)
+				tt.handleData(w)
+			}))
+			defer server.Close()
+
+			client, err := NewClient(Config{
+				Endpoint:   server.URL,
+				AuthMode:   "username_password",
+				Username:   "admin",
+				Password:   "password",
+				Timeout:    time.Second,
+				MaxRetries: 2,
+			})
+			require.NoError(t, err)
+
+			_, firstErr := client.List(t.Context(), "fabrics", "/api/v1/manage/fabrics", nil, 1)
+			require.ErrorContains(t, firstErr, "HTTP 401")
+			_, secondErr := client.List(t.Context(), "switches", "/api/v1/manage/switches", nil, 1)
+			require.ErrorContains(t, secondErr, "HTTP 401")
+
+			assert.Equal(t, int64(1), loginCalls.Load())
+			assert.Equal(t, tt.wantDataCalls, dataCalls.Load())
+			client.tokenMu.Lock()
+			assert.Equal(t, 1, client.authFailures)
+			client.tokenMu.Unlock()
+		})
+	}
+}
+
+func TestClientStaleUnauthorizedDoesNotClearNewerToken(t *testing.T) {
+	client, err := NewClient(Config{
+		Endpoint: "https://nexus.example.test",
+		AuthMode: "username_password",
+		Username: "admin",
+		Password: "password",
+	})
+	require.NoError(t, err)
+
+	client.tokenMu.Lock()
+	client.token = "new-token"
+	client.tokenGeneration = 4
+	client.tokenMu.Unlock()
+
+	client.clearToken(tokenSnapshot{value: "old-token", generation: 3}, &APIError{StatusCode: http.StatusUnauthorized})
+	client.tokenMu.Lock()
+	assert.Equal(t, "new-token", client.token)
+	assert.Equal(t, uint64(4), client.tokenGeneration)
+	assert.Zero(t, client.authFailures)
+	client.tokenMu.Unlock()
+
+	client.clearToken(tokenSnapshot{value: "new-token", generation: 4}, &APIError{StatusCode: http.StatusUnauthorized})
+	client.tokenMu.Lock()
+	assert.Empty(t, client.token)
+	assert.Equal(t, uint64(5), client.tokenGeneration)
+	assert.Equal(t, 1, client.authFailures)
+	client.tokenMu.Unlock()
+}
+
+func TestClientForbiddenRetainsTokenAndDataSuccessResetsAuthFailures(t *testing.T) {
+	var loginCalls atomic.Int64
+	var dataCalls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/infra/login" {
+			loginCalls.Add(1)
+			_, _ = w.Write([]byte(`{"token":"valid-token"}`))
+			return
+		}
+		assert.Equal(t, "Bearer valid-token", r.Header.Get("Authorization"))
+		if dataCalls.Add(1) == 1 {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		_, _ = w.Write([]byte(`{"items":[]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:   server.URL,
+		AuthMode:   "username_password",
+		Username:   "admin",
+		Password:   "password",
+		Timeout:    time.Second,
+		MaxRetries: 1,
+	})
+	require.NoError(t, err)
+	client.tokenMu.Lock()
+	client.authFailures = 2
+	client.lastAuthErr = errors.New("previous authentication failure")
+	client.lastAuthStatus = http.StatusUnauthorized
+	client.lastAuthAt = time.Now().Add(-time.Hour)
+	client.tokenMu.Unlock()
+
+	_, firstErr := client.List(t.Context(), "restricted", "/api/v1/manage/restricted", nil, 1)
+	require.ErrorContains(t, firstErr, "HTTP 403")
+	client.tokenMu.Lock()
+	assert.Equal(t, "valid-token", client.token)
+	assert.Equal(t, 2, client.authFailures, "a successful login and 403 must not reset the failure streak")
+	client.tokenMu.Unlock()
+
+	_, secondErr := client.List(t.Context(), "allowed", "/api/v1/manage/allowed", nil, 1)
+	require.NoError(t, secondErr)
+	assert.Equal(t, int64(1), loginCalls.Load())
+	assert.Equal(t, int64(2), dataCalls.Load())
+	client.tokenMu.Lock()
+	assert.Zero(t, client.authFailures)
+	assert.NoError(t, client.lastAuthErr)
+	assert.Zero(t, client.lastAuthStatus)
+	assert.True(t, client.lastAuthAt.IsZero())
+	client.tokenMu.Unlock()
+}
+
+func TestClientConcurrentRequestsShareLogin(t *testing.T) {
+	const callers = 16
+	loginStarted := make(chan struct{}, 1)
+	releaseLogin := make(chan struct{})
+	var loginCalls atomic.Int64
+	var dataCalls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/infra/login" {
+			loginCalls.Add(1)
+			loginStarted <- struct{}{}
+			<-releaseLogin
+			_, _ = w.Write([]byte(`{"token":"shared-token"}`))
+			return
+		}
+		dataCalls.Add(1)
+		_, _ = w.Write([]byte(`{"items":[]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint: server.URL,
+		AuthMode: "username_password",
+		Username: "admin",
+		Password: "password",
+		Timeout:  time.Second,
+	})
+	require.NoError(t, err)
+
+	errs := make(chan error, callers)
+	var wg sync.WaitGroup
+	for range callers {
+		wg.Go(func() {
+			_, requestErr := client.List(t.Context(), "fabrics", "/api/v1/manage/fabrics", nil, 1)
+			errs <- requestErr
+		})
+	}
+	<-loginStarted
+	close(releaseLogin)
+	wg.Wait()
+	close(errs)
+	for requestErr := range errs {
+		require.NoError(t, requestErr)
+	}
+	assert.Equal(t, int64(1), loginCalls.Load())
+	assert.Equal(t, int64(callers), dataCalls.Load())
+}
+
+func TestClientCanceledLoginOwnerDoesNotBackoffLiveWaiter(t *testing.T) {
+	var loginCalls atomic.Int64
+	firstLoginStarted := make(chan struct{})
+	releaseFirstLogin := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/infra/login" {
+			http.NotFound(w, r)
+			return
+		}
+		if loginCalls.Add(1) == 1 {
+			close(firstLoginStarted)
+			<-releaseFirstLogin
+			return
+		}
+		_, _ = w.Write([]byte(`{"token":"replacement-token"}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint: server.URL,
+		AuthMode: "username_password",
+		Username: "admin",
+		Password: "password",
+		Timeout:  5 * time.Second,
+	})
+	require.NoError(t, err)
+
+	ownerCtx, cancelOwner := context.WithCancel(t.Context())
+	ownerResult := make(chan error, 1)
+	go func() {
+		_, _, _, authErr := client.ensureToken(ownerCtx, false)
+		ownerResult <- authErr
+	}()
+	<-firstLoginStarted
+
+	client.tokenMu.Lock()
+	waiterResult := make(chan error, 1)
+	go func() {
+		_, _, _, authErr := client.ensureToken(t.Context(), false)
+		waiterResult <- authErr
+	}()
+	cancelOwner()
+	close(releaseFirstLogin)
+	client.tokenMu.Unlock()
+
+	require.ErrorIs(t, <-ownerResult, context.Canceled)
+	require.NoError(t, <-waiterResult)
+	assert.Equal(t, int64(2), loginCalls.Load())
+	client.tokenMu.Lock()
+	assert.Zero(t, client.authFailures)
+	client.tokenMu.Unlock()
+}
+
+type failOnceTransport struct {
+	next     http.RoundTripper
+	path     string
+	attempts atomic.Int64
+}
+
+func (t *failOnceTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Path == t.path && t.attempts.Add(1) == 1 {
+		return nil, errors.New("temporary transport failure")
+	}
+	return t.next.RoundTrip(req)
 }
 
 func TestClientAPIKeyHeadersAndPagination(t *testing.T) {

@@ -365,8 +365,17 @@ func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 			continue
 		}
 		cache := fmcControllerCache{}
-		if fmcGroupEnabled(r.config.FMC, "inventory") || fmcGroupEnabled(r.config.FMC, "interfaces") {
-			devices, err := r.fetchEndpoint(ctx, client, domainUUID, fmcEndpoint{group: "inventory", operation: "devices.records", path: "devices/devicerecords", objectType: "fmc.device"}, now)
+		if fmcGroupEnabled(r.config.FMC, "inventory") ||
+			fmcGroupEnabled(r.config.FMC, "interfaces") ||
+			fmcGroupEnabled(r.config.FMC, "health") {
+			deviceSourceGroup := "inventory"
+			if !fmcGroupEnabled(r.config.FMC, "inventory") {
+				deviceSourceGroup = "interfaces"
+				if !fmcGroupEnabled(r.config.FMC, "interfaces") {
+					deviceSourceGroup = "health"
+				}
+			}
+			devices, err := r.fetchEndpoint(ctx, client, domainUUID, fmcEndpoint{group: deviceSourceGroup, operation: "devices.records", path: "devices/devicerecords", objectType: "fmc.device"}, now)
 			cache.devices = filterFMCObjects(devices, r.config.FMC.Targets)
 			if fmcGroupEnabled(r.config.FMC, "inventory") {
 				for _, obj := range cache.devices {
@@ -423,6 +432,29 @@ func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 			}
 		}
 
+		// Chassis-scoped interface endpoints depend on the chassis inventory
+		// collection even when the inventory signal itself is disabled. Fetch the
+		// parent objects without exporting them in that configuration. Other
+		// scoped sources are owned by the same group as their parent endpoint and
+		// are populated by the metric endpoint loop above.
+		if fmcGroupEnabled(r.config.FMC, "interfaces") && !fmcGroupEnabled(r.config.FMC, "inventory") {
+			endpoint := fmcEndpoint{
+				group:      "interfaces",
+				operation:  "inventory.chassis",
+				path:       "chassis/fmcmanagedchassis",
+				objectType: "fmc.chassis",
+			}
+			objects, err := r.fetchEndpoint(ctx, client, domainUUID, endpoint, now)
+			cache.chassis = append(cache.chassis, filterFMCObjects(objects, r.config.FMC.Targets)...)
+			if err != nil {
+				if ctx.Err() != nil {
+					return r.finishScrape(builder, now, true), ctx.Err()
+				}
+				partial = true
+				r.recordEndpointError(builder, client, domainUUID, endpoint.operation, err)
+			}
+		}
+
 		if fmcGroupEnabled(r.config.FMC, "interfaces") {
 			for _, device := range cache.devices {
 				if !selector.allows(fmcObjectIdentity(device)) {
@@ -447,11 +479,17 @@ func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 					}
 				}
 			}
+		}
+
+		if fmcGroupEnabled(r.config.FMC, "interfaces") || fmcGroupEnabled(r.config.FMC, "inventory") {
 			for _, chassis := range cache.chassis {
 				if !selector.allows(fmcObjectIdentity(chassis)) {
 					continue
 				}
 				for _, endpoint := range fmcChassisScopedEndpoints() {
+					if !fmcGroupEnabled(r.config.FMC, endpoint.group) {
+						continue
+					}
 					objects, err := r.fetchScopedEndpoint(ctx, client, domainUUID, endpoint, chassis, now)
 					for _, obj := range filterFMCObjects(objects, r.config.FMC.Targets) {
 						inheritFMCDevice(obj, chassis)

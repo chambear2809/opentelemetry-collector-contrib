@@ -33,7 +33,11 @@ const (
 	gnmiModeOnce   = "once"
 	gnmiModePoll   = "poll"
 
-	gnmiMaxRecvMsgSizeMiB     = 2047
+	// grpc-go allocates the complete protobuf before the receiver can apply its
+	// per-value decoder budgets. Keep a hard frame ceiling aligned with the
+	// receiver's other network payload limits to prevent multi-gigabyte
+	// allocation attempts from a device or compromised telemetry endpoint.
+	gnmiMaxRecvMsgSizeMiB     = 16
 	gnmiMaxDatapointsPerChunk = 10_000
 	gnmiMaximumCachedSeries   = 500_000
 )

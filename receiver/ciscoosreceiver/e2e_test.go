@@ -20,6 +20,7 @@ import (
 	"go.opentelemetry.io/collector/config/configgrpc"
 	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/config/configoptional"
+	"go.opentelemetry.io/collector/config/configtls"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -57,6 +58,10 @@ const (
 	ciscoOSE2EIOSXRGroupsEnv      = "CISCOOS_E2E_IOSXR_PATH_GROUPS"
 	ciscoOSE2EIOSXRMetricsEnv     = "CISCOOS_E2E_IOSXR_EXPECT_METRICS"
 	ciscoOSE2EIOSXRDialOutEnv     = "CISCOOS_E2E_IOSXR_DIALOUT_ENDPOINT"
+	ciscoOSE2EIOSXRDialOutCertEnv = "CISCOOS_E2E_IOSXR_DIALOUT_CERT_FILE"
+	ciscoOSE2EIOSXRDialOutKeyEnv  = "CISCOOS_E2E_IOSXR_DIALOUT_KEY_FILE"
+	ciscoOSE2EIOSXRDialOutCAEnv   = "CISCOOS_E2E_IOSXR_DIALOUT_CLIENT_CA_FILE"
+	ciscoOSE2EIOSXRDialOutAllow   = "CISCOOS_E2E_IOSXR_DIALOUT_ALLOWED_CLIENTS"
 )
 
 var defaultCiscoOSE2EMetrics = []string{
@@ -179,6 +184,20 @@ func TestE2EIOSXRMDTDialOut(t *testing.T) {
 	cfg.IOSXR.DialOut.Enabled = true
 	cfg.IOSXR.DialOut.ServerConfig.NetAddr.Endpoint = endpoint
 	cfg.IOSXR.DialOut.ServerConfig.NetAddr.Transport = "tcp"
+	certFile := os.Getenv(ciscoOSE2EIOSXRDialOutCertEnv)
+	keyFile := os.Getenv(ciscoOSE2EIOSXRDialOutKeyEnv)
+	require.Equal(t, certFile == "", keyFile == "", "%s and %s must be configured together", ciscoOSE2EIOSXRDialOutCertEnv, ciscoOSE2EIOSXRDialOutKeyEnv)
+	if certFile != "" {
+		cfg.IOSXR.DialOut.ServerConfig.TLS = configoptional.Some(configtls.ServerConfig{
+			Config:       configtls.Config{CertFile: certFile, KeyFile: keyFile},
+			ClientCAFile: os.Getenv(ciscoOSE2EIOSXRDialOutCAEnv),
+		})
+	}
+	cfg.IOSXR.DialOut.AllowedClients = csvEnv(ciscoOSE2EIOSXRDialOutAllow)
+	cfg.IOSXR.DialOut.RateLimiting.Enabled = true
+	cfg.IOSXR.DialOut.RateLimiting.RequestsPerSecond = 100
+	cfg.IOSXR.DialOut.RateLimiting.BurstSize = 10
+	cfg.IOSXR.DialOut.RateLimiting.CleanupInterval = time.Minute
 	require.NoError(t, cfg.Validate())
 
 	sink := new(consumertest.MetricsSink)

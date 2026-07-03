@@ -17,6 +17,10 @@ import (
 	"go.opentelemetry.io/collector/confmap/confmaptest"
 )
 
+func TestRuntimeHardeningVersion(t *testing.T) {
+	assert.Equal(t, 1, (&Config{}).RuntimeHardeningVersion())
+}
+
 func TestSecurityConfig_Validation(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -109,6 +113,20 @@ func TestSecurityConfig_Validation(t *testing.T) {
 			errorMsg:    "cleanup_interval must be positive",
 		},
 		{
+			name: "Invalid rate limiting - cleanup interval too short",
+			config: &Config{
+				Security: SecurityConfig{RateLimiting: RateLimitingConfig{
+					Enabled:           true,
+					RequestsPerSecond: 1,
+					BurstSize:         1,
+					CleanupInterval:   time.Millisecond,
+				}},
+				ServerConfig: configgrpc.NewDefaultServerConfig(),
+			},
+			expectError: true,
+			errorMsg:    "cleanup_interval must be at least 1s",
+		},
+		{
 			name: "Invalid allowed client",
 			config: &Config{
 				Security:     SecurityConfig{AllowedClients: []string{"not-an-ip"}},
@@ -171,6 +189,10 @@ func TestServerResourceLimitValidation(t *testing.T) {
 	defaults := createDefaultConfig().(*Config)
 	assert.Equal(t, 4, defaults.MaxRecvMsgSizeMiB)
 	assert.Equal(t, uint32(100), defaults.MaxConcurrentStreams)
+	assert.Equal(t, uint32(defaultMaxConnections), defaults.MaxConnections)
+	assert.Equal(t, uint32(defaultMaxConcurrentConversions), defaults.MaxConcurrentConversions)
+	assert.Equal(t, defaultConnectionTimeout, defaults.ConnectionTimeout)
+	assert.Equal(t, defaultMaxConnectionIdle, defaults.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault().MaxConnectionIdle)
 	require.NoError(t, defaults.Validate())
 
 	for _, test := range []struct {
@@ -196,6 +218,81 @@ func TestServerResourceLimitValidation(t *testing.T) {
 				return
 			}
 			require.ErrorContains(t, err, test.errorPart)
+		})
+	}
+}
+
+func TestRuntimeAvailabilityValidation(t *testing.T) {
+	for _, test := range []struct {
+		name                  string
+		maxConnections        uint32
+		maxConversions        uint32
+		connectionTimeout     time.Duration
+		wantEffectiveConns    int
+		wantEffectiveConverts int
+		wantEffectiveTimeout  time.Duration
+		errorPart             string
+	}{
+		{
+			name:                  "zero values select bounded defaults",
+			wantEffectiveConns:    defaultMaxConnections,
+			wantEffectiveConverts: defaultMaxConcurrentConversions,
+			wantEffectiveTimeout:  defaultConnectionTimeout,
+		},
+		{
+			name:                  "minimum configured values",
+			maxConnections:        1,
+			maxConversions:        1,
+			connectionTimeout:     minConnectionTimeout,
+			wantEffectiveConns:    1,
+			wantEffectiveConverts: 1,
+			wantEffectiveTimeout:  minConnectionTimeout,
+		},
+		{
+			name:                  "maximum configured values",
+			maxConnections:        maxMaxConnections,
+			maxConversions:        maxMaxConcurrentConversions,
+			connectionTimeout:     maxConnectionTimeout,
+			wantEffectiveConns:    maxMaxConnections,
+			wantEffectiveConverts: maxMaxConcurrentConversions,
+			wantEffectiveTimeout:  maxConnectionTimeout,
+		},
+		{
+			name:           "too many connections",
+			maxConnections: maxMaxConnections + 1,
+			errorPart:      "max_connections must not exceed 1024",
+		},
+		{
+			name:           "too many conversions",
+			maxConversions: maxMaxConcurrentConversions + 1,
+			errorPart:      "max_concurrent_conversions must not exceed 16",
+		},
+		{
+			name:              "connection timeout too short",
+			connectionTimeout: minConnectionTimeout - time.Nanosecond,
+			errorPart:         "connection_timeout must be zero or between 1s and 2m0s",
+		},
+		{
+			name:              "connection timeout too long",
+			connectionTimeout: maxConnectionTimeout + time.Nanosecond,
+			errorPart:         "connection_timeout must be zero or between 1s and 2m0s",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := createDefaultConfig().(*Config)
+			cfg.MaxConnections = test.maxConnections
+			cfg.MaxConcurrentConversions = test.maxConversions
+			cfg.ConnectionTimeout = test.connectionTimeout
+
+			err := cfg.Validate()
+			if test.errorPart != "" {
+				require.ErrorContains(t, err, test.errorPart)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, test.wantEffectiveConns, effectiveMaxConnections(cfg.MaxConnections))
+			assert.Equal(t, test.wantEffectiveConverts, effectiveMaxConcurrentConversions(cfg.MaxConcurrentConversions))
+			assert.Equal(t, test.wantEffectiveTimeout, effectiveConnectionTimeout(cfg.ConnectionTimeout))
 		})
 	}
 }

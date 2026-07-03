@@ -609,11 +609,11 @@ decoder and metric behavior for one fork release and must not duplicate an endpo
 | `gnmi.targets[].tls.cert_file` / `key_file` | string | mTLS only | Short-lived client identity assigned per collector shard. |
 | `gnmi.targets[].tls.min_version` | string | No | Minimum TLS version; `1.2` or newer. Insecure TLS and verification bypasses are rejected. |
 | `gnmi.targets[].tls.reload_interval` | duration | No | Reload client certificate/key material for later TLS handshakes. CA changes require a reconnect or rollout. |
-| `gnmi.targets[].max_recv_msg_size_mib` | int | No | Per-target receive limit for large telemetry notifications. |
+| `gnmi.targets[].max_recv_msg_size_mib` | int | No | Per-target receive limit, from 1 through 16 MiB. Defaults to `16`; larger single notifications are rejected before protobuf allocation can exhaust the collector. |
 | `gnmi.targets[].max_streams` | int | No | Compatible-stream cap; defaults to 4 and may be raised to at most 8 after qualification. IOS XR with optics needs 6. |
 | `gnmi.targets[].profiles` | map | No | `identity`, `system`, `interfaces`, `optics`, and fork-only `catalyst_9800_wireless`. |
 | `gnmi.max_datapoints_per_chunk` | int | No | Lossless consumer-call chunk bound. Defaults to `10000`. |
-| `gnmi.max_cached_series` | int | No | Hard cache limit. Defaults to `500000`; operate near `400000` series per shard. |
+| `gnmi.max_cached_series` | int | No | Hard retained-state limit shared by mapped series, atomic baselines, and delete tombstones. Defaults to `500000`; operate near `400000` active series per shard to leave correctness-metadata headroom. |
 
 Identity defaults to a five-minute interval, system and interfaces to 60 seconds, and optics to 30 seconds. Safe
 baseline profiles default on. Optics is explicitly enabled because it is high-cardinality and dependent on the device,
@@ -649,6 +649,10 @@ model-driven telemetry modes: collector-managed gNMI dial-in and WLC-pushed MDT 
 JSON or JSON_IETF; gRPC dial-out reuses the `yang_grpc` receiver path for self-describing KV-GPB, then normalizes the
 same YANG leaves into raw `cisco.catalyst9800.yang.*` metrics and stable `cisco.wlc.*` aliases.
 
+Collector distributions that embed either Cisco dial-out mode must resolve a `yang_grpc` receiver from the same or a
+newer contrib release with runtime-hardening contract version 1. Startup fails closed when an older dependency is
+resolved, preventing an unbounded decoder or shutdown implementation from being exposed accidentally.
+
 The default path groups are enabled only after `catalyst_9800.enabled: true` and cover AP join/CAPWAP state, RF and
 channel utilization, SSID counters, mobility peer/roam health, HA state, RADIUS summary counters, and controller
 system health. High-cardinality client detail, AP/RRM neighbors, and CAPWAP packet counters are opt-in. The receiver
@@ -663,8 +667,10 @@ gNMI Capabilities unless `skip_capabilities` is set on a target.
 | `catalyst_9800.dial_in.targets[].tls` | map | No | Standard gRPC client TLS settings. TLS is required because credentials are sent as gRPC metadata; plaintext `insecure: true` is rejected. `insecure_skip_verify` remains an explicit lab-only certificate-verification bypass. |
 | `catalyst_9800.dial_out.enabled` | bool | No* | Enables a Catalyst 9800 MDT gRPC dial-out listener. |
 | `catalyst_9800.dial_out.endpoint` | string | No | gRPC listen endpoint. Defaults to `localhost:57501`; production configs usually set `0.0.0.0:57501` or a specific collector IP. |
-| `catalyst_9800.dial_out.allowed_clients` | list | No | Optional source CIDR allowlist passed to the wrapped `yang_grpc` receiver. |
-| `catalyst_9800.dial_out.rate_limiting` | map | No | Optional per-client, per-message stream limit. Set `enabled`, `requests_per_second`, `burst_size`, and `cleanup_interval`. |
+| `catalyst_9800.dial_out.tls` | map | No* | Server `cert_file` and `key_file`, plus optional `client_ca_file` for mTLS. TLS is required on non-loopback listeners. A remote listener also requires mTLS or `allowed_clients`. |
+| `catalyst_9800.dial_out.allowed_clients` | list | No | Optional source IP/CIDR allowlist enforced by receiver-private gRPC stream middleware. |
+| `catalyst_9800.dial_out.max_streams_per_client` | int | No | Maximum concurrent streams from one source IP. Defaults to the smaller of `16` and `max_concurrent_streams`, and cannot exceed `max_concurrent_streams`. |
+| `catalyst_9800.dial_out.rate_limiting` | map | No* | Per-client, per-message stream limit. It must be enabled on non-loopback listeners; loopback listeners may omit it. Set `requests_per_second`, `burst_size`, and `cleanup_interval`; cleanup must be at least `1s` and never resets a bucket before it can refill naturally. |
 | `catalyst_9800.dial_out.max_recv_msg_size_mib` | int | No | Maximum inbound message size, from 1 through 16 MiB. Defaults to `4`. |
 | `catalyst_9800.dial_out.max_concurrent_streams` | int | No | Maximum concurrent streams, from 1 through 1000. Defaults to `100`. |
 | `catalyst_9800.encoding_preference` | list | No | gNMI encoding negotiation order. Defaults to `["json_ietf", "json"]`; `proto` is reserved for gRPC/KV-GPB dial-out. |
@@ -710,7 +716,12 @@ catalyst_9800:
   dial_out:
     enabled: true
     endpoint: 0.0.0.0:57501
+    tls:
+      cert_file: /etc/otelcol/certs/server.crt
+      key_file: /etc/otelcol/certs/server.key
+      client_ca_file: /etc/otelcol/certs/device-ca.crt
     allowed_clients: ["10.0.0.0/8"]
+    max_streams_per_client: 16
     rate_limiting:
       enabled: true
       requests_per_second: 100
@@ -738,8 +749,10 @@ negotiated in configured order (`json_ietf`, `json`, `proto`), unsupported model
 | `ios_xr.dial_in.targets[].tls` | map | No | Standard gRPC client TLS settings. TLS is required because credentials are sent as gRPC metadata; plaintext `insecure: true` is rejected. `insecure_skip_verify` remains an explicit lab-only certificate-verification bypass. |
 | `ios_xr.dial_out.enabled` | bool | No* | Enables an MDT gRPC dial-out listener. |
 | `ios_xr.dial_out.endpoint` | string | No | gRPC listen endpoint. Defaults to `localhost:57500`; production configs usually set `0.0.0.0:57500` or a specific collector IP. |
-| `ios_xr.dial_out.allowed_clients` | list | No | Optional source CIDR allowlist passed to the wrapped `yang_grpc` receiver. |
-| `ios_xr.dial_out.rate_limiting` | map | No | Optional per-client, per-message stream limit. Set `enabled`, `requests_per_second`, `burst_size`, and `cleanup_interval`. |
+| `ios_xr.dial_out.tls` | map | No* | Server `cert_file` and `key_file`, plus optional `client_ca_file` for mTLS. TLS is required on non-loopback listeners. A remote listener also requires mTLS or `allowed_clients`. |
+| `ios_xr.dial_out.allowed_clients` | list | No | Optional source IP/CIDR allowlist enforced by receiver-private gRPC stream middleware. |
+| `ios_xr.dial_out.max_streams_per_client` | int | No | Maximum concurrent streams from one source IP. Defaults to the smaller of `16` and `max_concurrent_streams`, and cannot exceed `max_concurrent_streams`. |
+| `ios_xr.dial_out.rate_limiting` | map | No* | Per-client, per-message stream limit. It must be enabled on non-loopback listeners; loopback listeners may omit it. Set `requests_per_second`, `burst_size`, and `cleanup_interval`; cleanup must be at least `1s` and never resets a bucket before it can refill naturally. |
 | `ios_xr.dial_out.max_recv_msg_size_mib` | int | No | Maximum inbound message size, from 1 through 16 MiB. Defaults to `4`. |
 | `ios_xr.dial_out.max_concurrent_streams` | int | No | Maximum concurrent streams, from 1 through 1000. Defaults to `100`. |
 | `ios_xr.encoding_preference` | list | No | Encoding negotiation order. Defaults to `["json_ietf", "json", "proto"]`. |
@@ -791,7 +804,12 @@ ios_xr:
   dial_out:
     enabled: true
     endpoint: 0.0.0.0:57500
+    tls:
+      cert_file: /etc/otelcol/certs/server.crt
+      key_file: /etc/otelcol/certs/server.key
+      client_ca_file: /etc/otelcol/certs/device-ca.crt
     allowed_clients: ["10.0.0.0/8"]
+    max_streams_per_client: 16
     rate_limiting:
       enabled: true
       requests_per_second: 100
@@ -1323,6 +1341,11 @@ For MDT gRPC dial-out, configure the IOS XR router subscription to stream to the
 
 ```shell
 export CISCOOS_E2E_IOSXR_DIALOUT_ENDPOINT=0.0.0.0:57500
+export CISCOOS_E2E_IOSXR_DIALOUT_CERT_FILE=/etc/otelcol/certs/server.crt
+export CISCOOS_E2E_IOSXR_DIALOUT_KEY_FILE=/etc/otelcol/certs/server.key
+export CISCOOS_E2E_IOSXR_DIALOUT_CLIENT_CA_FILE=/etc/otelcol/certs/device-ca.crt
+# Required instead of client mTLS when the router cannot present a client certificate:
+export CISCOOS_E2E_IOSXR_DIALOUT_ALLOWED_CLIENTS=10.0.0.10/32
 
 go test -tags=e2e -run TestE2EIOSXRMDTDialOut -count=1 -timeout=3m ./receiver/ciscoosreceiver
 ```

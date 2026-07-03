@@ -19,6 +19,7 @@ const (
 	testDataSetDefault testDataSet = iota
 	testDataSetAll
 	testDataSetNone
+	testDataSetReag
 )
 
 func TestMetricsBuilder(t *testing.T) {
@@ -35,6 +36,11 @@ func TestMetricsBuilder(t *testing.T) {
 			name:        "all_set",
 			metricsSet:  testDataSetAll,
 			resAttrsSet: testDataSetAll,
+		},
+		{
+			name:        "reaggregate_set",
+			metricsSet:  testDataSetReag,
+			resAttrsSet: testDataSetReag,
 		},
 		{
 			name:        "none_set",
@@ -90,7 +96,9 @@ func TestMetricsBuilder(t *testing.T) {
 			aggMap["cisco.scrape.command.errors"] = mb.metricCiscoScrapeCommandErrors.config.AggregationStrategy
 
 			expectedWarnings := 0
-			assert.Equal(t, expectedWarnings, observedLogs.Len())
+			if tt.metricsSet != testDataSetReag {
+				assert.Equal(t, expectedWarnings, observedLogs.Len())
+			}
 
 			defaultMetricsCount := 0
 			allMetricsCount := 0
@@ -100,42 +108,36 @@ func TestMetricsBuilder(t *testing.T) {
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoAdjacencyEntriesDataPoint(ts, 3, "cisco.routing.vrf-val-2", "cisco.adjacency.state-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoArpEntriesDataPoint(ts, 1, "cisco.routing.vrf-val", "address.family-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoArpEntriesDataPoint(ts, 3, "cisco.routing.vrf-val-2", "address.family-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoControlPlaneCPUProcessUtilizationDataPoint(ts, 1, "cisco.process.name-val", "cisco.process.pid-val", "cisco.cpu.window-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoControlPlaneCPUProcessUtilizationDataPoint(ts, 3, "cisco.process.name-val-2", "cisco.process.pid-val-2", "cisco.cpu.window-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoControlPlaneDroppedDataPoint(ts, 1, "cisco.control_plane.source-val", "cisco.control_plane.class-val", "cisco.control_plane.drop.reason-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoControlPlaneDroppedDataPoint(ts, 3, "cisco.control_plane.source-val-2", "cisco.control_plane.class-val-2", "cisco.control_plane.drop.reason-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoControlPlanePacketsDataPoint(ts, 1, "cisco.control_plane.source-val", "cisco.control_plane.class-val", AttributeNetworkIoDirectionReceive)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoControlPlanePacketsDataPoint(ts, 3, "cisco.control_plane.source-val-2", "cisco.control_plane.class-val-2", AttributeNetworkIoDirectionTransmit)
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoControlPlanePuntRateDataPoint(ts, 1, "cisco.control_plane.punt.queue-val", "network.interface.name-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoControlPlanePuntRateDataPoint(ts, 3, "cisco.control_plane.punt.queue-val-2", "network.interface.name-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoDeviceUpDataPoint(ts, 1)
@@ -145,162 +147,138 @@ func TestMetricsBuilder(t *testing.T) {
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoEvpnRoutesDataPoint(ts, 3, "cisco.routing.vrf-val-2", "cisco.evpn.route.type-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoForwardingDropsDataPoint(ts, 1, "cisco.routing.vrf-val", "cisco.forwarding.drop.reason-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoForwardingDropsDataPoint(ts, 3, "cisco.routing.vrf-val-2", "cisco.forwarding.drop.reason-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoForwardingFibEntriesDataPoint(ts, 1, "cisco.routing.vrf-val", "address.family-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoForwardingFibEntriesDataPoint(ts, 3, "cisco.routing.vrf-val-2", "address.family-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoHardwareStatusDataPoint(ts, 1, "cisco.hardware.component-val", "cisco.hardware.name-val", "cisco.hardware.slot-val", "cisco.hardware.state-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoHardwareStatusDataPoint(ts, 3, "cisco.hardware.component-val-2", "cisco.hardware.name-val-2", "cisco.hardware.slot-val-2", "cisco.hardware.state-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoHardwareTemperatureDataPoint(ts, 1, "cisco.hardware.name-val", "cisco.hardware.slot-val", "cisco.hardware.state-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoHardwareTemperatureDataPoint(ts, 3, "cisco.hardware.name-val-2", "cisco.hardware.slot-val-2", "cisco.hardware.state-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoNvePeerStatusDataPoint(ts, 1, "network.peer.address-val", "cisco.nve.state-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoNvePeerStatusDataPoint(ts, 3, "network.peer.address-val-2", "cisco.nve.state-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoNveVniStatusDataPoint(ts, 1, "cisco.nve.vni-val", "cisco.nve.vni.type-val", "cisco.nve.state-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoNveVniStatusDataPoint(ts, 3, "cisco.nve.vni-val-2", "cisco.nve.vni.type-val-2", "cisco.nve.state-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoProtocolDroppedDataPoint(ts, 1, "cisco.protocol.drop.reason-val", "cisco.protocol.name-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoProtocolDroppedDataPoint(ts, 3, "cisco.protocol.drop.reason-val-2", "cisco.protocol.name-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoProtocolErrorsDataPoint(ts, 1, "cisco.protocol.error.type-val", "cisco.protocol.name-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoProtocolErrorsDataPoint(ts, 3, "cisco.protocol.error.type-val-2", "cisco.protocol.name-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoProtocolPacketsDataPoint(ts, 1, "cisco.protocol.message.type-val", "cisco.protocol.name-val", AttributeNetworkIoDirectionReceive)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoProtocolPacketsDataPoint(ts, 3, "cisco.protocol.message.type-val-2", "cisco.protocol.name-val-2", AttributeNetworkIoDirectionTransmit)
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoQfpDatapathIoDataPoint(ts, 1, AttributeNetworkIoDirectionReceive, "cisco.qfp.traffic.class-val", "cisco.cpu.window-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoQfpDatapathIoDataPoint(ts, 3, AttributeNetworkIoDirectionTransmit, "cisco.qfp.traffic.class-val-2", "cisco.cpu.window-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoQfpDatapathPacketRateDataPoint(ts, 1, AttributeNetworkIoDirectionReceive, "cisco.qfp.traffic.class-val", "cisco.cpu.window-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoQfpDatapathPacketRateDataPoint(ts, 3, AttributeNetworkIoDirectionTransmit, "cisco.qfp.traffic.class-val-2", "cisco.cpu.window-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoQfpDatapathUtilizationDataPoint(ts, 1, "cisco.qfp.load.type-val", "cisco.cpu.window-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoQfpDatapathUtilizationDataPoint(ts, 3, "cisco.qfp.load.type-val-2", "cisco.cpu.window-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoQfpDropBytesDataPoint(ts, 1, "cisco.qfp.drop.source-val", "cisco.forwarding.drop.reason-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoQfpDropBytesDataPoint(ts, 3, "cisco.qfp.drop.source-val-2", "cisco.forwarding.drop.reason-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoQfpDropsDataPoint(ts, 1, "cisco.qfp.drop.source-val", "cisco.forwarding.drop.reason-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoQfpDropsDataPoint(ts, 3, "cisco.qfp.drop.source-val-2", "cisco.forwarding.drop.reason-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoQfpInterfaceDropsDataPoint(ts, 1, "network.interface.name-val", AttributeNetworkIoDirectionReceive)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoQfpInterfaceDropsDataPoint(ts, 3, "network.interface.name-val-2", AttributeNetworkIoDirectionTransmit)
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoRoutingNeighborPrefixesDataPoint(ts, 1, "cisco.routing.protocol-val", "cisco.routing.vrf-val", "network.peer.address-val", "address.family-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoRoutingNeighborPrefixesDataPoint(ts, 3, "cisco.routing.protocol-val-2", "cisco.routing.vrf-val-2", "network.peer.address-val-2", "address.family-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoRoutingNeighborStateDataPoint(ts, 1, "cisco.routing.protocol-val", "cisco.routing.vrf-val", "network.peer.address-val", "cisco.routing.neighbor.state-val", "address.family-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoRoutingNeighborStateDataPoint(ts, 3, "cisco.routing.protocol-val-2", "cisco.routing.vrf-val-2", "network.peer.address-val-2", "cisco.routing.neighbor.state-val-2", "address.family-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoRoutingRoutesDataPoint(ts, 1, "cisco.routing.vrf-val", "cisco.route.source-val", "address.family-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoRoutingRoutesDataPoint(ts, 3, "cisco.routing.vrf-val-2", "cisco.route.source-val-2", "address.family-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoScrapeCommandDurationDataPoint(ts, 1, "cisco.scrape.command.family-val", "cisco.scrape.command.outcome-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoScrapeCommandDurationDataPoint(ts, 3, "cisco.scrape.command.family-val-2", "cisco.scrape.command.outcome-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoScrapeCommandErrorsDataPoint(ts, 1, "cisco.scrape.command.family-val", "cisco.scrape.error.type-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoScrapeCommandErrorsDataPoint(ts, 3, "cisco.scrape.command.family-val-2", "cisco.scrape.error.type-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoScrapePartialSuccessDataPoint(ts, 1)
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoSSHReconnectsDataPoint(ts, 1)
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordSystemCPUUtilizationDataPoint(ts, 1)
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordSystemMemoryUtilizationDataPoint(ts, 1)
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordSystemUptimeDataPoint(ts, 1)

@@ -29,7 +29,10 @@ func NewFactory() receiver.Factory {
 
 func createDefaultConfig() component.Config {
 	config := &Config{
-		ServerConfig: configgrpc.NewDefaultServerConfig(),
+		ServerConfig:             configgrpc.NewDefaultServerConfig(),
+		MaxConnections:           defaultMaxConnections,
+		MaxConcurrentConversions: defaultMaxConcurrentConversions,
+		ConnectionTimeout:        defaultConnectionTimeout,
 		Security: SecurityConfig{
 			RateLimiting: RateLimitingConfig{
 				Enabled:           false,
@@ -43,6 +46,7 @@ func createDefaultConfig() component.Config {
 	config.NetAddr.Endpoint = "localhost:57500"
 	config.MaxRecvMsgSizeMiB = 4
 	config.MaxConcurrentStreams = 100
+	config.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault().MaxConnectionIdle = defaultMaxConnectionIdle
 	config.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault().Time = 30 * time.Second
 	config.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault().Timeout = 10 * time.Second
 

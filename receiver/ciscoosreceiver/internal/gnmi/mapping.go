@@ -390,7 +390,10 @@ func scaledIntValue(value Value, scale float64) (int64, bool) {
 		return 0, false
 	}
 	scaled := numeric * scale
-	if math.IsNaN(scaled) || math.IsInf(scaled, 0) || scaled < math.MinInt64 || scaled > math.MaxInt64 || scaled != math.Trunc(scaled) {
+	// float64 cannot represent MaxInt64: float64(MaxInt64) rounds to 2^63.
+	// Reject that upper boundary before conversion, which would otherwise wrap
+	// to MinInt64. Exact integral inputs at scale 1 use the fast path above.
+	if math.IsNaN(scaled) || math.IsInf(scaled, 0) || scaled < math.MinInt64 || scaled >= float64(math.MaxInt64) || scaled != math.Trunc(scaled) {
 		return 0, false
 	}
 	return int64(scaled), true

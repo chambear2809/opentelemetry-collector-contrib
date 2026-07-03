@@ -145,67 +145,88 @@ var MetricsInfo = metricsInfo{
 		Name: "cisco.device.up",
 	},
 	CiscoInterfaceAdminStatus: metricInfo{
-		Name: "cisco.interface.admin.status",
+		Name:       "cisco.interface.admin.status",
+		Attributes: []string{"network.interface.name"},
 	},
 	CiscoInterfaceIoRate: metricInfo{
-		Name: "cisco.interface.io.rate",
+		Name:       "cisco.interface.io.rate",
+		Attributes: []string{"network.io.direction", "network.interface.name"},
 	},
 	CiscoInterfacePacketRate: metricInfo{
-		Name: "cisco.interface.packet.rate",
+		Name:       "cisco.interface.packet.rate",
+		Attributes: []string{"network.io.direction", "network.interface.name"},
 	},
 	CiscoInterfaceSpeed: metricInfo{
-		Name: "cisco.interface.speed",
+		Name:       "cisco.interface.speed",
+		Attributes: []string{"network.interface.name"},
 	},
 	CiscoInterfaceUtilization: metricInfo{
-		Name: "cisco.interface.utilization",
+		Name:       "cisco.interface.utilization",
+		Attributes: []string{"network.io.direction", "network.interface.name"},
 	},
 	CiscoOpticsChromaticDispersion: metricInfo{
-		Name: "cisco.optics.chromatic_dispersion",
+		Name:       "cisco.optics.chromatic_dispersion",
+		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
 	},
 	CiscoOpticsDgd: metricInfo{
-		Name: "cisco.optics.dgd",
+		Name:       "cisco.optics.dgd",
+		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
 	},
 	CiscoOpticsEsnr: metricInfo{
-		Name: "cisco.optics.esnr",
+		Name:       "cisco.optics.esnr",
+		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
 	},
 	CiscoOpticsLaserBiasCurrent: metricInfo{
-		Name: "cisco.optics.laser_bias_current",
+		Name:       "cisco.optics.laser_bias_current",
+		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
 	},
 	CiscoOpticsOsnr: metricInfo{
-		Name: "cisco.optics.osnr",
+		Name:       "cisco.optics.osnr",
+		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
 	},
 	CiscoOpticsPreFecBer: metricInfo{
-		Name: "cisco.optics.pre_fec_ber",
+		Name:       "cisco.optics.pre_fec_ber",
+		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
 	},
 	CiscoOpticsPresent: metricInfo{
-		Name: "cisco.optics.present",
+		Name:       "cisco.optics.present",
+		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.profile", "cisco.optics.experimental"},
 	},
 	CiscoOpticsQFactor: metricInfo{
-		Name: "cisco.optics.q_factor",
+		Name:       "cisco.optics.q_factor",
+		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
 	},
 	CiscoOpticsQMargin: metricInfo{
-		Name: "cisco.optics.q_margin",
+		Name:       "cisco.optics.q_margin",
+		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
 	},
 	CiscoOpticsRxPower: metricInfo{
-		Name: "cisco.optics.rx_power",
+		Name:       "cisco.optics.rx_power",
+		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
 	},
 	CiscoOpticsTdecq: metricInfo{
-		Name: "cisco.optics.tdecq",
+		Name:       "cisco.optics.tdecq",
+		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
 	},
 	CiscoOpticsTecCurrent: metricInfo{
-		Name: "cisco.optics.tec_current",
+		Name:       "cisco.optics.tec_current",
+		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
 	},
 	CiscoOpticsTecUtilization: metricInfo{
-		Name: "cisco.optics.tec_utilization",
+		Name:       "cisco.optics.tec_utilization",
+		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
 	},
 	CiscoOpticsTemperature: metricInfo{
-		Name: "cisco.optics.temperature",
+		Name:       "cisco.optics.temperature",
+		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
 	},
 	CiscoOpticsTxPower: metricInfo{
-		Name: "cisco.optics.tx_power",
+		Name:       "cisco.optics.tx_power",
+		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
 	},
 	CiscoOpticsVoltage: metricInfo{
-		Name: "cisco.optics.voltage",
+		Name:       "cisco.optics.voltage",
+		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
 	},
 	SystemCPUUtilization: metricInfo{
 		Name: "system.cpu.utilization",
@@ -214,19 +235,24 @@ var MetricsInfo = metricsInfo{
 		Name: "system.memory.utilization",
 	},
 	SystemNetworkErrors: metricInfo{
-		Name: "system.network.errors",
+		Name:       "system.network.errors",
+		Attributes: []string{"network.io.direction", "network.interface.name"},
 	},
 	SystemNetworkInterfaceStatus: metricInfo{
-		Name: "system.network.interface.status",
+		Name:       "system.network.interface.status",
+		Attributes: []string{"network.interface.name"},
 	},
 	SystemNetworkIo: metricInfo{
-		Name: "system.network.io",
+		Name:       "system.network.io",
+		Attributes: []string{"network.io.direction", "network.interface.name"},
 	},
 	SystemNetworkPacketCount: metricInfo{
-		Name: "system.network.packet.count",
+		Name:       "system.network.packet.count",
+		Attributes: []string{"network.io.direction", "network.packet.type", "network.interface.name"},
 	},
 	SystemNetworkPacketDropped: metricInfo{
-		Name: "system.network.packet.dropped",
+		Name:       "system.network.packet.dropped",
+		Attributes: []string{"network.io.direction", "network.interface.name"},
 	},
 	SystemUptime: metricInfo{
 		Name: "system.uptime",
@@ -267,7 +293,8 @@ type metricsInfo struct {
 }
 
 type metricInfo struct {
-	Name string
+	Name       string
+	Attributes []string
 }
 
 type metricCiscoDeviceUp struct {

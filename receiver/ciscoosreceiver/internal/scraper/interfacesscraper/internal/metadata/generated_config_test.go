@@ -375,6 +375,306 @@ func TestMetricsBuilderConfig(t *testing.T) {
 		})
 	}
 }
+func TestCiscoInterfaceAdminStatusMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoInterfaceAdminStatus
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoInterfaceAdminStatusMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.interface.admin.status doesn't have an attribute invalid, valid attributes: [network.interface.description, network.interface.mac, network.interface.name, network.interface.speed]")
+
+	cfg = DefaultMetricsConfig().CiscoInterfaceAdminStatus
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoInterfaceCounterMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoInterfaceCounter
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoInterfaceCounterMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.interface.counter doesn't have an attribute invalid, valid attributes: [cisco.interface.counter.name, network.interface.description, network.interface.mac, network.interface.name, network.interface.speed]")
+
+	cfg = DefaultMetricsConfig().CiscoInterfaceCounter
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoInterfaceErrdisabledMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoInterfaceErrdisabled
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoInterfaceErrdisabledMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.interface.errdisabled doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.errdisabled.reason]")
+
+	cfg = DefaultMetricsConfig().CiscoInterfaceErrdisabled
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoInterfaceIoRateMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoInterfaceIoRate
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoInterfaceIoRateMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.interface.io.rate doesn't have an attribute invalid, valid attributes: [network.io.direction, network.interface.description, network.interface.mac, network.interface.name, network.interface.speed]")
+
+	cfg = DefaultMetricsConfig().CiscoInterfaceIoRate
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoInterfacePacketRateMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoInterfacePacketRate
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoInterfacePacketRateMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.interface.packet.rate doesn't have an attribute invalid, valid attributes: [network.io.direction, network.interface.description, network.interface.mac, network.interface.name, network.interface.speed]")
+
+	cfg = DefaultMetricsConfig().CiscoInterfacePacketRate
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoInterfacePauseFramesMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoInterfacePauseFrames
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoInterfacePauseFramesMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.interface.pause.frames doesn't have an attribute invalid, valid attributes: [network.interface.name, network.io.direction, cisco.pause.type, cisco.qos.priority]")
+
+	cfg = DefaultMetricsConfig().CiscoInterfacePauseFrames
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoInterfaceQosPolicyBytesMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoInterfaceQosPolicyBytes
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoInterfaceQosPolicyBytesMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.interface.qos.policy.bytes doesn't have an attribute invalid, valid attributes: [network.interface.name, network.io.direction, cisco.qos.class, cisco.qos.action, cisco.qos.drop.reason, cisco.qos.source]")
+
+	cfg = DefaultMetricsConfig().CiscoInterfaceQosPolicyBytes
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoInterfaceQosPolicyPacketsMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoInterfaceQosPolicyPackets
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoInterfaceQosPolicyPacketsMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.interface.qos.policy.packets doesn't have an attribute invalid, valid attributes: [network.interface.name, network.io.direction, cisco.qos.class, cisco.qos.action, cisco.qos.drop.reason, cisco.qos.source]")
+
+	cfg = DefaultMetricsConfig().CiscoInterfaceQosPolicyPackets
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoInterfaceQosQueueBytesMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoInterfaceQosQueueBytes
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoInterfaceQosQueueBytesMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.interface.qos.queue.bytes doesn't have an attribute invalid, valid attributes: [network.interface.name, network.io.direction, cisco.qos.queue, cisco.qos.group, cisco.qos.action, cisco.qos.drop.reason, cisco.qos.source]")
+
+	cfg = DefaultMetricsConfig().CiscoInterfaceQosQueueBytes
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoInterfaceQosQueuePacketsMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoInterfaceQosQueuePackets
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoInterfaceQosQueuePacketsMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.interface.qos.queue.packets doesn't have an attribute invalid, valid attributes: [network.interface.name, network.io.direction, cisco.qos.queue, cisco.qos.group, cisco.qos.action, cisco.qos.drop.reason, cisco.qos.source]")
+
+	cfg = DefaultMetricsConfig().CiscoInterfaceQosQueuePackets
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoInterfaceSpeedMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoInterfaceSpeed
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoInterfaceSpeedMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.interface.speed doesn't have an attribute invalid, valid attributes: [network.interface.description, network.interface.mac, network.interface.name]")
+
+	cfg = DefaultMetricsConfig().CiscoInterfaceSpeed
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoInterfaceUtilizationMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoInterfaceUtilization
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoInterfaceUtilizationMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.interface.utilization doesn't have an attribute invalid, valid attributes: [network.io.direction, network.interface.description, network.interface.mac, network.interface.name]")
+
+	cfg = DefaultMetricsConfig().CiscoInterfaceUtilization
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoL2StpBlockedPortsMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoL2StpBlockedPorts
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoL2StpBlockedPortsMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.l2.stp.blocked_ports doesn't have an attribute invalid, valid attributes: [cisco.l2.vlan, network.interface.name]")
+
+	cfg = DefaultMetricsConfig().CiscoL2StpBlockedPorts
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoL2StpInstancesMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoL2StpInstances
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoL2StpInstancesMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.l2.stp.instances doesn't have an attribute invalid, valid attributes: [cisco.l2.stp.state]")
+
+	cfg = DefaultMetricsConfig().CiscoL2StpInstances
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoL2StpTopologyChangesMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoL2StpTopologyChanges
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoL2StpTopologyChangesMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.l2.stp.topology_changes doesn't have an attribute invalid, valid attributes: [cisco.l2.vlan, network.interface.name]")
+
+	cfg = DefaultMetricsConfig().CiscoL2StpTopologyChanges
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoLacpErrorsMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoLacpErrors
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoLacpErrorsMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.lacp.errors doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.lacp.error.type]")
+
+	cfg = DefaultMetricsConfig().CiscoLacpErrors
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoLacpPacketsMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoLacpPackets
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoLacpPacketsMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.lacp.packets doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.lacp.packet.type, network.io.direction]")
+
+	cfg = DefaultMetricsConfig().CiscoLacpPackets
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoPortChannelMemberStatusMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoPortChannelMemberStatus
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoPortChannelMemberStatusMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.port_channel.member.status doesn't have an attribute invalid, valid attributes: [cisco.port_channel.name, network.interface.name, cisco.port_channel.state]")
+
+	cfg = DefaultMetricsConfig().CiscoPortChannelMemberStatus
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoPortChannelStatusMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoPortChannelStatus
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoPortChannelStatusMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.port_channel.status doesn't have an attribute invalid, valid attributes: [cisco.port_channel.name, cisco.port_channel.state]")
+
+	cfg = DefaultMetricsConfig().CiscoPortChannelStatus
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoScrapeCommandDurationMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoScrapeCommandDuration
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoScrapeCommandDurationMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.scrape.command.duration doesn't have an attribute invalid, valid attributes: [cisco.scrape.command.family, cisco.scrape.command.outcome]")
+
+	cfg = DefaultMetricsConfig().CiscoScrapeCommandDuration
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoScrapeCommandErrorsMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoScrapeCommandErrors
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoScrapeCommandErrorsMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.scrape.command.errors doesn't have an attribute invalid, valid attributes: [cisco.scrape.command.family, cisco.scrape.error.type]")
+
+	cfg = DefaultMetricsConfig().CiscoScrapeCommandErrors
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoTopologyNeighborInfoMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoTopologyNeighborInfo
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoTopologyNeighborInfoMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.topology.neighbor.info doesn't have an attribute invalid, valid attributes: [cisco.topology.protocol, network.interface.name, cisco.topology.neighbor.name, cisco.topology.neighbor.interface, cisco.topology.neighbor.platform, cisco.topology.neighbor.address]")
+
+	cfg = DefaultMetricsConfig().CiscoTopologyNeighborInfo
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoTransceiverSensorMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoTransceiverSensor
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoTransceiverSensorMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.transceiver.sensor doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.transceiver.sensor, cisco.transceiver.lane, cisco.transceiver.sensor.unit]")
+
+	cfg = DefaultMetricsConfig().CiscoTransceiverSensor
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoVpcConsistencyFailuresMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoVpcConsistencyFailures
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoVpcConsistencyFailuresMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.vpc.consistency.failures doesn't have an attribute invalid, valid attributes: [cisco.vpc.check]")
+
+	cfg = DefaultMetricsConfig().CiscoVpcConsistencyFailures
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoVpcStatusMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoVpcStatus
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoVpcStatusMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.vpc.status doesn't have an attribute invalid, valid attributes: [cisco.vpc.domain, cisco.vpc.peer, cisco.vpc.state]")
+
+	cfg = DefaultMetricsConfig().CiscoVpcStatus
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
 func TestSystemNetworkErrorsMetricsConfig_Validate(t *testing.T) {
 	cfg := DefaultMetricsConfig().SystemNetworkErrors
 	require.NoError(t, cfg.Validate())
@@ -416,7 +716,7 @@ func TestSystemNetworkPacketCountMetricsConfig_Validate(t *testing.T) {
 	require.NoError(t, cfg.Validate())
 
 	cfg.EnabledAttributes = []SystemNetworkPacketCountMetricAttributeKey{"invalid"}
-	require.ErrorContains(t, cfg.Validate(), "metric system.network.packet.count doesn't have an attribute invalid, valid attributes: [network.packet.type, network.interface.description, network.interface.mac, network.interface.name, network.interface.speed]")
+	require.ErrorContains(t, cfg.Validate(), "metric system.network.packet.count doesn't have an attribute invalid, valid attributes: [network.io.direction, network.packet.type, network.interface.description, network.interface.mac, network.interface.name, network.interface.speed]")
 
 	cfg = DefaultMetricsConfig().SystemNetworkPacketCount
 	cfg.AggregationStrategy = "invalid"

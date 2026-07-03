@@ -55,6 +55,29 @@ func TestRateLimiterDefaultsInvalidCleanupInterval(t *testing.T) {
 	rl := newRateLimiter(1.0, 1, 0)
 	rl.Stop()
 	assert.Equal(t, defaultRateLimiterCleanupInterval, rl.cleanupInterval)
+
+	rl = newRateLimiter(1.0, 1, time.Millisecond)
+	rl.Stop()
+	assert.Equal(t, defaultRateLimiterCleanupInterval, rl.cleanupInterval)
+}
+
+func TestRateLimiterCleanupCannotResetTokensBeforeFullRefill(t *testing.T) {
+	cleanupInterval := time.Second
+	rl := newRateLimiter(0.5, 2, cleanupInterval)
+	defer rl.Stop()
+	now := time.Now()
+
+	assert.True(t, rl.allowAt("192.0.2.1", now))
+	assert.True(t, rl.allowAt("192.0.2.1", now))
+	assert.False(t, rl.allowAt("192.0.2.1", now))
+
+	rl.cleanupStale(now.Add(cleanupInterval))
+	assert.Equal(t, 1, rl.clientCount())
+	assert.False(t, rl.allowAt("192.0.2.1", now.Add(cleanupInterval)))
+
+	rl.cleanupStale(now.Add(5*time.Second + time.Nanosecond))
+	assert.Zero(t, rl.clientCount())
+	assert.True(t, rl.allowAt("192.0.2.1", now.Add(5*time.Second+time.Nanosecond)))
 }
 
 func TestSecurityManager_ClientAuthTypes(t *testing.T) {

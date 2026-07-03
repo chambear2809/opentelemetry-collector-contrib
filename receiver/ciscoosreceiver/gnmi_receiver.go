@@ -330,6 +330,7 @@ func (r *sharedGNMIReceiver) Shutdown(ctx context.Context) error {
 
 func (r *sharedGNMIReceiver) run(ctx context.Context) {
 	defer close(r.done)
+	defer r.telemetry.shutdown()
 	var wg sync.WaitGroup
 	for _, target := range r.targets {
 		wg.Go(func() {
@@ -1008,7 +1009,7 @@ func (r *sharedGNMIReceiver) processNotification(
 		return nil
 	}
 	r.telemetry.duplicates(ctx, target.config.Name, stream.Profile, result.Duplicates)
-	r.telemetry.cacheUtilization(ctx, target.cache.Len(), r.maxCachedSeries)
+	r.telemetry.cacheUtilization(ctx, target.cache.StateLen(), r.maxCachedSeries)
 	r.telemetry.success(ctx, target.config.Name, stream.Profile, receiptTime)
 	points := append([]internalgnmi.MappedPoint(nil), result.Applied...)
 	if stream.Optics {

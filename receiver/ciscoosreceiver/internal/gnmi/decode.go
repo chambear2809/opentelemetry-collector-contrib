@@ -4,20 +4,23 @@
 package gnmi
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	gnmipb "github.com/openconfig/gnmi/proto/gnmi"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
+
+const maxJSONTypedValueBytes = 4 * 1024 * 1024
 
 // DecodeNotification decodes one wire notification to canonical leaves. It is
 // intentionally schema-neutral: unsupported wire values are counted and
@@ -54,7 +57,18 @@ func DecodeNotification(target string, notification *gnmipb.Notification, receip
 		out.Deletes = append(out.Deletes, full)
 	}
 
-	for _, update := range notification.GetUpdate() {
+	// gNMI requires the final update to win when a notification contains the
+	// same fully-resolved path more than once. Resolve in reverse so superseded
+	// values are never decoded or counted as touched state, then restore wire
+	// order for the surviving updates.
+	type resolvedUpdate struct {
+		path   Path
+		update *gnmipb.Update
+	}
+	updates := notification.GetUpdate()
+	resolved := make([]resolvedUpdate, 0, len(updates))
+	seen := make(map[string]struct{}, len(updates))
+	for _, update := range slices.Backward(updates) {
 		if update == nil {
 			stats.UnmappedValues++
 			continue
@@ -67,6 +81,15 @@ func DecodeNotification(target string, notification *gnmipb.Notification, receip
 		if err != nil {
 			return DecodedNotification{}, stats, fmt.Errorf("decode update: %w", err)
 		}
+		if _, duplicate := seen[full.Key()]; duplicate {
+			continue
+		}
+		seen[full.Key()] = struct{}{}
+		resolved = append(resolved, resolvedUpdate{path: full, update: update})
+	}
+	for _, item := range slices.Backward(resolved) {
+		full := item.path
+		update := item.update
 		out.Touched = append(out.Touched, full.Clone())
 		points, unmapped, err := decodeValue(full, update.GetVal(), timestamp)
 		stats.UnmappedValues += unmapped
@@ -133,30 +156,19 @@ func decodeValue(path Path, typed *gnmipb.TypedValue, timestamp time.Time) ([]Po
 }
 
 func decodeJSON(path Path, raw []byte, timestamp time.Time) ([]Point, int, error) {
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
-	var value any
-	if err := decoder.Decode(&value); err != nil {
-		return nil, 0, fmt.Errorf("decode JSON value: %w", err)
+	if len(raw) > maxJSONTypedValueBytes {
+		return nil, 0, fmt.Errorf("decode JSON value: payload exceeds hard limit of %d bytes", maxJSONTypedValueBytes)
 	}
-	if err := ensureJSONEOF(decoder); err != nil {
+	var value any
+	// Validate nesting and node complexity with a streaming token pass before
+	// materializing arbitrary device JSON. The enclosing gRPC message limit can
+	// be much larger than a safe per-value decode budget.
+	if err := httpclient.DecodeJSON(raw, &value); err != nil {
 		return nil, 0, fmt.Errorf("decode JSON value: %w", err)
 	}
 	var points []Point
 	unmapped := walkJSON(path, value, timestamp, &points)
 	return points, unmapped, nil
-}
-
-func ensureJSONEOF(decoder *json.Decoder) error {
-	var extra any
-	err := decoder.Decode(&extra)
-	if err == io.EOF {
-		return nil
-	}
-	if err == nil {
-		return errors.New("multiple JSON values")
-	}
-	return err
 }
 
 func walkJSON(path Path, value any, timestamp time.Time, points *[]Point) int {

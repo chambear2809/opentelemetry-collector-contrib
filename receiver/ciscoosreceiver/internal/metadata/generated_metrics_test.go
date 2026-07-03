@@ -101,201 +101,171 @@ func TestMetricsBuilder(t *testing.T) {
 
 			defaultMetricsCount := 0
 			allMetricsCount := 0
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoDeviceUpDataPoint(ts, 1)
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoInterfaceAdminStatusDataPoint(ts, 1, "network.interface.name-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoInterfaceAdminStatusDataPoint(ts, 3, "network.interface.name-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoInterfaceIoRateDataPoint(ts, 1, AttributeNetworkIoDirectionReceive, "network.interface.name-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoInterfaceIoRateDataPoint(ts, 3, AttributeNetworkIoDirectionTransmit, "network.interface.name-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoInterfacePacketRateDataPoint(ts, 1, AttributeNetworkIoDirectionReceive, "network.interface.name-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoInterfacePacketRateDataPoint(ts, 3, AttributeNetworkIoDirectionTransmit, "network.interface.name-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoInterfaceSpeedDataPoint(ts, 1, "network.interface.name-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoInterfaceSpeedDataPoint(ts, 3, "network.interface.name-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoInterfaceUtilizationDataPoint(ts, 1, AttributeNetworkIoDirectionReceive, "network.interface.name-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoInterfaceUtilizationDataPoint(ts, 3, AttributeNetworkIoDirectionTransmit, "network.interface.name-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoOpticsChromaticDispersionDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoOpticsChromaticDispersionDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoOpticsDgdDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoOpticsDgdDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoOpticsEsnrDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoOpticsEsnrDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoOpticsLaserBiasCurrentDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoOpticsLaserBiasCurrentDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoOpticsOsnrDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoOpticsOsnrDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoOpticsPreFecBerDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoOpticsPreFecBerDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoOpticsPresentDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", AttributeCiscoOpticsProfileDom, false)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoOpticsPresentDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", AttributeCiscoOpticsProfileVdm, true)
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoOpticsQFactorDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoOpticsQFactorDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoOpticsQMarginDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoOpticsQMarginDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoOpticsRxPowerDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoOpticsRxPowerDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoOpticsTdecqDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoOpticsTdecqDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoOpticsTecCurrentDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoOpticsTecCurrentDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoOpticsTecUtilizationDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoOpticsTecUtilizationDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoOpticsTemperatureDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoOpticsTemperatureDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoOpticsTxPowerDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoOpticsTxPowerDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoOpticsVoltageDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoOpticsVoltageDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordSystemCPUUtilizationDataPoint(ts, 1)
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordSystemMemoryUtilizationDataPoint(ts, 1)
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordSystemNetworkErrorsDataPoint(ts, 1, AttributeNetworkIoDirectionReceive, "network.interface.name-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordSystemNetworkErrorsDataPoint(ts, 3, AttributeNetworkIoDirectionTransmit, "network.interface.name-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordSystemNetworkInterfaceStatusDataPoint(ts, 1, "network.interface.name-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordSystemNetworkInterfaceStatusDataPoint(ts, 3, "network.interface.name-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordSystemNetworkIoDataPoint(ts, 1, AttributeNetworkIoDirectionReceive, "network.interface.name-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordSystemNetworkIoDataPoint(ts, 3, AttributeNetworkIoDirectionTransmit, "network.interface.name-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordSystemNetworkPacketCountDataPoint(ts, 1, AttributeNetworkIoDirectionReceive, AttributeNetworkPacketTypeUnicast, "network.interface.name-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordSystemNetworkPacketCountDataPoint(ts, 3, AttributeNetworkIoDirectionTransmit, AttributeNetworkPacketTypeMulticast, "network.interface.name-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordSystemNetworkPacketDroppedDataPoint(ts, 1, AttributeNetworkIoDirectionReceive, "network.interface.name-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordSystemNetworkPacketDroppedDataPoint(ts, 3, AttributeNetworkIoDirectionTransmit, "network.interface.name-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordSystemUptimeDataPoint(ts, 1)

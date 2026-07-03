@@ -4,11 +4,14 @@
 package sdwan
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -480,6 +483,80 @@ func TestClientAutoJWTLogin(t *testing.T) {
 	assert.Equal(t, "10.0.0.1", String(objects[0], "system-ip"))
 }
 
+func TestClientAuthenticationRetryPolicy(t *testing.T) {
+	tests := []struct {
+		name             string
+		authenticate     func(http.ResponseWriter, int64)
+		wantErr          string
+		wantAuthRequests int64
+	}{
+		{
+			name: "rejected credentials",
+			authenticate: func(w http.ResponseWriter, _ int64) {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+			},
+			wantErr:          "HTTP 401",
+			wantAuthRequests: 1,
+		},
+		{
+			name: "invalid successful login response",
+			authenticate: func(w http.ResponseWriter, _ int64) {
+				_, _ = w.Write([]byte(`{"not_token":"missing"}`))
+			},
+			wantErr:          "did not include token",
+			wantAuthRequests: 1,
+		},
+		{
+			name: "transient authentication server failure",
+			authenticate: func(w http.ResponseWriter, attempt int64) {
+				if attempt == 1 {
+					w.Header().Set("Retry-After", "0")
+					http.Error(w, "unavailable", http.StatusServiceUnavailable)
+					return
+				}
+				_ = json.NewEncoder(w).Encode(map[string]string{"token": "jwt-token"})
+			},
+			wantAuthRequests: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var authRequests atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/jwt/login":
+					tt.authenticate(w, authRequests.Add(1))
+				case "/dataservice/device":
+					_ = json.NewEncoder(w).Encode([]map[string]any{{"system-ip": "10.0.0.1"}})
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+
+			client, err := NewClient(Config{
+				Endpoint:   server.URL,
+				AuthMode:   "jwt",
+				Username:   "admin",
+				Password:   "password",
+				Timeout:    time.Second,
+				MaxRetries: 1,
+			})
+			require.NoError(t, err)
+			client.spacing = 0
+
+			_, err = client.List(t.Context(), "devices", "/device", nil, 1)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tt.wantErr)
+			}
+			assert.Equal(t, tt.wantAuthRequests, authRequests.Load())
+		})
+	}
+}
+
 func TestClientAutoFallsBackToSession(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -517,4 +594,326 @@ func TestClientAutoFallsBackToSession(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, objects, 1)
 	assert.Equal(t, "event-1", String(objects[0], "eventId"))
+}
+
+func TestClientSessionAuthPublishesOnlyCompleteBundle(t *testing.T) {
+	const workers = 16
+
+	var loginRequests atomic.Int64
+	var tokenRequests atomic.Int64
+	var dataRequests atomic.Int64
+	var invalidAuthHeaders atomic.Int64
+	tokenStarted := make(chan struct{})
+	releaseToken := make(chan struct{})
+	var tokenStartedOnce sync.Once
+	var releaseTokenOnce sync.Once
+	release := func() {
+		releaseTokenOnce.Do(func() { close(releaseToken) })
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/j_security_check":
+			loginRequests.Add(1)
+			http.SetCookie(w, &http.Cookie{Name: "JSESSIONID", Value: "session-id"})
+			w.WriteHeader(http.StatusOK)
+		case "/dataservice/client/token":
+			tokenRequests.Add(1)
+			if r.Header.Get("Cookie") != "JSESSIONID=session-id" {
+				invalidAuthHeaders.Add(1)
+			}
+			tokenStartedOnce.Do(func() { close(tokenStarted) })
+			<-releaseToken
+			_, _ = w.Write([]byte("xsrf-token"))
+		case "/dataservice/events":
+			dataRequests.Add(1)
+			if r.Header.Get("Cookie") != "JSESSIONID=session-id" || r.Header.Get("X-XSRF-TOKEN") != "xsrf-token" {
+				invalidAuthHeaders.Add(1)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"eventId": "event-1"}}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	defer release()
+
+	client, err := NewClient(Config{
+		Endpoint: server.URL,
+		AuthMode: "session",
+		Username: "admin",
+		Password: "password",
+		Timeout:  5 * time.Second,
+	})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	start := make(chan struct{})
+	results := make(chan error, workers)
+	for range workers {
+		go func() {
+			<-start
+			_, requestErr := client.PostQuery(t.Context(), "events", "/events", map[string]any{"size": 1}, 0)
+			results <- requestErr
+		}()
+	}
+	close(start)
+
+	select {
+	case <-tokenStarted:
+	case <-time.After(time.Second):
+		t.Fatal("session token request did not start")
+	}
+
+	client.authMu.Lock()
+	inflight := client.loginInflight != nil
+	published := client.authBundleLocked()
+	client.authMu.Unlock()
+	assert.True(t, inflight)
+	assert.Empty(t, published.bearerToken)
+	assert.Empty(t, published.jsessionID)
+	assert.Empty(t, published.xsrfToken)
+
+	release()
+	for range workers {
+		require.NoError(t, <-results)
+	}
+
+	assert.Equal(t, int64(1), loginRequests.Load())
+	assert.Equal(t, int64(1), tokenRequests.Load())
+	assert.Equal(t, int64(workers), dataRequests.Load())
+	assert.Zero(t, invalidAuthHeaders.Load())
+}
+
+func TestClientCanceledLoginOwnerDoesNotBackoffLiveWaiter(t *testing.T) {
+	var loginRequests atomic.Int64
+	firstLoginStarted := make(chan struct{})
+	releaseFirstLogin := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/jwt/login" {
+			http.NotFound(w, r)
+			return
+		}
+		if loginRequests.Add(1) == 1 {
+			close(firstLoginStarted)
+			<-releaseFirstLogin
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{"token": "replacement-token"})
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint: server.URL,
+		AuthMode: "jwt",
+		Username: "admin",
+		Password: "password",
+		Timeout:  5 * time.Second,
+	})
+	require.NoError(t, err)
+
+	ownerCtx, cancelOwner := context.WithCancel(t.Context())
+	ownerResult := make(chan error, 1)
+	go func() {
+		_, authErr := client.ensureAuth(ownerCtx)
+		ownerResult <- authErr
+	}()
+	<-firstLoginStarted
+
+	// Queue both the live waiter and the canceled owner behind the state lock.
+	// Regardless of which acquires it first, the cancellation must not become a
+	// shared authentication failure.
+	client.authMu.Lock()
+	waiterResult := make(chan error, 1)
+	go func() {
+		_, authErr := client.ensureAuth(t.Context())
+		waiterResult <- authErr
+	}()
+	cancelOwner()
+	close(releaseFirstLogin)
+	client.authMu.Unlock()
+
+	require.ErrorIs(t, <-ownerResult, context.Canceled)
+	require.NoError(t, <-waiterResult)
+	assert.Equal(t, int64(2), loginRequests.Load())
+	client.authMu.Lock()
+	assert.Zero(t, client.authFailures)
+	client.authMu.Unlock()
+}
+
+func TestClientSessionTokenFailureDoesNotPublishPartialAuth(t *testing.T) {
+	var loginRequests atomic.Int64
+	var tokenRequests atomic.Int64
+	var dataRequests atomic.Int64
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/j_security_check":
+			loginRequests.Add(1)
+			http.SetCookie(w, &http.Cookie{Name: "JSESSIONID", Value: "partial-session"})
+			w.WriteHeader(http.StatusOK)
+		case "/dataservice/client/token":
+			tokenRequests.Add(1)
+			http.Error(w, "token unavailable", http.StatusServiceUnavailable)
+		case "/dataservice/events":
+			dataRequests.Add(1)
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"eventId": "unexpected"}}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:   server.URL,
+		AuthMode:   "session",
+		Username:   "admin",
+		Password:   "password",
+		Timeout:    time.Second,
+		MaxRetries: 0,
+	})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	for range 2 {
+		_, requestErr := client.PostQuery(t.Context(), "events", "/events", map[string]any{"size": 1}, 0)
+		require.Error(t, requestErr)
+	}
+
+	client.authMu.Lock()
+	published := client.authBundleLocked()
+	client.authMu.Unlock()
+	assert.Empty(t, published.bearerToken)
+	assert.Empty(t, published.jsessionID)
+	assert.Empty(t, published.xsrfToken)
+	assert.Equal(t, int64(1), loginRequests.Load())
+	assert.Equal(t, int64(1), tokenRequests.Load())
+	assert.Zero(t, dataRequests.Load())
+}
+
+func TestClientStaleUnauthorizedDoesNotClearNewerAuth(t *testing.T) {
+	client, err := NewClient(Config{
+		Endpoint: "https://sdwan.example.com",
+		AuthMode: "session",
+		Username: "admin",
+		Password: "password",
+	})
+	require.NoError(t, err)
+
+	client.authMu.Lock()
+	client.authGeneration = 2
+	client.setAuthBundleLocked(authBundle{jsessionID: "new-session", xsrfToken: "new-xsrf"})
+	client.authMu.Unlock()
+
+	client.clearAuth(1, &APIError{StatusCode: http.StatusUnauthorized})
+	client.authMu.Lock()
+	retained := client.authBundleLocked()
+	staleFailures := client.authFailures
+	client.authMu.Unlock()
+	assert.Equal(t, uint64(2), retained.generation)
+	assert.Equal(t, "new-session", retained.jsessionID)
+	assert.Equal(t, "new-xsrf", retained.xsrfToken)
+	assert.Zero(t, staleFailures)
+
+	client.clearAuth(2, &APIError{StatusCode: http.StatusUnauthorized})
+	client.authMu.Lock()
+	cleared := client.authBundleLocked()
+	failures := client.authFailures
+	client.authMu.Unlock()
+	assert.Equal(t, uint64(3), cleared.generation)
+	assert.Empty(t, cleared.jsessionID)
+	assert.Empty(t, cleared.xsrfToken)
+	assert.Equal(t, 1, failures)
+}
+
+func TestClientUnauthorizedEntersSharedAuthBackoff(t *testing.T) {
+	var loginRequests atomic.Int64
+	var dataRequests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/jwt/login":
+			loginRequests.Add(1)
+			_ = json.NewEncoder(w).Encode(map[string]string{"token": "rejected-token"})
+		case "/dataservice/device":
+			dataRequests.Add(1)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint: server.URL,
+		AuthMode: "jwt",
+		Username: "admin",
+		Password: "password",
+		Timeout:  time.Second,
+	})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	_, firstErr := client.List(t.Context(), "devices", "/device", nil, 0)
+	require.Error(t, firstErr)
+	_, secondErr := client.List(t.Context(), "devices", "/device", nil, 0)
+	require.Error(t, secondErr)
+
+	assert.Equal(t, int64(1), loginRequests.Load())
+	assert.Equal(t, int64(1), dataRequests.Load())
+	client.authMu.Lock()
+	assert.Equal(t, 1, client.authFailures)
+	client.authMu.Unlock()
+}
+
+func TestClientForbiddenRetainsAuthAndSuccessfulDataResetsFailureStreak(t *testing.T) {
+	var loginRequests atomic.Int64
+	var dataRequests atomic.Int64
+	var client *Client
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/jwt/login":
+			loginRequests.Add(1)
+			client.authMu.Lock()
+			client.authFailures = 3
+			client.lastAuthErr = &APIError{StatusCode: http.StatusUnauthorized}
+			client.lastAuthAt = time.Now()
+			client.authMu.Unlock()
+			_ = json.NewEncoder(w).Encode(map[string]string{"token": "valid-token"})
+		case "/dataservice/device":
+			request := dataRequests.Add(1)
+			if request == 1 {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"system-ip": "10.0.0.1"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	var err error
+	client, err = NewClient(Config{
+		Endpoint: server.URL,
+		AuthMode: "jwt",
+		Username: "admin",
+		Password: "password",
+		Timeout:  time.Second,
+	})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	_, firstErr := client.List(t.Context(), "devices", "/device", nil, 0)
+	require.Error(t, firstErr)
+	objects, secondErr := client.List(t.Context(), "devices", "/device", nil, 0)
+	require.NoError(t, secondErr)
+	require.Len(t, objects, 1)
+
+	assert.Equal(t, int64(1), loginRequests.Load())
+	assert.Equal(t, int64(2), dataRequests.Load())
+	client.authMu.Lock()
+	assert.Zero(t, client.authFailures)
+	assert.NoError(t, client.lastAuthErr)
+	assert.True(t, client.lastAuthAt.IsZero())
+	client.authMu.Unlock()
 }

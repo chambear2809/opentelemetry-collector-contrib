@@ -78,7 +78,7 @@ func NewTelemetryBuilder(settings component.TelemetrySettings, options ...Teleme
 	errs = errors.Join(errs, err)
 	builder.CiscoosreceiverGnmiCacheUtilization, err = builder.meter.Float64Gauge(
 		"otelcol_ciscoosreceiver_gnmi_cache_utilization",
-		metric.WithDescription("Fraction of the configured mapped-series cache currently in use [Development]"),
+		metric.WithDescription("Fraction of the configured retained gNMI state cache currently in use, including mapped series, atomic baselines, and delete tombstones [Development]"),
 		metric.WithUnit("1"),
 	)
 	errs = errors.Join(errs, err)

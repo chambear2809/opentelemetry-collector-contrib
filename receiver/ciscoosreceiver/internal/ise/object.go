@@ -4,10 +4,12 @@
 package ise
 
 import (
+	"bytes"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -370,7 +372,84 @@ type xmlElement struct {
 	Nodes   []xmlElement `xml:",any"`
 }
 
+const (
+	hardMaxXMLDepth      = 128
+	hardMaxXMLTokens     = 450_000
+	hardMaxXMLElements   = 200_000
+	hardMaxXMLAttributes = 250_000
+)
+
+type xmlComplexityLimitError struct {
+	kind    string
+	maximum int
+}
+
+type xmlComplexityLimits struct {
+	depth      int
+	tokens     int
+	elements   int
+	attributes int
+}
+
+func (e *xmlComplexityLimitError) Error() string {
+	return fmt.Sprintf("XML response exceeds hard %s limit of %d", e.kind, e.maximum)
+}
+
+// validateXMLComplexity performs a streaming pass before xml.Unmarshal builds
+// the recursive element tree. Cisco ISE REST bodies are byte-bounded by the
+// HTTP client, but a small adversarial document can still contain unsafe depth
+// or hundreds of thousands of tiny nodes and attributes.
+func validateXMLComplexity(body []byte) error {
+	return validateXMLComplexityWithLimits(body, xmlComplexityLimits{
+		depth:      hardMaxXMLDepth,
+		tokens:     hardMaxXMLTokens,
+		elements:   hardMaxXMLElements,
+		attributes: hardMaxXMLAttributes,
+	})
+}
+
+func validateXMLComplexityWithLimits(body []byte, limits xmlComplexityLimits) error {
+	decoder := xml.NewDecoder(bytes.NewReader(body))
+	depth := 0
+	tokens := 0
+	elements := 0
+	attributes := 0
+	for {
+		token, err := decoder.Token()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		tokens++
+		if tokens > limits.tokens {
+			return &xmlComplexityLimitError{kind: "token", maximum: limits.tokens}
+		}
+		switch typed := token.(type) {
+		case xml.StartElement:
+			depth++
+			elements++
+			attributes += len(typed.Attr)
+			if depth > limits.depth {
+				return &xmlComplexityLimitError{kind: "depth", maximum: limits.depth}
+			}
+			if elements > limits.elements {
+				return &xmlComplexityLimitError{kind: "element", maximum: limits.elements}
+			}
+			if attributes > limits.attributes {
+				return &xmlComplexityLimitError{kind: "attribute", maximum: limits.attributes}
+			}
+		case xml.EndElement:
+			depth--
+		}
+	}
+}
+
 func decodeXMLObject(body []byte) (Object, error) {
+	if err := validateXMLComplexity(body); err != nil {
+		return nil, fmt.Errorf("decode ise response: %w", err)
+	}
 	var root xmlElement
 	if err := xml.Unmarshal(body, &root); err != nil {
 		return nil, fmt.Errorf("decode ise response: %w", err)

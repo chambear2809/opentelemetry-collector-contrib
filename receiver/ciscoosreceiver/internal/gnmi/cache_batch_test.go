@@ -130,7 +130,7 @@ func TestCacheNewerSiblingAtomicBaselineDoesNotRejectBroadPrefixUpdate(t *testin
 }
 
 func TestCacheBoundsAtomicBaselineState(t *testing.T) {
-	cache, err := NewCache(1)
+	cache, err := NewCache(2)
 	require.NoError(t, err)
 	first, err := ParsePath("switch-1", "openconfig", "interfaces")
 	require.NoError(t, err)
@@ -166,6 +166,29 @@ func TestCacheExplicitBranchDeleteReturnsRemovedMappedPoints(t *testing.T) {
 	require.Len(t, result.Removed, 1)
 	assert.Equal(t, "Ethernet1", result.Removed[0].Attributes["network.interface.name"])
 	assert.Equal(t, 1, cache.Len())
+}
+
+func TestCacheDeleteOnlyAtomicFlagDoesNotReplacePrefix(t *testing.T) {
+	cache, err := NewCache(10)
+	require.NoError(t, err)
+	t1 := time.Unix(100, 0)
+	t2 := t1.Add(time.Second)
+	one := testMappedPoint("switch-1", "Ethernet1", "temperature", 41, t1)
+	two := testMappedPoint("switch-1", "Ethernet2", "temperature", 42, t1)
+	prefix := testInterfacePrefix()
+	_, err = cache.Apply(CacheNotification{Prefix: prefix, Timestamp: t1, Updates: []MappedPoint{one, two}})
+	require.NoError(t, err)
+
+	deleteOne, err := ParsePath("switch-1", "openconfig", "interfaces/interface[name=Ethernet1]")
+	require.NoError(t, err)
+	result, err := cache.Apply(CacheNotification{Prefix: prefix, Timestamp: t2, Atomic: true, Deletes: []Path{deleteOne}})
+	require.NoError(t, err)
+	require.Len(t, result.Removed, 1)
+	assert.Equal(t, "Ethernet1", result.Removed[0].Attributes["network.interface.name"])
+	require.Len(t, cache.Snapshot(), 1, "the atomic bit has no snapshot meaning on a delete-only notification")
+	assert.Equal(t, "Ethernet2", cache.Snapshot()[0].Attributes["network.interface.name"])
+	_, ok := cache.AtomicBaseline(prefix)
+	assert.False(t, ok)
 }
 
 func TestCacheDeleteTombstonePreventsStaleResurrection(t *testing.T) {

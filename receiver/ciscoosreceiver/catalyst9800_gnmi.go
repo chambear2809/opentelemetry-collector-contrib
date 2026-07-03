@@ -145,7 +145,7 @@ func (d catalyst9800GNMIUpdateDecoder) decodeTypedValue(metrics *indexedMetricBu
 	case *gnmi.TypedValue_DoubleVal:
 		appendCatalyst9800MetricNumberIndexed(metrics, module, parts, doubleMetricNumber(v.DoubleVal), ts, attrs)
 	case *gnmi.TypedValue_DecimalVal:
-		if v.DecimalVal != nil { //nolint:staticcheck // Legacy Cisco devices still emit the deprecated gNMI decimal field.
+		if v.DecimalVal != nil && v.DecimalVal.Precision <= 308 { //nolint:staticcheck // Legacy Cisco devices still emit the deprecated gNMI decimal field.
 			appendCatalyst9800MetricNumberIndexed(metrics, module, parts, doubleMetricNumber(float64(v.DecimalVal.Digits)/pow10(v.DecimalVal.Precision)), ts, attrs) //nolint:staticcheck // Preserve compatibility with legacy gNMI decimal payloads.
 		} else {
 			budget.addDecodeError()

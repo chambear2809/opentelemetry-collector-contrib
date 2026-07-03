@@ -4,6 +4,8 @@
 package gnmi
 
 import (
+	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +13,24 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestDecodeNotificationDuplicatePathUsesFinalUpdate(t *testing.T) {
+	receipt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	path := protoPath("counter")
+	decoded, stats, err := DecodeNotification("switch-1", &gnmipb.Notification{
+		Timestamp: receipt.UnixNano(),
+		Prefix:    protoPath("system", "state"),
+		Update: []*gnmipb.Update{
+			{Path: path, Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`{"invalid":`)}}},
+			{Path: path, Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_IntVal{IntVal: 2}}},
+		},
+	}, receipt)
+	require.NoError(t, err, "a superseded value must not be decoded")
+	assert.Zero(t, stats.UnmappedValues)
+	require.Len(t, decoded.Touched, 1)
+	require.Len(t, decoded.Updates, 1)
+	assert.Equal(t, int64(2), decoded.Updates[0].Value.Int)
+}
 
 //nolint:staticcheck // The test verifies required decoding of the deprecated gNMI decimal wire variant.
 func TestDecodeNotificationScalarsJSONAndUnsupportedValues(t *testing.T) {
@@ -118,6 +138,31 @@ func TestDecodeNotificationRejectsMalformedJSON(t *testing.T) {
 	assert.Zero(t, stats.UnmappedValues)
 }
 
+func TestDecodeNotificationRejectsUnsafeJSONBeforeMaterializing(t *testing.T) {
+	receipt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name string
+		raw  []byte
+		err  string
+	}{
+		{name: "oversized payload", raw: []byte(`"` + strings.Repeat("x", maxJSONTypedValueBytes) + `"`), err: "payload exceeds hard limit"},
+		{name: "excessive depth", raw: []byte(strings.Repeat("[", 129) + "0" + strings.Repeat("]", 129)), err: "depth limit"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := DecodeNotification("switch-1", &gnmipb.Notification{
+				Timestamp: receipt.UnixNano(),
+				Prefix:    protoPath("system"),
+				Update: []*gnmipb.Update{{
+					Path: protoPath("state"),
+					Val:  &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonIetfVal{JsonIetfVal: tt.raw}},
+				}},
+			}, receipt)
+			require.ErrorContains(t, err, tt.err)
+		})
+	}
+}
+
 func TestDecodeJSONArrayObjectsDerivesDistinctPathKeys(t *testing.T) {
 	receipt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
 	notification := &gnmipb.Notification{
@@ -208,6 +253,16 @@ func TestMappingRegistryPreservesRFC7951IntegerStringPrecision(t *testing.T) {
 	mapped, ok := registry.Map(point)
 	require.True(t, ok)
 	assert.Equal(t, int64(9_007_199_254_740_993), mapped.IntValue)
+}
+
+func TestScaledIntValueRejectsRoundedUpperBoundary(t *testing.T) {
+	value, ok := scaledIntValue(DoubleValue(float64(math.MaxInt64)), 1)
+	assert.False(t, ok)
+	assert.Zero(t, value)
+
+	value, ok = scaledIntValue(IntValue(math.MaxInt64), 1)
+	require.True(t, ok, "an exact int64 input must retain the valid maximum")
+	assert.Equal(t, int64(math.MaxInt64), value)
 }
 
 func TestMappingRegistryIntegerGaugeAndNotificationStats(t *testing.T) {

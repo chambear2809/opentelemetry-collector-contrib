@@ -77,10 +77,52 @@ type Client struct {
 	retries   int
 	pageSize  int
 
-	tokenMu sync.Mutex
-	token   string
+	tokenMu         sync.Mutex
+	token           string
+	tokenGeneration uint64
+	loginInflight   chan struct{}
+	lastAuthErr     error
+	lastAuthStatus  int
+	lastAuthAt      time.Time
+	authFailures    int
 
 	OnRequest func(RequestStat)
+}
+
+// tokenSnapshot identifies the exact credential used by one request. Both the
+// generation and value are checked before invalidating shared state so a late
+// 401 cannot erase a token acquired by a newer login.
+type tokenSnapshot struct {
+	value      string
+	generation uint64
+}
+
+type requestAuthState struct {
+	token          tokenSnapshot
+	loginAttempted bool
+	failed         bool
+}
+
+// authBackoffSchedule bounds authentication attempts shared by all endpoint
+// groups. This is intentionally independent of ordinary request retries: one
+// operation may retry its own transient login failure, while later operations
+// observe the shared backoff instead of starting a login storm.
+var authBackoffSchedule = []time.Duration{
+	1 * time.Second,
+	5 * time.Second,
+	30 * time.Second,
+	5 * time.Minute,
+}
+
+func authBackoffFor(failures int) time.Duration {
+	if failures <= 0 {
+		return 0
+	}
+	idx := failures - 1
+	if idx >= len(authBackoffSchedule) {
+		idx = len(authBackoffSchedule) - 1
+	}
+	return authBackoffSchedule[idx]
 }
 
 // NewClient creates a Nexus Dashboard API client.
@@ -244,23 +286,32 @@ func (c *Client) List(ctx context.Context, operation, path string, query url.Val
 func (c *Client) do(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, http.Header, error) {
 	var lastErr error
 	attempts := c.retries + 1
+	bypassAuthBackoff := false
 	for attempt := range attempts {
-		body, header, status, err := c.doOnce(ctx, method, operation, path, query, payload)
+		body, header, status, requestAuth, err := c.doOnce(ctx, method, operation, path, query, payload, bypassAuthBackoff)
 		if err == nil {
+			c.markAuthSuccess(requestAuth.token)
 			return body, header, nil
 		}
 		lastErr = err
-		if status == http.StatusUnauthorized || status == http.StatusForbidden {
-			// Do not retry inline. In api_key mode there is no token to refresh,
-			// so retrying just re-sends the same rejected credentials and risks
-			// locking the account; in username_password mode we drop the token
-			// and let the next scrape re-authenticate.
-			if c.authMode == "username_password" {
-				c.clearToken()
-			}
+		if status == http.StatusUnauthorized {
+			// Login failures are charged by ensureToken. A data request clears only
+			// the exact token snapshot it used so a delayed response cannot erase a
+			// replacement token published by another request.
+			c.clearToken(requestAuth.token, err)
 			if ctx.Err() != nil {
 				return nil, nil, ctx.Err()
 			}
+			return nil, nil, err
+		}
+		if status == http.StatusForbidden {
+			// A valid token may simply lack access to one optional endpoint. Keep
+			// it so later endpoint groups can still return partial results.
+			return nil, nil, err
+		}
+		if requestAuth.failed && !requestAuth.loginAttempted {
+			// This operation observed a failure already cached by another endpoint.
+			// It must not turn an ordinary request retry into another login attempt.
 			return nil, nil, err
 		}
 		retryHeader := ""
@@ -273,6 +324,9 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 			}
 			return nil, nil, err
 		}
+		// Only the operation that actually made a transient login attempt may
+		// bypass the shared auth backoff for its configured inline retry.
+		bypassAuthBackoff = requestAuth.failed && requestAuth.loginAttempted
 	}
 	if lastErr == nil {
 		lastErr = errors.New("nexus dashboard request failed")
@@ -280,7 +334,13 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 	return nil, nil, lastErr
 }
 
-func (c *Client) doOnce(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, http.Header, int, error) {
+func (c *Client) doOnce(
+	ctx context.Context,
+	method, operation, path string,
+	query url.Values,
+	payload []byte,
+	bypassAuthBackoff bool,
+) ([]byte, http.Header, int, requestAuthState, error) {
 	reqURL := c.buildURL(path, query)
 	var body io.Reader
 	if payload != nil {
@@ -288,15 +348,16 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 	}
 	req, err := http.NewRequestWithContext(ctx, method, reqURL, body)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, requestAuthState{}, err
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", c.userAgent)
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if authErr := c.authorize(ctx, req); authErr != nil {
-		return nil, nil, 0, authErr
+	requestAuth, authStatus, authErr := c.authorize(ctx, req, bypassAuthBackoff)
+	if authErr != nil {
+		return nil, nil, authStatus, requestAuth, authErr
 	}
 
 	start := time.Now()
@@ -304,20 +365,20 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 	duration := time.Since(start)
 	if err != nil {
 		c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", Duration: duration, Err: err})
-		return nil, nil, 0, err
+		return nil, nil, 0, requestAuth, err
 	}
 	bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
 		c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
-		return nil, resp.Header, resp.StatusCode, readErr
+		return nil, resp.Header, resp.StatusCode, requestAuth, readErr
 	}
 	if closeErr != nil {
-		return nil, resp.Header, resp.StatusCode, closeErr
+		return nil, resp.Header, resp.StatusCode, requestAuth, closeErr
 	}
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "success", StatusCode: resp.StatusCode, Duration: duration})
-		return bodyBytes, resp.Header, resp.StatusCode, nil
+		return bodyBytes, resp.Header, resp.StatusCode, requestAuth, nil
 	}
 	apiErr := &APIError{StatusCode: resp.StatusCode}
 	c.record(RequestStat{
@@ -330,46 +391,106 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 		RateLimited: resp.StatusCode == http.StatusTooManyRequests,
 		Err:         apiErr,
 	})
-	return nil, resp.Header, resp.StatusCode, apiErr
+	return nil, resp.Header, resp.StatusCode, requestAuth, apiErr
 }
 
-func (c *Client) authorize(ctx context.Context, req *http.Request) error {
+func (c *Client) authorize(ctx context.Context, req *http.Request, bypassAuthBackoff bool) (requestAuthState, int, error) {
 	switch c.authMode {
 	case "api_key":
 		req.Header.Set("X-Nd-Username", c.username)
 		req.Header.Set("X-Nd-Apikey", c.apiKey)
-		return nil
+		return requestAuthState{}, 0, nil
 	case "username_password":
-		token, err := c.ensureToken(ctx)
+		token, status, attempted, err := c.ensureToken(ctx, bypassAuthBackoff)
+		requestAuth := requestAuthState{token: token, loginAttempted: attempted, failed: err != nil}
 		if err != nil {
-			return err
+			return requestAuth, status, err
 		}
-		req.Header.Set("Authorization", "Bearer "+token)
-		req.AddCookie(&http.Cookie{Name: "AuthCookie", Value: token})
-		return nil
+		req.Header.Set("Authorization", "Bearer "+token.value)
+		req.AddCookie(&http.Cookie{Name: "AuthCookie", Value: token.value})
+		return requestAuth, 0, nil
 	default:
-		return fmt.Errorf("unsupported nexus dashboard auth mode %q", c.authMode)
+		return requestAuthState{}, 0, fmt.Errorf("unsupported nexus dashboard auth mode %q", c.authMode)
 	}
 }
 
-func (c *Client) ensureToken(ctx context.Context) (string, error) {
-	c.tokenMu.Lock()
-	defer c.tokenMu.Unlock()
-	if c.token != "" {
-		return c.token, nil
+func (c *Client) ensureToken(ctx context.Context, bypassAuthBackoff bool) (tokenSnapshot, int, bool, error) {
+	for {
+		c.tokenMu.Lock()
+		if c.token != "" {
+			token := tokenSnapshot{value: c.token, generation: c.tokenGeneration}
+			c.tokenMu.Unlock()
+			return token, 0, false, nil
+		}
+		if c.loginInflight != nil {
+			inflight := c.loginInflight
+			c.tokenMu.Unlock()
+			select {
+			case <-inflight:
+				// The completed login was the shared attempt for this caller. If it
+				// failed, observe its backoff rather than immediately trying again.
+				bypassAuthBackoff = false
+			case <-ctx.Done():
+				return tokenSnapshot{}, 0, false, ctx.Err()
+			}
+			continue
+		}
+		if !bypassAuthBackoff && c.authFailures > 0 && time.Since(c.lastAuthAt) < authBackoffFor(c.authFailures) {
+			err := c.lastAuthErr
+			status := c.lastAuthStatus
+			c.tokenMu.Unlock()
+			if err == nil {
+				err = errors.New("nexus dashboard auth in backoff")
+			}
+			return tokenSnapshot{}, status, false, err
+		}
+		inflight := make(chan struct{})
+		c.loginInflight = inflight
+		c.tokenMu.Unlock()
+
+		tokenValue, status, err := c.login(ctx)
+
+		c.tokenMu.Lock()
+		c.loginInflight = nil
+		if err != nil {
+			if ctx.Err() == nil {
+				c.authFailures++
+				c.lastAuthErr = err
+				c.lastAuthStatus = status
+				c.lastAuthAt = time.Now()
+			}
+		} else {
+			// Do not reset authFailures here. Only an authenticated data response
+			// proves that the new token is accepted by the controller.
+			c.tokenGeneration++
+			c.token = tokenValue
+		}
+		generation := c.tokenGeneration
+		close(inflight)
+		c.tokenMu.Unlock()
+		if err != nil {
+			if ctx.Err() != nil {
+				return tokenSnapshot{}, status, true, ctx.Err()
+			}
+			return tokenSnapshot{}, status, true, err
+		}
+		return tokenSnapshot{value: tokenValue, generation: generation}, status, true, nil
 	}
+}
+
+func (c *Client) login(ctx context.Context) (string, int, error) {
 	payload, err := json.Marshal(map[string]string{
 		"domain":     c.domain,
 		"userName":   c.username,
 		"userPasswd": c.password,
 	})
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	reqURL := c.buildURL("/api/v1/infra/login", nil)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(payload))
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
@@ -379,21 +500,21 @@ func (c *Client) ensureToken(ctx context.Context) (string, error) {
 	duration := time.Since(start)
 	if err != nil {
 		c.record(RequestStat{Operation: "infra.login", Method: http.MethodPost, Path: "/api/v1/infra/login", Outcome: "error", Duration: duration, Err: err})
-		return "", err
+		return "", 0, err
 	}
 	bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
 		c.record(RequestStat{Operation: "infra.login", Method: http.MethodPost, Path: "/api/v1/infra/login", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
-		return "", readErr
+		return "", resp.StatusCode, readErr
 	}
 	if closeErr != nil {
-		return "", closeErr
+		return "", resp.StatusCode, closeErr
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		apiErr := &APIError{StatusCode: resp.StatusCode}
 		c.record(RequestStat{Operation: "infra.login", Method: http.MethodPost, Path: "/api/v1/infra/login", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: apiErr})
-		return "", apiErr
+		return "", resp.StatusCode, apiErr
 	}
 	var login struct {
 		Token    string `json:"token"`
@@ -401,7 +522,7 @@ func (c *Client) ensureToken(ctx context.Context) (string, error) {
 	}
 	if err := json.Unmarshal(bodyBytes, &login); err != nil {
 		c.record(RequestStat{Operation: "infra.login", Method: http.MethodPost, Path: "/api/v1/infra/login", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: err})
-		return "", err
+		return "", resp.StatusCode, err
 	}
 	token := login.Token
 	if token == "" {
@@ -410,17 +531,45 @@ func (c *Client) ensureToken(ctx context.Context) (string, error) {
 	if token == "" {
 		err := errors.New("nexus dashboard login response did not include a token")
 		c.record(RequestStat{Operation: "infra.login", Method: http.MethodPost, Path: "/api/v1/infra/login", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: err})
-		return "", err
+		return "", resp.StatusCode, err
 	}
 	c.record(RequestStat{Operation: "infra.login", Method: http.MethodPost, Path: "/api/v1/infra/login", Outcome: "success", StatusCode: resp.StatusCode, Duration: duration})
-	c.token = token
-	return token, nil
+	return token, resp.StatusCode, nil
 }
 
-func (c *Client) clearToken() {
+func (c *Client) clearToken(token tokenSnapshot, authErr error) {
+	if c.authMode != "username_password" || token.value == "" {
+		return
+	}
 	c.tokenMu.Lock()
 	defer c.tokenMu.Unlock()
+	if c.tokenGeneration != token.generation || c.token != token.value {
+		return
+	}
+	c.tokenGeneration++
 	c.token = ""
+	c.authFailures++
+	if authErr == nil {
+		authErr = errors.New("nexus dashboard authentication rejected")
+	}
+	c.lastAuthErr = authErr
+	c.lastAuthStatus = http.StatusUnauthorized
+	c.lastAuthAt = time.Now()
+}
+
+func (c *Client) markAuthSuccess(token tokenSnapshot) {
+	if c.authMode != "username_password" || token.value == "" {
+		return
+	}
+	c.tokenMu.Lock()
+	defer c.tokenMu.Unlock()
+	if c.tokenGeneration != token.generation || c.token != token.value {
+		return
+	}
+	c.authFailures = 0
+	c.lastAuthErr = nil
+	c.lastAuthStatus = 0
+	c.lastAuthAt = time.Time{}
 }
 
 func (c *Client) buildURL(path string, query url.Values) string {

@@ -22,7 +22,11 @@ import (
 )
 
 const (
-	absoluteCounterMaxSeries = 100_000
+	// The tracker wraps every emitted cumulative sum and must cover the full
+	// supported gNMI cache plus controller-generated series. A lower cap causes
+	// LRU churn and false counter epochs at an otherwise valid 500k-series gNMI
+	// configuration.
+	absoluteCounterMaxSeries = gnmiMaximumCachedSeries + 100_000
 	absoluteCounterIdleTTL   = 24 * time.Hour
 )
 

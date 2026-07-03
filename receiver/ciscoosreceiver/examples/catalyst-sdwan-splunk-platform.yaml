@@ -89,8 +89,6 @@ receivers:
       page_size: 500
       max_retries: 3
       event_lookback: 24h
-      statistics_lookback: 30m
-      realtime_lookback: 5m
       auth:
         mode: auto
         username: ${env:SDWAN_USERNAME}

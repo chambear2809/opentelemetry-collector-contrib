@@ -1135,7 +1135,7 @@ func TestProcessNXNotificationAtomicallyReplacesCacheAndAuxiliaryStateAtCapacity
 	config := createDefaultConfig().(*Config)
 	config.GNMI = GNMIConfig{
 		MaxDatapointsPerChunk: 10,
-		MaxCachedSeries:       1,
+		MaxCachedSeries:       3,
 		Targets: []GNMITargetConfig{{
 			Name: "nx-integrated", Platform: gnmiPlatformNXOS, MaxStreams: 1,
 			Profiles: subscriptionProfilesOnly(builtinGNMIProfileOptics),
@@ -1147,6 +1147,9 @@ func TestProcessNXNotificationAtomicallyReplacesCacheAndAuxiliaryStateAtCapacity
 	t.Cleanup(func() { require.NoError(t, receiver.Shutdown(context.WithoutCancel(t.Context()))) })
 	require.Len(t, receiver.targets, 1)
 	target := receiver.targets[0]
+	// Exercise a one-sensor auxiliary budget independently from the combined
+	// cache budget, which needs three slots for one atomic mapped point.
+	target.nxBudget = newSharedGNMIAuxiliaryBudget(1)
 	require.Len(t, target.streams, 1)
 	stream := target.streams[0]
 	require.Equal(t, builtinGNMIProfileOptics, stream.Profile)
@@ -1193,13 +1196,13 @@ func TestProcessNXNotificationAtomicallyReplacesCacheAndAuxiliaryStateAtCapacity
 	require.NoError(t, receiver.processNotification(t.Context(), target, stream, notification(baseTime, false, "1")))
 	assertState("1")
 
-	// One removal plus one addition needs 2*N staged keys, while both the
-	// final mapped cache and the auxiliary sensor map remain at hard cap N.
+	// One mapped point plus its atomic baseline and prefix tombstone consume the
+	// three retained-state slots, while the auxiliary sensor map stays bounded.
 	require.NoError(t, receiver.processNotification(t.Context(), target, stream, notification(baseTime.Add(time.Second), true, "2")))
 	assertState("2")
 
-	// A third unique staged key exceeds the bounded 2*N transaction. The
-	// receiver must reject it before either cache is partially mutated.
+	// A third unique auxiliary staged key exceeds the bounded 2*N transaction.
+	// The receiver must reject it before either cache is partially mutated.
 	err = receiver.processNotification(t.Context(), target, stream, notification(baseTime.Add(2*time.Second), true, "3", "4"))
 	var stopped *sharedGNMIProfileStopError
 	require.ErrorAs(t, err, &stopped)

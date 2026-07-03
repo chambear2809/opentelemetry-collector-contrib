@@ -141,14 +141,35 @@ func (r *iosXRCompositeReceiver) Shutdown(ctx context.Context) error {
 
 func newIOSXRDialOutReceiver(set receiver.Settings, cfg IOSXRConfig, selector deviceSelectionMatcher, next consumer.Metrics) (receiver.Metrics, error) {
 	factory := yanggrpcreceiver.NewFactory()
-	yangCfg := factory.CreateDefaultConfig().(*yanggrpcreceiver.Config)
+	yangCfg, err := hardenedYangGRPCConfig(factory.CreateDefaultConfig())
+	if err != nil {
+		return nil, fmt.Errorf("create IOS XR dial-out receiver: %w", err)
+	}
 	yangCfg.ServerConfig = cfg.DialOut.ServerConfig
-	yangCfg.Security.AllowedClients = cfg.DialOut.AllowedClients
-	yangCfg.Security.RateLimiting = cfg.DialOut.RateLimiting
-	yangCfg.YANG.ModulePaths = cfg.DialOut.ModulePaths
+	modulePaths := append([]string(nil), cfg.DialOut.ModulePaths...)
+	yangCfg.YANG.ModulePaths = modulePaths
+	middlewareID, middleware, err := configureGNMIDialOutSecurity(
+		&yangCfg.ServerConfig,
+		cfg.DialOut.AllowedClients,
+		effectiveGNMIDialOutMaxStreamsPerClient(cfg.DialOut.MaxStreamsPerClient, cfg.DialOut.MaxConcurrentStreams),
+		cfg.DialOut.RateLimiting,
+		set.Logger,
+		set.ID,
+		"iosxr",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("configure IOS XR dial-out stream security: %w", err)
+	}
 	health := &iosXRHealth{}
 	normalizer := newIOSXRNormalizingConsumer(next, cfg, selector, iosXRTelemetryTransportDialOut, health)
-	return factory.CreateMetrics(context.Background(), set, yangCfg, normalizer)
+	childSet := set
+	childSet.ID = component.NewIDWithName(factory.Type(), middlewareID.Name())
+	delegate, err := factory.CreateMetrics(context.Background(), childSet, yangCfg, normalizer)
+	if err != nil {
+		middleware.security.Shutdown()
+		return nil, err
+	}
+	return wrapGNMIDialOutSecurityReceiver(delegate, middlewareID, middleware, modulePaths), nil
 }
 
 type iosXRDialInReceiver struct {

@@ -95,6 +95,12 @@ func TestISEPxGridOnlyOutcomeCanEstablishControllerHealth(t *testing.T) {
 	assert.Contains(t, metricNames(md), "ise.scrape.last_success")
 }
 
+func TestDefaultISEPxGridEndpointHandlesIPv6(t *testing.T) {
+	assert.Equal(t, "https://[2001:db8::10]:8910/pxgrid", defaultISEPxGridEndpoint("https://[2001:db8::10]"))
+	assert.Equal(t, "https://[2001:db8::10]:8910/pxgrid", defaultISEPxGridEndpoint("https://[2001:db8::10]:9060"))
+	assert.Equal(t, "https://ise.example:8910/pxgrid", defaultISEPxGridEndpoint("https://ise.example:9060"))
+}
+
 func TestISELogsReceiverPreservesOperationalEvidence(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {

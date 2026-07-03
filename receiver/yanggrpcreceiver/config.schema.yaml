@@ -7,7 +7,7 @@ $defs:
         description: BurstSize is the maximum burst size for rate limiting
         type: integer
       cleanup_interval:
-        description: CleanupInterval is how often to clean up rate limiter entries
+        description: CleanupInterval is how often to clean up idle rate limiter entries. Values below one second are rejected to prevent a hot cleanup loop.
         type: string
         format: duration
       enabled:
@@ -41,6 +41,18 @@ $defs:
 description: Config defines configuration for yanggrpc receiver.
 type: object
 properties:
+  connection_timeout:
+    description: ConnectionTimeout bounds connection establishment through the HTTP/2 handshake. Zero uses the default of 30 seconds.
+    type: string
+    format: duration
+  max_concurrent_conversions:
+    description: MaxConcurrentConversions bounds telemetry messages being converted and consumed concurrently across all streams. Zero uses the default of 8.
+    type: integer
+    x-customType: uint32
+  max_connections:
+    description: MaxConnections is the maximum number of accepted network connections. Zero uses the default of 256.
+    type: integer
+    x-customType: uint32
   security:
     description: Security contains security hardening configuration
     $ref: security_config

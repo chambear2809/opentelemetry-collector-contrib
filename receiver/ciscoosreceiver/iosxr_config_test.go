@@ -44,6 +44,8 @@ func TestIOSXRDefaultConfigIsConservative(t *testing.T) {
 	assert.False(t, cfg.IOSXR.Subscription.updatesOnly())
 	assert.False(t, cfg.IOSXR.Subscription.allowAggregation())
 	assert.Equal(t, directGNMIDefaultMaxDatapoints, cfg.IOSXR.MaxDatapointsPerBatch)
+	assert.Zero(t, cfg.IOSXR.DialOut.MaxStreamsPerClient)
+	assert.Equal(t, uint32(defaultGNMIDialOutStreamsPerIP), cfg.IOSXR.withDefaults().DialOut.MaxStreamsPerClient)
 	assert.Equal(t, 100.0, cfg.IOSXR.DialOut.RateLimiting.RequestsPerSecond)
 	assert.Equal(t, 10, cfg.IOSXR.DialOut.RateLimiting.BurstSize)
 	assert.Equal(t, time.Minute, cfg.IOSXR.DialOut.RateLimiting.CleanupInterval)
@@ -66,6 +68,15 @@ func TestIOSXRConfigValidate(t *testing.T) {
 			mutate: func(cfg *Config) {
 				cfg.IOSXR.DialIn.Targets = nil
 				cfg.IOSXR.DialOut.Enabled = true
+			},
+		},
+		{
+			name: "omitted per-client cap follows a lower existing global cap",
+			mutate: func(cfg *Config) {
+				cfg.IOSXR.DialIn.Targets = nil
+				cfg.IOSXR.DialOut.Enabled = true
+				cfg.IOSXR.DialOut.MaxConcurrentStreams = 1
+				cfg.IOSXR.DialOut.MaxStreamsPerClient = 0
 			},
 		},
 		{

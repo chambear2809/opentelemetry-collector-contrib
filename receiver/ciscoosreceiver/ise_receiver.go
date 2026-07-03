@@ -279,9 +279,9 @@ func defaultISEPxGridEndpoint(endpoint string) string {
 	if err != nil || parsed.Host == "" {
 		return endpoint
 	}
-	host, _, splitErr := net.SplitHostPort(parsed.Host)
-	if splitErr != nil {
-		host = parsed.Host
+	host := parsed.Hostname()
+	if host == "" {
+		return endpoint
 	}
 	parsed.Host = net.JoinHostPort(host, "8910")
 	parsed.Path = "/pxgrid"

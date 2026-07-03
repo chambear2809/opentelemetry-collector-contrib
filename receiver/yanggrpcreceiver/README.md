@@ -25,7 +25,7 @@ The **YANG gRPC Receiver** collects Model-Driven Telemetry (MDT) from network de
 - **YANG-Driven Mapping**: Uses Cisco YANG models to distinguish between Counters (monotonic sums) and Gauges (instantaneous values).
 - **Smart Fallback**: Works out-of-the-box using naming heuristics (detecting keys like `name`, `id`, `address`) even if local YANG files are not provided.
 - **OTLP Compliance**: Preserves signed and exactly representable unsigned integers as OTLP integers, rejects non-finite floating-point values, and represents unsigned values above `int64` range exactly as descriptive `_info` metrics.
-- **Security Hardening**: Includes built-in support for client IP allow-listing and ingestion rate limiting.
+- **Security Hardening**: Includes client IP allow-listing, per-message rate limiting, bounded connections, handshake and idle deadlines, and a receiver-wide conversion concurrency limit.
 
 ---
 
@@ -71,7 +71,7 @@ service:
 See [configgrpc](https://pkg.go.dev/go.opentelemetry.io/collector/config/configgrpc).
 
 The default loopback listener is plaintext for local development. Validation rejects a listener bound to a non-loopback address unless TLS, per-message rate limiting, and either mutual TLS or an `allowed_clients` allowlist are configured.
-`max_recv_msg_size_mib` must be between 1 and 16, and `max_concurrent_streams` must be between 1 and 1000. The defaults are 4 MiB and 100 streams.
+`max_recv_msg_size_mib` must be between 1 and 16, and `max_concurrent_streams` must be between 1 and 1000. The defaults are 4 MiB and 100 streams. Receiver-wide availability controls default to 256 accepted connections, 8 concurrent telemetry conversions/consumer calls, a 30-second HTTP/2 handshake timeout, and a 2-minute idle-connection timeout. `max_connections` is capped at 1024, `max_concurrent_conversions` at 16, and a configured `connection_timeout` must be between 1 second and 2 minutes.
 
 ## Default Configuration
 ```yaml
@@ -80,17 +80,21 @@ yang_grpc:
   transport: tcp
   keepalive:
     server_parameters:
+      max_connection_idle: 2m
       time: 30s
       timeout: 10s
+  max_connections: 256
+  max_concurrent_conversions: 8
+  connection_timeout: 30s
   max_concurrent_streams: 100
   max_recv_msg_size_mib: 4
 ```
 
 ## Security Configuration (security)
-* `rate_limiting`: per-client, per-message limiting with enabled (default: false), requests_per_second (100.0), burst_size (10), and cleanup_interval (1m).
+* `rate_limiting`: per-client, per-message limiting with enabled (default: false), requests_per_second (100.0), burst_size (10), and cleanup_interval (1m, minimum 1s). Cleanup removes only idle, fully refilled buckets and cannot reset a client's rate allowance early.
 * `allowed_clients`: optional list of exact client IPs or CIDR ranges.
 
-Every payload also has non-configurable safety ceilings: 100,000 GPB-KV fields, 50,000 emitted metrics, 64 attributes per metric, 250,000 total attributes, and 16 MiB of copied attribute data. A payload that exceeds a ceiling is rejected with `ResourceExhausted` and its stream is closed.
+Every payload also has non-configurable safety ceilings: 100,000 GPB-KV fields, 50,000 emitted metrics, 64 attributes per metric, 250,000 total attributes, and 16 MiB of copied attribute data. A payload that exceeds a ceiling is rejected with `ResourceExhausted` and its stream is closed. The receiver-wide conversion limit is acquired after a stream message arrives and remains held through the synchronous downstream consumer call, preventing concurrent payload expansion from multiplying those per-message ceilings without bound.
 
 ## YANG Parser Settings (yang)
 * `module_paths`: local directories containing Cisco/IETF `.yang` files used to enrich metric type and key interpretation.

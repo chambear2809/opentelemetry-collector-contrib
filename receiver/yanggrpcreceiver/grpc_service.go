@@ -121,9 +121,15 @@ func (s *grpcService) MdtDialout(stream pb.GRPCMdtDialout_MdtDialoutServer) erro
 
 // processTelemetryData unmarshals the GPBKV payload and triggers OTLP conversion.
 func (s *grpcService) processTelemetryData(ctx context.Context, req *pb.MdtDialoutArgs) error {
+	release, err := s.receiver.acquireProcessingSlot(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+
 	telemetryMsg := &pb.Telemetry{}
-	if err := proto.Unmarshal(req.Data, telemetryMsg); err != nil {
-		return status.Errorf(codes.InvalidArgument, "invalid telemetry payload: %v", err)
+	if unmarshalErr := proto.Unmarshal(req.Data, telemetryMsg); unmarshalErr != nil {
+		return status.Errorf(codes.InvalidArgument, "invalid telemetry payload: %v", unmarshalErr)
 	}
 
 	metrics, err := s.convertToOTELMetrics(telemetryMsg, time.Now())

@@ -1,0 +1,7 @@
+change_type: enhancement
+component: receiver/cisco_os
+note: Gate IOS XR and Catalyst 9800 dial-out on YANG gRPC runtime-hardening contract v1.
+issues: [42647]
+subtext: |
+  Dial-out now fails closed when the linked yang_grpc receiver does not advertise the required hardened runtime, preventing release against an older dependency that lacks bounded conversion, stream context propagation, and shutdown guarantees. Receiver-private middleware adds max_streams_per_client (defaulting to the smaller of 16 and max_concurrent_streams), preserves rate-limit buckets until natural refill, and rejects cleanup intervals below one second.
+change_logs: [user]

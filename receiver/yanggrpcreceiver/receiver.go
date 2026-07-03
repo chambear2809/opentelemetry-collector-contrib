@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"sync"
 
 	"go.opentelemetry.io/collector/component"
@@ -14,6 +15,7 @@ import (
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver"
 	"go.uber.org/zap"
+	"golang.org/x/net/netutil"
 	"google.golang.org/grpc"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/yanggrpcreceiver/internal"
@@ -31,25 +33,36 @@ type yangReceiver struct {
 	shutdownOnce    sync.Once
 	forceStopOnce   sync.Once
 	shutdownDone    chan struct{}
+	processingSlots chan struct{}
 }
 
 func createMetricsReceiver(_ context.Context, settings receiver.Settings, cfg component.Config, next consumer.Metrics) receiver.Metrics {
 	return &yangReceiver{
-		config:       cfg.(*Config),
-		settings:     settings,
-		logger:       settings.Logger,
-		consumer:     next,
-		wg:           sync.WaitGroup{},
-		shutdownDone: make(chan struct{}),
+		config:          cfg.(*Config),
+		settings:        settings,
+		logger:          settings.Logger,
+		consumer:        next,
+		wg:              sync.WaitGroup{},
+		shutdownDone:    make(chan struct{}),
+		processingSlots: make(chan struct{}, effectiveMaxConcurrentConversions(cfg.(*Config).MaxConcurrentConversions)),
 	}
 }
 
 func (y *yangReceiver) Start(ctx context.Context, host component.Host) error {
+	if err := y.config.validateRuntimeAvailability(); err != nil {
+		return err
+	}
+	serverParameters := y.config.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault()
+	if serverParameters.MaxConnectionIdle == 0 {
+		serverParameters.MaxConnectionIdle = defaultMaxConnectionIdle
+	}
+
 	// 1. Setup Network Listener
 	listener, err := y.config.NetAddr.Listen(ctx)
 	if err != nil {
 		return err
 	}
+	listener = limitTelemetryConnections(listener, y.config.MaxConnections)
 
 	// 2. Initialize Security Management (Rate Limiting & Allowlist)
 	securityManager := internal.NewSecurityManager(
@@ -64,7 +77,8 @@ func (y *yangReceiver) Start(ctx context.Context, host component.Host) error {
 	// 3. Configure gRPC Server with Security Interceptors
 	server, err := y.config.ToServer(ctx, host.GetExtensions(), y.settings.TelemetrySettings,
 		configgrpc.WithGrpcServerOption(grpc.UnaryInterceptor(securityManager.CreateSecurityInterceptor())),
-		configgrpc.WithGrpcServerOption(grpc.StreamInterceptor(securityManager.CreateStreamSecurityInterceptor())))
+		configgrpc.WithGrpcServerOption(grpc.StreamInterceptor(securityManager.CreateStreamSecurityInterceptor())),
+		configgrpc.WithGrpcServerOption(grpc.ConnectionTimeout(effectiveConnectionTimeout(y.config.ConnectionTimeout))))
 	if err != nil {
 		securityManager.Shutdown()
 		return errors.Join(err, listener.Close())
@@ -106,6 +120,26 @@ func (y *yangReceiver) Start(ctx context.Context, host component.Host) error {
 	})
 
 	return nil
+}
+
+func limitTelemetryConnections(listener net.Listener, configured uint32) net.Listener {
+	return netutil.LimitListener(listener, effectiveMaxConnections(configured))
+}
+
+func (y *yangReceiver) acquireProcessingSlot(ctx context.Context) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	select {
+	case y.processingSlots <- struct{}{}:
+		if err := ctx.Err(); err != nil {
+			<-y.processingSlots
+			return nil, err
+		}
+		return func() { <-y.processingSlots }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 func (y *yangReceiver) Shutdown(ctx context.Context) error {

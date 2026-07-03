@@ -258,6 +258,7 @@ receiver/azureeventhubreceiver
 receiver/azurefunctionsreceiver
 receiver/azuremonitorreceiver
 receiver/chronyreceiver
+receiver/yanggrpcreceiver
 receiver/ciscoosreceiver
 receiver/cloudflarereceiver
 receiver/cloudfoundryreceiver
@@ -341,6 +342,5 @@ receiver/webhookeventreceiver
 receiver/windowseventlogreceiver
 receiver/windowsperfcountersreceiver
 receiver/windowsservicereceiver
-receiver/yanggrpcreceiver
 scraper/zookeeperscraper
 receiver/zookeeperreceiver

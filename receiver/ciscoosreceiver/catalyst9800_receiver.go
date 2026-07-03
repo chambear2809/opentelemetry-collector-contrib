@@ -88,14 +88,35 @@ func (r *catalyst9800CompositeReceiver) Shutdown(ctx context.Context) error {
 
 func newCatalyst9800DialOutReceiver(set receiver.Settings, cfg Catalyst9800Config, selector deviceSelectionMatcher, next consumer.Metrics) (receiver.Metrics, error) {
 	factory := yanggrpcreceiver.NewFactory()
-	yangCfg := factory.CreateDefaultConfig().(*yanggrpcreceiver.Config)
+	yangCfg, err := hardenedYangGRPCConfig(factory.CreateDefaultConfig())
+	if err != nil {
+		return nil, fmt.Errorf("create Catalyst 9800 dial-out receiver: %w", err)
+	}
 	yangCfg.ServerConfig = cfg.DialOut.ServerConfig
-	yangCfg.Security.AllowedClients = cfg.DialOut.AllowedClients
-	yangCfg.Security.RateLimiting = cfg.DialOut.RateLimiting
-	yangCfg.YANG.ModulePaths = cfg.DialOut.ModulePaths
+	modulePaths := append([]string(nil), cfg.DialOut.ModulePaths...)
+	yangCfg.YANG.ModulePaths = modulePaths
+	middlewareID, middleware, err := configureGNMIDialOutSecurity(
+		&yangCfg.ServerConfig,
+		cfg.DialOut.AllowedClients,
+		effectiveGNMIDialOutMaxStreamsPerClient(cfg.DialOut.MaxStreamsPerClient, cfg.DialOut.MaxConcurrentStreams),
+		cfg.DialOut.RateLimiting,
+		set.Logger,
+		set.ID,
+		"catalyst9800",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("configure Catalyst 9800 dial-out stream security: %w", err)
+	}
 	health := &catalyst9800Health{}
 	normalizer := newCatalyst9800NormalizingConsumer(next, cfg, selector, catalyst9800TelemetryTransportDialOut, health)
-	return factory.CreateMetrics(context.Background(), set, yangCfg, normalizer)
+	childSet := set
+	childSet.ID = component.NewIDWithName(factory.Type(), middlewareID.Name())
+	delegate, err := factory.CreateMetrics(context.Background(), childSet, yangCfg, normalizer)
+	if err != nil {
+		middleware.security.Shutdown()
+		return nil, err
+	}
+	return wrapGNMIDialOutSecurityReceiver(delegate, middlewareID, middleware, modulePaths), nil
 }
 
 type catalyst9800DialInReceiver struct {

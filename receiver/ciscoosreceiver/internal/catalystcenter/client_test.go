@@ -6,6 +6,7 @@ package catalystcenter
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -26,6 +27,115 @@ func TestClientRetryValidationPreservesExplicitZero(t *testing.T) {
 		_, err = NewClient(Config{Endpoint: "https://catalyst.example.test", Username: "admin", Password: "password", MaxRetries: retries})
 		require.ErrorContains(t, err, "invalid catalyst center max retries")
 	}
+}
+
+func TestClientAuthenticationRetryPolicy(t *testing.T) {
+	tests := []struct {
+		name             string
+		authenticate     func(http.ResponseWriter, int64)
+		wantErr          string
+		wantAuthRequests int64
+	}{
+		{
+			name: "rejected credentials",
+			authenticate: func(w http.ResponseWriter, _ int64) {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+			},
+			wantErr:          "HTTP 401",
+			wantAuthRequests: 1,
+		},
+		{
+			name: "invalid successful token response",
+			authenticate: func(w http.ResponseWriter, _ int64) {
+				_, _ = w.Write([]byte(`{"not_token":"missing"}`))
+			},
+			wantErr:          "did not include Token",
+			wantAuthRequests: 1,
+		},
+		{
+			name: "transient authentication server failure",
+			authenticate: func(w http.ResponseWriter, attempt int64) {
+				if attempt == 1 {
+					http.Error(w, "unavailable", http.StatusServiceUnavailable)
+					return
+				}
+				_, _ = w.Write([]byte(`{"Token":"token-1"}`))
+			},
+			wantAuthRequests: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var authRequests atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/dna/system/api/v1/auth/token" {
+					tt.authenticate(w, authRequests.Add(1))
+					return
+				}
+				_, _ = w.Write([]byte(`{"response":1}`))
+			}))
+			defer server.Close()
+
+			client, err := NewClient(Config{
+				Endpoint:   server.URL,
+				Username:   "admin",
+				Password:   "password",
+				Timeout:    time.Second,
+				MaxRetries: 1,
+			})
+			require.NoError(t, err)
+			client.spacing = 0
+
+			_, err = GetCount(t.Context(), client, "devices.count", "/dna/intent/api/v1/network-device/count", nil)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tt.wantErr)
+			}
+			assert.Equal(t, tt.wantAuthRequests, authRequests.Load())
+		})
+	}
+}
+
+func TestClientRetriesAuthenticationTransportFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/dna/system/api/v1/auth/token" {
+			_, _ = w.Write([]byte(`{"Token":"token-1"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"response":1}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:   server.URL,
+		Username:   "admin",
+		Password:   "password",
+		Timeout:    time.Second,
+		MaxRetries: 1,
+	})
+	require.NoError(t, err)
+	client.spacing = 0
+	transport := &failOnceTransport{next: client.client.Transport, path: "/dna/system/api/v1/auth/token"}
+	client.client.Transport = transport
+
+	_, err = GetCount(t.Context(), client, "devices.count", "/dna/intent/api/v1/network-device/count", nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), transport.attempts.Load())
+}
+
+type failOnceTransport struct {
+	next     http.RoundTripper
+	path     string
+	attempts atomic.Int64
+}
+
+func (t *failOnceTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Path == t.path && t.attempts.Add(1) == 1 {
+		return nil, errors.New("temporary transport failure")
+	}
+	return t.next.RoundTrip(req)
 }
 
 func TestClientBasicAuthHeadersAndTokenCache(t *testing.T) {

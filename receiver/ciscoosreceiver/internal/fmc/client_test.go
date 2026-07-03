@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -34,6 +35,410 @@ func TestClientRetryValidationPreservesExplicitZero(t *testing.T) {
 		_, err = NewClient(Config{Endpoint: "https://fmc.example.test", Username: "admin", Password: "password", MaxRetries: retries})
 		require.ErrorContains(t, err, "invalid fmc max retries")
 	}
+}
+
+func TestClientAuthenticationRetryPolicy(t *testing.T) {
+	tests := []struct {
+		name             string
+		authenticate     func(http.ResponseWriter, int64)
+		wantErr          string
+		wantAuthRequests int64
+	}{
+		{
+			name: "rejected credentials",
+			authenticate: func(w http.ResponseWriter, _ int64) {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+			},
+			wantErr:          "HTTP 401",
+			wantAuthRequests: 1,
+		},
+		{
+			name: "invalid successful token response",
+			authenticate: func(w http.ResponseWriter, _ int64) {
+				w.WriteHeader(http.StatusNoContent)
+			},
+			wantErr:          "did not include X-auth-access-token",
+			wantAuthRequests: 1,
+		},
+		{
+			name: "transient authentication server failure",
+			authenticate: func(w http.ResponseWriter, attempt int64) {
+				if attempt == 1 {
+					http.Error(w, "unavailable", http.StatusServiceUnavailable)
+					return
+				}
+				w.Header().Set("X-auth-access-token", "access-1")
+				w.WriteHeader(http.StatusNoContent)
+			},
+			wantAuthRequests: 2,
+		},
+		{
+			name: "persistent authentication server failure uses one retry budget",
+			authenticate: func(w http.ResponseWriter, _ int64) {
+				w.Header().Set("Retry-After", "0")
+				http.Error(w, "unavailable", http.StatusServiceUnavailable)
+			},
+			wantErr:          "HTTP 503",
+			wantAuthRequests: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var authRequests atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/fmc_platform/v1/auth/generatetoken" {
+					tt.authenticate(w, authRequests.Add(1))
+					return
+				}
+				_, _ = w.Write([]byte(`{"items":[]}`))
+			}))
+			defer server.Close()
+
+			client, err := NewClient(Config{
+				Endpoint:   server.URL,
+				Username:   "admin",
+				Password:   "password",
+				Timeout:    time.Second,
+				MaxRetries: 1,
+			})
+			require.NoError(t, err)
+
+			_, err = client.List(t.Context(), "devices", "/api/fmc_config/v1/devices", nil, 1)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tt.wantErr)
+			}
+			assert.Equal(t, tt.wantAuthRequests, authRequests.Load())
+		})
+	}
+}
+
+func TestClientRetriesAuthenticationTransportFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/fmc_platform/v1/auth/generatetoken" {
+			w.Header().Set("X-auth-access-token", "access-1")
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		_, _ = w.Write([]byte(`{"items":[]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:   server.URL,
+		Username:   "admin",
+		Password:   "password",
+		Timeout:    time.Second,
+		MaxRetries: 1,
+	})
+	require.NoError(t, err)
+	transport := &failOnceTransport{next: client.client.Transport, path: "/api/fmc_platform/v1/auth/generatetoken"}
+	client.client.Transport = transport
+
+	_, err = client.List(t.Context(), "devices", "/api/fmc_config/v1/devices", nil, 1)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), transport.attempts.Load())
+}
+
+func TestClientDomainUUIDAuthenticationRetryPolicy(t *testing.T) {
+	for _, status := range []int{http.StatusTooManyRequests, http.StatusServiceUnavailable} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			var authRequests atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "/api/fmc_platform/v1/auth/generatetoken", r.URL.Path)
+				if authRequests.Add(1) == 1 {
+					w.Header().Set("Retry-After", "0")
+					http.Error(w, http.StatusText(status), status)
+					return
+				}
+				w.Header().Set("X-auth-access-token", "access-1")
+				w.Header().Set("DOMAIN_UUID", "domain-1")
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			defer server.Close()
+
+			client, err := NewClient(Config{
+				Endpoint:   server.URL,
+				Username:   "admin",
+				Password:   "password",
+				Timeout:    time.Second,
+				MaxRetries: 1,
+			})
+			require.NoError(t, err)
+
+			domain, err := client.DomainUUID(t.Context())
+			require.NoError(t, err)
+			assert.Equal(t, "domain-1", domain)
+			assert.Equal(t, int64(2), authRequests.Load())
+		})
+	}
+
+	t.Run("transport failure", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/api/fmc_platform/v1/auth/generatetoken", r.URL.Path)
+			w.Header().Set("X-auth-access-token", "access-1")
+			w.Header().Set("DOMAIN_UUID", "domain-1")
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		defer server.Close()
+
+		client, err := NewClient(Config{
+			Endpoint:   server.URL,
+			Username:   "admin",
+			Password:   "password",
+			Timeout:    time.Second,
+			MaxRetries: 1,
+		})
+		require.NoError(t, err)
+		transport := &failOnceTransport{next: client.client.Transport, path: "/api/fmc_platform/v1/auth/generatetoken"}
+		client.client.Transport = transport
+
+		domain, err := client.DomainUUID(t.Context())
+		require.NoError(t, err)
+		assert.Equal(t, "domain-1", domain)
+		assert.Equal(t, int64(2), transport.attempts.Load())
+	})
+
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run(http.StatusText(status)+" is not retried", func(t *testing.T) {
+			var authRequests atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "/api/fmc_platform/v1/auth/generatetoken", r.URL.Path)
+				authRequests.Add(1)
+				http.Error(w, http.StatusText(status), status)
+			}))
+			defer server.Close()
+
+			client, err := NewClient(Config{
+				Endpoint:   server.URL,
+				Username:   "admin",
+				Password:   "password",
+				Timeout:    time.Second,
+				MaxRetries: 3,
+			})
+			require.NoError(t, err)
+
+			_, err = client.DomainUUID(t.Context())
+			require.ErrorContains(t, err, "HTTP "+strconv.Itoa(status))
+			assert.Equal(t, int64(1), authRequests.Load())
+		})
+	}
+}
+
+func TestClientStaleUnauthorizedDoesNotClearNewerToken(t *testing.T) {
+	var authRequests atomic.Int64
+	slowStarted := make(chan struct{})
+	releaseSlow := make(chan struct{})
+	released := false
+	defer func() {
+		if !released {
+			close(releaseSlow)
+		}
+	}()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/fmc_platform/v1/auth/generatetoken":
+			attempt := authRequests.Add(1)
+			w.Header().Set("X-auth-access-token", "access-"+strconv.FormatInt(attempt, 10))
+			w.WriteHeader(http.StatusNoContent)
+		case "/slow":
+			assert.Equal(t, "access-1", r.Header.Get("X-auth-access-token"))
+			close(slowStarted)
+			<-releaseSlow
+			http.Error(w, "expired", http.StatusUnauthorized)
+		case "/fast":
+			assert.Equal(t, "access-2", r.Header.Get("X-auth-access-token"))
+			_, _ = w.Write([]byte(`{"items":[]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:   server.URL,
+		Username:   "admin",
+		Password:   "password",
+		Timeout:    5 * time.Second,
+		MaxRetries: 0,
+	})
+	require.NoError(t, err)
+
+	slowErr := make(chan error, 1)
+	go func() {
+		_, requestErr := client.List(t.Context(), "slow", "/slow", nil, 1)
+		slowErr <- requestErr
+	}()
+
+	select {
+	case <-slowStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for slow request")
+	}
+
+	client.tokenMu.Lock()
+	client.tokenAt = time.Now().Add(-tokenRefreshAfter)
+	client.tokenMu.Unlock()
+
+	_, err = client.List(t.Context(), "fast", "/fast", nil, 1)
+	require.NoError(t, err)
+	close(releaseSlow)
+	released = true
+	require.ErrorContains(t, <-slowErr, "HTTP 401")
+
+	client.tokenMu.Lock()
+	snapshot := client.tokenSnapshotLocked()
+	authFailures := client.authFailures
+	client.tokenMu.Unlock()
+	assert.Equal(t, tokenSnapshot{accessToken: "access-2", generation: 2}, snapshot)
+	assert.Zero(t, authFailures)
+	assert.Equal(t, int64(2), authRequests.Load())
+}
+
+func TestClientUnauthorizedBackoffIsSharedAcrossEndpoints(t *testing.T) {
+	var authRequests atomic.Int64
+	var dataRequests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/fmc_platform/v1/auth/generatetoken" {
+			attempt := authRequests.Add(1)
+			w.Header().Set("X-auth-access-token", "access-"+strconv.FormatInt(attempt, 10))
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		dataRequests.Add(1)
+		if r.URL.Path == "/success" {
+			_, _ = w.Write([]byte(`{"items":[]}`))
+			return
+		}
+		http.Error(w, "expired", http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:   server.URL,
+		Username:   "admin",
+		Password:   "password",
+		Timeout:    time.Second,
+		MaxRetries: 0,
+	})
+	require.NoError(t, err)
+
+	_, err = client.List(t.Context(), "first", "/first", nil, 1)
+	require.ErrorContains(t, err, "HTTP 401")
+	_, err = client.List(t.Context(), "second", "/second", nil, 1)
+	require.ErrorContains(t, err, "HTTP 401")
+	assert.Equal(t, int64(1), authRequests.Load())
+	assert.Equal(t, int64(1), dataRequests.Load())
+
+	client.tokenMu.Lock()
+	assert.Equal(t, 1, client.authFailures)
+	client.lastAuthAt = time.Now().Add(-fmcAuthBackoffFor(client.authFailures))
+	client.tokenMu.Unlock()
+
+	// The new login succeeds, but the streak remains until its token succeeds
+	// on a data request. A second 401 therefore advances to the longer backoff.
+	_, err = client.List(t.Context(), "second", "/second", nil, 1)
+	require.ErrorContains(t, err, "HTTP 401")
+	client.tokenMu.Lock()
+	assert.Equal(t, 2, client.authFailures)
+	client.tokenMu.Unlock()
+
+	_, err = client.List(t.Context(), "third", "/third", nil, 1)
+	require.ErrorContains(t, err, "HTTP 401")
+	assert.Equal(t, int64(2), authRequests.Load())
+	assert.Equal(t, int64(2), dataRequests.Load())
+
+	client.tokenMu.Lock()
+	client.lastAuthAt = time.Now().Add(-fmcAuthBackoffFor(client.authFailures))
+	client.tokenMu.Unlock()
+	_, err = client.List(t.Context(), "success", "/success", nil, 1)
+	require.NoError(t, err)
+	client.tokenMu.Lock()
+	assert.Zero(t, client.authFailures)
+	client.tokenMu.Unlock()
+	assert.Equal(t, int64(3), authRequests.Load())
+	assert.Equal(t, int64(3), dataRequests.Load())
+}
+
+func TestClientAuthenticationFailureBackoffIsSharedAcrossEndpoints(t *testing.T) {
+	var authRequests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		authRequests.Add(1)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:   server.URL,
+		Username:   "admin",
+		Password:   "password",
+		Timeout:    time.Second,
+		MaxRetries: 0,
+	})
+	require.NoError(t, err)
+
+	for _, path := range []string{"/first", "/second"} {
+		_, requestErr := client.List(t.Context(), path, path, nil, 1)
+		require.ErrorContains(t, requestErr, "HTTP 401")
+	}
+	assert.Equal(t, int64(1), authRequests.Load())
+}
+
+func TestClientForbiddenDoesNotClearTokenOrReauthenticate(t *testing.T) {
+	var authRequests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/fmc_platform/v1/auth/generatetoken":
+			authRequests.Add(1)
+			w.Header().Set("X-auth-access-token", "access-1")
+			w.WriteHeader(http.StatusNoContent)
+		case "/forbidden":
+			assert.Equal(t, "access-1", r.Header.Get("X-auth-access-token"))
+			http.Error(w, "forbidden", http.StatusForbidden)
+		case "/allowed":
+			assert.Equal(t, "access-1", r.Header.Get("X-auth-access-token"))
+			_, _ = w.Write([]byte(`{"items":[]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:   server.URL,
+		Username:   "admin",
+		Password:   "password",
+		Timeout:    time.Second,
+		MaxRetries: 1,
+	})
+	require.NoError(t, err)
+
+	_, err = client.List(t.Context(), "forbidden", "/forbidden", nil, 1)
+	require.ErrorContains(t, err, "HTTP 403")
+	_, err = client.List(t.Context(), "allowed", "/allowed", nil, 1)
+	require.NoError(t, err)
+
+	client.tokenMu.Lock()
+	snapshot := client.tokenSnapshotLocked()
+	client.tokenMu.Unlock()
+	assert.Equal(t, "access-1", snapshot.accessToken)
+	assert.Equal(t, int64(1), authRequests.Load())
+}
+
+type failOnceTransport struct {
+	next     http.RoundTripper
+	path     string
+	attempts atomic.Int64
+}
+
+func (t *failOnceTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Path == t.path && t.attempts.Add(1) == 1 {
+		return nil, errors.New("temporary transport failure")
+	}
+	return t.next.RoundTrip(req)
 }
 
 func TestClientTokenAndPagination(t *testing.T) {

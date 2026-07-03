@@ -76,13 +76,55 @@ type Client struct {
 	retries    int
 	pageSize   int
 
-	tokenMu      sync.Mutex
-	accessToken  string
-	refreshToken string
-	tokenAt      time.Time
-	refreshes    int
+	tokenMu         sync.Mutex
+	accessToken     string
+	refreshToken    string
+	tokenAt         time.Time
+	refreshes       int
+	tokenGeneration uint64
+	loginInflight   chan struct{}
+	lastAuthErr     error
+	lastAuthAt      time.Time
+	authFailures    int
 
 	OnRequest func(RequestStat)
+}
+
+// tokenSnapshot binds a request to the exact credentials it used. Both the
+// generation and value are checked before a 401 can invalidate shared state,
+// so a delayed response cannot erase a token published by a newer login.
+type tokenSnapshot struct {
+	accessToken string
+	generation  uint64
+}
+
+type tokenBundle struct {
+	accessToken  string
+	refreshToken string
+	domainUUID   string
+	refreshed    bool
+}
+
+// fmcAuthBackoffSchedule limits repeated authentication after either a login
+// failure or a data request rejects the current token. A successful login does
+// not prove that the token is usable, so only an authenticated data response
+// resets the failure streak.
+var fmcAuthBackoffSchedule = []time.Duration{
+	1 * time.Second,
+	5 * time.Second,
+	30 * time.Second,
+	5 * time.Minute,
+}
+
+func fmcAuthBackoffFor(failures int) time.Duration {
+	if failures <= 0 {
+		return 0
+	}
+	idx := failures - 1
+	if idx >= len(fmcAuthBackoffSchedule) {
+		idx = len(fmcAuthBackoffSchedule) - 1
+	}
+	return fmcAuthBackoffSchedule[idx]
 }
 
 // NewClient creates an FMC REST API client.
@@ -152,16 +194,22 @@ func (c *Client) Endpoint() string {
 
 // DomainUUID returns the FMC domain UUID for config API requests.
 func (c *Client) DomainUUID(ctx context.Context) (string, error) {
-	if c.domainUUID != "" {
-		return c.domainUUID, nil
+	c.tokenMu.Lock()
+	domainUUID := c.domainUUID
+	c.tokenMu.Unlock()
+	if domainUUID != "" {
+		return domainUUID, nil
 	}
-	if err := c.ensureToken(ctx); err != nil {
+	if _, _, err := c.ensureToken(ctx); err != nil {
 		return "", err
 	}
-	if c.domainUUID == "" {
+	c.tokenMu.Lock()
+	domainUUID = c.domainUUID
+	c.tokenMu.Unlock()
+	if domainUUID == "" {
 		return "", errors.New("fmc authentication response did not include DOMAIN_UUID; configure fmc.controllers[].domain_uuid")
 	}
-	return c.domainUUID, nil
+	return domainUUID, nil
 }
 
 // Query returns URL values with string keys and values.
@@ -255,16 +303,32 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 	var lastErr error
 	attempts := c.retries + 1
 	for attempt := range attempts {
-		body, header, status, err := c.doOnce(ctx, method, operation, path, query, payload)
+		body, header, status, requestToken, err := c.doOnce(ctx, method, operation, path, query, payload)
 		if err == nil {
 			return body, header, nil
 		}
 		lastErr = err
-		if status == http.StatusUnauthorized || status == http.StatusForbidden {
-			// Drop the token but do not retry inline — a bad credential would
-			// otherwise loop login → fail → login on every attempt and risk
-			// locking the FMC user account. The next scrape re-authenticates.
-			c.clearToken()
+		if requestToken.accessToken == "" {
+			// Authentication already consumed its configured retry budget. Do not
+			// multiply it by the data-request retry loop; the shared circuit is the
+			// next retry boundary for subsequent calls.
+			if ctx.Err() != nil {
+				return nil, nil, ctx.Err()
+			}
+			return nil, nil, err
+		}
+		if status == http.StatusUnauthorized {
+			// Invalidate only the exact token rejected by this request. The shared
+			// authentication backoff becomes the retry boundary for all endpoints.
+			c.rejectToken(requestToken, err)
+			if ctx.Err() != nil {
+				return nil, nil, ctx.Err()
+			}
+			return nil, nil, err
+		}
+		if status == http.StatusForbidden {
+			// A valid identity can be forbidden from one resource but authorized
+			// for another. Retain the token and do not trigger a relogin storm.
 			if ctx.Err() != nil {
 				return nil, nil, ctx.Err()
 			}
@@ -287,7 +351,7 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 	return nil, nil, lastErr
 }
 
-func (c *Client) doOnce(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, http.Header, int, error) {
+func (c *Client) doOnce(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, http.Header, int, tokenSnapshot, error) {
 	reqURL := c.buildURL(path, query)
 	var body io.Reader
 	if payload != nil {
@@ -295,40 +359,39 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 	}
 	req, err := http.NewRequestWithContext(ctx, method, reqURL, body)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, tokenSnapshot{}, err
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", c.userAgent)
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if tokenErr := c.ensureToken(ctx); tokenErr != nil {
-		return nil, nil, 0, tokenErr
+	requestToken, authStatus, tokenErr := c.ensureToken(ctx)
+	if tokenErr != nil {
+		return nil, nil, authStatus, tokenSnapshot{}, tokenErr
 	}
-	c.tokenMu.Lock()
-	accessToken := c.accessToken
-	c.tokenMu.Unlock()
-	req.Header.Set("X-auth-access-token", accessToken)
+	req.Header.Set("X-auth-access-token", requestToken.accessToken)
 
 	start := time.Now()
 	resp, err := c.client.Do(req)
 	duration := time.Since(start)
 	if err != nil {
 		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", Duration: duration, Err: err})
-		return nil, nil, 0, err
+		return nil, nil, 0, requestToken, err
 	}
 	bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
 		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
-		return nil, resp.Header, resp.StatusCode, readErr
+		return nil, resp.Header, resp.StatusCode, requestToken, readErr
 	}
 	if closeErr != nil {
-		return nil, resp.Header, resp.StatusCode, closeErr
+		return nil, resp.Header, resp.StatusCode, requestToken, closeErr
 	}
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		c.markAuthenticatedSuccess(requestToken)
 		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "success", StatusCode: resp.StatusCode, Duration: duration})
-		return bodyBytes, resp.Header, resp.StatusCode, nil
+		return bodyBytes, resp.Header, resp.StatusCode, requestToken, nil
 	}
 	apiErr := &APIError{StatusCode: resp.StatusCode}
 	c.record(RequestStat{
@@ -342,35 +405,129 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 		RateLimited: resp.StatusCode == http.StatusTooManyRequests,
 		Err:         apiErr,
 	})
-	return nil, resp.Header, resp.StatusCode, apiErr
+	return nil, resp.Header, resp.StatusCode, requestToken, apiErr
 }
 
-func (c *Client) ensureToken(ctx context.Context) error {
-	c.tokenMu.Lock()
-	if c.accessToken != "" && time.Since(c.tokenAt) < tokenRefreshAfter {
+func (c *Client) ensureToken(ctx context.Context) (tokenSnapshot, int, error) {
+	for {
+		c.tokenMu.Lock()
+		if c.accessToken != "" && time.Since(c.tokenAt) < tokenRefreshAfter {
+			snapshot := c.tokenSnapshotLocked()
+			c.tokenMu.Unlock()
+			return snapshot, 0, nil
+		}
+		if c.authFailures > 0 && time.Since(c.lastAuthAt) < fmcAuthBackoffFor(c.authFailures) {
+			err := c.lastAuthErr
+			c.tokenMu.Unlock()
+			if err == nil {
+				err = errors.New("fmc authentication is in backoff")
+			}
+			return tokenSnapshot{}, apiStatus(err), err
+		}
+		if c.loginInflight != nil {
+			ch := c.loginInflight
+			c.tokenMu.Unlock()
+			select {
+			case <-ch:
+			case <-ctx.Done():
+				return tokenSnapshot{}, 0, ctx.Err()
+			}
+			continue
+		}
+
+		ch := make(chan struct{})
+		c.loginInflight = ch
+		refreshToken := c.refreshToken
+		refreshes := c.refreshes
 		c.tokenMu.Unlock()
-		return nil
+
+		bundle, status, err := c.acquireToken(ctx, refreshToken, refreshes)
+
+		c.tokenMu.Lock()
+		c.loginInflight = nil
+		if err != nil {
+			if ctx.Err() == nil {
+				c.recordAuthFailureLocked(err)
+			}
+			close(ch)
+			c.tokenMu.Unlock()
+			if ctx.Err() != nil {
+				return tokenSnapshot{}, status, ctx.Err()
+			}
+			return tokenSnapshot{}, status, err
+		}
+
+		c.tokenGeneration++
+		c.accessToken = bundle.accessToken
+		c.refreshToken = bundle.refreshToken
+		c.tokenAt = time.Now()
+		if bundle.refreshed {
+			c.refreshes++
+		} else {
+			c.refreshes = 0
+		}
+		if c.domainUUID == "" {
+			c.domainUUID = bundle.domainUUID
+		}
+		snapshot := c.tokenSnapshotLocked()
+		// Deliberately preserve authFailures, lastAuthErr, and lastAuthAt. A
+		// login response alone does not establish that FMC accepts this token.
+		close(ch)
+		c.tokenMu.Unlock()
+		return snapshot, status, nil
 	}
-	canRefresh := c.refreshToken != "" && c.refreshes < 3
-	c.tokenMu.Unlock()
-	if canRefresh {
-		if err := c.refresh(ctx); err == nil {
-			return nil
+}
+
+func (c *Client) acquireToken(ctx context.Context, refreshToken string, refreshes int) (tokenBundle, int, error) {
+	if refreshToken != "" && refreshes < 3 {
+		bundle, status, err := c.retryAuthentication(ctx, func() (tokenBundle, http.Header, int, error) {
+			return c.refreshOnce(ctx, refreshToken)
+		})
+		if err == nil {
+			return bundle, status, nil
+		}
+		if ctx.Err() != nil {
+			return tokenBundle{}, status, ctx.Err()
 		}
 	}
-	return c.generateToken(ctx)
+	return c.retryAuthentication(ctx, func() (tokenBundle, http.Header, int, error) {
+		return c.generateTokenOnce(ctx)
+	})
 }
 
-func (c *Client) generateToken(ctx context.Context) error {
-	c.tokenMu.Lock()
-	defer c.tokenMu.Unlock()
-	if c.accessToken != "" && time.Since(c.tokenAt) < tokenRefreshAfter {
-		return nil
+func (c *Client) retryAuthentication(ctx context.Context, request func() (tokenBundle, http.Header, int, error)) (tokenBundle, int, error) {
+	var lastErr error
+	var lastStatus int
+	attempts := c.retries + 1
+	for attempt := range attempts {
+		bundle, header, status, err := request()
+		if err == nil {
+			return bundle, status, nil
+		}
+		lastErr = err
+		lastStatus = status
+		retryHeader := ""
+		if header != nil {
+			retryHeader = header.Get("Retry-After")
+		}
+		if !retryableStatus(status) || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
+			if ctx.Err() != nil {
+				return tokenBundle{}, status, ctx.Err()
+			}
+			return tokenBundle{}, status, err
+		}
 	}
+	if lastErr == nil {
+		lastErr = errors.New("fmc authentication failed")
+	}
+	return tokenBundle{}, lastStatus, lastErr
+}
+
+func (c *Client) generateTokenOnce(ctx context.Context) (tokenBundle, http.Header, int, error) {
 	reqURL := c.buildURL("/api/fmc_platform/v1/auth/generatetoken", nil)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, http.NoBody)
 	if err != nil {
-		return err
+		return tokenBundle{}, nil, 0, err
 	}
 	req.SetBasicAuth(c.username, c.password)
 	req.Header.Set("Accept", "application/json")
@@ -381,52 +538,47 @@ func (c *Client) generateToken(ctx context.Context) error {
 	duration := time.Since(start)
 	if err != nil {
 		c.record(RequestStat{Controller: c.name, Operation: "auth.generatetoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/generatetoken", Outcome: "error", Duration: duration, Err: err})
-		return err
+		return tokenBundle{}, nil, 0, err
 	}
 	_, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
 		c.record(RequestStat{Controller: c.name, Operation: "auth.generatetoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/generatetoken", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
-		return readErr
+		return tokenBundle{}, resp.Header, resp.StatusCode, readErr
 	}
 	if closeErr != nil {
-		return closeErr
+		return tokenBundle{}, resp.Header, resp.StatusCode, closeErr
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		apiErr := &APIError{StatusCode: resp.StatusCode}
 		c.record(RequestStat{Controller: c.name, Operation: "auth.generatetoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/generatetoken", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: apiErr})
-		return apiErr
+		return tokenBundle{}, resp.Header, resp.StatusCode, apiErr
 	}
 	access := firstHeader(resp.Header, "X-auth-access-token", "x-auth-access-token")
 	refresh := firstHeader(resp.Header, "X-auth-refresh-token", "x-auth-refresh-token")
 	if access == "" {
 		err := errors.New("fmc authentication response did not include X-auth-access-token")
 		c.record(RequestStat{Controller: c.name, Operation: "auth.generatetoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/generatetoken", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: err})
-		return err
+		return tokenBundle{}, resp.Header, resp.StatusCode, err
 	}
-	c.accessToken = access
-	c.refreshToken = refresh
-	c.tokenAt = time.Now()
-	c.refreshes = 0
-	if c.domainUUID == "" {
-		c.domainUUID = firstHeader(resp.Header, "DOMAIN_UUID", "domain_uuid", "Domain-UUID")
+	bundle := tokenBundle{
+		accessToken:  access,
+		refreshToken: refresh,
+		domainUUID:   firstHeader(resp.Header, "DOMAIN_UUID", "domain_uuid", "Domain-UUID"),
 	}
 	c.record(RequestStat{Controller: c.name, Operation: "auth.generatetoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/generatetoken", Outcome: "success", StatusCode: resp.StatusCode, Duration: duration})
-	return nil
+	return bundle, resp.Header, resp.StatusCode, nil
 }
 
-func (c *Client) refresh(ctx context.Context) error {
-	c.tokenMu.Lock()
-	refreshToken := c.refreshToken
-	c.tokenMu.Unlock()
+func (c *Client) refreshOnce(ctx context.Context, refreshToken string) (tokenBundle, http.Header, int, error) {
 	if refreshToken == "" {
-		return errors.New("fmc refresh token is empty")
+		return tokenBundle{}, nil, 0, errors.New("fmc refresh token is empty")
 	}
 
 	reqURL := c.buildURL("/api/fmc_platform/v1/auth/refreshtoken", nil)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, http.NoBody)
 	if err != nil {
-		return err
+		return tokenBundle{}, nil, 0, err
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", c.userAgent)
@@ -437,43 +589,78 @@ func (c *Client) refresh(ctx context.Context) error {
 	duration := time.Since(start)
 	if err != nil {
 		c.record(RequestStat{Controller: c.name, Operation: "auth.refreshtoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/refreshtoken", Outcome: "error", Duration: duration, Err: err})
-		return err
+		return tokenBundle{}, nil, 0, err
 	}
 	_, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
 		c.record(RequestStat{Controller: c.name, Operation: "auth.refreshtoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/refreshtoken", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
-		return readErr
+		return tokenBundle{}, resp.Header, resp.StatusCode, readErr
 	}
 	if closeErr != nil {
-		return closeErr
+		return tokenBundle{}, resp.Header, resp.StatusCode, closeErr
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		apiErr := &APIError{StatusCode: resp.StatusCode}
 		c.record(RequestStat{Controller: c.name, Operation: "auth.refreshtoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/refreshtoken", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: apiErr})
-		return apiErr
+		return tokenBundle{}, resp.Header, resp.StatusCode, apiErr
 	}
 	access := firstHeader(resp.Header, "X-auth-access-token", "x-auth-access-token")
 	refresh := firstHeader(resp.Header, "X-auth-refresh-token", "x-auth-refresh-token")
 	if access == "" {
 		err := errors.New("fmc refresh response did not include X-auth-access-token")
 		c.record(RequestStat{Controller: c.name, Operation: "auth.refreshtoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/refreshtoken", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: err})
-		return err
+		return tokenBundle{}, resp.Header, resp.StatusCode, err
 	}
-	c.tokenMu.Lock()
-	c.accessToken = access
-	c.refreshToken = refresh
-	c.tokenAt = time.Now()
-	c.refreshes++
-	c.tokenMu.Unlock()
+	bundle := tokenBundle{accessToken: access, refreshToken: refresh, refreshed: true}
 	c.record(RequestStat{Controller: c.name, Operation: "auth.refreshtoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/refreshtoken", Outcome: "success", StatusCode: resp.StatusCode, Duration: duration})
-	return nil
+	return bundle, resp.Header, resp.StatusCode, nil
 }
 
-func (c *Client) clearToken() {
+func (c *Client) rejectToken(snapshot tokenSnapshot, err error) {
+	if snapshot.accessToken == "" {
+		return
+	}
 	c.tokenMu.Lock()
 	defer c.tokenMu.Unlock()
+	if c.tokenGeneration != snapshot.generation || c.accessToken != snapshot.accessToken {
+		return
+	}
+	c.tokenGeneration++
 	c.accessToken = ""
+	c.recordAuthFailureLocked(err)
+}
+
+func (c *Client) markAuthenticatedSuccess(snapshot tokenSnapshot) {
+	if snapshot.accessToken == "" {
+		return
+	}
+	c.tokenMu.Lock()
+	defer c.tokenMu.Unlock()
+	if c.tokenGeneration != snapshot.generation || c.accessToken != snapshot.accessToken {
+		return
+	}
+	c.authFailures = 0
+	c.lastAuthErr = nil
+	c.lastAuthAt = time.Time{}
+}
+
+func (c *Client) recordAuthFailureLocked(err error) {
+	c.authFailures++
+	c.lastAuthErr = err
+	c.lastAuthAt = time.Now()
+}
+
+func (c *Client) tokenSnapshotLocked() tokenSnapshot {
+	return tokenSnapshot{accessToken: c.accessToken, generation: c.tokenGeneration}
+}
+
+func apiStatus(err error) int {
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.StatusCode
+	}
+	return 0
 }
 
 func (c *Client) buildURL(path string, query url.Values) string {

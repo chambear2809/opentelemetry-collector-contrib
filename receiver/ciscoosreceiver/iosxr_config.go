@@ -105,10 +105,13 @@ type IOSXRDialOutConfig struct {
 	// DO NOT USE unkeyed struct initialization
 	_ struct{} `mapstructure:"-"`
 
-	Enabled        bool                                `mapstructure:"enabled"`
-	AllowedClients []string                            `mapstructure:"allowed_clients"`
-	ModulePaths    []string                            `mapstructure:"module_paths"`
-	RateLimiting   yanggrpcreceiver.RateLimitingConfig `mapstructure:"rate_limiting"`
+	Enabled        bool     `mapstructure:"enabled"`
+	AllowedClients []string `mapstructure:"allowed_clients"`
+	// MaxStreamsPerClient bounds concurrent dial-out streams from one source IP.
+	// Zero selects the smaller of 16 and MaxConcurrentStreams.
+	MaxStreamsPerClient uint32                              `mapstructure:"max_streams_per_client"`
+	ModulePaths         []string                            `mapstructure:"module_paths"`
+	RateLimiting        yanggrpcreceiver.RateLimitingConfig `mapstructure:"rate_limiting"`
 }
 
 // IOSXRConfig defines IOS XR gNMI/MDT telemetry settings.
@@ -252,9 +255,12 @@ func (cfg *Config) validateIOSXR() error {
 	}
 
 	if iosxr.DialOut.Enabled {
-		security := yanggrpcreceiver.SecurityConfig{AllowedClients: iosxr.DialOut.AllowedClients, RateLimiting: iosxr.DialOut.RateLimiting}
-		yangConfig := yanggrpcreceiver.Config{ServerConfig: iosxr.DialOut.ServerConfig, Security: security}
-		if validationErr := yangConfig.Validate(); validationErr != nil {
+		if validationErr := validateGNMIDialOutConfig(
+			iosxr.DialOut.ServerConfig,
+			iosxr.DialOut.AllowedClients,
+			iosxr.DialOut.MaxStreamsPerClient,
+			iosxr.DialOut.RateLimiting,
+		); validationErr != nil {
 			err = multierr.Append(err, fmt.Errorf("ios_xr.dial_out: %w", validationErr))
 		}
 	}
@@ -279,6 +285,9 @@ func (cfg IOSXRConfig) withDefaults() IOSXRConfig {
 	}
 	if cfg.DialOut.NetAddr.Endpoint == "" {
 		cfg.DialOut.ServerConfig = defaults.DialOut.ServerConfig
+	}
+	if cfg.DialOut.MaxStreamsPerClient == 0 {
+		cfg.DialOut.MaxStreamsPerClient = effectiveGNMIDialOutMaxStreamsPerClient(0, cfg.DialOut.MaxConcurrentStreams)
 	}
 	for i := range cfg.DialIn.Targets {
 		cfg.DialIn.Targets[i] = cfg.DialIn.Targets[i].withDefaults(cfg)

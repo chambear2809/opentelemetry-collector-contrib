@@ -5,6 +5,7 @@ package ise
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,6 +50,52 @@ func TestDecodeObjectsExtractsMNTXMLSessionRows(t *testing.T) {
 	assert.Equal(t, 2, total)
 	require.Len(t, objects, 2)
 	assert.Equal(t, "bob", String(objects[1], "user_name"))
+}
+
+func TestDecodeXMLObjectRejectsUnsafeDepthBeforeMaterializing(t *testing.T) {
+	body := []byte(strings.Repeat("<n>", hardMaxXMLDepth+1) + strings.Repeat("</n>", hardMaxXMLDepth+1))
+	_, err := decodeXMLObject(body)
+	require.ErrorContains(t, err, "XML response exceeds hard depth limit")
+	var limitErr *xmlComplexityLimitError
+	require.ErrorAs(t, err, &limitErr)
+}
+
+func TestValidateXMLComplexityBoundaries(t *testing.T) {
+	base := xmlComplexityLimits{depth: 4, tokens: 20, elements: 4, attributes: 4}
+	tests := []struct {
+		name   string
+		body   string
+		limits xmlComplexityLimits
+		err    string
+	}{
+		{name: "at depth boundary", body: `<a><b/></a>`, limits: xmlComplexityLimits{depth: 2, tokens: 4, elements: 2, attributes: 1}},
+		{name: "over depth", body: `<a><b><c/></b></a>`, limits: xmlComplexityLimits{depth: 2, tokens: 10, elements: 4, attributes: 1}, err: "depth limit"},
+		{name: "over tokens", body: `<a/>`, limits: xmlComplexityLimits{depth: 2, tokens: 1, elements: 2, attributes: 1}, err: "token limit"},
+		{name: "over elements", body: `<a><b/></a>`, limits: xmlComplexityLimits{depth: 3, tokens: 10, elements: 1, attributes: 1}, err: "element limit"},
+		{name: "over attributes", body: `<a x="1" y="2"/>`, limits: xmlComplexityLimits{depth: 2, tokens: 10, elements: 2, attributes: 1}, err: "attribute limit"},
+		{name: "malformed", body: `<a>`, limits: base, err: "unexpected EOF"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateXMLComplexityWithLimits([]byte(tt.body), tt.limits)
+			if tt.err == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tt.err)
+		})
+	}
+}
+
+func TestDecodeXMLObjectAcceptsDeclarationAndNamespace(t *testing.T) {
+	obj, err := decodeXMLObject([]byte(`<?xml version="1.0"?><ise:SearchResult xmlns:ise="urn:cisco:ise" total="1"><ise:resource><ise:name>nad-1</ise:name></ise:resource></ise:SearchResult>`))
+	require.NoError(t, err)
+	root, ok := obj["SearchResult"].(Object)
+	require.True(t, ok)
+	assert.Equal(t, "1", String(root, "@total"))
+	resource, ok := root["resource"].(Object)
+	require.True(t, ok)
+	assert.Equal(t, "nad-1", String(resource, "name"))
 }
 
 func TestDataConnectViewSafety(t *testing.T) {

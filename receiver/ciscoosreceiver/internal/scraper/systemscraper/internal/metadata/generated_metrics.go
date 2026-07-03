@@ -48,88 +48,115 @@ var MapAttributeNetworkIoDirection = map[string]AttributeNetworkIoDirection{
 
 var MetricsInfo = metricsInfo{
 	CiscoAdjacencyEntries: metricInfo{
-		Name: "cisco.adjacency.entries",
+		Name:       "cisco.adjacency.entries",
+		Attributes: []string{"cisco.routing.vrf", "cisco.adjacency.state"},
 	},
 	CiscoArpEntries: metricInfo{
-		Name: "cisco.arp.entries",
+		Name:       "cisco.arp.entries",
+		Attributes: []string{"cisco.routing.vrf", "address.family"},
 	},
 	CiscoControlPlaneCPUProcessUtilization: metricInfo{
-		Name: "cisco.control_plane.cpu.process.utilization",
+		Name:       "cisco.control_plane.cpu.process.utilization",
+		Attributes: []string{"cisco.process.name", "cisco.process.pid", "cisco.cpu.window"},
 	},
 	CiscoControlPlaneDropped: metricInfo{
-		Name: "cisco.control_plane.dropped",
+		Name:       "cisco.control_plane.dropped",
+		Attributes: []string{"cisco.control_plane.source", "cisco.control_plane.class", "cisco.control_plane.drop.reason"},
 	},
 	CiscoControlPlanePackets: metricInfo{
-		Name: "cisco.control_plane.packets",
+		Name:       "cisco.control_plane.packets",
+		Attributes: []string{"cisco.control_plane.source", "cisco.control_plane.class", "network.io.direction"},
 	},
 	CiscoControlPlanePuntRate: metricInfo{
-		Name: "cisco.control_plane.punt.rate",
+		Name:       "cisco.control_plane.punt.rate",
+		Attributes: []string{"cisco.control_plane.punt.queue", "network.interface.name"},
 	},
 	CiscoDeviceUp: metricInfo{
 		Name: "cisco.device.up",
 	},
 	CiscoEvpnRoutes: metricInfo{
-		Name: "cisco.evpn.routes",
+		Name:       "cisco.evpn.routes",
+		Attributes: []string{"cisco.routing.vrf", "cisco.evpn.route.type"},
 	},
 	CiscoForwardingDrops: metricInfo{
-		Name: "cisco.forwarding.drops",
+		Name:       "cisco.forwarding.drops",
+		Attributes: []string{"cisco.routing.vrf", "cisco.forwarding.drop.reason"},
 	},
 	CiscoForwardingFibEntries: metricInfo{
-		Name: "cisco.forwarding.fib.entries",
+		Name:       "cisco.forwarding.fib.entries",
+		Attributes: []string{"cisco.routing.vrf", "address.family"},
 	},
 	CiscoHardwareStatus: metricInfo{
-		Name: "cisco.hardware.status",
+		Name:       "cisco.hardware.status",
+		Attributes: []string{"cisco.hardware.component", "cisco.hardware.name", "cisco.hardware.slot", "cisco.hardware.state"},
 	},
 	CiscoHardwareTemperature: metricInfo{
-		Name: "cisco.hardware.temperature",
+		Name:       "cisco.hardware.temperature",
+		Attributes: []string{"cisco.hardware.name", "cisco.hardware.slot", "cisco.hardware.state"},
 	},
 	CiscoNvePeerStatus: metricInfo{
-		Name: "cisco.nve.peer.status",
+		Name:       "cisco.nve.peer.status",
+		Attributes: []string{"network.peer.address", "cisco.nve.state"},
 	},
 	CiscoNveVniStatus: metricInfo{
-		Name: "cisco.nve.vni.status",
+		Name:       "cisco.nve.vni.status",
+		Attributes: []string{"cisco.nve.vni", "cisco.nve.vni.type", "cisco.nve.state"},
 	},
 	CiscoProtocolDropped: metricInfo{
-		Name: "cisco.protocol.dropped",
+		Name:       "cisco.protocol.dropped",
+		Attributes: []string{"cisco.protocol.drop.reason", "cisco.protocol.name"},
 	},
 	CiscoProtocolErrors: metricInfo{
-		Name: "cisco.protocol.errors",
+		Name:       "cisco.protocol.errors",
+		Attributes: []string{"cisco.protocol.error.type", "cisco.protocol.name"},
 	},
 	CiscoProtocolPackets: metricInfo{
-		Name: "cisco.protocol.packets",
+		Name:       "cisco.protocol.packets",
+		Attributes: []string{"cisco.protocol.message.type", "cisco.protocol.name", "network.io.direction"},
 	},
 	CiscoQfpDatapathIo: metricInfo{
-		Name: "cisco.qfp.datapath.io",
+		Name:       "cisco.qfp.datapath.io",
+		Attributes: []string{"network.io.direction", "cisco.qfp.traffic.class", "cisco.cpu.window"},
 	},
 	CiscoQfpDatapathPacketRate: metricInfo{
-		Name: "cisco.qfp.datapath.packet.rate",
+		Name:       "cisco.qfp.datapath.packet.rate",
+		Attributes: []string{"network.io.direction", "cisco.qfp.traffic.class", "cisco.cpu.window"},
 	},
 	CiscoQfpDatapathUtilization: metricInfo{
-		Name: "cisco.qfp.datapath.utilization",
+		Name:       "cisco.qfp.datapath.utilization",
+		Attributes: []string{"cisco.qfp.load.type", "cisco.cpu.window"},
 	},
 	CiscoQfpDropBytes: metricInfo{
-		Name: "cisco.qfp.drop.bytes",
+		Name:       "cisco.qfp.drop.bytes",
+		Attributes: []string{"cisco.qfp.drop.source", "cisco.forwarding.drop.reason"},
 	},
 	CiscoQfpDrops: metricInfo{
-		Name: "cisco.qfp.drops",
+		Name:       "cisco.qfp.drops",
+		Attributes: []string{"cisco.qfp.drop.source", "cisco.forwarding.drop.reason"},
 	},
 	CiscoQfpInterfaceDrops: metricInfo{
-		Name: "cisco.qfp.interface.drops",
+		Name:       "cisco.qfp.interface.drops",
+		Attributes: []string{"network.interface.name", "network.io.direction"},
 	},
 	CiscoRoutingNeighborPrefixes: metricInfo{
-		Name: "cisco.routing.neighbor.prefixes",
+		Name:       "cisco.routing.neighbor.prefixes",
+		Attributes: []string{"cisco.routing.protocol", "cisco.routing.vrf", "network.peer.address", "address.family"},
 	},
 	CiscoRoutingNeighborState: metricInfo{
-		Name: "cisco.routing.neighbor.state",
+		Name:       "cisco.routing.neighbor.state",
+		Attributes: []string{"cisco.routing.protocol", "cisco.routing.vrf", "network.peer.address", "cisco.routing.neighbor.state", "address.family"},
 	},
 	CiscoRoutingRoutes: metricInfo{
-		Name: "cisco.routing.routes",
+		Name:       "cisco.routing.routes",
+		Attributes: []string{"cisco.routing.vrf", "cisco.route.source", "address.family"},
 	},
 	CiscoScrapeCommandDuration: metricInfo{
-		Name: "cisco.scrape.command.duration",
+		Name:       "cisco.scrape.command.duration",
+		Attributes: []string{"cisco.scrape.command.family", "cisco.scrape.command.outcome"},
 	},
 	CiscoScrapeCommandErrors: metricInfo{
-		Name: "cisco.scrape.command.errors",
+		Name:       "cisco.scrape.command.errors",
+		Attributes: []string{"cisco.scrape.command.family", "cisco.scrape.error.type"},
 	},
 	CiscoScrapePartialSuccess: metricInfo{
 		Name: "cisco.scrape.partial_success",

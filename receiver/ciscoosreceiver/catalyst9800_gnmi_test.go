@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/collector/config/configgrpc"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 func TestCatalyst9800GNMIDecoderWirelessAliasesAndRawMetrics(t *testing.T) {
@@ -224,6 +225,92 @@ func TestCatalyst9800GNMIDecoderCoalescesMetricStreamsAndPreservesUint64(t *test
 	assert.Equal(t, "uint64", attrValue(t, overflowDP.Attributes(), "cisco.value.type"))
 	assert.Equal(t, "true", attrValue(t, overflowDP.Attributes(), "cisco.value.out_of_range"))
 	assert.Equal(t, "AA:BB:CC:DD:EE:03", attrValue(t, overflowDP.Attributes(), "cisco.wlc.ap.mac"))
+}
+
+//nolint:staticcheck // Cisco devices still emit deprecated gNMI Decimal64 values, including malformed boundary cases.
+func TestCatalyst9800GNMIDecoderTypedValueBranches(t *testing.T) {
+	health := &catalyst9800Health{}
+	decoder := catalyst9800GNMIUpdateDecoder{target: Catalyst9800TargetConfig{Name: "wlc-1"}, health: health}
+	md := decoder.decodeNotification(&gnmi.Notification{
+		Prefix: mustParseIOSXRPath(t, "wireless-access-point-oper:access-point-oper-data"),
+		Update: []*gnmi.Update{
+			{Path: mustParseIOSXRPath(t, "ascii-value"), Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_AsciiVal{AsciiVal: "legacy"}}},
+			{Path: mustParseIOSXRPath(t, "signed-value"), Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_IntVal{IntVal: -7}}},
+			{Path: mustParseIOSXRPath(t, "disabled"), Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_BoolVal{BoolVal: false}}},
+			{Path: mustParseIOSXRPath(t, "float-value"), Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_FloatVal{FloatVal: 1.5}}},
+			{Path: mustParseIOSXRPath(t, "double-value"), Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_DoubleVal{DoubleVal: 2.25}}},
+			{Path: mustParseIOSXRPath(t, "decimal-value"), Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_DecimalVal{DecimalVal: &gnmi.Decimal64{Digits: 12345, Precision: 2}}}},
+			{
+				Path: mustParseIOSXRPath(t, "mixed-leaf-list"),
+				Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_LeaflistVal{LeaflistVal: &gnmi.ScalarArray{Element: []*gnmi.TypedValue{
+					{Value: &gnmi.TypedValue_StringVal{StringVal: "text"}},
+					{Value: &gnmi.TypedValue_AsciiVal{AsciiVal: "ascii"}},
+					{Value: &gnmi.TypedValue_IntVal{IntVal: -1}},
+					{Value: &gnmi.TypedValue_UintVal{UintVal: 2}},
+					{Value: &gnmi.TypedValue_BoolVal{BoolVal: false}},
+					{Value: &gnmi.TypedValue_FloatVal{FloatVal: 1.5}},
+					{Value: &gnmi.TypedValue_DoubleVal{DoubleVal: 2.25}},
+				}}}},
+			},
+			{Path: mustParseIOSXRPath(t, "legacy-json"), Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonVal{JsonVal: []byte(`{"count":3}`)}}},
+			{Path: mustParseIOSXRPath(t, "opaque"), Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_BytesVal{BytesVal: []byte{0xde, 0xad}}}},
+			{Path: mustParseIOSXRPath(t, "compact"), Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_ProtoBytes{ProtoBytes: []byte{0x01, 0x02}}}},
+			{Path: mustParseIOSXRPath(t, "envelope"), Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_AnyVal{AnyVal: &anypb.Any{TypeUrl: "type.googleapis.com/example.Telemetry", Value: []byte{0x01}}}}},
+		},
+	}, catalyst9800TelemetryTransportDialIn)
+
+	const prefix = "cisco.catalyst9800.yang.wireless_access_point_oper.access_point_oper_data."
+	assertInfoMetricValue(t, md, prefix+"ascii_value_info", "legacy")
+	assertGaugeIntMetricValue(t, md, prefix+"signed_value", -7)
+	assertGaugeIntMetricValue(t, md, prefix+"disabled", 0)
+	assertGaugeDoubleMetricValue(t, md, prefix+"float_value", 1.5)
+	assertGaugeDoubleMetricValue(t, md, prefix+"double_value", 2.25)
+	assertGaugeDoubleMetricValue(t, md, prefix+"decimal_value", 123.45)
+	assertInfoMetricValue(t, md, prefix+"mixed_leaf_list_info", "text,ascii,-1,2,false,1.5,2.25")
+	assertMetricExists(t, md, prefix+"legacy_json.count")
+	assertInfoMetricValue(t, md, prefix+"opaque.bytes_info", "dead")
+	envelope := mustFindIOSXRMetric(t, md, prefix+"envelope.any_info")
+	envelopeValue := attrValue(t, envelope.Gauge().DataPoints().At(0).Attributes(), "value")
+	assert.Contains(t, envelopeValue, "type.googleapis.com/example.Telemetry")
+	assertMetricExists(t, md, "cisco.catalyst9800.receiver.compact_gpb_payloads")
+	assert.Equal(t, int64(1), health.snapshot().compactGPBPayloads)
+	assert.Zero(t, health.snapshot().decodeErrors)
+	assert.Zero(t, health.snapshot().droppedDatapoints)
+}
+
+//nolint:staticcheck // Cisco devices still emit deprecated gNMI Decimal64 values, including malformed boundary cases.
+func TestCatalyst9800GNMIDecoderRejectsMalformedTypedValues(t *testing.T) {
+	tests := []struct {
+		name  string
+		value *gnmi.TypedValue
+	}{
+		{name: "missing typed value"},
+		{name: "empty typed value", value: &gnmi.TypedValue{}},
+		{name: "nil Decimal64", value: &gnmi.TypedValue{Value: &gnmi.TypedValue_DecimalVal{}}},
+		{name: "Decimal64 precision 309", value: &gnmi.TypedValue{Value: &gnmi.TypedValue_DecimalVal{DecimalVal: &gnmi.Decimal64{Digits: 1, Precision: 309}}}},
+		{name: "nil leaf list", value: &gnmi.TypedValue{Value: &gnmi.TypedValue_LeaflistVal{}}},
+		{name: "nil Any", value: &gnmi.TypedValue{Value: &gnmi.TypedValue_AnyVal{}}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			health := &catalyst9800Health{}
+			decoder := catalyst9800GNMIUpdateDecoder{target: Catalyst9800TargetConfig{Name: "wlc-1"}, health: health}
+			md := decoder.decodeNotification(&gnmi.Notification{
+				Prefix: mustParseIOSXRPath(t, "wireless-access-point-oper:access-point-oper-data"),
+				Update: []*gnmi.Update{{
+					Path: mustParseIOSXRPath(t, "invalid-value"),
+					Val:  tt.value,
+				}},
+			}, catalyst9800TelemetryTransportDialIn)
+
+			assert.Zero(t, metricCountNamed(md, "cisco.catalyst9800.yang.wireless_access_point_oper.access_point_oper_data.invalid_value"))
+			assert.Equal(t, int64(1), health.snapshot().decodeErrors)
+			assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
+			assertMetricExists(t, md, "cisco.catalyst9800.receiver.decode_errors")
+			assertMetricExists(t, md, "cisco.catalyst9800.receiver.dropped_datapoints")
+		})
+	}
 }
 
 func TestCatalyst9800GNMIDecoderInvalidJSONCountsDecodeErrors(t *testing.T) {

@@ -86,16 +86,40 @@ type Client struct {
 	maxPages    int
 	maxResults  int
 
-	authMu        sync.Mutex
-	loginInflight chan struct{}
-	lastAuthErr   error
-	lastAuthAt    time.Time
-	authFailures  int
+	authMu         sync.Mutex
+	authGeneration uint64
+	loginInflight  chan struct{}
+	lastAuthErr    error
+	lastAuthAt     time.Time
+	authFailures   int
 
 	limitMu  sync.Mutex
 	nextSend time.Time
 
 	OnRequest func(RequestStat)
+}
+
+// authBundle is one complete, immutable set of credentials used by a request.
+// Dynamic login methods build a bundle locally and publish it under authMu only
+// after every step of the authentication flow has succeeded.
+type authBundle struct {
+	bearerToken string
+	jsessionID  string
+	xsrfToken   string
+	generation  uint64
+}
+
+func (a authBundle) complete(mode string) bool {
+	switch mode {
+	case "bearer", "jwt":
+		return a.bearerToken != ""
+	case "cookie", "session":
+		return a.jsessionID != "" && a.xsrfToken != ""
+	case "auto":
+		return a.bearerToken != "" || (a.jsessionID != "" && a.xsrfToken != "")
+	default:
+		return false
+	}
 }
 
 // authBackoffSchedule defines the wait that ensureAuth honors after a failed
@@ -294,19 +318,35 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 	var lastErr error
 	attempts := c.retries + 1
 	for attempt := range attempts {
-		body, header, status, err := c.doOnce(ctx, method, operation, path, query, payload)
+		body, header, status, requestAuth, err := c.doOnce(ctx, method, operation, path, query, payload)
 		if err == nil {
+			c.markAuthSuccess(requestAuth.generation)
 			return body, header, nil
 		}
 		lastErr = err
-		if status == http.StatusUnauthorized || status == http.StatusForbidden {
-			// Drop auth state but do not retry inline — the next scrape is the
-			// next retry boundary, and ensureAuth applies a backoff so a bad
-			// credential cannot lock out the SD-WAN user.
-			c.clearAuth()
+		if !requestAuth.complete(c.authMode) {
+			// ensureAuth owns the configured authentication retry budget. Do not
+			// multiply it through the outer data-request retry loop.
 			if ctx.Err() != nil {
 				return nil, nil, ctx.Err()
 			}
+			return nil, nil, err
+		}
+		if status == http.StatusUnauthorized {
+			// Drop only the credential generation used by this request and charge
+			// the shared authentication backoff. A successful login does not reset
+			// the streak; only a successful authenticated data request proves that
+			// the replacement credential is usable.
+			c.clearAuth(requestAuth.generation, err)
+			if ctx.Err() != nil {
+				return nil, nil, ctx.Err()
+			}
+			return nil, nil, err
+		}
+		if status == http.StatusForbidden {
+			// A valid session may lack permission for one optional endpoint. Keep
+			// it so later endpoint groups can still produce partial results without
+			// provoking a login storm.
 			return nil, nil, err
 		}
 		retryHeader := ""
@@ -326,26 +366,27 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 	return nil, nil, lastErr
 }
 
-func (c *Client) doOnce(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, http.Header, int, error) {
-	if err := c.ensureAuth(ctx); err != nil {
+func (c *Client) doOnce(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, http.Header, int, authBundle, error) {
+	requestAuth, err := c.ensureAuth(ctx)
+	if err != nil {
 		stat := RequestStat{Operation: operation, Method: method, Path: path, Outcome: "auth_error", Err: err}
 		c.emit(stat)
-		return nil, nil, 0, err
+		return nil, nil, 0, authBundle{}, err
 	}
-	if err := c.wait(ctx); err != nil {
-		return nil, nil, 0, err
+	if waitErr := c.wait(ctx); waitErr != nil {
+		return nil, nil, 0, requestAuth, waitErr
 	}
 
 	req, err := c.newRequest(ctx, method, path, query, payload)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, requestAuth, err
 	}
 	req.Header.Set("User-Agent", c.userAgent)
 	req.Header.Set("Accept", "application/json")
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	c.applyAuth(req)
+	applyAuth(req, requestAuth)
 
 	start := time.Now()
 	resp, err := c.client.Do(req)
@@ -355,7 +396,7 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 		stat.Outcome = "error"
 		stat.Err = err
 		c.emit(stat)
-		return nil, nil, 0, err
+		return nil, nil, 0, requestAuth, err
 	}
 	defer resp.Body.Close()
 	stat.StatusCode = resp.StatusCode
@@ -365,30 +406,33 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 		stat.Outcome = "error"
 		stat.Err = readErr
 		c.emit(stat)
-		return nil, resp.Header, resp.StatusCode, readErr
+		return nil, resp.Header, resp.StatusCode, requestAuth, readErr
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		apiErr := &APIError{StatusCode: resp.StatusCode}
 		stat.Outcome = "http_error"
 		stat.Err = apiErr
 		c.emit(stat)
-		return nil, resp.Header, resp.StatusCode, apiErr
+		return nil, resp.Header, resp.StatusCode, requestAuth, apiErr
 	}
 	stat.Outcome = "success"
 	c.emit(stat)
-	return body, resp.Header, resp.StatusCode, nil
+	return body, resp.Header, resp.StatusCode, requestAuth, nil
 }
 
-func (c *Client) ensureAuth(ctx context.Context) error {
+func (c *Client) ensureAuth(ctx context.Context) (authBundle, error) {
 	switch c.authMode {
 	case "bearer", "cookie":
-		return nil
+		c.authMu.Lock()
+		bundle := c.authBundleLocked()
+		c.authMu.Unlock()
+		return bundle, nil
 	}
 	for {
 		c.authMu.Lock()
-		if c.bearerToken != "" || c.jsessionID != "" {
+		if bundle := c.authBundleLocked(); bundle.complete(c.authMode) {
 			c.authMu.Unlock()
-			return nil
+			return bundle, nil
 		}
 		if c.authFailures > 0 && time.Since(c.lastAuthAt) < authBackoffFor(c.authFailures) {
 			err := c.lastAuthErr
@@ -396,7 +440,7 @@ func (c *Client) ensureAuth(ctx context.Context) error {
 			if err == nil {
 				err = errors.New("sdwan auth in backoff")
 			}
-			return err
+			return authBundle{}, err
 		}
 		if c.loginInflight != nil {
 			ch := c.loginInflight
@@ -404,7 +448,7 @@ func (c *Client) ensureAuth(ctx context.Context) error {
 			select {
 			case <-ch:
 			case <-ctx.Done():
-				return ctx.Err()
+				return authBundle{}, ctx.Err()
 			}
 			continue
 		}
@@ -412,142 +456,225 @@ func (c *Client) ensureAuth(ctx context.Context) error {
 		c.loginInflight = ch
 		c.authMu.Unlock()
 
-		err := c.performLogin(ctx)
+		bundle, err := c.performLoginWithRetry(ctx)
+		if err == nil && !bundle.complete(c.authMode) {
+			err = errors.New("sdwan login did not return complete authentication state")
+		}
 
 		c.authMu.Lock()
 		c.loginInflight = nil
 		if err != nil {
-			c.authFailures++
-			c.lastAuthErr = err
-			c.lastAuthAt = time.Now()
+			if ctx.Err() == nil {
+				c.authFailures++
+				c.lastAuthErr = err
+				c.lastAuthAt = time.Now()
+			}
 		} else {
-			c.authFailures = 0
-			c.lastAuthErr = nil
+			c.authGeneration++
+			bundle.generation = c.authGeneration
+			c.setAuthBundleLocked(bundle)
 		}
 		close(ch)
 		c.authMu.Unlock()
-		return err
+		if err != nil {
+			if ctx.Err() != nil {
+				return authBundle{}, ctx.Err()
+			}
+			return authBundle{}, err
+		}
+		return bundle, nil
 	}
 }
 
-func (c *Client) performLogin(ctx context.Context) error {
+func (c *Client) performLoginWithRetry(ctx context.Context) (authBundle, error) {
+	var lastErr error
+	attempts := c.retries + 1
+	for attempt := range attempts {
+		bundle, header, status, err := c.performLogin(ctx)
+		if err == nil {
+			return bundle, nil
+		}
+		lastErr = err
+		retryHeader := ""
+		if header != nil {
+			retryHeader = header.Get("Retry-After")
+		}
+		if !retryableStatus(status) || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
+			if ctx.Err() != nil {
+				return authBundle{}, ctx.Err()
+			}
+			return authBundle{}, err
+		}
+	}
+	if lastErr == nil {
+		lastErr = errors.New("sdwan authentication failed")
+	}
+	return authBundle{}, lastErr
+}
+
+func (c *Client) performLogin(ctx context.Context) (authBundle, http.Header, int, error) {
 	if c.authMode == "jwt" || c.authMode == "auto" {
-		if err := c.loginJWT(ctx); err == nil {
-			return nil
+		if bundle, header, status, err := c.loginJWT(ctx); err == nil {
+			return bundle, header, status, nil
 		} else if c.authMode == "jwt" {
-			return err
+			return authBundle{}, header, status, err
 		}
 	}
 	return c.loginSession(ctx)
 }
 
-func (c *Client) loginJWT(ctx context.Context) error {
+func (c *Client) loginJWT(ctx context.Context) (authBundle, http.Header, int, error) {
 	payload, err := json.Marshal(map[string]string{"username": c.username, "password": c.password})
 	if err != nil {
-		return err
+		return authBundle{}, nil, 0, err
 	}
 	req, err := c.newAuthRequest(ctx, http.MethodPost, "/jwt/login", payload)
 	if err != nil {
-		return err
+		return authBundle{}, nil, 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return err
+		return authBundle{}, nil, 0, err
 	}
 	defer resp.Body.Close()
 	body, err := httpclient.ReadResponseBody(resp.Body)
 	if err != nil {
-		return err
+		return authBundle{}, resp.Header, resp.StatusCode, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return &APIError{StatusCode: resp.StatusCode}
+		return authBundle{}, resp.Header, resp.StatusCode, &APIError{StatusCode: resp.StatusCode}
 	}
 	var decoded map[string]any
 	if err := httpclient.DecodeJSON(body, &decoded); err != nil {
-		return err
+		return authBundle{}, resp.Header, resp.StatusCode, err
 	}
 	token := firstStringValue(decoded, "token", "access_token", "accessToken", "jwt", "id_token")
 	csrf := firstStringValue(decoded, "csrf", "xsrf", "xsrfToken", "XSRF-TOKEN")
 	if token == "" {
-		return errors.New("sdwan jwt login response did not include token")
+		return authBundle{}, resp.Header, resp.StatusCode, errors.New("sdwan jwt login response did not include token")
 	}
-	c.bearerToken = token
-	c.xsrfToken = csrf
-	return nil
+	return authBundle{bearerToken: token, xsrfToken: csrf}, resp.Header, resp.StatusCode, nil
 }
 
-func (c *Client) loginSession(ctx context.Context) error {
+func (c *Client) loginSession(ctx context.Context) (authBundle, http.Header, int, error) {
 	form := url.Values{}
 	form.Set("j_username", c.username)
 	form.Set("j_password", c.password)
 	req, err := c.newAuthRequest(ctx, http.MethodPost, "/j_security_check", []byte(form.Encode()))
 	if err != nil {
-		return err
+		return authBundle{}, nil, 0, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return err
+		return authBundle{}, nil, 0, err
 	}
 	defer resp.Body.Close()
 	body, err := httpclient.ReadResponseBody(resp.Body)
 	if err != nil {
-		return err
+		return authBundle{}, resp.Header, resp.StatusCode, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 || strings.Contains(strings.ToLower(string(body)), "<html") {
-		return &APIError{StatusCode: resp.StatusCode}
+		return authBundle{}, resp.Header, resp.StatusCode, &APIError{StatusCode: resp.StatusCode}
 	}
+	var jsessionID string
 	for _, cookie := range resp.Cookies() {
 		if strings.EqualFold(cookie.Name, "JSESSIONID") && cookie.Value != "" {
-			c.jsessionID = cookie.Value
+			jsessionID = cookie.Value
 			break
 		}
 	}
-	if c.jsessionID == "" {
-		return errors.New("sdwan session login response did not include JSESSIONID")
+	if jsessionID == "" {
+		return authBundle{}, resp.Header, resp.StatusCode, errors.New("sdwan session login response did not include JSESSIONID")
 	}
 	tokenReq, err := c.newAuthRequest(ctx, http.MethodGet, "/dataservice/client/token", nil)
 	if err != nil {
-		return err
+		return authBundle{}, nil, 0, err
 	}
-	tokenReq.Header.Set("Cookie", "JSESSIONID="+c.jsessionID)
+	tokenReq.Header.Set("Cookie", "JSESSIONID="+jsessionID)
 	tokenResp, err := c.client.Do(tokenReq)
 	if err != nil {
-		return err
+		return authBundle{}, nil, 0, err
 	}
 	defer tokenResp.Body.Close()
 	tokenBody, err := httpclient.ReadResponseBody(tokenResp.Body)
 	if err != nil {
-		return err
+		return authBundle{}, tokenResp.Header, tokenResp.StatusCode, err
 	}
 	if tokenResp.StatusCode < 200 || tokenResp.StatusCode >= 300 {
-		return &APIError{StatusCode: tokenResp.StatusCode}
+		return authBundle{}, tokenResp.Header, tokenResp.StatusCode, &APIError{StatusCode: tokenResp.StatusCode}
 	}
-	c.xsrfToken = strings.TrimSpace(string(tokenBody))
-	return nil
+	xsrfToken := strings.TrimSpace(string(tokenBody))
+	if xsrfToken == "" {
+		return authBundle{}, tokenResp.Header, tokenResp.StatusCode, errors.New("sdwan session token response did not include XSRF token")
+	}
+	return authBundle{jsessionID: jsessionID, xsrfToken: xsrfToken}, tokenResp.Header, tokenResp.StatusCode, nil
 }
 
-func (c *Client) clearAuth() {
+func (c *Client) authBundleLocked() authBundle {
+	return authBundle{
+		bearerToken: c.bearerToken,
+		jsessionID:  c.jsessionID,
+		xsrfToken:   c.xsrfToken,
+		generation:  c.authGeneration,
+	}
+}
+
+func (c *Client) setAuthBundleLocked(bundle authBundle) {
+	c.bearerToken = bundle.bearerToken
+	c.jsessionID = bundle.jsessionID
+	c.xsrfToken = bundle.xsrfToken
+}
+
+func (c *Client) clearAuth(generation uint64, authErr error) {
 	if c.authMode == "bearer" || c.authMode == "cookie" {
 		return
 	}
 	c.authMu.Lock()
 	defer c.authMu.Unlock()
+	// A delayed 401 from a request using an old bundle must not erase credentials
+	// acquired by a newer login while that request was in flight.
+	if c.authGeneration != generation {
+		return
+	}
+	c.authGeneration++
 	c.bearerToken = ""
 	c.jsessionID = ""
 	c.xsrfToken = ""
+	c.authFailures++
+	if authErr == nil {
+		authErr = errors.New("sdwan authentication rejected")
+	}
+	c.lastAuthErr = authErr
+	c.lastAuthAt = time.Now()
 }
 
-func (c *Client) applyAuth(req *http.Request) {
-	if c.bearerToken != "" {
-		req.Header.Set("Authorization", "Bearer "+c.bearerToken)
+func (c *Client) markAuthSuccess(generation uint64) {
+	if c.authMode == "bearer" || c.authMode == "cookie" {
+		return
 	}
-	if c.jsessionID != "" {
-		req.Header.Set("Cookie", "JSESSIONID="+c.jsessionID)
+	c.authMu.Lock()
+	defer c.authMu.Unlock()
+	// A success from an older in-flight request cannot prove that the current
+	// replacement bundle is valid.
+	if c.authGeneration != generation {
+		return
 	}
-	if c.xsrfToken != "" && req.Method != http.MethodGet {
-		req.Header.Set("X-XSRF-TOKEN", c.xsrfToken)
+	c.authFailures = 0
+	c.lastAuthErr = nil
+	c.lastAuthAt = time.Time{}
+}
+
+func applyAuth(req *http.Request, bundle authBundle) {
+	if bundle.bearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+bundle.bearerToken)
+	}
+	if bundle.jsessionID != "" {
+		req.Header.Set("Cookie", "JSESSIONID="+bundle.jsessionID)
+	}
+	if bundle.xsrfToken != "" && req.Method != http.MethodGet {
+		req.Header.Set("X-XSRF-TOKEN", bundle.xsrfToken)
 	}
 }
 

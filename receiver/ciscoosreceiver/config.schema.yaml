@@ -144,6 +144,10 @@ $defs:
           type: string
       enabled:
         type: boolean
+      max_streams_per_client:
+        description: MaxStreamsPerClient bounds concurrent dial-out streams from one source IP. Zero selects the smaller of 16 and MaxConcurrentStreams.
+        type: integer
+        x-customType: uint32
       module_paths:
         type: array
         items:
@@ -784,6 +788,10 @@ $defs:
           type: string
       enabled:
         type: boolean
+      max_streams_per_client:
+        description: MaxStreamsPerClient bounds concurrent dial-out streams from one source IP. Zero selects the smaller of 16 and MaxConcurrentStreams.
+        type: integer
+        x-customType: uint32
       module_paths:
         type: array
         items:

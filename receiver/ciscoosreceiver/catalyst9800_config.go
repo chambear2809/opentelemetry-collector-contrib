@@ -91,10 +91,13 @@ type Catalyst9800DialOutConfig struct {
 	// DO NOT USE unkeyed struct initialization
 	_ struct{} `mapstructure:"-"`
 
-	Enabled        bool                                `mapstructure:"enabled"`
-	AllowedClients []string                            `mapstructure:"allowed_clients"`
-	ModulePaths    []string                            `mapstructure:"module_paths"`
-	RateLimiting   yanggrpcreceiver.RateLimitingConfig `mapstructure:"rate_limiting"`
+	Enabled        bool     `mapstructure:"enabled"`
+	AllowedClients []string `mapstructure:"allowed_clients"`
+	// MaxStreamsPerClient bounds concurrent dial-out streams from one source IP.
+	// Zero selects the smaller of 16 and MaxConcurrentStreams.
+	MaxStreamsPerClient uint32                              `mapstructure:"max_streams_per_client"`
+	ModulePaths         []string                            `mapstructure:"module_paths"`
+	RateLimiting        yanggrpcreceiver.RateLimitingConfig `mapstructure:"rate_limiting"`
 }
 
 // Catalyst9800Config defines direct Catalyst 9800 WLC telemetry settings.
@@ -240,9 +243,12 @@ func (cfg *Config) validateCatalyst9800() error {
 	}
 
 	if wlc.DialOut.Enabled {
-		security := yanggrpcreceiver.SecurityConfig{AllowedClients: wlc.DialOut.AllowedClients, RateLimiting: wlc.DialOut.RateLimiting}
-		yangConfig := yanggrpcreceiver.Config{ServerConfig: wlc.DialOut.ServerConfig, Security: security}
-		if validationErr := yangConfig.Validate(); validationErr != nil {
+		if validationErr := validateGNMIDialOutConfig(
+			wlc.DialOut.ServerConfig,
+			wlc.DialOut.AllowedClients,
+			wlc.DialOut.MaxStreamsPerClient,
+			wlc.DialOut.RateLimiting,
+		); validationErr != nil {
 			err = multierr.Append(err, fmt.Errorf("catalyst_9800.dial_out: %w", validationErr))
 		}
 	}
@@ -267,6 +273,9 @@ func (cfg Catalyst9800Config) withDefaults() Catalyst9800Config {
 	}
 	if cfg.DialOut.NetAddr.Endpoint == "" {
 		cfg.DialOut.ServerConfig = defaults.DialOut.ServerConfig
+	}
+	if cfg.DialOut.MaxStreamsPerClient == 0 {
+		cfg.DialOut.MaxStreamsPerClient = effectiveGNMIDialOutMaxStreamsPerClient(0, cfg.DialOut.MaxConcurrentStreams)
 	}
 	for i := range cfg.DialIn.Targets {
 		cfg.DialIn.Targets[i] = cfg.DialIn.Targets[i].withDefaults(cfg)

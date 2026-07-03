@@ -40,7 +40,7 @@ func AssertEqualCiscoosreceiverGnmiAuthenticationFailures(t *testing.T, tt *comp
 func AssertEqualCiscoosreceiverGnmiCacheUtilization(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[float64], opts ...metricdatatest.Option) {
 	want := metricdata.Metrics{
 		Name:        "otelcol_ciscoosreceiver_gnmi_cache_utilization",
-		Description: "Fraction of the configured mapped-series cache currently in use [Development]",
+		Description: "Fraction of the configured retained gNMI state cache currently in use, including mapped series, atomic baselines, and delete tombstones [Development]",
 		Unit:        "1",
 		Data: metricdata.Gauge[float64]{
 			DataPoints: dps,

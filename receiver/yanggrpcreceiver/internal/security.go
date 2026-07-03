@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"strings"
 	"sync"
@@ -30,20 +31,28 @@ type SecurityManager struct {
 
 // RateLimiter implements per-client rate limiting
 type RateLimiter struct {
-	limiters        map[string]*rate.Limiter
+	limiters        map[string]*rateLimiterEntry
 	mu              sync.Mutex
 	requestsPerSec  rate.Limit
 	burstSize       int
 	cleanupInterval time.Duration
+	idleTTL         time.Duration
 	cleanupTicker   *time.Ticker
 	done            chan struct{}
 	stopped         chan struct{}
 	stopOnce        sync.Once
 }
 
+type rateLimiterEntry struct {
+	limiter  *rate.Limiter
+	lastSeen time.Time
+}
+
 const (
 	defaultRateLimiterCleanupInterval = time.Minute
+	minimumRateLimiterCleanupInterval = time.Second
 	maxRateLimiterClients             = 100_000
+	maxRateLimiterIdleTTL             = time.Duration(1<<63 - 1)
 )
 
 // NewSecurityManager creates a new SecurityManager
@@ -70,14 +79,15 @@ func newRateLimiter(requestsPerSec rate.Limit, burstSize int, cleanupInterval ti
 	// Configuration validation rejects non-positive intervals. Keep the
 	// constructor defensive as it is also used directly by tests and internal
 	// callers: time.NewTicker panics for a non-positive duration.
-	if cleanupInterval <= 0 {
+	if cleanupInterval < minimumRateLimiterCleanupInterval {
 		cleanupInterval = defaultRateLimiterCleanupInterval
 	}
 	rl := &RateLimiter{
-		limiters:        make(map[string]*rate.Limiter),
+		limiters:        make(map[string]*rateLimiterEntry),
 		requestsPerSec:  requestsPerSec,
 		burstSize:       burstSize,
 		cleanupInterval: cleanupInterval,
+		idleTTL:         rateLimiterIdleTTL(requestsPerSec, burstSize, cleanupInterval),
 		done:            make(chan struct{}),
 		stopped:         make(chan struct{}),
 	}
@@ -91,21 +101,25 @@ func newRateLimiter(requestsPerSec rate.Limit, burstSize int, cleanupInterval ti
 
 // Allow checks if the request from the given IP is allowed
 func (rl *RateLimiter) Allow(ip string) bool {
+	return rl.allowAt(ip, time.Now())
+}
+
+func (rl *RateLimiter) allowAt(ip string, now time.Time) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
-	limiter, exists := rl.limiters[ip]
+	entry, exists := rl.limiters[ip]
 	if !exists {
 		// Refuse new identities after the hard ceiling instead of allowing a
 		// source-IP flood to grow collector state without bound.
 		if len(rl.limiters) >= maxRateLimiterClients {
 			return false
 		}
-		limiter = rate.NewLimiter(rl.requestsPerSec, rl.burstSize)
-		rl.limiters[ip] = limiter
+		entry = &rateLimiterEntry{limiter: rate.NewLimiter(rl.requestsPerSec, rl.burstSize)}
+		rl.limiters[ip] = entry
 	}
-
-	return limiter.Allow()
+	entry.lastSeen = now
+	return entry.limiter.AllowN(now, 1)
 }
 
 // cleanup removes unused rate limiters
@@ -113,18 +127,44 @@ func (rl *RateLimiter) cleanup() {
 	defer close(rl.stopped)
 	for {
 		select {
-		case <-rl.cleanupTicker.C:
-			rl.mu.Lock()
-			// Remove limiters that haven't been used recently
-			// For simplicity, we remove all limiters periodically
-			// In production, you might want to track last access times
-			rl.limiters = make(map[string]*rate.Limiter)
-			rl.mu.Unlock()
+		case now := <-rl.cleanupTicker.C:
+			rl.cleanupStale(now)
 		case <-rl.done:
 			rl.cleanupTicker.Stop()
 			return
 		}
 	}
+}
+
+func (rl *RateLimiter) cleanupStale(now time.Time) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	for ip, entry := range rl.limiters {
+		if now.Sub(entry.lastSeen) >= rl.idleTTL {
+			delete(rl.limiters, ip)
+		}
+	}
+}
+
+func (rl *RateLimiter) clientCount() int {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	return len(rl.limiters)
+}
+
+func rateLimiterIdleTTL(requestsPerSec rate.Limit, burstSize int, cleanupInterval time.Duration) time.Duration {
+	if requestsPerSec <= 0 || math.IsNaN(float64(requestsPerSec)) || burstSize <= 0 {
+		return maxRateLimiterIdleTTL
+	}
+	refillNanos := math.Ceil(float64(burstSize) / float64(requestsPerSec) * float64(time.Second))
+	if math.IsInf(refillNanos, 1) || refillNanos >= float64(maxRateLimiterIdleTTL) {
+		return maxRateLimiterIdleTTL
+	}
+	refillDuration := time.Duration(refillNanos)
+	if refillDuration > cleanupInterval {
+		return refillDuration
+	}
+	return cleanupInterval
 }
 
 // Stop stops the rate limiter cleanup

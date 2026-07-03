@@ -43,6 +43,8 @@ func TestCatalyst9800DefaultConfigUsesSafeWirelessCoverage(t *testing.T) {
 	assert.False(t, cfg.Catalyst9800.Subscription.updatesOnly())
 	assert.False(t, cfg.Catalyst9800.Subscription.allowAggregation())
 	assert.Equal(t, directGNMIDefaultMaxDatapoints, cfg.Catalyst9800.MaxDatapointsPerBatch)
+	assert.Zero(t, cfg.Catalyst9800.DialOut.MaxStreamsPerClient)
+	assert.Equal(t, uint32(defaultGNMIDialOutStreamsPerIP), cfg.Catalyst9800.withDefaults().DialOut.MaxStreamsPerClient)
 	assert.Equal(t, 100.0, cfg.Catalyst9800.DialOut.RateLimiting.RequestsPerSecond)
 	assert.Equal(t, 10, cfg.Catalyst9800.DialOut.RateLimiting.BurstSize)
 	assert.Equal(t, time.Minute, cfg.Catalyst9800.DialOut.RateLimiting.CleanupInterval)
@@ -69,6 +71,15 @@ func TestCatalyst9800ConfigValidate(t *testing.T) {
 			mutate: func(cfg *Config) {
 				cfg.Catalyst9800.DialIn.Targets = nil
 				cfg.Catalyst9800.DialOut.Enabled = true
+			},
+		},
+		{
+			name: "omitted per-client cap follows a lower existing global cap",
+			mutate: func(cfg *Config) {
+				cfg.Catalyst9800.DialIn.Targets = nil
+				cfg.Catalyst9800.DialOut.Enabled = true
+				cfg.Catalyst9800.DialOut.MaxConcurrentStreams = 1
+				cfg.Catalyst9800.DialOut.MaxStreamsPerClient = 0
 			},
 		},
 		{

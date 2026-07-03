@@ -16,13 +16,14 @@ import (
 
 type gnmiTelemetry struct {
 	builder *componentmetadata.TelemetryBuilder
+	stop    sync.Once
 	mu      sync.Mutex
 	streams map[string]int64
 }
 
 func (t *gnmiTelemetry) shutdown() {
 	if t != nil && t.builder != nil {
-		t.builder.Shutdown()
+		t.stop.Do(t.builder.Shutdown)
 	}
 }
 

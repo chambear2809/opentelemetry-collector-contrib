@@ -12,9 +12,9 @@ import (
 	"time"
 )
 
-// CapacityError reports a hard cache-state limit. Active series, atomic
-// baselines, and removal tombstones are bounded independently by the configured
-// limit. Mutation is transactional when this error is returned.
+// CapacityError reports a hard retained-state limit. Active series, atomic
+// baselines, and removal tombstones share the configured limit. Mutation is
+// transactional when this error is returned.
 type CapacityError struct {
 	Limit     int
 	Current   int
@@ -63,7 +63,18 @@ type stateTombstone struct {
 	timestamp time.Time
 }
 
-// Cache is a bounded, concurrency-safe mapped-series state cache.
+// CacheUsage reports the cache's retained-state usage. Total is the sum of
+// Entries, AtomicBaselines, and Tombstones.
+type CacheUsage struct {
+	Entries         int
+	AtomicBaselines int
+	Tombstones      int
+	Total           int
+	Limit           int
+}
+
+// Cache is a bounded, concurrency-safe mapped-series state cache. Active
+// mapped series, atomic baselines, and removal tombstones share one hard limit.
 type Cache struct {
 	mu        sync.RWMutex
 	maxSeries int
@@ -74,7 +85,7 @@ type Cache struct {
 	tombCount int
 }
 
-// NewCache constructs a cache with a mandatory positive hard limit.
+// NewCache constructs a cache with a mandatory positive retained-state limit.
 func NewCache(maxSeries int) (*Cache, error) {
 	if maxSeries <= 0 {
 		return nil, errors.New("max cached series must be positive")
@@ -95,7 +106,34 @@ func (c *Cache) Len() int {
 	return len(c.entries)
 }
 
-// Capacity returns the configured hard active-series limit.
+// StateLen returns the total retained-state count, including active entries,
+// atomic baselines, and removal tombstones.
+func (c *Cache) StateLen() int {
+	if c == nil {
+		return 0
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.stateLenLocked()
+}
+
+// Usage returns a consistent snapshot of retained-state usage.
+func (c *Cache) Usage() CacheUsage {
+	if c == nil {
+		return CacheUsage{}
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return CacheUsage{
+		Entries:         len(c.entries),
+		AtomicBaselines: len(c.atomic),
+		Tombstones:      c.tombCount,
+		Total:           c.stateLenLocked(),
+		Limit:           c.maxSeries,
+	}
+}
+
+// Capacity returns the configured hard retained-state limit.
 func (c *Cache) Capacity() int {
 	if c == nil {
 		return 0
@@ -182,13 +220,17 @@ func (c *Cache) Apply(notification CacheNotification) (CacheResult, error) {
 		tombstoneUpdates[key] = stateTombstone{path: path.Clone(), timestamp: notification.Timestamp}
 		plannedTombstones.upsert(key, tombstoneUpdates[key])
 	}
-	if notification.Atomic && c.isStale(notification.Prefix, notification.Timestamp) {
+	// The gNMI atomic bit describes an update transaction. On a notification
+	// carrying only deletes it has no snapshot-replacement semantics; treating
+	// it as a snapshot would incorrectly erase the entire notification prefix.
+	atomicSnapshot := notification.Atomic && (len(notification.Updates) > 0 || len(notification.Touched) > 0 || len(notification.Deletes) == 0)
+	if atomicSnapshot && c.isStale(notification.Prefix, notification.Timestamp) {
 		result.OutOfOrder = max(1, len(notification.Updates)+len(notification.Deletes))
 		result.Rejected = true
 		return result, nil
 	}
 	for _, baseline := range c.atomic {
-		if !notificationOverlapsBaseline(notification, baseline.prefix) {
+		if !notificationOverlapsBaseline(notification, baseline.prefix, atomicSnapshot) {
 			continue
 		}
 		count := len(notification.Updates) + len(notification.Deletes)
@@ -200,14 +242,14 @@ func (c *Cache) Apply(notification CacheNotification) (CacheResult, error) {
 			result.Rejected = true
 			return result, nil
 		}
-		if !notification.Atomic && notification.Timestamp.Equal(baseline.timestamp) {
+		if !atomicSnapshot && notification.Timestamp.Equal(baseline.timestamp) {
 			result.Duplicates += count
 			result.Rejected = true
 			return result, nil
 		}
 	}
 
-	if notification.Atomic {
+	if atomicSnapshot {
 		planTombstone(notification.Prefix)
 		if previous, ok := c.atomic[notification.Prefix.Key()]; ok && !notification.Timestamp.After(previous.timestamp) {
 			if notification.Timestamp.Equal(previous.timestamp) {
@@ -311,6 +353,14 @@ func (c *Cache) Apply(notification CacheNotification) (CacheResult, error) {
 				entryReplacements[key] = current
 			}
 		}
+		// A strictly newer update of the exact deleted source path supersedes
+		// that tombstone. Retaining it would consume correctness-state capacity
+		// forever and could prevent a valid series from returning at the limit.
+		// Ancestor tombstones remain: they still protect deleted siblings.
+		pointPath := point.Source.Path()
+		if tombstone, ok := c.tombstoneFor(pointPath); ok && point.Timestamp.After(tombstone.timestamp) {
+			tombstoneRemovals[pointPath.Key()] = tombstone
+		}
 		entryUpdates[key] = cacheEntry{point: point}
 		applied = append(applied, point)
 	}
@@ -325,19 +375,13 @@ func (c *Cache) Apply(notification CacheNotification) (CacheResult, error) {
 			finalSize++
 		}
 	}
-	if finalSize > c.maxSeries {
-		return CacheResult{}, &CapacityError{Limit: c.maxSeries, Current: len(c.entries), Requested: finalSize}
-	}
 	finalBaselines := len(c.atomic) - len(baselineRemovals)
-	if notification.Atomic {
+	if atomicSnapshot {
 		if _, exists := c.atomic[notification.Prefix.Key()]; !exists {
 			finalBaselines++
 		} else if _, removed := baselineRemovals[notification.Prefix.Key()]; removed {
 			finalBaselines++
 		}
-	}
-	if finalBaselines > c.maxSeries {
-		return CacheResult{}, &CapacityError{Limit: c.maxSeries, Current: len(c.atomic), Requested: finalBaselines}
 	}
 	newTombstones := 0
 	for key, tombstone := range tombstoneUpdates {
@@ -346,8 +390,10 @@ func (c *Cache) Apply(notification CacheNotification) (CacheResult, error) {
 			newTombstones++
 		}
 	}
-	if finalTombstones := c.tombCount - len(tombstoneRemovals) + newTombstones; finalTombstones > c.maxSeries {
-		return CacheResult{}, &CapacityError{Limit: c.maxSeries, Current: c.tombCount, Requested: finalTombstones}
+	finalTombstones := c.tombCount - len(tombstoneRemovals) + newTombstones
+	finalState := finalSize + finalBaselines + finalTombstones
+	if finalState > c.maxSeries {
+		return CacheResult{}, &CapacityError{Limit: c.maxSeries, Current: c.stateLenLocked(), Requested: finalState}
 	}
 
 	for key := range entryRemovals {
@@ -363,7 +409,7 @@ func (c *Cache) Apply(notification CacheNotification) (CacheResult, error) {
 	for _, tombstone := range tombstoneUpdates {
 		c.putTombstone(tombstone)
 	}
-	if notification.Atomic {
+	if atomicSnapshot {
 		c.atomic[notification.Prefix.Key()] = atomicBaseline{prefix: notification.Prefix.Clone(), timestamp: notification.Timestamp}
 	}
 
@@ -435,8 +481,8 @@ func pathsOverlapAny(paths []Path, prefix Path) bool {
 	return false
 }
 
-func notificationOverlapsBaseline(notification CacheNotification, prefix Path) bool {
-	if notification.Atomic && pathsOverlap(notification.Prefix, prefix) {
+func notificationOverlapsBaseline(notification CacheNotification, prefix Path, atomicSnapshot bool) bool {
+	if atomicSnapshot && pathsOverlap(notification.Prefix, prefix) {
 		return true
 	}
 	if pathsOverlapAny(notification.Touched, prefix) {
@@ -455,6 +501,12 @@ func notificationOverlapsBaseline(notification CacheNotification, prefix Path) b
 
 func (c *Cache) isStale(path Path, timestamp time.Time) bool {
 	return c.tombIndex.isStale(path, timestamp)
+}
+
+// stateLenLocked returns total retained state. The caller must hold c.mu for
+// reading or writing.
+func (c *Cache) stateLenLocked() int {
+	return len(c.entries) + len(c.atomic) + c.tombCount
 }
 
 func (c *Cache) tombstoneFor(path Path) (stateTombstone, bool) {

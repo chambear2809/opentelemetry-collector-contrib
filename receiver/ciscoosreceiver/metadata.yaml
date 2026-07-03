@@ -341,7 +341,7 @@ telemetry:
         value_type: int
       unit: "{failure}"
     ciscoosreceiver_gnmi_cache_utilization:
-      description: Fraction of the configured mapped-series cache currently in use
+      description: Fraction of the configured retained gNMI state cache currently in use, including mapped series, atomic baselines, and delete tombstones
       enabled: true
       gauge:
         value_type: double

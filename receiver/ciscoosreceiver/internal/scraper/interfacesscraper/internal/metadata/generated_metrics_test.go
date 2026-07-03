@@ -111,183 +111,156 @@ func TestMetricsBuilder(t *testing.T) {
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoInterfaceAdminStatusDataPoint(ts, 3, "network.interface.description-val-2", "network.interface.mac-val-2", "network.interface.name-val-2", "network.interface.speed-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoInterfaceCounterDataPoint(ts, 1, "cisco.interface.counter.name-val", "network.interface.description-val", "network.interface.mac-val", "network.interface.name-val", "network.interface.speed-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoInterfaceCounterDataPoint(ts, 3, "cisco.interface.counter.name-val-2", "network.interface.description-val-2", "network.interface.mac-val-2", "network.interface.name-val-2", "network.interface.speed-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoInterfaceErrdisabledDataPoint(ts, 1, "network.interface.name-val", "cisco.errdisabled.reason-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoInterfaceErrdisabledDataPoint(ts, 3, "network.interface.name-val-2", "cisco.errdisabled.reason-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoInterfaceIoRateDataPoint(ts, 1, AttributeNetworkIoDirectionReceive, "network.interface.description-val", "network.interface.mac-val", "network.interface.name-val", "network.interface.speed-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoInterfaceIoRateDataPoint(ts, 3, AttributeNetworkIoDirectionTransmit, "network.interface.description-val-2", "network.interface.mac-val-2", "network.interface.name-val-2", "network.interface.speed-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoInterfacePacketRateDataPoint(ts, 1, AttributeNetworkIoDirectionReceive, "network.interface.description-val", "network.interface.mac-val", "network.interface.name-val", "network.interface.speed-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoInterfacePacketRateDataPoint(ts, 3, AttributeNetworkIoDirectionTransmit, "network.interface.description-val-2", "network.interface.mac-val-2", "network.interface.name-val-2", "network.interface.speed-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoInterfacePauseFramesDataPoint(ts, 1, "network.interface.name-val", AttributeNetworkIoDirectionReceive, "cisco.pause.type-val", "cisco.qos.priority-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoInterfacePauseFramesDataPoint(ts, 3, "network.interface.name-val-2", AttributeNetworkIoDirectionTransmit, "cisco.pause.type-val-2", "cisco.qos.priority-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoInterfaceQosPolicyBytesDataPoint(ts, 1, "network.interface.name-val", AttributeNetworkIoDirectionReceive, "cisco.qos.class-val", "cisco.qos.action-val", "cisco.qos.drop.reason-val", "cisco.qos.source-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoInterfaceQosPolicyBytesDataPoint(ts, 3, "network.interface.name-val-2", AttributeNetworkIoDirectionTransmit, "cisco.qos.class-val-2", "cisco.qos.action-val-2", "cisco.qos.drop.reason-val-2", "cisco.qos.source-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoInterfaceQosPolicyPacketsDataPoint(ts, 1, "network.interface.name-val", AttributeNetworkIoDirectionReceive, "cisco.qos.class-val", "cisco.qos.action-val", "cisco.qos.drop.reason-val", "cisco.qos.source-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoInterfaceQosPolicyPacketsDataPoint(ts, 3, "network.interface.name-val-2", AttributeNetworkIoDirectionTransmit, "cisco.qos.class-val-2", "cisco.qos.action-val-2", "cisco.qos.drop.reason-val-2", "cisco.qos.source-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoInterfaceQosQueueBytesDataPoint(ts, 1, "network.interface.name-val", AttributeNetworkIoDirectionReceive, "cisco.qos.queue-val", "cisco.qos.group-val", "cisco.qos.action-val", "cisco.qos.drop.reason-val", "cisco.qos.source-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoInterfaceQosQueueBytesDataPoint(ts, 3, "network.interface.name-val-2", AttributeNetworkIoDirectionTransmit, "cisco.qos.queue-val-2", "cisco.qos.group-val-2", "cisco.qos.action-val-2", "cisco.qos.drop.reason-val-2", "cisco.qos.source-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoInterfaceQosQueuePacketsDataPoint(ts, 1, "network.interface.name-val", AttributeNetworkIoDirectionReceive, "cisco.qos.queue-val", "cisco.qos.group-val", "cisco.qos.action-val", "cisco.qos.drop.reason-val", "cisco.qos.source-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoInterfaceQosQueuePacketsDataPoint(ts, 3, "network.interface.name-val-2", AttributeNetworkIoDirectionTransmit, "cisco.qos.queue-val-2", "cisco.qos.group-val-2", "cisco.qos.action-val-2", "cisco.qos.drop.reason-val-2", "cisco.qos.source-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoInterfaceSpeedDataPoint(ts, 1, "network.interface.description-val", "network.interface.mac-val", "network.interface.name-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoInterfaceSpeedDataPoint(ts, 3, "network.interface.description-val-2", "network.interface.mac-val-2", "network.interface.name-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoInterfaceUtilizationDataPoint(ts, 1, AttributeNetworkIoDirectionReceive, "network.interface.description-val", "network.interface.mac-val", "network.interface.name-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoInterfaceUtilizationDataPoint(ts, 3, AttributeNetworkIoDirectionTransmit, "network.interface.description-val-2", "network.interface.mac-val-2", "network.interface.name-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoL2StpBlockedPortsDataPoint(ts, 1, "cisco.l2.vlan-val", "network.interface.name-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoL2StpBlockedPortsDataPoint(ts, 3, "cisco.l2.vlan-val-2", "network.interface.name-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoL2StpInstancesDataPoint(ts, 1, "cisco.l2.stp.state-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoL2StpInstancesDataPoint(ts, 3, "cisco.l2.stp.state-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoL2StpTopologyChangesDataPoint(ts, 1, "cisco.l2.vlan-val", "network.interface.name-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoL2StpTopologyChangesDataPoint(ts, 3, "cisco.l2.vlan-val-2", "network.interface.name-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoLacpErrorsDataPoint(ts, 1, "network.interface.name-val", "cisco.lacp.error.type-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoLacpErrorsDataPoint(ts, 3, "network.interface.name-val-2", "cisco.lacp.error.type-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoLacpPacketsDataPoint(ts, 1, "network.interface.name-val", "cisco.lacp.packet.type-val", AttributeNetworkIoDirectionReceive)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoLacpPacketsDataPoint(ts, 3, "network.interface.name-val-2", "cisco.lacp.packet.type-val-2", AttributeNetworkIoDirectionTransmit)
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoPortChannelMemberStatusDataPoint(ts, 1, "cisco.port_channel.name-val", "network.interface.name-val", "cisco.port_channel.state-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoPortChannelMemberStatusDataPoint(ts, 3, "cisco.port_channel.name-val-2", "network.interface.name-val-2", "cisco.port_channel.state-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoPortChannelStatusDataPoint(ts, 1, "cisco.port_channel.name-val", "cisco.port_channel.state-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoPortChannelStatusDataPoint(ts, 3, "cisco.port_channel.name-val-2", "cisco.port_channel.state-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoScrapeCommandDurationDataPoint(ts, 1, "cisco.scrape.command.family-val", "cisco.scrape.command.outcome-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoScrapeCommandDurationDataPoint(ts, 3, "cisco.scrape.command.family-val-2", "cisco.scrape.command.outcome-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoScrapeCommandErrorsDataPoint(ts, 1, "cisco.scrape.command.family-val", "cisco.scrape.error.type-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoScrapeCommandErrorsDataPoint(ts, 3, "cisco.scrape.command.family-val-2", "cisco.scrape.error.type-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoScrapePartialSuccessDataPoint(ts, 1)
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoSSHReconnectsDataPoint(ts, 1)
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoTopologyNeighborInfoDataPoint(ts, 1, "cisco.topology.protocol-val", "network.interface.name-val", "cisco.topology.neighbor.name-val", "cisco.topology.neighbor.interface-val", "cisco.topology.neighbor.platform-val", "cisco.topology.neighbor.address-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoTopologyNeighborInfoDataPoint(ts, 3, "cisco.topology.protocol-val-2", "network.interface.name-val-2", "cisco.topology.neighbor.name-val-2", "cisco.topology.neighbor.interface-val-2", "cisco.topology.neighbor.platform-val-2", "cisco.topology.neighbor.address-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoTransceiverSensorDataPoint(ts, 1, "network.interface.name-val", "cisco.transceiver.sensor-val", "cisco.transceiver.lane-val", "cisco.transceiver.sensor.unit-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoTransceiverSensorDataPoint(ts, 3, "network.interface.name-val-2", "cisco.transceiver.sensor-val-2", "cisco.transceiver.lane-val-2", "cisco.transceiver.sensor.unit-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoVpcConsistencyFailuresDataPoint(ts, 1, "cisco.vpc.check-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoVpcConsistencyFailuresDataPoint(ts, 3, "cisco.vpc.check-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoVpcStatusDataPoint(ts, 1, "cisco.vpc.domain-val", "cisco.vpc.peer-val", "cisco.vpc.state-val")
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoVpcStatusDataPoint(ts, 3, "cisco.vpc.domain-val-2", "cisco.vpc.peer-val-2", "cisco.vpc.state-val-2")
 			}
-
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordSystemNetworkErrorsDataPoint(ts, 1, AttributeNetworkIoDirectionReceive, "network.interface.description-val", "network.interface.mac-val", "network.interface.name-val", "network.interface.speed-val")

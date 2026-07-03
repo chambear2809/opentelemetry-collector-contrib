@@ -62,6 +62,9 @@ RFC7951 prefixing, IOS XR uses the module origin, and NX-OS assigns `DME`, devic
 IOS XR with the optics profile currently requires `max_streams: 6` because its native system and optical modules use
 separate origins.
 
+`max_recv_msg_size_mib` cannot exceed 16 MiB. grpc-go must allocate a complete protobuf before field-level decoding,
+so larger frames are rejected at transport level; narrow or split device subscriptions instead of raising this ceiling.
+
 NX-OS optical collection deliberately subscribes to the `DME` distinguished-name family under `sys/intf`; it does
 not treat `Cisco-NX-OS-device:System/.../fcotdd-items` as an interchangeable representation. The current `sys/intf`
 subscription is intentionally broad because NX-OS does not provide a portable recursive-wildcard form for this DN
@@ -124,9 +127,10 @@ Removed readings stop producing samples. When physical presence is semantically 
 "no recorded value" flag for staleness because the SignalFx datapoint translation path does not preserve that flag.
 
 Notifications are split losslessly into consumer calls of at most `max_datapoints_per_chunk` datapoints. Data is never
-trimmed. Exceeding `max_cached_series` stops the affected profile and marks it degraded; there is no receiver-side retry
-queue. A downstream refusal drops that chunk, increments receiver telemetry, and leaves the device connection intact so
-exporter queues own retry behavior.
+trimmed. `max_cached_series` bounds total retained correctness state: active mapped series, atomic baselines, and delete
+tombstones share the limit. Exceeding it stops the affected profile and marks it degraded; there is no receiver-side
+retry queue. A downstream refusal drops that chunk, increments receiver telemetry, and leaves the device connection
+intact so exporter queues own retry behavior.
 
 Device timestamps are normalized from seconds, milliseconds, microseconds, or nanoseconds. Values outside year 2000
 through receipt time plus 24 hours fall back to receipt time and increment the invalid-timestamp counter.
@@ -207,8 +211,8 @@ CISCOOS_GNMI_RUN_SCALE_QUALIFICATION=1 GOMAXPROCS=4 go test ./internal/gnmi \
   -run '^TestInternalGNMIScaleQualification_100Targets5000Ports500KSeries$' -count=1 -v
 ```
 
-The local qualification run populated 500,000 series in 1.50 seconds and processed the interval in 92 ms, with 1.47 GB
-RSS, 25.27 percent four-core burst CPU, and 2.33 percent four-core CPU at the modeled one-second cadence; chunks
+The local qualification run populated 500,000 series in 2.12 seconds and processed the interval in 105 ms, with 1.41 GB
+RSS, 25.03 percent four-core burst CPU, and 2.64 percent four-core CPU at the modeled one-second cadence; chunks
 contained 10,000 and 6,700 datapoints with no loss. That harness does not
 exercise 100 TLS listeners, reconnect recovery, exporter queues, or hardware. Those portions of the scale gate remain
 mandatory in the deployment environment.

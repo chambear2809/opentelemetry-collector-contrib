@@ -20,6 +20,11 @@ func TestAbsoluteCounterTrackingConsumerDeclaresMutation(t *testing.T) {
 	require.NoError(t, consumer.ConsumeMetrics(t.Context(), cumulativeTestMetric(time.Unix(100, 0), 1)))
 }
 
+func TestAbsoluteCounterTrackerCapacityCoversSupportedGNMISeries(t *testing.T) {
+	assert.Greater(t, absoluteCounterMaxSeries, gnmiMaximumCachedSeries,
+		"the shared tracker needs headroom beyond every supported cached gNMI series")
+}
+
 func TestAbsoluteCounterTrackerDetectsReset(t *testing.T) {
 	tracker := newAbsoluteCounterTracker()
 	times := []time.Time{
