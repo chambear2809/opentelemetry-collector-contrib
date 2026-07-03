@@ -4,7 +4,8 @@
 The Cisco OS Receiver is a modular receiver that collects metrics from Cisco network devices via SSH connections,
 Cisco Meraki Dashboard APIs, Cisco Intersight APIs, Cisco Catalyst Center Assurance APIs, Cisco Catalyst SD-WAN
 Manager APIs, Nexus Dashboard/NDFC APIs, Cisco APIC APIs, Cisco Secure Firewall Management Center APIs, Cisco
-Identity Services Engine APIs, and IOS XR gNMI/MDT telemetry. It supports metrics for device, cloud, controller,
+Identity Services Engine APIs, secure normalized gNMI dial-in for IOS XE, IOS XR, and NX-OS, and IOS XR MDT
+telemetry. It supports metrics for device, cloud, controller,
 identity, security, core WAN, and infrastructure health plus logs for operational evidence such as faults, anomalies,
 advisories, audits, deployments, workflows, authentication failures, posture, pxGrid session signals, policy changes,
 and Secure Firewall security events.
@@ -30,6 +31,7 @@ The following settings are available:
 | `devices` | list | Yes* | List of Cisco SSH devices to monitor |
 | `device_selection` | map | No | Shared include/exclude selector applied across SSH, Meraki, Intersight, Catalyst Center, Catalyst 9800, SD-WAN, Nexus Dashboard, ACI, FMC, ISE, and IOS XR telemetry |
 | `metrics` | map | No | Per-metric forwarding switches for cost-sensitive destinations such as Splunk Observability Cloud |
+| `gnmi` | map | Yes* | Secure, normalized gNMI dial-in targets for IOS XE, IOS XR, and NX-OS |
 | `meraki` | map | Yes* | Meraki Dashboard API polling targets |
 | `intersight` | map | Yes* | Cisco Intersight API polling target |
 | `catalyst_center` | map | Yes* | Cisco Catalyst Center Assurance API polling target |
@@ -44,7 +46,7 @@ The following settings are available:
 | `timeout` | duration | No | SSH connection, command, and cloud API request timeout (default: 30s) |
 | `scrapers` | map | Yes** | Scrapers to enable for SSH devices |
 
-*At least one SSH `devices` entry, one `meraki.organizations` / `meraki.devices` target, an Intersight target, a Catalyst Center target, a Catalyst 9800 target, an SD-WAN target, a Nexus Dashboard target, an ACI target, an FMC target, an ISE target, or an IOS XR target is required.
+*At least one SSH `devices` entry, one `gnmi.targets` entry, one `meraki.organizations` / `meraki.devices` target, an Intersight target, a Catalyst Center target, a Catalyst 9800 target, an SD-WAN target, a Nexus Dashboard target, an ACI target, an FMC target, an ISE target, or an IOS XR target is required.
 
 **`scrapers` is required only when SSH `devices` are configured.
 
@@ -54,7 +56,8 @@ For Cisco appliance/controller endpoints that commonly use lab or privately issu
 `insecure_skip_verify: true` option only when the certificate cannot be verified by a configured CA bundle. REST
 endpoints must use HTTPS; `insecure_skip_verify` never enables plaintext HTTP. Prefer
 `ca_file`/server-name settings where the receiver exposes them. Meraki is intentionally excluded because the Dashboard
-API is Cisco-hosted SaaS with public CA certificates.
+API is Cisco-hosted SaaS with public CA certificates. The shared `gnmi` client is intentionally stricter: it rejects
+insecure TLS and certificate-verification bypasses in every environment.
 
 ### Device Configuration
 
@@ -587,6 +590,57 @@ ise:
     password: ${env:ISE_DATACONNECT_PASSWORD}
     wallet_dir: /etc/otelcol/ise-wallet
 ```
+
+### Production gNMI Dial-In
+
+The root `gnmi` section is the normalized, fork-first dial-in path for IOS XE, IOS XR, and NX-OS. It maintains a static
+target inventory and uses only gNMI Capabilities and Subscribe. It never issues Set and does not need Get. Existing
+`ios_xr.dial_out` and `catalyst_9800.dial_out` configurations are unchanged; legacy dial-in targets retain their legacy
+decoder and metric behavior for one fork release and must not duplicate an endpoint in `gnmi.targets`.
+
+| Setting | Type | Required | Description |
+|---------|------|----------|-------------|
+| `gnmi.targets` | list | Yes | Static targets with unique names and endpoints. Each target has exactly one active collector owner. |
+| `gnmi.targets[].platform` | string | Yes | `ios_xe`, `ios_xr`, or `nx_os`. |
+| `gnmi.targets[].credentials.mode` | string | No | `username_password`, `mtls`, or `mtls_username_password`. |
+| `gnmi.targets[].credentials.username` | string | Mode-dependent | Read-only AAA service account. |
+| `gnmi.targets[].credentials.password` | string | Mode-dependent | Password, normally supplied through environment expansion. |
+| `gnmi.targets[].tls.ca_file` | string | No | CA chain used to verify the device's unique server certificate; system roots are used when omitted. |
+| `gnmi.targets[].tls.cert_file` / `key_file` | string | mTLS only | Short-lived client identity assigned per collector shard. |
+| `gnmi.targets[].tls.min_version` | string | No | Minimum TLS version; `1.2` or newer. Insecure TLS and verification bypasses are rejected. |
+| `gnmi.targets[].tls.reload_interval` | duration | No | Reload client certificate/key material for later TLS handshakes. CA changes require a reconnect or rollout. |
+| `gnmi.targets[].max_recv_msg_size_mib` | int | No | Per-target receive limit for large telemetry notifications. |
+| `gnmi.targets[].max_streams` | int | No | Compatible-stream cap; defaults to 4 and may be raised to at most 8 after qualification. IOS XR with optics needs 6. |
+| `gnmi.targets[].profiles` | map | No | `identity`, `system`, `interfaces`, `optics`, and fork-only `catalyst_9800_wireless`. |
+| `gnmi.max_datapoints_per_chunk` | int | No | Lossless consumer-call chunk bound. Defaults to `10000`. |
+| `gnmi.max_cached_series` | int | No | Hard cache limit. Defaults to `500000`; operate near `400000` series per shard. |
+
+Identity defaults to a five-minute interval, system and interfaces to 60 seconds, and optics to 30 seconds. Safe
+baseline profiles default on. Optics is explicitly enabled because it is high-cardinality and dependent on the device,
+line card, and optic.
+
+The baseline profiles reuse `cisco.device.up`, `system.cpu.utilization`, `system.memory.utilization`, `system.uptime`,
+the existing `system.network.*` interface state/traffic/error/drop metrics, and the existing `cisco.interface.*`
+admin/speed/rate/utilization metrics. They do not create OS-specific duplicates. Optics uses explicit
+`cisco.optics.*` gauges with UCUM units, including `dB[mW]` for optical power, and emits
+`cisco.optics.present=0` when removal is semantically known. Dashboards and models must require presence and freshness.
+
+NX-OS VDM and IOS XR coherent readings remain experimental until qualified on the deployed Nexus and 8201/NCS
+hardware with the actual optics. NX's "PAM4 level transition parameter" is never treated as TDECQ; TDECQ requires an
+explicit allowlisted TDECQ description and a dB unit.
+
+NX optical collection uses the `DME` distinguished-name family under `sys/intf`, not the separate
+`Cisco-NX-OS-device:System/.../fcotdd-items` YANG representation. Treat the broad DME subscription as experimental
+until its object volume and path shape are qualified on the deployed NX-OS release and Nexus hardware.
+
+Production requires verified server TLS, a unique certificate/key per device, TLS 1.2 or newer, and a read-only AAA
+account per collector shard. Optional mTLS uses one short-lived client identity per shard only after certificate-to-user
+authorization is validated. Management VRFs, ACLs, NetworkPolicies, and firewalls are defense in depth, not substitutes
+for TLS and AAA.
+
+See the [complete security, operations, metric, and qualification guide](docs/gnmi-dial-in.md) and the
+[secure configuration](examples/gnmi-secure.yaml), [Kubernetes shard](examples/kubernetes-gnmi-shard.yaml), and
+[systemd shard](examples/cisco-os-gnmi.service) references.
 
 ### Catalyst 9800 Configuration
 

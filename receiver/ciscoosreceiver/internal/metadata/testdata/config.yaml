@@ -1,0 +1,384 @@
+default:
+all_set:
+  metrics:
+    cisco.device.up:
+      enabled: true
+    cisco.interface.admin.status:
+      enabled: true
+      attributes: ["network.interface.name"]
+    cisco.interface.io.rate:
+      enabled: true
+      attributes: ["network.io.direction","network.interface.name"]
+    cisco.interface.packet.rate:
+      enabled: true
+      attributes: ["network.io.direction","network.interface.name"]
+    cisco.interface.speed:
+      enabled: true
+      attributes: ["network.interface.name"]
+    cisco.interface.utilization:
+      enabled: true
+      attributes: ["network.io.direction","network.interface.name"]
+    cisco.optics.chromatic_dispersion:
+      enabled: true
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.dgd:
+      enabled: true
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.esnr:
+      enabled: true
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.laser_bias_current:
+      enabled: true
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.osnr:
+      enabled: true
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.pre_fec_ber:
+      enabled: true
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.present:
+      enabled: true
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.q_factor:
+      enabled: true
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.q_margin:
+      enabled: true
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.rx_power:
+      enabled: true
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.tdecq:
+      enabled: true
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.tec_current:
+      enabled: true
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.tec_utilization:
+      enabled: true
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.temperature:
+      enabled: true
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.tx_power:
+      enabled: true
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.voltage:
+      enabled: true
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    system.cpu.utilization:
+      enabled: true
+    system.memory.utilization:
+      enabled: true
+    system.network.errors:
+      enabled: true
+      attributes: ["network.io.direction","network.interface.name"]
+    system.network.interface.status:
+      enabled: true
+      attributes: ["network.interface.name"]
+    system.network.io:
+      enabled: true
+      attributes: ["network.io.direction","network.interface.name"]
+    system.network.packet.count:
+      enabled: true
+      attributes: ["network.io.direction","network.packet.type","network.interface.name"]
+    system.network.packet.dropped:
+      enabled: true
+      attributes: ["network.io.direction","network.interface.name"]
+    system.uptime:
+      enabled: true
+  resource_attributes:
+    cisco.os.name:
+      enabled: true
+    cisco.platform.family:
+      enabled: true
+    cisco.telemetry.transport:
+      enabled: true
+    host.id:
+      enabled: true
+    host.ip:
+      enabled: true
+    host.name:
+      enabled: true
+    hw.type:
+      enabled: true
+    os.name:
+      enabled: true
+reaggregate_set:
+  metrics:
+    cisco.device.up:
+      enabled: true
+    cisco.interface.admin.status:
+      enabled: true
+      attributes: []
+    cisco.interface.io.rate:
+      enabled: true
+      attributes: []
+    cisco.interface.packet.rate:
+      enabled: true
+      attributes: []
+    cisco.interface.speed:
+      enabled: true
+      attributes: []
+    cisco.interface.utilization:
+      enabled: true
+      attributes: []
+    cisco.optics.chromatic_dispersion:
+      enabled: true
+      attributes: []
+    cisco.optics.dgd:
+      enabled: true
+      attributes: []
+    cisco.optics.esnr:
+      enabled: true
+      attributes: []
+    cisco.optics.laser_bias_current:
+      enabled: true
+      attributes: []
+    cisco.optics.osnr:
+      enabled: true
+      attributes: []
+    cisco.optics.pre_fec_ber:
+      enabled: true
+      attributes: []
+    cisco.optics.present:
+      enabled: true
+      attributes: []
+    cisco.optics.q_factor:
+      enabled: true
+      attributes: []
+    cisco.optics.q_margin:
+      enabled: true
+      attributes: []
+    cisco.optics.rx_power:
+      enabled: true
+      attributes: []
+    cisco.optics.tdecq:
+      enabled: true
+      attributes: []
+    cisco.optics.tec_current:
+      enabled: true
+      attributes: []
+    cisco.optics.tec_utilization:
+      enabled: true
+      attributes: []
+    cisco.optics.temperature:
+      enabled: true
+      attributes: []
+    cisco.optics.tx_power:
+      enabled: true
+      attributes: []
+    cisco.optics.voltage:
+      enabled: true
+      attributes: []
+    system.cpu.utilization:
+      enabled: true
+    system.memory.utilization:
+      enabled: true
+    system.network.errors:
+      enabled: true
+      attributes: []
+    system.network.interface.status:
+      enabled: true
+      attributes: []
+    system.network.io:
+      enabled: true
+      attributes: []
+    system.network.packet.count:
+      enabled: true
+      attributes: []
+    system.network.packet.dropped:
+      enabled: true
+      attributes: []
+    system.uptime:
+      enabled: true
+  resource_attributes:
+    cisco.os.name:
+      enabled: true
+    cisco.platform.family:
+      enabled: true
+    cisco.telemetry.transport:
+      enabled: true
+    host.id:
+      enabled: true
+    host.ip:
+      enabled: true
+    host.name:
+      enabled: true
+    hw.type:
+      enabled: true
+    os.name:
+      enabled: true
+none_set:
+  metrics:
+    cisco.device.up:
+      enabled: false
+    cisco.interface.admin.status:
+      enabled: false
+      attributes: ["network.interface.name"]
+    cisco.interface.io.rate:
+      enabled: false
+      attributes: ["network.io.direction","network.interface.name"]
+    cisco.interface.packet.rate:
+      enabled: false
+      attributes: ["network.io.direction","network.interface.name"]
+    cisco.interface.speed:
+      enabled: false
+      attributes: ["network.interface.name"]
+    cisco.interface.utilization:
+      enabled: false
+      attributes: ["network.io.direction","network.interface.name"]
+    cisco.optics.chromatic_dispersion:
+      enabled: false
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.dgd:
+      enabled: false
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.esnr:
+      enabled: false
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.laser_bias_current:
+      enabled: false
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.osnr:
+      enabled: false
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.pre_fec_ber:
+      enabled: false
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.present:
+      enabled: false
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.q_factor:
+      enabled: false
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.q_margin:
+      enabled: false
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.rx_power:
+      enabled: false
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.tdecq:
+      enabled: false
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.tec_current:
+      enabled: false
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.tec_utilization:
+      enabled: false
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.temperature:
+      enabled: false
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.tx_power:
+      enabled: false
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.optics.voltage:
+      enabled: false
+      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    system.cpu.utilization:
+      enabled: false
+    system.memory.utilization:
+      enabled: false
+    system.network.errors:
+      enabled: false
+      attributes: ["network.io.direction","network.interface.name"]
+    system.network.interface.status:
+      enabled: false
+      attributes: ["network.interface.name"]
+    system.network.io:
+      enabled: false
+      attributes: ["network.io.direction","network.interface.name"]
+    system.network.packet.count:
+      enabled: false
+      attributes: ["network.io.direction","network.packet.type","network.interface.name"]
+    system.network.packet.dropped:
+      enabled: false
+      attributes: ["network.io.direction","network.interface.name"]
+    system.uptime:
+      enabled: false
+  resource_attributes:
+    cisco.os.name:
+      enabled: false
+    cisco.platform.family:
+      enabled: false
+    cisco.telemetry.transport:
+      enabled: false
+    host.id:
+      enabled: false
+    host.ip:
+      enabled: false
+    host.name:
+      enabled: false
+    hw.type:
+      enabled: false
+    os.name:
+      enabled: false
+filter_set_include:
+  resource_attributes:
+    cisco.os.name:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
+    cisco.platform.family:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
+    cisco.telemetry.transport:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
+    host.id:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
+    host.ip:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
+    host.name:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
+    hw.type:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
+    os.name:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
+filter_set_exclude:
+  resource_attributes:
+    cisco.os.name:
+      enabled: true
+      metrics_exclude:
+        - strict: "cisco.os.name-val"
+    cisco.platform.family:
+      enabled: true
+      metrics_exclude:
+        - strict: "cisco.platform.family-val"
+    cisco.telemetry.transport:
+      enabled: true
+      metrics_exclude:
+        - strict: "cisco.telemetry.transport-val"
+    host.id:
+      enabled: true
+      metrics_exclude:
+        - strict: "host.id-val"
+    host.ip:
+      enabled: true
+      metrics_exclude:
+        - strict: "host.ip-val"
+    host.name:
+      enabled: true
+      metrics_exclude:
+        - strict: "host.name-val"
+    hw.type:
+      enabled: true
+      metrics_exclude:
+        - strict: "hw.type-val"
+    os.name:
+      enabled: true
+      metrics_exclude:
+        - strict: "os.name-val"

@@ -1,0 +1,370 @@
+# Reference only: replace documentation addresses, image, secret provisioning,
+# target hostnames, and exporter endpoint before deployment. The empty Secrets
+# are ownership stubs for an external secret controller; never commit values.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cisco-telemetry
+  labels:
+    kubernetes.io/metadata.name: cisco-telemetry
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cisco-gnmi-server-ca
+  namespace: cisco-telemetry
+  annotations:
+    example.com/managed-by: external-secret-controller
+type: Opaque
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cisco-gnmi-shard-01
+  namespace: cisco-telemetry
+  annotations:
+    example.com/managed-by: external-secret-controller
+type: Opaque
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cisco-gnmi-shard-02
+  namespace: cisco-telemetry
+  annotations:
+    example.com/managed-by: external-secret-controller
+type: Opaque
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cisco-gnmi-shard-01
+  namespace: cisco-telemetry
+data:
+  collector.yaml: |
+    receivers:
+      cisco_os:
+        gnmi:
+          max_datapoints_per_chunk: 10000
+          max_cached_series: 500000
+          targets:
+            # Shard 01 owns nexus01 exclusively.
+            - name: nexus-shard-01
+              endpoint: nexus01.example.net:50051
+              platform: nx_os
+              max_recv_msg_size_mib: 16
+              credentials:
+                mode: username_password
+                username: otel-telemetry-shard-01
+                password: ${env:CISCO_GNMI_PASSWORD}
+              tls:
+                ca_file: /etc/otel/cisco-ca.pem
+                min_version: "1.2"
+                server_name_override: nexus01.example.net
+                reload_interval: 1h
+              profiles:
+                identity:
+                  enabled: true
+                system:
+                  enabled: true
+                interfaces:
+                  enabled: true
+                optics:
+                  enabled: true
+                  required: true
+                  sample_interval: 30s
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 3072
+        spike_limit_mib: 512
+      batch: {}
+    exporters:
+      otlphttp/splunk:
+        endpoint: ${env:SPLUNK_OTLP_ENDPOINT}
+        headers:
+          X-SF-TOKEN: ${env:SPLUNK_ACCESS_TOKEN}
+    service:
+      pipelines:
+        metrics:
+          receivers: [cisco_os]
+          processors: [memory_limiter, batch]
+          exporters: [otlphttp/splunk]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cisco-gnmi-shard-02
+  namespace: cisco-telemetry
+data:
+  collector.yaml: |
+    receivers:
+      cisco_os:
+        gnmi:
+          max_datapoints_per_chunk: 10000
+          max_cached_series: 500000
+          targets:
+            # Shard 02 owns xr01 exclusively; it does not repeat nexus01.
+            - name: xr-shard-02
+              endpoint: xr01.example.net:50051
+              platform: ios_xr
+              max_recv_msg_size_mib: 16
+              # Three native system origins, interfaces, and two optical origins.
+              max_streams: 6
+              credentials:
+                mode: username_password
+                username: otel-telemetry-shard-02
+                password: ${env:CISCO_GNMI_PASSWORD}
+              tls:
+                ca_file: /etc/otel/cisco-ca.pem
+                min_version: "1.2"
+                server_name_override: xr01.example.net
+                reload_interval: 1h
+              profiles:
+                identity:
+                  enabled: true
+                system:
+                  enabled: true
+                interfaces:
+                  enabled: true
+                optics:
+                  enabled: true
+                  required: true
+                  sample_interval: 30s
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 3072
+        spike_limit_mib: 512
+      batch: {}
+    exporters:
+      otlphttp/splunk:
+        endpoint: ${env:SPLUNK_OTLP_ENDPOINT}
+        headers:
+          X-SF-TOKEN: ${env:SPLUNK_ACCESS_TOKEN}
+    service:
+      pipelines:
+        metrics:
+          receivers: [cisco_os]
+          processors: [memory_limiter, batch]
+          exporters: [otlphttp/splunk]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cisco-gnmi
+  namespace: cisco-telemetry
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cisco-gnmi-shard-01
+  namespace: cisco-telemetry
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cisco-gnmi
+      app.kubernetes.io/instance: shard-01
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cisco-gnmi
+        app.kubernetes.io/instance: shard-01
+    spec:
+      serviceAccountName: cisco-gnmi
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: collector
+          image: ghcr.io/your-org/otelcol-cisco:0.153.0-gnmi
+          imagePullPolicy: IfNotPresent
+          args: ["--config=/etc/otel/collector.yaml"]
+          env:
+            - name: CISCO_GNMI_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cisco-gnmi-shard-01
+                  key: gnmi-password
+            - name: SPLUNK_OTLP_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: cisco-gnmi-shard-01
+                  key: splunk-otlp-endpoint
+            - name: SPLUNK_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cisco-gnmi-shard-01
+                  key: splunk-access-token
+          resources:
+            requests:
+              cpu: "2"
+              memory: 2Gi
+            limits:
+              cpu: "4"
+              memory: 4Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otel/collector.yaml
+              subPath: collector.yaml
+              readOnly: true
+            - name: server-ca
+              mountPath: /etc/otel/cisco-ca.pem
+              subPath: cisco-ca.pem
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: cisco-gnmi-shard-01
+        - name: server-ca
+          secret:
+            secretName: cisco-gnmi-server-ca
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cisco-gnmi-shard-02
+  namespace: cisco-telemetry
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cisco-gnmi
+      app.kubernetes.io/instance: shard-02
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cisco-gnmi
+        app.kubernetes.io/instance: shard-02
+    spec:
+      serviceAccountName: cisco-gnmi
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: collector
+          image: ghcr.io/your-org/otelcol-cisco:0.153.0-gnmi
+          imagePullPolicy: IfNotPresent
+          args: ["--config=/etc/otel/collector.yaml"]
+          env:
+            - name: CISCO_GNMI_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cisco-gnmi-shard-02
+                  key: gnmi-password
+            - name: SPLUNK_OTLP_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: cisco-gnmi-shard-02
+                  key: splunk-otlp-endpoint
+            - name: SPLUNK_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cisco-gnmi-shard-02
+                  key: splunk-access-token
+          resources:
+            requests:
+              cpu: "2"
+              memory: 2Gi
+            limits:
+              cpu: "4"
+              memory: 4Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otel/collector.yaml
+              subPath: collector.yaml
+              readOnly: true
+            - name: server-ca
+              mountPath: /etc/otel/cisco-ca.pem
+              subPath: cisco-ca.pem
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: cisco-gnmi-shard-02
+        - name: server-ca
+          secret:
+            secretName: cisco-gnmi-server-ca
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cisco-gnmi-shard-01
+  namespace: cisco-telemetry
+spec:
+  maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cisco-gnmi
+      app.kubernetes.io/instance: shard-01
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cisco-gnmi-shard-02
+  namespace: cisco-telemetry
+spec:
+  maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cisco-gnmi
+      app.kubernetes.io/instance: shard-02
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cisco-gnmi-egress
+  namespace: cisco-telemetry
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: cisco-gnmi
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        # Replace with management-network target CIDRs.
+        - ipBlock:
+            cidr: 192.0.2.0/24
+      ports:
+        - protocol: TCP
+          port: 50051
+    - to:
+        # Replace with an approved HTTPS egress gateway CIDR.
+        - ipBlock:
+            cidr: 198.51.100.0/24
+      ports:
+        - protocol: TCP
+          port: 443

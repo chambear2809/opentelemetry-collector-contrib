@@ -6,6 +6,7 @@ package ciscoosreceiver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -23,7 +24,9 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	grpcmetadata "google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	componentmetadata "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
 )
@@ -83,13 +86,14 @@ func TestIOSXRDialInReceiverSubscribesAndConsumesGNMI(t *testing.T) {
 	assert.Equal(t, "password", firstMetadataValue(fake.subscribeMD, "password"))
 }
 
-func TestIOSXRDialInReceiverPollSendsInitialPoll(t *testing.T) {
+func TestIOSXRDialInReceiverPollWaitsForInitialSync(t *testing.T) {
 	fake := &fakeGNMIServer{
 		caps: &gnmi.CapabilityResponse{
 			SupportedModels:    []*gnmi.ModelData{{Name: "openconfig-interfaces"}},
 			SupportedEncodings: []gnmi.Encoding{gnmi.Encoding_JSON_IETF},
 		},
 		waitForPoll: true,
+		pollCycles:  2,
 	}
 	endpoint := startFakeGNMIServer(t, fake)
 
@@ -113,7 +117,7 @@ func TestIOSXRDialInReceiverPollSendsInitialPoll(t *testing.T) {
 		},
 		Subscription: IOSXRSubscriptionConfig{
 			Mode:         iosXRSubscribeModePoll,
-			PollInterval: time.Hour,
+			PollInterval: 10 * time.Millisecond,
 		},
 	}
 	target = target.withDefaults(cfg)
@@ -126,9 +130,158 @@ func TestIOSXRDialInReceiverPollSendsInitialPoll(t *testing.T) {
 
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
-	require.Len(t, fake.requests, 2)
+	require.Len(t, fake.requests, 3)
 	assert.NotNil(t, fake.requests[0].GetSubscribe())
 	assert.NotNil(t, fake.requests[1].GetPoll())
+	assert.NotNil(t, fake.requests[2].GetPoll())
+	assert.False(t, fake.pollBeforeSync)
+	assert.False(t, fake.pollBeforePollSync)
+}
+
+func TestIOSXRDialInReceiverOnceRequiresCleanEOF(t *testing.T) {
+	fake := &fakeGNMIServer{
+		caps: &gnmi.CapabilityResponse{
+			SupportedModels:    []*gnmi.ModelData{{Name: "openconfig-interfaces"}},
+			SupportedEncodings: []gnmi.Encoding{gnmi.Encoding_JSON_IETF},
+		},
+		afterSyncErr: status.Error(codes.PermissionDenied, "post-sync authorization failure"),
+	}
+	endpoint := startFakeGNMIServer(t, fake)
+
+	cfg := defaultIOSXRConfig()
+	cfg.Enabled = true
+	cfg.Paths.Include = []string{"openconfig-interfaces:interfaces/interface/state/counters"}
+	receiver := &iosXRDialInReceiver{
+		settings: receivertest.NewNopSettings(componentmetadata.Type),
+		config:   cfg,
+		consumer: consumertest.NewNop(),
+		health:   &iosXRHealth{},
+		host:     componenttest.NewNopHost(),
+	}
+	target := IOSXRTargetConfig{
+		ClientConfig: mustIOSXRClientConfig(endpoint),
+		Name:         "xr-1",
+		Credentials: IOSXRCredentialsConfig{
+			Username: "admin",
+			Password: configopaque.String("password"),
+		},
+		Subscription: IOSXRSubscriptionConfig{Mode: iosXRSubscribeModeOnce},
+	}.withDefaults(cfg)
+
+	err := receiver.subscribeTarget(t.Context(), target)
+	require.Error(t, err)
+	assert.Equal(t, codes.PermissionDenied, status.Code(err))
+}
+
+func TestIOSXRDialInReceiverDropsConsumerRefusalWithoutReconnect(t *testing.T) {
+	fake := &fakeGNMIServer{
+		caps: &gnmi.CapabilityResponse{
+			SupportedModels:    []*gnmi.ModelData{{Name: "openconfig-interfaces"}},
+			SupportedEncodings: []gnmi.Encoding{gnmi.Encoding_JSON_IETF},
+		},
+	}
+	endpoint := startFakeGNMIServer(t, fake)
+
+	cfg := defaultIOSXRConfig()
+	cfg.Enabled = true
+	cfg.Paths.Include = []string{"openconfig-interfaces:interfaces/interface/state/counters"}
+	health := &iosXRHealth{}
+	receiver := &iosXRDialInReceiver{
+		settings: receivertest.NewNopSettings(componentmetadata.Type),
+		config:   cfg,
+		consumer: consumertest.NewErr(errors.New("refused")),
+		health:   health,
+		host:     componenttest.NewNopHost(),
+	}
+	target := IOSXRTargetConfig{
+		ClientConfig: mustIOSXRClientConfig(endpoint),
+		Name:         "xr-1",
+		Credentials: IOSXRCredentialsConfig{
+			Username: "admin",
+			Password: configopaque.String("password"),
+		},
+		Subscription: IOSXRSubscriptionConfig{Mode: iosXRSubscribeModeOnce},
+	}.withDefaults(cfg)
+
+	receiver.runTarget(t.Context(), target)
+	snapshot := health.snapshot()
+	assert.Zero(t, snapshot.reconnects)
+	assert.Positive(t, snapshot.droppedDatapoints)
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	assert.Len(t, fake.requests, 1)
+}
+
+func TestIOSXRDialInReceiverShutdownJoinsLegacySessionReader(t *testing.T) {
+	fake := &fakeGNMIServer{
+		caps: &gnmi.CapabilityResponse{
+			SupportedModels:    []*gnmi.ModelData{{Name: "openconfig-interfaces"}},
+			SupportedEncodings: []gnmi.Encoding{gnmi.Encoding_JSON_IETF},
+		},
+	}
+	endpoint := startFakeGNMIServer(t, fake)
+
+	cfg := defaultIOSXRConfig()
+	cfg.Enabled = true
+	cfg.Paths.Include = []string{"openconfig-interfaces:interfaces/interface/state/counters"}
+	target := IOSXRTargetConfig{
+		ClientConfig: mustIOSXRClientConfig(endpoint),
+		Name:         "xr-1",
+		Credentials: IOSXRCredentialsConfig{
+			Username: "admin",
+			Password: configopaque.String("password"),
+		},
+		Subscription: IOSXRSubscriptionConfig{Mode: iosXRSubscribeModeStream},
+	}.withDefaults(cfg)
+	next := &releaseBlockingMetricsConsumer{
+		metricName: "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets",
+		started:    make(chan struct{}),
+		release:    make(chan struct{}),
+	}
+	t.Cleanup(next.Release)
+	receiver := &iosXRDialInReceiver{
+		settings: receivertest.NewNopSettings(componentmetadata.Type),
+		config:   cfg,
+		targets:  []IOSXRTargetConfig{target},
+		consumer: next,
+		health:   &iosXRHealth{},
+		done:     make(chan struct{}),
+	}
+	require.NoError(t, receiver.Start(t.Context(), componenttest.NewNopHost()))
+	t.Cleanup(func() {
+		next.Release()
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), 2*time.Second)
+		defer cancel()
+		_ = receiver.Shutdown(ctx)
+	})
+
+	select {
+	case <-next.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("legacy gNMI reader did not reach the downstream consumer")
+	}
+
+	shortCtx, shortCancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	err := receiver.Shutdown(shortCtx)
+	shortCancel()
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	select {
+	case <-receiver.done:
+		t.Fatal("receiver shutdown completed while its response reader still owned receiver state")
+	default:
+	}
+
+	next.Release()
+	shutdownCtx, shutdownCancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer shutdownCancel()
+	require.NoError(t, receiver.Shutdown(shutdownCtx))
+}
+
+func TestLegacyGNMIRetryDelaySlowsAuthenticationFailures(t *testing.T) {
+	assert.Equal(t, legacyGNMIAuthenticationBackoff, legacyGNMIRetryDelay(status.Error(codes.Unauthenticated, "denied")))
+	assert.Equal(t, legacyGNMIAuthenticationBackoff, legacyGNMIRetryDelay(status.Error(codes.PermissionDenied, "denied")))
+	assert.Equal(t, legacyGNMIAuthenticationBackoff, legacyGNMIRetryDelay(fmt.Errorf("capabilities: %w", status.Error(codes.Unauthenticated, "denied"))))
+	assert.Equal(t, legacyGNMIReconnectBackoff, legacyGNMIRetryDelay(status.Error(codes.Unavailable, "down")))
 }
 
 func TestIOSXRDialInReceiverPollJoinsReaderOnCancellation(t *testing.T) {
@@ -364,11 +517,16 @@ type fakeGNMIServer struct {
 
 	caps *gnmi.CapabilityResponse
 
-	mu             sync.Mutex
-	capabilitiesMD grpcmetadata.MD
-	subscribeMD    grpcmetadata.MD
-	requests       []*gnmi.SubscribeRequest
-	waitForPoll    bool
+	mu                 sync.Mutex
+	capabilitiesMD     grpcmetadata.MD
+	subscribeMD        grpcmetadata.MD
+	requests           []*gnmi.SubscribeRequest
+	waitForPoll        bool
+	pollCycles         int
+	pollBeforeSync     bool
+	pollBeforePollSync bool
+	afterSyncErr       error
+	sendUpdate         func(grpc.BidiStreamingServer[gnmi.SubscribeRequest, gnmi.SubscribeResponse]) error
 }
 
 func (s *fakeGNMIServer) Capabilities(ctx context.Context, _ *gnmi.CapabilityRequest) (*gnmi.CapabilityResponse, error) {
@@ -390,29 +548,103 @@ func (s *fakeGNMIServer) Subscribe(stream grpc.BidiStreamingServer[gnmi.Subscrib
 	s.requests = append(s.requests, req)
 	s.mu.Unlock()
 	if s.waitForPoll {
-		pollReq, err := stream.Recv()
-		if err != nil {
+		if err := s.sendFakeUpdate(stream); err != nil {
 			return err
 		}
+		type pollResult struct {
+			request *gnmi.SubscribeRequest
+			err     error
+		}
+		receivePoll := func() <-chan pollResult {
+			pollResults := make(chan pollResult, 1)
+			go func() {
+				pollReq, pollErr := stream.Recv()
+				pollResults <- pollResult{request: pollReq, err: pollErr}
+			}()
+			return pollResults
+		}
+		pollResults := receivePoll()
+		var result pollResult
+		select {
+		case result = <-pollResults:
+			s.mu.Lock()
+			s.pollBeforeSync = true
+			s.mu.Unlock()
+		case <-time.After(50 * time.Millisecond):
+		}
+		if err := sendFakeGNMISync(stream); err != nil {
+			return err
+		}
+		if result.request == nil && result.err == nil {
+			result = <-pollResults
+		}
+		if result.err != nil {
+			return result.err
+		}
 		s.mu.Lock()
-		s.requests = append(s.requests, pollReq)
+		s.requests = append(s.requests, result.request)
 		s.mu.Unlock()
+		if s.pollCycles > 1 {
+			nextPollResults := receivePoll()
+			var next pollResult
+			select {
+			case next = <-nextPollResults:
+				s.mu.Lock()
+				s.pollBeforePollSync = true
+				s.mu.Unlock()
+			case <-time.After(50 * time.Millisecond):
+			}
+			if err := sendFakeGNMISync(stream); err != nil {
+				return err
+			}
+			if next.request == nil && next.err == nil {
+				next = <-nextPollResults
+			}
+			if next.err != nil {
+				return next.err
+			}
+			s.mu.Lock()
+			s.requests = append(s.requests, next.request)
+			s.mu.Unlock()
+			if err := sendFakeGNMISync(stream); err != nil {
+				return err
+			}
+			return s.afterSyncErr
+		}
+		if err := sendFakeGNMISync(stream); err != nil {
+			return err
+		}
+		return s.afterSyncErr
 	}
 
-	return sendFakeIOSXRUpdate(stream)
+	if err := s.sendFakeUpdate(stream); err != nil {
+		return err
+	}
+	if err := sendFakeGNMISync(stream); err != nil {
+		return err
+	}
+	return s.afterSyncErr
 }
 
-func sendFakeIOSXRUpdate(stream grpc.BidiStreamingServer[gnmi.SubscribeRequest, gnmi.SubscribeResponse]) error {
-	if err := stream.Send(&gnmi.SubscribeResponse{Response: &gnmi.SubscribeResponse_Update{Update: &gnmi.Notification{
+func (s *fakeGNMIServer) sendFakeUpdate(stream grpc.BidiStreamingServer[gnmi.SubscribeRequest, gnmi.SubscribeResponse]) error {
+	if s.sendUpdate != nil {
+		return s.sendUpdate(stream)
+	}
+	return sendFakeIOSXRUpdateOnly(stream)
+}
+
+func sendFakeIOSXRUpdateOnly(stream grpc.BidiStreamingServer[gnmi.SubscribeRequest, gnmi.SubscribeResponse]) error {
+	return stream.Send(&gnmi.SubscribeResponse{Response: &gnmi.SubscribeResponse_Update{Update: &gnmi.Notification{
 		Timestamp: time.Unix(1700000000, 0).UnixNano(),
 		Prefix:    mustParseIOSXRPathForServer("openconfig-interfaces:interfaces/interface[name=HundredGigE0/0/0/0]/state"),
 		Update: []*gnmi.Update{{
 			Path: mustParseIOSXRPathForServer("counters/in-octets"),
 			Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_UintVal{UintVal: 123}},
 		}},
-	}}}); err != nil {
-		return err
-	}
+	}}})
+}
+
+func sendFakeGNMISync(stream grpc.BidiStreamingServer[gnmi.SubscribeRequest, gnmi.SubscribeResponse]) error {
 	return stream.Send(&gnmi.SubscribeResponse{Response: &gnmi.SubscribeResponse_SyncResponse{SyncResponse: true}})
 }
 
@@ -449,6 +681,7 @@ func mustParseIOSXRPathForServer(raw string) *gnmi.Path {
 }
 
 type releaseBlockingMetricsConsumer struct {
+	metricName  string
 	started     chan struct{}
 	release     chan struct{}
 	once        sync.Once
@@ -459,7 +692,10 @@ func (*releaseBlockingMetricsConsumer) Capabilities() consumer.Capabilities {
 	return consumer.Capabilities{MutatesData: false}
 }
 
-func (c *releaseBlockingMetricsConsumer) ConsumeMetrics(context.Context, pmetric.Metrics) error {
+func (c *releaseBlockingMetricsConsumer) ConsumeMetrics(_ context.Context, md pmetric.Metrics) error {
+	if c.metricName != "" && metricCountNamed(md, c.metricName) == 0 {
+		return nil
+	}
 	c.once.Do(func() { close(c.started) })
 	<-c.release
 	return nil

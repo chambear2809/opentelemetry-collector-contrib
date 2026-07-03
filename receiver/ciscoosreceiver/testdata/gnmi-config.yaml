@@ -1,0 +1,34 @@
+receivers:
+  cisco_os:
+    gnmi:
+      max_datapoints_per_chunk: 10000
+      max_cached_series: 500000
+      targets:
+        - name: nexus-shard-01
+          endpoint: nexus01.example.net:50051
+          platform: nx_os
+          max_recv_msg_size_mib: 16
+          credentials:
+            mode: username_password
+            username: otel-telemetry
+            password: secret
+          tls:
+            ca_file: /etc/otel/cisco-ca.pem
+            min_version: "1.2"
+            server_name_override: nexus01.example.net
+            reload_interval: 1h
+          keepalive:
+            time: 30s
+            timeout: 10s
+            permit_without_stream: false
+          profiles:
+            identity:
+              enabled: true
+            system:
+              enabled: true
+            interfaces:
+              enabled: true
+            optics:
+              enabled: true
+              required: true
+              sample_interval: 30s

@@ -1,0 +1,7 @@
+change_type: enhancement
+component: receiver/cisco_os
+note: Add production-oriented shared gNMI dial-in for IOS XE, IOS XR, and NX-OS.
+issues: [42647]
+subtext: |
+  Adds secure static targets, normalized identity/system/interface profiles, explicit DOM/VDM/coherent optical metrics, bounded cache and chunk controls, and Kubernetes and VM deployment guidance. NX-OS VDM and IOS XR coherent profiles remain experimental pending physical-hardware qualification.
+change_logs: [user]

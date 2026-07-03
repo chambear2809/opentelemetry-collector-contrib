@@ -1,0 +1,15 @@
+{
+  "Cisco-IOS-XE-transceiver-oper:transceiver-oper-data": {
+    "transceiver": [
+      {
+        "name": "TenGigabitEthernet1/0/1",
+        "temperature": "41.75",
+        "voltage": "3.31",
+        "laser-bias-current": "6.4",
+        "rx-power": "-2.15",
+        "tx-power": "-1.05",
+        "present": true
+      }
+    ]
+  }
+}

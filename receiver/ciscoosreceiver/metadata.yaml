@@ -1,20 +1,454 @@
-display_name: Cisco OS Receiver
-type: cisco_os
+attributes:
+  cisco.gnmi.profile:
+    description: gNMI subscription profile name
+    type: string
+  cisco.gnmi.reason:
+    description: Bounded reason for a gNMI health or degradation event
+    enum: [bisection_limit, cache_limit, incompatible_path_group, unsupported_path]
+    type: string
+  cisco.gnmi.target:
+    description: Static gNMI target name from the receiver configuration
+    type: string
+  cisco.optics.experimental:
+    description: Whether the source platform and optical profile still require physical-hardware qualification
+    type: bool
+  cisco.optics.lane:
+    description: The device-reported optical lane identifier
+    type: string
+  cisco.optics.profile:
+    description: The optical telemetry profile that produced the reading
+    enum: [dom, vdm, coherent]
+    type: string
+  cisco.optics.sensor:
+    description: The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted
+    type: string
+  network.interface.name:
+    description: The name of the network interface
+    type: string
+  network.io.direction:
+    description: Direction of flow of bytes/operations (receive or transmit)
+    enum: [receive, transmit]
+    type: string
+  network.packet.type:
+    description: Type of packet
+    enum: [unicast, multicast, broadcast]
+    type: string
 deprecated_type: ciscoos
-
 description: |
   The Cisco OS Receiver is a modular receiver that collects metrics from Cisco network devices via SSH connections,
   Cisco Meraki Dashboard APIs, Cisco Intersight APIs, Cisco Catalyst Center Assurance APIs, Cisco Catalyst SD-WAN
   Manager APIs, Nexus Dashboard/NDFC APIs, Cisco APIC APIs, Cisco Secure Firewall Management Center APIs, Cisco
-  Identity Services Engine APIs, and IOS XR gNMI/MDT telemetry. It supports metrics for device, cloud, controller,
+  Identity Services Engine APIs, secure normalized gNMI dial-in for IOS XE, IOS XR, and NX-OS, and IOS XR MDT
+  telemetry. It supports metrics for device, cloud, controller,
   identity, security, core WAN, and infrastructure health plus logs for operational evidence such as faults, anomalies,
   advisories, audits, deployments, workflows, authentication failures, posture, pxGrid session signals, policy changes,
   and Secure Firewall security events.
-
+display_name: Cisco OS Receiver
+metrics:
+  cisco.device.up:
+    description: Device availability (1 = up, 0 = down)
+    enabled: true
+    gauge:
+      value_type: int
+    stability: development
+    unit: "1"
+  cisco.interface.admin.status:
+    attributes: [network.interface.name]
+    description: Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)
+    enabled: true
+    gauge:
+      value_type: int
+    stability: development
+    unit: "1"
+  cisco.interface.io.rate:
+    attributes: [network.io.direction, network.interface.name]
+    description: The device-reported interface traffic rate
+    enabled: true
+    gauge:
+      value_type: int
+    stability: development
+    unit: "bit/s"
+  cisco.interface.packet.rate:
+    attributes: [network.io.direction, network.interface.name]
+    description: The device-reported interface packet rate
+    enabled: true
+    gauge:
+      value_type: int
+    stability: development
+    unit: "{packet}/s"
+  cisco.interface.speed:
+    attributes: [network.interface.name]
+    description: The numeric line speed of a Cisco interface
+    enabled: true
+    gauge:
+      value_type: int
+    stability: development
+    unit: "bit/s"
+  cisco.interface.utilization:
+    attributes: [network.io.direction, network.interface.name]
+    description: Cisco interface traffic utilization as a ratio of line speed
+    enabled: true
+    gauge:
+      value_type: double
+    stability: development
+    unit: "1"
+  cisco.optics.chromatic_dispersion:
+    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
+    description: Coherent optical chromatic dispersion
+    enabled: true
+    gauge:
+      value_type: double
+    stability: development
+    unit: "ps/nm"
+  cisco.optics.dgd:
+    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
+    description: Coherent optical differential group delay
+    enabled: true
+    gauge:
+      value_type: double
+    stability: development
+    unit: ps
+  cisco.optics.esnr:
+    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
+    description: Effective signal-to-noise ratio reported by a qualified VDM sensor
+    enabled: true
+    gauge:
+      value_type: double
+    stability: development
+    unit: dB
+  cisco.optics.laser_bias_current:
+    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
+    description: Optical transmitter laser bias current
+    enabled: true
+    gauge:
+      value_type: double
+    stability: development
+    unit: mA
+  cisco.optics.osnr:
+    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
+    description: Coherent optical signal-to-noise ratio
+    enabled: true
+    gauge:
+      value_type: double
+    stability: development
+    unit: dB
+  cisco.optics.pre_fec_ber:
+    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
+    description: Pre-forward-error-correction bit error ratio
+    enabled: true
+    gauge:
+      value_type: double
+    stability: development
+    unit: "1"
+  cisco.optics.present:
+    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.profile, cisco.optics.experimental]
+    description: Optical module or lane presence (1 = present, 0 = absent)
+    enabled: true
+    gauge:
+      value_type: int
+    stability: development
+    unit: "1"
+  cisco.optics.q_factor:
+    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
+    description: Coherent optical Q-factor
+    enabled: true
+    gauge:
+      value_type: double
+    stability: development
+    unit: dB
+  cisco.optics.q_margin:
+    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
+    description: Coherent optical Q-margin
+    enabled: true
+    gauge:
+      value_type: double
+    stability: development
+    unit: dB
+  cisco.optics.rx_power:
+    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
+    description: Received optical power
+    enabled: true
+    gauge:
+      value_type: double
+    stability: development
+    unit: "dB[mW]"
+  cisco.optics.tdecq:
+    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
+    description: Transmitter and dispersion eye closure for PAM4 reported by a sensor explicitly identified as TDECQ in dB
+    enabled: true
+    gauge:
+      value_type: double
+    stability: development
+    unit: dB
+  cisco.optics.tec_current:
+    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
+    description: Thermoelectric cooler current when the device reports the sensor in milliamperes
+    enabled: true
+    gauge:
+      value_type: double
+    stability: development
+    unit: mA
+  cisco.optics.tec_utilization:
+    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
+    description: Thermoelectric cooler utilization normalized to a unitless ratio
+    enabled: true
+    gauge:
+      value_type: double
+    stability: development
+    unit: "1"
+  cisco.optics.temperature:
+    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
+    description: Optical module temperature
+    enabled: true
+    gauge:
+      value_type: double
+    stability: development
+    unit: Cel
+  cisco.optics.tx_power:
+    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
+    description: Transmitted optical power
+    enabled: true
+    gauge:
+      value_type: double
+    stability: development
+    unit: "dB[mW]"
+  cisco.optics.voltage:
+    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
+    description: Optical module supply voltage
+    enabled: true
+    gauge:
+      value_type: double
+    stability: development
+    unit: V
+  system.cpu.utilization:
+    description: Percentage of CPU time in use.
+    enabled: true
+    gauge:
+      value_type: double
+    stability: development
+    unit: "1"
+  system.memory.utilization:
+    description: Percentage of memory bytes in use.
+    enabled: true
+    gauge:
+      value_type: double
+    stability: development
+    unit: "1"
+  system.network.errors:
+    attributes: [network.io.direction, network.interface.name]
+    description: The number of errors encountered
+    enabled: true
+    stability: development
+    sum:
+      aggregation_temporality: cumulative
+      monotonic: true
+      value_type: int
+    unit: "{error}"
+  system.network.interface.status:
+    attributes: [network.interface.name]
+    description: Interface operational status (1 = up, 0 = down)
+    enabled: true
+    gauge:
+      value_type: int
+    stability: development
+    unit: "1"
+  system.network.io:
+    attributes: [network.io.direction, network.interface.name]
+    description: The number of bytes transmitted and received
+    enabled: true
+    stability: development
+    sum:
+      aggregation_temporality: cumulative
+      monotonic: true
+      value_type: int
+    unit: By
+  system.network.packet.count:
+    attributes: [network.io.direction, network.packet.type, network.interface.name]
+    description: The number of packets transmitted or received, categorized by type
+    enabled: true
+    stability: development
+    sum:
+      aggregation_temporality: cumulative
+      monotonic: true
+      value_type: int
+    unit: "{packet}"
+  system.network.packet.dropped:
+    attributes: [network.io.direction, network.interface.name]
+    description: The number of packets dropped
+    enabled: true
+    stability: development
+    sum:
+      aggregation_temporality: cumulative
+      monotonic: true
+      value_type: int
+    unit: "{packet}"
+  system.uptime:
+    description: The time the Cisco device has been running
+    enabled: true
+    gauge:
+      value_type: int
+    stability: development
+    unit: s
+resource_attributes:
+  cisco.os.name:
+    description: Normalized Cisco operating-system family
+    enabled: true
+    type: string
+  cisco.platform.family:
+    description: Configured Cisco platform family for the gNMI target
+    enabled: true
+    type: string
+  cisco.telemetry.transport:
+    description: Cisco telemetry transport that produced the metrics
+    enabled: true
+    type: string
+  host.id:
+    description: Stable configured identity of the Cisco target
+    enabled: true
+    type: string
+  host.ip:
+    description: Management IP of the Cisco target when the endpoint uses an IP literal
+    enabled: true
+    type: string
+  host.name:
+    description: Configured name of the Cisco target
+    enabled: true
+    type: string
+  hw.type:
+    description: Type of the physical hardware
+    enabled: true
+    type: string
+  os.name:
+    description: Human-readable Cisco operating-system name
+    enabled: true
+    type: string
 status:
   class: receiver
-  stability:
-    alpha: [metrics, logs]
-  distributions: [contrib]
   codeowners:
     active: [dmitryax]
+  distributions: [contrib]
+  stability:
+    alpha: [metrics, logs]
+telemetry:
+  metrics:
+    ciscoosreceiver_gnmi_authentication_failures:
+      attributes: [cisco.gnmi.target]
+      description: Number of gNMI authentication or authorization failures
+      enabled: true
+      stability: development
+      sum:
+        monotonic: true
+        value_type: int
+      unit: "{failure}"
+    ciscoosreceiver_gnmi_cache_utilization:
+      description: Fraction of the configured mapped-series cache currently in use
+      enabled: true
+      gauge:
+        value_type: double
+      stability: development
+      unit: "1"
+    ciscoosreceiver_gnmi_connections:
+      attributes: [cisco.gnmi.target]
+      description: Current number of established gNMI connections
+      enabled: true
+      gauge:
+        value_type: int
+      stability: development
+      unit: "{connection}"
+    ciscoosreceiver_gnmi_consumer_refusals:
+      attributes: [cisco.gnmi.target, cisco.gnmi.profile]
+      description: Number of metric chunks refused by the downstream consumer and dropped without device reconnect
+      enabled: true
+      stability: development
+      sum:
+        monotonic: true
+        value_type: int
+      unit: "{refusal}"
+    ciscoosreceiver_gnmi_decode_errors:
+      attributes: [cisco.gnmi.target, cisco.gnmi.profile]
+      description: Number of gNMI notifications that could not be decoded
+      enabled: true
+      stability: development
+      sum:
+        monotonic: true
+        value_type: int
+      unit: "{error}"
+    ciscoosreceiver_gnmi_deletes:
+      attributes: [cisco.gnmi.target, cisco.gnmi.profile]
+      description: Number of gNMI delete paths applied to the state cache
+      enabled: true
+      stability: development
+      sum:
+        monotonic: true
+        value_type: int
+      unit: "{delete}"
+    ciscoosreceiver_gnmi_duplicate_updates:
+      attributes: [cisco.gnmi.target, cisco.gnmi.profile]
+      description: Number of duplicate gNMI leaf updates suppressed by the state cache
+      enabled: true
+      stability: development
+      sum:
+        monotonic: true
+        value_type: int
+      unit: "{update}"
+    ciscoosreceiver_gnmi_invalid_timestamps:
+      attributes: [cisco.gnmi.target, cisco.gnmi.profile]
+      description: Number of invalid Cisco timestamps replaced with receipt time
+      enabled: true
+      stability: development
+      sum:
+        monotonic: true
+        value_type: int
+      unit: "{timestamp}"
+    ciscoosreceiver_gnmi_last_success_unixtime:
+      attributes: [cisco.gnmi.target, cisco.gnmi.profile]
+      description: Unix time of the most recent successfully decoded gNMI notification
+      enabled: true
+      gauge:
+        value_type: int
+      stability: development
+      unit: s
+    ciscoosreceiver_gnmi_profile_degraded:
+      attributes: [cisco.gnmi.target, cisco.gnmi.profile, cisco.gnmi.reason]
+      description: Whether a gNMI profile is degraded (1 = degraded, 0 = healthy)
+      enabled: true
+      gauge:
+        value_type: int
+      stability: development
+      unit: "1"
+    ciscoosreceiver_gnmi_reconnects:
+      attributes: [cisco.gnmi.target]
+      description: Number of gNMI transport reconnect attempts
+      enabled: true
+      stability: development
+      sum:
+        monotonic: true
+        value_type: int
+      unit: "{reconnect}"
+    ciscoosreceiver_gnmi_subscriptions:
+      attributes: [cisco.gnmi.target, cisco.gnmi.profile]
+      description: Current number of active gNMI subscription streams
+      enabled: true
+      gauge:
+        value_type: int
+      stability: development
+      unit: "{subscription}"
+    ciscoosreceiver_gnmi_unmapped_values:
+      attributes: [cisco.gnmi.target, cisco.gnmi.profile]
+      description: Number of decoded gNMI values without an explicit metric mapping
+      enabled: true
+      stability: development
+      sum:
+        monotonic: true
+        value_type: int
+      unit: "{value}"
+    ciscoosreceiver_gnmi_updates:
+      attributes: [cisco.gnmi.target, cisco.gnmi.profile]
+      description: Number of decoded gNMI leaf updates
+      enabled: true
+      stability: development
+      sum:
+        monotonic: true
+        value_type: int
+      unit: "{update}"
+type: cisco_os

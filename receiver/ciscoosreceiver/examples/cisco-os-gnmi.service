@@ -1,0 +1,46 @@
+[Unit]
+Description=Cisco OS gNMI collector shard %i
+Documentation=https://opentelemetry.io/docs/collector/
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=otelcol
+Group=otelcol
+UMask=0077
+# Create /etc/otelcol-cisco/<shard>.env as root:root mode 0600. It should
+# contain CISCO_GNMI_PASSWORD, SPLUNK_OTLP_ENDPOINT, and SPLUNK_ACCESS_TOKEN.
+EnvironmentFile=/etc/otelcol-cisco/%i.env
+ExecStart=/usr/local/bin/otelcol-contrib --config=/etc/otelcol-cisco/%i.yaml
+Restart=on-failure
+RestartSec=15s
+TimeoutStopSec=45s
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectProc=invisible
+ProtectSystem=strict
+ReadOnlyPaths=/etc/otelcol-cisco
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

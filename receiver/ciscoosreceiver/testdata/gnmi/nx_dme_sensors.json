@@ -1,0 +1,38 @@
+{
+  "phys-[Ethernet1/49]": {
+    "phys": {
+      "fcotdd": {
+        "lane-0-sensor-27": {
+          "description": "TDECQ",
+          "unit": "dB",
+          "value": 2.4
+        },
+        "lane-0-sensor-28": {
+          "description": "PAM4 level transition parameter",
+          "unit": "dB",
+          "value": 9.9
+        },
+        "lane-0-sensor-29": {
+          "description": "TDECQ",
+          "unit": "1",
+          "value": 7.7
+        },
+        "lane-1-sensor-30": {
+          "description": "ESNR",
+          "unit": "dB",
+          "value": 22.8
+        },
+        "lane-1-sensor-31": {
+          "description": "Temperature",
+          "unit": "Cel",
+          "value": 46.5
+        },
+        "lane-1-sensor-99": {
+          "description": "Vendor proprietary quality",
+          "unit": "dB",
+          "value": 123.0
+        }
+      }
+    }
+  }
+}

@@ -741,6 +741,9 @@ type Config struct {
 	// IOSXR contains IOS XR gNMI/MDT telemetry settings.
 	IOSXR IOSXRConfig `mapstructure:"ios_xr"`
 
+	// GNMI contains shared, normalized gNMI dial-in targets.
+	GNMI GNMIConfig `mapstructure:"gnmi"`
+
 	Scrapers map[component.Type]component.Config `mapstructure:"-"`
 }
 
@@ -761,8 +764,8 @@ func (cfg *Config) Validate() error {
 		err = multierr.Append(err, errors.New("collection_interval must be positive"))
 	}
 
-	if len(cfg.Devices) == 0 && !cfg.Meraki.hasTargets() && !cfg.Intersight.hasTarget() && !cfg.CatalystCenter.hasTarget() && !cfg.Catalyst9800.hasTarget() && !cfg.SDWAN.hasTarget() && !cfg.NexusDashboard.hasTarget() && !cfg.ACI.hasTarget() && !cfg.FMC.hasTarget() && !cfg.ISE.hasTarget() && !cfg.IOSXR.hasTarget() {
-		err = multierr.Append(err, errors.New("must specify at least one SSH device, Meraki target, Intersight target, Catalyst Center target, Catalyst 9800 target, SD-WAN target, Nexus Dashboard target, ACI target, FMC target, ISE target, or IOS XR target"))
+	if len(cfg.Devices) == 0 && !cfg.Meraki.hasTargets() && !cfg.Intersight.hasTarget() && !cfg.CatalystCenter.hasTarget() && !cfg.Catalyst9800.hasTarget() && !cfg.SDWAN.hasTarget() && !cfg.NexusDashboard.hasTarget() && !cfg.ACI.hasTarget() && !cfg.FMC.hasTarget() && !cfg.ISE.hasTarget() && !cfg.IOSXR.hasTarget() && !cfg.GNMI.hasTargets() {
+		err = multierr.Append(err, errors.New("must specify at least one SSH device, Meraki target, Intersight target, Catalyst Center target, Catalyst 9800 target, SD-WAN target, Nexus Dashboard target, ACI target, FMC target, ISE target, or IOS XR target; alternatively, specify a shared gNMI target"))
 	}
 
 	if len(cfg.Devices) > 0 && len(cfg.Scrapers) == 0 {
@@ -808,6 +811,7 @@ func (cfg *Config) Validate() error {
 	err = multierr.Append(err, cfg.validateFMC())
 	err = multierr.Append(err, cfg.validateISE())
 	err = multierr.Append(err, cfg.validateIOSXR())
+	err = multierr.Append(err, cfg.validateGNMI())
 
 	return err
 }
