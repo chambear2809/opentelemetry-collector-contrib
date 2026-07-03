@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package ciscoosreceiver
+package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver"
 
 import (
 	"context"
@@ -33,13 +33,14 @@ type legacyGNMISession struct {
 	settings receiver.Settings
 	host     component.Host
 
-	clientConfig     configgrpc.ClientConfig
-	username         string
-	password         string
-	skipCapabilities bool
-	pollInterval     time.Duration
-	targetName       string
-	onceCloseLog     string
+	clientConfig      configgrpc.ClientConfig
+	username          string
+	password          string
+	skipCapabilities  bool
+	pollInterval      time.Duration
+	targetName        string
+	onceCloseLog      string
+	responseAdmission *gnmiResponseAdmission
 
 	buildRequest func(*gnmi.CapabilityResponse) (*gnmi.SubscribeRequest, error)
 	onSubscribed func()
@@ -61,6 +62,10 @@ func (s legacyGNMISession) run(ctx context.Context) error {
 		s.host.GetExtensions(),
 		s.settings.TelemetrySettings,
 		configgrpc.WithGrpcDialOption(grpc.WithBlock()), //nolint:staticcheck // Preserve legacy blocking ClientConfig dialing for one compatibility release.
+		configgrpc.WithGrpcDialOption(grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(legacyGNMIMaxRecvMsgSizeMiB*1024*1024),
+			gnmiResponsePreflightCallOption(legacyGNMIMaxRecvMsgSizeMiB, s.responseAdmission, sessionCtx.Done()),
+		)),
 	)
 	if err != nil {
 		return err
@@ -71,7 +76,7 @@ func (s legacyGNMISession) run(ctx context.Context) error {
 	capabilities := &gnmi.CapabilityResponse{}
 	if !s.skipCapabilities {
 		capCtx, capCancel := context.WithTimeout(s.outgoingContext(sessionCtx), legacyGNMICapabilitiesTimeout)
-		capabilities, err = client.Capabilities(capCtx, &gnmi.CapabilityRequest{})
+		capabilities, err = invokeGNMICapabilities(capCtx, conn, s.responseAdmission, legacyGNMIMaxRecvMsgSizeMiB)
 		capCancel()
 		if err != nil {
 			return fmt.Errorf("capabilities: %w", err)
@@ -79,6 +84,7 @@ func (s legacyGNMISession) run(ctx context.Context) error {
 	}
 
 	request, err := s.buildRequest(capabilities)
+	s.responseAdmission.release(capabilities)
 	if err != nil {
 		return err
 	}
@@ -86,7 +92,10 @@ func (s legacyGNMISession) run(ctx context.Context) error {
 		return errors.New("legacy gNMI session requires a subscription request")
 	}
 
-	stream, err := client.Subscribe(s.outgoingContext(sessionCtx))
+	stream, err := client.Subscribe(
+		s.outgoingContext(sessionCtx),
+		gnmiResponsePreflightCallOption(legacyGNMIMaxRecvMsgSizeMiB, s.responseAdmission, sessionCtx.Done()),
+	)
 	if err != nil {
 		return err
 	}
@@ -170,17 +179,20 @@ func (s legacyGNMISession) readResponses(
 		}
 	}
 	for {
-		response, err := stream.Recv()
+		response, err := receiveGNMISubscribeResponse(stream, s.responseAdmission)
 		if err != nil {
 			publish(legacyGNMIResponseEvent{err: err})
 			return
 		}
+		var event legacyGNMIResponseEvent
+		var publishEvent, terminal bool
 		switch body := response.GetResponse().(type) {
 		case *gnmi.SubscribeResponse_Update:
 			if body.Update != nil && s.handleUpdate != nil {
 				if err := s.handleUpdate(ctx, body.Update); err != nil {
-					publish(legacyGNMIResponseEvent{err: err})
-					return
+					event.err = err
+					publishEvent = true
+					terminal = true
 				}
 			}
 		case *gnmi.SubscribeResponse_SyncResponse:
@@ -188,15 +200,22 @@ func (s legacyGNMISession) readResponses(
 				if s.handleSync != nil {
 					s.handleSync()
 				}
-				if !publish(legacyGNMIResponseEvent{synced: true}) {
-					return
-				}
+				event.synced = true
+				publishEvent = true
 			}
 		case *gnmi.SubscribeResponse_Error:
 			if body.Error != nil {
-				publish(legacyGNMIResponseEvent{err: sanitizedGNMISubscribeStatusError(body.Error)})
-				return
+				event.err = sanitizedGNMISubscribeStatusError(body.Error)
+				publishEvent = true
+				terminal = true
 			}
+		}
+		s.responseAdmission.release(response)
+		if publishEvent && !publish(event) {
+			return
+		}
+		if terminal {
+			return
 		}
 	}
 }

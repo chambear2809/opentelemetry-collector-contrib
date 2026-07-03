@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package gnmi
+package gnmi // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/gnmi"
 
 import (
 	"slices"
@@ -166,6 +166,64 @@ func (idx *tombstonePrefixIndex) dominated(selector Path, timestamp time.Time) m
 		}
 	}
 	return dominated
+}
+
+// hasSelectedDescendant reports whether selector selects at least one indexed
+// path. Unlike tombstone pruning, an empty target or origin expands across all
+// indexed scopes so this also preserves Path.HasPrefix wildcard semantics for
+// temporary notification selector indexes.
+func (idx *tombstonePrefixIndex) hasSelectedDescendant(selector Path) bool {
+	var targets []*tombstoneTargetIndex
+	if selector.Target == "" {
+		targets = make([]*tombstoneTargetIndex, 0, len(idx.targets))
+		for _, target := range idx.targets {
+			targets = append(targets, target)
+		}
+	} else if target := idx.targets[selector.Target]; target != nil {
+		targets = []*tombstoneTargetIndex{target}
+	}
+	for _, target := range targets {
+		if selector.Origin != "" {
+			if root := target.origins[selector.Origin]; root != nil && root.hasSelectedDescendant(selector.Elements, 0) {
+				return true
+			}
+			continue
+		}
+		for _, root := range target.origins {
+			if root.hasSelectedDescendant(selector.Elements, 0) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (node *tombstonePathIndexNode) hasSelectedDescendant(elements []PathElem, index int) bool {
+	if index == len(elements) {
+		return node.hasTombstoneDescendant()
+	}
+	element := elements[index]
+	elementIndex := node.children[element.Name]
+	if elementIndex == nil {
+		return false
+	}
+	return elementIndex.forEachSuperset(element.Keys, func(child *tombstonePathIndexNode) bool {
+		return child.hasSelectedDescendant(elements, index+1)
+	})
+}
+
+func (node *tombstonePathIndexNode) hasTombstoneDescendant() bool {
+	if node.tombstoneKey != "" {
+		return true
+	}
+	for _, elementIndex := range node.children {
+		if elementIndex.forEachPath(func(child *tombstonePathIndexNode) bool {
+			return child.hasTombstoneDescendant()
+		}) {
+			return true
+		}
+	}
+	return false
 }
 
 func (node *tombstonePathIndexNode) forEachSelectedDescendant(

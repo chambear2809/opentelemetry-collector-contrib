@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package gnmi
+package gnmi // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/gnmi"
 
 import (
 	"errors"
@@ -151,19 +151,28 @@ func (r *Registry) Map(point Point) (MappedPoint, bool) {
 	attributes := make(map[string]string, len(mapping.KeyAttributes))
 	for _, attr := range mapping.KeyAttributes {
 		found := false
+		var value string
 		for _, elem := range point.Series.Elements {
 			if elem.Name != attr.Element {
 				continue
 			}
-			if value, exists := elem.Keys[attr.Key]; exists {
-				attributes[attr.Attribute] = value
-				found = true
-				break
+			candidate, exists := elem.Keys[attr.Key]
+			if !exists {
+				continue
 			}
+			if found {
+				// Element names are not positional selectors. Refuse a point if
+				// more than one same-named element carries the requested key;
+				// choosing the first would collapse distinct source series.
+				return MappedPoint{}, false
+			}
+			value = candidate
+			found = true
 		}
 		if !found {
 			return MappedPoint{}, false
 		}
+		attributes[attr.Attribute] = value
 	}
 
 	mapped := MappedPoint{

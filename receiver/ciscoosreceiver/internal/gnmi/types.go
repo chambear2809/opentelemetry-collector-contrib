@@ -4,7 +4,7 @@
 // Package gnmi provides the canonical, platform-neutral data model used by the
 // Cisco OS receiver's gNMI transports. It deliberately contains no receiver
 // lifecycle or fork-specific integration code.
-package gnmi
+package gnmi // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/gnmi"
 
 import (
 	"encoding/json"

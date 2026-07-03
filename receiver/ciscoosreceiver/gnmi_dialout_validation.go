@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package ciscoosreceiver
+package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver"
 
 import (
 	"errors"
@@ -20,6 +20,8 @@ const (
 	maximumGNMIDialOutReceiveSizeMiB = 16
 	minimumGNMIDialOutStreams        = 1
 	maximumGNMIDialOutStreams        = 1000
+	defaultGNMIDialOutStreams        = 64
+	maximumGNMIDialOutInFlightMiB    = 256
 )
 
 // effectiveGNMIDialOutMaxStreamsPerClient resolves an omitted per-client cap
@@ -46,6 +48,8 @@ func validateGNMIDialOutConfig(
 	allowedClients []string,
 	maxStreamsPerClient uint32,
 	rateLimiting yanggrpcreceiver.RateLimitingConfig,
+	identityVerification string,
+	identityBindings []GNMIDialOutIdentityBindingConfig,
 ) error {
 	var err error
 	maxStreamsPerClient = effectiveGNMIDialOutMaxStreamsPerClient(maxStreamsPerClient, server.MaxConcurrentStreams)
@@ -66,6 +70,12 @@ func validateGNMIDialOutConfig(
 			maximumGNMIDialOutStreams,
 		))
 	}
+	if uint64(server.MaxConcurrentStreams)*uint64(server.MaxRecvMsgSizeMiB) > maximumGNMIDialOutInFlightMiB {
+		err = errors.Join(err, fmt.Errorf(
+			"max_concurrent_streams multiplied by max_recv_msg_size_mib must not exceed %d MiB",
+			maximumGNMIDialOutInFlightMiB,
+		))
+	}
 	if maxStreamsPerClient < minimumGNMIDialOutStreams || maxStreamsPerClient > server.MaxConcurrentStreams {
 		err = errors.Join(err, fmt.Errorf(
 			"max_streams_per_client must be between %d and max_concurrent_streams (%d)",
@@ -77,6 +87,16 @@ func validateGNMIDialOutConfig(
 		if _, parseErr := parseGNMIDialOutAllowedClient(allowed); parseErr != nil {
 			err = errors.Join(err, fmt.Errorf("allowed_clients[%d] %w", index, parseErr))
 		}
+	}
+	if _, identityErr := compileGNMIDialOutIdentityVerifier(identityVerification, identityBindings); identityErr != nil {
+		err = errors.Join(err, identityErr)
+	}
+	identityTransportSupported := gnmiDialOutIdentitySupportsTransport(string(server.NetAddr.Transport))
+	if effectiveGNMIDialOutIdentityVerification(identityVerification) == gnmiDialOutIdentityRequired && !identityTransportSupported {
+		err = errors.Join(err, errors.New("identity_verification: required requires tcp, tcp4, or tcp6 transport"))
+	}
+	if (len(allowedClients) > 0 || rateLimiting.Enabled) && !identityTransportSupported {
+		err = errors.Join(err, errors.New("IP-based allowed_clients or per-message rate limiting requires tcp, tcp4, or tcp6 transport"))
 	}
 	if rateLimiting.Enabled {
 		if rateLimiting.BurstSize <= 0 {
@@ -115,6 +135,9 @@ func validateGNMIDialOutConfig(
 	}
 	if !rateLimiting.Enabled {
 		err = errors.Join(err, errors.New("non-loopback listeners require per-message rate limiting"))
+	}
+	if effectiveGNMIDialOutIdentityVerification(identityVerification) != gnmiDialOutIdentityRequired {
+		err = errors.Join(err, errors.New("non-loopback listeners require identity_verification: required with valid identity_bindings"))
 	}
 	return err
 }

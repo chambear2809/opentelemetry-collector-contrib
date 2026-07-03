@@ -42,13 +42,17 @@ const (
 	gnmiDialOutStartCleanupTimeout  = 5 * time.Second
 	minGNMIDialOutLimiterCleanup    = time.Second
 	maxGNMIDialOutLimiterIdleTTL    = time.Duration(1<<63 - 1)
-	minimumYangGRPCRuntimeHardening = 1
+	minimumYangGRPCRuntimeHardening = 2
 )
 
 var gnmiDialOutSecurityMiddlewareType = component.MustNewType("ciscoos_internal")
 
 type yangGRPCRuntimeHardening interface {
 	RuntimeHardeningVersion() int
+}
+
+type yangGRPCStreamAdmissionConfig interface {
+	SetMaxConcurrentStreamsPerClient(uint32)
 }
 
 func requireHardenedYangGRPCRuntime(config any) error {
@@ -71,6 +75,29 @@ func hardenedYangGRPCConfig(config any) (*yanggrpcreceiver.Config, error) {
 		return nil, fmt.Errorf("yanggrpcreceiver returned unexpected hardened config type %T", config)
 	}
 	return yangConfig, nil
+}
+
+func configureHardenedYangGRPCStreamAdmission(config any, maxStreamsPerClient uint32) error {
+	streamAdmission, ok := config.(yangGRPCStreamAdmissionConfig)
+	if !ok {
+		return errors.New("yanggrpcreceiver dependency does not expose required global stream-admission configuration")
+	}
+	streamAdmission.SetMaxConcurrentStreamsPerClient(maxStreamsPerClient)
+	return nil
+}
+
+// configureHardenedYangGRPCSecurity mirrors the public dial-out controls into
+// the delegated receiver as well as the receiver-private middleware. The YANG
+// receiver validates and enforces its own remote-listener contract at Start;
+// leaving this zeroed would make every otherwise-secure non-loopback Cisco
+// listener fail closed during lifecycle startup.
+func configureHardenedYangGRPCSecurity(
+	config *yanggrpcreceiver.Config,
+	allowedClients []string,
+	rateLimiting yanggrpcreceiver.RateLimitingConfig,
+) {
+	config.Security.AllowedClients = append([]string(nil), allowedClients...)
+	config.Security.RateLimiting = rateLimiting
 }
 
 // gnmiDialOutSecurityReceiver supplies receiver-private gRPC middleware to the
@@ -170,13 +197,22 @@ func configureGNMIDialOutSecurity(
 	allowedClients []string,
 	maxStreamsPerClient uint32,
 	rateLimiting yanggrpcreceiver.RateLimitingConfig,
+	identityVerification string,
+	identityBindings []GNMIDialOutIdentityBindingConfig,
 	logger *zap.Logger,
 	parentID component.ID,
 	owner string,
 ) (component.ID, *gnmiDialOutSecurityMiddleware, error) {
-	security, err := newGNMIDialOutStreamSecurity(allowedClients, rateLimiting, logger, maxGNMIDialOutRateLimiterPeers)
+	identity, err := compileGNMIDialOutIdentityVerifier(identityVerification, identityBindings)
 	if err != nil {
 		return component.ID{}, nil, err
+	}
+	identityTransportSupported := gnmiDialOutIdentitySupportsTransport(string(server.NetAddr.Transport))
+	if identity != nil && !identityTransportSupported {
+		return component.ID{}, nil, errors.New("identity_verification: required requires tcp, tcp4, or tcp6 transport")
+	}
+	if gnmiDialOutEndpointRequiresIdentity(server.NetAddr.Endpoint) && identity == nil {
+		return component.ID{}, nil, errors.New("non-loopback listeners require identity_verification: required with valid identity_bindings")
 	}
 	name := "gnmi_dialout_security_" + parentID.Type().String()
 	if parentID.Name() != "" {
@@ -187,6 +223,20 @@ func configureGNMIDialOutSecurity(
 		gnmiDialOutSecurityMiddlewareType,
 		name,
 	)
+	for index, configured := range server.Middlewares {
+		if configured.ID == middlewareID {
+			return component.ID{}, nil, fmt.Errorf(
+				"middlewares[%d] duplicates receiver-private gNMI dial-out middleware ID %q",
+				index,
+				middlewareID,
+			)
+		}
+	}
+	security, err := newGNMIDialOutStreamSecurity(allowedClients, rateLimiting, logger, maxGNMIDialOutRateLimiterPeers)
+	if err != nil {
+		return component.ID{}, nil, err
+	}
+	security.identity = identity
 	if server.MaxConcurrentStreams > 0 {
 		security.maxActiveStreams = int(server.MaxConcurrentStreams)
 	}
@@ -215,9 +265,10 @@ func wrapGNMIDialOutSecurityReceiver(
 }
 
 type gnmiDialOutStreamSecurity struct {
-	allowed []netip.Prefix
-	limiter *gnmiDialOutPeerRateLimiter
-	logger  *zap.Logger
+	allowed  []netip.Prefix
+	limiter  *gnmiDialOutPeerRateLimiter
+	identity *gnmiDialOutIdentityVerifier
+	logger   *zap.Logger
 
 	activeMu                sync.Mutex
 	active                  map[uint64]gnmiDialOutActiveStream
@@ -281,7 +332,19 @@ func newGNMIDialOutStreamSecurity(
 
 func parseGNMIDialOutAllowedClient(value string) (netip.Prefix, error) {
 	if address, err := netip.ParseAddr(value); err == nil {
+		if address.Zone() != "" {
+			return netip.Prefix{}, fmt.Errorf("scoped IPv6 zones are not supported: %q", value)
+		}
 		address = address.Unmap()
+		if address.IsMulticast() {
+			return netip.Prefix{}, fmt.Errorf("source selectors must use global-unicast or loopback addresses: %q", value)
+		}
+		if address.IsLinkLocalUnicast() || address.IsLinkLocalMulticast() {
+			return netip.Prefix{}, fmt.Errorf("link-local source selectors are not supported: %q", value)
+		}
+		if !gnmiDialOutUsablePeerAddress(address) {
+			return netip.Prefix{}, fmt.Errorf("source selectors must use global-unicast or loopback addresses: %q", value)
+		}
 		return netip.PrefixFrom(address, address.BitLen()), nil
 	}
 	prefix, err := netip.ParsePrefix(value)
@@ -294,7 +357,21 @@ func parseGNMIDialOutAllowedClient(value string) (netip.Prefix, error) {
 		}
 		prefix = netip.PrefixFrom(prefix.Addr().Unmap(), prefix.Bits()-96)
 	}
-	return prefix.Masked(), nil
+	prefix = prefix.Masked()
+	if prefix.Addr().IsMulticast() {
+		return netip.Prefix{}, fmt.Errorf("source selectors must use global-unicast or loopback addresses: %q", value)
+	}
+	if prefix.Addr().IsLinkLocalUnicast() || prefix.Addr().IsLinkLocalMulticast() {
+		return netip.Prefix{}, fmt.Errorf("link-local source selectors are not supported: %q", value)
+	}
+	if !gnmiDialOutUsablePeerAddress(prefix.Addr()) {
+		return netip.Prefix{}, fmt.Errorf("source selectors must use global-unicast or loopback addresses: %q", value)
+	}
+	return prefix, nil
+}
+
+func gnmiDialOutUsablePeerAddress(address netip.Addr) bool {
+	return address.IsLoopback() || address.IsGlobalUnicast()
 }
 
 func (s *gnmiDialOutStreamSecurity) Start() {
@@ -315,6 +392,15 @@ func (s *gnmiDialOutStreamSecurity) StreamServerInterceptor() grpc.StreamServerI
 		peerIP, err := s.authorizePeer(stream.Context(), info.FullMethod)
 		if err != nil {
 			return err
+		}
+		var allowedNodeIDs map[string]struct{}
+		if s.identity != nil {
+			var matched bool
+			allowedNodeIDs, matched = s.identity.nodeIDsForPeer(peerIP)
+			if !matched {
+				s.logger.Warn("gNMI dial-out client has no identity binding", zap.String("client_ip", peerIP.String()), zap.String("method", info.FullMethod))
+				return status.Error(codes.PermissionDenied, "client has no dial-out identity binding")
+			}
 		}
 		peerID := "unknown"
 		if peerIP.IsValid() {
@@ -342,6 +428,12 @@ func (s *gnmiDialOutStreamSecurity) StreamServerInterceptor() grpc.StreamServerI
 				logger:       s.logger,
 				peer:         peerIP.String(),
 				method:       info.FullMethod,
+			}
+		}
+		if s.identity != nil {
+			stream = &gnmiDialOutIdentityServerStream{
+				ServerStream:   stream,
+				allowedNodeIDs: allowedNodeIDs,
 			}
 		}
 		return handler(service, stream)
@@ -400,7 +492,7 @@ func (s *gnmiDialOutStreamSecurity) cancelActiveStreams() {
 
 func (s *gnmiDialOutStreamSecurity) authorizePeer(ctx context.Context, method string) (netip.Addr, error) {
 	peerIP, err := gnmiDialOutPeerIP(ctx)
-	if len(s.allowed) == 0 && s.limiter == nil {
+	if len(s.allowed) == 0 && s.limiter == nil && s.identity == nil {
 		if err != nil {
 			return netip.Addr{}, nil
 		}
@@ -432,12 +524,28 @@ func gnmiDialOutPeerIP(ctx context.Context) (netip.Addr, error) {
 	if !ok || remote.Addr == nil {
 		return netip.Addr{}, errors.New("peer address is unavailable")
 	}
+	if !gnmiDialOutIdentitySupportsTransport(remote.Addr.Network()) {
+		return netip.Addr{}, fmt.Errorf("unsupported peer network %q", remote.Addr.Network())
+	}
 	if tcpAddress, ok := remote.Addr.(*net.TCPAddr); ok {
+		if tcpAddress.Zone != "" {
+			return netip.Addr{}, fmt.Errorf("scoped TCP peer addresses are not supported: %q", tcpAddress)
+		}
 		address, valid := netip.AddrFromSlice(tcpAddress.IP)
 		if !valid {
 			return netip.Addr{}, fmt.Errorf("invalid TCP peer address %q", tcpAddress.IP)
 		}
-		return address.Unmap(), nil
+		address = address.Unmap()
+		if address.IsMulticast() {
+			return netip.Addr{}, fmt.Errorf("TCP peer address must be global-unicast or loopback: %q", tcpAddress)
+		}
+		if address.IsLinkLocalUnicast() || address.IsLinkLocalMulticast() {
+			return netip.Addr{}, fmt.Errorf("link-local TCP peer addresses are not supported: %q", tcpAddress)
+		}
+		if !gnmiDialOutUsablePeerAddress(address) {
+			return netip.Addr{}, fmt.Errorf("TCP peer address must be global-unicast or loopback: %q", tcpAddress)
+		}
+		return address, nil
 	}
 	host, _, err := net.SplitHostPort(remote.Addr.String())
 	if err != nil {
@@ -448,9 +556,19 @@ func gnmiDialOutPeerIP(ctx context.Context) (netip.Addr, error) {
 		return netip.Addr{}, fmt.Errorf("parse peer IP: %w", err)
 	}
 	if address.Zone() != "" {
-		address = address.WithZone("")
+		return netip.Addr{}, fmt.Errorf("scoped TCP peer addresses are not supported: %q", host)
 	}
-	return address.Unmap(), nil
+	address = address.Unmap()
+	if address.IsMulticast() {
+		return netip.Addr{}, fmt.Errorf("TCP peer address must be global-unicast or loopback: %q", host)
+	}
+	if address.IsLinkLocalUnicast() || address.IsLinkLocalMulticast() {
+		return netip.Addr{}, fmt.Errorf("link-local TCP peer addresses are not supported: %q", host)
+	}
+	if !gnmiDialOutUsablePeerAddress(address) {
+		return netip.Addr{}, fmt.Errorf("TCP peer address must be global-unicast or loopback: %q", host)
+	}
+	return address, nil
 }
 
 type gnmiDialOutRateLimitedServerStream struct {

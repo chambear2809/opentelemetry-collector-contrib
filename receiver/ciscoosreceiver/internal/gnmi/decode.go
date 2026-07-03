@@ -1,12 +1,14 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package gnmi
+package gnmi // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/gnmi"
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"math"
 	"slices"
@@ -20,23 +22,116 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
 
-const maxJSONTypedValueBytes = 4 * 1024 * 1024
+const (
+	maxJSONTypedValueBytes          = 4 * 1024 * 1024
+	maxNotificationWireOperations   = 100_000
+	maxDecodedNotificationPoints    = 50_000
+	maxDecodedNotificationJSONNodes = 100_000
+	maxDecodedNotificationBytes     = 16 * 1024 * 1024
+)
+
+type notificationDecodeLimits struct {
+	maxWireOperations  int
+	maxPoints          int
+	maxJSONNodes       int
+	maxPathStringBytes int
+}
+
+func defaultNotificationDecodeLimits() notificationDecodeLimits {
+	return notificationDecodeLimits{
+		maxWireOperations:  maxNotificationWireOperations,
+		maxPoints:          maxDecodedNotificationPoints,
+		maxJSONNodes:       maxDecodedNotificationJSONNodes,
+		maxPathStringBytes: maxDecodedNotificationBytes,
+	}
+}
+
+type notificationDecodeBudget struct {
+	limits          notificationDecodeLimits
+	points          int
+	jsonNodes       int
+	pathStringBytes int
+}
+
+func (b *notificationDecodeBudget) reservePathStringBytes(amount int) error {
+	if amount < 0 || amount > b.limits.maxPathStringBytes-b.pathStringBytes {
+		return fmt.Errorf("decoded notification exceeds %d aggregate path/string bytes", b.limits.maxPathStringBytes)
+	}
+	b.pathStringBytes += amount
+	return nil
+}
+
+func (b *notificationDecodeBudget) reservePoint(path Path, value Value) error {
+	if b.points >= b.limits.maxPoints {
+		return fmt.Errorf("decoded notification exceeds %d points", b.limits.maxPoints)
+	}
+	pathBytes, err := validatePath(path)
+	if err != nil {
+		return err
+	}
+	valueBytes := 0
+	if value.Kind == ValueString {
+		valueBytes = len(value.String)
+	}
+	if err := b.reservePathStringBytes(pathBytes + valueBytes); err != nil {
+		return err
+	}
+	b.points++
+	return nil
+}
+
+func (b *notificationDecodeBudget) visitJSONNode() error {
+	if b.jsonNodes >= b.limits.maxJSONNodes {
+		return fmt.Errorf("decoded notification exceeds %d JSON nodes", b.limits.maxJSONNodes)
+	}
+	b.jsonNodes++
+	return nil
+}
 
 // DecodeNotification decodes one wire notification to canonical leaves. It is
 // intentionally schema-neutral: unsupported wire values are counted and
 // omitted, never converted into dynamically named metrics.
 func DecodeNotification(target string, notification *gnmipb.Notification, receipt time.Time) (DecodedNotification, DecodeStats, error) {
+	return decodeNotificationWithLimits(target, notification, receipt, defaultNotificationDecodeLimits())
+}
+
+func decodeNotificationWithLimits(
+	target string,
+	notification *gnmipb.Notification,
+	receipt time.Time,
+	limits notificationDecodeLimits,
+) (DecodedNotification, DecodeStats, error) {
 	var stats DecodeStats
 	if notification == nil {
 		return DecodedNotification{}, stats, errors.New("notification cannot be nil")
 	}
+	if limits.maxWireOperations <= 0 || limits.maxPoints <= 0 || limits.maxJSONNodes <= 0 || limits.maxPathStringBytes <= 0 {
+		return DecodedNotification{}, stats, errors.New("notification decode limits must be positive")
+	}
+	if len(notification.GetUpdate()) > limits.maxWireOperations || len(notification.GetDelete()) > limits.maxWireOperations-len(notification.GetUpdate()) {
+		return DecodedNotification{}, stats, fmt.Errorf("notification exceeds %d wire operations", limits.maxWireOperations)
+	}
+	budget := &notificationDecodeBudget{limits: limits}
 
-	prefix := PathFromProto(notification.GetPrefix())
+	prefix, prefixWireBytes, err := validatedPathFromProto(notification.GetPrefix())
+	if err != nil {
+		return DecodedNotification{}, stats, fmt.Errorf("decode prefix: %w", err)
+	}
+	if budgetErr := budget.reservePathStringBytes(prefixWireBytes); budgetErr != nil {
+		return DecodedNotification{}, stats, budgetErr
+	}
 	if target != "" {
 		prefix.Target = target
 	}
 	if prefix.Target == "" {
 		return DecodedNotification{}, stats, errors.New("notification target cannot be empty")
+	}
+	prefixBytes, err := validatePath(prefix)
+	if err != nil {
+		return DecodedNotification{}, stats, fmt.Errorf("decode prefix: %w", err)
+	}
+	if err := budget.reservePathStringBytes(prefixBytes); err != nil {
+		return DecodedNotification{}, stats, err
 	}
 
 	timestamp, valid := NormalizeTimestamp(notification.GetTimestamp(), receipt)
@@ -46,13 +141,26 @@ func DecodeNotification(target string, notification *gnmipb.Notification, receip
 	out := DecodedNotification{Prefix: prefix.Clone(), Timestamp: timestamp, Atomic: notification.GetAtomic()}
 
 	for _, deleted := range notification.GetDelete() {
-		relative := PathFromProto(deleted)
+		relative, relativeBytes, pathErr := validatedPathFromProto(deleted)
+		if pathErr != nil {
+			return DecodedNotification{}, stats, fmt.Errorf("decode delete: %w", pathErr)
+		}
+		if err := budget.reservePathStringBytes(relativeBytes); err != nil {
+			return DecodedNotification{}, stats, err
+		}
 		if target != "" {
 			relative.Target = target
 		}
-		full, err := JoinPaths(prefix, relative)
-		if err != nil {
-			return DecodedNotification{}, stats, fmt.Errorf("decode delete: %w", err)
+		fullBytes, pathErr := validateJoinedPath(prefix, relative)
+		if pathErr != nil {
+			return DecodedNotification{}, stats, fmt.Errorf("decode delete: %w", pathErr)
+		}
+		if err := budget.reservePathStringBytes(fullBytes); err != nil {
+			return DecodedNotification{}, stats, err
+		}
+		full, pathErr := JoinPaths(prefix, relative)
+		if pathErr != nil {
+			return DecodedNotification{}, stats, fmt.Errorf("decode delete: %w", pathErr)
 		}
 		out.Deletes = append(out.Deletes, full)
 	}
@@ -73,25 +181,48 @@ func DecodeNotification(target string, notification *gnmipb.Notification, receip
 			stats.UnmappedValues++
 			continue
 		}
-		relative := PathFromProto(update.GetPath())
+		relative, relativeBytes, pathErr := validatedPathFromProto(update.GetPath())
+		if pathErr != nil {
+			return DecodedNotification{}, stats, fmt.Errorf("decode update: %w", pathErr)
+		}
+		if err := budget.reservePathStringBytes(relativeBytes); err != nil {
+			return DecodedNotification{}, stats, err
+		}
 		if target != "" {
 			relative.Target = target
 		}
-		full, err := JoinPaths(prefix, relative)
-		if err != nil {
-			return DecodedNotification{}, stats, fmt.Errorf("decode update: %w", err)
+		fullBytes, pathErr := validateJoinedPath(prefix, relative)
+		if pathErr != nil {
+			return DecodedNotification{}, stats, fmt.Errorf("decode update: %w", pathErr)
 		}
-		if _, duplicate := seen[full.Key()]; duplicate {
+		// Reserve both the joined Path and the canonical key before allocating
+		// either. The exact key length is the value returned by validation.
+		if err := budget.reservePathStringBytes(fullBytes * 2); err != nil {
+			return DecodedNotification{}, stats, err
+		}
+		full, pathErr := JoinPaths(prefix, relative)
+		if pathErr != nil {
+			return DecodedNotification{}, stats, fmt.Errorf("decode update: %w", pathErr)
+		}
+		key := full.Key()
+		if _, duplicate := seen[key]; duplicate {
 			continue
 		}
-		seen[full.Key()] = struct{}{}
+		seen[key] = struct{}{}
 		resolved = append(resolved, resolvedUpdate{path: full, update: update})
 	}
 	for _, item := range slices.Backward(resolved) {
 		full := item.path
 		update := item.update
+		fullBytes, pathErr := validatePath(full)
+		if pathErr != nil {
+			return DecodedNotification{}, stats, fmt.Errorf("decode update: %w", pathErr)
+		}
+		if err := budget.reservePathStringBytes(fullBytes); err != nil {
+			return DecodedNotification{}, stats, err
+		}
 		out.Touched = append(out.Touched, full.Clone())
-		points, unmapped, err := decodeValue(full, update.GetVal(), timestamp)
+		points, unmapped, err := decodeValue(full, update.GetVal(), timestamp, budget)
 		stats.UnmappedValues += unmapped
 		if err != nil {
 			return DecodedNotification{}, stats, err
@@ -102,11 +233,14 @@ func DecodeNotification(target string, notification *gnmipb.Notification, receip
 }
 
 //nolint:staticcheck // gNMI still defines deprecated float and decimal wire variants that must be decoded.
-func decodeValue(path Path, typed *gnmipb.TypedValue, timestamp time.Time) ([]Point, int, error) {
+func decodeValue(path Path, typed *gnmipb.TypedValue, timestamp time.Time, budget *notificationDecodeBudget) ([]Point, int, error) {
 	if typed == nil {
 		return nil, 1, nil
 	}
 	appendScalar := func(value Value) ([]Point, int, error) {
+		if err := budget.reservePoint(path, value); err != nil {
+			return nil, 0, err
+		}
 		series, err := path.SplitLeaf()
 		if err != nil {
 			return nil, 1, nil
@@ -145,9 +279,9 @@ func decodeValue(path Path, typed *gnmipb.TypedValue, timestamp time.Time) ([]Po
 	case *gnmipb.TypedValue_AsciiVal:
 		return appendScalar(StringValue(value.AsciiVal))
 	case *gnmipb.TypedValue_JsonVal:
-		return decodeJSON(path, value.JsonVal, timestamp)
+		return decodeJSON(path, value.JsonVal, timestamp, budget)
 	case *gnmipb.TypedValue_JsonIetfVal:
-		return decodeJSON(path, value.JsonIetfVal, timestamp)
+		return decodeJSON(path, value.JsonIetfVal, timestamp, budget)
 	default:
 		// bytes, proto_bytes, leaf-lists, Any, and future value kinds require
 		// an explicit decoder and are never promoted to ad-hoc metrics.
@@ -155,9 +289,12 @@ func decodeValue(path Path, typed *gnmipb.TypedValue, timestamp time.Time) ([]Po
 	}
 }
 
-func decodeJSON(path Path, raw []byte, timestamp time.Time) ([]Point, int, error) {
+func decodeJSON(path Path, raw []byte, timestamp time.Time, budget *notificationDecodeBudget) ([]Point, int, error) {
 	if len(raw) > maxJSONTypedValueBytes {
 		return nil, 0, fmt.Errorf("decode JSON value: payload exceeds hard limit of %d bytes", maxJSONTypedValueBytes)
+	}
+	if err := validateJSONNodeCount(raw, budget.jsonNodes, budget.limits.maxJSONNodes); err != nil {
+		return nil, 0, fmt.Errorf("decode JSON value: %w", err)
 	}
 	var value any
 	// Validate nesting and node complexity with a streaming token pass before
@@ -167,11 +304,72 @@ func decodeJSON(path Path, raw []byte, timestamp time.Time) ([]Point, int, error
 		return nil, 0, fmt.Errorf("decode JSON value: %w", err)
 	}
 	var points []Point
-	unmapped := walkJSON(path, value, timestamp, &points)
-	return points, unmapped, nil
+	unmapped, err := walkJSON(path, value, timestamp, &points, budget)
+	return points, unmapped, err
 }
 
-func walkJSON(path Path, value any, timestamp time.Time, points *[]Point) int {
+func validateJSONNodeCount(raw []byte, current, maximum int) error {
+	if maximum <= current {
+		return fmt.Errorf("decoded notification exceeds %d JSON nodes", maximum)
+	}
+	type container struct {
+		object    bool
+		expectKey bool
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	containers := make([]container, 0, 8)
+	nodes := 0
+	completeValue := func() {
+		if len(containers) > 0 && containers[len(containers)-1].object {
+			containers[len(containers)-1].expectKey = true
+		}
+	}
+	for {
+		token, err := decoder.Token()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			// DecodeJSON below owns the detailed syntax diagnostic.
+			return nil
+		}
+		switch value := token.(type) {
+		case json.Delim:
+			switch value {
+			case '{':
+				nodes++
+				containers = append(containers, container{object: true, expectKey: true})
+			case '[':
+				nodes++
+				containers = append(containers, container{})
+			case '}', ']':
+				if len(containers) > 0 {
+					containers = containers[:len(containers)-1]
+				}
+				completeValue()
+			}
+		default:
+			if len(containers) > 0 {
+				current := &containers[len(containers)-1]
+				if current.object && current.expectKey {
+					current.expectKey = false
+					continue
+				}
+			}
+			nodes++
+			completeValue()
+		}
+		if nodes > maximum-current {
+			return fmt.Errorf("decoded notification exceeds %d JSON nodes", maximum)
+		}
+	}
+}
+
+func walkJSON(path Path, value any, timestamp time.Time, points *[]Point, budget *notificationDecodeBudget) (int, error) {
+	if err := budget.visitJSONNode(); err != nil {
+		return 0, err
+	}
 	switch value := value.(type) {
 	case map[string]any:
 		keys := make([]string, 0, len(value))
@@ -183,36 +381,70 @@ func walkJSON(path Path, value any, timestamp time.Time, points *[]Point) int {
 		for _, key := range keys {
 			// Keep RFC7951 module qualification in the element name. Origin
 			// remains the independent Path.Origin field.
-			unmapped += walkJSON(path.AppendElements(key), value[key], timestamp, points)
+			appendedBytes, err := validateAppendedPathElement(path, key, nil)
+			if err != nil {
+				return 0, fmt.Errorf("decode JSON path: %w", err)
+			}
+			if budgetErr := budget.reservePathStringBytes(appendedBytes); budgetErr != nil {
+				return 0, budgetErr
+			}
+			childUnmapped, err := walkJSON(path.AppendElements(key), value[key], timestamp, points, budget)
+			if err != nil {
+				return 0, err
+			}
+			unmapped += childUnmapped
 		}
-		return unmapped
+		return unmapped, nil
 	case []any:
 		unmapped := 0
 		for _, item := range value {
 			switch item := item.(type) {
 			case map[string]any:
-				unmapped += walkJSON(withJSONListKeys(path, item), item, timestamp, points)
+				keyed, keyedBytes, err := withJSONListKeys(path, item)
+				if err != nil {
+					return 0, err
+				}
+				if keyedBytes > 0 {
+					if budgetErr := budget.reservePathStringBytes(keyedBytes); budgetErr != nil {
+						return 0, budgetErr
+					}
+				}
+				itemUnmapped, err := walkJSON(keyed, item, timestamp, points, budget)
+				if err != nil {
+					return 0, err
+				}
+				unmapped += itemUnmapped
 			case []any:
-				unmapped += walkJSON(path, item, timestamp, points)
+				itemUnmapped, err := walkJSON(path, item, timestamp, points, budget)
+				if err != nil {
+					return 0, err
+				}
+				unmapped += itemUnmapped
 			default:
 				// A scalar JSON array is a leaf-list, not a scalar leaf.
+				if err := budget.visitJSONNode(); err != nil {
+					return 0, err
+				}
 				unmapped++
 			}
 		}
-		return unmapped
+		return unmapped, nil
 	case nil:
-		return 1
+		return 1, nil
 	default:
 		canonical, ok := canonicalJSONScalar(value)
 		if !ok {
-			return 1
+			return 1, nil
+		}
+		if err := budget.reservePoint(path, canonical); err != nil {
+			return 0, err
 		}
 		series, err := path.SplitLeaf()
 		if err != nil {
-			return 1
+			return 1, nil
 		}
 		*points = append(*points, Point{Series: series, Value: canonical, Timestamp: timestamp})
-		return 0
+		return 0, nil
 	}
 }
 
@@ -228,9 +460,9 @@ var jsonListKeyNames = map[string]struct{}{
 // withJSONListKeys derives stable list identity from common direct key leaves.
 // RFC7951-qualified key names are matched by their suffix and stored without
 // the module qualifier, matching their PathElem key representation.
-func withJSONListKeys(path Path, object map[string]any) Path {
+func withJSONListKeys(path Path, object map[string]any) (Path, int, error) {
 	if len(path.Elements) == 0 {
-		return path
+		return path, 0, nil
 	}
 	keys := map[string]string{}
 	names := make([]string, 0, len(object))
@@ -251,27 +483,46 @@ func withJSONListKeys(path Path, object map[string]any) Path {
 			continue
 		}
 		if value, ok := jsonKeyString(object[qualified]); ok {
-			if _, duplicate := keys[name]; !duplicate {
-				keys[name] = value
+			if previous, duplicate := keys[name]; duplicate {
+				if previous != value {
+					return Path{}, 0, fmt.Errorf("decode JSON path: conflicting values for normalized list key %q", name)
+				}
+				continue
 			}
+			if len(value) > maxPathKeyValueBytes {
+				return Path{}, 0, fmt.Errorf("decode JSON path: key %q value exceeds %d bytes", name, maxPathKeyValueBytes)
+			}
+			keys[name] = value
 		}
 	}
 	if len(keys) == 0 {
-		return path
+		return path, 0, nil
+	}
+	mergedKeys := make(map[string]string, len(path.Elements[len(path.Elements)-1].Keys)+len(keys))
+	maps.Copy(mergedKeys, path.Elements[len(path.Elements)-1].Keys)
+	for name, value := range keys {
+		if previous, exists := mergedKeys[name]; exists && previous != value {
+			return Path{}, 0, fmt.Errorf("decode JSON path: conflicting values for existing list key %q", name)
+		}
+		mergedKeys[name] = value
+	}
+	if len(mergedKeys) > maxPathKeysPerElement {
+		return Path{}, 0, fmt.Errorf("decode JSON path: element exceeds %d keys", maxPathKeysPerElement)
+	}
+	pathBytes, err := validateReplacedLastPathElement(path, mergedKeys)
+	if err != nil {
+		return Path{}, 0, fmt.Errorf("decode JSON path: %w", err)
 	}
 	out := path.Clone()
 	last := &out.Elements[len(out.Elements)-1]
-	if last.Keys == nil {
-		last.Keys = map[string]string{}
-	}
-	maps.Copy(last.Keys, keys)
-	return out
+	last.Keys = mergedKeys
+	return out, pathBytes, nil
 }
 
 func jsonKeyString(value any) (string, bool) {
 	switch value := value.(type) {
 	case string:
-		return value, value != ""
+		return value, true
 	case json.Number:
 		return value.String(), value.String() != ""
 	case bool:

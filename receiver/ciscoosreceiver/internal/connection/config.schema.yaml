@@ -3,7 +3,15 @@ $defs:
     description: AuthConfig represents authentication configuration
     type: object
     properties:
+      enable_password:
+        $ref: go.opentelemetry.io/collector/config/configopaque.string
+      insecure_skip_verify:
+        description: InsecureSkipVerify disables SSH host key verification. Dangerous in production; only use in isolated lab environments. Either this or KnownHostsFile is required.
+        type: boolean
       key_file:
+        type: string
+      known_hosts_file:
+        description: KnownHostsFile is the path to a known_hosts file used for SSH host key verification. Either KnownHostsFile or InsecureSkipVerify must be set.
         type: string
       password:
         $ref: go.opentelemetry.io/collector/config/configopaque.string

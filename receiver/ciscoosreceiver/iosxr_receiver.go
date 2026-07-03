@@ -84,7 +84,12 @@ func waitForDirectGNMIRetry(ctx context.Context, delay time.Duration) bool {
 	}
 }
 
-func newIOSXRMetricsReceiver(set receiver.Settings, conf *Config, next consumer.Metrics) (receiver.Metrics, error) {
+func newIOSXRMetricsReceiver(
+	set receiver.Settings,
+	conf *Config,
+	next consumer.Metrics,
+	legacyProcessing *legacyGNMIProcessingLimiter,
+) (receiver.Metrics, error) {
 	cfg := conf.IOSXR.withDefaults()
 	selector := newDeviceSelectionMatcher(conf.DeviceSelection)
 	var receivers []receiver.Metrics
@@ -99,12 +104,13 @@ func newIOSXRMetricsReceiver(set receiver.Settings, conf *Config, next consumer.
 		}
 		if len(targets) > 0 {
 			dialIn := &iosXRDialInReceiver{
-				settings: set,
-				config:   cfg,
-				targets:  targets,
-				consumer: next,
-				health:   &iosXRHealth{},
-				done:     make(chan struct{}),
+				settings:   set,
+				config:     cfg,
+				targets:    targets,
+				consumer:   next,
+				health:     &iosXRHealth{},
+				done:       make(chan struct{}),
+				processing: legacyProcessing,
 			}
 			receivers = append(receivers, dialIn)
 		}
@@ -146,13 +152,23 @@ func newIOSXRDialOutReceiver(set receiver.Settings, cfg IOSXRConfig, selector de
 		return nil, fmt.Errorf("create IOS XR dial-out receiver: %w", err)
 	}
 	yangCfg.ServerConfig = cfg.DialOut.ServerConfig
+	configureHardenedYangGRPCSecurity(yangCfg, cfg.DialOut.AllowedClients, cfg.DialOut.RateLimiting)
+	maxStreamsPerClient := effectiveGNMIDialOutMaxStreamsPerClient(
+		cfg.DialOut.MaxStreamsPerClient,
+		cfg.DialOut.MaxConcurrentStreams,
+	)
+	if admissionErr := configureHardenedYangGRPCStreamAdmission(yangCfg, maxStreamsPerClient); admissionErr != nil {
+		return nil, fmt.Errorf("configure IOS XR dial-out global stream admission: %w", admissionErr)
+	}
 	modulePaths := append([]string(nil), cfg.DialOut.ModulePaths...)
 	yangCfg.YANG.ModulePaths = modulePaths
 	middlewareID, middleware, err := configureGNMIDialOutSecurity(
 		&yangCfg.ServerConfig,
 		cfg.DialOut.AllowedClients,
-		effectiveGNMIDialOutMaxStreamsPerClient(cfg.DialOut.MaxStreamsPerClient, cfg.DialOut.MaxConcurrentStreams),
+		maxStreamsPerClient,
 		cfg.DialOut.RateLimiting,
+		cfg.DialOut.IdentityVerification,
+		cfg.DialOut.IdentityBindings,
 		set.Logger,
 		set.ID,
 		"iosxr",
@@ -173,11 +189,12 @@ func newIOSXRDialOutReceiver(set receiver.Settings, cfg IOSXRConfig, selector de
 }
 
 type iosXRDialInReceiver struct {
-	settings receiver.Settings
-	config   IOSXRConfig
-	targets  []IOSXRTargetConfig
-	consumer consumer.Metrics
-	health   *iosXRHealth
+	settings   receiver.Settings
+	config     IOSXRConfig
+	targets    []IOSXRTargetConfig
+	consumer   consumer.Metrics
+	health     *iosXRHealth
+	processing *legacyGNMIProcessingLimiter
 
 	mu     sync.Mutex
 	cancel context.CancelFunc
@@ -301,15 +318,16 @@ func (r *iosXRDialInReceiver) subscribeTargetAttempt(ctx context.Context, target
 	defer r.setTargetSubscriptionActive(ctx, target, false)
 
 	err := legacyGNMISession{
-		settings:         r.settings,
-		host:             r.host,
-		clientConfig:     target.ClientConfig,
-		username:         target.Credentials.Username,
-		password:         string(target.Credentials.Password),
-		skipCapabilities: target.SkipCapabilities,
-		pollInterval:     interval,
-		targetName:       target.Name,
-		onceCloseLog:     "IOS XR gNMI once close send failed",
+		settings:          r.settings,
+		host:              r.host,
+		clientConfig:      target.ClientConfig,
+		username:          target.Credentials.Username,
+		password:          string(target.Credentials.Password),
+		skipCapabilities:  target.SkipCapabilities,
+		pollInterval:      interval,
+		targetName:        target.Name,
+		onceCloseLog:      "IOS XR gNMI once close send failed",
+		responseAdmission: legacyGNMIResponseAdmission(r.processing),
 		onSubscribed: func() {
 			r.setTargetSubscriptionActive(ctx, target, true)
 		},
@@ -328,25 +346,7 @@ func (r *iosXRDialInReceiver) subscribeTargetAttempt(ctx context.Context, target
 			return buildIOSXRSubscribeRequest(target.Subscription, paths, encoding), nil
 		},
 		handleUpdate: func(ctx context.Context, notification *gnmi.Notification) error {
-			progressed.Store(true)
-			r.health.addTargetUpdates(target.Name, int64(len(notification.GetUpdate())+len(notification.GetDelete())))
-			md := decoder.decodeNotification(notification, iosXRTelemetryTransportDialIn)
-			if md.MetricCount() == 0 {
-				return nil
-			}
-			if r.config.MaxDatapointsPerBatch > 0 {
-				dropped := enforceIOSXRDatapointLimit(md, r.config.MaxDatapointsPerBatch)
-				if dropped > 0 {
-					r.health.addDroppedDatapoints(int64(dropped))
-				}
-			}
-			if err := r.consumer.ConsumeMetrics(ctx, md); err != nil {
-				r.health.addDroppedDatapoints(int64(md.DataPointCount()))
-				r.settings.Logger.Warn("Downstream consumer refused IOS XR gNMI metric batch; batch dropped",
-					zap.String("target", target.Name),
-					zap.Error(err))
-			}
-			return nil
+			return r.processNotification(ctx, target, &decoder, notification, &progressed)
 		},
 		handleSync: func() {
 			progressed.Store(true)
@@ -354,6 +354,35 @@ func (r *iosXRDialInReceiver) subscribeTargetAttempt(ctx context.Context, target
 		},
 	}.run(ctx)
 	return progressed.Load(), err
+}
+
+func (r *iosXRDialInReceiver) processNotification(
+	ctx context.Context,
+	target IOSXRTargetConfig,
+	decoder *iosXRGNMIUpdateDecoder,
+	notification *gnmi.Notification,
+	progressed *atomic.Bool,
+) error {
+	return r.processing.run(ctx, func() error {
+		r.health.addTargetUpdates(target.Name, int64(len(notification.GetUpdate())+len(notification.GetDelete())))
+		md := decoder.decodeNotification(notification, iosXRTelemetryTransportDialIn)
+		if md.MetricCount() == 0 {
+			progressed.Store(true)
+			return nil
+		}
+		if r.config.MaxDatapointsPerBatch > 0 {
+			dropped := enforceIOSXRDatapointLimit(md, r.config.MaxDatapointsPerBatch)
+			if dropped > 0 {
+				r.health.addDroppedDatapoints(int64(dropped))
+			}
+		}
+		if err := r.consumer.ConsumeMetrics(ctx, md); err != nil {
+			r.health.addDroppedDatapoints(int64(md.DataPointCount()))
+			return fmt.Errorf("deliver IOS XR gNMI metric batch for target %q: %w", target.Name, err)
+		}
+		progressed.Store(true)
+		return nil
+	})
 }
 
 func (r *iosXRDialInReceiver) setTargetSubscriptionActive(ctx context.Context, target IOSXRTargetConfig, active bool) {
@@ -374,7 +403,7 @@ func (r *iosXRDialInReceiver) emitTargetHealth(ctx context.Context, target IOSXR
 		platformFamily: target.PlatformFamily,
 		transport:      iosXRTelemetryTransportDialIn,
 	}, pcommon.NewTimestampFromTime(time.Now()))
-	if err := r.consumer.ConsumeMetrics(ctx, md); err != nil {
+	if err := r.processing.run(ctx, func() error { return r.consumer.ConsumeMetrics(ctx, md) }); err != nil && ctx.Err() == nil {
 		r.settings.Logger.Warn("IOS XR gNMI health delivery failed", zap.String("target", target.Name), zap.Error(err))
 	}
 }
@@ -437,25 +466,9 @@ func (r *iosXRDialInReceiver) recvLoop(ctx context.Context, target IOSXRTargetCo
 			if body.Update == nil {
 				continue
 			}
-			r.health.addTargetUpdates(target.Name, int64(len(body.Update.GetUpdate())+len(body.Update.GetDelete())))
-			md := decoder.decodeNotification(body.Update, iosXRTelemetryTransportDialIn)
-			if md.MetricCount() == 0 {
-				progressed.Store(true)
-				continue
+			if err := r.processNotification(ctx, target, &decoder, body.Update, progressed); err != nil {
+				return err
 			}
-			if r.config.MaxDatapointsPerBatch > 0 {
-				dropped := enforceIOSXRDatapointLimit(md, r.config.MaxDatapointsPerBatch)
-				if dropped > 0 {
-					r.health.addDroppedDatapoints(int64(dropped))
-				}
-			}
-			if err := r.consumer.ConsumeMetrics(ctx, md); err != nil {
-				r.health.addDroppedDatapoints(int64(md.DataPointCount()))
-				r.settings.Logger.Warn("Downstream consumer refused IOS XR gNMI metric batch; batch dropped",
-					zap.String("target", target.Name),
-					zap.Error(err))
-			}
-			progressed.Store(true)
 		case *gnmi.SubscribeResponse_SyncResponse:
 			if body.SyncResponse {
 				progressed.Store(true)
@@ -612,6 +625,15 @@ func trimIOSXRMetricDatapoints(metric pmetric.Metric, keep int) int {
 	case pmetric.MetricTypeSum:
 		dps := metric.Sum().DataPoints()
 		return trimIOSXRNumberDatapoints(dps, keep)
+	case pmetric.MetricTypeHistogram:
+		dps := metric.Histogram().DataPoints()
+		return trimIOSXRHistogramDatapoints(dps, keep)
+	case pmetric.MetricTypeExponentialHistogram:
+		dps := metric.ExponentialHistogram().DataPoints()
+		return trimIOSXRExponentialHistogramDatapoints(dps, keep)
+	case pmetric.MetricTypeSummary:
+		dps := metric.Summary().DataPoints()
+		return trimIOSXRSummaryDatapoints(dps, keep)
 	default:
 		return 0
 	}
@@ -631,12 +653,60 @@ func trimIOSXRNumberDatapoints(dps pmetric.NumberDataPointSlice, keep int) int {
 	return dropped
 }
 
+func trimIOSXRHistogramDatapoints(dps pmetric.HistogramDataPointSlice, keep int) int {
+	seen := 0
+	dropped := 0
+	dps.RemoveIf(func(pmetric.HistogramDataPoint) bool {
+		if seen >= keep {
+			dropped++
+			return true
+		}
+		seen++
+		return false
+	})
+	return dropped
+}
+
+func trimIOSXRExponentialHistogramDatapoints(dps pmetric.ExponentialHistogramDataPointSlice, keep int) int {
+	seen := 0
+	dropped := 0
+	dps.RemoveIf(func(pmetric.ExponentialHistogramDataPoint) bool {
+		if seen >= keep {
+			dropped++
+			return true
+		}
+		seen++
+		return false
+	})
+	return dropped
+}
+
+func trimIOSXRSummaryDatapoints(dps pmetric.SummaryDataPointSlice, keep int) int {
+	seen := 0
+	dropped := 0
+	dps.RemoveIf(func(pmetric.SummaryDataPoint) bool {
+		if seen >= keep {
+			dropped++
+			return true
+		}
+		seen++
+		return false
+	})
+	return dropped
+}
+
 func metricDatapointCount(metric pmetric.Metric) int {
 	switch metric.Type() {
 	case pmetric.MetricTypeGauge:
 		return metric.Gauge().DataPoints().Len()
 	case pmetric.MetricTypeSum:
 		return metric.Sum().DataPoints().Len()
+	case pmetric.MetricTypeHistogram:
+		return metric.Histogram().DataPoints().Len()
+	case pmetric.MetricTypeExponentialHistogram:
+		return metric.ExponentialHistogram().DataPoints().Len()
+	case pmetric.MetricTypeSummary:
+		return metric.Summary().DataPoints().Len()
 	default:
 		return 0
 	}

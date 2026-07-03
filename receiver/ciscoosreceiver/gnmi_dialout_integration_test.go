@@ -48,6 +48,11 @@ func TestGNMIDialOutNetworkPathDeliversNormalizedTelemetry(t *testing.T) {
 				cfg := defaultIOSXRConfig()
 				cfg.DialOut.NetAddr.Endpoint = endpoint
 				cfg.DialOut.AllowedClients = []string{"127.0.0.1"}
+				cfg.DialOut.IdentityVerification = gnmiDialOutIdentityRequired
+				cfg.DialOut.IdentityBindings = []GNMIDialOutIdentityBindingConfig{{
+					Sources: []string{"127.0.0.1"},
+					NodeIDs: []string{"router-1"},
+				}}
 				return newIOSXRDialOutReceiver(receivertest.NewNopSettings(componentmetadata.Type), cfg, deviceSelectionMatcher{}, next)
 			},
 		},
@@ -60,6 +65,11 @@ func TestGNMIDialOutNetworkPathDeliversNormalizedTelemetry(t *testing.T) {
 				cfg := defaultCatalyst9800Config()
 				cfg.DialOut.NetAddr.Endpoint = endpoint
 				cfg.DialOut.AllowedClients = []string{"127.0.0.1"}
+				cfg.DialOut.IdentityVerification = gnmiDialOutIdentityRequired
+				cfg.DialOut.IdentityBindings = []GNMIDialOutIdentityBindingConfig{{
+					Sources: []string{"127.0.0.1"},
+					NodeIDs: []string{"router-1"},
+				}}
 				return newCatalyst9800DialOutReceiver(receivertest.NewNopSettings(componentmetadata.Type), cfg, deviceSelectionMatcher{}, next)
 			},
 		},
@@ -73,7 +83,7 @@ func TestGNMIDialOutNetworkPathDeliversNormalizedTelemetry(t *testing.T) {
 			require.NoError(t, err)
 			startGNMIDialOutTestReceiver(t, rcvr)
 
-			err = sendRawGNMIDialOut(t, endpoint, rawMDTDialOutFrame("router-1", tt.encodingPath, "utilization", 42))
+			err = sendRawGNMIDialOut(t, endpoint, rawMDTDialOutFrame("router-1", tt.encodingPath, 42))
 			require.ErrorIs(t, err, io.EOF)
 			requireNormalizedDialOutMetrics(t, sink.AllMetrics(), tt.metricPrefix, tt.transport)
 		})
@@ -92,7 +102,7 @@ func TestGNMIDialOutNetworkPathEnforcesAuthorizationAndMessageRate(t *testing.T)
 		require.NoError(t, err)
 		startGNMIDialOutTestReceiver(t, rcvr)
 
-		err = sendRawGNMIDialOut(t, endpoint, []byte{1}, rawMDTDialOutFrame("router-1", "Cisco-IOS-XR-infra-statsd-oper:infra-statistics", "utilization", 42))
+		err = sendRawGNMIDialOut(t, endpoint, []byte{1}, rawMDTDialOutFrame("router-1", "Cisco-IOS-XR-infra-statsd-oper:infra-statistics", 42))
 		assert.Equal(t, codes.PermissionDenied, status.Code(err))
 		assert.Empty(t, sink.AllMetrics())
 	})
@@ -113,10 +123,69 @@ func TestGNMIDialOutNetworkPathEnforcesAuthorizationAndMessageRate(t *testing.T)
 		require.NoError(t, err)
 		startGNMIDialOutTestReceiver(t, rcvr)
 
-		frame := rawMDTDialOutFrame("router-1", "Cisco-IOS-XR-infra-statsd-oper:infra-statistics", "utilization", 42)
+		frame := rawMDTDialOutFrame("router-1", "Cisco-IOS-XR-infra-statsd-oper:infra-statistics", 42)
 		err = sendRawGNMIDialOut(t, endpoint, frame, frame)
 		assert.Equal(t, codes.ResourceExhausted, status.Code(err))
 		require.Len(t, sink.AllMetrics(), 1)
+	})
+}
+
+func TestGNMIDialOutNetworkPathEnforcesPayloadIdentity(t *testing.T) {
+	requireGNMIDialOutIntegrationRuntime(t)
+	newReceiver := func(t *testing.T, endpoint string, sink consumer.Metrics) receiver.Metrics {
+		t.Helper()
+		cfg := defaultIOSXRConfig()
+		cfg.DialOut.NetAddr.Endpoint = endpoint
+		cfg.DialOut.AllowedClients = []string{"127.0.0.1"}
+		cfg.DialOut.IdentityVerification = gnmiDialOutIdentityRequired
+		cfg.DialOut.IdentityBindings = []GNMIDialOutIdentityBindingConfig{{
+			Sources: []string{"127.0.0.1"},
+			NodeIDs: []string{"router-a", "router-b"},
+		}}
+		rcvr, err := newIOSXRDialOutReceiver(
+			receivertest.NewNopSettings(componentmetadata.Type),
+			cfg,
+			deviceSelectionMatcher{},
+			sink,
+		)
+		require.NoError(t, err)
+		return rcvr
+	}
+
+	t.Run("spoofed node ID is rejected before delivery", func(t *testing.T) {
+		endpoint := unusedGNMIDialOutEndpoint(t)
+		sink := &consumertest.MetricsSink{}
+		rcvr := newReceiver(t, endpoint, sink)
+		startGNMIDialOutTestReceiver(t, rcvr)
+
+		err := sendRawGNMIDialOut(
+			t,
+			endpoint,
+			rawMDTDialOutFrame("router-c", "Cisco-IOS-XR-infra-statsd-oper:infra-statistics", 42),
+		)
+		assert.Equal(t, codes.PermissionDenied, status.Code(err))
+		assert.Empty(t, sink.AllMetrics())
+	})
+
+	t.Run("node ID change terminates stream after first valid delivery", func(t *testing.T) {
+		endpoint := unusedGNMIDialOutEndpoint(t)
+		sink := &consumertest.MetricsSink{}
+		rcvr := newReceiver(t, endpoint, sink)
+		startGNMIDialOutTestReceiver(t, rcvr)
+
+		first := rawMDTDialOutFrame(
+			"router-a",
+			"Cisco-IOS-XR-infra-statsd-oper:infra-statistics",
+			42,
+		)
+		second := rawMDTDialOutFrame(
+			"router-b",
+			"Cisco-IOS-XR-infra-statsd-oper:infra-statistics",
+			43,
+		)
+		err := sendRawGNMIDialOut(t, endpoint, first, second)
+		assert.Equal(t, codes.PermissionDenied, status.Code(err))
+		require.Len(t, sink.AllMetrics(), 1, "only the first, bound identity may reach the consumer")
 	})
 }
 
@@ -163,8 +232,15 @@ func sendRawGNMIDialOut(t *testing.T, endpoint string, frames ...[]byte) error {
 	require.NoError(t, err)
 	for _, payload := range frames {
 		frame := gnmiDialOutRawFrame(payload)
-		if err := stream.SendMsg(&frame); err != nil {
-			return err
+		if sendErr := stream.SendMsg(&frame); sendErr != nil {
+			// gRPC may surface an already-received server status only on RecvMsg,
+			// while SendMsg reports EOF. Prefer the authoritative stream status so
+			// negative authorization tests do not depend on transport timing.
+			var response gnmiDialOutRawFrame
+			if recvErr := stream.RecvMsg(&response); recvErr != nil {
+				return recvErr
+			}
+			return sendErr
 		}
 	}
 	require.NoError(t, stream.CloseSend())
@@ -195,9 +271,9 @@ func (gnmiDialOutRawCodec) Unmarshal(data []byte, value any) error {
 
 func (gnmiDialOutRawCodec) Name() string { return "proto" }
 
-func rawMDTDialOutFrame(nodeID, encodingPath, fieldName string, value uint64) []byte {
+func rawMDTDialOutFrame(nodeID, encodingPath string, value uint64) []byte {
 	field := protowire.AppendTag(nil, 2, protowire.BytesType)
-	field = protowire.AppendString(field, fieldName)
+	field = protowire.AppendString(field, "utilization")
 	field = protowire.AppendTag(field, 8, protowire.VarintType)
 	field = protowire.AppendVarint(field, value)
 

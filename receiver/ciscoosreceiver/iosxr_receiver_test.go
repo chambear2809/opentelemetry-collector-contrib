@@ -27,6 +27,7 @@ import (
 	"google.golang.org/grpc/codes"
 	grpcmetadata "google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
 	componentmetadata "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
 )
@@ -173,7 +174,7 @@ func TestIOSXRDialInReceiverOnceRequiresCleanEOF(t *testing.T) {
 	assert.Equal(t, codes.PermissionDenied, status.Code(err))
 }
 
-func TestIOSXRDialInReceiverDropsConsumerRefusalWithoutReconnect(t *testing.T) {
+func TestIOSXRDialInReceiverReturnsConsumerRefusal(t *testing.T) {
 	fake := &fakeGNMIServer{
 		caps: &gnmi.CapabilityResponse{
 			SupportedModels:    []*gnmi.ModelData{{Name: "openconfig-interfaces"}},
@@ -203,7 +204,8 @@ func TestIOSXRDialInReceiverDropsConsumerRefusalWithoutReconnect(t *testing.T) {
 		Subscription: IOSXRSubscriptionConfig{Mode: iosXRSubscribeModeOnce},
 	}.withDefaults(cfg)
 
-	receiver.runTarget(t.Context(), target)
+	err := receiver.subscribeTarget(t.Context(), target)
+	require.ErrorContains(t, err, "refused")
 	snapshot := health.snapshot()
 	assert.Zero(t, snapshot.reconnects)
 	assert.Positive(t, snapshot.droppedDatapoints)
@@ -741,7 +743,18 @@ func (*singleUpdateGNMIClientStream) Trailer() grpcmetadata.MD         { return 
 func (*singleUpdateGNMIClientStream) CloseSend() error                 { return nil }
 func (s *singleUpdateGNMIClientStream) Context() context.Context       { return s.ctx }
 func (*singleUpdateGNMIClientStream) SendMsg(any) error                { return nil }
-func (*singleUpdateGNMIClientStream) RecvMsg(any) error                { return errors.New("unused") }
+func (s *singleUpdateGNMIClientStream) RecvMsg(value any) error {
+	response, err := s.Recv()
+	if err != nil {
+		return err
+	}
+	output, ok := value.(*gnmi.SubscribeResponse)
+	if !ok {
+		return errors.New("unexpected receive message type")
+	}
+	proto.Merge(output, response)
+	return nil
+}
 
 func testDirectGNMIUpdate() *gnmi.SubscribeResponse {
 	return &gnmi.SubscribeResponse{Response: &gnmi.SubscribeResponse_Update{Update: &gnmi.Notification{

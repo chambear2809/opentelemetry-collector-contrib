@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package ciscoosreceiver
+package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver"
 
 import (
 	"errors"
@@ -33,13 +33,15 @@ const (
 	gnmiModeOnce   = "once"
 	gnmiModePoll   = "poll"
 
-	// grpc-go allocates the complete protobuf before the receiver can apply its
-	// per-value decoder budgets. Keep a hard frame ceiling aligned with the
-	// receiver's other network payload limits to prevent multi-gigabyte
-	// allocation attempts from a device or compromised telemetry endpoint.
+	// grpc-go buffers the frame before the forced response codec can scan its
+	// wire complexity and build protobuf objects. Keep a hard frame ceiling
+	// aligned with the receiver's other network payload limits to prevent
+	// multi-gigabyte allocation attempts from a compromised telemetry endpoint.
 	gnmiMaxRecvMsgSizeMiB     = 16
 	gnmiMaxDatapointsPerChunk = 10_000
 	gnmiMaximumCachedSeries   = 500_000
+	gnmiMaximumTargets        = 256
+	gnmiMaximumInFlightMiB    = 512
 )
 
 var (
@@ -262,10 +264,11 @@ func (target GNMITargetConfig) withDefaults() GNMITargetConfig {
 }
 
 func (cfg *Config) validateGNMI() error {
-	if !cfg.GNMI.hasTargets() {
-		return nil
-	}
 	var err error
+	err = multierr.Append(err, cfg.validateGNMITelemetryResourceLimits())
+	if !cfg.GNMI.hasTargets() {
+		return err
+	}
 	defaults := defaultGNMIConfig()
 	maxChunk := cfg.GNMI.MaxDatapointsPerChunk
 	if maxChunk == 0 {
@@ -289,6 +292,8 @@ func (cfg *Config) validateGNMI() error {
 	names := map[string]int{}
 	endpoints := map[string]int{}
 	legacy := cfg.legacyGNMIEndpoints()
+	selector := newDeviceSelectionMatcher(cfg.DeviceSelection)
+	selectedTargets := 0
 	for i := range cfg.GNMI.Targets {
 		target := cfg.GNMI.Targets[i].withDefaults()
 		prefix := fmt.Sprintf("gnmi.targets[%d]", i)
@@ -313,9 +318,78 @@ func (cfg *Config) validateGNMI() error {
 			endpoints[endpoint] = i
 		}
 		err = multierr.Append(err, validateGNMITarget(prefix, target))
+		if selector.allows(sharedGNMITargetIdentity(target)) &&
+			target.MaxRecvMsgSizeMiB > 0 && target.MaxRecvMsgSizeMiB <= gnmiMaxRecvMsgSizeMiB &&
+			target.MaxStreams > 0 && target.MaxStreams <= 8 {
+			selectedTargets++
+		}
+	}
+	if maxSeries > 0 && selectedTargets > maxSeries {
+		err = multierr.Append(err, fmt.Errorf(
+			"gnmi.max_cached_series %d is smaller than the selected target count %d",
+			maxSeries,
+			selectedTargets,
+		))
 	}
 	err = multierr.Append(err, validateGNMIMetricContracts(cfg.GNMI.Targets))
 	return err
+}
+
+func (cfg *Config) validateGNMITelemetryResourceLimits() error {
+	targetDefinitions := uint64(len(cfg.GNMI.Targets)) +
+		uint64(len(cfg.IOSXR.DialIn.Targets)) +
+		uint64(len(cfg.Catalyst9800.DialIn.Targets))
+	if targetDefinitions > gnmiMaximumTargets {
+		return fmt.Errorf(
+			"gnmi.targets, ios_xr.dial_in.targets, and catalyst_9800.dial_in.targets must contain at most %d targets in total",
+			gnmiMaximumTargets,
+		)
+	}
+
+	selector := newDeviceSelectionMatcher(cfg.DeviceSelection)
+	aggregateInFlightMiB := uint64(0)
+	for i := range cfg.GNMI.Targets {
+		target := cfg.GNMI.Targets[i].withDefaults()
+		if selector.allows(sharedGNMITargetIdentity(target)) &&
+			target.MaxRecvMsgSizeMiB > 0 && target.MaxRecvMsgSizeMiB <= gnmiMaxRecvMsgSizeMiB &&
+			target.MaxStreams > 0 && target.MaxStreams <= 8 {
+			aggregateInFlightMiB += uint64(target.MaxRecvMsgSizeMiB) * uint64(target.MaxStreams)
+		}
+	}
+
+	for i := range cfg.IOSXR.DialIn.Targets {
+		if selector.allows(iosXRTargetIdentity(cfg.IOSXR.DialIn.Targets[i])) {
+			aggregateInFlightMiB += legacyGNMIMaxRecvMsgSizeMiB
+		}
+	}
+	for i := range cfg.Catalyst9800.DialIn.Targets {
+		if selector.allows(catalyst9800TargetIdentity(cfg.Catalyst9800.DialIn.Targets[i])) {
+			aggregateInFlightMiB += legacyGNMIMaxRecvMsgSizeMiB
+		}
+	}
+	if dialOut := cfg.IOSXR.withDefaults().DialOut; dialOut.Enabled &&
+		dialOut.MaxRecvMsgSizeMiB >= minimumGNMIDialOutReceiveSizeMiB &&
+		dialOut.MaxRecvMsgSizeMiB <= maximumGNMIDialOutReceiveSizeMiB &&
+		dialOut.MaxConcurrentStreams >= minimumGNMIDialOutStreams &&
+		dialOut.MaxConcurrentStreams <= maximumGNMIDialOutStreams {
+		aggregateInFlightMiB += uint64(dialOut.MaxRecvMsgSizeMiB) * uint64(dialOut.MaxConcurrentStreams)
+	}
+	if dialOut := cfg.Catalyst9800.withDefaults().DialOut; dialOut.Enabled &&
+		dialOut.MaxRecvMsgSizeMiB >= minimumGNMIDialOutReceiveSizeMiB &&
+		dialOut.MaxRecvMsgSizeMiB <= maximumGNMIDialOutReceiveSizeMiB &&
+		dialOut.MaxConcurrentStreams >= minimumGNMIDialOutStreams &&
+		dialOut.MaxConcurrentStreams <= maximumGNMIDialOutStreams {
+		aggregateInFlightMiB += uint64(dialOut.MaxRecvMsgSizeMiB) * uint64(dialOut.MaxConcurrentStreams)
+	}
+
+	if aggregateInFlightMiB > gnmiMaximumInFlightMiB {
+		return fmt.Errorf(
+			"selected gNMI dial-in targets and enabled dial-out servers require %d MiB of stream-by-frame capacity, exceeding the %d MiB receiver-wide limit",
+			aggregateInFlightMiB,
+			gnmiMaximumInFlightMiB,
+		)
+	}
+	return nil
 }
 
 func validateGNMITarget(prefix string, target GNMITargetConfig) error {
@@ -495,6 +569,7 @@ func validateGNMICustomSubscriptions(prefix string, target GNMITargetConfig) err
 				mappingValid = false
 			}
 			pathElements := map[string]struct{}{}
+			pathElementCounts := map[string]int{}
 			configuredPathKeys := map[string]struct{}{}
 			if path != "" && !gnmiPathIncludesOrigin(path, subscription.Origin) {
 				parsed, parseErr := internalgnmi.ParsePath("", subscription.Origin, path)
@@ -507,6 +582,7 @@ func validateGNMICustomSubscriptions(prefix string, target GNMITargetConfig) err
 				} else {
 					for _, element := range series.Elements {
 						pathElements[element.Name] = struct{}{}
+						pathElementCounts[element.Name]++
 						for key := range element.Keys {
 							configuredPathKeys[element.Name+"."+key] = struct{}{}
 						}
@@ -523,6 +599,9 @@ func validateGNMICustomSubscriptions(prefix string, target GNMITargetConfig) err
 				}
 				if _, exists := pathElements[element]; !exists {
 					err = multierr.Append(err, fmt.Errorf("%s.path_keys selector %q references an element not present in path", mappingPrefix, source))
+					mappingValid = false
+				} else if pathElementCounts[element] > 1 {
+					err = multierr.Append(err, fmt.Errorf("%s.path_keys selector %q is ambiguous because element %q occurs more than once in path", mappingPrefix, source, element))
 					mappingValid = false
 				}
 				if _, duplicate := mappedAttributes[attribute]; duplicate {
@@ -571,9 +650,15 @@ func isBuiltinGNMIProfileName(name string) bool {
 }
 
 func gnmiPathIncludesOrigin(path, origin string) bool {
+	if origin == "" {
+		return false
+	}
 	path = strings.TrimLeft(path, "/")
-	first, _, hasChild := strings.Cut(path, "/")
-	return origin != "" && hasChild && strings.HasSuffix(first, ":")
+	first, _, _ := strings.Cut(path, "/")
+	// Only the element name can carry an RFC7951 module/origin prefix. A
+	// colon inside a list-key value (for example an IPv6 address) is data.
+	name, _, _ := strings.Cut(first, "[")
+	return strings.Contains(name, ":")
 }
 
 type gnmiConfigMetricContract struct {

@@ -72,6 +72,8 @@ func createMetricsReceiver(
 	conf := cfg.(*Config)
 	selector := newDeviceSelectionMatcher(conf.DeviceSelection)
 	consumer = newMetricFilteringConsumer(newAbsoluteCounterTrackingConsumer(consumer), conf)
+	gnmiResponseAdmission := newGNMIResponseAdmission()
+	legacyGNMIProcessing := newLegacyGNMIProcessingLimiter(gnmiResponseAdmission)
 
 	var receivers []receiver.Metrics
 	for i := range conf.Devices {
@@ -156,7 +158,7 @@ func createMetricsReceiver(
 		if len(conf.Catalyst9800.DialIn.Targets) > 0 {
 			set.Logger.Warn("catalyst_9800.dial_in is deprecated; migrate the target to gnmi.targets before the next fork release")
 		}
-		rcvr, err := newCatalyst9800MetricsReceiver(set, conf, consumer)
+		rcvr, err := newCatalyst9800MetricsReceiver(set, conf, consumer, legacyGNMIProcessing)
 		if err != nil {
 			return nil, err
 		}
@@ -207,7 +209,7 @@ func createMetricsReceiver(
 		if len(conf.IOSXR.DialIn.Targets) > 0 {
 			set.Logger.Warn("ios_xr.dial_in is deprecated; migrate the target to gnmi.targets before the next fork release")
 		}
-		rcvr, err := newIOSXRMetricsReceiver(set, conf, consumer)
+		rcvr, err := newIOSXRMetricsReceiver(set, conf, consumer, legacyGNMIProcessing)
 		if err != nil {
 			return nil, err
 		}
@@ -215,7 +217,7 @@ func createMetricsReceiver(
 	}
 
 	if conf.GNMI.hasTargets() {
-		rcvr, err := newSharedGNMIReceiver(set, conf, consumer)
+		rcvr, err := newSharedGNMIReceiver(set, conf, consumer, gnmiResponseAdmission)
 		if err != nil {
 			return nil, err
 		}

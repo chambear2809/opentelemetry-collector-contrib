@@ -4,6 +4,7 @@
 package ciscoosreceiver
 
 import (
+	"fmt"
 	"math"
 	"path/filepath"
 	"testing"
@@ -269,6 +270,12 @@ func TestGNMICustomSubscriptionValidation(t *testing.T) {
 		{name: "origin kept separate", mutate: func(mapping *GNMIMetricMappingConfig) {
 			mapping.Path = "openconfig-platform:/components/component/state"
 		}, errContains: "origin-free path"},
+		{name: "qualified first element", mutate: func(mapping *GNMIMetricMappingConfig) {
+			mapping.Path = "openconfig-platform:components/component/state/value"
+		}, errContains: "origin-free path"},
+		{name: "qualified single element", mutate: func(mapping *GNMIMetricMappingConfig) {
+			mapping.Path = "openconfig-platform:components"
+		}, errContains: "origin-free path"},
 		{name: "metric name", mutate: func(mapping *GNMIMetricMappingConfig) { mapping.MetricName = "" }, errContains: "metric_name"},
 		{name: "dynamic info", mutate: func(mapping *GNMIMetricMappingConfig) { mapping.MetricName = "cisco.custom_info" }, errContains: "non-info"},
 		{name: "description", mutate: func(mapping *GNMIMetricMappingConfig) { mapping.Description = "" }, errContains: "description and UCUM"},
@@ -284,6 +291,9 @@ func TestGNMICustomSubscriptionValidation(t *testing.T) {
 		{name: "unknown path key element", mutate: func(mapping *GNMIMetricMappingConfig) {
 			mapping.PathKeys = map[string]string{"missing.name": "hw.name"}
 		}, errContains: "not present in path"},
+		{name: "ambiguous repeated path key element", mutate: func(mapping *GNMIMetricMappingConfig) {
+			mapping.Path = "components/component/children/component/state/temperature/instant"
+		}, errContains: "occurs more than once"},
 		{name: "duplicate path key attribute", mutate: func(mapping *GNMIMetricMappingConfig) {
 			mapping.PathKeys = map[string]string{"component.name": "hw.name", "components.name": "hw.name"}
 		}, errContains: "more than one selector"},
@@ -325,6 +335,12 @@ func TestGNMICustomSubscriptionValidation(t *testing.T) {
 			require.ErrorContains(t, cfg.validateGNMI(), "not supported on ios_xe")
 		})
 	}
+}
+
+func TestGNMIPathIncludesOriginIgnoresColonInListKeyValue(t *testing.T) {
+	assert.False(t, gnmiPathIncludesOrigin("neighbors/neighbor[address=2001:db8::1]/state/value", "openconfig-bgp"))
+	assert.True(t, gnmiPathIncludesOrigin("openconfig-bgp:neighbors/neighbor/state/value", "openconfig-bgp"))
+	assert.False(t, gnmiPathIncludesOrigin("openconfig-bgp:neighbors/neighbor/state/value", ""))
 }
 
 func TestGNMIRejectsConflictingMetricContracts(t *testing.T) {
@@ -385,6 +401,34 @@ func TestGNMIHardResourceLimits(t *testing.T) {
 	cfg.GNMI.MaxDatapointsPerChunk = gnmiMaxDatapointsPerChunk
 	cfg.GNMI.MaxCachedSeries++
 	require.ErrorContains(t, cfg.validateGNMI(), "max_cached_series must not exceed 500000")
+}
+
+func TestGNMIReceiverWideTargetAndFrameLimits(t *testing.T) {
+	buildTargets := func(count, recvMiB, streams int) []GNMITargetConfig {
+		base := validGNMITestConfig().GNMI.Targets[0]
+		targets := make([]GNMITargetConfig, 0, count)
+		for index := range count {
+			target := base
+			target.Name = fmt.Sprintf("edge-%d", index)
+			target.Endpoint = fmt.Sprintf("edge-%d.example.test:57400", index)
+			target.MaxRecvMsgSizeMiB = recvMiB
+			target.MaxStreams = streams
+			targets = append(targets, target)
+		}
+		return targets
+	}
+
+	cfg := validGNMITestConfig()
+	cfg.GNMI.Targets = buildTargets(8, 16, 4)
+	require.NoError(t, cfg.validateGNMI(), "eight default-sized targets exactly fit the aggregate frame limit")
+	cfg.GNMI.Targets = buildTargets(9, 16, 4)
+	require.ErrorContains(t, cfg.validateGNMI(), "exceeding the 512 MiB receiver-wide limit")
+	cfg.DeviceSelection.Include.HostNames = []string{"edge-0"}
+	require.NoError(t, cfg.validateGNMI(), "receiver-wide frame accounting must include only selected targets")
+
+	cfg = validGNMITestConfig()
+	cfg.GNMI.Targets = buildTargets(gnmiMaximumTargets+1, 1, 1)
+	require.ErrorContains(t, cfg.validateGNMI(), "must contain at most 256 targets in total")
 }
 
 func TestGNMIUCUMValidation(t *testing.T) {

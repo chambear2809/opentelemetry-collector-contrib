@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package gnmi
+package gnmi // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/gnmi"
 
 import (
 	"errors"
@@ -10,6 +10,14 @@ import (
 	"strings"
 
 	gnmipb "github.com/openconfig/gnmi/proto/gnmi"
+)
+
+const (
+	maxPathDepth          = 128
+	maxPathNameBytes      = 256
+	maxPathKeysPerElement = 64
+	maxPathKeyValueBytes  = 4 * 1024
+	maxCanonicalPathBytes = 64 * 1024
 )
 
 // ParsePath parses path elements while taking target and origin as distinct
@@ -32,6 +40,9 @@ func ParsePath(target, origin, raw string) (Path, error) {
 			return Path{}, fmt.Errorf("invalid path element %q: %w", part, err)
 		}
 		out.Elements = append(out.Elements, elem)
+	}
+	if _, err := validatePath(out); err != nil {
+		return Path{}, err
 	}
 	return out, nil
 }
@@ -60,6 +71,227 @@ func PathFromProto(path *gnmipb.Path) Path {
 		out.Elements = append(out.Elements, PathElem{Name: name})
 	}
 	return out
+}
+
+// validatedPathFromProto rejects unsafe wire paths before cloning their maps
+// or retaining any of their strings. PathFromProto remains available for
+// trusted, already-bounded internal round trips.
+func validatedPathFromProto(path *gnmipb.Path) (Path, int, error) {
+	bytes, err := validateProtoPath(path)
+	if err != nil {
+		return Path{}, 0, err
+	}
+	return PathFromProto(path), bytes, nil
+}
+
+// validateProtoPath mirrors PathFromProto's Elem-over-Element precedence while
+// operating directly on protobuf-owned data. This must run before map cloning.
+//
+//nolint:staticcheck // Element is deprecated but remains part of the supported gNMI wire format.
+func validateProtoPath(path *gnmipb.Path) (int, error) {
+	if path == nil {
+		return canonicalPathFixedBytes("", ""), nil
+	}
+	bytes := canonicalPathFixedBytes(path.GetTarget(), path.GetOrigin())
+	if bytes > maxCanonicalPathBytes {
+		return 0, fmt.Errorf("path exceeds %d canonical bytes", maxCanonicalPathBytes)
+	}
+	if len(path.GetElem()) > 0 {
+		if len(path.GetElem()) > maxPathDepth {
+			return 0, fmt.Errorf("path exceeds %d elements", maxPathDepth)
+		}
+		for _, elem := range path.GetElem() {
+			if elem == nil {
+				continue
+			}
+			var err error
+			bytes, err = addValidatedPathElementBytes(bytes, elem.GetName(), elem.GetKey())
+			if err != nil {
+				return 0, err
+			}
+		}
+		return bytes, nil
+	}
+	if len(path.GetElement()) > maxPathDepth {
+		return 0, fmt.Errorf("path exceeds %d elements", maxPathDepth)
+	}
+	for _, name := range path.GetElement() {
+		var err error
+		bytes, err = addValidatedPathElementBytes(bytes, name, nil)
+		if err != nil {
+			return 0, err
+		}
+	}
+	return bytes, nil
+}
+
+// validatePath returns the exact number of bytes Path.Key will allocate for a
+// canonical path. It performs no cloning and never calls Path.Key itself.
+func validatePath(path Path) (int, error) {
+	if len(path.Elements) > maxPathDepth {
+		return 0, fmt.Errorf("path exceeds %d elements", maxPathDepth)
+	}
+	bytes := canonicalPathFixedBytes(path.Target, path.Origin)
+	if bytes > maxCanonicalPathBytes {
+		return 0, fmt.Errorf("path exceeds %d canonical bytes", maxCanonicalPathBytes)
+	}
+	for _, elem := range path.Elements {
+		var err error
+		bytes, err = addValidatedPathElementBytes(bytes, elem.Name, elem.Keys)
+		if err != nil {
+			return 0, err
+		}
+	}
+	return bytes, nil
+}
+
+// validateSeries applies the same limits without constructing Series.Path,
+// which would otherwise clone every key map before validation.
+func validateSeries(series Series) (int, error) {
+	if len(series.Elements)+1 > maxPathDepth {
+		return 0, fmt.Errorf("path exceeds %d elements", maxPathDepth)
+	}
+	bytes := canonicalPathFixedBytes(series.Target, series.Origin)
+	if bytes > maxCanonicalPathBytes {
+		return 0, fmt.Errorf("path exceeds %d canonical bytes", maxCanonicalPathBytes)
+	}
+	for _, elem := range series.Elements {
+		var err error
+		bytes, err = addValidatedPathElementBytes(bytes, elem.Name, elem.Keys)
+		if err != nil {
+			return 0, err
+		}
+	}
+	return addValidatedPathElementBytes(bytes, series.Leaf, nil)
+}
+
+// ValidatePath verifies that an already-canonical path fits the same depth,
+// element, key, and retained-key byte limits enforced during wire decoding.
+func ValidatePath(path Path) error {
+	_, err := validatePath(path)
+	return err
+}
+
+// ValidateSeries verifies an already-canonical source series without cloning
+// its element key maps.
+func ValidateSeries(series Series) error {
+	_, err := validateSeries(series)
+	return err
+}
+
+func canonicalPathFixedBytes(target, origin string) int {
+	return canonicalKeyPartBytes(target) + canonicalKeyPartBytes(origin)
+}
+
+func addValidatedPathElementBytes(current int, name string, keys map[string]string) (int, error) {
+	if name == "" {
+		return 0, errors.New("path element name cannot be empty")
+	}
+	if len(name) > maxPathNameBytes {
+		return 0, fmt.Errorf("path element name exceeds %d bytes", maxPathNameBytes)
+	}
+	if len(keys) > maxPathKeysPerElement {
+		return 0, fmt.Errorf("path element %q exceeds %d keys", name, maxPathKeysPerElement)
+	}
+	current += canonicalKeyPartBytes(name)
+	for key, value := range keys {
+		if key == "" {
+			return 0, fmt.Errorf("path element %q contains an empty key name", name)
+		}
+		if len(key) > maxPathNameBytes {
+			return 0, fmt.Errorf("path key name exceeds %d bytes", maxPathNameBytes)
+		}
+		if len(value) > maxPathKeyValueBytes {
+			return 0, fmt.Errorf("path key %q value exceeds %d bytes", key, maxPathKeyValueBytes)
+		}
+		current += canonicalKeyPartBytes(key) + canonicalKeyPartBytes(value)
+		if current > maxCanonicalPathBytes {
+			return 0, fmt.Errorf("path exceeds %d canonical bytes", maxCanonicalPathBytes)
+		}
+	}
+	// Path.Key writes an empty part after every element to delimit its key set.
+	current += canonicalKeyPartBytes("")
+	if current > maxCanonicalPathBytes {
+		return 0, fmt.Errorf("path exceeds %d canonical bytes", maxCanonicalPathBytes)
+	}
+	return current, nil
+}
+
+func canonicalKeyPartBytes(value string) int {
+	length := len(value)
+	digits := 1
+	for remaining := length; remaining >= 10; remaining /= 10 {
+		digits++
+	}
+	return digits + 1 + length
+}
+
+// validateJoinedPath checks a combined canonical path without cloning either
+// side's key maps.
+func validateJoinedPath(prefix, relative Path) (int, error) {
+	if prefix.Target != "" && relative.Target != "" && prefix.Target != relative.Target {
+		return 0, fmt.Errorf("conflicting path targets %q and %q", prefix.Target, relative.Target)
+	}
+	if prefix.Origin != "" && relative.Origin != "" && prefix.Origin != relative.Origin {
+		return 0, fmt.Errorf("conflicting path origins %q and %q", prefix.Origin, relative.Origin)
+	}
+	target := prefix.Target
+	if relative.Target != "" {
+		target = relative.Target
+	}
+	origin := prefix.Origin
+	if relative.Origin != "" {
+		origin = relative.Origin
+	}
+	if len(prefix.Elements)+len(relative.Elements) > maxPathDepth {
+		return 0, fmt.Errorf("path exceeds %d elements", maxPathDepth)
+	}
+	bytes := canonicalPathFixedBytes(target, origin)
+	if bytes > maxCanonicalPathBytes {
+		return 0, fmt.Errorf("path exceeds %d canonical bytes", maxCanonicalPathBytes)
+	}
+	for _, elements := range [][]PathElem{prefix.Elements, relative.Elements} {
+		for _, elem := range elements {
+			var err error
+			bytes, err = addValidatedPathElementBytes(bytes, elem.Name, elem.Keys)
+			if err != nil {
+				return 0, err
+			}
+		}
+	}
+	return bytes, nil
+}
+
+func validateAppendedPathElement(path Path, name string, keys map[string]string) (int, error) {
+	if len(path.Elements)+1 > maxPathDepth {
+		return 0, fmt.Errorf("path exceeds %d elements", maxPathDepth)
+	}
+	bytes, err := validatePath(path)
+	if err != nil {
+		return 0, err
+	}
+	return addValidatedPathElementBytes(bytes, name, keys)
+}
+
+func validateReplacedLastPathElement(path Path, keys map[string]string) (int, error) {
+	if len(path.Elements) == 0 {
+		return 0, errors.New("path has no element to replace")
+	}
+	bytes := canonicalPathFixedBytes(path.Target, path.Origin)
+	if bytes > maxCanonicalPathBytes {
+		return 0, fmt.Errorf("path exceeds %d canonical bytes", maxCanonicalPathBytes)
+	}
+	for index, elem := range path.Elements {
+		if index == len(path.Elements)-1 {
+			elem.Keys = keys
+		}
+		var err error
+		bytes, err = addValidatedPathElementBytes(bytes, elem.Name, elem.Keys)
+		if err != nil {
+			return 0, err
+		}
+	}
+	return bytes, nil
 }
 
 // ToProto returns a deep protobuf representation of the canonical path.

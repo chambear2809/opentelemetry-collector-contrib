@@ -93,6 +93,10 @@ type Catalyst9800DialOutConfig struct {
 
 	Enabled        bool     `mapstructure:"enabled"`
 	AllowedClients []string `mapstructure:"allowed_clients"`
+	// IdentityVerification controls whether source-to-node identity bindings
+	// are enforced for every MDT message. Valid values are legacy and required.
+	IdentityVerification string                             `mapstructure:"identity_verification"`
+	IdentityBindings     []GNMIDialOutIdentityBindingConfig `mapstructure:"identity_bindings"`
 	// MaxStreamsPerClient bounds concurrent dial-out streams from one source IP.
 	// Zero selects the smaller of 16 and MaxConcurrentStreams.
 	MaxStreamsPerClient uint32                              `mapstructure:"max_streams_per_client"`
@@ -121,14 +125,15 @@ func defaultCatalyst9800Config() Catalyst9800Config {
 	server.NetAddr.Endpoint = "localhost:57501"
 	server.NetAddr.Transport = "tcp"
 	server.MaxRecvMsgSizeMiB = 4
-	server.MaxConcurrentStreams = 100
+	server.MaxConcurrentStreams = defaultGNMIDialOutStreams
 	server.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault().Time = 30 * time.Second
 	server.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault().Timeout = 10 * time.Second
 
 	return Catalyst9800Config{
 		PathGroups: defaultCatalyst9800PathGroups(),
 		DialOut: Catalyst9800DialOutConfig{
-			ServerConfig: server,
+			ServerConfig:         server,
+			IdentityVerification: gnmiDialOutIdentityLegacy,
 			RateLimiting: yanggrpcreceiver.RateLimitingConfig{
 				RequestsPerSecond: 100,
 				BurstSize:         10,
@@ -248,6 +253,8 @@ func (cfg *Config) validateCatalyst9800() error {
 			wlc.DialOut.AllowedClients,
 			wlc.DialOut.MaxStreamsPerClient,
 			wlc.DialOut.RateLimiting,
+			wlc.DialOut.IdentityVerification,
+			wlc.DialOut.IdentityBindings,
 		); validationErr != nil {
 			err = multierr.Append(err, fmt.Errorf("catalyst_9800.dial_out: %w", validationErr))
 		}
@@ -276,6 +283,9 @@ func (cfg Catalyst9800Config) withDefaults() Catalyst9800Config {
 	}
 	if cfg.DialOut.MaxStreamsPerClient == 0 {
 		cfg.DialOut.MaxStreamsPerClient = effectiveGNMIDialOutMaxStreamsPerClient(0, cfg.DialOut.MaxConcurrentStreams)
+	}
+	if cfg.DialOut.IdentityVerification == "" {
+		cfg.DialOut.IdentityVerification = defaults.DialOut.IdentityVerification
 	}
 	for i := range cfg.DialIn.Targets {
 		cfg.DialIn.Targets[i] = cfg.DialIn.Targets[i].withDefaults(cfg)

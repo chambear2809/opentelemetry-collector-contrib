@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package httpclient contains safety helpers shared by the Cisco REST clients.
-package httpclient
+package httpclient // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 
 import (
 	"bytes"

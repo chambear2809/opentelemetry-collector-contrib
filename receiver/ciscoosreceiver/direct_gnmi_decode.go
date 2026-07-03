@@ -1,10 +1,11 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package ciscoosreceiver
+package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver"
 
 import (
 	"math"
+	"strconv"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -151,7 +152,7 @@ func (b *directGNMIDecodeBudget) reserveDatapoint(name string, attrs map[string]
 	attributeCount := 0
 	attributeBytes := 0
 	for key, value := range attrs {
-		if value == "" {
+		if (value == "" && !isDirectGNMIIdentityAttribute(key)) || (extraKey != "" && key == extraKey) {
 			continue
 		}
 		if !b.validAttribute(key, value) {
@@ -166,9 +167,7 @@ func (b *directGNMIDecodeBudget) reserveDatapoint(name string, attrs map[string]
 			b.drop(false)
 			return false
 		}
-		if existing, ok := attrs[extraKey]; !ok || existing == "" {
-			attributeCount++
-		}
+		attributeCount++
 		attributeBytes += len(extraKey) + len(extraValue)
 	}
 	if attributeCount > b.limits.maxAttributes {
@@ -242,9 +241,10 @@ func (b *directGNMIDecodeBudget) validNumber(value metricNumber) bool {
 }
 
 type indexedMetricBuilder struct {
-	scope   pmetric.ScopeMetrics
-	streams map[metricStreamIdentity]pmetric.Metric
-	budget  *directGNMIDecodeBudget
+	scope       pmetric.ScopeMetrics
+	streams     map[metricStreamIdentity]pmetric.Metric
+	budget      *directGNMIDecodeBudget
+	finalBudget *finalDatapointBudget
 }
 
 func newIndexedMetricBuilder(scope pmetric.ScopeMetrics, budget *directGNMIDecodeBudget) *indexedMetricBuilder {
@@ -252,7 +252,7 @@ func newIndexedMetricBuilder(scope pmetric.ScopeMetrics, budget *directGNMIDecod
 	metrics := scope.Metrics()
 	for i := 0; i < metrics.Len(); i++ {
 		metric := metrics.At(i)
-		identity := metricStreamIdentity{name: metric.Name(), metricType: metric.Type()}
+		identity := metricStreamIdentityFromMetric(metric)
 		if _, exists := streams[identity]; !exists {
 			streams[identity] = metric
 		}
@@ -260,13 +260,29 @@ func newIndexedMetricBuilder(scope pmetric.ScopeMetrics, budget *directGNMIDecod
 	return &indexedMetricBuilder{scope: scope, streams: streams, budget: budget}
 }
 
+func newFinalIndexedMetricBuilder(scope pmetric.ScopeMetrics, budget *finalDatapointBudget) *indexedMetricBuilder {
+	builder := newIndexedMetricBuilder(scope, nil)
+	builder.finalBudget = budget
+	return builder
+}
+
 func (b *indexedMetricBuilder) getOrCreate(name string, metricType pmetric.MetricType) pmetric.Metric {
-	identity := metricStreamIdentity{name: name, metricType: metricType}
+	return b.getOrCreateWithMetadata(name, metricType, "", "")
+}
+
+func (b *indexedMetricBuilder) getOrCreateWithMetadata(name string, metricType pmetric.MetricType, unit, description string) pmetric.Metric {
+	identity := metricStreamIdentity{name: name, metricType: metricType, unit: unit, description: description}
+	if metricType == pmetric.MetricTypeSum {
+		identity.aggregationTemporality = pmetric.AggregationTemporalityCumulative
+		identity.monotonic = true
+	}
 	if metric, ok := b.streams[identity]; ok {
 		return metric
 	}
 	metric := b.scope.Metrics().AppendEmpty()
 	metric.SetName(name)
+	metric.SetUnit(unit)
+	metric.SetDescription(description)
 	switch metricType {
 	case pmetric.MetricTypeGauge:
 		metric.SetEmptyGauge()
@@ -280,12 +296,19 @@ func (b *indexedMetricBuilder) getOrCreate(name string, metricType pmetric.Metri
 }
 
 func (b *indexedMetricBuilder) appendNumber(name string, metricType pmetric.MetricType, value metricNumber, ts pcommon.Timestamp, attrs map[string]string) bool {
+	return b.appendNumberWithUnit(name, metricType, value, ts, attrs, "")
+}
+
+func (b *indexedMetricBuilder) appendNumberWithUnit(name string, metricType pmetric.MetricType, value metricNumber, ts pcommon.Timestamp, attrs map[string]string, unit string) bool {
 	if b.budget != nil {
 		if !b.budget.validNumber(value) || !b.budget.reserveDatapoint(name, attrs, "", "") {
 			return false
 		}
 	}
-	metric := b.getOrCreate(name, metricType)
+	if b.finalBudget != nil && !b.finalBudget.reserveAliasStringDatapoint(attrs, "", "") {
+		return false
+	}
+	metric := b.getOrCreateWithMetadata(name, metricType, unit, "")
 	var dp pmetric.NumberDataPoint
 	if metricType == pmetric.MetricTypeSum {
 		dp = metric.Sum().DataPoints().AppendEmpty()
@@ -294,13 +317,19 @@ func (b *indexedMetricBuilder) appendNumber(name string, metricType pmetric.Metr
 	}
 	value.set(dp)
 	dp.SetTimestamp(ts)
-	applyStringAttrs(dp.Attributes(), attrs)
+	applyStringAttrsWithEmpty(dp.Attributes(), attrs, b.finalBudget != nil)
 	return true
 }
 
 func (b *indexedMetricBuilder) appendInfo(name, value string, ts pcommon.Timestamp, attrs map[string]string) bool {
+	attrs = escapeReservedInfoAttribute(attrs, "value")
 	if b.budget != nil {
 		if !b.budget.validInfoValue(value) || !b.budget.reserveDatapoint(name, attrs, "value", value) {
+			return false
+		}
+	}
+	if b.finalBudget != nil {
+		if !b.finalBudget.reserveAliasStringDatapoint(attrs, "value", value) {
 			return false
 		}
 	}
@@ -308,7 +337,33 @@ func (b *indexedMetricBuilder) appendInfo(name, value string, ts pcommon.Timesta
 	dp := metric.Gauge().DataPoints().AppendEmpty()
 	dp.SetDoubleValue(1)
 	dp.SetTimestamp(ts)
+	applyStringAttrsWithEmpty(dp.Attributes(), attrs, b.finalBudget != nil)
+	// The decoded leaf value is the semantic value of an info metric. A path
+	// key named "value" is contextual input and must not overwrite it.
 	dp.Attributes().PutStr("value", value)
-	applyStringAttrs(dp.Attributes(), attrs)
 	return true
+}
+
+func escapeReservedInfoAttribute(attrs map[string]string, reservedKey string) map[string]string {
+	contextValue, exists := attrs[reservedKey]
+	if !exists || contextValue == "" {
+		return attrs
+	}
+	escaped := cloneAttrs(attrs)
+	delete(escaped, reservedKey)
+	for index := 1; index <= len(attrs)+1; index++ {
+		candidate := "cisco.key." + reservedKey
+		if index > 1 {
+			candidate = "cisco.key." + strconv.Itoa(index) + "." + reservedKey
+		}
+		if existing, candidateExists := escaped[candidate]; candidateExists {
+			if existing == contextValue {
+				return escaped
+			}
+			continue
+		}
+		escaped[candidate] = contextValue
+		return escaped
+	}
+	return escaped
 }

@@ -1,7 +1,7 @@
-change_type: enhancement
+change_type: breaking
 component: receiver/cisco_os
-note: Gate IOS XR and Catalyst 9800 dial-out on YANG gRPC runtime-hardening contract v1.
+note: Harden Cisco dial-out identity and bound normalized and shared gNMI state.
 issues: [42647]
 subtext: |
-  Dial-out now fails closed when the linked yang_grpc receiver does not advertise the required hardened runtime, preventing release against an older dependency that lacks bounded conversion, stream context propagation, and shutdown guarantees. Receiver-private middleware adds max_streams_per_client (defaulting to the smaller of 16 and max_concurrent_streams), preserves rate-limit buckets until natural refill, and rejects cleanup intervals below one second.
+  Dial-out now fails closed unless the linked yang_grpc receiver advertises runtime-hardening contract v2. Adds source-to-node identity bindings for production dial-out, collision-safe raw YANG paths and present-empty key identity, escapes structural bytes in direct gNMI path attributes, and rejects multi-entry complex JSON arrays whose effective identities are not unique. It also bounds normalized datapoint attributes, notification-wide JSON and protobuf expansion, path and cache memory, partitions cache capacity across targets, enforces one combined stream-by-frame envelope across selected gNMI dial-in targets and enabled dial-out servers, caps shared and deprecated gNMI response and notification processing, retries transient SD-WAN JWT authentication, and preserves state for redelivery when downstream consumers refuse telemetry. Receiver-private middleware adds max_streams_per_client, preserves rate-limit buckets until natural refill, and rejects cleanup intervals below one second.
 change_logs: [user]

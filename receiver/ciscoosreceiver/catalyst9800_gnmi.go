@@ -4,10 +4,7 @@
 package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver"
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
 	"math"
 	"sort"
 	"strconv"
@@ -17,6 +14,8 @@ import (
 	gnmi "github.com/openconfig/gnmi/proto/gnmi"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
 
 type catalyst9800GNMIUpdateDecoder struct {
@@ -31,8 +30,9 @@ func (d *catalyst9800GNMIUpdateDecoder) decodeNotification(notification *gnmi.No
 	if notification.GetTimestamp() > 0 {
 		ts = pcommon.Timestamp(notification.GetTimestamp())
 	}
+	budget := newDirectGNMIDecodeBudget(d.limits, d.maxDatapoints)
 	prefix := notification.GetPrefix()
-	prefixText := gnmiPathToString(prefix)
+	prefixText, validPrefix := gnmiPathToString(prefix, budget)
 	module := moduleFromGNMIPath(prefix)
 	if module == "" {
 		module = moduleFromYANGPath(prefixText)
@@ -45,12 +45,24 @@ func (d *catalyst9800GNMIUpdateDecoder) decodeNotification(notification *gnmi.No
 		yangPath:       prefixText,
 		yangModule:     module,
 	})
-	budget := newDirectGNMIDecodeBudget(d.limits, d.maxDatapoints)
 	metrics := newIndexedMetricBuilder(sm, budget)
 
-	for _, deleted := range notification.GetDelete() {
+	deletes := notification.GetDelete()
+	updates := notification.GetUpdate()
+	if !validPrefix {
+		deletes = nil
+		updates = nil
+	}
+	for _, deleted := range deletes {
 		if !budget.visitField(1) {
 			break
+		}
+		deletedText, validPath := gnmiPathToString(deleted, budget)
+		if !validPath {
+			if budget.exhausted {
+				break
+			}
+			continue
 		}
 		parts, attrs, ok := pathPartsAndAttrs(prefix, deleted, budget)
 		if !ok {
@@ -65,14 +77,23 @@ func (d *catalyst9800GNMIUpdateDecoder) decodeNotification(notification *gnmi.No
 		catalyst9800NormalizePathAttrs(attrs)
 		attrs["deleted"] = "true"
 		deleteModule := moduleFromParts(module, parts)
-		putNonEmpty(attrs, "cisco.yang.path", prefixText)
+		if !setDirectGNMISourcePath(attrs, prefixText, deletedText, budget) {
+			continue
+		}
 		putNonEmpty(attrs, "cisco.yang.module", deleteModule)
 		appendCatalyst9800InfoMetricIndexed(metrics, deleteModule, parts, "deleted", ts, attrs)
 	}
 
-	for _, update := range notification.GetUpdate() {
+	for _, update := range updates {
 		if !budget.visitField(1) {
 			break
+		}
+		updateText, validPath := gnmiPathToString(update.GetPath(), budget)
+		if !validPath {
+			if budget.exhausted {
+				break
+			}
+			continue
 		}
 		parts, attrs, ok := pathPartsAndAttrs(prefix, update.GetPath(), budget)
 		if !ok {
@@ -86,7 +107,9 @@ func (d *catalyst9800GNMIUpdateDecoder) decodeNotification(notification *gnmi.No
 		if updateModule == "" {
 			updateModule = moduleFromGNMIPath(update.GetPath())
 		}
-		putNonEmpty(attrs, "cisco.yang.path", prefixText)
+		if !setDirectGNMISourcePath(attrs, prefixText, updateText, budget) {
+			continue
+		}
 		putNonEmpty(attrs, "cisco.yang.module", updateModule)
 		depth := len(parts)
 		if depth == 0 {
@@ -217,24 +240,21 @@ func (catalyst9800GNMIUpdateDecoder) decodeJSONValue(metrics *indexedMetricBuild
 		budget.drop(true)
 		return
 	}
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
 	var value any
-	if err := decoder.Decode(&value); err != nil {
+	if err := httpclient.DecodeJSON(raw, &value); err != nil {
 		budget.addDecodeError()
 		budget.drop(false)
 		return
 	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		budget.addDecodeError()
+	pathNameBytes, ok := directGNMIPathNameBytes(parts, budget.limits.maxMetricNameBytes)
+	if !ok {
 		budget.drop(false)
 		return
 	}
-	walkCatalyst9800JSON(metrics, module, parts, value, ts, attrs, budget, depth)
+	walkCatalyst9800JSON(metrics, module, parts, value, ts, attrs, budget, depth, pathNameBytes)
 }
 
-func walkCatalyst9800JSON(metrics *indexedMetricBuilder, module string, parts []string, value any, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth int) bool {
+func walkCatalyst9800JSON(metrics *indexedMetricBuilder, module string, parts []string, value any, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth, pathNameBytes int) bool {
 	if !budget.visitField(depth) {
 		return false
 	}
@@ -244,7 +264,7 @@ func walkCatalyst9800JSON(metrics *indexedMetricBuilder, module string, parts []
 			return false
 		}
 		nextAttrs := cloneAttrs(attrs)
-		if !extractJSONIdentityAttrs(v, nextAttrs, budget) || !extractCatalyst9800JSONIdentityAttrs(v, nextAttrs, budget) {
+		if !extractJSONIdentityAttrs(v, nextAttrs, budget, parts) || !extractCatalyst9800JSONIdentityAttrs(v, nextAttrs, budget, parts) {
 			return !budget.exhausted
 		}
 		keys := make([]string, 0, len(v))
@@ -254,7 +274,20 @@ func walkCatalyst9800JSON(metrics *indexedMetricBuilder, module string, parts []
 		sort.Strings(keys)
 		for _, key := range keys {
 			nextModule, part := splitYANGQualifiedName(module, key)
-			if !walkCatalyst9800JSON(metrics, nextModule, append(parts, part), v[key], ts, nextAttrs, budget, depth+1) && budget.exhausted {
+			if sanitizeMetricSegment(part) == "" {
+				budget.drop(false)
+				continue
+			}
+			nextPathNameBytes, ok := extendDirectGNMIPathNameBytes(pathNameBytes, part, budget.limits.maxMetricNameBytes)
+			if !ok {
+				budget.drop(false)
+				continue
+			}
+			childAttrs := cloneAttrs(nextAttrs)
+			if !extendDirectGNMISourcePath(childAttrs, key, budget) {
+				continue
+			}
+			if !walkCatalyst9800JSON(metrics, nextModule, append(parts, part), v[key], ts, childAttrs, budget, depth+1, nextPathNameBytes) && budget.exhausted {
 				return false
 			}
 		}
@@ -269,8 +302,11 @@ func walkCatalyst9800JSON(metrics *indexedMetricBuilder, module string, parts []
 			appendCatalyst9800InfoMetricIndexed(metrics, module, parts, valueToInfoString(v), ts, attrs)
 			return !budget.exhausted
 		}
+		if !validateCatalyst9800JSONArrayIdentity(v, attrs, budget, parts) {
+			return !budget.exhausted
+		}
 		for _, elem := range v {
-			if !walkCatalyst9800JSON(metrics, module, parts, elem, ts, attrs, budget, depth+1) && budget.exhausted {
+			if !walkCatalyst9800JSON(metrics, module, parts, elem, ts, attrs, budget, depth+1, pathNameBytes) && budget.exhausted {
 				return false
 			}
 		}
@@ -286,37 +322,99 @@ func walkCatalyst9800JSON(metrics *indexedMetricBuilder, module string, parts []
 	return !budget.exhausted
 }
 
-func extractCatalyst9800JSONIdentityAttrs(value map[string]any, attrs map[string]string, budget *directGNMIDecodeBudget) bool {
-	for key, attrName := range map[string]string{
-		"wtp-mac":        "cisco.wlc.ap.mac",
-		"ap-mac":         "cisco.wlc.ap.mac",
-		"ap-name":        "cisco.wlc.ap.name",
-		"slot-id":        "cisco.wlc.radio.slot",
-		"radio-slot-id":  "cisco.wlc.radio.slot",
-		"wlan-id":        "cisco.wlc.wlan.id",
-		"ssid":           "cisco.wlc.ssid",
-		"vap-ssid":       "cisco.wlc.ssid",
-		"client-mac":     "cisco.wlc.client.mac",
-		"ms-mac-address": "cisco.wlc.client.mac",
-		"node-ip":        "cisco.wlc.mobility.node_ip",
-		"ap-ip":          "host.ip",
-		"ip-addr":        "host.ip",
-		"serial-num":     "hw.serial_number",
-		"serial-number":  "hw.serial_number",
-	} {
-		if raw, ok := value[key]; ok {
-			if text := scalarJSONIdentity(raw); text != "" {
-				if len(text) > budget.limits.maxAttributeValueBytes {
-					budget.drop(false)
-					return false
-				}
-				attrs[attrName] = text
-				attrs["cisco.yang.key."+sanitizeMetricSegment(key)] = text
+// validateCatalyst9800JSONArrayIdentity rejects anonymous or duplicate
+// effective identities before emitting any child of a multi-entry array.
+func validateCatalyst9800JSONArrayIdentity(values []any, attrs map[string]string, budget *directGNMIDecodeBudget, objectPath []string) bool {
+	if len(values) <= 1 {
+		return true
+	}
+	seen := make(map[[32]byte]struct{}, len(values))
+	for _, value := range values {
+		projected := cloneAttrs(attrs)
+		if object, ok := value.(map[string]any); ok {
+			if !extractJSONIdentityAttrs(object, projected, budget, objectPath) ||
+				!extractCatalyst9800JSONIdentityAttrs(object, projected, budget, objectPath) {
+				return false
 			}
 		}
+		digest, identified := directGNMIAttributeProjectionDigest(projected, attrs)
+		if !identified {
+			budget.drop(false)
+			return false
+		}
+		if _, duplicate := seen[digest]; duplicate {
+			budget.drop(false)
+			return false
+		}
+		seen[digest] = struct{}{}
 	}
-	catalyst9800NormalizePathAttrs(attrs)
 	return true
+}
+
+func extractCatalyst9800JSONIdentityAttrs(value map[string]any, attrs map[string]string, budget *directGNMIDecodeBudget, objectPath []string) bool {
+	identityValues := make(map[string]directGNMIJSONIdentity, 15)
+	for _, key := range []string{
+		"ap-ip",
+		"ap-mac",
+		"ap-name",
+		"client-mac",
+		"ip-addr",
+		"ms-mac-address",
+		"node-ip",
+		"radio-slot-id",
+		"serial-num",
+		"serial-number",
+		"slot-id",
+		"ssid",
+		"vap-ssid",
+		"wlan-id",
+		"wtp-mac",
+	} {
+		raw, exists := value[key]
+		if !exists {
+			continue
+		}
+		text, scalar := scalarJSONIdentity(raw)
+		if !scalar {
+			continue
+		}
+		if !putDirectGNMIJSONIdentityAttribute(attrs, directGNMIPathKeyAttributePrefix+sanitizeMetricSegment(key), text, objectPath, budget) {
+			return false
+		}
+		identityValues[key] = directGNMIJSONIdentity{value: text}
+	}
+
+	// These ordered groups match the canonical Catalyst key spellings used by
+	// path normalization and make synonym precedence independent of Go map
+	// iteration order. Every present raw key remains available under its
+	// cisco.yang.key.* attribute even when it does not win the semantic alias.
+	if !putPreferredCatalyst9800JSONIdentity(attrs, identityValues, objectPath, budget, "cisco.wlc.ap.mac", "wtp-mac", "ap-mac") ||
+		!putPreferredCatalyst9800JSONIdentity(attrs, identityValues, objectPath, budget, "cisco.wlc.ap.name", "ap-name", "") ||
+		!putPreferredCatalyst9800JSONIdentity(attrs, identityValues, objectPath, budget, "cisco.wlc.radio.slot", "slot-id", "radio-slot-id") ||
+		!putPreferredCatalyst9800JSONIdentity(attrs, identityValues, objectPath, budget, "cisco.wlc.wlan.id", "wlan-id", "") ||
+		!putPreferredCatalyst9800JSONIdentity(attrs, identityValues, objectPath, budget, "cisco.wlc.ssid", "ssid", "vap-ssid") ||
+		!putPreferredCatalyst9800JSONIdentity(attrs, identityValues, objectPath, budget, "cisco.wlc.client.mac", "client-mac", "ms-mac-address") ||
+		!putPreferredCatalyst9800JSONIdentity(attrs, identityValues, objectPath, budget, "cisco.wlc.mobility.node_ip", "node-ip", "") ||
+		!putPreferredCatalyst9800JSONIdentity(attrs, identityValues, objectPath, budget, "host.ip", "ap-ip", "ip-addr") ||
+		!putPreferredCatalyst9800JSONIdentity(attrs, identityValues, objectPath, budget, "hw.serial_number", "serial-num", "serial-number") {
+		return false
+	}
+	return true
+}
+
+type directGNMIJSONIdentity struct {
+	value string
+}
+
+func putPreferredCatalyst9800JSONIdentity(attrs map[string]string, values map[string]directGNMIJSONIdentity, objectPath []string, budget *directGNMIDecodeBudget, attribute, preferred, fallback string) bool {
+	selected, present := values[preferred]
+	if !present {
+		selected, present = values[fallback]
+	}
+	if !present {
+		return true
+	}
+	return putDirectGNMIJSONIdentityAttribute(attrs, attribute, selected.value, objectPath, budget)
 }
 
 func catalyst9800NormalizePathAttrs(attrs map[string]string) {

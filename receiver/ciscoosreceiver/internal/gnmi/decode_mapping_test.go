@@ -194,6 +194,79 @@ func TestDecodeJSONArrayObjectsDerivesDistinctPathKeys(t *testing.T) {
 	assert.Equal(t, "Ethernet2", counters[1].Series.Elements[2].Keys["name"])
 }
 
+func TestDecodeJSONArrayObjectPreservesEmptyListKey(t *testing.T) {
+	receipt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	notification := &gnmipb.Notification{
+		Timestamp: receipt.UnixNano(),
+		Prefix:    protoPath("root"),
+		Update: []*gnmipb.Update{{
+			Path: protoPath("interfaces"),
+			Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`{
+				"interface": [
+					{"name":"","state":{"counter":10}},
+					{"state":{"counter":20}}
+				]
+			}`)}},
+		}},
+	}
+
+	decoded, stats, err := DecodeNotification("switch-1", notification, receipt)
+	require.NoError(t, err)
+	assert.Zero(t, stats.UnmappedValues)
+	var counters []Point
+	for _, point := range decoded.Updates {
+		if point.Series.Leaf == "counter" {
+			counters = append(counters, point)
+		}
+	}
+	require.Len(t, counters, 2)
+	assert.NotEqual(t, counters[0].Series.Key(), counters[1].Series.Key())
+	value, present := counters[0].Series.Elements[2].Keys["name"]
+	assert.True(t, present)
+	assert.Empty(t, value)
+}
+
+func TestDecodeJSONArrayObjectRejectsConflictingNormalizedListKeys(t *testing.T) {
+	receipt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	_, _, err := DecodeNotification("switch-1", &gnmipb.Notification{
+		Timestamp: receipt.UnixNano(),
+		Prefix:    protoPath("root"),
+		Update: []*gnmipb.Update{{
+			Path: protoPath("interfaces"),
+			Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`{
+				"interface": [
+					{"interface-name":"Ethernet1","interface_name":"Ethernet2","state":{"counter":10}}
+				]
+			}`)}},
+		}},
+	}, receipt)
+	require.ErrorContains(t, err, `conflicting values for normalized list key "interface-name"`)
+}
+
+func TestDecodeJSONArrayObjectAllowsDuplicateNormalizedListKeyWithSameValue(t *testing.T) {
+	receipt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	decoded, _, err := DecodeNotification("switch-1", &gnmipb.Notification{
+		Timestamp: receipt.UnixNano(),
+		Prefix:    protoPath("root"),
+		Update: []*gnmipb.Update{{
+			Path: protoPath("interfaces"),
+			Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`{
+				"interface": [
+					{"interface-name":"Ethernet1","interface_name":"Ethernet1","state":{"counter":10}}
+				]
+			}`)}},
+		}},
+	}, receipt)
+	require.NoError(t, err)
+	var counter Point
+	for _, point := range decoded.Updates {
+		if point.Series.Leaf == "counter" {
+			counter = point
+		}
+	}
+	assert.Equal(t, "Ethernet1", counter.Series.Elements[2].Keys["interface-name"])
+}
+
 func TestMappingRegistryRequiresExplicitNumericContract(t *testing.T) {
 	mapping := Mapping{
 		Source:    SourcePath{Origin: "openconfig", Elements: []string{"interfaces", "interface", "state"}, Leaf: "temperature"},
@@ -220,6 +293,19 @@ func TestMappingRegistryRequiresExplicitNumericContract(t *testing.T) {
 	assert.Equal(t, "Cel", mapped.Metric.Unit)
 	assert.Equal(t, 42.5, mapped.DoubleValue)
 	assert.Equal(t, "Ethernet1", mapped.Attributes["network.interface.name"])
+
+	ambiguousMapping := mapping
+	ambiguousMapping.Source.Elements = []string{"interfaces", "interface", "interface", "state"}
+	ambiguousRegistry, err := NewRegistry(ambiguousMapping)
+	require.NoError(t, err)
+	ambiguousPoint := point
+	ambiguousPoint.Series.Elements = append(
+		append([]PathElem(nil), point.Series.Elements[:2]...),
+		PathElem{Name: "interface", Keys: map[string]string{"name": "Ethernet2"}},
+		point.Series.Elements[2],
+	)
+	_, ok = ambiguousRegistry.Map(ambiguousPoint)
+	assert.False(t, ok, "same-named elements carrying the same mapped key must not collapse to the first value")
 
 	point.Series.Leaf = "unknown"
 	_, ok = registry.Map(point)

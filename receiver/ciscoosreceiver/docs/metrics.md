@@ -57,7 +57,8 @@ Controller/API paths add these correlation attributes when available:
 | `fmc.resource.type` | Normalized FMC object type, such as device, interface, policy, deployment, HA, VPN, or audit record. |
 | `cisco.os.name` | Direct telemetry OS name, such as `ios_xe` for Catalyst 9800 or `ios_xr` for IOS XR. |
 | `cisco.platform.family` | Direct telemetry platform family, such as `catalyst_9800`, ASR 9000, or NCS 5500. |
-| `cisco.yang.path` | Original gNMI/MDT YANG path or encoding path. |
+| `cisco.yang.path` | Original gNMI/MDT YANG path or encoding path. Direct gNMI decoding percent-encodes structural bytes such as `/`, `%`, `[`, `]`, and `=` inside individual path components so different wire paths remain distinct. |
+| `cisco.yang.source_path` | Injective GPB-KV field path retained when a normalized metric name could otherwise conflate distinct YANG identifiers. |
 | `cisco.yang.module` | YANG module inferred from the path, such as `wireless-access-point-oper`, `openconfig-interfaces`, or a Cisco native module. |
 | `cisco.telemetry.transport` | Direct telemetry direction, such as `gnmi_dial_in` or `mdt_grpc_dial_out`. |
 | `cisco.wlc.ap.mac` | Catalyst 9800 AP radio/base MAC when present in the YANG key or JSON payload. |
@@ -66,6 +67,11 @@ Controller/API paths add these correlation attributes when available:
 | `nexus_dashboard.operation` | Bounded Nexus Dashboard endpoint family or evidence operation. |
 | `ndfc.switch.id` | NDFC switch database ID used by some NDFC interface/performance APIs. |
 | `nd.service.name` | Nexus Dashboard service/app name. |
+
+For direct IOS XR and Catalyst 9800 JSON payloads, every multi-entry complex array is preflighted before child metrics
+are emitted. Every entry must contribute a recognized identity, and those effective identities must be unique after the
+receiver's key extraction rules. An ambiguous array is dropped as a unit rather than merging two device records into
+one time series. Explicit empty identities remain distinct from missing identities.
 
 ## Quick Starting Set
 

@@ -4,7 +4,9 @@
 package ciscoosreceiver
 
 import (
+	"encoding/json"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -371,6 +373,220 @@ func TestCatalyst9800GNMIDecoderBoundsAdversarialJSON(t *testing.T) {
 		assert.Positive(t, health.snapshot().droppedDatapoints)
 		assert.Zero(t, health.snapshot().decodeErrors)
 	})
+
+	t.Run("oversized object key is rejected before nested identity hashing", func(t *testing.T) {
+		hugeKey := strings.Repeat("x", directGNMIHardMaxMetricNameBytes+1)
+		raw, err := json.Marshal(map[string]any{
+			"name":  "outer",
+			hugeKey: map[string]any{"name": "inner", "value": 1},
+		})
+		require.NoError(t, err)
+		health := &catalyst9800Health{}
+		decoder := catalyst9800GNMIUpdateDecoder{target: Catalyst9800TargetConfig{Name: "wlc-1"}, health: health}
+		md := decoder.decodeNotification(&gnmi.Notification{
+			Prefix: mustParseIOSXRPath(t, "wireless-access-point-oper:access-point-oper-data"),
+			Update: []*gnmi.Update{{
+				Path: mustParseIOSXRPath(t, "json"),
+				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: raw}},
+			}},
+		}, catalyst9800TelemetryTransportDialIn)
+
+		assert.Equal(t, 1, directTelemetryDataPointCount(md), "only the bounded sibling may be emitted")
+		assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
+	})
+}
+
+func TestCatalyst9800JSONIdentityUsesExplicitDeterministicPrecedence(t *testing.T) {
+	value := map[string]any{
+		"wtp-mac":        "preferred-ap",
+		"ap-mac":         "fallback-ap",
+		"ap-name":        "AP-01",
+		"slot-id":        "preferred-slot",
+		"radio-slot-id":  "fallback-slot",
+		"wlan-id":        "42",
+		"ssid":           "preferred-ssid",
+		"vap-ssid":       "fallback-ssid",
+		"client-mac":     "preferred-client",
+		"ms-mac-address": "fallback-client",
+		"node-ip":        "192.0.2.10",
+		"ap-ip":          "192.0.2.11",
+		"ip-addr":        "192.0.2.12",
+		"serial-num":     "preferred-serial",
+		"serial-number":  "fallback-serial",
+	}
+	wantSemantic := map[string]string{
+		"cisco.wlc.ap.mac":           "preferred-ap",
+		"cisco.wlc.ap.name":          "AP-01",
+		"cisco.wlc.radio.slot":       "preferred-slot",
+		"cisco.wlc.wlan.id":          "42",
+		"cisco.wlc.ssid":             "preferred-ssid",
+		"cisco.wlc.client.mac":       "preferred-client",
+		"cisco.wlc.mobility.node_ip": "192.0.2.10",
+		"host.ip":                    "192.0.2.11",
+		"hw.serial_number":           "preferred-serial",
+	}
+
+	var baseline map[string]string
+	for iteration := range 100 {
+		attrs := map[string]string{}
+		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
+		require.True(t, extractCatalyst9800JSONIdentityAttrs(value, attrs, budget, nil))
+		for key, expected := range wantSemantic {
+			assert.Equal(t, expected, attrs[key])
+		}
+		for key, raw := range value {
+			assert.Equal(t, raw, attrs["cisco.yang.key."+sanitizeMetricSegment(key)])
+		}
+		if iteration == 0 {
+			baseline = attrs
+		} else {
+			assert.Equal(t, baseline, attrs)
+		}
+		assert.Zero(t, budget.dropped)
+	}
+
+	t.Run("present empty canonical identity wins over fallback", func(t *testing.T) {
+		attrs := map[string]string{}
+		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
+		require.True(t, extractCatalyst9800JSONIdentityAttrs(map[string]any{
+			"wtp-mac": "",
+			"ap-mac":  "fallback-must-not-win",
+		}, attrs, budget, nil))
+		for _, key := range []string{"cisco.yang.key.wtp_mac", "cisco.wlc.ap.mac"} {
+			value, present := attrs[key]
+			assert.True(t, present)
+			assert.Empty(t, value)
+		}
+		assert.Equal(t, "fallback-must-not-win", attrs["cisco.yang.key.ap_mac"])
+	})
+}
+
+func TestCatalyst9800GNMIPathNormalizationPreservesRawSourceIdentity(t *testing.T) {
+	health := &catalyst9800Health{}
+	decoder := catalyst9800GNMIUpdateDecoder{target: Catalyst9800TargetConfig{Name: "wlc-1"}, health: health}
+	md := decoder.decodeNotification(&gnmi.Notification{
+		Prefix: mustParseIOSXRPath(t, "wireless-rrm-oper:rrm-oper-data/state"),
+		Update: []*gnmi.Update{
+			{Path: &gnmi.Path{Elem: []*gnmi.PathElem{{Name: "foo-bar"}}}, Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_IntVal{IntVal: 1}}},
+			{Path: &gnmi.Path{Elem: []*gnmi.PathElem{{Name: "foo_bar"}}}, Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_IntVal{IntVal: 2}}},
+		},
+	}, catalyst9800TelemetryTransportDialIn)
+
+	metric := mustFindIOSXRMetric(t, md, "cisco.catalyst9800.yang.wireless_rrm_oper.rrm_oper_data.state.foo_bar")
+	dps := metric.Gauge().DataPoints()
+	require.Equal(t, 2, dps.Len())
+	paths := map[string]struct{}{}
+	for index := 0; index < dps.Len(); index++ {
+		paths[attrValue(t, dps.At(index).Attributes(), "cisco.yang.path")] = struct{}{}
+	}
+	assert.Equal(t, map[string]struct{}{
+		"wireless-rrm-oper:rrm-oper-data/state/foo-bar": {},
+		"wireless-rrm-oper:rrm-oper-data/state/foo_bar": {},
+	}, paths)
+	assert.Zero(t, health.snapshot().droppedDatapoints)
+}
+
+func TestCatalyst9800GNMIJSONRejectsAmbiguousUnrecognizedListIdentity(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		raw  string
+	}{
+		{
+			name: "two unrecognized entries",
+			raw:  `{"items":[{"tenant-code":"blue","value":1},{"tenant-code":"red","value":2}]}`,
+		},
+		{
+			name: "recognized and unrecognized entries",
+			raw:  `{"items":[{"name":"known","value":1},{"tenant-code":"anonymous","value":2}]}`,
+		},
+		{
+			name: "duplicate recognized identities",
+			raw:  `{"items":[{"name":"duplicate","value":1},{"name":"duplicate","value":2}]}`,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			health := &catalyst9800Health{}
+			decoder := catalyst9800GNMIUpdateDecoder{target: Catalyst9800TargetConfig{Name: "wlc-1"}, health: health}
+			md := decoder.decodeNotification(&gnmi.Notification{
+				Prefix: mustParseIOSXRPath(t, "wireless-rrm-oper:rrm-oper-data/state"),
+				Update: []*gnmi.Update{{
+					Path: mustParseIOSXRPath(t, "json"),
+					Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: []byte(test.raw)}},
+				}},
+			}, catalyst9800TelemetryTransportDialIn)
+
+			assert.Zero(t, directTelemetryDataPointCount(md))
+			assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
+		})
+	}
+}
+
+func TestCatalyst9800GNMIDecoderRejectsPathElementWithoutMetricIdentity(t *testing.T) {
+	health := &catalyst9800Health{}
+	decoder := catalyst9800GNMIUpdateDecoder{target: Catalyst9800TargetConfig{Name: "wlc-1"}, health: health}
+	md := decoder.decodeNotification(&gnmi.Notification{
+		Prefix: mustParseIOSXRPath(t, "wireless-rrm-oper:rrm-oper-data/state"),
+		Update: []*gnmi.Update{{
+			Path: &gnmi.Path{Elem: []*gnmi.PathElem{
+				{Name: "---", Key: map[string]string{"name": "must-not-disappear"}},
+				{Name: "value"},
+			}},
+			Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_IntVal{IntVal: 1}},
+		}},
+	}, catalyst9800TelemetryTransportDialIn)
+	assert.Zero(t, directTelemetryDataPointCount(md))
+	assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
+}
+
+func TestCatalyst9800JSONIdentityAttributeCountBoundary(t *testing.T) {
+	value := map[string]any{"wtp-mac": "AA:BB:CC:DD:EE:FF"}
+	atLimit := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{maxAttributes: 2}, 10)
+	attrs := map[string]string{}
+	require.True(t, extractCatalyst9800JSONIdentityAttrs(value, attrs, atLimit, nil))
+	assert.Equal(t, map[string]string{
+		"cisco.yang.key.wtp_mac": "AA:BB:CC:DD:EE:FF",
+		"cisco.wlc.ap.mac":       "AA:BB:CC:DD:EE:FF",
+	}, attrs)
+
+	overLimit := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{maxAttributes: 1}, 10)
+	assert.False(t, extractCatalyst9800JSONIdentityAttrs(value, map[string]string{}, overLimit, nil))
+	assert.Equal(t, int64(1), overLimit.dropped)
+}
+
+func TestCatalyst9800GNMINestedJSONPreservesOuterAndInnerIdentity(t *testing.T) {
+	decoder := catalyst9800GNMIUpdateDecoder{target: Catalyst9800TargetConfig{Name: "wlc-1"}, health: &catalyst9800Health{}}
+	md := decoder.decodeNotification(&gnmi.Notification{
+		Prefix: mustParseIOSXRPath(t, "wireless-access-point-oper:access-point-oper-data"),
+		Update: []*gnmi.Update{{
+			Path: mustParseIOSXRPath(t, "json"),
+			Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`{
+				"aps": [
+					{"wtp-mac":"AA:AA:AA:AA:AA:AA","radios":[{"wtp-mac":"CC:CC:CC:CC:CC:CC","load":1}]},
+					{"wtp-mac":"BB:BB:BB:BB:BB:BB","radios":[{"wtp-mac":"CC:CC:CC:CC:CC:CC","load":1}]}
+				]
+			}`)}},
+		}},
+	}, catalyst9800TelemetryTransportDialIn)
+
+	metric := mustFindIOSXRMetric(t, md, "cisco.catalyst9800.yang.wireless_access_point_oper.access_point_oper_data.json.aps.radios.load")
+	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+	dps := metric.Gauge().DataPoints()
+	require.Equal(t, 2, dps.Len())
+	const nestedRaw = "cisco.yang.key.json.access_point_oper_data.json.aps.radios.cisco_yang_key_wtp_mac"
+	const nestedSemantic = "cisco.yang.key.json.access_point_oper_data.json.aps.radios.cisco_wlc_ap_mac"
+	outerMACs := map[string]struct{}{}
+	for index := 0; index < dps.Len(); index++ {
+		attrs := dps.At(index).Attributes()
+		outerMAC := attrValue(t, attrs, "cisco.yang.key.wtp_mac")
+		outerMACs[outerMAC] = struct{}{}
+		assert.Equal(t, outerMAC, attrValue(t, attrs, "cisco.wlc.ap.mac"))
+		assert.Equal(t, "CC:CC:CC:CC:CC:CC", attrValue(t, attrs, nestedRaw))
+		assert.Equal(t, "CC:CC:CC:CC:CC:CC", attrValue(t, attrs, nestedSemantic))
+	}
+	assert.Equal(t, map[string]struct{}{
+		"AA:AA:AA:AA:AA:AA": {},
+		"BB:BB:BB:BB:BB:BB": {},
+	}, outerMACs)
 }
 
 func TestCatalyst9800GNMIDecoderRecreationDoesNotAdvanceCounterEpoch(t *testing.T) {

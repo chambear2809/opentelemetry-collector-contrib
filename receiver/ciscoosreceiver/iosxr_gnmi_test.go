@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -299,6 +300,592 @@ func TestIOSXRGNMIDecoderBoundsAdversarialJSON(t *testing.T) {
 		assert.Positive(t, health.snapshot().droppedDatapoints)
 		assert.Zero(t, health.snapshot().decodeErrors)
 	})
+
+	t.Run("oversized object key is rejected before nested identity hashing", func(t *testing.T) {
+		hugeKey := strings.Repeat("x", directGNMIHardMaxMetricNameBytes+1)
+		raw, err := json.Marshal(map[string]any{
+			"name":  "outer",
+			hugeKey: map[string]any{"name": "inner", "value": 1},
+		})
+		require.NoError(t, err)
+		health := &iosXRHealth{}
+		decoder := iosXRGNMIUpdateDecoder{target: IOSXRTargetConfig{Name: "xr-1"}, health: health}
+		md := decoder.decodeNotification(&gnmi.Notification{
+			Prefix: mustParseIOSXRPath(t, "openconfig-system:system/state"),
+			Update: []*gnmi.Update{{
+				Path: mustParseIOSXRPath(t, "json"),
+				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: raw}},
+			}},
+		}, iosXRTelemetryTransportDialIn)
+
+		assert.Equal(t, 1, directTelemetryDataPointCount(md), "only the bounded sibling may be emitted")
+		assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
+	})
+}
+
+func TestDirectGNMIPathIdentityIsDeterministicAndCollisionSafe(t *testing.T) {
+	prefix := &gnmi.Path{Elem: []*gnmi.PathElem{{
+		Name: "list",
+		Key: map[string]string{
+			"2.foo-bar":        "numbered-base",
+			"empty-key":        "",
+			"foo-bar":          "hyphen",
+			"foo_bar":          "underscore",
+			"interface":        "GigabitEthernet-fallback",
+			"interface-name":   "TenGigE-preferred",
+			"neighbor":         "192.0.2.2",
+			"neighbor-address": "192.0.2.1",
+			"vrf":              "fallback-vrf",
+			"vrf-name":         "preferred-vrf",
+		},
+	}}}
+	update := &gnmi.Path{Elem: []*gnmi.PathElem{
+		{Name: "list", Key: map[string]string{"empty-key": "", "foo-bar": "hyphen-middle", "interface-name": "HundredGigE-middle"}},
+		{Name: "list", Key: map[string]string{"empty-key": "", "foo-bar": "hyphen-inner", "interface-name": "FortyGigE-inner"}},
+	}}
+	want := map[string]string{
+		"cisco.yang.key.2_foo_bar":                                  "numbered-base",
+		"cisco.yang.key.empty_key":                                  "",
+		"cisco.yang.key.foo_bar":                                    "hyphen",
+		"cisco.yang.key.2.foo_bar":                                  "underscore",
+		"cisco.yang.key.interface":                                  "GigabitEthernet-fallback",
+		"cisco.yang.key.interface_name":                             "TenGigE-preferred",
+		"cisco.yang.key.neighbor":                                   "192.0.2.2",
+		"cisco.yang.key.neighbor_address":                           "192.0.2.1",
+		"cisco.yang.key.vrf":                                        "fallback-vrf",
+		"cisco.yang.key.vrf_name":                                   "preferred-vrf",
+		"network.interface.name":                                    "TenGigE-preferred",
+		"network.peer.address":                                      "192.0.2.1",
+		"network.vrf.name":                                          "preferred-vrf",
+		"cisco.yang.key.path.list.list.network_interface_name":      "HundredGigE-middle",
+		"cisco.yang.key.path.list.list.list.network_interface_name": "FortyGigE-inner",
+	}
+	for _, scoped := range []struct {
+		key, value string
+		path       []string
+	}{
+		{key: "empty-key", value: "", path: []string{"list", "list"}},
+		{key: "foo-bar", value: "hyphen-middle", path: []string{"list", "list"}},
+		{key: "interface-name", value: "HundredGigE-middle", path: []string{"list", "list"}},
+		{key: "empty-key", value: "", path: []string{"list", "list", "list"}},
+		{key: "foo-bar", value: "hyphen-inner", path: []string{"list", "list", "list"}},
+		{key: "interface-name", value: "FortyGigE-inner", path: []string{"list", "list", "list"}},
+	} {
+		attribute, ok := directGNMIPathKeyIdentityAttributeName(scoped.key, sanitizeMetricSegment(scoped.key), scoped.path, 1, directGNMIHardMaxAttributeKeyBytes)
+		require.True(t, ok)
+		want[attribute] = scoped.value
+	}
+
+	for range 100 {
+		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
+		parts, attrs, ok := pathPartsAndAttrs(prefix, update, budget)
+		require.True(t, ok)
+		assert.Equal(t, []string{"list", "list", "list"}, parts)
+		assert.Equal(t, want, attrs)
+		assert.Zero(t, budget.dropped)
+	}
+}
+
+func TestDirectGNMIPathIdentityCollisionBoundaries(t *testing.T) {
+	path := func(values map[string]string) *gnmi.Path {
+		return &gnmi.Path{Elem: []*gnmi.PathElem{{Name: "list", Key: values}}}
+	}
+
+	t.Run("attribute count", func(t *testing.T) {
+		values := map[string]string{"foo-bar": "one", "foo_bar": "two"}
+		atLimit := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{maxAttributes: 2}, 10)
+		_, attrs, ok := pathPartsAndAttrs(path(values), nil, atLimit)
+		require.True(t, ok)
+		assert.Len(t, attrs, 2)
+
+		overLimit := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{maxAttributes: 1}, 10)
+		_, _, ok = pathPartsAndAttrs(path(values), nil, overLimit)
+		assert.False(t, ok)
+		assert.Equal(t, int64(1), overLimit.dropped)
+	})
+
+	t.Run("escaped key length", func(t *testing.T) {
+		maxKeyBytes := len("cisco.yang.key.foo_bar")
+		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{maxAttributeKeyBytes: maxKeyBytes}, 10)
+		_, attrs, ok := pathPartsAndAttrs(path(map[string]string{"foo-bar": "one", "foo_bar": "two"}), nil, budget)
+		require.True(t, ok, "a compact numbered fallback must preserve the collision when the full numbered name does not fit")
+		assert.Equal(t, "one", attrs["cisco.yang.key.foo_bar"])
+		assert.Equal(t, "two", attrs["cisco.yang.key.2"])
+		assert.Zero(t, budget.dropped)
+	})
+
+	t.Run("value length", func(t *testing.T) {
+		atLimit := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{maxAttributeValueBytes: 4}, 10)
+		_, attrs, ok := pathPartsAndAttrs(path(map[string]string{"key": "1234"}), nil, atLimit)
+		require.True(t, ok)
+		assert.Equal(t, "1234", attrs["cisco.yang.key.key"])
+
+		overLimit := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{maxAttributeValueBytes: 4}, 10)
+		_, _, ok = pathPartsAndAttrs(path(map[string]string{"key": "12345"}), nil, overLimit)
+		assert.False(t, ok)
+		assert.Equal(t, int64(1), overLimit.dropped)
+	})
+
+	t.Run("deep repeated key uses compact deterministic escape", func(t *testing.T) {
+		elements := make([]*gnmi.PathElem, directGNMIHardMaxDepth)
+		elementPath := make([]string, directGNMIHardMaxDepth)
+		for index := range elements {
+			elements[index] = &gnmi.PathElem{Name: "x"}
+			elementPath[index] = "x"
+		}
+		elements[0].Key = map[string]string{"name": "outer"}
+		elements[len(elements)-1].Key = map[string]string{"name": "inner"}
+		expected, ok := directGNMIPathKeyIdentityAttributeName("name", "name", elementPath, 1, directGNMIHardMaxAttributeKeyBytes)
+		require.True(t, ok)
+		require.LessOrEqual(t, len(expected), directGNMIHardMaxAttributeKeyBytes)
+
+		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
+		_, attrs, ok := pathPartsAndAttrs(&gnmi.Path{Elem: elements}, nil, budget)
+		require.True(t, ok)
+		assert.Equal(t, "outer", attrs["cisco.yang.key.name"])
+		assert.Equal(t, "inner", attrs[expected])
+		assert.Len(t, attrs, 2)
+	})
+
+	t.Run("wide key maps reject before sort", func(t *testing.T) {
+		keys := make(map[string]string, 100_000)
+		for index := range 100_000 {
+			keys[fmt.Sprintf("key-%06d", index)] = ""
+		}
+		path := &gnmi.Path{Elem: []*gnmi.PathElem{{Name: "list", Key: keys}}}
+		formatBudget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
+		_, ok := gnmiPathToString(path, formatBudget)
+		assert.False(t, ok)
+		assert.Zero(t, formatBudget.fields, "prefix rendering must not charge path fields a second time")
+		assert.Equal(t, int64(1), formatBudget.dropped)
+
+		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
+		_, _, ok = pathPartsAndAttrs(path, nil, budget)
+		assert.False(t, ok)
+		assert.Equal(t, 1, budget.fields)
+		assert.Equal(t, int64(1), budget.dropped)
+	})
+
+	t.Run("oversized path name rejects before key scan", func(t *testing.T) {
+		keys := map[string]string{"name": "value"}
+		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
+		_, _, ok := pathPartsAndAttrs(&gnmi.Path{Elem: []*gnmi.PathElem{{
+			Name: strings.Repeat("x", directGNMIHardMaxMetricNameBytes+1),
+			Key:  keys,
+		}}}, nil, budget)
+		assert.False(t, ok)
+		assert.Equal(t, 1, budget.fields)
+		assert.Equal(t, int64(1), budget.dropped)
+	})
+
+	t.Run("structured elements take precedence over deprecated elements", func(t *testing.T) {
+		path := &gnmi.Path{
+			Elem:    []*gnmi.PathElem{{Name: "structured", Key: map[string]string{"name": "Ethernet1"}}},
+			Element: []string{"deprecated", "must-not-appear"},
+		}
+		formatBudget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
+		formatted, ok := gnmiPathToString(path, formatBudget)
+		require.True(t, ok)
+		assert.Equal(t, "structured[name=Ethernet1]", formatted)
+
+		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
+		parts, attrs, ok := pathPartsAndAttrs(path, nil, budget)
+		require.True(t, ok)
+		assert.Equal(t, []string{"structured"}, parts)
+		assert.Equal(t, "Ethernet1", attrs["cisco.yang.key.name"])
+		assert.Equal(t, 1, budget.fields)
+	})
+
+	t.Run("names without a metric identity are rejected", func(t *testing.T) {
+		for _, name := range []string{"", " ", "---", "..."} {
+			t.Run(fmt.Sprintf("structured-%q", name), func(t *testing.T) {
+				path := &gnmi.Path{Elem: []*gnmi.PathElem{
+					{Name: "list"},
+					{Name: name, Key: map[string]string{"name": "identity-must-not-disappear"}},
+					{Name: "value"},
+				}}
+				formatBudget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
+				_, ok := gnmiPathToString(path, formatBudget)
+				assert.False(t, ok)
+				assert.Equal(t, int64(1), formatBudget.dropped)
+
+				budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
+				_, _, ok = pathPartsAndAttrs(path, nil, budget)
+				assert.False(t, ok)
+				assert.Equal(t, int64(1), budget.dropped)
+			})
+		}
+
+		legacy := &gnmi.Path{Element: []string{"list", "", "value"}}
+		formatBudget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
+		_, ok := gnmiPathToString(legacy, formatBudget)
+		assert.False(t, ok)
+		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
+		_, _, ok = pathPartsAndAttrs(legacy, nil, budget)
+		assert.False(t, ok)
+	})
+
+	t.Run("normalized collisions at a deep repeated scope hash raw keys once", func(t *testing.T) {
+		const collisionCount = 24
+		elements := make([]*gnmi.PathElem, 100)
+		elementPath := make([]string, len(elements))
+		outerKeys := make(map[string]string, collisionCount)
+		innerKeys := make(map[string]string, collisionCount)
+		for index := range collisionCount {
+			key := "foo" + strings.Repeat("!", index+1) + "bar"
+			require.Equal(t, "foo_bar", sanitizeMetricSegment(key))
+			outerKeys[key] = fmt.Sprintf("outer-%02d", index)
+			innerKeys[key] = fmt.Sprintf("inner-%02d", index)
+		}
+		for index := range elements {
+			elements[index] = &gnmi.PathElem{Name: "x"}
+			elementPath[index] = "x"
+		}
+		elements[0].Key = outerKeys
+		elements[len(elements)-1].Key = innerKeys
+
+		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
+		_, attrs, ok := pathPartsAndAttrs(&gnmi.Path{Elem: elements}, nil, budget)
+		require.True(t, ok)
+		assert.Len(t, attrs, collisionCount*2)
+		for index := range collisionCount {
+			key := "foo" + strings.Repeat("!", index+1) + "bar"
+			expected, nameOK := directGNMIPathKeyIdentityAttributeName(key, "foo_bar", elementPath, 1, directGNMIHardMaxAttributeKeyBytes)
+			require.True(t, nameOK)
+			assert.Equal(t, fmt.Sprintf("inner-%02d", index), attrs[expected])
+		}
+	})
+}
+
+func TestIOSXRGNMIPathPreservesRepeatedListKeyIdentity(t *testing.T) {
+	decoder := iosXRGNMIUpdateDecoder{target: IOSXRTargetConfig{Name: "xr-1"}, health: &iosXRHealth{}}
+	md := decoder.decodeNotification(&gnmi.Notification{
+		Prefix: mustParseIOSXRPath(t, "openconfig-network-instance:network-instances"),
+		Update: []*gnmi.Update{
+			{
+				Path: mustParseIOSXRPath(t, "network-instance[name=blue]/protocols/protocol[name=bgp]/state/enabled"),
+				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_BoolVal{BoolVal: true}},
+			},
+			{
+				Path: mustParseIOSXRPath(t, "network-instance[name=red]/protocols/protocol[name=bgp]/state/enabled"),
+				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_BoolVal{BoolVal: true}},
+			},
+		},
+	}, iosXRTelemetryTransportDialIn)
+
+	metric := mustFindIOSXRMetric(t, md, "cisco.iosxr.yang.openconfig_network_instance.network_instances.network_instance.protocols.protocol.state.enabled")
+	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+	dps := metric.Gauge().DataPoints()
+	require.Equal(t, 2, dps.Len())
+	protocolPath := []string{"network-instances", "network-instance", "protocols", "protocol"}
+	protocolName, ok := directGNMIPathKeyIdentityAttributeName("name", "name", protocolPath, 1, directGNMIHardMaxAttributeKeyBytes)
+	require.True(t, ok)
+	outerNames := map[string]struct{}{}
+	for index := 0; index < dps.Len(); index++ {
+		attrs := dps.At(index).Attributes()
+		outerNames[attrValue(t, attrs, "cisco.yang.key.name")] = struct{}{}
+		assert.Equal(t, "bgp", attrValue(t, attrs, protocolName))
+	}
+	assert.Equal(t, map[string]struct{}{"blue": {}, "red": {}}, outerNames)
+}
+
+func TestIOSXRGNMIPathNormalizationPreservesRawSourceIdentity(t *testing.T) {
+	health := &iosXRHealth{}
+	decoder := iosXRGNMIUpdateDecoder{target: IOSXRTargetConfig{Name: "xr-1"}, health: health}
+	md := decoder.decodeNotification(&gnmi.Notification{
+		Prefix: mustParseIOSXRPath(t, "openconfig-system:system/state"),
+		Update: []*gnmi.Update{
+			{Path: &gnmi.Path{Elem: []*gnmi.PathElem{{Name: "foo-bar"}}}, Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_IntVal{IntVal: 1}}},
+			{Path: &gnmi.Path{Elem: []*gnmi.PathElem{{Name: "foo_bar"}}}, Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_IntVal{IntVal: 2}}},
+		},
+	}, iosXRTelemetryTransportDialIn)
+
+	metric := mustFindIOSXRMetric(t, md, "cisco.iosxr.yang.openconfig_system.system.state.foo_bar")
+	dps := metric.Gauge().DataPoints()
+	require.Equal(t, 2, dps.Len())
+	paths := map[string]struct{}{}
+	for index := 0; index < dps.Len(); index++ {
+		paths[attrValue(t, dps.At(index).Attributes(), "cisco.yang.path")] = struct{}{}
+	}
+	assert.Equal(t, map[string]struct{}{
+		"openconfig-system:system/state/foo-bar": {},
+		"openconfig-system:system/state/foo_bar": {},
+	}, paths)
+	assert.Zero(t, health.snapshot().droppedDatapoints)
+}
+
+func TestIOSXRGNMIPathRenderingEscapesStructuralDelimiterCollisions(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		left  *gnmi.Path
+		right *gnmi.Path
+	}{
+		{
+			name:  "structured element boundary",
+			left:  &gnmi.Path{Elem: []*gnmi.PathElem{{Name: "a/b"}, {Name: "c", Key: map[string]string{"k": "v"}}}},
+			right: &gnmi.Path{Elem: []*gnmi.PathElem{{Name: "a"}, {Name: "b"}, {Name: "c", Key: map[string]string{"k": "v"}}}},
+		},
+		{
+			name:  "legacy element boundary",
+			left:  &gnmi.Path{Element: []string{"a/b", "c"}},
+			right: &gnmi.Path{Element: []string{"a", "b", "c"}},
+		},
+		{
+			name:  "key syntax",
+			left:  &gnmi.Path{Elem: []*gnmi.PathElem{{Name: "list", Key: map[string]string{"a": "x][b=y"}}}},
+			right: &gnmi.Path{Elem: []*gnmi.PathElem{{Name: "list", Key: map[string]string{"a": "x", "b": "y"}}}},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			leftBudget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
+			left, ok := gnmiPathToString(test.left, leftBudget)
+			require.True(t, ok)
+			rightBudget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
+			right, ok := gnmiPathToString(test.right, rightBudget)
+			require.True(t, ok)
+			assert.NotEqual(t, left, right)
+			assert.Contains(t, left, "%")
+		})
+	}
+
+	health := &iosXRHealth{}
+	decoder := iosXRGNMIUpdateDecoder{target: IOSXRTargetConfig{Name: "xr-1"}, health: health}
+	md := decoder.decodeNotification(&gnmi.Notification{
+		Prefix: mustParseIOSXRPath(t, "openconfig-system:system/state"),
+		Update: []*gnmi.Update{
+			{Path: &gnmi.Path{Elem: []*gnmi.PathElem{{Name: "a/b"}}}, Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_IntVal{IntVal: 1}}},
+			{Path: &gnmi.Path{Elem: []*gnmi.PathElem{{Name: "a"}, {Name: "b"}}}, Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_IntVal{IntVal: 2}}},
+		},
+	}, iosXRTelemetryTransportDialIn)
+	paths := map[string]struct{}{}
+	for _, name := range []string{
+		"cisco.iosxr.yang.openconfig_system.system.state.a_b",
+		"cisco.iosxr.yang.openconfig_system.system.state.a.b",
+	} {
+		metric := mustFindIOSXRMetric(t, md, name)
+		dps := metric.Gauge().DataPoints()
+		require.Equal(t, 1, dps.Len())
+		paths[attrValue(t, dps.At(0).Attributes(), "cisco.yang.path")] = struct{}{}
+	}
+	assert.Equal(t, map[string]struct{}{
+		"openconfig-system:system/state/a%2Fb": {},
+		"openconfig-system:system/state/a/b":   {},
+	}, paths)
+	assert.Zero(t, health.snapshot().droppedDatapoints)
+}
+
+func TestIOSXRGNMIDecoderRejectsPathElementWithoutMetricIdentity(t *testing.T) {
+	health := &iosXRHealth{}
+	decoder := iosXRGNMIUpdateDecoder{target: IOSXRTargetConfig{Name: "xr-1"}, health: health}
+	md := decoder.decodeNotification(&gnmi.Notification{
+		Prefix: mustParseIOSXRPath(t, "openconfig-system:system/state"),
+		Update: []*gnmi.Update{{
+			Path: &gnmi.Path{Elem: []*gnmi.PathElem{
+				{Name: "---", Key: map[string]string{"name": "must-not-disappear"}},
+				{Name: "value"},
+			}},
+			Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_IntVal{IntVal: 1}},
+		}},
+	}, iosXRTelemetryTransportDialIn)
+	assert.Zero(t, directTelemetryDataPointCount(md))
+	assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
+}
+
+func TestDirectGNMIJSONIdentityUsesExplicitDeterministicPrecedence(t *testing.T) {
+	value := map[string]any{
+		"name":             "GigabitEthernet-name",
+		"interface":        "GigabitEthernet-fallback",
+		"interface-name":   "TenGigE-preferred",
+		"vrf":              "fallback-vrf",
+		"vrf-name":         "preferred-vrf",
+		"neighbor":         "192.0.2.2",
+		"neighbor-address": "192.0.2.1",
+		"node":             "fallback-node",
+		"node-name":        "preferred-node",
+	}
+	want := map[string]string{
+		"name":                   "GigabitEthernet-name",
+		"network.interface.name": "TenGigE-preferred",
+		"network.vrf.name":       "preferred-vrf",
+		"network.peer.address":   "192.0.2.1",
+		"cisco.node.name":        "preferred-node",
+	}
+
+	for range 100 {
+		attrs := map[string]string{}
+		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
+		require.True(t, extractJSONIdentityAttrs(value, attrs, budget, nil))
+		assert.Equal(t, want, attrs)
+		assert.Zero(t, budget.dropped)
+	}
+
+	t.Run("lower-priority synonym remains bounded", func(t *testing.T) {
+		attrs := map[string]string{}
+		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{maxAttributeValueBytes: 4}, 10)
+		assert.False(t, extractJSONIdentityAttrs(map[string]any{
+			"vrf-name": "good",
+			"vrf":      "oversized",
+		}, attrs, budget, nil))
+		assert.Equal(t, int64(1), budget.dropped)
+	})
+
+	t.Run("present empty canonical identity wins over fallback", func(t *testing.T) {
+		attrs := map[string]string{}
+		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
+		require.True(t, extractJSONIdentityAttrs(map[string]any{
+			"interface-name": "",
+			"interface":      "fallback-must-not-win",
+		}, attrs, budget, nil))
+		value, present := attrs["network.interface.name"]
+		assert.True(t, present)
+		assert.Empty(t, value)
+	})
+}
+
+func TestIOSXRGNMIJSONPreservesEmptyIdentityInEmittedDatapoints(t *testing.T) {
+	decoder := iosXRGNMIUpdateDecoder{target: IOSXRTargetConfig{Name: "xr-1"}, health: &iosXRHealth{}}
+	md := decoder.decodeNotification(&gnmi.Notification{
+		Prefix: mustParseIOSXRPath(t, "openconfig-system:system/state"),
+		Update: []*gnmi.Update{{
+			Path: mustParseIOSXRPath(t, "json"),
+			Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`{
+				"items": [
+					{"name":"","value":1},
+					{"id":"other","value":2}
+				]
+			}`)}},
+		}},
+	}, iosXRTelemetryTransportDialIn)
+
+	metric := mustFindIOSXRMetric(t, md, "cisco.iosxr.yang.openconfig_system.system.state.json.items.value")
+	dps := metric.Gauge().DataPoints()
+	require.Equal(t, 2, dps.Len())
+	presentEmpty := 0
+	missing := 0
+	for index := 0; index < dps.Len(); index++ {
+		value, present := dps.At(index).Attributes().Get("name")
+		if present {
+			assert.Empty(t, value.Str())
+			presentEmpty++
+		} else {
+			missing++
+		}
+	}
+	assert.Equal(t, 1, presentEmpty)
+	assert.Equal(t, 1, missing)
+}
+
+func TestIOSXRGNMIJSONRejectsAmbiguousUnrecognizedListIdentity(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		raw  string
+	}{
+		{
+			name: "two unrecognized entries",
+			raw:  `{"items":[{"tenant-code":"blue","value":1},{"tenant-code":"red","value":2}]}`,
+		},
+		{
+			name: "recognized and unrecognized entries",
+			raw:  `{"items":[{"name":"known","value":1},{"tenant-code":"anonymous","value":2}]}`,
+		},
+		{
+			name: "duplicate recognized identities",
+			raw:  `{"items":[{"name":"duplicate","value":1},{"name":"duplicate","value":2}]}`,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			health := &iosXRHealth{}
+			decoder := iosXRGNMIUpdateDecoder{target: IOSXRTargetConfig{Name: "xr-1"}, health: health}
+			md := decoder.decodeNotification(&gnmi.Notification{
+				Prefix: mustParseIOSXRPath(t, "openconfig-system:system/state"),
+				Update: []*gnmi.Update{{
+					Path: mustParseIOSXRPath(t, "json"),
+					Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: []byte(test.raw)}},
+				}},
+			}, iosXRTelemetryTransportDialIn)
+
+			assert.Zero(t, directTelemetryDataPointCount(md))
+			assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
+		})
+	}
+}
+
+func TestIOSXRGNMINestedJSONPreservesOuterAndInnerIdentity(t *testing.T) {
+	decoder := iosXRGNMIUpdateDecoder{target: IOSXRTargetConfig{Name: "xr-1"}, health: &iosXRHealth{}}
+	md := decoder.decodeNotification(&gnmi.Notification{
+		Prefix: mustParseIOSXRPath(t, "openconfig-network-instance:network-instances"),
+		Update: []*gnmi.Update{{
+			Path: mustParseIOSXRPath(t, "json"),
+			Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`{
+				"vrfs": [
+					{"name":"blue","protocols":[{"name":"bgp","state":1}]},
+					{"name":"red","protocols":[{"name":"bgp","state":1}]}
+				]
+			}`)}},
+		}},
+	}, iosXRTelemetryTransportDialIn)
+
+	metric := mustFindIOSXRMetric(t, md, "cisco.iosxr.yang.openconfig_network_instance.network_instances.json.vrfs.protocols.state")
+	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+	dps := metric.Gauge().DataPoints()
+	require.Equal(t, 2, dps.Len())
+	const nestedName = "cisco.yang.key.json.network_instances.json.vrfs.protocols.name"
+	outerNames := map[string]struct{}{}
+	for index := 0; index < dps.Len(); index++ {
+		attrs := dps.At(index).Attributes()
+		outerNames[attrValue(t, attrs, "name")] = struct{}{}
+		assert.Equal(t, "bgp", attrValue(t, attrs, nestedName))
+	}
+	assert.Equal(t, map[string]struct{}{"blue": {}, "red": {}}, outerNames)
+}
+
+func TestDirectGNMINestedJSONIdentityCollisionBoundaries(t *testing.T) {
+	const escaped = "cisco.yang.key.json.parent.child.name"
+	for range 100 {
+		attrs := map[string]string{"name": "outer"}
+		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{maxAttributes: 2, maxAttributeKeyBytes: len(escaped)}, 10)
+		require.True(t, extractJSONIdentityAttrs(map[string]any{"name": "inner"}, attrs, budget, []string{"parent", "child"}))
+		assert.Equal(t, map[string]string{"name": "outer", escaped: "inner"}, attrs)
+	}
+
+	fallbackLimit := len(escaped) - 1
+	fallback, ok := directGNMIScopedIdentityAttributeName("json", "name", []string{"parent", "child"}, 1, fallbackLimit)
+	require.True(t, ok)
+	require.LessOrEqual(t, len(fallback), fallbackLimit)
+	fallbackAttrs := map[string]string{"name": "outer"}
+	fallbackBudget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{maxAttributeKeyBytes: fallbackLimit}, 10)
+	require.True(t, extractJSONIdentityAttrs(map[string]any{"name": "inner"}, fallbackAttrs, fallbackBudget, []string{"parent", "child"}))
+	assert.Equal(t, "inner", fallbackAttrs[fallback])
+
+	longPath := make([]string, directGNMIHardMaxDepth)
+	for index := range longPath {
+		longPath[index] = fmt.Sprintf("repeated-element-%03d", index)
+	}
+	longFallback, ok := directGNMIScopedIdentityAttributeName("json", "name", longPath, 1, directGNMIHardMaxAttributeKeyBytes)
+	require.True(t, ok)
+	require.LessOrEqual(t, len(longFallback), directGNMIHardMaxAttributeKeyBytes)
+	longAttrs := map[string]string{"name": "outer"}
+	longBudget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
+	require.True(t, extractJSONIdentityAttrs(map[string]any{"name": "inner"}, longAttrs, longBudget, longPath))
+	assert.Equal(t, "inner", longAttrs[longFallback])
+
+	keyBudget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{maxAttributeKeyBytes: len(directGNMIPathKeyAttributePrefix)}, 10)
+	assert.False(t, extractJSONIdentityAttrs(
+		map[string]any{"name": "inner"},
+		map[string]string{"name": "outer"},
+		keyBudget,
+		[]string{"parent", "child"},
+	))
+	assert.Equal(t, int64(1), keyBudget.dropped)
+
+	countBudget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{maxAttributes: 1}, 10)
+	assert.False(t, extractJSONIdentityAttrs(
+		map[string]any{"name": "inner"},
+		map[string]string{"name": "outer"},
+		countBudget,
+		[]string{"parent", "child"},
+	))
+	assert.Equal(t, int64(1), countBudget.dropped)
 }
 
 func TestIOSXRGNMIDecoderRecreationDoesNotAdvanceCounterEpoch(t *testing.T) {

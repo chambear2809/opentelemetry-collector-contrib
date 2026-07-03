@@ -361,6 +361,10 @@ ciscoos:
         key_file: "/etc/otelcol/catalyst9800-server.key"
         client_ca_file: "/etc/otelcol/cisco-client-ca.crt"
       allowed_clients: ["10.0.0.0/8"]
+      identity_verification: "required"
+      identity_bindings:
+        - sources: ["10.0.0.20"]
+          node_ids: ["campus-wlc-1"]
       max_streams_per_client: 16
       rate_limiting:
         enabled: true
@@ -404,6 +408,10 @@ ciscoos:
         key_file: "/etc/otelcol/iosxr-server.key"
         client_ca_file: "/etc/otelcol/cisco-client-ca.crt"
       allowed_clients: ["10.0.0.0/8"]
+      identity_verification: "required"
+      identity_bindings:
+        - sources: ["10.0.0.10"]
+          node_ids: ["core-asr9k-1"]
       max_streams_per_client: 16
       rate_limiting:
         enabled: true

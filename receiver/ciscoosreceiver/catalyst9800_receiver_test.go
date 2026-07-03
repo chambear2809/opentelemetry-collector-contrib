@@ -261,6 +261,31 @@ func TestCatalyst9800DialInReceiverPollPreservesSendError(t *testing.T) {
 	require.ErrorIs(t, err, sendErr)
 }
 
+func TestCatalyst9800DialInReceiverRecvLoopReturnsConsumerRefusal(t *testing.T) {
+	streamCtx, cancelStream := context.WithCancel(t.Context())
+	defer cancelStream()
+	response := &gnmi.SubscribeResponse{Response: &gnmi.SubscribeResponse_Update{Update: &gnmi.Notification{
+		Timestamp: time.Unix(1700000000, 0).UnixNano(),
+		Prefix:    mustParseIOSXRPathForServer("wireless-ap-global-oper:ap-global-oper-data/ap-join-stats[wtp-mac=AA:BB:CC:DD:EE:FF]"),
+		Update: []*gnmi.Update{{
+			Path: mustParseIOSXRPathForServer("ap-join-info"),
+			Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`{"is-joined":true}`)}},
+		}},
+	}}}
+	receiver := &catalyst9800DialInReceiver{
+		settings: receivertest.NewNopSettings(componentmetadata.Type),
+		config:   defaultCatalyst9800Config(),
+		consumer: consumertest.NewErr(errors.New("refused")),
+		health:   &catalyst9800Health{},
+	}
+	target := Catalyst9800TargetConfig{Name: "wlc-1"}
+	var progressed atomic.Bool
+	err := receiver.recvLoop(streamCtx, target, &singleUpdateGNMIClientStream{ctx: streamCtx, response: response}, &progressed)
+	require.ErrorContains(t, err, "refused")
+	assert.False(t, progressed.Load())
+	assert.Positive(t, receiver.health.snapshot().droppedDatapoints)
+}
+
 func TestCatalyst9800NormalizingConsumerRenamesDialOutMetricsAndAddsAliases(t *testing.T) {
 	sink := &consumertest.MetricsSink{}
 	normalizer := newCatalyst9800NormalizingConsumer(

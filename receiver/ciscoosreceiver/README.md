@@ -595,12 +595,20 @@ ise:
 
 The root `gnmi` section is the normalized, fork-first dial-in path for IOS XE, IOS XR, and NX-OS. It maintains a static
 target inventory and uses only gNMI Capabilities and Subscribe. It never issues Set and does not need Get. Existing
-`ios_xr.dial_out` and `catalyst_9800.dial_out` configurations are unchanged; legacy dial-in targets retain their legacy
-decoder and metric behavior for one fork release and must not duplicate an endpoint in `gnmi.targets`.
+`ios_xr.dial_out` and `catalyst_9800.dial_out` modes remain available, subject to the production hardening below;
+legacy dial-in targets retain their legacy decoder and metric behavior for one fork release and must not duplicate an
+endpoint in `gnmi.targets`.
+
+Across `gnmi.targets`, `ios_xr.dial_in.targets`, and `catalyst_9800.dial_in.targets`, at most 256 target definitions may
+be configured. Dial-in targets admitted by `device_selection` and both enabled dial-out servers share one 512 MiB
+receiver-wide stream-by-frame envelope. Shared gNMI targets charge `max_streams * max_recv_msg_size_mib`; each
+deprecated dial-in target charges one fixed 4 MiB stream; and each enabled dial-out server charges
+`max_concurrent_streams * max_recv_msg_size_mib`. Excluded dial-in definitions still count toward the configuration
+ceiling but do not consume the runtime envelope.
 
 | Setting | Type | Required | Description |
 |---------|------|----------|-------------|
-| `gnmi.targets` | list | Yes | Static targets with unique names and endpoints. Each target has exactly one active collector owner. |
+| `gnmi.targets` | list | Yes | Static targets with unique names and endpoints. Each target has exactly one active collector owner; this list and both deprecated dial-in target lists may contain at most 256 definitions in total. |
 | `gnmi.targets[].platform` | string | Yes | `ios_xe`, `ios_xr`, or `nx_os`. |
 | `gnmi.targets[].credentials.mode` | string | No | `username_password`, `mtls`, or `mtls_username_password`. |
 | `gnmi.targets[].credentials.username` | string | Mode-dependent | Read-only AAA service account. |
@@ -609,11 +617,34 @@ decoder and metric behavior for one fork release and must not duplicate an endpo
 | `gnmi.targets[].tls.cert_file` / `key_file` | string | mTLS only | Short-lived client identity assigned per collector shard. |
 | `gnmi.targets[].tls.min_version` | string | No | Minimum TLS version; `1.2` or newer. Insecure TLS and verification bypasses are rejected. |
 | `gnmi.targets[].tls.reload_interval` | duration | No | Reload client certificate/key material for later TLS handshakes. CA changes require a reconnect or rollout. |
-| `gnmi.targets[].max_recv_msg_size_mib` | int | No | Per-target receive limit, from 1 through 16 MiB. Defaults to `16`; larger single notifications are rejected before protobuf allocation can exhaust the collector. |
+| `gnmi.targets[].max_recv_msg_size_mib` | int | No | Per-target receive limit, from 1 through 16 MiB. Defaults to `16`; larger single notifications are rejected before protobuf object expansion can exhaust the collector. All selected dial-in targets and enabled dial-out servers must fit the combined 512 MiB envelope described above. |
 | `gnmi.targets[].max_streams` | int | No | Compatible-stream cap; defaults to 4 and may be raised to at most 8 after qualification. IOS XR with optics needs 6. |
 | `gnmi.targets[].profiles` | map | No | `identity`, `system`, `interfaces`, `optics`, and fork-only `catalyst_9800_wireless`. |
 | `gnmi.max_datapoints_per_chunk` | int | No | Lossless consumer-call chunk bound. Defaults to `10000`. |
-| `gnmi.max_cached_series` | int | No | Hard retained-state limit shared by mapped series, atomic baselines, and delete tombstones. Defaults to `500000`; operate near `400000` active series per shard to leave correctness-metadata headroom. |
+| `gnmi.max_cached_series` | int | No | Receiver-wide count ceiling for mapped series, atomic baselines, and delete tombstones. Defaults to `500000`. The separate auxiliary entry ceiling is four times this value so each cached NX optical series can retain a sensor identity plus optical source, presence-count, and attribute entries. Both count ceilings are deterministically partitioned across selected targets. |
+
+The receiver also has two independent, non-configurable retained-byte ceilings: 256 MiB for cache correctness state and
+256 MiB for auxiliary NX sensor and optical-presence state, for a 512 MiB combined accounted ceiling. Count and byte
+budgets are divided as evenly as possible among selected targets, with any remainder assigned in configuration order,
+so one target cannot consume another target's partition. Conservative estimates include retained keys, paths, strings,
+attributes, and sparse-map overhead; either the count or byte partition can stop the affected profile first. The
+auxiliary count multiplier provides structural headroom, while the 256 MiB auxiliary byte ceiling remains the primary
+guard against oversized or high-cardinality metadata.
+
+A receiver-wide admission gate shared by normalized and deprecated gNMI dial-in permits at most eight decoded response
+objects at once. The forced response codec acquires a keyed lease before materializing a fragmented frame and protobuf
+unmarshal, honors the exact RPC or stream cancellation context, and releases the lease only after capability negotiation
+or final response handling. The shared engine additionally admits at most eight notification cache-plan, delivery, and
+commit operations. That work gate is acquired after per-target serialization and is held through the synchronous
+consumer call, so streams for one target cannot reorder state; each cache plan is independently limited to 32 MiB of
+staged payload accounting. The two deprecated dial-in implementations also share a separate eight-slot,
+cancellation-aware processing gate held from direct notification decoding through downstream delivery, including
+receiver-health deliveries.
+
+Each target serializes notification delivery and commits cache, NX sensor identity, and optical-presence state only after
+all chunks are accepted. A refusal aborts staged state and reconnects the subscription, allowing equal-timestamp
+redelivery. When a later chunk is refused after earlier chunks were accepted, the complete notification is retried and
+those earlier chunks are intentionally at-least-once; downstream consumers must tolerate duplicate datapoints.
 
 Identity defaults to a five-minute interval, system and interfaces to 60 seconds, and optics to 30 seconds. Safe
 baseline profiles default on. Optics is explicitly enabled because it is high-cardinality and dependent on the device,
@@ -650,8 +681,16 @@ JSON or JSON_IETF; gRPC dial-out reuses the `yang_grpc` receiver path for self-d
 same YANG leaves into raw `cisco.catalyst9800.yang.*` metrics and stable `cisco.wlc.*` aliases.
 
 Collector distributions that embed either Cisco dial-out mode must resolve a `yang_grpc` receiver from the same or a
-newer contrib release with runtime-hardening contract version 1. Startup fails closed when an older dependency is
+newer contrib release with runtime-hardening contract version 2. Startup fails closed when an older dependency is
 resolved, preventing an unbounded decoder or shutdown implementation from being exposed accidentally.
+
+Remote dial-out listeners also require payload identity verification. `identity_bindings` ties source IP addresses or
+CIDRs to the MDT `node_id_str` values those sources may claim. The receiver checks every message before YANG decoding
+and locks each stream to its first valid node ID; a missing binding, spoofed ID, malformed ID, or midstream identity
+change terminates the stream. When selectors overlap, the most-specific CIDR wins. Loopback listeners default to
+`identity_verification: legacy`; non-loopback listeners must use `required` with at least one valid binding.
+Source selectors and observed TCP peers must use global-unicast addresses (including private IPv4 and IPv6 ULA) or loopback;
+scoped, link-local, multicast, unspecified, and IPv4 limited-broadcast addresses are rejected.
 
 The default path groups are enabled only after `catalyst_9800.enabled: true` and cover AP join/CAPWAP state, RF and
 channel utilization, SSID counters, mobility peer/roam health, HA state, RADIUS summary counters, and controller
@@ -663,16 +702,18 @@ gNMI Capabilities unless `skip_capabilities` is set on a target.
 |---------|------|----------|-------------|
 | `catalyst_9800.enabled` | bool | No | Enables direct Catalyst 9800 telemetry. Defaults to `false`. |
 | `catalyst_9800.path_groups.*.enabled` | bool | No | Enables curated path groups. Safe defaults are `ap`, `rf`, `ssid`, `mobility`, `ha`, `auth_summary`, and `controller_system`; `client_detail`, `capwap_packets`, and `neighbors` default to disabled. |
-| `catalyst_9800.dial_in.targets` | list | No* | gNMI targets with `name`, `endpoint`, `credentials`, optional TLS/client settings, encoding preference, subscription, and path overrides. |
+| `catalyst_9800.dial_in.targets` | list | No* | Deprecated gNMI targets with `name`, `endpoint`, credentials, optional TLS/client settings, encoding preference, subscription, and path overrides. Each selected target uses one fixed 4 MiB receive stream and shares the combined target and frame ceilings documented under `gnmi`. |
 | `catalyst_9800.dial_in.targets[].tls` | map | No | Standard gRPC client TLS settings. TLS is required because credentials are sent as gRPC metadata; plaintext `insecure: true` is rejected. `insecure_skip_verify` remains an explicit lab-only certificate-verification bypass. |
 | `catalyst_9800.dial_out.enabled` | bool | No* | Enables a Catalyst 9800 MDT gRPC dial-out listener. |
 | `catalyst_9800.dial_out.endpoint` | string | No | gRPC listen endpoint. Defaults to `localhost:57501`; production configs usually set `0.0.0.0:57501` or a specific collector IP. |
 | `catalyst_9800.dial_out.tls` | map | No* | Server `cert_file` and `key_file`, plus optional `client_ca_file` for mTLS. TLS is required on non-loopback listeners. A remote listener also requires mTLS or `allowed_clients`. |
 | `catalyst_9800.dial_out.allowed_clients` | list | No | Optional source IP/CIDR allowlist enforced by receiver-private gRPC stream middleware. |
+| `catalyst_9800.dial_out.identity_verification` | string | No* | `legacy` or `required`. Defaults to `legacy` for loopback compatibility; every non-loopback listener must use `required`. |
+| `catalyst_9800.dial_out.identity_bindings` | list | No* | Source-to-node bindings with non-empty `sources` (IP/CIDR selectors) and `node_ids` allowlists. Each binding accepts at most 64 selectors and 64 IDs; the configuration accepts at most 256 bindings and 4096 total selectors/IDs. Node IDs are limited to 256 bytes. |
 | `catalyst_9800.dial_out.max_streams_per_client` | int | No | Maximum concurrent streams from one source IP. Defaults to the smaller of `16` and `max_concurrent_streams`, and cannot exceed `max_concurrent_streams`. |
 | `catalyst_9800.dial_out.rate_limiting` | map | No* | Per-client, per-message stream limit. It must be enabled on non-loopback listeners; loopback listeners may omit it. Set `requests_per_second`, `burst_size`, and `cleanup_interval`; cleanup must be at least `1s` and never resets a bucket before it can refill naturally. |
 | `catalyst_9800.dial_out.max_recv_msg_size_mib` | int | No | Maximum inbound message size, from 1 through 16 MiB. Defaults to `4`. |
-| `catalyst_9800.dial_out.max_concurrent_streams` | int | No | Maximum concurrent streams, from 1 through 1000. Defaults to `100`. |
+| `catalyst_9800.dial_out.max_concurrent_streams` | int | No | Global maximum concurrent streams, from 1 through 1000. Defaults to `64`; its product with `max_recv_msg_size_mib` cannot exceed 256 MiB and is also charged to the receiver-wide 512 MiB gNMI envelope. |
 | `catalyst_9800.encoding_preference` | list | No | gNMI encoding negotiation order. Defaults to `["json_ietf", "json"]`; `proto` is reserved for gRPC/KV-GPB dial-out. |
 | `catalyst_9800.subscription.mode` | string | No | `once`, `poll`, or `stream`. Defaults to `stream`. |
 | `catalyst_9800.subscription.stream_mode` | string | No | `sample`, `on_change`, or `target_defined`. Native Cisco paths fall back to `sample` for `target_defined`; path catalog entries such as AP join and LLDP can override to on-change. |
@@ -721,6 +762,10 @@ catalyst_9800:
       key_file: /etc/otelcol/certs/server.key
       client_ca_file: /etc/otelcol/certs/device-ca.crt
     allowed_clients: ["10.0.0.0/8"]
+    identity_verification: required
+    identity_bindings:
+      - sources: ["10.0.0.20"]
+        node_ids: ["campus-wlc-1"]
     max_streams_per_client: 16
     rate_limiting:
       enabled: true
@@ -745,16 +790,18 @@ negotiated in configured order (`json_ietf`, `json`, `proto`), unsupported model
 |---------|------|----------|-------------|
 | `ios_xr.enabled` | bool | No | Enables IOS XR telemetry. Defaults to `false`. |
 | `ios_xr.path_groups.*.enabled` | bool | No | Enables curated path groups. All groups default to disabled. |
-| `ios_xr.dial_in.targets` | list | No* | gNMI targets with `name`, `endpoint`, `credentials`, optional TLS/client settings, encoding preference, subscription, and path overrides. |
+| `ios_xr.dial_in.targets` | list | No* | Deprecated gNMI targets with `name`, `endpoint`, credentials, optional TLS/client settings, encoding preference, subscription, and path overrides. Each selected target uses one fixed 4 MiB receive stream and shares the combined target and frame ceilings documented under `gnmi`. |
 | `ios_xr.dial_in.targets[].tls` | map | No | Standard gRPC client TLS settings. TLS is required because credentials are sent as gRPC metadata; plaintext `insecure: true` is rejected. `insecure_skip_verify` remains an explicit lab-only certificate-verification bypass. |
 | `ios_xr.dial_out.enabled` | bool | No* | Enables an MDT gRPC dial-out listener. |
 | `ios_xr.dial_out.endpoint` | string | No | gRPC listen endpoint. Defaults to `localhost:57500`; production configs usually set `0.0.0.0:57500` or a specific collector IP. |
 | `ios_xr.dial_out.tls` | map | No* | Server `cert_file` and `key_file`, plus optional `client_ca_file` for mTLS. TLS is required on non-loopback listeners. A remote listener also requires mTLS or `allowed_clients`. |
 | `ios_xr.dial_out.allowed_clients` | list | No | Optional source IP/CIDR allowlist enforced by receiver-private gRPC stream middleware. |
+| `ios_xr.dial_out.identity_verification` | string | No* | `legacy` or `required`. Defaults to `legacy` for loopback compatibility; every non-loopback listener must use `required`. |
+| `ios_xr.dial_out.identity_bindings` | list | No* | Source-to-node bindings with non-empty `sources` (IP/CIDR selectors) and `node_ids` allowlists. Each binding accepts at most 64 selectors and 64 IDs; the configuration accepts at most 256 bindings and 4096 total selectors/IDs. Node IDs are limited to 256 bytes. |
 | `ios_xr.dial_out.max_streams_per_client` | int | No | Maximum concurrent streams from one source IP. Defaults to the smaller of `16` and `max_concurrent_streams`, and cannot exceed `max_concurrent_streams`. |
 | `ios_xr.dial_out.rate_limiting` | map | No* | Per-client, per-message stream limit. It must be enabled on non-loopback listeners; loopback listeners may omit it. Set `requests_per_second`, `burst_size`, and `cleanup_interval`; cleanup must be at least `1s` and never resets a bucket before it can refill naturally. |
 | `ios_xr.dial_out.max_recv_msg_size_mib` | int | No | Maximum inbound message size, from 1 through 16 MiB. Defaults to `4`. |
-| `ios_xr.dial_out.max_concurrent_streams` | int | No | Maximum concurrent streams, from 1 through 1000. Defaults to `100`. |
+| `ios_xr.dial_out.max_concurrent_streams` | int | No | Global maximum concurrent streams, from 1 through 1000. Defaults to `64`; its product with `max_recv_msg_size_mib` cannot exceed 256 MiB and is also charged to the receiver-wide 512 MiB gNMI envelope. |
 | `ios_xr.encoding_preference` | list | No | Encoding negotiation order. Defaults to `["json_ietf", "json", "proto"]`. |
 | `ios_xr.subscription.mode` | string | No | `once`, `poll`, or `stream`. Defaults to `stream`. |
 | `ios_xr.subscription.stream_mode` | string | No | `sample`, `on_change`, or `target_defined`. Native Cisco paths fall back to `sample` for `target_defined` unless capabilities prove support. |
@@ -809,6 +856,10 @@ ios_xr:
       key_file: /etc/otelcol/certs/server.key
       client_ca_file: /etc/otelcol/certs/device-ca.crt
     allowed_clients: ["10.0.0.0/8"]
+    identity_verification: required
+    identity_bindings:
+      - sources: ["10.0.0.10"]
+        node_ids: ["core-asr9k-1"]
     max_streams_per_client: 16
     rate_limiting:
       enabled: true
@@ -988,13 +1039,13 @@ state, NX-OS NVE/EVPN fabric metrics, vPC, LACP counters, and detailed QoS queue
 ### Catalyst 9800 Metrics
 - Generic YANG telemetry: numeric leaves are emitted as `cisco.catalyst9800.yang.<module>.<path>.<leaf>`; integral values are preserved as int64 datapoints when representable, while other numeric values use double datapoints. String and enum leaves use an `_info` metric with the original value on the `value` attribute, known counters are cumulative sums, and other numeric leaves are gauges.
 - Wireless aliases: stable `cisco.wlc.*` metrics cover AP join/failure/disconnect/CAPWAP state, RF utilization/noise/client count/channel changes, SSID client/utilization/traffic/retry counters, client connection/auth/roam/RSSI/SNR, mobility peer/roam/handoff, HA state, RADIUS summary health, and controller CPU/receiver health.
-- Correlation attributes: Catalyst 9800 metrics include `host.name`, `host.id`, `host.ip`, `hw.type=network`, `cisco.os.name=ios_xe`, `cisco.platform.family=catalyst_9800`, `cisco.yang.path`, `cisco.yang.module`, `cisco.telemetry.transport`, AP MAC/name, radio slot, WLAN ID, SSID, client MAC, and mobility peer IP when present.
+- Correlation attributes: Catalyst 9800 metrics include `host.name`, `host.id`, `host.ip`, `hw.type=network`, `cisco.os.name=ios_xe`, `cisco.platform.family=catalyst_9800`, the full `cisco.yang.path`, collision-safe `cisco.yang.source_path` for GPB-KV fields, `cisco.yang.module`, `cisco.telemetry.transport`, AP MAC/name, radio slot, WLAN ID, SSID, client MAC, and mobility peer IP when present. Present empty YANG list keys remain explicit attributes rather than collapsing into missing keys.
 - Receiver health: `cisco.catalyst9800.receiver.active_subscriptions`, `cisco.catalyst9800.receiver.updates`, `cisco.catalyst9800.receiver.decode_errors`, `cisco.catalyst9800.receiver.unsupported_paths`, `cisco.catalyst9800.receiver.reconnects`, `cisco.catalyst9800.receiver.dropped_datapoints`, `cisco.catalyst9800.receiver.compact_gpb_payloads`, and `cisco.catalyst9800.receiver.last_success_timestamp` help detect stale or lossy WLC telemetry.
 
 ### IOS XR Metrics
 - Generic YANG telemetry: numeric leaves are emitted as `cisco.iosxr.yang.<module>.<path>.<leaf>`; integral values are preserved as int64 datapoints when representable, while other numeric values use double datapoints. String and enum leaves use an `_info` metric with the original value on the `value` attribute, known counters are cumulative sums, and other numeric leaves are gauges.
 - Core WAN evidence: curated path groups cover system, platform, environment, high-speed interfaces, optics, routing, FIB/CEF, BGP, ISIS, MPLS, SR/SRv6, QoS, security policy, BFD, topology, time sync, ASIC, and telemetry self-health.
-- Correlation attributes: IOS XR metrics include `host.name`, `host.id`, `host.ip`, `hw.type=network`, `cisco.os.name=ios_xr`, `cisco.platform.family`, `cisco.yang.path`, `cisco.yang.module`, `cisco.telemetry.transport`, and normalized interface, VRF, neighbor, node, and location keys where available.
+- Correlation attributes: IOS XR metrics include `host.name`, `host.id`, `host.ip`, `hw.type=network`, `cisco.os.name=ios_xr`, `cisco.platform.family`, the full `cisco.yang.path`, collision-safe `cisco.yang.source_path` for GPB-KV fields, `cisco.yang.module`, `cisco.telemetry.transport`, and normalized interface, VRF, neighbor, node, and location keys where available. Present empty YANG list keys remain explicit attributes rather than collapsing into missing keys.
 - Receiver health: `cisco.iosxr.receiver.active_subscriptions`, `cisco.iosxr.receiver.updates`, `cisco.iosxr.receiver.decode_errors`, `cisco.iosxr.receiver.unsupported_paths`, `cisco.iosxr.receiver.reconnects`, `cisco.iosxr.receiver.dropped_datapoints`, `cisco.iosxr.receiver.compact_gpb_payloads`, and `cisco.iosxr.receiver.last_success_timestamp` help detect stale or lossy telemetry.
 - Compact GPB behavior: MDT self-describing KV-GPB is decoded through `yang_grpc`; compact `data_gpb` is counted diagnostically instead of silently dropped.
 

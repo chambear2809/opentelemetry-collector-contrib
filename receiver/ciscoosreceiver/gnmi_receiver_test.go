@@ -154,6 +154,32 @@ func TestSharedGNMIAvailabilityStartsAfterSubscriptionProgress(t *testing.T) {
 		"a non-health-only target must report up after its first sync")
 }
 
+func TestSharedGNMIAvailabilityRefusalReleasesGateAndRetries(t *testing.T) {
+	cfg := validGNMITestConfig()
+	rejecting := &runtimeTestRejectingConsumer{metricName: "cisco.device.up", maxRefusals: 1}
+	created, err := newSharedGNMIReceiver(
+		receivertest.NewNopSettings(componentmetadata.Type),
+		cfg,
+		rejecting,
+	)
+	require.NoError(t, err)
+	receiver, ok := created.(*sharedGNMIReceiver)
+	require.True(t, ok)
+	t.Cleanup(receiver.telemetry.shutdown)
+	require.Len(t, receiver.targets, 1)
+	target := receiver.targets[0]
+
+	receiver.emitTargetAvailable(t.Context(), target)
+	assert.False(t, target.sessionUp.Load(), "a refused up signal must remain eligible for retry")
+	assert.Empty(t, receiver.notificationSlots)
+
+	receiver.emitTargetAvailable(t.Context(), target)
+	assert.True(t, target.sessionUp.Load())
+	assert.Equal(t, int64(2), rejecting.calls.Load())
+	assert.Equal(t, int64(1), rejecting.accepted.Load())
+	assert.Empty(t, receiver.notificationSlots)
+}
+
 func TestSharedGNMIRuntimePollWaitsForSyncAndSerializesPolls(t *testing.T) {
 	material := runtimeTestTLSMaterial(t)
 	fake := &runtimeTestGNMIServer{}
@@ -513,8 +539,9 @@ func TestSharedGNMIRuntimeCombinationRejectionContinuesGroupsWithinStreamLimit(t
 	require.NoError(t, receiver.Shutdown(shutdownCtx))
 }
 
-func TestSharedGNMIRuntimeConsumerRefusalDoesNotReconnect(t *testing.T) {
+func TestSharedGNMIRuntimeConsumerRefusalReconnectsAndRedeliversEqualTimestamp(t *testing.T) {
 	material := runtimeTestTLSMaterial(t)
+	timestamp := time.Now().Add(-time.Minute).Truncate(time.Millisecond)
 	fake := &runtimeTestGNMIServer{}
 	fake.subscribe = func(stream grpc.BidiStreamingServer[gnmipb.SubscribeRequest, gnmipb.SubscribeResponse]) error {
 		request, err := stream.Recv()
@@ -522,17 +549,17 @@ func TestSharedGNMIRuntimeConsumerRefusalDoesNotReconnect(t *testing.T) {
 			return err
 		}
 		fake.recordRequest(request)
+		updates := make([]*gnmipb.Update, 0, 2)
 		for i := range 2 {
-			if err := stream.Send(&gnmipb.SubscribeResponse{Response: &gnmipb.SubscribeResponse_Update{Update: &gnmipb.Notification{
-				Timestamp: time.Now().Add(time.Duration(i) * time.Millisecond).UnixNano(),
-				Prefix:    &gnmipb.Path{Origin: runtimeTestOrigin},
-				Update: []*gnmipb.Update{{
-					Path: runtimeTestProtoPath(t, fmt.Sprintf("interfaces/interface[name=Ethernet%d]/state/value", i+1)),
-					Val:  &gnmipb.TypedValue{Value: &gnmipb.TypedValue_IntVal{IntVal: int64(i + 1)}},
-				}},
-			}}}); err != nil {
-				return err
-			}
+			updates = append(updates, &gnmipb.Update{
+				Path: runtimeTestProtoPath(t, fmt.Sprintf("interfaces/interface[name=Ethernet%d]/state/value", i+1)),
+				Val:  &gnmipb.TypedValue{Value: &gnmipb.TypedValue_IntVal{IntVal: int64(i + 1)}},
+			})
+		}
+		if err := stream.Send(&gnmipb.SubscribeResponse{Response: &gnmipb.SubscribeResponse_Update{Update: &gnmipb.Notification{
+			Timestamp: timestamp.UnixNano(), Prefix: &gnmipb.Path{Origin: runtimeTestOrigin}, Update: updates,
+		}}}); err != nil {
+			return err
 		}
 		return stream.Send(&gnmipb.SubscribeResponse{Response: &gnmipb.SubscribeResponse_SyncResponse{SyncResponse: true}})
 	}
@@ -540,19 +567,26 @@ func TestSharedGNMIRuntimeConsumerRefusalDoesNotReconnect(t *testing.T) {
 	mapping := runtimeTestMapping("interfaces/interface/state/value", "runtime.refused.value")
 	mapping.PathKeys = map[string]string{"interface.name": "network.interface.name"}
 	target := runtimeTestTarget(endpoint, material.caFile, gnmiModeOnce, mapping)
-	rejecting := &runtimeTestRejectingConsumer{metricName: "runtime.refused.value"}
+	rejecting := &runtimeTestRejectingConsumer{metricName: "runtime.refused.value", maxRefusals: 1}
 	reader := metric.NewManualReader()
 	provider := metric.NewMeterProvider(metric.WithReader(reader))
 	t.Cleanup(func() { require.NoError(t, provider.Shutdown(t.Context())) })
 	settings := receivertest.NewNopSettings(componentmetadata.Type)
 	settings.MeterProvider = provider
 	receiver := runtimeTestStartReceiver(t, settings, target, 1, rejecting)
-	runtimeTestWaitDone(t, receiver)
+	select {
+	case <-receiver.done:
+	case <-time.After(8 * time.Second):
+		require.FailNow(t, "timed out waiting for refusal reconnect and redelivery")
+	}
 
-	assert.Equal(t, int64(1), listener.accepts.Load())
-	assert.Equal(t, int64(2), rejecting.refusals.Load(), "the stream must continue after the first refused chunk")
-	assert.Equal(t, 1, fake.snapshot().subscribeCalls)
-	assert.Equal(t, int64(2), runtimeTestTelemetryIntSum(t, reader, "otelcol_ciscoosreceiver_gnmi_consumer_refusals"))
+	assert.Equal(t, int64(2), listener.accepts.Load())
+	assert.Equal(t, int64(1), rejecting.refusals.Load())
+	assert.Equal(t, int64(2), rejecting.accepted.Load())
+	assert.Equal(t, 2, fake.snapshot().subscribeCalls)
+	assert.Equal(t, int64(1), runtimeTestTelemetryIntSum(t, reader, "otelcol_ciscoosreceiver_gnmi_consumer_refusals"))
+	assert.Len(t, receiver.targets[0].cache.Snapshot(), 2,
+		"the refused attempt must not make equal-timestamp redelivery look duplicate")
 }
 
 func TestSharedGNMIRuntimeRejectsWrongCAAndSAN(t *testing.T) {
@@ -679,7 +713,10 @@ func TestSharedGNMIInBandErrorsAreSanitizedAndKeepClassification(t *testing.T) {
 	assert.Equal(t, codes.InvalidArgument, status.Code(unsupportedErr))
 	assert.NotContains(t, unsupportedErr.Error(), "device-controlled")
 
-	for name, receive := range map[string]func(grpc.BidiStreamingClient[gnmipb.SubscribeRequest, gnmipb.SubscribeResponse]) error{
+	for name, receive := range map[string]func(
+		grpc.BidiStreamingClient[gnmipb.SubscribeRequest, gnmipb.SubscribeResponse],
+		*gnmiResponseAdmission,
+	) error{
 		"until sync": receiveSharedGNMIProbeUntilSync,
 		"once":       receiveSharedGNMIProbeOnce,
 	} {
@@ -687,7 +724,7 @@ func TestSharedGNMIInBandErrorsAreSanitizedAndKeepClassification(t *testing.T) {
 			probeCtx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			stream := &singleUpdateGNMIClientStream{ctx: probeCtx, response: response(codes.InvalidArgument)}
-			err := receive(stream)
+			err := receive(stream, nil)
 			require.Error(t, err)
 			var probeUnsupported *sharedGNMIUnsupportedError
 			require.ErrorAs(t, err, &probeUnsupported)
@@ -870,7 +907,9 @@ func TestSharedGNMINXReconnectRequiresFreshSensorIdentity(t *testing.T) {
 	assert.Empty(t, target.nxSensors, "session exit must release auxiliary sensor identity")
 	target.nxMu.Unlock()
 	target.nxBudget.mu.Lock()
-	assert.Zero(t, target.nxBudget.used, "session exit must release shared auxiliary budget")
+	assert.Equal(t, 3, target.nxBudget.used,
+		"session exit releases NX identity but preserves the cached optic's source, count, and attributes")
+	assert.Positive(t, target.nxBudget.usedBytes)
 	target.nxBudget.mu.Unlock()
 	assert.Equal(t, 1, cachedMetricCount("cisco.optics.tdecq"), "session cleanup must preserve mapped cache state")
 
@@ -908,7 +947,9 @@ func TestSharedGNMINXReconnectRequiresFreshSensorIdentity(t *testing.T) {
 	assert.Empty(t, target.nxSensors)
 	target.nxMu.Unlock()
 	target.nxBudget.mu.Lock()
-	assert.Zero(t, target.nxBudget.used)
+	assert.Equal(t, 4, target.nxBudget.used,
+		"both cached optical series retain sources while sharing one presence count and attribute entry")
+	assert.Positive(t, target.nxBudget.usedBytes)
 	target.nxBudget.mu.Unlock()
 }
 
@@ -1034,19 +1075,18 @@ func TestNormalizeNXNotificationBoundsAndInvalidatesSensorState(t *testing.T) {
 	assert.Zero(t, target.nxBudget.used, "profile cleanup must release the global auxiliary-state budget")
 }
 
-func TestNormalizeNXNotificationSharesAuxiliaryBudgetAcrossTargets(t *testing.T) {
-	cache, err := internalgnmi.NewCache(10)
-	require.NoError(t, err)
-	budget := newSharedGNMIAuxiliaryBudget(1)
+func TestNormalizeNXNotificationAuxiliaryBudgetsAreIsolatedByTarget(t *testing.T) {
 	newTarget := func(name string) *sharedGNMITargetRuntime {
+		cache, err := internalgnmi.NewCache(10)
+		require.NoError(t, err)
 		target, buildErr := newSharedGNMITargetRuntimeWithBudget(GNMITargetConfig{
 			Name: name, Platform: gnmiPlatformNXOS, MaxStreams: 1,
 			Profiles: subscriptionProfilesOnly(builtinGNMIProfileOptics),
-		}, cache, budget)
+		}, cache, newSharedGNMIAuxiliaryBudget(1))
 		require.NoError(t, buildErr)
 		return target
 	}
-	notification := func(name string) internalgnmi.DecodedNotification {
+	notification := func(name, sensorID string) internalgnmi.DecodedNotification {
 		elements := []internalgnmi.PathElem{
 			{Name: "sys"},
 			{Name: "intf"},
@@ -1054,7 +1094,7 @@ func TestNormalizeNXNotificationSharesAuxiliaryBudgetAcrossTargets(t *testing.T)
 			{Name: "phys"},
 			{Name: "fcotdd"},
 			{Name: "lane", Keys: map[string]string{"id": "0"}},
-			{Name: "sensor", Keys: map[string]string{"id": "1"}},
+			{Name: "sensor", Keys: map[string]string{"id": sensorID}},
 		}
 		timestamp := time.Date(2026, time.July, 2, 12, 0, 0, 0, time.UTC)
 		return internalgnmi.DecodedNotification{
@@ -1067,14 +1107,18 @@ func TestNormalizeNXNotificationSharesAuxiliaryBudgetAcrossTargets(t *testing.T)
 	}
 	first := newTarget("nx-one")
 	second := newTarget("nx-two")
-	_, err = first.normalizeNXNotification(notification("nx-one"))
+	_, err := first.normalizeNXNotification(notification("nx-one", "1"))
 	require.NoError(t, err)
-	_, err = second.normalizeNXNotification(notification("nx-two"))
+	_, err = first.normalizeNXNotification(notification("nx-one", "2"))
 	var capacity *internalgnmi.CapacityError
 	require.ErrorAs(t, err, &capacity)
+	_, err = second.normalizeNXNotification(notification("nx-two", "1"))
+	require.NoError(t, err)
 	assert.Len(t, first.nxSensors, 1)
-	assert.Empty(t, second.nxSensors)
-	assert.Equal(t, 1, budget.used)
+	assert.Len(t, second.nxSensors, 1, "one target exhausting its partition must not affect another target")
+	assert.NotSame(t, first.nxBudget, second.nxBudget)
+	assert.Equal(t, 1, first.nxBudget.used)
+	assert.Equal(t, 1, second.nxBudget.used)
 }
 
 func TestNXSensorTransactionRollsBackAfterMappedCacheCapacityFailure(t *testing.T) {
@@ -1114,6 +1158,8 @@ func TestNXSensorTransactionRollsBackAfterMappedCacheCapacityFailure(t *testing.
 	require.NoError(t, err)
 	require.NotNil(t, transaction)
 	assert.Empty(t, target.nxSensors, "preparation must not publish auxiliary state")
+	reservation, err := prepareSharedGNMIAuxiliaryReservation(target.nxBudget, transaction.budgetDelta)
+	require.NoError(t, err)
 	assert.Equal(t, 1, budget.used, "the pending transaction reserves capacity")
 
 	rejected := existing
@@ -1126,6 +1172,7 @@ func TestNXSensorTransactionRollsBackAfterMappedCacheCapacityFailure(t *testing.
 	var capacity *internalgnmi.CapacityError
 	require.ErrorAs(t, err, &capacity)
 	transaction.rollback()
+	reservation.rollback()
 	assert.Empty(t, target.nxSensors)
 	assert.Zero(t, budget.used, "rollback must return the shared auxiliary reservation")
 }
@@ -1149,7 +1196,7 @@ func TestProcessNXNotificationAtomicallyReplacesCacheAndAuxiliaryStateAtCapacity
 	target := receiver.targets[0]
 	// Exercise a one-sensor auxiliary budget independently from the combined
 	// cache budget, which needs three slots for one atomic mapped point.
-	target.nxBudget = newSharedGNMIAuxiliaryBudget(1)
+	target.nxBudget = newSharedGNMIAuxiliaryBudget(4)
 	require.Len(t, target.streams, 1)
 	stream := target.streams[0]
 	require.Equal(t, builtinGNMIProfileOptics, stream.Profile)
@@ -1186,7 +1233,7 @@ func TestProcessNXNotificationAtomicallyReplacesCacheAndAuxiliaryStateAtCapacity
 		for _, state := range target.nxSensors {
 			assert.Equal(t, wantSensor, sensorID(state.path.Elements))
 		}
-		assert.Equal(t, 1, target.nxBudget.used)
+		assert.Equal(t, 4, target.nxBudget.used, "one NX sensor and three optical map entries are retained")
 		snapshot := target.cache.Snapshot()
 		require.Len(t, snapshot, 1)
 		assert.Equal(t, wantSensor, sensorID(snapshot[0].Source.Elements))
@@ -1201,15 +1248,14 @@ func TestProcessNXNotificationAtomicallyReplacesCacheAndAuxiliaryStateAtCapacity
 	require.NoError(t, receiver.processNotification(t.Context(), target, stream, notification(baseTime.Add(time.Second), true, "2")))
 	assertState("2")
 
-	// A third unique auxiliary staged key exceeds the bounded 2*N transaction.
-	// The receiver must reject it before either cache is partially mutated.
+	// A notification which exceeds a retained-state limit must not partially
+	// replace the already committed cache or auxiliary state.
 	err = receiver.processNotification(t.Context(), target, stream, notification(baseTime.Add(2*time.Second), true, "3", "4"))
 	var stopped *sharedGNMIProfileStopError
 	require.ErrorAs(t, err, &stopped)
 	var capacity *internalgnmi.CapacityError
 	require.ErrorAs(t, err, &capacity)
-	assert.Equal(t, 2, capacity.Limit)
-	assert.Equal(t, 3, capacity.Requested)
+	assert.Greater(t, capacity.Requested, capacity.Limit)
 	assertState("2")
 }
 
@@ -1234,6 +1280,7 @@ func TestOpticalPresenceTracksDeletesExplicitAbsenceAndSourceReplacement(t *test
 	target := &sharedGNMITargetRuntime{
 		config: GNMITargetConfig{Name: "optics-target"}, opticalSources: map[string]string{},
 		presenceCounts: map[string]int{}, presenceAttrs: map[string]map[string]string{},
+		nxBudget: newSharedGNMIAuxiliaryBudget(100),
 	}
 	timestamp := time.Date(2026, time.July, 2, 12, 0, 0, 0, time.UTC)
 	attributes := map[string]string{
@@ -1250,33 +1297,40 @@ func TestOpticalPresenceTracksDeletesExplicitAbsenceAndSourceReplacement(t *test
 		}
 	}
 	temperature := point("device", "temperature", "cisco.optics.temperature", 40)
-	presence := target.updateOpticalPresence(internalgnmi.CacheResult{Applied: []internalgnmi.MappedPoint{temperature}}, timestamp)
+	presence, err := target.updateOpticalPresence(internalgnmi.CacheResult{Applied: []internalgnmi.MappedPoint{temperature}}, timestamp)
+	require.NoError(t, err)
 	require.Len(t, presence, 1)
 	assert.Equal(t, int64(1), presence[0].IntValue)
 
 	replacement := point("DME", "temperature", "cisco.optics.temperature", 41)
-	presence = target.updateOpticalPresence(internalgnmi.CacheResult{
+	presence, err = target.updateOpticalPresence(internalgnmi.CacheResult{
 		Applied: []internalgnmi.MappedPoint{replacement}, Replaced: []internalgnmi.MappedPoint{temperature},
 	}, timestamp.Add(time.Second))
+	require.NoError(t, err)
 	require.Len(t, presence, 1)
 	assert.Equal(t, int64(1), presence[0].IntValue)
 	assert.NotContains(t, target.opticalSources, temperature.Source.Key())
 	assert.Contains(t, target.opticalSources, replacement.Source.Key())
 
-	presence = target.updateOpticalPresence(internalgnmi.CacheResult{Removed: []internalgnmi.MappedPoint{replacement}}, timestamp.Add(2*time.Second))
+	presence, err = target.updateOpticalPresence(internalgnmi.CacheResult{Removed: []internalgnmi.MappedPoint{replacement}}, timestamp.Add(2*time.Second))
+	require.NoError(t, err)
 	require.Len(t, presence, 1)
 	assert.Equal(t, int64(0), presence[0].IntValue)
 
 	explicitPresent := point("device", "present", "cisco.optics.present", 1)
-	presence = target.updateOpticalPresence(internalgnmi.CacheResult{Applied: []internalgnmi.MappedPoint{explicitPresent}}, timestamp.Add(3*time.Second))
+	presence, err = target.updateOpticalPresence(internalgnmi.CacheResult{Applied: []internalgnmi.MappedPoint{explicitPresent}}, timestamp.Add(3*time.Second))
+	require.NoError(t, err)
 	assert.Empty(t, presence, "the explicitly mapped present=1 datapoint is already in the output batch")
-	presence = target.updateOpticalPresence(internalgnmi.CacheResult{Removed: []internalgnmi.MappedPoint{explicitPresent}}, timestamp.Add(4*time.Second))
+	presence, err = target.updateOpticalPresence(internalgnmi.CacheResult{Removed: []internalgnmi.MappedPoint{explicitPresent}}, timestamp.Add(4*time.Second))
+	require.NoError(t, err)
 	require.Len(t, presence, 1)
 	assert.Equal(t, int64(0), presence[0].IntValue, "deleting an explicit presence leaf must signal absence")
 
-	target.updateOpticalPresence(internalgnmi.CacheResult{Applied: []internalgnmi.MappedPoint{temperature}}, timestamp.Add(5*time.Second))
+	_, err = target.updateOpticalPresence(internalgnmi.CacheResult{Applied: []internalgnmi.MappedPoint{temperature}}, timestamp.Add(5*time.Second))
+	require.NoError(t, err)
 	explicitAbsent := point("device", "present", "cisco.optics.present", 0)
-	presence = target.updateOpticalPresence(internalgnmi.CacheResult{Applied: []internalgnmi.MappedPoint{explicitAbsent}}, timestamp.Add(6*time.Second))
+	presence, err = target.updateOpticalPresence(internalgnmi.CacheResult{Applied: []internalgnmi.MappedPoint{explicitAbsent}}, timestamp.Add(6*time.Second))
+	require.NoError(t, err)
 	assert.Empty(t, presence, "the explicitly mapped present=0 datapoint is already in the output batch")
 	assert.Empty(t, target.opticalSources)
 	assert.Empty(t, target.presenceCounts)
@@ -1560,11 +1614,12 @@ func runtimeTestServeTarget(t *testing.T, target GNMITargetConfig) error {
 	runtime, err := newSharedGNMITargetRuntime(target, cache)
 	require.NoError(t, err)
 	receiver := &sharedGNMIReceiver{
-		settings:        receivertest.NewNopSettings(componentmetadata.Type),
-		consumer:        consumertest.NewNop(),
-		maxDatapoints:   10,
-		maxCachedSeries: 100,
-		host:            componenttest.NewNopHost(),
+		settings:          receivertest.NewNopSettings(componentmetadata.Type),
+		consumer:          consumertest.NewNop(),
+		maxDatapoints:     10,
+		maxCachedSeries:   100,
+		host:              componenttest.NewNopHost(),
+		notificationSlots: make(chan struct{}, sharedGNMIMaxConcurrentDelivery),
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
@@ -1654,8 +1709,11 @@ func runtimeTestMetricPointCount(metrics pmetric.Metrics, name string) int {
 }
 
 type runtimeTestRejectingConsumer struct {
-	metricName string
-	refusals   atomic.Int64
+	metricName  string
+	maxRefusals int64
+	calls       atomic.Int64
+	refusals    atomic.Int64
+	accepted    atomic.Int64
 }
 
 func (*runtimeTestRejectingConsumer) Capabilities() consumer.Capabilities {
@@ -1663,11 +1721,17 @@ func (*runtimeTestRejectingConsumer) Capabilities() consumer.Capabilities {
 }
 
 func (c *runtimeTestRejectingConsumer) ConsumeMetrics(_ context.Context, metrics pmetric.Metrics) error {
-	if runtimeTestMetricPointCount(metrics, c.metricName) == 0 {
+	points := runtimeTestMetricPointCount(metrics, c.metricName)
+	if points == 0 {
 		return nil
 	}
-	c.refusals.Add(1)
-	return errors.New("intentional runtime test refusal")
+	call := c.calls.Add(1)
+	if call <= c.maxRefusals {
+		c.refusals.Add(1)
+		return errors.New("intentional runtime test refusal")
+	}
+	c.accepted.Add(int64(points))
+	return nil
 }
 
 func runtimeTestTelemetryIntSum(t *testing.T, reader *metric.ManualReader, name string) int64 {

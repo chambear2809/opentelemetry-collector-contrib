@@ -63,7 +63,7 @@ func (h *iosXRHealth) setTargetSubscriptionActive(target string, active bool) bo
 	state.active = active
 	h.targets[target] = state
 	if active {
-		h.activeSubscriptions++
+		h.activeSubscriptions = saturatingAddNonNegative(h.activeSubscriptions, 1)
 	} else if h.activeSubscriptions > 0 {
 		h.activeSubscriptions--
 	}
@@ -73,7 +73,7 @@ func (h *iosXRHealth) setTargetSubscriptionActive(target string, active bool) bo
 func (h *iosXRHealth) addTargetUpdates(target string, value int64) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.updatesReceived += value
+	h.updatesReceived = saturatingAddNonNegative(h.updatesReceived, value)
 	now := time.Now()
 	h.lastSuccess = now
 	if target != "" {
@@ -81,7 +81,7 @@ func (h *iosXRHealth) addTargetUpdates(target string, value int64) {
 			h.targets = make(map[string]iosXRTargetHealth)
 		}
 		state := h.targets[target]
-		state.updatesReceived += value
+		state.updatesReceived = saturatingAddNonNegative(state.updatesReceived, value)
 		state.lastSuccess = now
 		h.targets[target] = state
 	}
@@ -90,25 +90,25 @@ func (h *iosXRHealth) addTargetUpdates(target string, value int64) {
 func (h *iosXRHealth) addDecodeErrors(value int64) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.decodeErrors += value
+	h.decodeErrors = saturatingAddNonNegative(h.decodeErrors, value)
 }
 
 func (h *iosXRHealth) addUnsupportedPaths(value int64) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.unsupportedPaths += value
+	h.unsupportedPaths = saturatingAddNonNegative(h.unsupportedPaths, value)
 }
 
 func (h *iosXRHealth) addTargetReconnects(target string, value int64) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.reconnects += value
+	h.reconnects = saturatingAddNonNegative(h.reconnects, value)
 	if target != "" {
 		if h.targets == nil {
 			h.targets = make(map[string]iosXRTargetHealth)
 		}
 		state := h.targets[target]
-		state.reconnects += value
+		state.reconnects = saturatingAddNonNegative(state.reconnects, value)
 		h.targets[target] = state
 	}
 }
@@ -116,13 +116,26 @@ func (h *iosXRHealth) addTargetReconnects(target string, value int64) {
 func (h *iosXRHealth) addDroppedDatapoints(value int64) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.droppedDatapoints += value
+	h.droppedDatapoints = saturatingAddNonNegative(h.droppedDatapoints, value)
 }
 
 func (h *iosXRHealth) addCompactGPBPayloads(value int64) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.compactGPBPayloads += value
+	h.compactGPBPayloads = saturatingAddNonNegative(h.compactGPBPayloads, value)
+}
+
+func saturatingAddNonNegative(current, value int64) int64 {
+	if current < 0 {
+		current = 0
+	}
+	if value <= 0 {
+		return current
+	}
+	if current > math.MaxInt64-value {
+		return math.MaxInt64
+	}
+	return current + value
 }
 
 func (h *iosXRHealth) snapshot() iosXRHealthSnapshot {
@@ -355,6 +368,10 @@ func isIOSXRCounterMetric(pathParts []string) bool {
 }
 
 func applyStringAttrs(attrs pcommon.Map, values map[string]string) {
+	applyStringAttrsWithEmpty(attrs, values, false)
+}
+
+func applyStringAttrsWithEmpty(attrs pcommon.Map, values map[string]string, preserveEmpty bool) {
 	if len(values) == 0 {
 		return
 	}
@@ -364,13 +381,14 @@ func applyStringAttrs(attrs pcommon.Map, values map[string]string) {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		if values[key] != "" {
-			if key == "host.ip" {
-				putIPAttr(attrs, key, values[key])
-				continue
-			}
-			attrs.PutStr(key, values[key])
+		if values[key] == "" && !preserveEmpty && !isDirectGNMIIdentityAttribute(key) {
+			continue
 		}
+		if key == "host.ip" && values[key] != "" {
+			putIPAttr(attrs, key, values[key])
+			continue
+		}
+		attrs.PutStr(key, values[key])
 	}
 }
 
@@ -488,11 +506,12 @@ func valueToInfoString(value any) string {
 }
 
 type iosXRNormalizingConsumer struct {
-	next      consumer.Metrics
-	config    IOSXRConfig
-	selector  deviceSelectionMatcher
-	transport string
-	health    *iosXRHealth
+	next         consumer.Metrics
+	config       IOSXRConfig
+	selector     deviceSelectionMatcher
+	transport    string
+	health       *iosXRHealth
+	budgetLimits finalDatapointBudgetLimits
 }
 
 func newIOSXRNormalizingConsumer(next consumer.Metrics, config IOSXRConfig, selector deviceSelectionMatcher, transport string, health *iosXRHealth) consumer.Metrics { //nolint:unparam // Transport remains explicit because the normalizer owns transport attribution.
@@ -504,12 +523,10 @@ func (*iosXRNormalizingConsumer) Capabilities() consumer.Capabilities {
 }
 
 func (c *iosXRNormalizingConsumer) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error {
-	c.normalize(md)
-	if c.config.MaxDatapointsPerBatch > 0 {
-		dropped := enforceIOSXRDatapointLimit(md, c.config.MaxDatapointsPerBatch)
-		if dropped > 0 && c.health != nil {
-			c.health.addDroppedDatapoints(int64(dropped))
-		}
+	budget := newFinalDatapointBudget(c.budgetLimits, c.config.MaxDatapointsPerBatch)
+	c.normalize(md, budget)
+	if budget.dropped > 0 && c.health != nil {
+		c.health.addDroppedDatapoints(budget.dropped)
 	}
 	if md.MetricCount() == 0 {
 		return nil
@@ -517,7 +534,7 @@ func (c *iosXRNormalizingConsumer) ConsumeMetrics(ctx context.Context, md pmetri
 	return c.next.ConsumeMetrics(ctx, md)
 }
 
-func (c *iosXRNormalizingConsumer) normalize(md pmetric.Metrics) {
+func (c *iosXRNormalizingConsumer) normalize(md pmetric.Metrics, budget *finalDatapointBudget) {
 	rms := md.ResourceMetrics()
 	rms.RemoveIf(func(rm pmetric.ResourceMetrics) bool {
 		resAttrs := rm.Resource().Attributes()
@@ -552,9 +569,7 @@ func (c *iosXRNormalizingConsumer) normalize(md pmetric.Metrics) {
 		resAttrs.Remove("cisco.encoding_path")
 		resAttrs.Remove("cisco.yang.path")
 		resAttrs.Remove("cisco.yang.module")
-		sms := rm.ScopeMetrics()
-		for j := 0; j < sms.Len(); j++ {
-			sm := sms.At(j)
+		rm.ScopeMetrics().RemoveIf(func(sm pmetric.ScopeMetrics) bool {
 			metrics := sm.Metrics()
 			for k := 0; k < metrics.Len(); k++ {
 				metric := metrics.At(k)
@@ -570,10 +585,12 @@ func (c *iosXRNormalizingConsumer) normalize(md pmetric.Metrics) {
 						metric.SetName(iosXRMetricName(module, strings.Split(name, ".")))
 					}
 				}
-				annotateMetricDatapoints(metric, module, encodingPath, c.transport)
+				annotateMetricDatapoints(metric, module, encodingPath, c.transport, budget)
 			}
 			coalesceMetricStreams(sm)
-		}
+			metrics.RemoveIf(func(metric pmetric.Metric) bool { return metricDatapointCount(metric) == 0 })
+			return metrics.Len() == 0
+		})
 		return rm.ScopeMetrics().Len() == 0
 	})
 }
@@ -582,13 +599,10 @@ func metricNumericTotal(metric pmetric.Metric) int64 {
 	var total int64
 	add := func(dp pmetric.NumberDataPoint) {
 		value, ok := numberDatapointInt64(dp)
-		if !ok {
+		if !ok || value <= 0 {
 			return
 		}
-		if value > 0 && total > math.MaxInt64-value || value < 0 && total < math.MinInt64-value {
-			return
-		}
-		total += value
+		total = saturatingAddNonNegative(total, value)
 	}
 	switch metric.Type() {
 	case pmetric.MetricTypeGauge:
@@ -618,16 +632,36 @@ func numberDatapointInt64(dp pmetric.NumberDataPoint) (int64, bool) {
 }
 
 type metricStreamIdentity struct {
-	name       string
-	metricType pmetric.MetricType
+	name                   string
+	metricType             pmetric.MetricType
+	unit                   string
+	description            string
+	aggregationTemporality pmetric.AggregationTemporality
+	monotonic              bool
+}
+
+func metricStreamIdentityFromMetric(metric pmetric.Metric) metricStreamIdentity {
+	identity := metricStreamIdentity{
+		name: metric.Name(), metricType: metric.Type(), unit: metric.Unit(), description: metric.Description(),
+	}
+	switch metric.Type() {
+	case pmetric.MetricTypeSum:
+		identity.aggregationTemporality = metric.Sum().AggregationTemporality()
+		identity.monotonic = metric.Sum().IsMonotonic()
+	case pmetric.MetricTypeHistogram:
+		identity.aggregationTemporality = metric.Histogram().AggregationTemporality()
+	case pmetric.MetricTypeExponentialHistogram:
+		identity.aggregationTemporality = metric.ExponentialHistogram().AggregationTemporality()
+	}
+	return identity
 }
 
 func coalesceMetricStreams(sm pmetric.ScopeMetrics) {
 	seen := map[metricStreamIdentity]pmetric.Metric{}
 	sm.Metrics().RemoveIf(func(metric pmetric.Metric) bool {
-		identity := metricStreamIdentity{name: metric.Name(), metricType: metric.Type()}
-		existing, ok := seen[identity]
-		if !ok {
+		identity := metricStreamIdentityFromMetric(metric)
+		existing, found := seen[identity]
+		if !found {
 			seen[identity] = metric
 			return false
 		}
@@ -636,6 +670,12 @@ func coalesceMetricStreams(sm pmetric.ScopeMetrics) {
 			metric.Gauge().DataPoints().MoveAndAppendTo(existing.Gauge().DataPoints())
 		case pmetric.MetricTypeSum:
 			metric.Sum().DataPoints().MoveAndAppendTo(existing.Sum().DataPoints())
+		case pmetric.MetricTypeHistogram:
+			metric.Histogram().DataPoints().MoveAndAppendTo(existing.Histogram().DataPoints())
+		case pmetric.MetricTypeExponentialHistogram:
+			metric.ExponentialHistogram().DataPoints().MoveAndAppendTo(existing.ExponentialHistogram().DataPoints())
+		case pmetric.MetricTypeSummary:
+			metric.Summary().DataPoints().MoveAndAppendTo(existing.Summary().DataPoints())
 		default:
 			return false
 		}
@@ -643,30 +683,31 @@ func coalesceMetricStreams(sm pmetric.ScopeMetrics) {
 	})
 }
 
-func annotateMetricDatapoints(metric pmetric.Metric, module, yangPath, transport string) {
-	apply := func(attrs pcommon.Map) {
-		if module != "" {
-			attrs.PutStr("cisco.yang.module", module)
+func annotateMetricDatapoints(metric pmetric.Metric, module, yangPath, transport string, budget *finalDatapointBudget) {
+	keep := func(attrs pcommon.Map) bool {
+		additions := iosXRDatapointAttributeAdditions(attrs, module, yangPath, transport)
+		if !budget.reservePcommonDatapoint(attrs, additions) {
+			return false
 		}
-		if yangPath != "" {
-			attrs.PutStr("cisco.yang.path", yangPath)
-		}
-		if transport != "" {
-			attrs.PutStr("cisco.telemetry.transport", transport)
-		}
-		normalizeIOSXRDatapointAttrs(attrs)
+		applyStringAttrs(attrs, additions)
+		return true
 	}
 	switch metric.Type() {
 	case pmetric.MetricTypeGauge:
 		dps := metric.Gauge().DataPoints()
-		for i := 0; i < dps.Len(); i++ {
-			apply(dps.At(i).Attributes())
-		}
+		dps.RemoveIf(func(dp pmetric.NumberDataPoint) bool { return !keep(dp.Attributes()) })
 	case pmetric.MetricTypeSum:
 		dps := metric.Sum().DataPoints()
-		for i := 0; i < dps.Len(); i++ {
-			apply(dps.At(i).Attributes())
-		}
+		dps.RemoveIf(func(dp pmetric.NumberDataPoint) bool { return !keep(dp.Attributes()) })
+	case pmetric.MetricTypeHistogram:
+		dps := metric.Histogram().DataPoints()
+		dps.RemoveIf(func(dp pmetric.HistogramDataPoint) bool { return !keep(dp.Attributes()) })
+	case pmetric.MetricTypeExponentialHistogram:
+		dps := metric.ExponentialHistogram().DataPoints()
+		dps.RemoveIf(func(dp pmetric.ExponentialHistogramDataPoint) bool { return !keep(dp.Attributes()) })
+	case pmetric.MetricTypeSummary:
+		dps := metric.Summary().DataPoints()
+		dps.RemoveIf(func(dp pmetric.SummaryDataPoint) bool { return !keep(dp.Attributes()) })
 	}
 }
 
@@ -713,36 +754,52 @@ func normalizeHostIPAttr(attrs pcommon.Map) {
 	putIPAttr(attrs, "host.ip", hostIP)
 }
 
-func normalizeIOSXRDatapointAttrs(attrs pcommon.Map) {
+func iosXRDatapointAttributeAdditions(attrs pcommon.Map, module, yangPath, transport string) map[string]string {
+	additions := make(map[string]string, 8)
+	if module != "" {
+		additions["cisco.yang.module"] = module
+	}
+	if yangPath != "" {
+		additions["cisco.yang.path"] = yangPath
+	}
+	if transport != "" {
+		additions["cisco.telemetry.transport"] = transport
+	}
 	iface := firstIOSXRAttr(attrs, "interface", "interface-name", "if-name", "name")
 	if iface != "" && looksLikeInterfaceName(iface) {
-		putAttrIfMissing(attrs, "network.interface.name", iface)
+		planAttrIfMissing(attrs, additions, "network.interface.name", iface)
 	}
 	if vrf := firstIOSXRAttr(attrs, "vrf", "vrf-name", "vrf-name-xr"); vrf != "" {
-		putAttrIfMissing(attrs, "network.vrf.name", vrf)
+		planAttrIfMissing(attrs, additions, "network.vrf.name", vrf)
 	}
 	if peer := firstIOSXRAttr(attrs, "neighbor", "neighbor-address", "peer-address", "neighbor-id"); peer != "" {
-		putAttrIfMissing(attrs, "network.peer.address", peer)
+		planAttrIfMissing(attrs, additions, "network.peer.address", peer)
 	}
 	if node := firstIOSXRAttr(attrs, "node_id", "node-id", "node-name", "node"); node != "" {
-		putAttrIfMissing(attrs, "cisco.node.id", node)
+		planAttrIfMissing(attrs, additions, "cisco.node.id", node)
 	}
 	if location := firstIOSXRAttr(attrs, "location", "rack", "slot"); location != "" {
-		putAttrIfMissing(attrs, "cisco.location", location)
+		planAttrIfMissing(attrs, additions, "cisco.location", location)
 	}
+	return additions
 }
 
 func firstIOSXRAttr(attrs pcommon.Map, keys ...string) string {
 	for _, key := range keys {
-		if value, ok := attrs.Get(key); ok && value.AsString() != "" {
-			return value.AsString()
+		if value, ok := attrs.Get(key); ok {
+			switch value.Type() {
+			case pcommon.ValueTypeStr, pcommon.ValueTypeInt, pcommon.ValueTypeDouble, pcommon.ValueTypeBool:
+				if text := value.AsString(); text != "" {
+					return text
+				}
+			}
 		}
 	}
 	return ""
 }
 
-func putAttrIfMissing(attrs pcommon.Map, key, value string) {
+func planAttrIfMissing(attrs pcommon.Map, additions map[string]string, key, value string) {
 	if _, exists := attrs.Get(key); !exists && value != "" {
-		attrs.PutStr(key, value)
+		additions[key] = value
 	}
 }

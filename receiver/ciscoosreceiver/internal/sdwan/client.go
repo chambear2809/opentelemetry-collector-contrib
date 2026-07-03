@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package sdwan
+package sdwan // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/sdwan"
 
 import (
 	"bytes"
@@ -518,9 +518,24 @@ func (c *Client) performLogin(ctx context.Context) (authBundle, http.Header, int
 			return bundle, header, status, nil
 		} else if c.authMode == "jwt" {
 			return authBundle{}, header, status, err
+		} else if !jwtLoginUnsupported(status) {
+			// A configured JWT endpoint that is temporarily unavailable must retain
+			// its status so performLoginWithRetry can apply the retry policy. Falling
+			// through to session authentication here can replace a retryable JWT
+			// failure with a non-retryable legacy-endpoint response.
+			return authBundle{}, header, status, err
 		}
 	}
 	return c.loginSession(ctx)
+}
+
+func jwtLoginUnsupported(status int) bool {
+	switch status {
+	case http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotImplemented:
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *Client) loginJWT(ctx context.Context) (authBundle, http.Header, int, error) {

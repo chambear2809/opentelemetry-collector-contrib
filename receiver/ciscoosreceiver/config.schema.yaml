@@ -144,6 +144,13 @@ $defs:
           type: string
       enabled:
         type: boolean
+      identity_bindings:
+        type: array
+        items:
+          $ref: gnmi_dial_out_identity_binding_config
+      identity_verification:
+        description: IdentityVerification controls whether source-to-node identity bindings are enforced for every MDT message. Valid values are legacy and required.
+        type: string
       max_streams_per_client:
         description: MaxStreamsPerClient bounds concurrent dial-out streams from one source IP. Zero selects the smaller of 16 and MaxConcurrentStreams.
         type: integer
@@ -544,6 +551,18 @@ $defs:
       sample_interval:
         type: string
         format: duration
+  gnmi_dial_out_identity_binding_config:
+    description: GNMIDialOutIdentityBindingConfig binds one or more network sources to the node IDs those sources are permitted to claim in MDT telemetry payloads.
+    type: object
+    properties:
+      node_ids:
+        type: array
+        items:
+          type: string
+      sources:
+        type: array
+        items:
+          type: string
   gnmi_keepalive_config:
     description: GNMIKeepaliveConfig controls client-side HTTP/2 keepalive without exposing the Collector gRPC ClientConfig or arbitrary request headers.
     type: object
@@ -788,6 +807,13 @@ $defs:
           type: string
       enabled:
         type: boolean
+      identity_bindings:
+        type: array
+        items:
+          $ref: gnmi_dial_out_identity_binding_config
+      identity_verification:
+        description: IdentityVerification controls whether source-to-node identity bindings are enforced for every MDT message. Valid values are legacy and required.
+        type: string
       max_streams_per_client:
         description: MaxStreamsPerClient bounds concurrent dial-out streams from one source IP. Zero selects the smaller of 16 and MaxConcurrentStreams.
         type: integer

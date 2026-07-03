@@ -6,6 +6,7 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 import (
 	"context"
 	"net"
+	"sort"
 	"strings"
 	"time"
 
@@ -176,12 +177,11 @@ func appendCatalyst9800AliasesForValueIndexed(builder *indexedMetricBuilder, mod
 		if asCounter {
 			metricType = pmetric.MetricTypeSum
 		}
-		if !builder.appendNumber(name, metricType, numericValue, ts, next) {
-			return
+		metricUnit := ""
+		if len(unit) > 0 {
+			metricUnit = unit[0]
 		}
-		if len(unit) > 0 && unit[0] != "" {
-			builder.getOrCreate(name, metricType).SetUnit(unit[0])
-		}
+		builder.appendNumberWithUnit(name, metricType, numericValue, ts, next, metricUnit)
 	}
 	appendState := func(name string, extra map[string]string) {
 		next := mergeStringAttrs(aliasAttrs, extra)
@@ -316,43 +316,55 @@ func catalyst9800AliasAttrs(attrs map[string]string) map[string]string {
 	out := cloneAttrs(attrs)
 	lookup := newCatalyst9800AttrLookup(attrs)
 	if value := lookup("wtp-mac", "wtp_mac", "ap-mac", "ap_mac"); value != "" {
-		out["cisco.wlc.ap.mac"] = value
+		putStringAttrIfMissing(out, "cisco.wlc.ap.mac", value)
 	}
 	if value := lookup("ap-name", "ap_name", "ap-name-mac", "name"); value != "" {
-		out["cisco.wlc.ap.name"] = value
+		putStringAttrIfMissing(out, "cisco.wlc.ap.name", value)
 	}
 	if value := lookup("slot-id", "slot_id", "radio-slot-id", "radio_slot_id"); value != "" {
-		out["cisco.wlc.radio.slot"] = value
+		putStringAttrIfMissing(out, "cisco.wlc.radio.slot", value)
 	}
 	if value := lookup("wlan-id", "wlan_id"); value != "" {
-		out["cisco.wlc.wlan.id"] = value
+		putStringAttrIfMissing(out, "cisco.wlc.wlan.id", value)
 	}
 	if value := lookup("ssid", "vap-ssid", "vap_ssid"); value != "" {
-		out["cisco.wlc.ssid"] = value
+		putStringAttrIfMissing(out, "cisco.wlc.ssid", value)
 	}
 	if value := lookup("client-mac", "client_mac", "ms-mac-address", "ms_mac_address"); value != "" {
-		out["cisco.wlc.client.mac"] = value
+		putStringAttrIfMissing(out, "cisco.wlc.client.mac", value)
 	}
 	if value := lookup("node-ip", "node_ip"); value != "" {
-		out["cisco.wlc.mobility.node_ip"] = value
+		putStringAttrIfMissing(out, "cisco.wlc.mobility.node_ip", value)
 	}
 	return out
 }
 
+func putStringAttrIfMissing(attrs map[string]string, key, value string) {
+	if _, exists := attrs[key]; !exists && value != "" {
+		attrs[key] = value
+	}
+}
+
 func newCatalyst9800AttrLookup(attrs map[string]string) func(...string) string {
 	normalized := map[string]string{}
-	for key, value := range attrs {
+	attrKeys := make([]string, 0, len(attrs))
+	for key := range attrs {
+		attrKeys = append(attrKeys, key)
+	}
+	sort.Strings(attrKeys)
+	for _, key := range attrKeys {
+		value := attrs[key]
 		if value == "" {
 			continue
 		}
 		lower := strings.ToLower(strings.ReplaceAll(key, "-", "_"))
-		normalized[lower] = value
-		normalized[sanitizeMetricSegment(key)] = value
+		putStringAttrIfMissing(normalized, lower, value)
+		putStringAttrIfMissing(normalized, sanitizeMetricSegment(key), value)
 		if after, ok := strings.CutPrefix(lower, "cisco.yang.key."); ok {
-			normalized[after] = value
+			putStringAttrIfMissing(normalized, after, value)
 		}
 		if suffix, ok := strings.CutPrefix(sanitizeMetricSegment(key), "cisco_yang_key_"); ok {
-			normalized[suffix] = value
+			putStringAttrIfMissing(normalized, suffix, value)
 		}
 	}
 	return func(keys ...string) string {
@@ -454,11 +466,25 @@ func catalyst9800MemoryState(leaf string) string {
 }
 
 type catalyst9800NormalizingConsumer struct {
-	next      consumer.Metrics
-	config    Catalyst9800Config
-	selector  deviceSelectionMatcher
+	next         consumer.Metrics
+	config       Catalyst9800Config
+	selector     deviceSelectionMatcher
+	transport    string
+	health       *catalyst9800Health
+	budgetLimits finalDatapointBudgetLimits
+}
+
+type catalyst9800AliasSource struct {
+	metric    pmetric.Metric
+	module    string
+	parts     []string
+	yangPath  string
 	transport string
-	health    *catalyst9800Health
+}
+
+type catalyst9800AliasScope struct {
+	scope   pmetric.ScopeMetrics
+	sources []catalyst9800AliasSource
 }
 
 func newCatalyst9800NormalizingConsumer(next consumer.Metrics, config Catalyst9800Config, selector deviceSelectionMatcher, transport string, health *catalyst9800Health) consumer.Metrics { //nolint:unparam // Transport remains explicit because the normalizer owns transport attribution.
@@ -470,12 +496,10 @@ func (*catalyst9800NormalizingConsumer) Capabilities() consumer.Capabilities {
 }
 
 func (c *catalyst9800NormalizingConsumer) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error {
-	c.normalize(md)
-	if c.config.MaxDatapointsPerBatch > 0 {
-		dropped := enforceIOSXRDatapointLimit(md, c.config.MaxDatapointsPerBatch)
-		if dropped > 0 && c.health != nil {
-			c.health.addDroppedDatapoints(int64(dropped))
-		}
+	budget := newFinalDatapointBudget(c.budgetLimits, c.config.MaxDatapointsPerBatch)
+	c.normalize(md, budget)
+	if budget.dropped > 0 && c.health != nil {
+		c.health.addDroppedDatapoints(budget.dropped)
 	}
 	if md.MetricCount() == 0 {
 		return nil
@@ -483,8 +507,9 @@ func (c *catalyst9800NormalizingConsumer) ConsumeMetrics(ctx context.Context, md
 	return c.next.ConsumeMetrics(ctx, md)
 }
 
-func (c *catalyst9800NormalizingConsumer) normalize(md pmetric.Metrics) {
+func (c *catalyst9800NormalizingConsumer) normalize(md pmetric.Metrics, budget *finalDatapointBudget) {
 	rms := md.ResourceMetrics()
+	aliasScopes := make([]catalyst9800AliasScope, 0)
 	rms.RemoveIf(func(rm pmetric.ResourceMetrics) bool {
 		resAttrs := rm.Resource().Attributes()
 		normalizeHostIPAttr(resAttrs)
@@ -522,7 +547,7 @@ func (c *catalyst9800NormalizingConsumer) normalize(md pmetric.Metrics) {
 			sm := sms.At(j)
 			metrics := sm.Metrics()
 			originalLen := metrics.Len()
-			metricIndex := newIndexedMetricBuilder(sm, nil)
+			aliasScope := catalyst9800AliasScope{scope: sm}
 			for k := range originalLen {
 				metric := metrics.At(k)
 				originalName := metric.Name()
@@ -536,17 +561,41 @@ func (c *catalyst9800NormalizingConsumer) normalize(md pmetric.Metrics) {
 					if strings.HasPrefix(originalName, "cisco.") && !strings.HasPrefix(originalName, "cisco.catalyst9800.") && !strings.HasPrefix(originalName, "cisco.wlc.") {
 						name := strings.TrimPrefix(originalName, "cisco.")
 						parts := strings.Split(name, ".")
-						appendCatalyst9800AliasesFromMetric(metricIndex, metric, module, parts, encodingPath, c.transport)
+						aliasScope.sources = append(aliasScope.sources, catalyst9800AliasSource{
+							metric: metric, module: module, parts: parts, yangPath: encodingPath, transport: c.transport,
+						})
 						metric.SetName(catalyst9800MetricName(module, parts))
 					}
 				}
-				annotateMetricDatapoints(metric, module, encodingPath, c.transport)
+				// Reserve and annotate every canonical datapoint before any alias is
+				// attempted anywhere in the batch. Aliases may use only the budget
+				// left after canonical telemetry has been preserved.
+				annotateMetricDatapoints(metric, module, encodingPath, c.transport, budget)
 			}
-			for k := originalLen; k < metrics.Len(); k++ {
-				annotateMetricDatapoints(metrics.At(k), module, encodingPath, c.transport)
-			}
-			coalesceMetricStreams(sm)
+			aliasScopes = append(aliasScopes, aliasScope)
 		}
+		return rm.ScopeMetrics().Len() == 0
+	})
+
+	for _, aliasScope := range aliasScopes {
+		metricIndex := newFinalIndexedMetricBuilder(aliasScope.scope, budget)
+		for _, source := range aliasScope.sources {
+			appendCatalyst9800AliasesFromMetric(
+				metricIndex,
+				source.metric,
+				source.module,
+				source.parts,
+				source.yangPath,
+				source.transport,
+			)
+		}
+		coalesceMetricStreams(aliasScope.scope)
+	}
+	rms.RemoveIf(func(rm pmetric.ResourceMetrics) bool {
+		rm.ScopeMetrics().RemoveIf(func(sm pmetric.ScopeMetrics) bool {
+			sm.Metrics().RemoveIf(func(metric pmetric.Metric) bool { return metricDatapointCount(metric) == 0 })
+			return sm.Metrics().Len() == 0
+		})
 		return rm.ScopeMetrics().Len() == 0
 	})
 }
@@ -611,9 +660,7 @@ func numberDatapointValue(dp pmetric.NumberDataPoint) any {
 func pcommonMapToStringMap(attrs pcommon.Map) map[string]string {
 	out := make(map[string]string, attrs.Len())
 	attrs.Range(func(key string, value pcommon.Value) bool {
-		if value.AsString() != "" {
-			out[key] = value.AsString()
-		}
+		out[key] = value.AsString()
 		return true
 	})
 	return out

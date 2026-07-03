@@ -596,6 +596,48 @@ func TestClientAutoFallsBackToSession(t *testing.T) {
 	assert.Equal(t, "event-1", String(objects[0], "eventId"))
 }
 
+func TestClientAutoRetriesTransientJWTFailure(t *testing.T) {
+	var jwtRequests atomic.Int64
+	var sessionRequests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/jwt/login":
+			if jwtRequests.Add(1) == 1 {
+				w.Header().Set("Retry-After", "0")
+				http.Error(w, "temporarily unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]string{"token": "jwt-token"})
+		case "/j_security_check":
+			sessionRequests.Add(1)
+			http.NotFound(w, r)
+		case "/dataservice/device":
+			assert.Equal(t, "Bearer jwt-token", r.Header.Get("Authorization"))
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"system-ip": "10.0.0.1"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:   server.URL,
+		AuthMode:   "auto",
+		Username:   "admin",
+		Password:   "password",
+		Timeout:    time.Second,
+		MaxRetries: 1,
+	})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	objects, err := client.List(t.Context(), "devices", "/device", nil, 0)
+	require.NoError(t, err)
+	require.Len(t, objects, 1)
+	assert.Equal(t, int64(2), jwtRequests.Load())
+	assert.Zero(t, sessionRequests.Load())
+}
+
 func TestClientSessionAuthPublishesOnlyCompleteBundle(t *testing.T) {
 	const workers = 16
 

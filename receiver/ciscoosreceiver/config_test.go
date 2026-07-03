@@ -1481,6 +1481,11 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.True(t, cfg.Catalyst9800.DialOut.Enabled)
 	assert.Equal(t, "0.0.0.0:57501", cfg.Catalyst9800.DialOut.NetAddr.Endpoint)
 	assert.Equal(t, []string{"10.0.0.0/8"}, cfg.Catalyst9800.DialOut.AllowedClients)
+	assert.Equal(t, gnmiDialOutIdentityRequired, cfg.Catalyst9800.DialOut.IdentityVerification)
+	assert.Equal(t, []GNMIDialOutIdentityBindingConfig{{
+		Sources: []string{"10.0.0.20"},
+		NodeIDs: []string{"campus-wlc-1"},
+	}}, cfg.Catalyst9800.DialOut.IdentityBindings)
 	assert.Equal(t, uint32(16), cfg.Catalyst9800.DialOut.MaxStreamsPerClient)
 	assert.True(t, cfg.IOSXR.Enabled)
 	assert.Equal(t, 12000, cfg.IOSXR.MaxDatapointsPerBatch)
@@ -1500,6 +1505,11 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.True(t, cfg.IOSXR.DialOut.Enabled)
 	assert.Equal(t, "0.0.0.0:57500", cfg.IOSXR.DialOut.NetAddr.Endpoint)
 	assert.Equal(t, []string{"10.0.0.0/8"}, cfg.IOSXR.DialOut.AllowedClients)
+	assert.Equal(t, gnmiDialOutIdentityRequired, cfg.IOSXR.DialOut.IdentityVerification)
+	assert.Equal(t, []GNMIDialOutIdentityBindingConfig{{
+		Sources: []string{"10.0.0.10"},
+		NodeIDs: []string{"core-asr9k-1"},
+	}}, cfg.IOSXR.DialOut.IdentityBindings)
 	assert.Equal(t, uint32(16), cfg.IOSXR.DialOut.MaxStreamsPerClient)
 	assert.Len(t, cfg.Scrapers, 2)
 	assert.Contains(t, cfg.Scrapers, component.MustNewType("system"))

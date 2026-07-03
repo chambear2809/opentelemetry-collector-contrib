@@ -31,7 +31,12 @@ type catalyst9800CompositeReceiver struct {
 	receivers []receiver.Metrics
 }
 
-func newCatalyst9800MetricsReceiver(set receiver.Settings, conf *Config, next consumer.Metrics) (receiver.Metrics, error) {
+func newCatalyst9800MetricsReceiver(
+	set receiver.Settings,
+	conf *Config,
+	next consumer.Metrics,
+	legacyProcessing *legacyGNMIProcessingLimiter,
+) (receiver.Metrics, error) {
 	cfg := conf.Catalyst9800.withDefaults()
 	selector := newDeviceSelectionMatcher(conf.DeviceSelection)
 	var receivers []receiver.Metrics
@@ -46,12 +51,13 @@ func newCatalyst9800MetricsReceiver(set receiver.Settings, conf *Config, next co
 		}
 		if len(targets) > 0 {
 			dialIn := &catalyst9800DialInReceiver{
-				settings: set,
-				config:   cfg,
-				targets:  targets,
-				consumer: next,
-				health:   &catalyst9800Health{},
-				done:     make(chan struct{}),
+				settings:   set,
+				config:     cfg,
+				targets:    targets,
+				consumer:   next,
+				health:     &catalyst9800Health{},
+				done:       make(chan struct{}),
+				processing: legacyProcessing,
 			}
 			receivers = append(receivers, dialIn)
 		}
@@ -93,13 +99,23 @@ func newCatalyst9800DialOutReceiver(set receiver.Settings, cfg Catalyst9800Confi
 		return nil, fmt.Errorf("create Catalyst 9800 dial-out receiver: %w", err)
 	}
 	yangCfg.ServerConfig = cfg.DialOut.ServerConfig
+	configureHardenedYangGRPCSecurity(yangCfg, cfg.DialOut.AllowedClients, cfg.DialOut.RateLimiting)
+	maxStreamsPerClient := effectiveGNMIDialOutMaxStreamsPerClient(
+		cfg.DialOut.MaxStreamsPerClient,
+		cfg.DialOut.MaxConcurrentStreams,
+	)
+	if admissionErr := configureHardenedYangGRPCStreamAdmission(yangCfg, maxStreamsPerClient); admissionErr != nil {
+		return nil, fmt.Errorf("configure Catalyst 9800 dial-out global stream admission: %w", admissionErr)
+	}
 	modulePaths := append([]string(nil), cfg.DialOut.ModulePaths...)
 	yangCfg.YANG.ModulePaths = modulePaths
 	middlewareID, middleware, err := configureGNMIDialOutSecurity(
 		&yangCfg.ServerConfig,
 		cfg.DialOut.AllowedClients,
-		effectiveGNMIDialOutMaxStreamsPerClient(cfg.DialOut.MaxStreamsPerClient, cfg.DialOut.MaxConcurrentStreams),
+		maxStreamsPerClient,
 		cfg.DialOut.RateLimiting,
+		cfg.DialOut.IdentityVerification,
+		cfg.DialOut.IdentityBindings,
 		set.Logger,
 		set.ID,
 		"catalyst9800",
@@ -120,11 +136,12 @@ func newCatalyst9800DialOutReceiver(set receiver.Settings, cfg Catalyst9800Confi
 }
 
 type catalyst9800DialInReceiver struct {
-	settings receiver.Settings
-	config   Catalyst9800Config
-	targets  []Catalyst9800TargetConfig
-	consumer consumer.Metrics
-	health   *catalyst9800Health
+	settings   receiver.Settings
+	config     Catalyst9800Config
+	targets    []Catalyst9800TargetConfig
+	consumer   consumer.Metrics
+	health     *catalyst9800Health
+	processing *legacyGNMIProcessingLimiter
 
 	mu     sync.Mutex
 	cancel context.CancelFunc
@@ -248,15 +265,16 @@ func (r *catalyst9800DialInReceiver) subscribeTargetAttempt(ctx context.Context,
 	defer r.setTargetSubscriptionActive(ctx, target, false)
 
 	err := legacyGNMISession{
-		settings:         r.settings,
-		host:             r.host,
-		clientConfig:     target.ClientConfig,
-		username:         target.Credentials.Username,
-		password:         string(target.Credentials.Password),
-		skipCapabilities: target.SkipCapabilities,
-		pollInterval:     interval,
-		targetName:       target.Name,
-		onceCloseLog:     "Catalyst 9800 gNMI once close send failed",
+		settings:          r.settings,
+		host:              r.host,
+		clientConfig:      target.ClientConfig,
+		username:          target.Credentials.Username,
+		password:          string(target.Credentials.Password),
+		skipCapabilities:  target.SkipCapabilities,
+		pollInterval:      interval,
+		targetName:        target.Name,
+		onceCloseLog:      "Catalyst 9800 gNMI once close send failed",
+		responseAdmission: legacyGNMIResponseAdmission(r.processing),
 		onSubscribed: func() {
 			r.setTargetSubscriptionActive(ctx, target, true)
 		},
@@ -275,25 +293,7 @@ func (r *catalyst9800DialInReceiver) subscribeTargetAttempt(ctx context.Context,
 			return buildCatalyst9800SubscribeRequest(target.Subscription, paths, encoding), nil
 		},
 		handleUpdate: func(ctx context.Context, notification *gnmi.Notification) error {
-			progressed.Store(true)
-			r.health.addTargetUpdates(target.Name, int64(len(notification.GetUpdate())+len(notification.GetDelete())))
-			md := decoder.decodeNotification(notification, catalyst9800TelemetryTransportDialIn)
-			if md.MetricCount() == 0 {
-				return nil
-			}
-			if r.config.MaxDatapointsPerBatch > 0 {
-				dropped := enforceIOSXRDatapointLimit(md, r.config.MaxDatapointsPerBatch)
-				if dropped > 0 {
-					r.health.addDroppedDatapoints(int64(dropped))
-				}
-			}
-			if err := r.consumer.ConsumeMetrics(ctx, md); err != nil {
-				r.health.addDroppedDatapoints(int64(md.DataPointCount()))
-				r.settings.Logger.Warn("Downstream consumer refused Catalyst 9800 gNMI metric batch; batch dropped",
-					zap.String("target", target.Name),
-					zap.Error(err))
-			}
-			return nil
+			return r.processNotification(ctx, target, &decoder, notification, &progressed)
 		},
 		handleSync: func() {
 			progressed.Store(true)
@@ -301,6 +301,35 @@ func (r *catalyst9800DialInReceiver) subscribeTargetAttempt(ctx context.Context,
 		},
 	}.run(ctx)
 	return progressed.Load(), err
+}
+
+func (r *catalyst9800DialInReceiver) processNotification(
+	ctx context.Context,
+	target Catalyst9800TargetConfig,
+	decoder *catalyst9800GNMIUpdateDecoder,
+	notification *gnmi.Notification,
+	progressed *atomic.Bool,
+) error {
+	return r.processing.run(ctx, func() error {
+		r.health.addTargetUpdates(target.Name, int64(len(notification.GetUpdate())+len(notification.GetDelete())))
+		md := decoder.decodeNotification(notification, catalyst9800TelemetryTransportDialIn)
+		if md.MetricCount() == 0 {
+			progressed.Store(true)
+			return nil
+		}
+		if r.config.MaxDatapointsPerBatch > 0 {
+			dropped := enforceIOSXRDatapointLimit(md, r.config.MaxDatapointsPerBatch)
+			if dropped > 0 {
+				r.health.addDroppedDatapoints(int64(dropped))
+			}
+		}
+		if err := r.consumer.ConsumeMetrics(ctx, md); err != nil {
+			r.health.addDroppedDatapoints(int64(md.DataPointCount()))
+			return fmt.Errorf("deliver Catalyst 9800 gNMI metric batch for target %q: %w", target.Name, err)
+		}
+		progressed.Store(true)
+		return nil
+	})
 }
 
 func (r *catalyst9800DialInReceiver) setTargetSubscriptionActive(ctx context.Context, target Catalyst9800TargetConfig, active bool) {
@@ -321,7 +350,7 @@ func (r *catalyst9800DialInReceiver) emitTargetHealth(ctx context.Context, targe
 		platformFamily: target.PlatformFamily,
 		transport:      catalyst9800TelemetryTransportDialIn,
 	}, pcommon.NewTimestampFromTime(time.Now()))
-	if err := r.consumer.ConsumeMetrics(ctx, md); err != nil {
+	if err := r.processing.run(ctx, func() error { return r.consumer.ConsumeMetrics(ctx, md) }); err != nil && ctx.Err() == nil {
 		r.settings.Logger.Warn("Catalyst 9800 gNMI health delivery failed", zap.String("target", target.Name), zap.Error(err))
 	}
 }
@@ -380,25 +409,9 @@ func (r *catalyst9800DialInReceiver) recvLoop(ctx context.Context, target Cataly
 			if body.Update == nil {
 				continue
 			}
-			r.health.addTargetUpdates(target.Name, int64(len(body.Update.GetUpdate())+len(body.Update.GetDelete())))
-			md := decoder.decodeNotification(body.Update, catalyst9800TelemetryTransportDialIn)
-			if md.MetricCount() == 0 {
-				progressed.Store(true)
-				continue
+			if err := r.processNotification(ctx, target, &decoder, body.Update, progressed); err != nil {
+				return err
 			}
-			if r.config.MaxDatapointsPerBatch > 0 {
-				dropped := enforceIOSXRDatapointLimit(md, r.config.MaxDatapointsPerBatch)
-				if dropped > 0 {
-					r.health.addDroppedDatapoints(int64(dropped))
-				}
-			}
-			if err := r.consumer.ConsumeMetrics(ctx, md); err != nil {
-				r.health.addDroppedDatapoints(int64(md.DataPointCount()))
-				r.settings.Logger.Warn("Downstream consumer refused Catalyst 9800 gNMI metric batch; batch dropped",
-					zap.String("target", target.Name),
-					zap.Error(err))
-			}
-			progressed.Store(true)
 		case *gnmi.SubscribeResponse_SyncResponse:
 			if body.SyncResponse {
 				progressed.Store(true)

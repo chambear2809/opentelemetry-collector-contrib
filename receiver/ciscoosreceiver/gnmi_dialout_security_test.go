@@ -6,6 +6,7 @@ package ciscoosreceiver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -30,6 +31,12 @@ import (
 	grpcmetadata "google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protowire"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protodesc"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/descriptorpb"
+	"google.golang.org/protobuf/types/dynamicpb"
 
 	componentmetadata "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/yanggrpcreceiver"
@@ -72,19 +79,353 @@ func TestGNMIDialOutStreamSecurityOwnsImmutableAllowlist(t *testing.T) {
 	}
 }
 
+func TestGNMIDialOutPeerIPAcceptsOnlyUnambiguousTCPAddresses(t *testing.T) {
+	tests := []struct {
+		name        string
+		ctx         context.Context
+		wantAddress string
+		wantError   string
+	}{
+		{
+			name:        "TCP address",
+			ctx:         gnmiDialOutPeerContext(t.Context(), "192.0.2.10"),
+			wantAddress: "192.0.2.10",
+		},
+		{
+			name:        "loopback TCP address",
+			ctx:         gnmiDialOutPeerContext(t.Context(), "127.0.0.1"),
+			wantAddress: "127.0.0.1",
+		},
+		{
+			name: "generic TCP address",
+			ctx: peer.NewContext(t.Context(), &peer.Peer{Addr: gnmiDialOutTestAddr{
+				network: "tcp4",
+				address: "198.51.100.20:12345",
+			}}),
+			wantAddress: "198.51.100.20",
+		},
+		{
+			name: "Unix address shaped like TCP",
+			ctx: peer.NewContext(t.Context(), &peer.Peer{Addr: gnmiDialOutTestAddr{
+				network: "unix",
+				address: "192.0.2.10:12345",
+			}}),
+			wantError: "unsupported peer network",
+		},
+		{
+			name: "zoned TCP address",
+			ctx: peer.NewContext(t.Context(), &peer.Peer{Addr: &net.TCPAddr{
+				IP:   net.ParseIP("fe80::1"),
+				Port: 12345,
+				Zone: "eth0",
+			}}),
+			wantError: "scoped TCP peer addresses are not supported",
+		},
+		{
+			name: "link-local TCP address without zone",
+			ctx: peer.NewContext(t.Context(), &peer.Peer{Addr: &net.TCPAddr{
+				IP:   net.ParseIP("169.254.10.20"),
+				Port: 12345,
+			}}),
+			wantError: "link-local TCP peer addresses are not supported",
+		},
+		{
+			name: "multicast TCP address",
+			ctx: peer.NewContext(t.Context(), &peer.Peer{Addr: &net.TCPAddr{
+				IP:   net.ParseIP("224.0.0.1"),
+				Port: 12345,
+			}}),
+			wantError: "global-unicast or loopback",
+		},
+		{
+			name: "generic unspecified TCP address",
+			ctx: peer.NewContext(t.Context(), &peer.Peer{Addr: gnmiDialOutTestAddr{
+				network: "tcp6",
+				address: "[::]:12345",
+			}}),
+			wantError: "global-unicast or loopback",
+		},
+		{
+			name:      "missing peer",
+			ctx:       t.Context(),
+			wantError: "peer address is unavailable",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			address, err := gnmiDialOutPeerIP(tt.ctx)
+			if tt.wantError != "" {
+				require.ErrorContains(t, err, tt.wantError)
+				assert.False(t, address.IsValid())
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantAddress, address.String())
+		})
+	}
+}
+
+func TestGNMIDialOutRequiredIdentityRejectsMissingPeerAsUnauthenticated(t *testing.T) {
+	security, err := newGNMIDialOutStreamSecurity(nil, yanggrpcreceiver.RateLimitingConfig{}, zap.NewNop(), 10)
+	require.NoError(t, err)
+	security.identity, err = compileGNMIDialOutIdentityVerifier(
+		gnmiDialOutIdentityRequired,
+		[]GNMIDialOutIdentityBindingConfig{{
+			Sources: []string{"192.0.2.10"},
+			NodeIDs: []string{"router-a"},
+		}},
+	)
+	require.NoError(t, err)
+
+	handled := false
+	err = security.StreamServerInterceptor()(
+		nil,
+		&gnmiDialOutTestServerStream{ctx: t.Context()},
+		&grpc.StreamServerInfo{FullMethod: gnmiDialOutTestMethod},
+		func(any, grpc.ServerStream) error {
+			handled = true
+			return nil
+		},
+	)
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+	assert.False(t, handled)
+}
+
+func TestGNMIDialOutIdentityBindingRejectsSpoofingAndStreamChanges(t *testing.T) {
+	newSecurity := func(t *testing.T, bindings []GNMIDialOutIdentityBindingConfig) *gnmiDialOutStreamSecurity {
+		t.Helper()
+		security, err := newGNMIDialOutStreamSecurity(nil, yanggrpcreceiver.RateLimitingConfig{}, zap.NewNop(), 10)
+		require.NoError(t, err)
+		identity, err := compileGNMIDialOutIdentityVerifier(gnmiDialOutIdentityRequired, bindings)
+		require.NoError(t, err)
+		security.identity = identity
+		return security
+	}
+
+	t.Run("source A claiming node B", func(t *testing.T) {
+		security := newSecurity(t, []GNMIDialOutIdentityBindingConfig{{
+			Sources: []string{"192.0.2.10"},
+			NodeIDs: []string{"router-a"},
+		}})
+		stream := &gnmiDialOutTestServerStream{
+			ctx:          gnmiDialOutPeerContext(t.Context(), "192.0.2.10"),
+			recvPayloads: [][]byte{gnmiDialOutTestTelemetryPayload("router-b")},
+		}
+		handled := false
+		err := security.StreamServerInterceptor()(
+			nil,
+			stream,
+			&grpc.StreamServerInfo{FullMethod: gnmiDialOutTestMethod},
+			func(_ any, intercepted grpc.ServerStream) error {
+				handled = true
+				return intercepted.RecvMsg(gnmiDialOutTestMessage(t))
+			},
+		)
+		assert.True(t, handled)
+		assert.Equal(t, codes.PermissionDenied, status.Code(err))
+	})
+
+	t.Run("node identity changes midstream", func(t *testing.T) {
+		security := newSecurity(t, []GNMIDialOutIdentityBindingConfig{{
+			Sources: []string{"192.0.2.10"},
+			NodeIDs: []string{"router-a", "router-b"},
+		}})
+		stream := &gnmiDialOutTestServerStream{
+			ctx: gnmiDialOutPeerContext(t.Context(), "192.0.2.10"),
+			recvPayloads: [][]byte{
+				gnmiDialOutTestTelemetryPayload("router-a"),
+				gnmiDialOutTestTelemetryPayload("router-b"),
+			},
+		}
+		err := security.StreamServerInterceptor()(
+			nil,
+			stream,
+			&grpc.StreamServerInfo{FullMethod: gnmiDialOutTestMethod},
+			func(_ any, intercepted grpc.ServerStream) error {
+				require.NoError(t, intercepted.RecvMsg(gnmiDialOutTestMessage(t)))
+				return intercepted.RecvMsg(gnmiDialOutTestMessage(t))
+			},
+		)
+		assert.Equal(t, codes.PermissionDenied, status.Code(err))
+		assert.Equal(t, int64(2), stream.recvCount.Load())
+	})
+
+	t.Run("source has no matching binding", func(t *testing.T) {
+		security := newSecurity(t, []GNMIDialOutIdentityBindingConfig{{
+			Sources: []string{"192.0.2.10"},
+			NodeIDs: []string{"router-a"},
+		}})
+		handled := false
+		err := security.StreamServerInterceptor()(
+			nil,
+			&gnmiDialOutTestServerStream{ctx: gnmiDialOutPeerContext(t.Context(), "192.0.2.11")},
+			&grpc.StreamServerInfo{FullMethod: gnmiDialOutTestMethod},
+			func(any, grpc.ServerStream) error {
+				handled = true
+				return nil
+			},
+		)
+		assert.False(t, handled)
+		assert.Equal(t, codes.PermissionDenied, status.Code(err))
+	})
+
+	t.Run("valid source and stable node identity", func(t *testing.T) {
+		security := newSecurity(t, []GNMIDialOutIdentityBindingConfig{{
+			Sources: []string{"192.0.2.0/24"},
+			NodeIDs: []string{"router-a"},
+		}})
+		stream := &gnmiDialOutTestServerStream{
+			ctx: gnmiDialOutPeerContext(t.Context(), "192.0.2.10"),
+			recvPayloads: [][]byte{
+				gnmiDialOutTestTelemetryPayload("router-a"),
+				gnmiDialOutTestTelemetryPayload("router-a"),
+			},
+		}
+		err := security.StreamServerInterceptor()(
+			nil,
+			stream,
+			&grpc.StreamServerInfo{FullMethod: gnmiDialOutTestMethod},
+			func(_ any, intercepted grpc.ServerStream) error {
+				require.NoError(t, intercepted.RecvMsg(gnmiDialOutTestMessage(t)))
+				return intercepted.RecvMsg(gnmiDialOutTestMessage(t))
+			},
+		)
+		require.NoError(t, err)
+		assert.Equal(t, int64(2), stream.recvCount.Load())
+	})
+
+	t.Run("most-specific source binding wins", func(t *testing.T) {
+		security := newSecurity(t, []GNMIDialOutIdentityBindingConfig{
+			{
+				Sources: []string{"192.0.2.0/24"},
+				NodeIDs: []string{"broad-router"},
+			},
+			{
+				Sources: []string{"192.0.2.10/32"},
+				NodeIDs: []string{"specific-router"},
+			},
+		})
+		invoke := func(nodeID string) error {
+			stream := &gnmiDialOutTestServerStream{
+				ctx:          gnmiDialOutPeerContext(t.Context(), "192.0.2.10"),
+				recvPayloads: [][]byte{gnmiDialOutTestTelemetryPayload(nodeID)},
+			}
+			return security.StreamServerInterceptor()(
+				nil,
+				stream,
+				&grpc.StreamServerInfo{FullMethod: gnmiDialOutTestMethod},
+				func(_ any, intercepted grpc.ServerStream) error {
+					return intercepted.RecvMsg(gnmiDialOutTestMessage(t))
+				},
+			)
+		}
+
+		assert.Equal(t, codes.PermissionDenied, status.Code(invoke("broad-router")))
+		require.NoError(t, invoke("specific-router"))
+	})
+}
+
+func TestGNMIDialOutIdentityBindingRejectsMalformedNodeIdentity(t *testing.T) {
+	security, err := newGNMIDialOutStreamSecurity(nil, yanggrpcreceiver.RateLimitingConfig{}, zap.NewNop(), 10)
+	require.NoError(t, err)
+	security.identity, err = compileGNMIDialOutIdentityVerifier(
+		gnmiDialOutIdentityRequired,
+		[]GNMIDialOutIdentityBindingConfig{{
+			Sources: []string{"192.0.2.10"},
+			NodeIDs: []string{"router-a"},
+		}},
+	)
+	require.NoError(t, err)
+
+	wrongWireType := protowire.AppendTag(nil, gnmiTelemetryNodeIDField, protowire.VarintType)
+	wrongWireType = protowire.AppendVarint(wrongWireType, 1)
+	duplicateNodeID := gnmiDialOutTestTelemetryPayload("router-a")
+	duplicateNodeID = protowire.AppendTag(duplicateNodeID, gnmiTelemetryNodeIDField, protowire.BytesType)
+	duplicateNodeID = protowire.AppendString(duplicateNodeID, "router-a")
+	groupPayload := gnmiDialOutTestTelemetryPayload("router-a")
+	groupPayload = protowire.AppendTag(groupPayload, 100, protowire.StartGroupType)
+	groupPayload = protowire.AppendTag(groupPayload, 100, protowire.EndGroupType)
+	invalidFieldNumber := gnmiDialOutTestTelemetryPayload("router-a")
+	invalidFieldNumber = protowire.AppendTag(invalidFieldNumber, protowire.MaxValidNumber+1, protowire.VarintType)
+	invalidFieldNumber = protowire.AppendVarint(invalidFieldNumber, 0)
+	tests := []struct {
+		name    string
+		payload []byte
+	}{
+		{name: "empty payload"},
+		{name: "empty node ID", payload: gnmiDialOutTestTelemetryPayload("")},
+		{name: "wrong node ID wire type", payload: wrongWireType},
+		{name: "duplicate node ID field", payload: duplicateNodeID},
+		{name: "truncated protobuf", payload: []byte{0x0a, 0x05, 'a'}},
+		{name: "protobuf group", payload: groupPayload},
+		{name: "field number above protobuf maximum", payload: invalidFieldNumber},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stream := &gnmiDialOutTestServerStream{
+				ctx:          gnmiDialOutPeerContext(t.Context(), "192.0.2.10"),
+				recvPayloads: [][]byte{tt.payload},
+			}
+			err := security.StreamServerInterceptor()(
+				nil,
+				stream,
+				&grpc.StreamServerInfo{FullMethod: gnmiDialOutTestMethod},
+				func(_ any, intercepted grpc.ServerStream) error {
+					return intercepted.RecvMsg(gnmiDialOutTestMessage(t))
+				},
+			)
+			assert.Equal(t, codes.InvalidArgument, status.Code(err))
+		})
+	}
+
+	t.Run("semantic field boundary", func(t *testing.T) {
+		payload := gnmiDialOutTestTelemetryPayload("router-a")
+		for range maxGNMIDialOutIdentityTelemetryFields {
+			payload = protowire.AppendTag(payload, 11, protowire.BytesType) // data_gpbkv
+			payload = protowire.AppendBytes(payload, nil)
+		}
+		nodeID, err := gnmiDialOutNodeIDFromTelemetry(payload)
+		require.NoError(t, err)
+		assert.Equal(t, "router-a", nodeID)
+	})
+
+	t.Run("wire operation budget", func(t *testing.T) {
+		payload := gnmiDialOutTestTelemetryPayload("router-a")
+		for range maxGNMIDialOutIdentityWireOperations {
+			payload = protowire.AppendTag(payload, 100, protowire.VarintType)
+			payload = protowire.AppendVarint(payload, 0)
+		}
+		stream := &gnmiDialOutTestServerStream{
+			ctx:          gnmiDialOutPeerContext(t.Context(), "192.0.2.10"),
+			recvPayloads: [][]byte{payload},
+		}
+		err := security.StreamServerInterceptor()(
+			nil,
+			stream,
+			&grpc.StreamServerInfo{FullMethod: gnmiDialOutTestMethod},
+			func(_ any, intercepted grpc.ServerStream) error {
+				return intercepted.RecvMsg(gnmiDialOutTestMessage(t))
+			},
+		)
+		assert.Equal(t, codes.ResourceExhausted, status.Code(err))
+	})
+}
+
 type gnmiDialOutTestRuntimeVersion int
 
 func (v gnmiDialOutTestRuntimeVersion) RuntimeHardeningVersion() int { return int(v) }
 
 func TestRequireHardenedYangGRPCRuntimeFailsClosed(t *testing.T) {
-	require.ErrorContains(t, requireHardenedYangGRPCRuntime(struct{}{}), "runtime hardening version 1")
-	require.ErrorContains(t, requireHardenedYangGRPCRuntime(gnmiDialOutTestRuntimeVersion(0)), "runtime hardening version 1")
-	require.NoError(t, requireHardenedYangGRPCRuntime(gnmiDialOutTestRuntimeVersion(1)))
+	require.ErrorContains(t, requireHardenedYangGRPCRuntime(struct{}{}), "runtime hardening version 2")
+	require.ErrorContains(t, requireHardenedYangGRPCRuntime(gnmiDialOutTestRuntimeVersion(1)), "runtime hardening version 2")
+	require.NoError(t, requireHardenedYangGRPCRuntime(gnmiDialOutTestRuntimeVersion(2)))
 
-	_, err := hardenedYangGRPCConfig(gnmiDialOutTestRuntimeVersion(1))
+	_, err := hardenedYangGRPCConfig(gnmiDialOutTestRuntimeVersion(2))
 	require.ErrorContains(t, err, "unexpected hardened config type")
 	_, err = hardenedYangGRPCConfig(struct{}{})
-	require.ErrorContains(t, err, "runtime hardening version 1")
+	require.ErrorContains(t, err, "runtime hardening version 2")
 	runtimeErr := requireHardenedYangGRPCRuntime(&yanggrpcreceiver.Config{})
 	config, err := hardenedYangGRPCConfig(&yanggrpcreceiver.Config{})
 	var typedNil *yanggrpcreceiver.Config
@@ -94,8 +435,8 @@ func TestRequireHardenedYangGRPCRuntimeFailsClosed(t *testing.T) {
 		require.NotNil(t, config)
 		require.ErrorContains(t, typedNilErr, "unexpected hardened config type")
 	} else {
-		require.ErrorContains(t, err, "runtime hardening version 1")
-		require.ErrorContains(t, typedNilErr, "runtime hardening version 1")
+		require.ErrorContains(t, err, "runtime hardening version 2")
+		require.ErrorContains(t, typedNilErr, "runtime hardening version 2")
 	}
 }
 
@@ -480,11 +821,11 @@ func TestGNMIDialOutFactoriesWirePrivateStreamSecurity(t *testing.T) {
 	catalystConfig.DialOut.RateLimiting = rateConfig
 	catalystReceiver, err := newCatalyst9800DialOutReceiver(settings, catalystConfig, deviceSelectionMatcher{}, consumertest.NewNop())
 	if runtimeErr := requireHardenedYangGRPCRuntime(&yanggrpcreceiver.Config{}); runtimeErr != nil {
-		require.ErrorContains(t, err, "required runtime hardening version 1")
+		require.ErrorContains(t, err, "required runtime hardening version 2")
 		iosXRConfig := defaultIOSXRConfig()
 		iosXRConfig.DialOut.Enabled = true
 		_, iosXRErr := newIOSXRDialOutReceiver(settings, iosXRConfig, deviceSelectionMatcher{}, consumertest.NewNop())
-		require.ErrorContains(t, iosXRErr, "required runtime hardening version 1")
+		require.ErrorContains(t, iosXRErr, "required runtime hardening version 2")
 		return
 	}
 	require.NoError(t, err)
@@ -525,10 +866,30 @@ func TestConfigureGNMIDialOutSecurityPrependsUniqueMiddleware(t *testing.T) {
 	original := append([]configmiddleware.Config(nil), server.Middlewares...)
 
 	parentID := component.MustNewIDWithName("cisco_os", "test")
-	firstID, first, err := configureGNMIDialOutSecurity(&server, nil, defaultGNMIDialOutStreamsPerIP, yanggrpcreceiver.RateLimitingConfig{}, zap.NewNop(), parentID, "first")
+	firstID, first, err := configureGNMIDialOutSecurity(
+		&server,
+		nil,
+		defaultGNMIDialOutStreamsPerIP,
+		yanggrpcreceiver.RateLimitingConfig{},
+		gnmiDialOutIdentityLegacy,
+		nil,
+		zap.NewNop(),
+		parentID,
+		"first",
+	)
 	require.NoError(t, err)
 	secondServer := defaultIOSXRConfig().DialOut.ServerConfig
-	secondID, second, err := configureGNMIDialOutSecurity(&secondServer, nil, defaultGNMIDialOutStreamsPerIP, yanggrpcreceiver.RateLimitingConfig{}, zap.NewNop(), parentID, "second")
+	secondID, second, err := configureGNMIDialOutSecurity(
+		&secondServer,
+		nil,
+		defaultGNMIDialOutStreamsPerIP,
+		yanggrpcreceiver.RateLimitingConfig{},
+		gnmiDialOutIdentityLegacy,
+		nil,
+		zap.NewNop(),
+		parentID,
+		"second",
+	)
 	require.NoError(t, err)
 	t.Cleanup(first.security.Shutdown)
 	t.Cleanup(second.security.Shutdown)
@@ -538,9 +899,87 @@ func TestConfigureGNMIDialOutSecurityPrependsUniqueMiddleware(t *testing.T) {
 	assert.Equal(t, existingID, server.Middlewares[1].ID)
 	assert.Equal(t, []configmiddleware.Config{{ID: existingID}}, original)
 	assert.NotEqual(t, firstID, secondID)
+
+	duplicateServer := defaultIOSXRConfig().DialOut.ServerConfig
+	duplicateServer.Middlewares = []configmiddleware.Config{{ID: firstID}}
+	_, _, err = configureGNMIDialOutSecurity(
+		&duplicateServer,
+		nil,
+		defaultGNMIDialOutStreamsPerIP,
+		yanggrpcreceiver.RateLimitingConfig{},
+		gnmiDialOutIdentityLegacy,
+		nil,
+		zap.NewNop(),
+		parentID,
+		"first",
+	)
+	require.ErrorContains(t, err, "duplicates receiver-private gNMI dial-out middleware ID")
+}
+
+func TestConfigureGNMIDialOutSecurityRequiresRemoteIdentityBindings(t *testing.T) {
+	server := defaultIOSXRConfig().DialOut.ServerConfig
+	server.NetAddr.Endpoint = "0.0.0.0:57500"
+	parentID := component.MustNewIDWithName("cisco_os", "remote_identity")
+
+	_, _, err := configureGNMIDialOutSecurity(
+		&server,
+		nil,
+		defaultGNMIDialOutStreamsPerIP,
+		yanggrpcreceiver.RateLimitingConfig{},
+		gnmiDialOutIdentityLegacy,
+		nil,
+		zap.NewNop(),
+		parentID,
+		"legacy",
+	)
+	require.ErrorContains(t, err, "non-loopback listeners require identity_verification: required")
+
+	_, middleware, err := configureGNMIDialOutSecurity(
+		&server,
+		nil,
+		defaultGNMIDialOutStreamsPerIP,
+		yanggrpcreceiver.RateLimitingConfig{},
+		gnmiDialOutIdentityRequired,
+		[]GNMIDialOutIdentityBindingConfig{{
+			Sources: []string{"192.0.2.0/24"},
+			NodeIDs: []string{"router-a"},
+		}},
+		zap.NewNop(),
+		parentID,
+		"required",
+	)
+	require.NoError(t, err)
+	t.Cleanup(middleware.security.Shutdown)
+
+	unixServer := defaultIOSXRConfig().DialOut.ServerConfig
+	unixServer.NetAddr.Transport = "unix"
+	unixServer.NetAddr.Endpoint = filepath.Join(t.TempDir(), "dialout.sock")
+	_, _, err = configureGNMIDialOutSecurity(
+		&unixServer,
+		nil,
+		defaultGNMIDialOutStreamsPerIP,
+		yanggrpcreceiver.RateLimitingConfig{},
+		gnmiDialOutIdentityRequired,
+		[]GNMIDialOutIdentityBindingConfig{{
+			Sources: []string{"127.0.0.1"},
+			NodeIDs: []string{"router-a"},
+		}},
+		zap.NewNop(),
+		parentID,
+		"unix",
+	)
+	require.ErrorContains(t, err, "requires tcp, tcp4, or tcp6 transport")
 }
 
 const gnmiDialOutTestMethod = "/mdt_dialout.gRPCMdtDialout/MdtDialout"
+
+type gnmiDialOutTestAddr struct {
+	network string
+	address string
+}
+
+func (a gnmiDialOutTestAddr) Network() string { return a.network }
+func (a gnmiDialOutTestAddr) String() string  { return a.address }
 
 func gnmiDialOutPeerContext(ctx context.Context, ip string) context.Context {
 	return peer.NewContext(ctx, &peer.Peer{
@@ -551,6 +990,7 @@ func gnmiDialOutPeerContext(ctx context.Context, ip string) context.Context {
 type gnmiDialOutTestServerStream struct {
 	ctx            context.Context
 	recvResults    []error
+	recvPayloads   [][]byte
 	receiveStarted chan struct{}
 	releaseReceive chan struct{}
 	recvCount      atomic.Int64
@@ -566,7 +1006,7 @@ func (s *gnmiDialOutTestServerStream) Context() context.Context {
 	return s.ctx
 }
 
-func (s *gnmiDialOutTestServerStream) RecvMsg(any) error {
+func (s *gnmiDialOutTestServerStream) RecvMsg(message any) error {
 	index := int(s.recvCount.Add(1)) - 1
 	if s.receiveStarted != nil {
 		s.startOnce.Do(func() { close(s.receiveStarted) })
@@ -574,10 +1014,54 @@ func (s *gnmiDialOutTestServerStream) RecvMsg(any) error {
 	if s.releaseReceive != nil {
 		<-s.releaseReceive
 	}
-	if index < len(s.recvResults) {
+	if index < len(s.recvResults) && s.recvResults[index] != nil {
 		return s.recvResults[index]
 	}
+	if index < len(s.recvPayloads) {
+		protoMessage, ok := message.(protoreflect.ProtoMessage)
+		if !ok || protoMessage == nil {
+			return fmt.Errorf("test receive target is not a protobuf message: %T", message)
+		}
+		reflected := protoMessage.ProtoReflect()
+		dataField := reflected.Descriptor().Fields().ByNumber(gnmiDialOutDataField)
+		if dataField == nil || dataField.Kind() != protoreflect.BytesKind {
+			return errors.New("test receive target has no bytes data field")
+		}
+		payload := append([]byte(nil), s.recvPayloads[index]...)
+		reflected.Set(dataField, protoreflect.ValueOfBytes(payload))
+		return nil
+	}
+	if index < len(s.recvResults) {
+		return nil
+	}
 	return io.EOF
+}
+
+func gnmiDialOutTestTelemetryPayload(nodeID string) []byte {
+	payload := protowire.AppendTag(nil, gnmiTelemetryNodeIDField, protowire.BytesType)
+	return protowire.AppendString(payload, nodeID)
+}
+
+func gnmiDialOutTestMessage(t *testing.T) protoreflect.ProtoMessage {
+	t.Helper()
+	fileDescriptor, err := protodesc.NewFile(&descriptorpb.FileDescriptorProto{
+		Syntax:  proto.String("proto3"),
+		Name:    proto.String("mdt_grpc_dialout_test.proto"),
+		Package: proto.String("mdt_dialout"),
+		MessageType: []*descriptorpb.DescriptorProto{{
+			Name: proto.String("MdtDialoutArgs"),
+			Field: []*descriptorpb.FieldDescriptorProto{{
+				Name:   proto.String("data"),
+				Number: proto.Int32(int32(gnmiDialOutDataField)),
+				Label:  descriptorpb.FieldDescriptorProto_LABEL_OPTIONAL.Enum(),
+				Type:   descriptorpb.FieldDescriptorProto_TYPE_BYTES.Enum(),
+			}},
+		}},
+	}, nil)
+	require.NoError(t, err)
+	descriptor := fileDescriptor.Messages().ByName("MdtDialoutArgs")
+	require.NotNil(t, descriptor)
+	return dynamicpb.NewMessage(descriptor)
 }
 
 type gnmiDialOutTestHost struct {

@@ -2,7 +2,8 @@
 
 The shared `cisco_os.gnmi` client collects normalized metrics from IOS XE, IOS XR, and NX-OS. It is a static-inventory,
 read-only client: it uses Capabilities and Subscribe, never Set, and does not require Get. SONiC, target discovery, gNMI
-Set, and new dial-out behavior are outside this feature's scope.
+Set, and dial-out metric semantics are outside this feature's scope; receiver-wide transport hardening also applies to
+the existing dial-out servers as described below.
 
 The fake-server and synthetic implementation gates can be completed without physical devices. Upstream submission still
 requires human code-owner agreement on the configuration, security model, metric contract, and hardware plan. CML,
@@ -62,8 +63,15 @@ RFC7951 prefixing, IOS XR uses the module origin, and NX-OS assigns `DME`, devic
 IOS XR with the optics profile currently requires `max_streams: 6` because its native system and optical modules use
 separate origins.
 
-`max_recv_msg_size_mib` cannot exceed 16 MiB. grpc-go must allocate a complete protobuf before field-level decoding,
-so larger frames are rejected at transport level; narrow or split device subscriptions instead of raising this ceiling.
+`max_recv_msg_size_mib` cannot exceed 16 MiB. Larger frames are rejected at transport level, and in-limit responses
+receive a schema-aware raw-wire complexity scan before protobuf objects are materialized; narrow or split device
+subscriptions instead of raising this ceiling.
+At most 256 target definitions may be configured in total across `gnmi.targets`, `ios_xr.dial_in.targets`, and
+`catalyst_9800.dial_in.targets`. Dial-in targets admitted by `device_selection` and both enabled dial-out servers share
+a 512 MiB receiver-wide stream-by-frame capacity limit. Shared targets charge
+`max_streams * max_recv_msg_size_mib`; each deprecated target charges one fixed 4 MiB stream; and each enabled dial-out
+server charges `max_concurrent_streams * max_recv_msg_size_mib`. Excluded dial-in definitions count toward the target
+ceiling but do not consume the runtime frame envelope.
 
 NX-OS optical collection deliberately subscribes to the `DME` distinguished-name family under `sys/intf`; it does
 not treat `Cisco-NX-OS-device:System/.../fcotdd-items` as an interchangeable representation. The current `sys/intf`
@@ -127,10 +135,30 @@ Removed readings stop producing samples. When physical presence is semantically 
 "no recorded value" flag for staleness because the SignalFx datapoint translation path does not preserve that flag.
 
 Notifications are split losslessly into consumer calls of at most `max_datapoints_per_chunk` datapoints. Data is never
-trimmed. `max_cached_series` bounds total retained correctness state: active mapped series, atomic baselines, and delete
-tombstones share the limit. Exceeding it stops the affected profile and marks it degraded; there is no receiver-side
-retry queue. A downstream refusal drops that chunk, increments receiver telemetry, and leaves the device connection
-intact so exporter queues own retry behavior.
+trimmed. `max_cached_series` sets one receiver-wide count ceiling for active mapped series, atomic baselines, and delete
+tombstones. The independent auxiliary entry ceiling is four times that value, accounting for one NX sensor identity and
+the optical source, presence-count, and attribute entries associated with a cached optical series. Each count ceiling is
+deterministically partitioned across selected targets. The cache and auxiliary state also have separate
+256 MiB receiver-wide retained-byte ceilings, yielding a 512 MiB combined accounted ceiling; their conservative byte
+estimates include retained keys, paths, strings, attributes, and sparse-map overhead. The count multiplier provides
+structural headroom while the auxiliary byte ceiling remains the primary defense against oversized metadata. Count and byte budgets are divided
+as evenly as possible, with remainders assigned in configuration order, so one target cannot consume another target's
+partition. Exceeding either partition stops the affected profile and marks it degraded; there is no receiver-side retry
+queue. Each target serializes notification delivery and publishes cache, NX sensor identity, and optical-presence state
+only after every chunk is accepted and the profile is still active. A downstream refusal aborts that staged state,
+increments receiver telemetry, and ends the subscription so the target reconnects. Equal-timestamp redelivery is then
+eligible because the refused attempt did not advance state. If an earlier chunk was accepted before a later chunk was
+refused, reconnect redelivers the complete notification; those earlier chunks therefore have at-least-once semantics and
+the downstream pipeline must tolerate duplicate datapoints.
+
+A receiver-wide admission gate shared by normalized and deprecated gNMI dial-in permits at most eight decoded response
+objects at once. The forced response codec acquires a keyed lease before fragmented-frame materialization and protobuf
+unmarshal, honors the exact RPC or stream cancellation context, and releases it after capability negotiation or final
+response handling. The shared engine additionally has an eight-slot notification-work gate acquired after per-target
+delivery serialization and held through cache planning, downstream delivery, and commit. This prevents reordering;
+each plan is independently limited to 32 MiB of staged payload accounting. The two deprecated dial-in implementations
+also share a separate cancellation-aware eight-slot processing gate held from direct notification decoding through
+downstream data and health delivery.
 
 Device timestamps are normalized from seconds, milliseconds, microseconds, or nanoseconds. Values outside year 2000
 through receipt time plus 24 hours fall back to receipt time and increment the invalid-timestamp counter.
