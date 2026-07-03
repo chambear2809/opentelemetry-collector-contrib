@@ -123,7 +123,7 @@ func TestGrpcService_ProcessTelemetryData_ContextBagAttributes(t *testing.T) {
 			require.NoError(t, err)
 
 			req := &pb.MdtDialoutArgs{ReqId: 1, Data: data}
-			require.NoError(t, service.processTelemetryData(req))
+			require.NoError(t, service.processTelemetryData(t.Context(), req))
 
 			emitted := consumer.AllMetrics()
 			require.Len(t, emitted, 1)

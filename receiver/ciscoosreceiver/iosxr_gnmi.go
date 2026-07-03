@@ -42,7 +42,7 @@ func (d *iosXRGNMIUpdateDecoder) decodeNotification(notification *gnmi.Notificat
 		targetName:     d.target.Name,
 		endpoint:       d.target.Endpoint,
 		platformFamily: d.target.PlatformFamily,
-		transport:      transport,
+		transport:      iosXRTelemetryTransportDialIn,
 		yangPath:       prefixText,
 		yangModule:     module,
 	})
@@ -106,7 +106,7 @@ func (d *iosXRGNMIUpdateDecoder) decodeNotification(notification *gnmi.Notificat
 		targetName:     d.target.Name,
 		endpoint:       d.target.Endpoint,
 		platformFamily: d.target.PlatformFamily,
-		transport:      transport,
+		transport:      iosXRTelemetryTransportDialIn,
 	}, ts)
 	return md
 }

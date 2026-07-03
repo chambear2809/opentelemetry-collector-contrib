@@ -351,8 +351,8 @@ func newCatalyst9800AttrLookup(attrs map[string]string) func(...string) string {
 		if after, ok := strings.CutPrefix(lower, "cisco.yang.key."); ok {
 			normalized[after] = value
 		}
-		if cleaned := sanitizeMetricSegment(key); strings.HasPrefix(cleaned, "cisco_yang_key_") {
-			normalized[strings.TrimPrefix(cleaned, "cisco_yang_key_")] = value
+		if suffix, ok := strings.CutPrefix(sanitizeMetricSegment(key), "cisco_yang_key_"); ok {
+			normalized[suffix] = value
 		}
 	}
 	return func(keys ...string) string {
