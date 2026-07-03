@@ -41,7 +41,7 @@ func (d *catalyst9800GNMIUpdateDecoder) decodeNotification(notification *gnmi.No
 		targetName:     d.target.Name,
 		endpoint:       d.target.Endpoint,
 		platformFamily: d.target.PlatformFamily,
-		transport:      transport,
+		transport:      catalyst9800TelemetryTransportDialIn,
 		yangPath:       prefixText,
 		yangModule:     module,
 	})
@@ -107,7 +107,7 @@ func (d *catalyst9800GNMIUpdateDecoder) decodeNotification(notification *gnmi.No
 		targetName:     d.target.Name,
 		endpoint:       d.target.Endpoint,
 		platformFamily: d.target.PlatformFamily,
-		transport:      transport,
+		transport:      catalyst9800TelemetryTransportDialIn,
 	}, ts)
 	return md
 }
