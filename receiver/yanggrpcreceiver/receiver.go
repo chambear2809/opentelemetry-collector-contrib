@@ -34,6 +34,7 @@ type yangReceiver struct {
 	forceStopOnce   sync.Once
 	shutdownDone    chan struct{}
 	processingSlots chan struct{}
+	streamAdmission *streamAdmission
 }
 
 func createMetricsReceiver(_ context.Context, settings receiver.Settings, cfg component.Config, next consumer.Metrics) receiver.Metrics {
@@ -45,11 +46,20 @@ func createMetricsReceiver(_ context.Context, settings receiver.Settings, cfg co
 		wg:              sync.WaitGroup{},
 		shutdownDone:    make(chan struct{}),
 		processingSlots: make(chan struct{}, effectiveMaxConcurrentConversions(cfg.(*Config).MaxConcurrentConversions)),
+		streamAdmission: newStreamAdmission(
+			effectiveMaxConcurrentStreams(cfg.(*Config).MaxConcurrentStreams),
+			effectiveMaxConcurrentStreamsPerClient(
+				cfg.(*Config).MaxConcurrentStreamsPerClient,
+				cfg.(*Config).MaxConcurrentStreams,
+			),
+		),
 	}
 }
 
 func (y *yangReceiver) Start(ctx context.Context, host component.Host) error {
-	if err := y.config.validateRuntimeAvailability(); err != nil {
+	// Validate again at the lifecycle boundary so direct embedders cannot bypass
+	// the aggregate frame, stream-admission, or remote-listener safety limits.
+	if err := y.config.Validate(); err != nil {
 		return err
 	}
 	serverParameters := y.config.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault()
@@ -77,7 +87,10 @@ func (y *yangReceiver) Start(ctx context.Context, host component.Host) error {
 	// 3. Configure gRPC Server with Security Interceptors
 	server, err := y.config.ToServer(ctx, host.GetExtensions(), y.settings.TelemetrySettings,
 		configgrpc.WithGrpcServerOption(grpc.UnaryInterceptor(securityManager.CreateSecurityInterceptor())),
-		configgrpc.WithGrpcServerOption(grpc.StreamInterceptor(securityManager.CreateStreamSecurityInterceptor())),
+		configgrpc.WithGrpcServerOption(grpc.ChainStreamInterceptor(
+			securityManager.CreateStreamSecurityInterceptor(),
+			y.createStreamAdmissionInterceptor(),
+		)),
 		configgrpc.WithGrpcServerOption(grpc.ConnectionTimeout(effectiveConnectionTimeout(y.config.ConnectionTimeout))))
 	if err != nil {
 		securityManager.Shutdown()
@@ -170,6 +183,12 @@ func (y *yangReceiver) Shutdown(ctx context.Context) error {
 
 func (y *yangReceiver) beginShutdown() <-chan struct{} {
 	y.shutdownOnce.Do(func() {
+		// Cancel registered stream contexts before GracefulStop starts waiting.
+		// This lets idle streams and cooperative downstream consumers leave their
+		// handlers without waiting for the caller's shutdown deadline.
+		if y.streamAdmission != nil {
+			y.streamAdmission.beginShutdown()
+		}
 		go func() {
 			if y.server != nil {
 				y.settings.Logger.Info("Stopping YANG gRPC receiver")

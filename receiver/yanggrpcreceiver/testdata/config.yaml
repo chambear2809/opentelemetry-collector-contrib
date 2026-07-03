@@ -5,7 +5,8 @@ yang_grpc/default:
     server_parameters:
       time: 30s
       timeout: 10s
-  max_concurrent_streams: 100
+  max_concurrent_streams: 64
+  max_concurrent_streams_per_client: 16
   max_recv_msg_size_mib: 4
   security:
     rate_limiting:
@@ -38,7 +39,8 @@ yang_grpc/production:
       - "192.168.0.0/16"
 
   # Performance Settings
-  max_concurrent_streams: 100
+  max_concurrent_streams: 64
+  max_concurrent_streams_per_client: 16
   max_recv_msg_size_mib: 4
 
   # Keep-Alive Configuration

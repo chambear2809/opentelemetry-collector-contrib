@@ -45,7 +45,7 @@ func createDefaultConfig() component.Config {
 	config.NetAddr.Transport = "tcp"
 	config.NetAddr.Endpoint = "localhost:57500"
 	config.MaxRecvMsgSizeMiB = 4
-	config.MaxConcurrentStreams = 100
+	config.MaxConcurrentStreams = defaultMaxConcurrentStreams
 	config.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault().MaxConnectionIdle = defaultMaxConnectionIdle
 	config.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault().Time = 30 * time.Second
 	config.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault().Timeout = 10 * time.Second

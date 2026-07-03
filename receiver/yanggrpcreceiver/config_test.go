@@ -18,7 +18,10 @@ import (
 )
 
 func TestRuntimeHardeningVersion(t *testing.T) {
-	assert.Equal(t, 1, (&Config{}).RuntimeHardeningVersion())
+	cfg := &Config{}
+	assert.Equal(t, 2, cfg.RuntimeHardeningVersion())
+	cfg.SetMaxConcurrentStreamsPerClient(7)
+	assert.Equal(t, uint32(7), cfg.MaxConcurrentStreamsPerClient)
 }
 
 func TestSecurityConfig_Validation(t *testing.T) {
@@ -143,7 +146,7 @@ func TestSecurityConfig_Validation(t *testing.T) {
 				tt.config.MaxRecvMsgSizeMiB = 4
 			}
 			if tt.config.MaxConcurrentStreams == 0 {
-				tt.config.MaxConcurrentStreams = 100
+				tt.config.MaxConcurrentStreams = defaultMaxConcurrentStreams
 			}
 			err := tt.config.Validate()
 			if tt.expectError {
@@ -181,28 +184,35 @@ func validTestServerConfig() configgrpc.ServerConfig {
 	server := configgrpc.NewDefaultServerConfig()
 	server.NetAddr.Endpoint = "localhost:57500"
 	server.MaxRecvMsgSizeMiB = 4
-	server.MaxConcurrentStreams = 100
+	server.MaxConcurrentStreams = defaultMaxConcurrentStreams
 	return server
 }
 
 func TestServerResourceLimitValidation(t *testing.T) {
 	defaults := createDefaultConfig().(*Config)
 	assert.Equal(t, 4, defaults.MaxRecvMsgSizeMiB)
-	assert.Equal(t, uint32(100), defaults.MaxConcurrentStreams)
+	assert.Equal(t, uint32(defaultMaxConcurrentStreams), defaults.MaxConcurrentStreams)
 	assert.Equal(t, uint32(defaultMaxConnections), defaults.MaxConnections)
+	assert.Zero(t, defaults.MaxConcurrentStreamsPerClient)
+	assert.Equal(t, defaultMaxStreamsPerClient, effectiveMaxConcurrentStreamsPerClient(
+		defaults.MaxConcurrentStreamsPerClient,
+		defaults.MaxConcurrentStreams,
+	))
 	assert.Equal(t, uint32(defaultMaxConcurrentConversions), defaults.MaxConcurrentConversions)
 	assert.Equal(t, defaultConnectionTimeout, defaults.ConnectionTimeout)
 	assert.Equal(t, defaultMaxConnectionIdle, defaults.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault().MaxConnectionIdle)
 	require.NoError(t, defaults.Validate())
 
 	for _, test := range []struct {
-		name      string
-		recvMiB   int
-		streams   uint32
-		errorPart string
+		name             string
+		recvMiB          int
+		streams          uint32
+		streamsPerClient uint32
+		errorPart        string
 	}{
-		{name: "minimum", recvMiB: 1, streams: 1},
-		{name: "maximum", recvMiB: 16, streams: 1000},
+		{name: "minimum", recvMiB: 1, streams: 1, streamsPerClient: 1},
+		{name: "aggregate ceiling", recvMiB: 16, streams: 16},
+		{name: "aggregate ceiling exceeded", recvMiB: 4, streams: 65, errorPart: "max_concurrent_streams multiplied by max_recv_msg_size_mib must not exceed 256 MiB"},
 		{name: "zero receive size", recvMiB: 0, streams: 100, errorPart: "max_recv_msg_size_mib must be between 1 and 16"},
 		{name: "oversize receive", recvMiB: 17, streams: 100, errorPart: "max_recv_msg_size_mib must be between 1 and 16"},
 		{name: "zero streams", recvMiB: 4, streams: 0, errorPart: "max_concurrent_streams must be between 1 and 1000"},
@@ -212,6 +222,9 @@ func TestServerResourceLimitValidation(t *testing.T) {
 			cfg := createDefaultConfig().(*Config)
 			cfg.MaxRecvMsgSizeMiB = test.recvMiB
 			cfg.MaxConcurrentStreams = test.streams
+			if test.streamsPerClient != 0 {
+				cfg.MaxConcurrentStreamsPerClient = test.streamsPerClient
+			}
 			err := cfg.Validate()
 			if test.errorPart == "" {
 				require.NoError(t, err)
@@ -220,6 +233,18 @@ func TestServerResourceLimitValidation(t *testing.T) {
 			require.ErrorContains(t, err, test.errorPart)
 		})
 	}
+
+	cfg := createDefaultConfig().(*Config)
+	cfg.MaxConcurrentStreamsPerClient = maxMaxConcurrentStreams + 1
+	require.ErrorContains(t, cfg.Validate(), "max_concurrent_streams_per_client must not exceed 1000")
+	assert.Equal(t, defaultMaxStreamsPerClient, effectiveMaxConcurrentStreamsPerClient(0, defaultMaxConcurrentStreams))
+	assert.Equal(t, 4, effectiveMaxConcurrentStreamsPerClient(0, 4))
+
+	cfg = createDefaultConfig().(*Config)
+	cfg.MaxConcurrentStreams = 4
+	require.NoError(t, cfg.Validate(), "the omitted per-client limit must follow a lower global limit")
+	cfg.MaxConcurrentStreamsPerClient = 5
+	require.ErrorContains(t, cfg.Validate(), "max_concurrent_streams_per_client must not exceed max_concurrent_streams")
 }
 
 func TestRuntimeAvailabilityValidation(t *testing.T) {
@@ -301,11 +326,11 @@ func TestRemoteListenerSecurityValidation(t *testing.T) {
 	remoteServer := configgrpc.NewDefaultServerConfig()
 	remoteServer.NetAddr.Endpoint = "0.0.0.0:57500"
 	remoteServer.MaxRecvMsgSizeMiB = 4
-	remoteServer.MaxConcurrentStreams = 100
+	remoteServer.MaxConcurrentStreams = defaultMaxConcurrentStreams
 	loopbackServer := configgrpc.NewDefaultServerConfig()
 	loopbackServer.NetAddr.Endpoint = "127.0.0.1:57500"
 	loopbackServer.MaxRecvMsgSizeMiB = 4
-	loopbackServer.MaxConcurrentStreams = 100
+	loopbackServer.MaxConcurrentStreams = defaultMaxConcurrentStreams
 	secureRemoteServer := remoteServer
 	secureRemoteServer.TLS = configoptional.Some(configtls.ServerConfig{
 		Config: configtls.Config{

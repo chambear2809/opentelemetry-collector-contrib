@@ -5,11 +5,13 @@ package yanggrpcreceiver // import "github.com/open-telemetry/opentelemetry-coll
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"maps"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -103,8 +105,9 @@ type telemetryConversionBudget struct {
 // MdtDialout processes the bidirectional gRPC stream.
 func (s *grpcService) MdtDialout(stream pb.GRPCMdtDialout_MdtDialoutServer) error {
 	s.receiver.settings.Logger.Info("New Cisco telemetry session established")
+	reader := newTelemetryStreamReader(stream.Context(), stream)
 	for {
-		req, err := stream.Recv()
+		req, releaseFrame, err := reader.receive()
 		if errors.Is(err, io.EOF) {
 			return nil
 		}
@@ -112,9 +115,13 @@ func (s *grpcService) MdtDialout(stream pb.GRPCMdtDialout_MdtDialoutServer) erro
 			return err
 		}
 
-		if err := s.processTelemetryData(stream.Context(), req); err != nil {
-			s.receiver.settings.Logger.Error("Failed to process telemetry data", zap.Error(err))
-			return err
+		processErr := func() error {
+			defer releaseFrame()
+			return s.processTelemetryData(stream.Context(), req)
+		}()
+		if processErr != nil {
+			s.receiver.settings.Logger.Error("Failed to process telemetry data", zap.Error(processErr))
+			return processErr
 		}
 	}
 }
@@ -126,6 +133,9 @@ func (s *grpcService) processTelemetryData(ctx context.Context, req *pb.MdtDialo
 		return err
 	}
 	defer release()
+	if preflightErr := preflightTelemetryPayload(req.Data, s.limits); preflightErr != nil {
+		return preflightErr
+	}
 
 	telemetryMsg := &pb.Telemetry{}
 	if unmarshalErr := proto.Unmarshal(req.Data, telemetryMsg); unmarshalErr != nil {
@@ -187,19 +197,14 @@ func (s *grpcService) convertToOTELMetrics(telemetry *pb.Telemetry, receivedAt t
 		if field == nil {
 			continue
 		}
-		// Step 1: Initialize context bag with global metadata.
+		// Initialize the inherited context with trusted, stable metadata. List
+		// keys are added lexically by emitMetrics for the object that owns each
+		// explicit `keys` subtree; arbitrary string leaves must not become labels
+		// on sibling cumulative counters.
 		ctxBag := map[string]string{
 			"node_id": telemetry.GetNodeIdStr(),
 		}
-
-		// Step 2: Pre-scan the entire tree for keys/identifiers (Telegraf logic).
-		// This ensures sibling branches like 'admin-status' can access 'interface-name'.
-		if err := s.extractKeys(field, ctxBag, 1, budget); err != nil {
-			return pmetric.Metrics{}, err
-		}
-
-		// Step 3: Walk the tree again to emit actual metrics using the enriched context.
-		if err := s.emitMetrics(sm, field, "", telemetry.EncodingPath, timestamp, ctxBag, 1, budget); err != nil {
+		if err := s.emitMetrics(sm, field, "", "", telemetry.EncodingPath, timestamp, ctxBag, false, 1, budget); err != nil {
 			return pmetric.Metrics{}, err
 		}
 	}
@@ -207,42 +212,117 @@ func (s *grpcService) convertToOTELMetrics(telemetry *pb.Telemetry, receivedAt t
 	return metrics, nil
 }
 
-// extractKeys recursively scans for string values that serve as identifiers.
-func (s *grpcService) extractKeys(field *pb.TelemetryField, ctxBag map[string]string, depth int, budget *telemetryConversionBudget) error {
-	if field == nil {
-		return nil
-	}
-	if err := budget.visitField(field.Name, depth); err != nil {
+type telemetryKeyAttribute struct {
+	name  string
+	value string
+}
+
+// extractKeyAttributes copies scalar leaves from an explicit GPB-KV `keys`
+// subtree into the context for its owning list instance. It intentionally does
+// not treat arbitrary string leaves (status, description, reason, and so on)
+// as identity attributes. Key leaves are sorted before publication because
+// protobuf repeated-field order is not part of list identity; reordering an
+// equivalent key set must not change collision escape names or series keys.
+func extractKeyAttributes(field *pb.TelemetryField, ctxBag map[string]string, depth int, budget *telemetryConversionBudget) error {
+	attributes := make([]telemetryKeyAttribute, 0)
+	if err := collectKeyAttributes(field, depth, budget, &attributes); err != nil {
 		return err
 	}
-	if value, ok := field.ValueByType.(*pb.TelemetryField_StringValue); ok && value.StringValue != "" {
-		if err := budget.addContextAttribute(ctxBag, field.Name, value.StringValue); err != nil {
+	slices.SortFunc(attributes, func(left, right telemetryKeyAttribute) int {
+		if byName := strings.Compare(left.name, right.name); byName != 0 {
+			return byName
+		}
+		return strings.Compare(left.value, right.value)
+	})
+	for _, attribute := range attributes {
+		if err := budget.addKeyContextAttribute(ctxBag, attribute.name, attribute.value); err != nil {
 			return err
 		}
 
 		// Common Cisco naming normalization.
-		lowName := strings.ToLower(field.Name)
-		if lowName == "name" || lowName == "interface-name" {
-			if err := budget.addContextAttribute(ctxBag, "interface", value.StringValue); err != nil {
+		lowName := strings.ToLower(attribute.name)
+		if attribute.value != "" && (lowName == "name" || lowName == "interface-name") {
+			if err := budget.addKeyContextAttribute(ctxBag, "interface", attribute.value); err != nil {
 				return err
 			}
 		}
 	}
+	return nil
+}
+
+func collectKeyAttributes(
+	field *pb.TelemetryField,
+	depth int,
+	budget *telemetryConversionBudget,
+	attributes *[]telemetryKeyAttribute,
+) error {
+	if field == nil {
+		return nil
+	}
+	if depth > budget.limits.MaxDepth {
+		return status.Errorf(codes.ResourceExhausted, "telemetry field nesting exceeds %d levels", budget.limits.MaxDepth)
+	}
+	if len(field.Name) > budget.limits.MaxAttrKeyBytes {
+		return status.Errorf(codes.ResourceExhausted, "telemetry field name exceeds %d bytes", budget.limits.MaxAttrKeyBytes)
+	}
+	value, present, err := telemetryKeyAttributeValue(field, budget.limits.MaxAttrValueBytes)
+	if err != nil {
+		return err
+	}
+	if present {
+		*attributes = append(*attributes, telemetryKeyAttribute{name: field.Name, value: value})
+	}
 	for _, child := range field.Fields {
-		if err := s.extractKeys(child, ctxBag, depth+1, budget); err != nil {
+		if err := collectKeyAttributes(child, depth+1, budget, attributes); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// emitMetrics processes numerical values and emits OTLP metrics with the full context bag.
-func (s *grpcService) emitMetrics(sm pmetric.ScopeMetrics, field *pb.TelemetryField, pathPrefix, encodingPath string, timestamp pcommon.Timestamp, ctxBag map[string]string, depth int, budget *telemetryConversionBudget) error {
+func telemetryKeyAttributeValue(field *pb.TelemetryField, maximum int) (string, bool, error) {
+	switch value := field.ValueByType.(type) {
+	case *pb.TelemetryField_StringValue:
+		return value.StringValue, true, nil
+	case *pb.TelemetryField_BytesValue:
+		if base64.StdEncoding.EncodedLen(len(value.BytesValue)) > maximum {
+			return "", false, status.Errorf(codes.ResourceExhausted, "telemetry key value exceeds %d bytes", maximum)
+		}
+		return base64.StdEncoding.EncodeToString(value.BytesValue), true, nil
+	case *pb.TelemetryField_BoolValue:
+		return strconv.FormatBool(value.BoolValue), true, nil
+	case *pb.TelemetryField_Uint32Value:
+		return strconv.FormatUint(uint64(value.Uint32Value), 10), true, nil
+	case *pb.TelemetryField_Uint64Value:
+		return strconv.FormatUint(value.Uint64Value, 10), true, nil
+	case *pb.TelemetryField_Sint32Value:
+		return strconv.FormatInt(int64(value.Sint32Value), 10), true, nil
+	case *pb.TelemetryField_Sint64Value:
+		return strconv.FormatInt(value.Sint64Value, 10), true, nil
+	case *pb.TelemetryField_DoubleValue:
+		if math.IsNaN(value.DoubleValue) || math.IsInf(value.DoubleValue, 0) {
+			return "", false, status.Error(codes.InvalidArgument, "telemetry key contains a non-finite double value")
+		}
+		return strconv.FormatFloat(value.DoubleValue, 'g', -1, 64), true, nil
+	case *pb.TelemetryField_FloatValue:
+		converted := float64(value.FloatValue)
+		if math.IsNaN(converted) || math.IsInf(converted, 0) {
+			return "", false, status.Error(codes.InvalidArgument, "telemetry key contains a non-finite float value")
+		}
+		return strconv.FormatFloat(converted, 'g', -1, 32), true, nil
+	default:
+		return "", false, nil
+	}
+}
+
+// emitMetrics processes leaf values and emits OTLP metrics with the stable key
+// context of the enclosing GPB-KV list instance.
+func (s *grpcService) emitMetrics(sm pmetric.ScopeMetrics, field *pb.TelemetryField, pathPrefix, sourcePathPrefix, encodingPath string, timestamp pcommon.Timestamp, ctxBag map[string]string, inKeys bool, depth int, budget *telemetryConversionBudget) error {
 	if field == nil {
 		return nil
 	}
-	if depth > budget.limits.MaxDepth {
-		return status.Errorf(codes.ResourceExhausted, "telemetry field nesting exceeds %d levels", budget.limits.MaxDepth)
+	if err := budget.visitField(field.Name, depth); err != nil {
+		return err
 	}
 	effectiveTimestamp := timestamp
 	if field.Timestamp != 0 {
@@ -260,28 +340,53 @@ func (s *grpcService) emitMetrics(sm pmetric.ScopeMetrics, field *pb.TelemetryFi
 	if len(currentPath) > budget.limits.MaxMetricNameBytes {
 		return status.Errorf(codes.ResourceExhausted, "telemetry metric path exceeds %d bytes", budget.limits.MaxMetricNameBytes)
 	}
+	currentSourcePath, err := extendTelemetrySourcePath(sourcePathPrefix, field.Name, budget.limits.MaxAttrValueBytes)
+	if err != nil {
+		return err
+	}
 
-	// Only emit metrics for leaf nodes (values) that are NOT in the 'keys' branch.
-	if field.ValueByType != nil && len(field.Fields) == 0 && !strings.HasPrefix(currentPath, "keys") {
+	localCtx := ctxBag
+	contextCloned := false
+	if !inKeys {
+		for _, child := range field.Fields {
+			if child == nil || !strings.EqualFold(child.Name, "keys") {
+				continue
+			}
+			if !contextCloned {
+				localCtx = maps.Clone(ctxBag)
+				contextCloned = true
+			}
+			if err := extractKeyAttributes(child, localCtx, depth+1, budget); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Key leaves define identity but are not measurements themselves.
+	if field.ValueByType != nil && len(field.Fields) == 0 && !inKeys {
 		cleanName := strings.TrimPrefix(currentPath, "content.")
+		metricCtx := maps.Clone(localCtx)
+		if err := budget.addContextAttribute(metricCtx, "cisco.yang.source_path", currentSourcePath); err != nil {
+			return err
+		}
 
 		if strVal, ok := field.ValueByType.(*pb.TelemetryField_StringValue); ok {
 			if err := budget.validateAttribute("value", strVal.StringValue); err != nil {
 				return err
 			}
-			if err := budget.reserveMetric(ctxBag, "value", strVal.StringValue); err != nil {
+			if err := budget.reserveMetric(metricCtx, "value", strVal.StringValue); err != nil {
 				return err
 			}
 			m := sm.Metrics().AppendEmpty()
 			// Step/Info metrics for string states (e.g., Up/Down).
-			createStepMetric(m, cleanName, strVal.StringValue, effectiveTimestamp, ctxBag)
+			createStepMetric(m, cleanName, strVal.StringValue, effectiveTimestamp, metricCtx)
 		} else if uintVal, ok := field.ValueByType.(*pb.TelemetryField_Uint64Value); ok && uintVal.Uint64Value > math.MaxInt64 {
 			// OTLP numeric datapoints do not have an unsigned integer type. Match
 			// the direct gNMI receivers by preserving out-of-range uint64 values
 			// exactly in an info metric rather than rounding them through float64.
 			value := strconv.FormatUint(uintVal.Uint64Value, 10)
-			overflowCtx := make(map[string]string, len(ctxBag)+1)
-			maps.Copy(overflowCtx, ctxBag)
+			overflowCtx := make(map[string]string, len(metricCtx)+1)
+			maps.Copy(overflowCtx, metricCtx)
 			if err := budget.addContextAttribute(overflowCtx, "cisco.value.type", "uint64"); err != nil {
 				return err
 			}
@@ -296,7 +401,7 @@ func (s *grpcService) emitMetrics(sm pmetric.ScopeMetrics, field *pb.TelemetryFi
 				return err
 			}
 			if ok {
-				if err := budget.reserveMetric(ctxBag, "", ""); err != nil {
+				if err := budget.reserveMetric(metricCtx, "", ""); err != nil {
 					return err
 				}
 				m := sm.Metrics().AppendEmpty()
@@ -305,17 +410,31 @@ func (s *grpcService) emitMetrics(sm pmetric.ScopeMetrics, field *pb.TelemetryFi
 				if s.yangParser != nil {
 					yangType = s.yangParser.GetDataTypeForEncodingPath(encodingPath, field.Name)
 				}
-				createNumericMetric(m, cleanName, numericValue, effectiveTimestamp, yangType, ctxBag)
+				createNumericMetric(m, cleanName, numericValue, effectiveTimestamp, yangType, metricCtx)
 			}
 		}
 	}
 
 	for _, child := range field.Fields {
-		if err := s.emitMetrics(sm, child, currentPath, encodingPath, effectiveTimestamp, ctxBag, depth+1, budget); err != nil {
+		childInKeys := inKeys || (child != nil && strings.EqualFold(child.Name, "keys"))
+		if err := s.emitMetrics(sm, child, currentPath, currentSourcePath, encodingPath, effectiveTimestamp, localCtx, childInKeys, depth+1, budget); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func extendTelemetrySourcePath(prefix, name string, maximum int) (string, error) {
+	// JSON Pointer escaping makes the segmentation injective even when a device
+	// sends punctuation that is also used by the metric-name path.
+	escaped := strings.ReplaceAll(strings.ReplaceAll(name, "~", "~0"), "/", "~1")
+	if prefix != "" {
+		prefix += "/"
+	}
+	if len(escaped) > maximum-len(prefix) {
+		return "", status.Errorf(codes.ResourceExhausted, "telemetry source path exceeds %d bytes", maximum)
+	}
+	return prefix + escaped, nil
 }
 
 // createNumericMetric populates a NumberDataPoint.
@@ -361,8 +480,10 @@ func createStepMetric(m pmetric.Metric, name, val string, ts pcommon.Timestamp, 
 	dp := m.SetEmptyGauge().DataPoints().AppendEmpty()
 	dp.SetDoubleValue(1.0)
 	dp.SetTimestamp(ts)
-	dp.Attributes().PutStr("value", val)
 	applyCtxBag(dp.Attributes(), ctx)
+	// `value` is receiver-owned for info metrics. Apply it last so a future
+	// context-construction regression cannot corrupt the reported state.
+	dp.Attributes().PutStr("value", val)
 }
 
 // getNumericValue extracts float64 from numeric and boolean protobuf types.
@@ -424,6 +545,9 @@ func (b *telemetryConversionBudget) visitField(name string, depth int) error {
 	if depth > b.limits.MaxDepth {
 		return status.Errorf(codes.ResourceExhausted, "telemetry field nesting exceeds %d levels", b.limits.MaxDepth)
 	}
+	if strings.TrimSpace(name) == "" {
+		return status.Error(codes.InvalidArgument, "telemetry field name cannot be empty")
+	}
 	b.fields++
 	if b.fields > b.limits.MaxFields {
 		return status.Errorf(codes.ResourceExhausted, "telemetry payload exceeds %d fields", b.limits.MaxFields)
@@ -435,6 +559,9 @@ func (b *telemetryConversionBudget) visitField(name string, depth int) error {
 }
 
 func (b *telemetryConversionBudget) validateAttribute(key, value string) error {
+	if strings.TrimSpace(key) == "" {
+		return status.Error(codes.InvalidArgument, "telemetry attribute key cannot be empty")
+	}
 	if len(key) > b.limits.MaxAttrKeyBytes {
 		return status.Errorf(codes.ResourceExhausted, "telemetry attribute key exceeds %d bytes", b.limits.MaxAttrKeyBytes)
 	}
@@ -460,6 +587,55 @@ func (b *telemetryConversionBudget) addContextAttribute(ctx map[string]string, k
 	return nil
 }
 
+// addKeyContextAttribute preserves list-key identity without allowing
+// device-controlled key names to overwrite receiver-owned attributes or an
+// inherited list key. The common case retains its historical attribute name;
+// only ambiguous names are escaped under cisco.key.*.
+func (b *telemetryConversionBudget) addKeyContextAttribute(ctx map[string]string, key, value string) error {
+	if err := b.validateAttribute(key, value); err != nil {
+		return err
+	}
+
+	if existing, exists := ctx[key]; !isReservedMetricAttribute(key) && (!exists || existing == value) {
+		if exists {
+			return nil
+		}
+		return b.addContextAttribute(ctx, key, value)
+	}
+
+	for index := 1; index <= len(ctx)+1; index++ {
+		candidate := "cisco.key." + key
+		if index > 1 {
+			candidate = "cisco.key." + strconv.Itoa(index) + "." + key
+		}
+		if len(candidate) > b.limits.MaxAttrKeyBytes {
+			return status.Errorf(codes.ResourceExhausted, "escaped telemetry key attribute exceeds %d bytes", b.limits.MaxAttrKeyBytes)
+		}
+		if existing, exists := ctx[candidate]; exists {
+			if existing == value {
+				return nil
+			}
+			continue
+		}
+		return b.addContextAttribute(ctx, candidate, value)
+	}
+
+	return status.Errorf(codes.ResourceExhausted, "telemetry context exceeds %d attributes", b.limits.MaxAttrsPerMetric-1)
+}
+
+func isReservedMetricAttribute(key string) bool {
+	if strings.HasPrefix(key, "cisco.key.") {
+		return true
+	}
+	switch key {
+	case "node_id", "value", "cisco.value.type", "cisco.yang.source_path",
+		"cisco.yang.path", "cisco.yang.module", "cisco.telemetry.transport":
+		return true
+	default:
+		return false
+	}
+}
+
 func (b *telemetryConversionBudget) reserveMetric(ctx map[string]string, extraKey, extraValue string) error {
 	if b.metrics >= b.limits.MaxMetrics {
 		return status.Errorf(codes.ResourceExhausted, "telemetry payload exceeds %d metrics", b.limits.MaxMetrics)
@@ -473,6 +649,9 @@ func (b *telemetryConversionBudget) reserveMetric(ctx map[string]string, extraKe
 		attributeBytes += len(key) + len(value)
 	}
 	if extraKey != "" {
+		if _, exists := ctx[extraKey]; exists {
+			return status.Errorf(codes.InvalidArgument, "telemetry context conflicts with reserved metric attribute %q", extraKey)
+		}
 		if err := b.validateAttribute(extraKey, extraValue); err != nil {
 			return err
 		}
@@ -503,8 +682,9 @@ func (b *telemetryConversionBudget) reserveAttributes(count, byteCount int) erro
 
 func applyCtxBag(attrs pcommon.Map, ctx map[string]string) {
 	for k, v := range ctx {
-		if v != "" {
-			attrs.PutStr(k, v)
-		}
+		// Empty strings are valid YANG list-key values and still participate in
+		// series identity. reserveMetric already accounts every context entry, so
+		// publish the exact context shape it validated.
+		attrs.PutStr(k, v)
 	}
 }

@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/yanggrpcreceiver/internal"
@@ -70,7 +72,8 @@ func TestProcessTelemetryData_ErrorHandling(t *testing.T) {
 	}
 	err = service.processTelemetryData(t.Context(), invalidMsg)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "cannot parse invalid wire-format data")
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
+	assert.Contains(t, err.Error(), "invalid telemetry payload")
 
 	// Test with valid telemetry data (simple case)
 	validTelemetry := &pb.Telemetry{

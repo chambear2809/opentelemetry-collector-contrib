@@ -5,6 +5,7 @@ package yanggrpcreceiver
 
 import (
 	"context"
+	"io"
 	"net"
 	"sync/atomic"
 	"testing"
@@ -14,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/yanggrpcreceiver/internal"
@@ -153,6 +155,33 @@ func TestTelemetryProcessingGateCanceledWaiterDoesNotReachConsumer(t *testing.T)
 	require.NoError(t, <-firstResult)
 }
 
+func TestTelemetryStreamKeepsOneUnprocessedFrameInFlight(t *testing.T) {
+	release := make(chan struct{})
+	consumer := newAvailabilityBlockingConsumer(release)
+	cfg := createValidTestConfig()
+	receiver := createMetricsReceiver(t.Context(), createTestSettings(), cfg, consumer).(*yangReceiver)
+	service := &grpcService{receiver: receiver, yangParser: internal.NewYANGParser()}
+	request := availabilityTelemetryRequest(t)
+	stream := &availabilityTelemetryStream{
+		ServerStream: nil,
+		ctx:          t.Context(),
+		requests:     []*pb.MdtDialoutArgs{request, request},
+	}
+
+	result := make(chan error, 1)
+	go func() { result <- service.MdtDialout(stream) }()
+	select {
+	case <-consumer.entered:
+	case <-time.After(time.Second):
+		t.Fatal("first frame did not reach the consumer")
+	}
+	assert.Equal(t, int32(1), stream.recvCalls.Load(), "the next frame must not be received while one is unprocessed")
+
+	close(release)
+	require.NoError(t, <-result)
+	assert.Equal(t, int32(3), stream.recvCalls.Load(), "two frames plus the final EOF should be received")
+}
+
 type availabilityBlockingConsumer struct {
 	entered   chan struct{}
 	release   <-chan struct{}
@@ -160,6 +189,25 @@ type availabilityBlockingConsumer struct {
 	active    atomic.Int32
 	maxActive atomic.Int32
 }
+
+type availabilityTelemetryStream struct {
+	grpc.ServerStream
+	ctx       context.Context
+	requests  []*pb.MdtDialoutArgs
+	recvCalls atomic.Int32
+}
+
+func (s *availabilityTelemetryStream) Context() context.Context { return s.ctx }
+
+func (s *availabilityTelemetryStream) Recv() (*pb.MdtDialoutArgs, error) {
+	index := int(s.recvCalls.Add(1) - 1)
+	if index >= len(s.requests) {
+		return nil, io.EOF
+	}
+	return s.requests[index], nil
+}
+
+func (*availabilityTelemetryStream) Send(*pb.MdtDialoutArgs) error { return nil }
 
 func newAvailabilityBlockingConsumer(release <-chan struct{}) *availabilityBlockingConsumer {
 	return &availabilityBlockingConsumer{

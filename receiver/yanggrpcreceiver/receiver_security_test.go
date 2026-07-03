@@ -109,6 +109,112 @@ func TestReceiverRateLimitsEachStreamMessage(t *testing.T) {
 	assert.Equal(t, codes.ResourceExhausted, status.Code(err))
 }
 
+func TestReceiverStartRejectsAggregateFrameBudget(t *testing.T) {
+	endpoint := unusedLocalEndpoint(t)
+	cfg := createDefaultConfig().(*Config)
+	cfg.NetAddr.Endpoint = endpoint
+	cfg.MaxConcurrentStreams = 65
+	receiver := createMetricsReceiver(t.Context(), createTestSettings(), cfg, consumertest.NewNop())
+	require.ErrorContains(t, receiver.Start(t.Context(), componenttest.NewNopHost()), "must not exceed 256 MiB")
+	require.NoError(t, receiver.Shutdown(t.Context()))
+
+	listener, err := net.Listen("tcp", endpoint)
+	require.NoError(t, err, "invalid configuration must be rejected before binding the listener")
+	require.NoError(t, listener.Close())
+}
+
+func TestReceiverRejectsGlobalAndPerClientStreamExcess(t *testing.T) {
+	tests := []struct {
+		name            string
+		globalLimit     uint32
+		perClientLimit  uint32
+		acceptedStreams int
+		wantMessage     string
+	}{
+		{
+			name:            "global limit spans connections",
+			globalLimit:     2,
+			perClientLimit:  2,
+			acceptedStreams: 2,
+			wantMessage:     "maximum active telemetry streams reached",
+		},
+		{
+			name:            "per-client limit spans connections",
+			globalLimit:     3,
+			perClientLimit:  1,
+			acceptedStreams: 1,
+			wantMessage:     "maximum active telemetry streams for client reached",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			endpoint := unusedLocalEndpoint(t)
+			cfg := createDefaultConfig().(*Config)
+			cfg.NetAddr.Endpoint = endpoint
+			cfg.MaxConcurrentStreams = tt.globalLimit
+			cfg.MaxConcurrentStreamsPerClient = tt.perClientLimit
+			receiver := createMetricsReceiver(t.Context(), createTestSettings(), cfg, consumertest.NewNop()).(*yangReceiver)
+			require.NoError(t, receiver.Start(t.Context(), componenttest.NewNopHost()))
+
+			payload, err := proto.Marshal(&pb.Telemetry{MsgTimestamp: 1})
+			require.NoError(t, err)
+			var accepted []pb.GRPCMdtDialout_MdtDialoutClient
+			var connections []*grpc.ClientConn
+			for range tt.acceptedStreams {
+				conn, stream := openTelemetryStream(t, endpoint)
+				connections = append(connections, conn)
+				accepted = append(accepted, stream)
+				require.NoError(t, stream.Send(&pb.MdtDialoutArgs{Data: payload}))
+			}
+			require.Eventually(t, func() bool {
+				return receiver.streamAdmission.activeCount() == tt.acceptedStreams
+			}, 5*time.Second, 10*time.Millisecond)
+
+			rejectedConn, rejected := openTelemetryStream(t, endpoint)
+			connections = append(connections, rejectedConn)
+			require.NoError(t, rejected.CloseSend())
+			_, err = rejected.Recv()
+			require.Equal(t, codes.ResourceExhausted, status.Code(err))
+			assert.ErrorContains(t, err, tt.wantMessage)
+
+			for _, stream := range accepted {
+				require.NoError(t, stream.CloseSend())
+				_, recvErr := stream.Recv()
+				require.ErrorIs(t, recvErr, io.EOF)
+			}
+			require.Eventually(t, func() bool {
+				return receiver.streamAdmission.activeCount() == 0
+			}, 5*time.Second, 10*time.Millisecond)
+			require.NoError(t, receiver.Shutdown(t.Context()))
+			for _, conn := range connections {
+				require.NoError(t, conn.Close())
+			}
+		})
+	}
+}
+
+func TestReceiverGracefulShutdownCancelsIdleStream(t *testing.T) {
+	endpoint := unusedLocalEndpoint(t)
+	cfg := createDefaultConfig().(*Config)
+	cfg.NetAddr.Endpoint = endpoint
+	receiver := createMetricsReceiver(t.Context(), createTestSettings(), cfg, consumertest.NewNop()).(*yangReceiver)
+	require.NoError(t, receiver.Start(t.Context(), componenttest.NewNopHost()))
+
+	conn, stream := openTelemetryStream(t, endpoint)
+	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+	require.Eventually(t, func() bool {
+		return receiver.streamAdmission.activeCount() == 1
+	}, 5*time.Second, 10*time.Millisecond)
+
+	shutdownCtx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, receiver.Shutdown(shutdownCtx))
+	assert.Zero(t, receiver.streamAdmission.activeCount())
+	_, err := stream.Recv()
+	require.Error(t, err)
+}
+
 func TestReceiverStartFailureCleansUpSecurityAndListener(t *testing.T) {
 	endpoint := unusedLocalEndpoint(t)
 	cfg := createDefaultConfig().(*Config)
@@ -149,7 +255,7 @@ func TestReceiverModuleLoadFailureCleansUpSecurityAndListener(t *testing.T) {
 	require.NoError(t, listener.Close())
 }
 
-func TestReceiverShutdownDeadlineCancelsActiveStream(t *testing.T) {
+func TestReceiverShutdownCancelsActiveStreamBeforeGracefulStop(t *testing.T) {
 	endpoint := unusedLocalEndpoint(t)
 	cfg := createDefaultConfig().(*Config)
 	cfg.NetAddr.Endpoint = endpoint
@@ -172,10 +278,10 @@ func TestReceiverShutdownDeadlineCancelsActiveStream(t *testing.T) {
 		t.Fatal("telemetry consumer did not start")
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	shutdownCtx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	err = rcvr.Shutdown(shutdownCtx)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.NoError(t, err)
 	select {
 	case <-next.canceled:
 	case <-time.After(5 * time.Second):
@@ -288,4 +394,15 @@ func unusedLocalEndpoint(t *testing.T) string {
 	endpoint := listener.Addr().String()
 	require.NoError(t, listener.Close())
 	return endpoint
+}
+
+func openTelemetryStream(t *testing.T, endpoint string) (*grpc.ClientConn, pb.GRPCMdtDialout_MdtDialoutClient) {
+	t.Helper()
+	conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	t.Cleanup(cancel)
+	stream, err := pb.NewGRPCMdtDialoutClient(conn).MdtDialout(ctx)
+	require.NoError(t, err)
+	return conn, stream
 }

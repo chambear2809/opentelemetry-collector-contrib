@@ -114,7 +114,10 @@ func TestConversionRejectsAttributeAmplification(t *testing.T) {
 		DataGpbkv: []*pb.TelemetryField{{
 			Name: "row",
 			Fields: []*pb.TelemetryField{
-				{Name: "tenant", ValueByType: &pb.TelemetryField_StringValue{StringValue: "blue"}},
+				{
+					Name:   "keys",
+					Fields: []*pb.TelemetryField{{Name: "tenant", ValueByType: &pb.TelemetryField_StringValue{StringValue: "blue"}}},
+				},
 				numericTelemetryField("packets"),
 			},
 		}},
@@ -124,6 +127,36 @@ func TestConversionRejectsAttributeAmplification(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, codes.ResourceExhausted, status.Code(err))
 	assert.Contains(t, err.Error(), "context exceeds")
+}
+
+func TestConversionRejectsEmptyFieldAndKeyNames(t *testing.T) {
+	service := newLimitsTestService(t)
+	tests := map[string]*pb.Telemetry{
+		"metric field": {
+			NodeId:    &pb.Telemetry_NodeIdStr{NodeIdStr: "router-1"},
+			DataGpbkv: []*pb.TelemetryField{numericTelemetryField("")},
+		},
+		"list key": {
+			NodeId: &pb.Telemetry_NodeIdStr{NodeIdStr: "router-1"},
+			DataGpbkv: []*pb.TelemetryField{{
+				Name: "row",
+				Fields: []*pb.TelemetryField{
+					{Name: "keys", Fields: []*pb.TelemetryField{{
+						Name: "", ValueByType: &pb.TelemetryField_StringValue{StringValue: "blue"},
+					}}},
+					numericTelemetryField("packets"),
+				},
+			}},
+		},
+	}
+	for name, telemetry := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := service.convertToOTELMetrics(telemetry, time.Unix(1, 0))
+			require.Error(t, err)
+			assert.Equal(t, codes.InvalidArgument, status.Code(err))
+			assert.ErrorContains(t, err, "cannot be empty")
+		})
+	}
 }
 
 func TestConversionUsesYANGTypeAndSafeCounterTimestamp(t *testing.T) {

@@ -19,6 +19,9 @@ const (
 	maxMaxRecvMsgSizeMiB            = 16
 	minMaxConcurrentStreams         = 1
 	maxMaxConcurrentStreams         = 1000
+	defaultMaxConcurrentStreams     = 64
+	defaultMaxStreamsPerClient      = 16
+	maxInFlightTelemetryMiB         = 256
 	minRateLimiterCleanup           = time.Second
 	defaultMaxConnections           = 256
 	maxMaxConnections               = 1024
@@ -104,6 +107,12 @@ type Config struct {
 	// Zero uses the default of 256.
 	MaxConnections uint32 `mapstructure:"max_connections"`
 
+	// MaxConcurrentStreamsPerClient limits active telemetry streams from one
+	// transport peer across all of its connections. Zero uses the smaller of
+	// 16 and MaxConcurrentStreams. An explicit value must not exceed
+	// MaxConcurrentStreams.
+	MaxConcurrentStreamsPerClient uint32 `mapstructure:"max_concurrent_streams_per_client"`
+
 	// MaxConcurrentConversions bounds telemetry messages being converted and
 	// consumed concurrently across all streams. Zero uses the default of 8.
 	MaxConcurrentConversions uint32 `mapstructure:"max_concurrent_conversions"`
@@ -121,10 +130,19 @@ type Config struct {
 
 // RuntimeHardeningVersion advertises the receiver runtime safety contract to
 // embedding components without requiring them to import implementation
-// internals. Version 1 includes bounded connections and aggregate telemetry
-// conversion, stream-aware downstream contexts, per-message stream security,
-// and deadline-aware shutdown.
-func (*Config) RuntimeHardeningVersion() int { return 1 }
+// internals. Version 2 includes bounded connections and decoded frames,
+// receiver-wide and per-client stream admission, aggregate telemetry
+// conversion, per-message stream security, and shutdown-canceled stream
+// contexts.
+func (*Config) RuntimeHardeningVersion() int { return 2 }
+
+// SetMaxConcurrentStreamsPerClient lets embedding receivers configure the
+// application-global per-client stream cap without accessing a newly added
+// struct field directly. This keeps embedders source-compatible with an older
+// published module while RuntimeHardeningVersion still makes them fail closed.
+func (c *Config) SetMaxConcurrentStreamsPerClient(limit uint32) {
+	c.MaxConcurrentStreamsPerClient = limit
+}
 
 // Validate checks the receiver configuration is valid.
 func (c *Config) Validate() error {
@@ -137,6 +155,16 @@ func (c *Config) Validate() error {
 	}
 	if c.MaxConcurrentStreams < minMaxConcurrentStreams || c.MaxConcurrentStreams > maxMaxConcurrentStreams {
 		return fmt.Errorf("max_concurrent_streams must be between %d and %d", minMaxConcurrentStreams, maxMaxConcurrentStreams)
+	}
+	if uint64(c.MaxConcurrentStreams)*uint64(c.MaxRecvMsgSizeMiB) > maxInFlightTelemetryMiB {
+		return fmt.Errorf("max_concurrent_streams multiplied by max_recv_msg_size_mib must not exceed %d MiB", maxInFlightTelemetryMiB)
+	}
+	if c.MaxConcurrentStreamsPerClient > maxMaxConcurrentStreams {
+		return fmt.Errorf("max_concurrent_streams_per_client must not exceed %d", maxMaxConcurrentStreams)
+	}
+	if c.MaxConcurrentStreamsPerClient > 0 &&
+		effectiveMaxConcurrentStreamsPerClient(c.MaxConcurrentStreamsPerClient, c.MaxConcurrentStreams) > effectiveMaxConcurrentStreams(c.MaxConcurrentStreams) {
+		return errors.New("max_concurrent_streams_per_client must not exceed max_concurrent_streams")
 	}
 	if err := c.validateRuntimeAvailability(); err != nil {
 		return err
@@ -175,6 +203,20 @@ func effectiveMaxConcurrentConversions(configured uint32) int {
 		return defaultMaxConcurrentConversions
 	}
 	return int(min(configured, uint32(maxMaxConcurrentConversions)))
+}
+
+func effectiveMaxConcurrentStreams(configured uint32) int {
+	if configured == 0 {
+		return defaultMaxConcurrentStreams
+	}
+	return int(min(configured, uint32(maxMaxConcurrentStreams)))
+}
+
+func effectiveMaxConcurrentStreamsPerClient(configured, global uint32) int {
+	if configured == 0 {
+		return min(defaultMaxStreamsPerClient, effectiveMaxConcurrentStreams(global))
+	}
+	return int(min(configured, uint32(maxMaxConcurrentStreams)))
 }
 
 func effectiveConnectionTimeout(configured time.Duration) time.Duration {

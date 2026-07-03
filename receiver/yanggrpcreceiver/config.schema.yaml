@@ -49,6 +49,10 @@ properties:
     description: MaxConcurrentConversions bounds telemetry messages being converted and consumed concurrently across all streams. Zero uses the default of 8.
     type: integer
     x-customType: uint32
+  max_concurrent_streams_per_client:
+    description: MaxConcurrentStreamsPerClient limits active telemetry streams from one transport peer across all of its connections. Zero uses the smaller of 16 and MaxConcurrentStreams. An explicit value must not exceed MaxConcurrentStreams.
+    type: integer
+    x-customType: uint32
   max_connections:
     description: MaxConnections is the maximum number of accepted network connections. Zero uses the default of 256.
     type: integer
