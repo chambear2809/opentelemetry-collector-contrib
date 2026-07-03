@@ -20,7 +20,16 @@ func TestLogsBuilderAppendLogRecord(t *testing.T) {
 	settings.Logger = zap.New(observedZapCore)
 	lb := NewLogsBuilder(settings)
 
-	res := pcommon.NewResource()
+	rb := lb.NewResourceBuilder()
+	rb.SetCiscoOsName("cisco.os.name-val")
+	rb.SetCiscoPlatformFamily("cisco.platform.family-val")
+	rb.SetCiscoTelemetryTransport("cisco.telemetry.transport-val")
+	rb.SetHostID("host.id-val")
+	rb.SetHostIP("host.ip-val")
+	rb.SetHostName("host.name-val")
+	rb.SetHwType("hw.type-val")
+	rb.SetOsName("os.name-val")
+	res := rb.Emit()
 
 	// append the first log record
 	lr := plog.NewLogRecord()

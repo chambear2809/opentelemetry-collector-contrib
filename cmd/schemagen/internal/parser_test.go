@@ -5,11 +5,15 @@
 package internal
 
 import (
+	"go/ast"
+	goParser "go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"golang.org/x/tools/go/packages"
 )
 
 func TestComponentParser(t *testing.T) {
@@ -155,6 +159,75 @@ func TestPackageParser(t *testing.T) {
 
 	givenYaml := string(rawYaml)
 	require.YAMLEq(t, expectedSchema, givenYaml)
+}
+
+func TestApplyFactoryMaps(t *testing.T) {
+	const (
+		packagePath = "example.test/receiver/testreceiver"
+		source      = `package testreceiver
+
+import (
+	"example.test/component"
+	alpha "example.test/receiver/testreceiver/internal/scraper/alphascraper"
+	"example.test/receiver/testreceiver/internal/scraper/betascraper"
+)
+
+var scraperFactories = map[component.Type]any{
+	component.MustNewType("alpha"): alpha.NewFactory(),
+	"beta": betascraper.NewFactory(),
+}
+`
+	)
+
+	file, err := goParser.ParseFile(token.NewFileSet(), "factory.go", source, 0)
+	require.NoError(t, err)
+	schema := CreateSchema()
+	parser := &Parser{
+		config: &Config{FactoryMaps: []FactoryMapOverride{{
+			Property:     "scrapers",
+			FactoriesVar: "scraperFactories",
+			Description:  "Map of scraper configurations.",
+		}}},
+		schema: schema,
+		pkg:    &packages.Package{PkgPath: packagePath, Syntax: []*ast.File{file}},
+	}
+
+	require.NoError(t, parser.applyFactoryMaps())
+	property, ok := schema.Properties["scrapers"].(*ObjectSchemaElement)
+	require.True(t, ok)
+	require.Equal(t, "Map of scraper configurations.", property.Description)
+	require.Equal(t, SchemaTypeObject, property.ElementType)
+	require.Equal(t, map[string]string{
+		"alpha": "./internal/scraper/alphascraper.config",
+		"beta":  "./internal/scraper/betascraper.config",
+	}, factoryMapPropertyRefs(t, property))
+}
+
+func TestApplyFactoryMapsRejectsMissingVariable(t *testing.T) {
+	file, err := goParser.ParseFile(token.NewFileSet(), "factory.go", "package testreceiver", 0)
+	require.NoError(t, err)
+	parser := &Parser{
+		config: &Config{FactoryMaps: []FactoryMapOverride{{
+			Property:     "scrapers",
+			FactoriesVar: "missingFactories",
+		}}},
+		schema: CreateSchema(),
+		pkg:    &packages.Package{PkgPath: "example.test/receiver/testreceiver", Syntax: []*ast.File{file}},
+	}
+
+	err = parser.applyFactoryMaps()
+	require.ErrorContains(t, err, `factories variable "missingFactories" was not found`)
+}
+
+func factoryMapPropertyRefs(t *testing.T, property *ObjectSchemaElement) map[string]string {
+	t.Helper()
+	refs := make(map[string]string, len(property.Properties))
+	for name, element := range property.Properties {
+		ref, ok := element.(*RefSchemaElement)
+		require.True(t, ok)
+		refs[name] = ref.Ref
+	}
+	return refs
 }
 
 func testMappings() Mappings {

@@ -36,9 +36,6 @@ $defs:
         type: integer
       stats:
         $ref: nexus_controller_group_config
-      stats_lookback:
-        type: string
-        format: duration
       targets:
         $ref: aci_target_filters
       tenants:
@@ -152,7 +149,7 @@ $defs:
         items:
           type: string
       rate_limiting:
-        $ref: yanggrpc_rate_limiting_config
+        $ref: /receiver/yanggrpcreceiver.rate_limiting_config
     allOf:
       - $ref: go.opentelemetry.io/collector/config/configgrpc.server_config
   catalyst_9800_path_group_config:
@@ -178,6 +175,7 @@ $defs:
     type: object
     properties:
       allow_aggregation:
+        x-optional: true
         type: boolean
       heartbeat_interval:
         type: string
@@ -193,8 +191,10 @@ $defs:
       stream_mode:
         type: string
       suppress_redundant:
+        x-optional: true
         type: boolean
       updates_only:
+        x-optional: true
         type: boolean
   catalyst_9800_target_config:
     description: Catalyst9800TargetConfig identifies one Catalyst 9800 gNMI dial-in target.
@@ -394,8 +394,6 @@ $defs:
         type: integer
       policy:
         $ref: fmc_group_config
-      security_events:
-        $ref: fmc_group_config
       targets:
         $ref: fmc_target_filters
       user_agent:
@@ -497,6 +495,164 @@ $defs:
       key_file:
         type: string
       server_name:
+        type: string
+  gnmi_config:
+    description: GNMIConfig configures the shared production gNMI engine.
+    type: object
+    properties:
+      max_cached_series:
+        type: integer
+      max_datapoints_per_chunk:
+        type: integer
+      targets:
+        type: array
+        items:
+          $ref: gnmi_target_config
+  gnmi_credentials_config:
+    description: GNMICredentialsConfig configures the deliberately small set of supported gNMI authentication modes. Credentials are sent as gRPC metadata only for modes that include username/password.
+    type: object
+    properties:
+      mode:
+        type: string
+      password:
+        $ref: go.opentelemetry.io/collector/config/configopaque.string
+      username:
+        type: string
+  gnmi_custom_subscription_config:
+    description: GNMICustomSubscriptionConfig defines explicitly mapped custom scalar paths. Origin is independent of every path; raw origin:path strings are rejected by the path parser.
+    type: object
+    properties:
+      mappings:
+        type: array
+        items:
+          $ref: gnmi_metric_mapping_config
+      mode:
+        type: string
+      name:
+        type: string
+      origin:
+        type: string
+      poll_interval:
+        type: string
+        format: duration
+      required:
+        type: boolean
+      sample_interval:
+        type: string
+        format: duration
+  gnmi_keepalive_config:
+    description: GNMIKeepaliveConfig controls client-side HTTP/2 keepalive without exposing the Collector gRPC ClientConfig or arbitrary request headers.
+    type: object
+    properties:
+      permit_without_stream:
+        x-pointer: true
+        type: boolean
+      time:
+        type: string
+        format: duration
+      timeout:
+        type: string
+        format: duration
+  gnmi_metric_mapping_config:
+    description: GNMIMetricMappingConfig is a complete scalar-to-gauge mapping. PathKeys maps "element.key" selectors to bounded OTLP attribute names.
+    type: object
+    properties:
+      description:
+        type: string
+      gauge_type:
+        type: string
+      metric_name:
+        type: string
+      path:
+        type: string
+      path_keys:
+        type: object
+        additionalProperties:
+          type: string
+      scale:
+        x-pointer: true
+        type: number
+        x-customType: float64
+      unit:
+        type: string
+  gnmi_profile_config:
+    description: 'GNMIProfileConfig controls one curated subscription profile. Pointer booleans preserve the distinction between an omitted value and enabled: false.'
+    type: object
+    properties:
+      enabled:
+        x-pointer: true
+        type: boolean
+      required:
+        type: boolean
+      sample_interval:
+        type: string
+        format: duration
+  gnmi_profiles_config:
+    description: GNMIProfilesConfig contains the normalized profile set.
+    type: object
+    properties:
+      catalyst_9800_wireless:
+        $ref: gnmi_profile_config
+      identity:
+        $ref: gnmi_profile_config
+      interfaces:
+        $ref: gnmi_profile_config
+      optics:
+        $ref: gnmi_profile_config
+      system:
+        $ref: gnmi_profile_config
+  gnmi_target_config:
+    description: GNMITargetConfig identifies one statically owned dial-in target.
+    type: object
+    properties:
+      capabilities_timeout:
+        type: string
+        format: duration
+      connect_timeout:
+        type: string
+        format: duration
+      credentials:
+        $ref: gnmi_credentials_config
+      custom_subscriptions:
+        type: array
+        items:
+          $ref: gnmi_custom_subscription_config
+      endpoint:
+        type: string
+      keepalive:
+        $ref: gnmi_keepalive_config
+      max_recv_msg_size_mib:
+        type: integer
+      max_streams:
+        type: integer
+      name:
+        type: string
+      platform:
+        type: string
+      profiles:
+        $ref: gnmi_profiles_config
+      tls:
+        $ref: gnmitls_config
+  gnmitls_config:
+    description: GNMITLSConfig exposes only verified TLS settings used by the shared client. The insecure fields are retained solely so configuration validation can reject them with a specific error rather than silently accepting them.
+    type: object
+    properties:
+      ca_file:
+        type: string
+      cert_file:
+        type: string
+      insecure:
+        type: boolean
+      insecure_skip_verify:
+        type: boolean
+      key_file:
+        type: string
+      min_version:
+        type: string
+      reload_interval:
+        type: string
+        format: duration
+      server_name_override:
         type: string
   intersight_auth_config:
     description: IntersightAuthConfig represents Cisco Intersight API key authentication.
@@ -633,7 +789,7 @@ $defs:
         items:
           type: string
       rate_limiting:
-        $ref: yanggrpc_rate_limiting_config
+        $ref: /receiver/yanggrpcreceiver.rate_limiting_config
     allOf:
       - $ref: go.opentelemetry.io/collector/config/configgrpc.server_config
   iosxr_path_group_config:
@@ -659,6 +815,7 @@ $defs:
     type: object
     properties:
       allow_aggregation:
+        x-optional: true
         type: boolean
       heartbeat_interval:
         type: string
@@ -674,8 +831,10 @@ $defs:
       stream_mode:
         type: string
       suppress_redundant:
+        x-optional: true
         type: boolean
       updates_only:
+        x-optional: true
         type: boolean
   iosxr_target_config:
     description: IOSXRTargetConfig identifies one IOS XR gNMI dial-in target.
@@ -824,6 +983,14 @@ $defs:
     description: ISEPxGridConfig controls Cisco ISE pxGrid REST and streaming collection.
     type: object
     properties:
+      allowed_service_hosts:
+        type: array
+        items:
+          type: string
+      allowed_service_origins:
+        type: array
+        items:
+          type: string
       auto_activate:
         type: boolean
       ca_file:
@@ -918,6 +1085,8 @@ $defs:
         type: array
         items:
           $ref: meraki_device_config
+      max_retries:
+        type: integer
       organizations:
         type: array
         items:
@@ -1001,13 +1170,8 @@ $defs:
         $ref: nexus_controller_group_config
       platform:
         $ref: nexus_controller_group_config
-      service_discovery:
-        type: boolean
       targets:
         $ref: nexus_dashboard_target_filters
-      telemetry_lookback:
-        type: string
-        format: duration
       user_agent:
         type: string
   nexus_dashboard_target_filters:
@@ -1113,16 +1277,10 @@ $defs:
         $ref: sdwan_group_config
       realtime_details:
         $ref: sdwan_group_config
-      realtime_lookback:
-        type: string
-        format: duration
       routing_services:
         $ref: sdwan_group_config
       security:
         $ref: sdwan_group_config
-      statistics_lookback:
-        type: string
-        format: duration
       targets:
         $ref: sdwan_target_filters
       thousandeyes:
@@ -1197,20 +1355,6 @@ $defs:
         type: array
         items:
           type: string
-  yanggrpc_rate_limiting_config:
-    description: Per-client, per-message rate limiting for Cisco MDT dial-out streams.
-    type: object
-    properties:
-      burst_size:
-        type: integer
-      cleanup_interval:
-        type: string
-        format: duration
-      enabled:
-        type: boolean
-      requests_per_second:
-        type: number
-        x-customType: float64
 description: Config defines configuration for Cisco OS receiver.
 type: object
 properties:
@@ -1234,6 +1378,9 @@ properties:
   fmc:
     description: FMC contains Secure Firewall Management Center REST and eStreamer settings.
     $ref: fmc_config
+  gnmi:
+    description: GNMI contains shared, normalized gNMI dial-in targets.
+    $ref: gnmi_config
   intersight:
     description: Intersight contains Cisco Intersight API polling settings.
     $ref: intersight_config
@@ -1254,9 +1401,6 @@ properties:
   nexus_dashboard:
     description: NexusDashboard contains Nexus Dashboard, NDFC, Insights, NDO, OneManage, and Data Broker API polling settings.
     $ref: nexus_dashboard_config
-  sdwan:
-    description: SDWAN contains Cisco Catalyst SD-WAN Manager API polling settings.
-    $ref: sdwan_config
   scrapers:
     description: Map of scrapers to be run, keyed by scraper type.
     type: object
@@ -1265,5 +1409,8 @@ properties:
         $ref: ./internal/scraper/interfacesscraper.config
       system:
         $ref: ./internal/scraper/systemscraper.config
+  sdwan:
+    description: SDWAN contains Cisco Catalyst SD-WAN Manager API polling settings.
+    $ref: sdwan_config
 allOf:
   - $ref: go.opentelemetry.io/collector/scraper/scraperhelper.controller_config

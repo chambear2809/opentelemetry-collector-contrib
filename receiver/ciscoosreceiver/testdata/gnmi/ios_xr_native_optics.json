@@ -1,0 +1,19 @@
+{
+  "optics-oper": {
+    "optics-ports": {
+      "optics-port": [
+        {
+          "name": "HundredGigE0/0/0/0",
+          "optics-info": {
+            "temperature": "44.25",
+            "rx-power": "-3.1",
+            "q-margin": "2.5",
+            "osnr": "31.2",
+            "dgd": "4.1",
+            "chromatic-dispersion": "120.0"
+          }
+        }
+      ]
+    }
+  }
+}

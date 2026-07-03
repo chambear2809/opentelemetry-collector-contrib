@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"strconv"
 	"strings"
 
 	"github.com/iancoleman/strcase"
@@ -67,6 +68,9 @@ func (p *Parser) Parse() (*Schema, error) {
 	if err := p.processTypes(); err != nil {
 		return nil, err
 	}
+	if err := p.applyFactoryMaps(); err != nil {
+		return nil, err
+	}
 
 	return p.schema, nil
 }
@@ -82,15 +86,7 @@ func (p *Parser) processPackages(set *token.FileSet, pkgs []*packages.Package) {
 func (p *Parser) collectTypesAndImports(file *ast.File, pkgPath string, cmap ast.CommentMap) {
 	target := p.types
 	// collect imports from current file, distinguish internal vs external
-	imports := make(map[string]string)
-	for _, imp := range file.Imports {
-		path, name := ParseImport(imp)
-		isInternal := strings.HasPrefix(path, pkgPath)
-		if isInternal {
-			path = "." + strings.TrimPrefix(path, pkgPath)
-		}
-		imports[name] = path
-	}
+	imports := schemaImports(file, pkgPath)
 	// collect exported type specs
 	for _, decl := range file.Decls {
 		genDecl, ok := decl.(*ast.GenDecl)
@@ -108,6 +104,158 @@ func (p *Parser) collectTypesAndImports(file *ast.File, pkgPath string, cmap ast
 				target[name] = &TypeInfo{typeSpec, comms, imports, name, false}
 			}
 		}
+	}
+}
+
+// applyFactoryMaps adds schema properties whose concrete configurations are
+// selected by a package-level factory map rather than a mapstructure-tagged Go
+// field. Each factory value must be a package-qualified constructor call; its
+// package's config schema is referenced using the same package.config
+// convention used by schemagen for component subpackages.
+func (p *Parser) applyFactoryMaps() error {
+	for _, factoryMap := range p.config.FactoryMaps {
+		propertyName := strings.TrimSpace(factoryMap.Property)
+		if propertyName == "" {
+			return errors.New("factory map property cannot be empty")
+		}
+		variableName := strings.TrimSpace(factoryMap.FactoriesVar)
+		if variableName == "" {
+			return fmt.Errorf("factory map %q must specify factoriesVar", propertyName)
+		}
+
+		file, literal, err := p.findFactoryMapLiteral(variableName)
+		if err != nil {
+			return fmt.Errorf("factory map %q: %w", propertyName, err)
+		}
+		imports := schemaImports(file, p.pkg.PkgPath)
+		property := CreateObjectField(factoryMap.Description)
+		seen := make(map[string]struct{}, len(literal.Elts))
+		for _, element := range literal.Elts {
+			entry, ok := element.(*ast.KeyValueExpr)
+			if !ok {
+				return fmt.Errorf("factory map %q contains an entry without an explicit key", factoryMap.FactoriesVar)
+			}
+			name, err := factoryMapEntryName(entry.Key)
+			if err != nil {
+				return fmt.Errorf("factory map %q key: %w", factoryMap.FactoriesVar, err)
+			}
+			if _, duplicate := seen[name]; duplicate {
+				return fmt.Errorf("factory map %q contains duplicate schema key %q", factoryMap.FactoriesVar, name)
+			}
+			seen[name] = struct{}{}
+
+			packageName, err := factoryConstructorPackage(entry.Value)
+			if err != nil {
+				return fmt.Errorf("factory map %q entry %q: %w", factoryMap.FactoriesVar, name, err)
+			}
+			packagePath, ok := imports[packageName]
+			if !ok {
+				return fmt.Errorf("factory map %q entry %q uses unknown package %q", factoryMap.FactoriesVar, name, packageName)
+			}
+			property.AddProperty(name, CreateRefField(packagePath+".config", ""))
+		}
+		if len(seen) == 0 {
+			return fmt.Errorf("factory map %q has no entries", factoryMap.FactoriesVar)
+		}
+		p.schema.AddProperty(propertyName, property)
+	}
+	return nil
+}
+
+func (p *Parser) findFactoryMapLiteral(name string) (*ast.File, *ast.CompositeLit, error) {
+	var foundFile *ast.File
+	var foundLiteral *ast.CompositeLit
+	for _, file := range p.pkg.Syntax {
+		for _, declaration := range file.Decls {
+			general, ok := declaration.(*ast.GenDecl)
+			if !ok || general.Tok != token.VAR {
+				continue
+			}
+			for _, specification := range general.Specs {
+				values, ok := specification.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
+				for index, identifier := range values.Names {
+					if identifier.Name != name {
+						continue
+					}
+					if foundLiteral != nil {
+						return nil, nil, fmt.Errorf("factories variable %q is declared more than once", name)
+					}
+					if index >= len(values.Values) {
+						return nil, nil, fmt.Errorf("factories variable %q has no initializer", name)
+					}
+					literal, ok := unwrapParentheses(values.Values[index]).(*ast.CompositeLit)
+					if !ok {
+						return nil, nil, fmt.Errorf("factories variable %q must use a map literal initializer", name)
+					}
+					if _, ok := literal.Type.(*ast.MapType); !ok {
+						return nil, nil, fmt.Errorf("factories variable %q must use a map literal initializer", name)
+					}
+					foundFile, foundLiteral = file, literal
+				}
+			}
+		}
+	}
+	if foundLiteral == nil {
+		return nil, nil, fmt.Errorf("factories variable %q was not found", name)
+	}
+	return foundFile, foundLiteral, nil
+}
+
+func schemaImports(file *ast.File, pkgPath string) map[string]string {
+	imports := make(map[string]string, len(file.Imports))
+	for _, specification := range file.Imports {
+		path, name := ParseImport(specification)
+		if path == pkgPath || strings.HasPrefix(path, pkgPath+"/") {
+			path = "." + strings.TrimPrefix(path, pkgPath)
+		}
+		imports[name] = path
+	}
+	return imports
+}
+
+func factoryMapEntryName(expression ast.Expr) (string, error) {
+	expression = unwrapParentheses(expression)
+	if literal, ok := expression.(*ast.BasicLit); ok && literal.Kind == token.STRING {
+		name, err := strconv.Unquote(literal.Value)
+		if err != nil || name == "" {
+			return "", errors.New("string key must be non-empty and valid")
+		}
+		return name, nil
+	}
+	call, ok := expression.(*ast.CallExpr)
+	if !ok || len(call.Args) != 1 {
+		return "", errors.New("key must be a string literal or a single-argument constructor call")
+	}
+	return factoryMapEntryName(call.Args[0])
+}
+
+func factoryConstructorPackage(expression ast.Expr) (string, error) {
+	expression = unwrapParentheses(expression)
+	call, ok := expression.(*ast.CallExpr)
+	if !ok {
+		return "", errors.New("value must be a package-qualified constructor call")
+	}
+	selector, ok := unwrapParentheses(call.Fun).(*ast.SelectorExpr)
+	if !ok {
+		return "", errors.New("value must be a package-qualified constructor call")
+	}
+	identifier, ok := selector.X.(*ast.Ident)
+	if !ok || identifier.Name == "" {
+		return "", errors.New("constructor package cannot be determined")
+	}
+	return identifier.Name, nil
+}
+
+func unwrapParentheses(expression ast.Expr) ast.Expr {
+	for {
+		parenthesized, ok := expression.(*ast.ParenExpr)
+		if !ok {
+			return expression
+		}
+		expression = parenthesized.X
 	}
 }
 

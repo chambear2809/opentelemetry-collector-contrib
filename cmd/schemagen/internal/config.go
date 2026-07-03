@@ -30,6 +30,7 @@ type Config = struct {
 	Mappings      Mappings
 	AllowedRefs   []string
 	Namespace     string
+	FactoryMaps   []FactoryMapOverride
 }
 
 var (
@@ -79,6 +80,7 @@ func ReadConfig() (*Config, error) {
 		configPackage string
 		allowedRefs   = make([]string, 0)
 		namespace     string
+		factoryMaps   []FactoryMapOverride
 	)
 
 	switch {
@@ -115,7 +117,10 @@ func ReadConfig() (*Config, error) {
 		mappings = s.Mappings
 		comp := class + "/" + ctype
 		if override, found := s.ComponentOverrides[comp]; found {
-			*configType = override.ConfigName
+			if name := strings.TrimSpace(override.ConfigName); name != "" {
+				*configType = name
+			}
+			factoryMaps = override.FactoryMaps
 		}
 		allowedRefs = s.AllowedRefs
 		namespace = s.Namespace
@@ -138,5 +143,6 @@ func ReadConfig() (*Config, error) {
 		Class:         class,
 		AllowedRefs:   allowedRefs,
 		Namespace:     namespace,
+		FactoryMaps:   factoryMaps,
 	}, nil
 }

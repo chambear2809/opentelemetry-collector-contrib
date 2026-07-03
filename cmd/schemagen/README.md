@@ -81,6 +81,11 @@ componentOverrides:
     configName: 'NamedPipeConfig'
   receiver/file_log:
     configName: 'FileLogConfig'
+  receiver/example:
+    factoryMaps:
+      - property: scrapers
+        factoriesVar: scraperFactories
+        description: Map of scrapers to be run, keyed by scraper type.
 ```
 
 - `namespace` corresponds to the Go package import path for modules from current repository. 
@@ -95,8 +100,10 @@ componentOverrides:
   embed types from other repositories that also have schemagen-generated
   schemas. If repo is not listed here, schemagen will use type `any`.
 - `componentOverrides` allow per-component configuration of the root struct
-  name. This is useful when a component does not use the conventional
-  `Config` struct name.
+  name and dynamic factory-backed configuration maps. `factoryMaps` resolves a
+  package-level map literal whose keys are strings (or single-string-argument
+  constructors) and whose values are package-qualified factory constructors;
+  each entry becomes a reference to that package's `config` schema.
 
 ## Generated schema highlights
 

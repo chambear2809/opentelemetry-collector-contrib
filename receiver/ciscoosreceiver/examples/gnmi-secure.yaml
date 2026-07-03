@@ -1,0 +1,50 @@
+receivers:
+  cisco_os:
+    gnmi:
+      max_datapoints_per_chunk: 10000
+      max_cached_series: 500000
+      targets:
+        - name: nexus-shard-01
+          endpoint: nexus01.example.net:50051
+          platform: nx_os
+          max_recv_msg_size_mib: 16
+          credentials:
+            mode: username_password
+            username: otel-telemetry
+            password: ${env:CISCO_GNMI_PASSWORD}
+          tls:
+            ca_file: /etc/otel/cisco-ca.pem
+            min_version: "1.2"
+            server_name_override: nexus01.example.net
+            reload_interval: 1h
+          profiles:
+            identity:
+              enabled: true
+            system:
+              enabled: true
+            interfaces:
+              enabled: true
+            optics:
+              enabled: true
+              required: true
+              sample_interval: 30s
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 3072
+    spike_limit_mib: 512
+  batch: {}
+
+exporters:
+  otlphttp/splunk:
+    endpoint: ${env:SPLUNK_OTLP_ENDPOINT}
+    headers:
+      X-SF-TOKEN: ${env:SPLUNK_ACCESS_TOKEN}
+
+service:
+  pipelines:
+    metrics:
+      receivers: [cisco_os]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/splunk]

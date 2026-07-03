@@ -13,13 +13,70 @@ import (
 	gnmi "github.com/openconfig/gnmi/proto/gnmi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/component/componenttest"
+	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver/receivertest"
+	"google.golang.org/grpc"
 
 	componentmetadata "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
 )
+
+func TestCatalyst9800DialInReceiverUsesLegacySharedSession(t *testing.T) {
+	fake := &fakeGNMIServer{
+		caps: &gnmi.CapabilityResponse{
+			SupportedModels:    []*gnmi.ModelData{{Name: "Cisco-IOS-XE-wireless-ap-global-oper"}},
+			SupportedEncodings: []gnmi.Encoding{gnmi.Encoding_JSON_IETF},
+		},
+		sendUpdate: func(stream grpc.BidiStreamingServer[gnmi.SubscribeRequest, gnmi.SubscribeResponse]) error {
+			return stream.Send(&gnmi.SubscribeResponse{Response: &gnmi.SubscribeResponse_Update{Update: &gnmi.Notification{
+				Timestamp: time.Unix(1700000000, 0).UnixNano(),
+				Prefix:    mustParseIOSXRPathForServer("wireless-ap-global-oper:ap-global-oper-data/ap-join-stats[wtp-mac=AA:BB:CC:DD:EE:FF]"),
+				Update: []*gnmi.Update{{
+					Path: mustParseIOSXRPathForServer("ap-join-info"),
+					Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`{"is-joined":true}`)}},
+				}},
+			}}})
+		},
+	}
+	endpoint := startFakeGNMIServer(t, fake)
+
+	cfg := defaultCatalyst9800Config()
+	cfg.Enabled = true
+	for name := range cfg.PathGroups {
+		cfg.PathGroups[name] = Catalyst9800PathGroupConfig{}
+	}
+	cfg.Paths.Include = []string{"wireless-ap-global-oper:ap-global-oper-data/ap-join-stats"}
+	sink := &consumertest.MetricsSink{}
+	receiver := &catalyst9800DialInReceiver{
+		settings: receivertest.NewNopSettings(componentmetadata.Type),
+		config:   cfg,
+		consumer: sink,
+		health:   &catalyst9800Health{},
+		host:     componenttest.NewNopHost(),
+	}
+	target := Catalyst9800TargetConfig{
+		ClientConfig: mustCatalyst9800ClientConfig(endpoint),
+		Name:         "wlc-1",
+		Credentials: Catalyst9800CredentialsConfig{
+			Username: "admin",
+			Password: configopaque.String("password"),
+		},
+		Subscription: Catalyst9800SubscriptionConfig{Mode: iosXRSubscribeModeOnce},
+	}.withDefaults(cfg)
+
+	require.NoError(t, receiver.subscribeTarget(t.Context(), target))
+	data := metricsBatchWithName(t, sink.AllMetrics(), "cisco.catalyst9800.yang.wireless_ap_global_oper.ap_global_oper_data.ap_join_stats.ap_join_info.is_joined")
+	assertMetricExists(t, data, "cisco.catalyst9800.yang.wireless_ap_global_oper.ap_global_oper_data.ap_join_stats.ap_join_info.is_joined")
+	assertMetricExists(t, data, "cisco.wlc.ap.join.status")
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	assert.Equal(t, "admin", firstMetadataValue(fake.capabilitiesMD, "username"))
+	assert.Equal(t, "password", firstMetadataValue(fake.subscribeMD, "password"))
+}
 
 func TestCatalyst9800ResolveTargetPathsAcceptsCiscoModuleAliases(t *testing.T) {
 	cfg := defaultCatalyst9800Config()

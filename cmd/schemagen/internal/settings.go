@@ -26,7 +26,13 @@ type (
 	PackagesMapping    map[string]TypeDesc
 	ComponentOverrides map[string]ComponentOverride
 	ComponentOverride  struct {
-		ConfigName string `yaml:"configName"`
+		ConfigName  string               `yaml:"configName"`
+		FactoryMaps []FactoryMapOverride `yaml:"factoryMaps"`
+	}
+	FactoryMapOverride struct {
+		Property     string `yaml:"property"`
+		FactoriesVar string `yaml:"factoriesVar"`
+		Description  string `yaml:"description"`
 	}
 	TypeDesc struct {
 		SchemaType     SchemaType `yaml:"schemaType"`

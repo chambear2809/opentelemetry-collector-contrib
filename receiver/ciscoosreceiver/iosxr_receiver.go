@@ -17,7 +17,6 @@ import (
 
 	gnmi "github.com/openconfig/gnmi/proto/gnmi"
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config/configgrpc"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -25,7 +24,6 @@ import (
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/metadata"
 
 	yanggrpcreceiver "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/yanggrpcreceiver"
 )
@@ -254,6 +252,9 @@ func (r *iosXRDialInReceiver) runTarget(ctx context.Context, target IOSXRTargetC
 			retryOrdinal = 1
 		}
 		delay := nextDirectGNMIRetryDelay(retryOrdinal, r.retryJitterFn)
+		if legacyGNMIRetryDelay(err) == legacyGNMIAuthenticationBackoff {
+			delay = legacyGNMIAuthenticationBackoff
+		}
 		if !waitRetry(ctx, delay) {
 			return
 		}
@@ -266,58 +267,71 @@ func (r *iosXRDialInReceiver) subscribeTarget(ctx context.Context, target IOSXRT
 }
 
 func (r *iosXRDialInReceiver) subscribeTargetAttempt(ctx context.Context, target IOSXRTargetConfig) (bool, error) {
-	conn, err := target.ToClientConn(ctx, r.host.GetExtensions(), r.settings.TelemetrySettings, configgrpc.WithGrpcDialOption(grpc.WithBlock())) //nolint:staticcheck // Blocking dial is required to make the configured connection timeout authoritative.
-	if err != nil {
-		return false, err
+	interval := target.Subscription.PollInterval
+	if interval <= 0 {
+		interval = target.Subscription.SampleInterval
 	}
-	defer conn.Close()
-
-	client := gnmi.NewGNMIClient(conn)
-	caps := &gnmi.CapabilityResponse{}
-	if !target.SkipCapabilities {
-		capCtx, cancel := context.WithTimeout(r.outgoingContext(ctx, target), 15*time.Second)
-		defer cancel()
-		caps, err = client.Capabilities(capCtx, &gnmi.CapabilityRequest{})
-		if err != nil {
-			return false, fmt.Errorf("capabilities: %w", err)
-		}
+	decoder := iosXRGNMIUpdateDecoder{
+		target:        target,
+		health:        r.health,
+		maxDatapoints: r.config.MaxDatapointsPerBatch,
 	}
-
-	paths, err := r.resolveTargetPaths(target, caps)
-	if err != nil {
-		return false, err
-	}
-	if len(paths) == 0 {
-		return false, errors.New("no IOS XR paths available after capability filtering")
-	}
-	encoding, err := negotiateIOSXREncoding(target.EncodingPreference, caps)
-	if err != nil {
-		return false, err
-	}
-
-	streamCtx, cancelStream := context.WithCancel(r.outgoingContext(ctx, target))
-	defer cancelStream()
-	stream, err := client.Subscribe(streamCtx)
-	if err != nil {
-		return false, err
-	}
-	if sendErr := stream.Send(buildIOSXRSubscribeRequest(target.Subscription, paths, encoding)); sendErr != nil {
-		return false, sendErr
-	}
-	r.setTargetSubscriptionActive(ctx, target, true)
-	defer r.setTargetSubscriptionActive(ctx, target, false)
 	var progressed atomic.Bool
+	defer r.setTargetSubscriptionActive(ctx, target, false)
 
-	if target.Subscription.Mode == iosXRSubscribeModePoll {
-		pollErr := r.recvPoll(streamCtx, cancelStream, target, stream, &progressed)
-		return progressed.Load(), pollErr
-	}
-	if target.Subscription.Mode == iosXRSubscribeModeOnce {
-		if closeErr := stream.CloseSend(); closeErr != nil {
-			r.settings.Logger.Debug("IOS XR gNMI once close send failed", zap.Error(closeErr))
-		}
-	}
-	err = r.recvLoop(ctx, target, stream, &progressed)
+	err := legacyGNMISession{
+		settings:         r.settings,
+		host:             r.host,
+		clientConfig:     target.ClientConfig,
+		username:         target.Credentials.Username,
+		password:         string(target.Credentials.Password),
+		skipCapabilities: target.SkipCapabilities,
+		pollInterval:     interval,
+		targetName:       target.Name,
+		onceCloseLog:     "IOS XR gNMI once close send failed",
+		onSubscribed: func() {
+			r.setTargetSubscriptionActive(ctx, target, true)
+		},
+		buildRequest: func(capabilities *gnmi.CapabilityResponse) (*gnmi.SubscribeRequest, error) {
+			paths, err := r.resolveTargetPaths(target, capabilities)
+			if err != nil {
+				return nil, err
+			}
+			if len(paths) == 0 {
+				return nil, errors.New("no IOS XR paths available after capability filtering")
+			}
+			encoding, err := negotiateIOSXREncoding(target.EncodingPreference, capabilities)
+			if err != nil {
+				return nil, err
+			}
+			return buildIOSXRSubscribeRequest(target.Subscription, paths, encoding), nil
+		},
+		handleUpdate: func(ctx context.Context, notification *gnmi.Notification) error {
+			progressed.Store(true)
+			r.health.addTargetUpdates(target.Name, int64(len(notification.GetUpdate())+len(notification.GetDelete())))
+			md := decoder.decodeNotification(notification, iosXRTelemetryTransportDialIn)
+			if md.MetricCount() == 0 {
+				return nil
+			}
+			if r.config.MaxDatapointsPerBatch > 0 {
+				dropped := enforceIOSXRDatapointLimit(md, r.config.MaxDatapointsPerBatch)
+				if dropped > 0 {
+					r.health.addDroppedDatapoints(int64(dropped))
+				}
+			}
+			if err := r.consumer.ConsumeMetrics(ctx, md); err != nil {
+				r.health.addDroppedDatapoints(int64(md.DataPointCount()))
+				r.settings.Logger.Warn("Downstream consumer refused IOS XR gNMI metric batch; batch dropped",
+					zap.String("target", target.Name),
+					zap.Error(err))
+			}
+			return nil
+		},
+		handleSync: func() {
+			progressed.Store(true)
+			r.settings.Logger.Debug("IOS XR gNMI initial sync complete", zap.String("target", target.Name))
+		},
+	}.run(ctx)
 	return progressed.Load(), err
 }
 
@@ -415,7 +429,10 @@ func (r *iosXRDialInReceiver) recvLoop(ctx context.Context, target IOSXRTargetCo
 				}
 			}
 			if err := r.consumer.ConsumeMetrics(ctx, md); err != nil {
-				return err
+				r.health.addDroppedDatapoints(int64(md.DataPointCount()))
+				r.settings.Logger.Warn("Downstream consumer refused IOS XR gNMI metric batch; batch dropped",
+					zap.String("target", target.Name),
+					zap.Error(err))
 			}
 			progressed.Store(true)
 		case *gnmi.SubscribeResponse_SyncResponse:
@@ -429,13 +446,6 @@ func (r *iosXRDialInReceiver) recvLoop(ctx context.Context, target IOSXRTargetCo
 			}
 		}
 	}
-}
-
-func (*iosXRDialInReceiver) outgoingContext(ctx context.Context, target IOSXRTargetConfig) context.Context {
-	return metadata.AppendToOutgoingContext(ctx,
-		"username", target.Credentials.Username,
-		"password", string(target.Credentials.Password),
-	)
 }
 
 func (r *iosXRDialInReceiver) resolveTargetPaths(target IOSXRTargetConfig, caps *gnmi.CapabilityResponse) ([]iosXRPathDefinition, error) {

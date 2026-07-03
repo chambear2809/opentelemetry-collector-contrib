@@ -9,6 +9,8 @@ import (
 	"github.com/openconfig/gnmi/proto/gnmi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestSanitizedGNMISubscribeErrorDoesNotExposeDeviceMessage(t *testing.T) {
@@ -16,6 +18,15 @@ func TestSanitizedGNMISubscribeErrorDoesNotExposeDeviceMessage(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "code=7")
 	assert.ErrorContains(t, err, "message_length=24")
+	assert.ErrorContains(t, err, "message_sha256=")
+	assert.NotContains(t, err.Error(), "device-controlled")
+	assert.NotContains(t, err.Error(), "secret")
+}
+
+func TestSanitizedGNMISubscribeStatusErrorPreservesCodeWithoutDeviceMessage(t *testing.T) {
+	err := sanitizedGNMISubscribeStatusError(&gnmi.Error{Code: uint32(codes.PermissionDenied), Message: "device-controlled secret"}) //nolint:staticcheck // Exercise legacy in-band gNMI error sanitization.
+	require.Error(t, err)
+	assert.Equal(t, codes.PermissionDenied, status.Code(err))
 	assert.ErrorContains(t, err, "message_sha256=")
 	assert.NotContains(t, err.Error(), "device-controlled")
 	assert.NotContains(t, err.Error(), "secret")

@@ -58,6 +58,7 @@ func createDefaultConfig() component.Config {
 		FMC:              defaultFMCConfig(),
 		ISE:              defaultISEConfig(),
 		IOSXR:            defaultIOSXRConfig(),
+		GNMI:             defaultGNMIConfig(),
 		Scrapers:         map[component.Type]component.Config{},
 	}
 }
@@ -152,6 +153,9 @@ func createMetricsReceiver(
 	}
 
 	if conf.Catalyst9800.hasTarget() {
+		if len(conf.Catalyst9800.DialIn.Targets) > 0 {
+			set.Logger.Warn("catalyst_9800.dial_in is deprecated; migrate the target to gnmi.targets before the next fork release")
+		}
 		rcvr, err := newCatalyst9800MetricsReceiver(set, conf, consumer)
 		if err != nil {
 			return nil, err
@@ -200,7 +204,18 @@ func createMetricsReceiver(
 	}
 
 	if conf.IOSXR.hasTarget() {
+		if len(conf.IOSXR.DialIn.Targets) > 0 {
+			set.Logger.Warn("ios_xr.dial_in is deprecated; migrate the target to gnmi.targets before the next fork release")
+		}
 		rcvr, err := newIOSXRMetricsReceiver(set, conf, consumer)
+		if err != nil {
+			return nil, err
+		}
+		receivers = append(receivers, rcvr)
+	}
+
+	if conf.GNMI.hasTargets() {
+		rcvr, err := newSharedGNMIReceiver(set, conf, consumer)
 		if err != nil {
 			return nil, err
 		}

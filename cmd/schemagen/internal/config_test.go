@@ -92,6 +92,65 @@ func TestReadConfig_ReadsSettingsFile(t *testing.T) {
 	}, cfg.Mappings)
 }
 
+func TestReadConfig_ComponentOverride(t *testing.T) {
+	factoryMaps := []FactoryMapOverride{{
+		Property:     "scrapers",
+		FactoriesVar: "scraperFactories",
+		Description:  "Dynamically configured scrapers.",
+	}}
+	tests := []struct {
+		name           string
+		configName     string
+		expectedConfig string
+	}{
+		{
+			name:           "empty config name preserves flag default",
+			expectedConfig: "DefaultConfig",
+		},
+		{
+			name:           "whitespace config name preserves flag default",
+			configName:     "  ",
+			expectedConfig: "DefaultConfig",
+		},
+		{
+			name:           "non-empty config name overrides flag default",
+			configName:     "SpecialConfig",
+			expectedConfig: "SpecialConfig",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			projectDir := t.TempDir()
+			settings := Settings{
+				ComponentOverrides: ComponentOverrides{
+					"receiver/test_receiver": {
+						ConfigName:  tt.configName,
+						FactoryMaps: factoryMaps,
+					},
+				},
+			}
+			data, err := yaml.Marshal(settings)
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(filepath.Join(projectDir, SettingsFileName), data, 0o600))
+
+			componentDir := filepath.Join(projectDir, "component")
+			require.NoError(t, os.Mkdir(componentDir, 0o700))
+			t.Chdir(componentDir)
+			createConfigFile(t, componentDir, "config.go")
+			require.NoError(t, os.WriteFile(filepath.Join(componentDir, "metadata.yaml"), []byte(`type: test_receiver
+status:
+  class: receiver
+`), 0o600))
+
+			cfg, err := readConfigForTest(t, "-r", "DefaultConfig", componentDir)
+			require.NoError(t, err)
+			require.Equal(t, tt.expectedConfig, cfg.ConfigType)
+			require.Equal(t, factoryMaps, cfg.FactoryMaps)
+		})
+	}
+}
+
 func TestReadConfig_MetadataHandling(t *testing.T) {
 	tests := []struct {
 		name          string

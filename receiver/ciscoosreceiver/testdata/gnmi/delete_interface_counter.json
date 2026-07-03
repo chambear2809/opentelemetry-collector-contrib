@@ -1,0 +1,19 @@
+{
+  "timestamp": "1782993660000000000",
+  "prefix": {
+    "origin": "openconfig-interfaces",
+    "elem": [
+      {"name": "interfaces"},
+      {"name": "interface", "key": {"name": "HundredGigE0/0/0/0"}},
+      {"name": "state"}
+    ]
+  },
+  "delete": [
+    {
+      "elem": [
+        {"name": "counters"},
+        {"name": "out-octets"}
+      ]
+    }
+  ]
+}
