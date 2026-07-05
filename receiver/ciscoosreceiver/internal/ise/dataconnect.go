@@ -89,9 +89,10 @@ func (e *DataConnectResultLimitError) Error() string {
 
 // DataConnectClient is a read-only Cisco ISE Data Connect client.
 type DataConnectClient struct {
-	db       *sql.DB
-	rowLimit int
-	lookback time.Duration
+	db        *sql.DB
+	rowLimit  int
+	lookback  time.Duration
+	sslVerify bool
 
 	OnQuery func(DataConnectStat)
 }
@@ -123,7 +124,7 @@ func NewDataConnectClient(cfg DataConnectConfig) (*DataConnectClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &DataConnectClient{db: db, rowLimit: rowLimit, lookback: cfg.Lookback}, nil
+	return &DataConnectClient{db: db, rowLimit: rowLimit, lookback: cfg.Lookback, sslVerify: cfg.SSLVerify}, nil
 }
 
 // Close closes the underlying database handle.
@@ -136,7 +137,19 @@ func (c *DataConnectClient) Close() error {
 
 // Ping verifies Data Connect connectivity.
 func (c *DataConnectClient) Ping(ctx context.Context) error {
-	return c.db.PingContext(ctx)
+	return c.decorateCertificateVerificationError(c.db.PingContext(ctx))
+}
+
+func (c *DataConnectClient) decorateCertificateVerificationError(err error) error {
+	if err == nil || !c.sslVerify {
+		return err
+	}
+	return httpclient.DecorateCertificateVerificationErrorWithValue(
+		err,
+		"ise.data_connect.wallet_dir",
+		"ise.data_connect.ssl_verify",
+		"false",
+	)
 }
 
 // QueryView returns rows from one allowlisted Data Connect view.
@@ -172,12 +185,14 @@ func (c *DataConnectClient) QueryView(ctx context.Context, view DataConnectView)
 	start := time.Now()
 	rows, err := c.db.QueryContext(ctx, query, args...)
 	if err != nil {
+		err = c.decorateCertificateVerificationError(err)
 		c.record(DataConnectStat{View: view.Name, Outcome: "error", Duration: time.Since(start), Err: err})
 		return nil, err
 	}
 	defer rows.Close()
 	objects, err := scanRows(rows)
 	if err != nil {
+		err = c.decorateCertificateVerificationError(err)
 		c.record(DataConnectStat{View: view.Name, Outcome: "error", Rows: len(objects), Duration: time.Since(start), Err: err})
 		return objects, err
 	}

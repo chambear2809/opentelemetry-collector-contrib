@@ -20,6 +20,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	componentmetadata "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
 )
@@ -76,6 +78,49 @@ func TestCatalyst9800DialInReceiverUsesLegacySharedSession(t *testing.T) {
 	defer fake.mu.Unlock()
 	assert.Equal(t, "admin", firstMetadataValue(fake.capabilitiesMD, "username"))
 	assert.Equal(t, "password", firstMetadataValue(fake.subscribeMD, "password"))
+}
+
+func TestCatalyst9800DialInReceiverSanitizesRemoteStatus(t *testing.T) {
+	const remoteStatusMessage = "device-echoed password=catalyst-runtime-secret"
+	fake := &fakeGNMIServer{
+		caps: &gnmi.CapabilityResponse{
+			SupportedModels:    []*gnmi.ModelData{{Name: "Cisco-IOS-XE-wireless-ap-global-oper"}},
+			SupportedEncodings: []gnmi.Encoding{gnmi.Encoding_JSON_IETF},
+		},
+		sendUpdate:   func(grpc.BidiStreamingServer[gnmi.SubscribeRequest, gnmi.SubscribeResponse]) error { return nil },
+		afterSyncErr: status.Error(codes.PermissionDenied, remoteStatusMessage),
+	}
+	endpoint := startFakeGNMIServer(t, fake)
+
+	cfg := defaultCatalyst9800Config()
+	cfg.Enabled = true
+	for name := range cfg.PathGroups {
+		cfg.PathGroups[name] = Catalyst9800PathGroupConfig{}
+	}
+	cfg.Paths.Include = []string{"wireless-ap-global-oper:ap-global-oper-data/ap-join-stats"}
+	receiver := &catalyst9800DialInReceiver{
+		settings: receivertest.NewNopSettings(componentmetadata.Type),
+		config:   cfg,
+		consumer: consumertest.NewNop(),
+		health:   &catalyst9800Health{},
+		host:     componenttest.NewNopHost(),
+	}
+	target := Catalyst9800TargetConfig{
+		ClientConfig: mustCatalyst9800ClientConfig(endpoint),
+		Name:         "wlc-1",
+		Credentials: Catalyst9800CredentialsConfig{
+			Username: "admin",
+			Password: configopaque.String("password"),
+		},
+		Subscription: Catalyst9800SubscriptionConfig{Mode: iosXRSubscribeModeOnce},
+	}.withDefaults(cfg)
+
+	err := receiver.subscribeTarget(t.Context(), target)
+	require.Error(t, err)
+	assert.Equal(t, codes.PermissionDenied, status.Code(err))
+	assert.ErrorContains(t, err, "code=PermissionDenied")
+	assert.NotContains(t, err.Error(), "device-echoed")
+	assert.NotContains(t, err.Error(), "catalyst-runtime-secret")
 }
 
 func TestCatalyst9800ResolveTargetPathsAcceptsCiscoModuleAliases(t *testing.T) {

@@ -1,0 +1,7 @@
+change_type: enhancement
+component: receiver/cisco_os
+note: Make self-signed lab TLS opt-ins consistent and actionable across Cisco integrations.
+issues: [0]
+subtext: |
+  Adds explicit `insecure_skip_verify` support for shared gNMI targets and custom Meraki API endpoints, completing the existing controller, pxGrid, eStreamer, and legacy gNMI coverage. Certificate verification remains enabled by default, plaintext credential transports remain prohibited, enabled bypasses emit startup warnings, and verification failures point operators to CA trust first and the exact isolated-lab opt-in second.
+change_logs: [user]

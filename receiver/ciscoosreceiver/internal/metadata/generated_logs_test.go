@@ -23,12 +23,16 @@ func TestLogsBuilderAppendLogRecord(t *testing.T) {
 	rb := lb.NewResourceBuilder()
 	rb.SetCiscoOsName("cisco.os.name-val")
 	rb.SetCiscoPlatformFamily("cisco.platform.family-val")
+	rb.SetCiscoProductFamily("cisco.product.family-val")
 	rb.SetCiscoTelemetryTransport("cisco.telemetry.transport-val")
+	rb.SetDeviceManufacturer("device.manufacturer-val")
+	rb.SetDeviceModelIdentifier("device.model.identifier-val")
 	rb.SetHostID("host.id-val")
 	rb.SetHostIP("host.ip-val")
 	rb.SetHostName("host.name-val")
 	rb.SetHwType("hw.type-val")
 	rb.SetOsName("os.name-val")
+	rb.SetOsVersion("os.version-val")
 	res := rb.Emit()
 
 	// append the first log record

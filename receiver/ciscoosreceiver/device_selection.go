@@ -199,10 +199,11 @@ func sshDeviceIdentity(device DeviceConfig) deviceIdentity {
 }
 
 func merakiDeviceIdentity(device deviceResource) deviceIdentity {
+	hostIPs := append([]string{device.LANIP, device.PublicIP}, device.AdditionalIPs...)
 	return deviceIdentity{
 		hostNames: []string{device.Name},
 		hostIDs:   []string{device.Serial},
-		hostIPs:   []string{device.LANIP, device.PublicIP},
+		hostIPs:   hostIPs,
 		serials:   []string{device.Serial},
 		deviceIDs: []string{device.Serial, device.MAC, device.NetworkID},
 	}

@@ -4,10 +4,13 @@
 package aci
 
 import (
+	"context"
+	"crypto/x509"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -88,6 +91,18 @@ func TestClientSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {
 	}))
 	defer server.Close()
 
+	verifiedClient, err := NewClient(Config{
+		Endpoint:   server.URL,
+		Username:   "admin",
+		Password:   "password",
+		Timeout:    time.Second,
+		MaxRetries: 0,
+	})
+	require.NoError(t, err)
+	_, err = verifiedClient.ListClass(t.Context(), "fabric.nodes", "fabricNode", nil, 0)
+	require.ErrorContains(t, err, "trust the issuing CA in the Collector host trust store (preferred)")
+	require.ErrorContains(t, err, "set aci.insecure_skip_verify: true")
+
 	client, err := NewClient(Config{
 		Endpoint:           server.URL,
 		Username:           "admin",
@@ -101,6 +116,60 @@ func TestClientSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {
 	got, err := client.ListClass(t.Context(), "fabric.nodes", "fabricNode", nil, 0)
 	require.NoError(t, err)
 	assert.Empty(t, got)
+}
+
+func TestClientCertificateVerificationFailureIsTerminal(t *testing.T) {
+	t.Run("login", func(t *testing.T) {
+		client, err := NewClient(Config{
+			Endpoint:   "https://apic.example.test",
+			Username:   "admin",
+			Password:   "password",
+			MaxRetries: 3,
+		})
+		require.NoError(t, err)
+		transport := &certificateFailureTransport{}
+		client.client.Transport = transport
+
+		// A regression would wait in the outer data retry loop after the one
+		// failed login and return the deadline instead of the certificate error.
+		ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+		defer cancel()
+		_, err = client.ListClass(ctx, "fabric.nodes", "fabricNode", nil, 0)
+		require.Error(t, err)
+		assert.True(t, httpclient.IsCertificateVerificationError(err))
+		assert.NotErrorIs(t, err, context.DeadlineExceeded)
+		assert.Equal(t, int64(1), transport.attempts.Load())
+	})
+
+	t.Run("data", func(t *testing.T) {
+		client, err := NewClient(Config{
+			Endpoint:   "https://apic.example.test",
+			Username:   "admin",
+			Password:   "password",
+			MaxRetries: 3,
+		})
+		require.NoError(t, err)
+		transport := &certificateFailureTransport{}
+		client.client.Transport = transport
+		client.tokenMu.Lock()
+		client.token = "apic-token"
+		client.tokenGeneration = 1
+		client.tokenMu.Unlock()
+
+		_, err = client.ListClass(t.Context(), "fabric.nodes", "fabricNode", nil, 0)
+		require.Error(t, err)
+		assert.True(t, httpclient.IsCertificateVerificationError(err))
+		assert.Equal(t, int64(1), transport.attempts.Load())
+	})
+}
+
+type certificateFailureTransport struct {
+	attempts atomic.Int64
+}
+
+func (t *certificateFailureTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	t.attempts.Add(1)
+	return nil, x509.UnknownAuthorityError{}
 }
 
 func TestClientRetriesRateLimitsAndRecordsStats(t *testing.T) {
@@ -134,6 +203,233 @@ func TestClientRetriesRateLimitsAndRecordsStats(t *testing.T) {
 	assert.Equal(t, "success", stats[2].Outcome)
 }
 
+func TestClientRejectedIssuedTokenEntersSharedBackoffUntilDataSucceeds(t *testing.T) {
+	var logins atomic.Int64
+	var dataRequests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/aaaLogin.json" {
+			token := fmt.Sprintf("apic-token-%d", logins.Add(1))
+			_, _ = fmt.Fprintf(w, `{"imdata":[{"aaaLogin":{"attributes":{"token":%q}}}]}`, token)
+			return
+		}
+		dataRequests.Add(1)
+		cookie, err := r.Cookie("APIC-cookie")
+		if !assert.NoError(t, err) {
+			http.Error(w, "missing token", http.StatusUnauthorized)
+			return
+		}
+		if cookie.Value == "apic-token-1" {
+			http.Error(w, "issued token rejected", http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte(`{"totalCount":"0","imdata":[]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:   server.URL,
+		Username:   "admin",
+		Password:   "password",
+		Timeout:    time.Second,
+		MaxRetries: 0,
+	})
+	require.NoError(t, err)
+
+	_, err = client.ListClass(t.Context(), "fabric.nodes", "fabricNode", nil, 0)
+	require.ErrorContains(t, err, "HTTP 401")
+	_, err = client.ListClass(t.Context(), "fabric.nodes", "fabricNode", nil, 0)
+	require.ErrorContains(t, err, "HTTP 401")
+	assert.Equal(t, int64(1), logins.Load(), "the next endpoint must honor shared auth backoff")
+	assert.Equal(t, int64(1), dataRequests.Load())
+	client.tokenMu.Lock()
+	assert.Equal(t, 1, client.authFailures)
+	assert.Empty(t, client.token)
+	client.lastAuthAt = time.Now().Add(-authBackoffFor(client.authFailures))
+	client.tokenMu.Unlock()
+
+	_, err = client.ListClass(t.Context(), "fabric.nodes", "fabricNode", nil, 0)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), logins.Load())
+	assert.Equal(t, int64(2), dataRequests.Load())
+	client.tokenMu.Lock()
+	assert.Zero(t, client.authFailures, "only an accepted data request should clear auth backoff")
+	assert.NoError(t, client.lastAuthErr)
+	assert.True(t, client.lastAuthAt.IsZero())
+	client.tokenMu.Unlock()
+}
+
+func TestClientConcurrentRequestsShareLogin(t *testing.T) {
+	const callers = 12
+	loginStarted := make(chan struct{})
+	releaseLogin := make(chan struct{})
+	var startedOnce sync.Once
+	var loginCalls atomic.Int64
+	var dataCalls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/aaaLogin.json" {
+			loginCalls.Add(1)
+			startedOnce.Do(func() { close(loginStarted) })
+			<-releaseLogin
+			_, _ = w.Write([]byte(`{"imdata":[{"aaaLogin":{"attributes":{"token":"shared-token"}}}]}`))
+			return
+		}
+		cookie, err := r.Cookie("APIC-cookie")
+		if err != nil || cookie.Value != "shared-token" {
+			http.Error(w, "missing shared token", http.StatusUnauthorized)
+			return
+		}
+		dataCalls.Add(1)
+		_, _ = w.Write([]byte(`{"totalCount":"0","imdata":[]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:   server.URL,
+		Username:   "admin",
+		Password:   "password",
+		Timeout:    5 * time.Second,
+		MaxRetries: 0,
+	})
+	require.NoError(t, err)
+
+	errs := make(chan error, callers)
+	var workers sync.WaitGroup
+	for range callers {
+		workers.Go(func() {
+			_, requestErr := client.ListClass(t.Context(), "fabric.nodes", "fabricNode", nil, 0)
+			errs <- requestErr
+		})
+	}
+	<-loginStarted
+	close(releaseLogin)
+	workers.Wait()
+	close(errs)
+	for requestErr := range errs {
+		require.NoError(t, requestErr)
+	}
+	assert.Equal(t, int64(1), loginCalls.Load())
+	assert.Equal(t, int64(callers), dataCalls.Load())
+}
+
+func TestClientStaleUnauthorizedDoesNotClearReplacementToken(t *testing.T) {
+	client, err := NewClient(Config{
+		Endpoint: "https://apic.example.test",
+		Username: "admin",
+		Password: "password",
+	})
+	require.NoError(t, err)
+
+	client.tokenMu.Lock()
+	client.token = "new-token"
+	client.tokenGeneration = 4
+	client.tokenMu.Unlock()
+
+	client.rejectToken(tokenSnapshot{value: "old-token", generation: 3}, &APIError{StatusCode: http.StatusUnauthorized})
+	client.tokenMu.Lock()
+	assert.Equal(t, "new-token", client.token)
+	assert.Equal(t, uint64(4), client.tokenGeneration)
+	assert.Zero(t, client.authFailures)
+	client.tokenMu.Unlock()
+
+	client.rejectToken(tokenSnapshot{value: "new-token", generation: 4}, &APIError{StatusCode: http.StatusUnauthorized})
+	client.tokenMu.Lock()
+	assert.Empty(t, client.token)
+	assert.Equal(t, uint64(5), client.tokenGeneration)
+	assert.Equal(t, 1, client.authFailures)
+	client.tokenMu.Unlock()
+}
+
+func TestClientFiltersBeforeMaxResultsAcrossPages(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/aaaLogin.json" {
+			_, _ = w.Write([]byte(`{"imdata":[{"aaaLogin":{"attributes":{"token":"apic-token"}}}]}`))
+			return
+		}
+		assert.Equal(t, "/api/class/fabricNode.json", r.URL.Path)
+		assert.Equal(t, "2", r.URL.Query().Get("page-size"), "filtered pagination must keep a stable raw page size")
+		requests.Add(1)
+		switch r.URL.Query().Get("page") {
+		case "0":
+			_, _ = w.Write([]byte(`{"totalCount":"5","imdata":[
+				{"fabricNode":{"attributes":{"id":"1"}}},
+				{"fabricNode":{"attributes":{"id":"2"}}}
+			]}`))
+		case "1":
+			_, _ = w.Write([]byte(`{"totalCount":"5","imdata":[
+				{"fabricNode":{"attributes":{"id":"3"}}},
+				{"fabricNode":{"attributes":{"id":"4"}}}
+			]}`))
+		case "2":
+			_, _ = w.Write([]byte(`{"totalCount":"5","imdata":[
+				{"fabricNode":{"attributes":{"id":"5"}}}
+			]}`))
+		default:
+			assert.Fail(t, "unexpected APIC page", r.URL.RawQuery)
+			http.Error(w, "unexpected APIC page", http.StatusBadRequest)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:   server.URL,
+		Username:   "admin",
+		Password:   "password",
+		Timeout:    time.Second,
+		MaxRetries: 0,
+		PageSize:   2,
+	})
+	require.NoError(t, err)
+
+	got, err := client.ListClassFiltered(t.Context(), "fabric.nodes", "fabricNode", nil, 2, func(obj Object) bool {
+		return String(obj, "id") == "3" || String(obj, "id") == "5"
+	})
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, "3", String(got[0], "id"))
+	assert.Equal(t, "5", String(got[1], "id"))
+	assert.Equal(t, int64(3), requests.Load())
+}
+
+func TestClientPaginationContinuesAfterShortPageWhenTotalCountHasMore(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/aaaLogin.json" {
+			_, _ = w.Write([]byte(`{"imdata":[{"aaaLogin":{"attributes":{"token":"apic-token"}}}]}`))
+			return
+		}
+		assert.Equal(t, "/api/class/fabricNode.json", r.URL.Path)
+		assert.Equal(t, "2", r.URL.Query().Get("page-size"))
+		requests.Add(1)
+		switch r.URL.Query().Get("page") {
+		case "0":
+			_, _ = w.Write([]byte(`{"totalCount":"2","imdata":[{"fabricNode":{"attributes":{"id":"101"}}}]}`))
+		case "1":
+			_, _ = w.Write([]byte(`{"totalCount":"2","imdata":[{"fabricNode":{"attributes":{"id":"102"}}}]}`))
+		default:
+			t.Fatalf("unexpected APIC page %q", r.URL.Query().Get("page"))
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:   server.URL,
+		Username:   "admin",
+		Password:   "password",
+		Timeout:    time.Second,
+		MaxRetries: 0,
+		PageSize:   2,
+	})
+	require.NoError(t, err)
+
+	got, err := client.ListClass(t.Context(), "fabric.nodes", "fabricNode", nil, 0)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, "101", String(got[0], "id"))
+	assert.Equal(t, "102", String(got[1], "id"))
+	assert.Equal(t, int64(2), requests.Load())
+}
+
 func TestClientPaginationHardPageLimitReturnsPartialResults(t *testing.T) {
 	var requests atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -155,6 +451,37 @@ func TestClientPaginationHardPageLimitReturnsPartialResults(t *testing.T) {
 	require.ErrorAs(t, err, &limitErr)
 	assert.Equal(t, "page", limitErr.Kind)
 	assert.Len(t, got, httpclient.HardMaxPaginationPages)
+	assert.Equal(t, int64(httpclient.HardMaxPaginationPages), requests.Load())
+}
+
+func TestClientFilteredPaginationStillHonorsHardPageLimit(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/aaaLogin.json" {
+			_, _ = w.Write([]byte(`{"imdata":[{"aaaLogin":{"attributes":{"token":"apic-token"}}}]}`))
+			return
+		}
+		page := r.URL.Query().Get("page")
+		requests.Add(1)
+		_, _ = fmt.Fprintf(w, `{"totalCount":"%d","imdata":[{"fabricNode":{"attributes":{"id":%q}}}]}`, httpclient.HardMaxPaginationPages+1, page)
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:   server.URL,
+		Username:   "admin",
+		Password:   "password",
+		Timeout:    time.Second,
+		MaxRetries: 0,
+		PageSize:   1,
+	})
+	require.NoError(t, err)
+
+	got, err := client.ListClassFiltered(t.Context(), "fabric.nodes", "fabricNode", nil, 1, func(Object) bool { return false })
+	var limitErr *httpclient.PaginationLimitError
+	require.ErrorAs(t, err, &limitErr)
+	assert.Equal(t, "page", limitErr.Kind)
+	assert.Empty(t, got)
 	assert.Equal(t, int64(httpclient.HardMaxPaginationPages), requests.Load())
 }
 

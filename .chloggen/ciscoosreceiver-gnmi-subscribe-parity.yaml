@@ -1,0 +1,9 @@
+change_type: enhancement
+component: receiver/cisco_os
+note: Add per-path gNMI Subscribe modes, list options, encoding preferences, and Depth.
+issues: [42647]
+subtext: |
+  Preserves the receiver's read-only boundary and isolates rejected stream options without silently downgrading
+  requests. Product-qualified targets accept only their contract-approved JSON encodings; bounded scalar PROTO
+  decoding remains available only to deprecated receiver surfaces.
+change_logs: [user]

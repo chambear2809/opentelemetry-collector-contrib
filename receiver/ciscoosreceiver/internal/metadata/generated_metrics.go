@@ -27,8 +27,17 @@ const (
 	_ AttributeCiscoGnmiReason = iota
 	AttributeCiscoGnmiReasonBisectionLimit
 	AttributeCiscoGnmiReasonCacheLimit
+	AttributeCiscoGnmiReasonIdentityAmbiguous
+	AttributeCiscoGnmiReasonIdentityMissing
 	AttributeCiscoGnmiReasonIncompatiblePathGroup
+	AttributeCiscoGnmiReasonMalformedIdentity
+	AttributeCiscoGnmiReasonMalformedUpdate
+	AttributeCiscoGnmiReasonMissingModel
+	AttributeCiscoGnmiReasonProductMismatch
+	AttributeCiscoGnmiReasonReleaseMismatch
+	AttributeCiscoGnmiReasonUnsupportedEncoding
 	AttributeCiscoGnmiReasonUnsupportedPath
+	AttributeCiscoGnmiReasonUnsupportedRequestOptions
 )
 
 // String returns the string representation of the AttributeCiscoGnmiReason.
@@ -38,20 +47,81 @@ func (av AttributeCiscoGnmiReason) String() string {
 		return "bisection_limit"
 	case AttributeCiscoGnmiReasonCacheLimit:
 		return "cache_limit"
+	case AttributeCiscoGnmiReasonIdentityAmbiguous:
+		return "identity_ambiguous"
+	case AttributeCiscoGnmiReasonIdentityMissing:
+		return "identity_missing"
 	case AttributeCiscoGnmiReasonIncompatiblePathGroup:
 		return "incompatible_path_group"
+	case AttributeCiscoGnmiReasonMalformedIdentity:
+		return "malformed_identity"
+	case AttributeCiscoGnmiReasonMalformedUpdate:
+		return "malformed_update"
+	case AttributeCiscoGnmiReasonMissingModel:
+		return "missing_model"
+	case AttributeCiscoGnmiReasonProductMismatch:
+		return "product_mismatch"
+	case AttributeCiscoGnmiReasonReleaseMismatch:
+		return "release_mismatch"
+	case AttributeCiscoGnmiReasonUnsupportedEncoding:
+		return "unsupported_encoding"
 	case AttributeCiscoGnmiReasonUnsupportedPath:
 		return "unsupported_path"
+	case AttributeCiscoGnmiReasonUnsupportedRequestOptions:
+		return "unsupported_request_options"
 	}
 	return ""
 }
 
 // MapAttributeCiscoGnmiReason is a helper map of string to AttributeCiscoGnmiReason attribute value.
 var MapAttributeCiscoGnmiReason = map[string]AttributeCiscoGnmiReason{
-	"bisection_limit":         AttributeCiscoGnmiReasonBisectionLimit,
-	"cache_limit":             AttributeCiscoGnmiReasonCacheLimit,
-	"incompatible_path_group": AttributeCiscoGnmiReasonIncompatiblePathGroup,
-	"unsupported_path":        AttributeCiscoGnmiReasonUnsupportedPath,
+	"bisection_limit":             AttributeCiscoGnmiReasonBisectionLimit,
+	"cache_limit":                 AttributeCiscoGnmiReasonCacheLimit,
+	"identity_ambiguous":          AttributeCiscoGnmiReasonIdentityAmbiguous,
+	"identity_missing":            AttributeCiscoGnmiReasonIdentityMissing,
+	"incompatible_path_group":     AttributeCiscoGnmiReasonIncompatiblePathGroup,
+	"malformed_identity":          AttributeCiscoGnmiReasonMalformedIdentity,
+	"malformed_update":            AttributeCiscoGnmiReasonMalformedUpdate,
+	"missing_model":               AttributeCiscoGnmiReasonMissingModel,
+	"product_mismatch":            AttributeCiscoGnmiReasonProductMismatch,
+	"release_mismatch":            AttributeCiscoGnmiReasonReleaseMismatch,
+	"unsupported_encoding":        AttributeCiscoGnmiReasonUnsupportedEncoding,
+	"unsupported_path":            AttributeCiscoGnmiReasonUnsupportedPath,
+	"unsupported_request_options": AttributeCiscoGnmiReasonUnsupportedRequestOptions,
+}
+
+// AttributeCiscoGnmiValueKind specifies the value cisco.gnmi.value_kind attribute.
+type AttributeCiscoGnmiValueKind int
+
+const (
+	_ AttributeCiscoGnmiValueKind = iota
+	AttributeCiscoGnmiValueKindAny
+	AttributeCiscoGnmiValueKindBytes
+	AttributeCiscoGnmiValueKindLeaflist
+	AttributeCiscoGnmiValueKindProtoBytes
+)
+
+// String returns the string representation of the AttributeCiscoGnmiValueKind.
+func (av AttributeCiscoGnmiValueKind) String() string {
+	switch av {
+	case AttributeCiscoGnmiValueKindAny:
+		return "any"
+	case AttributeCiscoGnmiValueKindBytes:
+		return "bytes"
+	case AttributeCiscoGnmiValueKindLeaflist:
+		return "leaflist"
+	case AttributeCiscoGnmiValueKindProtoBytes:
+		return "proto_bytes"
+	}
+	return ""
+}
+
+// MapAttributeCiscoGnmiValueKind is a helper map of string to AttributeCiscoGnmiValueKind attribute value.
+var MapAttributeCiscoGnmiValueKind = map[string]AttributeCiscoGnmiValueKind{
+	"any":         AttributeCiscoGnmiValueKindAny,
+	"bytes":       AttributeCiscoGnmiValueKindBytes,
+	"leaflist":    AttributeCiscoGnmiValueKindLeaflist,
+	"proto_bytes": AttributeCiscoGnmiValueKindProtoBytes,
 }
 
 // AttributeCiscoOpticsProfile specifies the value cisco.optics.profile attribute.
@@ -61,7 +131,6 @@ const (
 	_ AttributeCiscoOpticsProfile = iota
 	AttributeCiscoOpticsProfileDom
 	AttributeCiscoOpticsProfileVdm
-	AttributeCiscoOpticsProfileCoherent
 )
 
 // String returns the string representation of the AttributeCiscoOpticsProfile.
@@ -71,17 +140,14 @@ func (av AttributeCiscoOpticsProfile) String() string {
 		return "dom"
 	case AttributeCiscoOpticsProfileVdm:
 		return "vdm"
-	case AttributeCiscoOpticsProfileCoherent:
-		return "coherent"
 	}
 	return ""
 }
 
 // MapAttributeCiscoOpticsProfile is a helper map of string to AttributeCiscoOpticsProfile attribute value.
 var MapAttributeCiscoOpticsProfile = map[string]AttributeCiscoOpticsProfile{
-	"dom":      AttributeCiscoOpticsProfileDom,
-	"vdm":      AttributeCiscoOpticsProfileVdm,
-	"coherent": AttributeCiscoOpticsProfileCoherent,
+	"dom": AttributeCiscoOpticsProfileDom,
+	"vdm": AttributeCiscoOpticsProfileVdm,
 }
 
 // AttributeNetworkIoDirection specifies the value network.io.direction attribute.
@@ -164,24 +230,12 @@ var MetricsInfo = metricsInfo{
 		Name:       "cisco.interface.utilization",
 		Attributes: []string{"network.io.direction", "network.interface.name"},
 	},
-	CiscoOpticsChromaticDispersion: metricInfo{
-		Name:       "cisco.optics.chromatic_dispersion",
-		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
-	},
-	CiscoOpticsDgd: metricInfo{
-		Name:       "cisco.optics.dgd",
-		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
-	},
 	CiscoOpticsEsnr: metricInfo{
 		Name:       "cisco.optics.esnr",
 		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
 	},
 	CiscoOpticsLaserBiasCurrent: metricInfo{
 		Name:       "cisco.optics.laser_bias_current",
-		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
-	},
-	CiscoOpticsOsnr: metricInfo{
-		Name:       "cisco.optics.osnr",
 		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
 	},
 	CiscoOpticsPreFecBer: metricInfo{
@@ -191,14 +245,6 @@ var MetricsInfo = metricsInfo{
 	CiscoOpticsPresent: metricInfo{
 		Name:       "cisco.optics.present",
 		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.profile", "cisco.optics.experimental"},
-	},
-	CiscoOpticsQFactor: metricInfo{
-		Name:       "cisco.optics.q_factor",
-		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
-	},
-	CiscoOpticsQMargin: metricInfo{
-		Name:       "cisco.optics.q_margin",
-		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
 	},
 	CiscoOpticsRxPower: metricInfo{
 		Name:       "cisco.optics.rx_power",
@@ -229,10 +275,12 @@ var MetricsInfo = metricsInfo{
 		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
 	},
 	SystemCPUUtilization: metricInfo{
-		Name: "system.cpu.utilization",
+		Name:       "system.cpu.utilization",
+		Attributes: []string{"cisco.node.name"},
 	},
 	SystemMemoryUtilization: metricInfo{
-		Name: "system.memory.utilization",
+		Name:       "system.memory.utilization",
+		Attributes: []string{"cisco.location.fru", "cisco.location.slot", "cisco.location.bay", "cisco.location.chassis"},
 	},
 	SystemNetworkErrors: metricInfo{
 		Name:       "system.network.errors",
@@ -260,36 +308,31 @@ var MetricsInfo = metricsInfo{
 }
 
 type metricsInfo struct {
-	CiscoDeviceUp                  metricInfo
-	CiscoInterfaceAdminStatus      metricInfo
-	CiscoInterfaceIoRate           metricInfo
-	CiscoInterfacePacketRate       metricInfo
-	CiscoInterfaceSpeed            metricInfo
-	CiscoInterfaceUtilization      metricInfo
-	CiscoOpticsChromaticDispersion metricInfo
-	CiscoOpticsDgd                 metricInfo
-	CiscoOpticsEsnr                metricInfo
-	CiscoOpticsLaserBiasCurrent    metricInfo
-	CiscoOpticsOsnr                metricInfo
-	CiscoOpticsPreFecBer           metricInfo
-	CiscoOpticsPresent             metricInfo
-	CiscoOpticsQFactor             metricInfo
-	CiscoOpticsQMargin             metricInfo
-	CiscoOpticsRxPower             metricInfo
-	CiscoOpticsTdecq               metricInfo
-	CiscoOpticsTecCurrent          metricInfo
-	CiscoOpticsTecUtilization      metricInfo
-	CiscoOpticsTemperature         metricInfo
-	CiscoOpticsTxPower             metricInfo
-	CiscoOpticsVoltage             metricInfo
-	SystemCPUUtilization           metricInfo
-	SystemMemoryUtilization        metricInfo
-	SystemNetworkErrors            metricInfo
-	SystemNetworkInterfaceStatus   metricInfo
-	SystemNetworkIo                metricInfo
-	SystemNetworkPacketCount       metricInfo
-	SystemNetworkPacketDropped     metricInfo
-	SystemUptime                   metricInfo
+	CiscoDeviceUp                metricInfo
+	CiscoInterfaceAdminStatus    metricInfo
+	CiscoInterfaceIoRate         metricInfo
+	CiscoInterfacePacketRate     metricInfo
+	CiscoInterfaceSpeed          metricInfo
+	CiscoInterfaceUtilization    metricInfo
+	CiscoOpticsEsnr              metricInfo
+	CiscoOpticsLaserBiasCurrent  metricInfo
+	CiscoOpticsPreFecBer         metricInfo
+	CiscoOpticsPresent           metricInfo
+	CiscoOpticsRxPower           metricInfo
+	CiscoOpticsTdecq             metricInfo
+	CiscoOpticsTecCurrent        metricInfo
+	CiscoOpticsTecUtilization    metricInfo
+	CiscoOpticsTemperature       metricInfo
+	CiscoOpticsTxPower           metricInfo
+	CiscoOpticsVoltage           metricInfo
+	SystemCPUUtilization         metricInfo
+	SystemMemoryUtilization      metricInfo
+	SystemNetworkErrors          metricInfo
+	SystemNetworkInterfaceStatus metricInfo
+	SystemNetworkIo              metricInfo
+	SystemNetworkPacketCount     metricInfo
+	SystemNetworkPacketDropped   metricInfo
+	SystemUptime                 metricInfo
 }
 
 type metricInfo struct {
@@ -801,208 +844,6 @@ func newMetricCiscoInterfaceUtilization(cfg CiscoInterfaceUtilizationMetricConfi
 	return m
 }
 
-type metricCiscoOpticsChromaticDispersion struct {
-	data          pmetric.Metric                             // data buffer for generated metric.
-	config        CiscoOpticsChromaticDispersionMetricConfig // metric config provided by user.
-	capacity      int                                        // max observed number of data points added to the metric.
-	aggDataPoints []float64                                  // slice containing number of aggregated datapoints at each index
-}
-
-// init fills cisco.optics.chromatic_dispersion metric with initial data.
-func (m *metricCiscoOpticsChromaticDispersion) init() {
-	m.data.SetName("cisco.optics.chromatic_dispersion")
-	m.data.SetDescription("Coherent optical chromatic dispersion")
-	m.data.SetUnit("ps/nm")
-	m.data.SetEmptyGauge()
-	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
-	m.aggDataPoints = m.aggDataPoints[:0]
-}
-
-func (m *metricCiscoOpticsChromaticDispersion) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64, networkInterfaceNameAttributeValue string, ciscoOpticsLaneAttributeValue string, ciscoOpticsSensorAttributeValue string, ciscoOpticsProfileAttributeValue string, ciscoOpticsExperimentalAttributeValue bool) {
-	if !m.config.Enabled {
-		return
-	}
-
-	dp := pmetric.NewNumberDataPoint()
-	dp.SetStartTimestamp(start)
-	dp.SetTimestamp(ts)
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsChromaticDispersionMetricAttributeKeyNetworkInterfaceName) {
-		dp.Attributes().PutStr("network.interface.name", networkInterfaceNameAttributeValue)
-	}
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsLane) {
-		dp.Attributes().PutStr("cisco.optics.lane", ciscoOpticsLaneAttributeValue)
-	}
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsSensor) {
-		dp.Attributes().PutStr("cisco.optics.sensor", ciscoOpticsSensorAttributeValue)
-	}
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsProfile) {
-		dp.Attributes().PutStr("cisco.optics.profile", ciscoOpticsProfileAttributeValue)
-	}
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsExperimental) {
-		dp.Attributes().PutBool("cisco.optics.experimental", ciscoOpticsExperimentalAttributeValue)
-	}
-
-	var s string
-	dps := m.data.Gauge().DataPoints()
-	for i := 0; i < dps.Len(); i++ {
-		dpi := dps.At(i)
-		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
-			switch s = m.config.AggregationStrategy; s {
-			case AggregationStrategySum, AggregationStrategyAvg:
-				dpi.SetDoubleValue(dpi.DoubleValue() + val)
-				m.aggDataPoints[i] += 1
-				return
-			case AggregationStrategyMin:
-				if dpi.DoubleValue() > val {
-					dpi.SetDoubleValue(val)
-				}
-				return
-			case AggregationStrategyMax:
-				if dpi.DoubleValue() < val {
-					dpi.SetDoubleValue(val)
-				}
-				return
-			}
-		}
-	}
-
-	dp.SetDoubleValue(val)
-	m.aggDataPoints = append(m.aggDataPoints, 1)
-	dp.MoveTo(dps.AppendEmpty())
-}
-
-// updateCapacity saves max length of data point slices that will be used for the slice capacity.
-func (m *metricCiscoOpticsChromaticDispersion) updateCapacity() {
-	if m.data.Gauge().DataPoints().Len() > m.capacity {
-		m.capacity = m.data.Gauge().DataPoints().Len()
-	}
-}
-
-// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
-func (m *metricCiscoOpticsChromaticDispersion) emit(metrics pmetric.MetricSlice) {
-	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
-		if m.config.AggregationStrategy == AggregationStrategyAvg {
-			for i, aggCount := range m.aggDataPoints {
-				m.data.Gauge().DataPoints().At(i).SetDoubleValue(m.data.Gauge().DataPoints().At(i).DoubleValue() / aggCount)
-			}
-		}
-		m.updateCapacity()
-		m.data.MoveTo(metrics.AppendEmpty())
-		m.init()
-	}
-}
-
-func newMetricCiscoOpticsChromaticDispersion(cfg CiscoOpticsChromaticDispersionMetricConfig) metricCiscoOpticsChromaticDispersion {
-	m := metricCiscoOpticsChromaticDispersion{config: cfg}
-
-	if cfg.Enabled {
-		m.data = pmetric.NewMetric()
-		m.init()
-	}
-	return m
-}
-
-type metricCiscoOpticsDgd struct {
-	data          pmetric.Metric             // data buffer for generated metric.
-	config        CiscoOpticsDgdMetricConfig // metric config provided by user.
-	capacity      int                        // max observed number of data points added to the metric.
-	aggDataPoints []float64                  // slice containing number of aggregated datapoints at each index
-}
-
-// init fills cisco.optics.dgd metric with initial data.
-func (m *metricCiscoOpticsDgd) init() {
-	m.data.SetName("cisco.optics.dgd")
-	m.data.SetDescription("Coherent optical differential group delay")
-	m.data.SetUnit("ps")
-	m.data.SetEmptyGauge()
-	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
-	m.aggDataPoints = m.aggDataPoints[:0]
-}
-
-func (m *metricCiscoOpticsDgd) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64, networkInterfaceNameAttributeValue string, ciscoOpticsLaneAttributeValue string, ciscoOpticsSensorAttributeValue string, ciscoOpticsProfileAttributeValue string, ciscoOpticsExperimentalAttributeValue bool) {
-	if !m.config.Enabled {
-		return
-	}
-
-	dp := pmetric.NewNumberDataPoint()
-	dp.SetStartTimestamp(start)
-	dp.SetTimestamp(ts)
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsDgdMetricAttributeKeyNetworkInterfaceName) {
-		dp.Attributes().PutStr("network.interface.name", networkInterfaceNameAttributeValue)
-	}
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsLane) {
-		dp.Attributes().PutStr("cisco.optics.lane", ciscoOpticsLaneAttributeValue)
-	}
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsSensor) {
-		dp.Attributes().PutStr("cisco.optics.sensor", ciscoOpticsSensorAttributeValue)
-	}
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsProfile) {
-		dp.Attributes().PutStr("cisco.optics.profile", ciscoOpticsProfileAttributeValue)
-	}
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsExperimental) {
-		dp.Attributes().PutBool("cisco.optics.experimental", ciscoOpticsExperimentalAttributeValue)
-	}
-
-	var s string
-	dps := m.data.Gauge().DataPoints()
-	for i := 0; i < dps.Len(); i++ {
-		dpi := dps.At(i)
-		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
-			switch s = m.config.AggregationStrategy; s {
-			case AggregationStrategySum, AggregationStrategyAvg:
-				dpi.SetDoubleValue(dpi.DoubleValue() + val)
-				m.aggDataPoints[i] += 1
-				return
-			case AggregationStrategyMin:
-				if dpi.DoubleValue() > val {
-					dpi.SetDoubleValue(val)
-				}
-				return
-			case AggregationStrategyMax:
-				if dpi.DoubleValue() < val {
-					dpi.SetDoubleValue(val)
-				}
-				return
-			}
-		}
-	}
-
-	dp.SetDoubleValue(val)
-	m.aggDataPoints = append(m.aggDataPoints, 1)
-	dp.MoveTo(dps.AppendEmpty())
-}
-
-// updateCapacity saves max length of data point slices that will be used for the slice capacity.
-func (m *metricCiscoOpticsDgd) updateCapacity() {
-	if m.data.Gauge().DataPoints().Len() > m.capacity {
-		m.capacity = m.data.Gauge().DataPoints().Len()
-	}
-}
-
-// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
-func (m *metricCiscoOpticsDgd) emit(metrics pmetric.MetricSlice) {
-	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
-		if m.config.AggregationStrategy == AggregationStrategyAvg {
-			for i, aggCount := range m.aggDataPoints {
-				m.data.Gauge().DataPoints().At(i).SetDoubleValue(m.data.Gauge().DataPoints().At(i).DoubleValue() / aggCount)
-			}
-		}
-		m.updateCapacity()
-		m.data.MoveTo(metrics.AppendEmpty())
-		m.init()
-	}
-}
-
-func newMetricCiscoOpticsDgd(cfg CiscoOpticsDgdMetricConfig) metricCiscoOpticsDgd {
-	m := metricCiscoOpticsDgd{config: cfg}
-
-	if cfg.Enabled {
-		m.data = pmetric.NewMetric()
-		m.init()
-	}
-	return m
-}
-
 type metricCiscoOpticsEsnr struct {
 	data          pmetric.Metric              // data buffer for generated metric.
 	config        CiscoOpticsEsnrMetricConfig // metric config provided by user.
@@ -1013,7 +854,7 @@ type metricCiscoOpticsEsnr struct {
 // init fills cisco.optics.esnr metric with initial data.
 func (m *metricCiscoOpticsEsnr) init() {
 	m.data.SetName("cisco.optics.esnr")
-	m.data.SetDescription("Effective signal-to-noise ratio reported by a qualified VDM sensor")
+	m.data.SetDescription("Effective signal-to-noise ratio reported by an allowlisted device VDM sensor")
 	m.data.SetUnit("dB")
 	m.data.SetEmptyGauge()
 	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
@@ -1197,107 +1038,6 @@ func (m *metricCiscoOpticsLaserBiasCurrent) emit(metrics pmetric.MetricSlice) {
 
 func newMetricCiscoOpticsLaserBiasCurrent(cfg CiscoOpticsLaserBiasCurrentMetricConfig) metricCiscoOpticsLaserBiasCurrent {
 	m := metricCiscoOpticsLaserBiasCurrent{config: cfg}
-
-	if cfg.Enabled {
-		m.data = pmetric.NewMetric()
-		m.init()
-	}
-	return m
-}
-
-type metricCiscoOpticsOsnr struct {
-	data          pmetric.Metric              // data buffer for generated metric.
-	config        CiscoOpticsOsnrMetricConfig // metric config provided by user.
-	capacity      int                         // max observed number of data points added to the metric.
-	aggDataPoints []float64                   // slice containing number of aggregated datapoints at each index
-}
-
-// init fills cisco.optics.osnr metric with initial data.
-func (m *metricCiscoOpticsOsnr) init() {
-	m.data.SetName("cisco.optics.osnr")
-	m.data.SetDescription("Coherent optical signal-to-noise ratio")
-	m.data.SetUnit("dB")
-	m.data.SetEmptyGauge()
-	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
-	m.aggDataPoints = m.aggDataPoints[:0]
-}
-
-func (m *metricCiscoOpticsOsnr) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64, networkInterfaceNameAttributeValue string, ciscoOpticsLaneAttributeValue string, ciscoOpticsSensorAttributeValue string, ciscoOpticsProfileAttributeValue string, ciscoOpticsExperimentalAttributeValue bool) {
-	if !m.config.Enabled {
-		return
-	}
-
-	dp := pmetric.NewNumberDataPoint()
-	dp.SetStartTimestamp(start)
-	dp.SetTimestamp(ts)
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsOsnrMetricAttributeKeyNetworkInterfaceName) {
-		dp.Attributes().PutStr("network.interface.name", networkInterfaceNameAttributeValue)
-	}
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsLane) {
-		dp.Attributes().PutStr("cisco.optics.lane", ciscoOpticsLaneAttributeValue)
-	}
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsSensor) {
-		dp.Attributes().PutStr("cisco.optics.sensor", ciscoOpticsSensorAttributeValue)
-	}
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsProfile) {
-		dp.Attributes().PutStr("cisco.optics.profile", ciscoOpticsProfileAttributeValue)
-	}
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsExperimental) {
-		dp.Attributes().PutBool("cisco.optics.experimental", ciscoOpticsExperimentalAttributeValue)
-	}
-
-	var s string
-	dps := m.data.Gauge().DataPoints()
-	for i := 0; i < dps.Len(); i++ {
-		dpi := dps.At(i)
-		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
-			switch s = m.config.AggregationStrategy; s {
-			case AggregationStrategySum, AggregationStrategyAvg:
-				dpi.SetDoubleValue(dpi.DoubleValue() + val)
-				m.aggDataPoints[i] += 1
-				return
-			case AggregationStrategyMin:
-				if dpi.DoubleValue() > val {
-					dpi.SetDoubleValue(val)
-				}
-				return
-			case AggregationStrategyMax:
-				if dpi.DoubleValue() < val {
-					dpi.SetDoubleValue(val)
-				}
-				return
-			}
-		}
-	}
-
-	dp.SetDoubleValue(val)
-	m.aggDataPoints = append(m.aggDataPoints, 1)
-	dp.MoveTo(dps.AppendEmpty())
-}
-
-// updateCapacity saves max length of data point slices that will be used for the slice capacity.
-func (m *metricCiscoOpticsOsnr) updateCapacity() {
-	if m.data.Gauge().DataPoints().Len() > m.capacity {
-		m.capacity = m.data.Gauge().DataPoints().Len()
-	}
-}
-
-// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
-func (m *metricCiscoOpticsOsnr) emit(metrics pmetric.MetricSlice) {
-	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
-		if m.config.AggregationStrategy == AggregationStrategyAvg {
-			for i, aggCount := range m.aggDataPoints {
-				m.data.Gauge().DataPoints().At(i).SetDoubleValue(m.data.Gauge().DataPoints().At(i).DoubleValue() / aggCount)
-			}
-		}
-		m.updateCapacity()
-		m.data.MoveTo(metrics.AppendEmpty())
-		m.init()
-	}
-}
-
-func newMetricCiscoOpticsOsnr(cfg CiscoOpticsOsnrMetricConfig) metricCiscoOpticsOsnr {
-	m := metricCiscoOpticsOsnr{config: cfg}
 
 	if cfg.Enabled {
 		m.data = pmetric.NewMetric()
@@ -1497,208 +1237,6 @@ func (m *metricCiscoOpticsPresent) emit(metrics pmetric.MetricSlice) {
 
 func newMetricCiscoOpticsPresent(cfg CiscoOpticsPresentMetricConfig) metricCiscoOpticsPresent {
 	m := metricCiscoOpticsPresent{config: cfg}
-
-	if cfg.Enabled {
-		m.data = pmetric.NewMetric()
-		m.init()
-	}
-	return m
-}
-
-type metricCiscoOpticsQFactor struct {
-	data          pmetric.Metric                 // data buffer for generated metric.
-	config        CiscoOpticsQFactorMetricConfig // metric config provided by user.
-	capacity      int                            // max observed number of data points added to the metric.
-	aggDataPoints []float64                      // slice containing number of aggregated datapoints at each index
-}
-
-// init fills cisco.optics.q_factor metric with initial data.
-func (m *metricCiscoOpticsQFactor) init() {
-	m.data.SetName("cisco.optics.q_factor")
-	m.data.SetDescription("Coherent optical Q-factor")
-	m.data.SetUnit("dB")
-	m.data.SetEmptyGauge()
-	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
-	m.aggDataPoints = m.aggDataPoints[:0]
-}
-
-func (m *metricCiscoOpticsQFactor) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64, networkInterfaceNameAttributeValue string, ciscoOpticsLaneAttributeValue string, ciscoOpticsSensorAttributeValue string, ciscoOpticsProfileAttributeValue string, ciscoOpticsExperimentalAttributeValue bool) {
-	if !m.config.Enabled {
-		return
-	}
-
-	dp := pmetric.NewNumberDataPoint()
-	dp.SetStartTimestamp(start)
-	dp.SetTimestamp(ts)
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsQFactorMetricAttributeKeyNetworkInterfaceName) {
-		dp.Attributes().PutStr("network.interface.name", networkInterfaceNameAttributeValue)
-	}
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsLane) {
-		dp.Attributes().PutStr("cisco.optics.lane", ciscoOpticsLaneAttributeValue)
-	}
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsSensor) {
-		dp.Attributes().PutStr("cisco.optics.sensor", ciscoOpticsSensorAttributeValue)
-	}
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsProfile) {
-		dp.Attributes().PutStr("cisco.optics.profile", ciscoOpticsProfileAttributeValue)
-	}
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsExperimental) {
-		dp.Attributes().PutBool("cisco.optics.experimental", ciscoOpticsExperimentalAttributeValue)
-	}
-
-	var s string
-	dps := m.data.Gauge().DataPoints()
-	for i := 0; i < dps.Len(); i++ {
-		dpi := dps.At(i)
-		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
-			switch s = m.config.AggregationStrategy; s {
-			case AggregationStrategySum, AggregationStrategyAvg:
-				dpi.SetDoubleValue(dpi.DoubleValue() + val)
-				m.aggDataPoints[i] += 1
-				return
-			case AggregationStrategyMin:
-				if dpi.DoubleValue() > val {
-					dpi.SetDoubleValue(val)
-				}
-				return
-			case AggregationStrategyMax:
-				if dpi.DoubleValue() < val {
-					dpi.SetDoubleValue(val)
-				}
-				return
-			}
-		}
-	}
-
-	dp.SetDoubleValue(val)
-	m.aggDataPoints = append(m.aggDataPoints, 1)
-	dp.MoveTo(dps.AppendEmpty())
-}
-
-// updateCapacity saves max length of data point slices that will be used for the slice capacity.
-func (m *metricCiscoOpticsQFactor) updateCapacity() {
-	if m.data.Gauge().DataPoints().Len() > m.capacity {
-		m.capacity = m.data.Gauge().DataPoints().Len()
-	}
-}
-
-// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
-func (m *metricCiscoOpticsQFactor) emit(metrics pmetric.MetricSlice) {
-	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
-		if m.config.AggregationStrategy == AggregationStrategyAvg {
-			for i, aggCount := range m.aggDataPoints {
-				m.data.Gauge().DataPoints().At(i).SetDoubleValue(m.data.Gauge().DataPoints().At(i).DoubleValue() / aggCount)
-			}
-		}
-		m.updateCapacity()
-		m.data.MoveTo(metrics.AppendEmpty())
-		m.init()
-	}
-}
-
-func newMetricCiscoOpticsQFactor(cfg CiscoOpticsQFactorMetricConfig) metricCiscoOpticsQFactor {
-	m := metricCiscoOpticsQFactor{config: cfg}
-
-	if cfg.Enabled {
-		m.data = pmetric.NewMetric()
-		m.init()
-	}
-	return m
-}
-
-type metricCiscoOpticsQMargin struct {
-	data          pmetric.Metric                 // data buffer for generated metric.
-	config        CiscoOpticsQMarginMetricConfig // metric config provided by user.
-	capacity      int                            // max observed number of data points added to the metric.
-	aggDataPoints []float64                      // slice containing number of aggregated datapoints at each index
-}
-
-// init fills cisco.optics.q_margin metric with initial data.
-func (m *metricCiscoOpticsQMargin) init() {
-	m.data.SetName("cisco.optics.q_margin")
-	m.data.SetDescription("Coherent optical Q-margin")
-	m.data.SetUnit("dB")
-	m.data.SetEmptyGauge()
-	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
-	m.aggDataPoints = m.aggDataPoints[:0]
-}
-
-func (m *metricCiscoOpticsQMargin) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64, networkInterfaceNameAttributeValue string, ciscoOpticsLaneAttributeValue string, ciscoOpticsSensorAttributeValue string, ciscoOpticsProfileAttributeValue string, ciscoOpticsExperimentalAttributeValue bool) {
-	if !m.config.Enabled {
-		return
-	}
-
-	dp := pmetric.NewNumberDataPoint()
-	dp.SetStartTimestamp(start)
-	dp.SetTimestamp(ts)
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsQMarginMetricAttributeKeyNetworkInterfaceName) {
-		dp.Attributes().PutStr("network.interface.name", networkInterfaceNameAttributeValue)
-	}
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsLane) {
-		dp.Attributes().PutStr("cisco.optics.lane", ciscoOpticsLaneAttributeValue)
-	}
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsSensor) {
-		dp.Attributes().PutStr("cisco.optics.sensor", ciscoOpticsSensorAttributeValue)
-	}
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsProfile) {
-		dp.Attributes().PutStr("cisco.optics.profile", ciscoOpticsProfileAttributeValue)
-	}
-	if slices.Contains(m.config.EnabledAttributes, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsExperimental) {
-		dp.Attributes().PutBool("cisco.optics.experimental", ciscoOpticsExperimentalAttributeValue)
-	}
-
-	var s string
-	dps := m.data.Gauge().DataPoints()
-	for i := 0; i < dps.Len(); i++ {
-		dpi := dps.At(i)
-		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
-			switch s = m.config.AggregationStrategy; s {
-			case AggregationStrategySum, AggregationStrategyAvg:
-				dpi.SetDoubleValue(dpi.DoubleValue() + val)
-				m.aggDataPoints[i] += 1
-				return
-			case AggregationStrategyMin:
-				if dpi.DoubleValue() > val {
-					dpi.SetDoubleValue(val)
-				}
-				return
-			case AggregationStrategyMax:
-				if dpi.DoubleValue() < val {
-					dpi.SetDoubleValue(val)
-				}
-				return
-			}
-		}
-	}
-
-	dp.SetDoubleValue(val)
-	m.aggDataPoints = append(m.aggDataPoints, 1)
-	dp.MoveTo(dps.AppendEmpty())
-}
-
-// updateCapacity saves max length of data point slices that will be used for the slice capacity.
-func (m *metricCiscoOpticsQMargin) updateCapacity() {
-	if m.data.Gauge().DataPoints().Len() > m.capacity {
-		m.capacity = m.data.Gauge().DataPoints().Len()
-	}
-}
-
-// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
-func (m *metricCiscoOpticsQMargin) emit(metrics pmetric.MetricSlice) {
-	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
-		if m.config.AggregationStrategy == AggregationStrategyAvg {
-			for i, aggCount := range m.aggDataPoints {
-				m.data.Gauge().DataPoints().At(i).SetDoubleValue(m.data.Gauge().DataPoints().At(i).DoubleValue() / aggCount)
-			}
-		}
-		m.updateCapacity()
-		m.data.MoveTo(metrics.AppendEmpty())
-		m.init()
-	}
-}
-
-func newMetricCiscoOpticsQMargin(cfg CiscoOpticsQMarginMetricConfig) metricCiscoOpticsQMargin {
-	m := metricCiscoOpticsQMargin{config: cfg}
 
 	if cfg.Enabled {
 		m.data = pmetric.NewMetric()
@@ -2415,27 +1953,61 @@ func newMetricCiscoOpticsVoltage(cfg CiscoOpticsVoltageMetricConfig) metricCisco
 }
 
 type metricSystemCPUUtilization struct {
-	data     pmetric.Metric                   // data buffer for generated metric.
-	config   SystemCPUUtilizationMetricConfig // metric config provided by user.
-	capacity int                              // max observed number of data points added to the metric.
+	data          pmetric.Metric                   // data buffer for generated metric.
+	config        SystemCPUUtilizationMetricConfig // metric config provided by user.
+	capacity      int                              // max observed number of data points added to the metric.
+	aggDataPoints []float64                        // slice containing number of aggregated datapoints at each index
 }
 
 // init fills system.cpu.utilization metric with initial data.
 func (m *metricSystemCPUUtilization) init() {
 	m.data.SetName("system.cpu.utilization")
-	m.data.SetDescription("Percentage of CPU time in use.")
+	m.data.SetDescription("Ratio of CPU time in use, from 0 to 1.")
 	m.data.SetUnit("1")
 	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
 }
 
-func (m *metricSystemCPUUtilization) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+func (m *metricSystemCPUUtilization) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64, ciscoNodeNameAttributeValue string) {
 	if !m.config.Enabled {
 		return
 	}
-	dp := m.data.Gauge().DataPoints().AppendEmpty()
+
+	dp := pmetric.NewNumberDataPoint()
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, SystemCPUUtilizationMetricAttributeKeyCiscoNodeName) {
+		dp.Attributes().PutStr("cisco.node.name", ciscoNodeNameAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetDoubleValue(dpi.DoubleValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.DoubleValue() > val {
+					dpi.SetDoubleValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.DoubleValue() < val {
+					dpi.SetDoubleValue(val)
+				}
+				return
+			}
+		}
+	}
+
 	dp.SetDoubleValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
 }
 
 // updateCapacity saves max length of data point slices that will be used for the slice capacity.
@@ -2448,6 +2020,11 @@ func (m *metricSystemCPUUtilization) updateCapacity() {
 // emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
 func (m *metricSystemCPUUtilization) emit(metrics pmetric.MetricSlice) {
 	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetDoubleValue(m.data.Gauge().DataPoints().At(i).DoubleValue() / aggCount)
+			}
+		}
 		m.updateCapacity()
 		m.data.MoveTo(metrics.AppendEmpty())
 		m.init()
@@ -2465,27 +2042,70 @@ func newMetricSystemCPUUtilization(cfg SystemCPUUtilizationMetricConfig) metricS
 }
 
 type metricSystemMemoryUtilization struct {
-	data     pmetric.Metric                      // data buffer for generated metric.
-	config   SystemMemoryUtilizationMetricConfig // metric config provided by user.
-	capacity int                                 // max observed number of data points added to the metric.
+	data          pmetric.Metric                      // data buffer for generated metric.
+	config        SystemMemoryUtilizationMetricConfig // metric config provided by user.
+	capacity      int                                 // max observed number of data points added to the metric.
+	aggDataPoints []float64                           // slice containing number of aggregated datapoints at each index
 }
 
 // init fills system.memory.utilization metric with initial data.
 func (m *metricSystemMemoryUtilization) init() {
 	m.data.SetName("system.memory.utilization")
-	m.data.SetDescription("Percentage of memory bytes in use.")
+	m.data.SetDescription("Ratio of memory bytes in use, from 0 to 1.")
 	m.data.SetUnit("1")
 	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
 }
 
-func (m *metricSystemMemoryUtilization) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+func (m *metricSystemMemoryUtilization) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64, ciscoLocationFruAttributeValue string, ciscoLocationSlotAttributeValue string, ciscoLocationBayAttributeValue string, ciscoLocationChassisAttributeValue string) {
 	if !m.config.Enabled {
 		return
 	}
-	dp := m.data.Gauge().DataPoints().AppendEmpty()
+
+	dp := pmetric.NewNumberDataPoint()
 	dp.SetStartTimestamp(start)
 	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, SystemMemoryUtilizationMetricAttributeKeyCiscoLocationFru) {
+		dp.Attributes().PutStr("cisco.location.fru", ciscoLocationFruAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, SystemMemoryUtilizationMetricAttributeKeyCiscoLocationSlot) {
+		dp.Attributes().PutStr("cisco.location.slot", ciscoLocationSlotAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, SystemMemoryUtilizationMetricAttributeKeyCiscoLocationBay) {
+		dp.Attributes().PutStr("cisco.location.bay", ciscoLocationBayAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, SystemMemoryUtilizationMetricAttributeKeyCiscoLocationChassis) {
+		dp.Attributes().PutStr("cisco.location.chassis", ciscoLocationChassisAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetDoubleValue(dpi.DoubleValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.DoubleValue() > val {
+					dpi.SetDoubleValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.DoubleValue() < val {
+					dpi.SetDoubleValue(val)
+				}
+				return
+			}
+		}
+	}
+
 	dp.SetDoubleValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
 }
 
 // updateCapacity saves max length of data point slices that will be used for the slice capacity.
@@ -2498,6 +2118,11 @@ func (m *metricSystemMemoryUtilization) updateCapacity() {
 // emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
 func (m *metricSystemMemoryUtilization) emit(metrics pmetric.MetricSlice) {
 	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetDoubleValue(m.data.Gauge().DataPoints().At(i).DoubleValue() / aggCount)
+			}
+		}
 		m.updateCapacity()
 		m.data.MoveTo(metrics.AppendEmpty())
 		m.init()
@@ -3035,43 +2660,38 @@ func newMetricSystemUptime(cfg SystemUptimeMetricConfig) metricSystemUptime {
 // MetricsBuilder provides an interface for scrapers to report metrics while taking care of all the transformations
 // required to produce metric representation defined in metadata and user config.
 type MetricsBuilder struct {
-	config                               MetricsBuilderConfig // config of the metrics builder.
-	startTime                            pcommon.Timestamp    // start time that will be applied to all recorded data points.
-	metricsCapacity                      int                  // maximum observed number of metrics per resource.
-	metricsBuffer                        pmetric.Metrics      // accumulates metrics data before emitting.
-	buildInfo                            component.BuildInfo  // contains version information.
-	resourceAttributeIncludeFilter       map[string]filter.Filter
-	resourceAttributeExcludeFilter       map[string]filter.Filter
-	metricCiscoDeviceUp                  metricCiscoDeviceUp
-	metricCiscoInterfaceAdminStatus      metricCiscoInterfaceAdminStatus
-	metricCiscoInterfaceIoRate           metricCiscoInterfaceIoRate
-	metricCiscoInterfacePacketRate       metricCiscoInterfacePacketRate
-	metricCiscoInterfaceSpeed            metricCiscoInterfaceSpeed
-	metricCiscoInterfaceUtilization      metricCiscoInterfaceUtilization
-	metricCiscoOpticsChromaticDispersion metricCiscoOpticsChromaticDispersion
-	metricCiscoOpticsDgd                 metricCiscoOpticsDgd
-	metricCiscoOpticsEsnr                metricCiscoOpticsEsnr
-	metricCiscoOpticsLaserBiasCurrent    metricCiscoOpticsLaserBiasCurrent
-	metricCiscoOpticsOsnr                metricCiscoOpticsOsnr
-	metricCiscoOpticsPreFecBer           metricCiscoOpticsPreFecBer
-	metricCiscoOpticsPresent             metricCiscoOpticsPresent
-	metricCiscoOpticsQFactor             metricCiscoOpticsQFactor
-	metricCiscoOpticsQMargin             metricCiscoOpticsQMargin
-	metricCiscoOpticsRxPower             metricCiscoOpticsRxPower
-	metricCiscoOpticsTdecq               metricCiscoOpticsTdecq
-	metricCiscoOpticsTecCurrent          metricCiscoOpticsTecCurrent
-	metricCiscoOpticsTecUtilization      metricCiscoOpticsTecUtilization
-	metricCiscoOpticsTemperature         metricCiscoOpticsTemperature
-	metricCiscoOpticsTxPower             metricCiscoOpticsTxPower
-	metricCiscoOpticsVoltage             metricCiscoOpticsVoltage
-	metricSystemCPUUtilization           metricSystemCPUUtilization
-	metricSystemMemoryUtilization        metricSystemMemoryUtilization
-	metricSystemNetworkErrors            metricSystemNetworkErrors
-	metricSystemNetworkInterfaceStatus   metricSystemNetworkInterfaceStatus
-	metricSystemNetworkIo                metricSystemNetworkIo
-	metricSystemNetworkPacketCount       metricSystemNetworkPacketCount
-	metricSystemNetworkPacketDropped     metricSystemNetworkPacketDropped
-	metricSystemUptime                   metricSystemUptime
+	config                             MetricsBuilderConfig // config of the metrics builder.
+	startTime                          pcommon.Timestamp    // start time that will be applied to all recorded data points.
+	metricsCapacity                    int                  // maximum observed number of metrics per resource.
+	metricsBuffer                      pmetric.Metrics      // accumulates metrics data before emitting.
+	buildInfo                          component.BuildInfo  // contains version information.
+	resourceAttributeIncludeFilter     map[string]filter.Filter
+	resourceAttributeExcludeFilter     map[string]filter.Filter
+	metricCiscoDeviceUp                metricCiscoDeviceUp
+	metricCiscoInterfaceAdminStatus    metricCiscoInterfaceAdminStatus
+	metricCiscoInterfaceIoRate         metricCiscoInterfaceIoRate
+	metricCiscoInterfacePacketRate     metricCiscoInterfacePacketRate
+	metricCiscoInterfaceSpeed          metricCiscoInterfaceSpeed
+	metricCiscoInterfaceUtilization    metricCiscoInterfaceUtilization
+	metricCiscoOpticsEsnr              metricCiscoOpticsEsnr
+	metricCiscoOpticsLaserBiasCurrent  metricCiscoOpticsLaserBiasCurrent
+	metricCiscoOpticsPreFecBer         metricCiscoOpticsPreFecBer
+	metricCiscoOpticsPresent           metricCiscoOpticsPresent
+	metricCiscoOpticsRxPower           metricCiscoOpticsRxPower
+	metricCiscoOpticsTdecq             metricCiscoOpticsTdecq
+	metricCiscoOpticsTecCurrent        metricCiscoOpticsTecCurrent
+	metricCiscoOpticsTecUtilization    metricCiscoOpticsTecUtilization
+	metricCiscoOpticsTemperature       metricCiscoOpticsTemperature
+	metricCiscoOpticsTxPower           metricCiscoOpticsTxPower
+	metricCiscoOpticsVoltage           metricCiscoOpticsVoltage
+	metricSystemCPUUtilization         metricSystemCPUUtilization
+	metricSystemMemoryUtilization      metricSystemMemoryUtilization
+	metricSystemNetworkErrors          metricSystemNetworkErrors
+	metricSystemNetworkInterfaceStatus metricSystemNetworkInterfaceStatus
+	metricSystemNetworkIo              metricSystemNetworkIo
+	metricSystemNetworkPacketCount     metricSystemNetworkPacketCount
+	metricSystemNetworkPacketDropped   metricSystemNetworkPacketDropped
+	metricSystemUptime                 metricSystemUptime
 }
 
 // MetricBuilderOption applies changes to default metrics builder.
@@ -3093,42 +2713,37 @@ func WithStartTime(startTime pcommon.Timestamp) MetricBuilderOption {
 }
 func NewMetricsBuilder(mbc MetricsBuilderConfig, settings receiver.Settings, options ...MetricBuilderOption) *MetricsBuilder {
 	mb := &MetricsBuilder{
-		config:                               mbc,
-		startTime:                            pcommon.NewTimestampFromTime(time.Now()),
-		metricsBuffer:                        pmetric.NewMetrics(),
-		buildInfo:                            settings.BuildInfo,
-		metricCiscoDeviceUp:                  newMetricCiscoDeviceUp(mbc.Metrics.CiscoDeviceUp),
-		metricCiscoInterfaceAdminStatus:      newMetricCiscoInterfaceAdminStatus(mbc.Metrics.CiscoInterfaceAdminStatus),
-		metricCiscoInterfaceIoRate:           newMetricCiscoInterfaceIoRate(mbc.Metrics.CiscoInterfaceIoRate),
-		metricCiscoInterfacePacketRate:       newMetricCiscoInterfacePacketRate(mbc.Metrics.CiscoInterfacePacketRate),
-		metricCiscoInterfaceSpeed:            newMetricCiscoInterfaceSpeed(mbc.Metrics.CiscoInterfaceSpeed),
-		metricCiscoInterfaceUtilization:      newMetricCiscoInterfaceUtilization(mbc.Metrics.CiscoInterfaceUtilization),
-		metricCiscoOpticsChromaticDispersion: newMetricCiscoOpticsChromaticDispersion(mbc.Metrics.CiscoOpticsChromaticDispersion),
-		metricCiscoOpticsDgd:                 newMetricCiscoOpticsDgd(mbc.Metrics.CiscoOpticsDgd),
-		metricCiscoOpticsEsnr:                newMetricCiscoOpticsEsnr(mbc.Metrics.CiscoOpticsEsnr),
-		metricCiscoOpticsLaserBiasCurrent:    newMetricCiscoOpticsLaserBiasCurrent(mbc.Metrics.CiscoOpticsLaserBiasCurrent),
-		metricCiscoOpticsOsnr:                newMetricCiscoOpticsOsnr(mbc.Metrics.CiscoOpticsOsnr),
-		metricCiscoOpticsPreFecBer:           newMetricCiscoOpticsPreFecBer(mbc.Metrics.CiscoOpticsPreFecBer),
-		metricCiscoOpticsPresent:             newMetricCiscoOpticsPresent(mbc.Metrics.CiscoOpticsPresent),
-		metricCiscoOpticsQFactor:             newMetricCiscoOpticsQFactor(mbc.Metrics.CiscoOpticsQFactor),
-		metricCiscoOpticsQMargin:             newMetricCiscoOpticsQMargin(mbc.Metrics.CiscoOpticsQMargin),
-		metricCiscoOpticsRxPower:             newMetricCiscoOpticsRxPower(mbc.Metrics.CiscoOpticsRxPower),
-		metricCiscoOpticsTdecq:               newMetricCiscoOpticsTdecq(mbc.Metrics.CiscoOpticsTdecq),
-		metricCiscoOpticsTecCurrent:          newMetricCiscoOpticsTecCurrent(mbc.Metrics.CiscoOpticsTecCurrent),
-		metricCiscoOpticsTecUtilization:      newMetricCiscoOpticsTecUtilization(mbc.Metrics.CiscoOpticsTecUtilization),
-		metricCiscoOpticsTemperature:         newMetricCiscoOpticsTemperature(mbc.Metrics.CiscoOpticsTemperature),
-		metricCiscoOpticsTxPower:             newMetricCiscoOpticsTxPower(mbc.Metrics.CiscoOpticsTxPower),
-		metricCiscoOpticsVoltage:             newMetricCiscoOpticsVoltage(mbc.Metrics.CiscoOpticsVoltage),
-		metricSystemCPUUtilization:           newMetricSystemCPUUtilization(mbc.Metrics.SystemCPUUtilization),
-		metricSystemMemoryUtilization:        newMetricSystemMemoryUtilization(mbc.Metrics.SystemMemoryUtilization),
-		metricSystemNetworkErrors:            newMetricSystemNetworkErrors(mbc.Metrics.SystemNetworkErrors),
-		metricSystemNetworkInterfaceStatus:   newMetricSystemNetworkInterfaceStatus(mbc.Metrics.SystemNetworkInterfaceStatus),
-		metricSystemNetworkIo:                newMetricSystemNetworkIo(mbc.Metrics.SystemNetworkIo),
-		metricSystemNetworkPacketCount:       newMetricSystemNetworkPacketCount(mbc.Metrics.SystemNetworkPacketCount),
-		metricSystemNetworkPacketDropped:     newMetricSystemNetworkPacketDropped(mbc.Metrics.SystemNetworkPacketDropped),
-		metricSystemUptime:                   newMetricSystemUptime(mbc.Metrics.SystemUptime),
-		resourceAttributeIncludeFilter:       make(map[string]filter.Filter),
-		resourceAttributeExcludeFilter:       make(map[string]filter.Filter),
+		config:                             mbc,
+		startTime:                          pcommon.NewTimestampFromTime(time.Now()),
+		metricsBuffer:                      pmetric.NewMetrics(),
+		buildInfo:                          settings.BuildInfo,
+		metricCiscoDeviceUp:                newMetricCiscoDeviceUp(mbc.Metrics.CiscoDeviceUp),
+		metricCiscoInterfaceAdminStatus:    newMetricCiscoInterfaceAdminStatus(mbc.Metrics.CiscoInterfaceAdminStatus),
+		metricCiscoInterfaceIoRate:         newMetricCiscoInterfaceIoRate(mbc.Metrics.CiscoInterfaceIoRate),
+		metricCiscoInterfacePacketRate:     newMetricCiscoInterfacePacketRate(mbc.Metrics.CiscoInterfacePacketRate),
+		metricCiscoInterfaceSpeed:          newMetricCiscoInterfaceSpeed(mbc.Metrics.CiscoInterfaceSpeed),
+		metricCiscoInterfaceUtilization:    newMetricCiscoInterfaceUtilization(mbc.Metrics.CiscoInterfaceUtilization),
+		metricCiscoOpticsEsnr:              newMetricCiscoOpticsEsnr(mbc.Metrics.CiscoOpticsEsnr),
+		metricCiscoOpticsLaserBiasCurrent:  newMetricCiscoOpticsLaserBiasCurrent(mbc.Metrics.CiscoOpticsLaserBiasCurrent),
+		metricCiscoOpticsPreFecBer:         newMetricCiscoOpticsPreFecBer(mbc.Metrics.CiscoOpticsPreFecBer),
+		metricCiscoOpticsPresent:           newMetricCiscoOpticsPresent(mbc.Metrics.CiscoOpticsPresent),
+		metricCiscoOpticsRxPower:           newMetricCiscoOpticsRxPower(mbc.Metrics.CiscoOpticsRxPower),
+		metricCiscoOpticsTdecq:             newMetricCiscoOpticsTdecq(mbc.Metrics.CiscoOpticsTdecq),
+		metricCiscoOpticsTecCurrent:        newMetricCiscoOpticsTecCurrent(mbc.Metrics.CiscoOpticsTecCurrent),
+		metricCiscoOpticsTecUtilization:    newMetricCiscoOpticsTecUtilization(mbc.Metrics.CiscoOpticsTecUtilization),
+		metricCiscoOpticsTemperature:       newMetricCiscoOpticsTemperature(mbc.Metrics.CiscoOpticsTemperature),
+		metricCiscoOpticsTxPower:           newMetricCiscoOpticsTxPower(mbc.Metrics.CiscoOpticsTxPower),
+		metricCiscoOpticsVoltage:           newMetricCiscoOpticsVoltage(mbc.Metrics.CiscoOpticsVoltage),
+		metricSystemCPUUtilization:         newMetricSystemCPUUtilization(mbc.Metrics.SystemCPUUtilization),
+		metricSystemMemoryUtilization:      newMetricSystemMemoryUtilization(mbc.Metrics.SystemMemoryUtilization),
+		metricSystemNetworkErrors:          newMetricSystemNetworkErrors(mbc.Metrics.SystemNetworkErrors),
+		metricSystemNetworkInterfaceStatus: newMetricSystemNetworkInterfaceStatus(mbc.Metrics.SystemNetworkInterfaceStatus),
+		metricSystemNetworkIo:              newMetricSystemNetworkIo(mbc.Metrics.SystemNetworkIo),
+		metricSystemNetworkPacketCount:     newMetricSystemNetworkPacketCount(mbc.Metrics.SystemNetworkPacketCount),
+		metricSystemNetworkPacketDropped:   newMetricSystemNetworkPacketDropped(mbc.Metrics.SystemNetworkPacketDropped),
+		metricSystemUptime:                 newMetricSystemUptime(mbc.Metrics.SystemUptime),
+		resourceAttributeIncludeFilter:     make(map[string]filter.Filter),
+		resourceAttributeExcludeFilter:     make(map[string]filter.Filter),
 	}
 	if mbc.ResourceAttributes.CiscoOsName.MetricsInclude != nil {
 		mb.resourceAttributeIncludeFilter["cisco.os.name"] = filter.CreateFilter(mbc.ResourceAttributes.CiscoOsName.MetricsInclude)
@@ -3142,11 +2757,29 @@ func NewMetricsBuilder(mbc MetricsBuilderConfig, settings receiver.Settings, opt
 	if mbc.ResourceAttributes.CiscoPlatformFamily.MetricsExclude != nil {
 		mb.resourceAttributeExcludeFilter["cisco.platform.family"] = filter.CreateFilter(mbc.ResourceAttributes.CiscoPlatformFamily.MetricsExclude)
 	}
+	if mbc.ResourceAttributes.CiscoProductFamily.MetricsInclude != nil {
+		mb.resourceAttributeIncludeFilter["cisco.product.family"] = filter.CreateFilter(mbc.ResourceAttributes.CiscoProductFamily.MetricsInclude)
+	}
+	if mbc.ResourceAttributes.CiscoProductFamily.MetricsExclude != nil {
+		mb.resourceAttributeExcludeFilter["cisco.product.family"] = filter.CreateFilter(mbc.ResourceAttributes.CiscoProductFamily.MetricsExclude)
+	}
 	if mbc.ResourceAttributes.CiscoTelemetryTransport.MetricsInclude != nil {
 		mb.resourceAttributeIncludeFilter["cisco.telemetry.transport"] = filter.CreateFilter(mbc.ResourceAttributes.CiscoTelemetryTransport.MetricsInclude)
 	}
 	if mbc.ResourceAttributes.CiscoTelemetryTransport.MetricsExclude != nil {
 		mb.resourceAttributeExcludeFilter["cisco.telemetry.transport"] = filter.CreateFilter(mbc.ResourceAttributes.CiscoTelemetryTransport.MetricsExclude)
+	}
+	if mbc.ResourceAttributes.DeviceManufacturer.MetricsInclude != nil {
+		mb.resourceAttributeIncludeFilter["device.manufacturer"] = filter.CreateFilter(mbc.ResourceAttributes.DeviceManufacturer.MetricsInclude)
+	}
+	if mbc.ResourceAttributes.DeviceManufacturer.MetricsExclude != nil {
+		mb.resourceAttributeExcludeFilter["device.manufacturer"] = filter.CreateFilter(mbc.ResourceAttributes.DeviceManufacturer.MetricsExclude)
+	}
+	if mbc.ResourceAttributes.DeviceModelIdentifier.MetricsInclude != nil {
+		mb.resourceAttributeIncludeFilter["device.model.identifier"] = filter.CreateFilter(mbc.ResourceAttributes.DeviceModelIdentifier.MetricsInclude)
+	}
+	if mbc.ResourceAttributes.DeviceModelIdentifier.MetricsExclude != nil {
+		mb.resourceAttributeExcludeFilter["device.model.identifier"] = filter.CreateFilter(mbc.ResourceAttributes.DeviceModelIdentifier.MetricsExclude)
 	}
 	if mbc.ResourceAttributes.HostID.MetricsInclude != nil {
 		mb.resourceAttributeIncludeFilter["host.id"] = filter.CreateFilter(mbc.ResourceAttributes.HostID.MetricsInclude)
@@ -3177,6 +2810,12 @@ func NewMetricsBuilder(mbc MetricsBuilderConfig, settings receiver.Settings, opt
 	}
 	if mbc.ResourceAttributes.OsName.MetricsExclude != nil {
 		mb.resourceAttributeExcludeFilter["os.name"] = filter.CreateFilter(mbc.ResourceAttributes.OsName.MetricsExclude)
+	}
+	if mbc.ResourceAttributes.OsVersion.MetricsInclude != nil {
+		mb.resourceAttributeIncludeFilter["os.version"] = filter.CreateFilter(mbc.ResourceAttributes.OsVersion.MetricsInclude)
+	}
+	if mbc.ResourceAttributes.OsVersion.MetricsExclude != nil {
+		mb.resourceAttributeExcludeFilter["os.version"] = filter.CreateFilter(mbc.ResourceAttributes.OsVersion.MetricsExclude)
 	}
 
 	for _, op := range options {
@@ -3253,15 +2892,10 @@ func (mb *MetricsBuilder) EmitForResource(options ...ResourceMetricsOption) {
 	mb.metricCiscoInterfacePacketRate.emit(ils.Metrics())
 	mb.metricCiscoInterfaceSpeed.emit(ils.Metrics())
 	mb.metricCiscoInterfaceUtilization.emit(ils.Metrics())
-	mb.metricCiscoOpticsChromaticDispersion.emit(ils.Metrics())
-	mb.metricCiscoOpticsDgd.emit(ils.Metrics())
 	mb.metricCiscoOpticsEsnr.emit(ils.Metrics())
 	mb.metricCiscoOpticsLaserBiasCurrent.emit(ils.Metrics())
-	mb.metricCiscoOpticsOsnr.emit(ils.Metrics())
 	mb.metricCiscoOpticsPreFecBer.emit(ils.Metrics())
 	mb.metricCiscoOpticsPresent.emit(ils.Metrics())
-	mb.metricCiscoOpticsQFactor.emit(ils.Metrics())
-	mb.metricCiscoOpticsQMargin.emit(ils.Metrics())
 	mb.metricCiscoOpticsRxPower.emit(ils.Metrics())
 	mb.metricCiscoOpticsTdecq.emit(ils.Metrics())
 	mb.metricCiscoOpticsTecCurrent.emit(ils.Metrics())
@@ -3338,16 +2972,6 @@ func (mb *MetricsBuilder) RecordCiscoInterfaceUtilizationDataPoint(ts pcommon.Ti
 	mb.metricCiscoInterfaceUtilization.recordDataPoint(mb.startTime, ts, val, networkIoDirectionAttributeValue.String(), networkInterfaceNameAttributeValue)
 }
 
-// RecordCiscoOpticsChromaticDispersionDataPoint adds a data point to cisco.optics.chromatic_dispersion metric.
-func (mb *MetricsBuilder) RecordCiscoOpticsChromaticDispersionDataPoint(ts pcommon.Timestamp, val float64, networkInterfaceNameAttributeValue string, ciscoOpticsLaneAttributeValue string, ciscoOpticsSensorAttributeValue string, ciscoOpticsProfileAttributeValue AttributeCiscoOpticsProfile, ciscoOpticsExperimentalAttributeValue bool) {
-	mb.metricCiscoOpticsChromaticDispersion.recordDataPoint(mb.startTime, ts, val, networkInterfaceNameAttributeValue, ciscoOpticsLaneAttributeValue, ciscoOpticsSensorAttributeValue, ciscoOpticsProfileAttributeValue.String(), ciscoOpticsExperimentalAttributeValue)
-}
-
-// RecordCiscoOpticsDgdDataPoint adds a data point to cisco.optics.dgd metric.
-func (mb *MetricsBuilder) RecordCiscoOpticsDgdDataPoint(ts pcommon.Timestamp, val float64, networkInterfaceNameAttributeValue string, ciscoOpticsLaneAttributeValue string, ciscoOpticsSensorAttributeValue string, ciscoOpticsProfileAttributeValue AttributeCiscoOpticsProfile, ciscoOpticsExperimentalAttributeValue bool) {
-	mb.metricCiscoOpticsDgd.recordDataPoint(mb.startTime, ts, val, networkInterfaceNameAttributeValue, ciscoOpticsLaneAttributeValue, ciscoOpticsSensorAttributeValue, ciscoOpticsProfileAttributeValue.String(), ciscoOpticsExperimentalAttributeValue)
-}
-
 // RecordCiscoOpticsEsnrDataPoint adds a data point to cisco.optics.esnr metric.
 func (mb *MetricsBuilder) RecordCiscoOpticsEsnrDataPoint(ts pcommon.Timestamp, val float64, networkInterfaceNameAttributeValue string, ciscoOpticsLaneAttributeValue string, ciscoOpticsSensorAttributeValue string, ciscoOpticsProfileAttributeValue AttributeCiscoOpticsProfile, ciscoOpticsExperimentalAttributeValue bool) {
 	mb.metricCiscoOpticsEsnr.recordDataPoint(mb.startTime, ts, val, networkInterfaceNameAttributeValue, ciscoOpticsLaneAttributeValue, ciscoOpticsSensorAttributeValue, ciscoOpticsProfileAttributeValue.String(), ciscoOpticsExperimentalAttributeValue)
@@ -3358,11 +2982,6 @@ func (mb *MetricsBuilder) RecordCiscoOpticsLaserBiasCurrentDataPoint(ts pcommon.
 	mb.metricCiscoOpticsLaserBiasCurrent.recordDataPoint(mb.startTime, ts, val, networkInterfaceNameAttributeValue, ciscoOpticsLaneAttributeValue, ciscoOpticsSensorAttributeValue, ciscoOpticsProfileAttributeValue.String(), ciscoOpticsExperimentalAttributeValue)
 }
 
-// RecordCiscoOpticsOsnrDataPoint adds a data point to cisco.optics.osnr metric.
-func (mb *MetricsBuilder) RecordCiscoOpticsOsnrDataPoint(ts pcommon.Timestamp, val float64, networkInterfaceNameAttributeValue string, ciscoOpticsLaneAttributeValue string, ciscoOpticsSensorAttributeValue string, ciscoOpticsProfileAttributeValue AttributeCiscoOpticsProfile, ciscoOpticsExperimentalAttributeValue bool) {
-	mb.metricCiscoOpticsOsnr.recordDataPoint(mb.startTime, ts, val, networkInterfaceNameAttributeValue, ciscoOpticsLaneAttributeValue, ciscoOpticsSensorAttributeValue, ciscoOpticsProfileAttributeValue.String(), ciscoOpticsExperimentalAttributeValue)
-}
-
 // RecordCiscoOpticsPreFecBerDataPoint adds a data point to cisco.optics.pre_fec_ber metric.
 func (mb *MetricsBuilder) RecordCiscoOpticsPreFecBerDataPoint(ts pcommon.Timestamp, val float64, networkInterfaceNameAttributeValue string, ciscoOpticsLaneAttributeValue string, ciscoOpticsSensorAttributeValue string, ciscoOpticsProfileAttributeValue AttributeCiscoOpticsProfile, ciscoOpticsExperimentalAttributeValue bool) {
 	mb.metricCiscoOpticsPreFecBer.recordDataPoint(mb.startTime, ts, val, networkInterfaceNameAttributeValue, ciscoOpticsLaneAttributeValue, ciscoOpticsSensorAttributeValue, ciscoOpticsProfileAttributeValue.String(), ciscoOpticsExperimentalAttributeValue)
@@ -3371,16 +2990,6 @@ func (mb *MetricsBuilder) RecordCiscoOpticsPreFecBerDataPoint(ts pcommon.Timesta
 // RecordCiscoOpticsPresentDataPoint adds a data point to cisco.optics.present metric.
 func (mb *MetricsBuilder) RecordCiscoOpticsPresentDataPoint(ts pcommon.Timestamp, val int64, networkInterfaceNameAttributeValue string, ciscoOpticsLaneAttributeValue string, ciscoOpticsProfileAttributeValue AttributeCiscoOpticsProfile, ciscoOpticsExperimentalAttributeValue bool) {
 	mb.metricCiscoOpticsPresent.recordDataPoint(mb.startTime, ts, val, networkInterfaceNameAttributeValue, ciscoOpticsLaneAttributeValue, ciscoOpticsProfileAttributeValue.String(), ciscoOpticsExperimentalAttributeValue)
-}
-
-// RecordCiscoOpticsQFactorDataPoint adds a data point to cisco.optics.q_factor metric.
-func (mb *MetricsBuilder) RecordCiscoOpticsQFactorDataPoint(ts pcommon.Timestamp, val float64, networkInterfaceNameAttributeValue string, ciscoOpticsLaneAttributeValue string, ciscoOpticsSensorAttributeValue string, ciscoOpticsProfileAttributeValue AttributeCiscoOpticsProfile, ciscoOpticsExperimentalAttributeValue bool) {
-	mb.metricCiscoOpticsQFactor.recordDataPoint(mb.startTime, ts, val, networkInterfaceNameAttributeValue, ciscoOpticsLaneAttributeValue, ciscoOpticsSensorAttributeValue, ciscoOpticsProfileAttributeValue.String(), ciscoOpticsExperimentalAttributeValue)
-}
-
-// RecordCiscoOpticsQMarginDataPoint adds a data point to cisco.optics.q_margin metric.
-func (mb *MetricsBuilder) RecordCiscoOpticsQMarginDataPoint(ts pcommon.Timestamp, val float64, networkInterfaceNameAttributeValue string, ciscoOpticsLaneAttributeValue string, ciscoOpticsSensorAttributeValue string, ciscoOpticsProfileAttributeValue AttributeCiscoOpticsProfile, ciscoOpticsExperimentalAttributeValue bool) {
-	mb.metricCiscoOpticsQMargin.recordDataPoint(mb.startTime, ts, val, networkInterfaceNameAttributeValue, ciscoOpticsLaneAttributeValue, ciscoOpticsSensorAttributeValue, ciscoOpticsProfileAttributeValue.String(), ciscoOpticsExperimentalAttributeValue)
 }
 
 // RecordCiscoOpticsRxPowerDataPoint adds a data point to cisco.optics.rx_power metric.
@@ -3419,13 +3028,13 @@ func (mb *MetricsBuilder) RecordCiscoOpticsVoltageDataPoint(ts pcommon.Timestamp
 }
 
 // RecordSystemCPUUtilizationDataPoint adds a data point to system.cpu.utilization metric.
-func (mb *MetricsBuilder) RecordSystemCPUUtilizationDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricSystemCPUUtilization.recordDataPoint(mb.startTime, ts, val)
+func (mb *MetricsBuilder) RecordSystemCPUUtilizationDataPoint(ts pcommon.Timestamp, val float64, ciscoNodeNameAttributeValue string) {
+	mb.metricSystemCPUUtilization.recordDataPoint(mb.startTime, ts, val, ciscoNodeNameAttributeValue)
 }
 
 // RecordSystemMemoryUtilizationDataPoint adds a data point to system.memory.utilization metric.
-func (mb *MetricsBuilder) RecordSystemMemoryUtilizationDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricSystemMemoryUtilization.recordDataPoint(mb.startTime, ts, val)
+func (mb *MetricsBuilder) RecordSystemMemoryUtilizationDataPoint(ts pcommon.Timestamp, val float64, ciscoLocationFruAttributeValue string, ciscoLocationSlotAttributeValue string, ciscoLocationBayAttributeValue string, ciscoLocationChassisAttributeValue string) {
+	mb.metricSystemMemoryUtilization.recordDataPoint(mb.startTime, ts, val, ciscoLocationFruAttributeValue, ciscoLocationSlotAttributeValue, ciscoLocationBayAttributeValue, ciscoLocationChassisAttributeValue)
 }
 
 // RecordSystemNetworkErrorsDataPoint adds a data point to system.network.errors metric.

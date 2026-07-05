@@ -8,12 +8,15 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"net/netip"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
+	gnmipb "github.com/openconfig/gnmi/proto/gnmi"
 	"go.opentelemetry.io/collector/config/configopaque"
 	"go.uber.org/multierr"
 
@@ -33,6 +36,10 @@ const (
 	gnmiModeOnce   = "once"
 	gnmiModePoll   = "poll"
 
+	gnmiStreamModeSample        = "sample"
+	gnmiStreamModeOnChange      = "on_change"
+	gnmiStreamModeTargetDefined = "target_defined"
+
 	// grpc-go buffers the frame before the forced response codec can scan its
 	// wire complexity and build protobuf objects. Keep a hard frame ceiling
 	// aligned with the receiver's other network payload limits to prevent
@@ -42,6 +49,22 @@ const (
 	gnmiMaximumCachedSeries   = 500_000
 	gnmiMaximumTargets        = 256
 	gnmiMaximumInFlightMiB    = 512
+
+	// Custom plans are configuration-owned rather than device-owned, but they
+	// still allocate request protobufs and mapping registries outside the state
+	// cache. Bound both each stream and the complete receiver configuration so a
+	// single syntactically valid stream cannot bypass the runtime memory budgets.
+	gnmiMaximumCustomSubscriptionsPerTarget  = 8
+	gnmiMaximumCustomPathsPerSubscription    = 256
+	gnmiMaximumCustomMappingsPerSubscription = 1_024
+	gnmiMaximumCustomModelsPerSubscription   = 32
+	gnmiMaximumCustomMappingAttributes       = 64
+	gnmiMaximumEncodingPreferences           = 3
+	gnmiMaximumProfilePathOverrides          = 64
+	gnmiMaximumCustomPaths                   = 4_096
+	gnmiMaximumCustomMappings                = 16_384
+	gnmiMaximumProfilePathOverridesTotal     = 4_096
+	gnmiMaximumCustomConfigurationBytes      = 64 * 1024 * 1024
 )
 
 var (
@@ -83,9 +106,9 @@ type GNMICredentialsConfig struct {
 	Password configopaque.String `mapstructure:"password"`
 }
 
-// GNMITLSConfig exposes only verified TLS settings used by the shared client.
-// The insecure fields are retained solely so configuration validation can
-// reject them with a specific error rather than silently accepting them.
+// GNMITLSConfig exposes the TLS settings used by the shared client. Plaintext
+// transport is always rejected. Certificate verification can be disabled only
+// through the explicit lab-oriented InsecureSkipVerify option.
 type GNMITLSConfig struct {
 	_ struct{} `mapstructure:"-"`
 
@@ -109,14 +132,50 @@ type GNMIKeepaliveConfig struct {
 	PermitWithoutStream *bool         `mapstructure:"permit_without_stream"`
 }
 
+// GNMIPathOptionsConfig controls how one path behaves within a STREAM
+// SubscriptionList. Pointer fields preserve omission, including the gNMI
+// SAMPLE convention where an explicit zero requests the fastest supported
+// interval.
+type GNMIPathOptionsConfig struct {
+	_ struct{} `mapstructure:"-"`
+
+	StreamMode        string         `mapstructure:"stream_mode"`
+	SampleInterval    *time.Duration `mapstructure:"sample_interval"`
+	HeartbeatInterval *time.Duration `mapstructure:"heartbeat_interval"`
+	SuppressRedundant *bool          `mapstructure:"suppress_redundant"`
+}
+
+// GNMISubscriptionPathConfig is one explicit custom subscription selector.
+// The selector may be an ancestor of one or more mapped scalar leaves.
+type GNMISubscriptionPathConfig struct {
+	_ struct{} `mapstructure:"-"`
+
+	Path                  string `mapstructure:"path"`
+	GNMIPathOptionsConfig `mapstructure:",squash"`
+}
+
+// GNMIExtensionsConfig contains the bounded, read-only gNMI extensions
+// supported by this receiver.
+type GNMIExtensionsConfig struct {
+	_ struct{} `mapstructure:"-"`
+
+	Depth *uint32 `mapstructure:"depth"`
+}
+
 // GNMIProfileConfig controls one curated subscription profile. Pointer booleans
 // preserve the distinction between an omitted value and enabled: false.
 type GNMIProfileConfig struct {
 	_ struct{} `mapstructure:"-"`
 
-	Enabled        *bool         `mapstructure:"enabled"`
-	Required       bool          `mapstructure:"required"`
-	SampleInterval time.Duration `mapstructure:"sample_interval"`
+	Enabled            *bool                            `mapstructure:"enabled"`
+	Required           bool                             `mapstructure:"required"`
+	SampleInterval     time.Duration                    `mapstructure:"sample_interval"`
+	EncodingPreference []string                         `mapstructure:"encoding_preference"`
+	UpdatesOnly        bool                             `mapstructure:"updates_only"`
+	AllowAggregation   bool                             `mapstructure:"allow_aggregation"`
+	QoSMarking         *uint32                          `mapstructure:"qos_marking"`
+	GNMIExtensions     GNMIExtensionsConfig             `mapstructure:"gnmi_extensions"`
+	PathOverrides      map[string]GNMIPathOptionsConfig `mapstructure:"path_overrides"`
 }
 
 // GNMIProfilesConfig contains the normalized profile set.
@@ -146,25 +205,49 @@ type GNMIMetricMappingConfig struct {
 
 // GNMICustomSubscriptionConfig defines explicitly mapped custom scalar paths.
 // Origin is independent of every path; raw origin:path strings are rejected by
-// the path parser.
+// the path parser. PathTarget is decoder-only and always rejected because every
+// qualified direct-device product contract forbids proxy target prefixes.
 type GNMICustomSubscriptionConfig struct {
 	_ struct{} `mapstructure:"-"`
 
-	Name           string                    `mapstructure:"name"`
-	Origin         string                    `mapstructure:"origin"`
-	Mode           string                    `mapstructure:"mode"`
-	SampleInterval time.Duration             `mapstructure:"sample_interval"`
-	PollInterval   time.Duration             `mapstructure:"poll_interval"`
-	Required       bool                      `mapstructure:"required"`
-	Mappings       []GNMIMetricMappingConfig `mapstructure:"mappings"`
+	Name string `mapstructure:"name"`
+	// PathTarget is a decoder-only migration field retained so validation can
+	// return an actionable error. It is never added to a qualified request.
+	PathTarget string `mapstructure:"path_target"`
+	Origin     string `mapstructure:"origin"`
+	// Models lists exact Capabilities ModelData names required by this stream.
+	// It is mandatory for the generic OpenConfig origin because that origin is
+	// not itself a YANG module name.
+	Models             []string                     `mapstructure:"models"`
+	Mode               string                       `mapstructure:"mode"`
+	SampleInterval     time.Duration                `mapstructure:"sample_interval"`
+	PollInterval       time.Duration                `mapstructure:"poll_interval"`
+	Required           bool                         `mapstructure:"required"`
+	EncodingPreference []string                     `mapstructure:"encoding_preference"`
+	UpdatesOnly        bool                         `mapstructure:"updates_only"`
+	AllowAggregation   bool                         `mapstructure:"allow_aggregation"`
+	QoSMarking         *uint32                      `mapstructure:"qos_marking"`
+	GNMIExtensions     GNMIExtensionsConfig         `mapstructure:"gnmi_extensions"`
+	Paths              []GNMISubscriptionPathConfig `mapstructure:"paths"`
+	Mappings           []GNMIMetricMappingConfig    `mapstructure:"mappings"`
 }
 
 // GNMITargetConfig identifies one statically owned dial-in target.
 type GNMITargetConfig struct {
 	_ struct{} `mapstructure:"-"`
 
-	Name                string                         `mapstructure:"name"`
-	Endpoint            string                         `mapstructure:"endpoint"`
+	Name string `mapstructure:"name"`
+	// Endpoint is a direct-device TCP endpoint in strict host:port form.
+	Endpoint string `mapstructure:"endpoint"`
+	// Product is one of the canonical product contracts: catalyst_9800,
+	// asr_9000, ncs_5500, nexus_9000, or nexus_3500.
+	Product string `mapstructure:"product"`
+	// SoftwareVersion is the exact expected running build. Its canonical form
+	// must match the version observed during product identity preflight.
+	SoftwareVersion string `mapstructure:"software_version"`
+	// Platform remains decoder-only so configurations from the OS-family
+	// preview receive an actionable migration error instead of an unknown-key
+	// diagnostic. It is never used to select profiles or runtime behavior.
 	Platform            string                         `mapstructure:"platform"`
 	MaxRecvMsgSizeMiB   int                            `mapstructure:"max_recv_msg_size_mib"`
 	MaxStreams          int                            `mapstructure:"max_streams"`
@@ -173,6 +256,7 @@ type GNMITargetConfig struct {
 	Credentials         GNMICredentialsConfig          `mapstructure:"credentials"`
 	TLS                 GNMITLSConfig                  `mapstructure:"tls"`
 	Keepalive           GNMIKeepaliveConfig            `mapstructure:"keepalive"`
+	EncodingPreference  []string                       `mapstructure:"encoding_preference"`
 	Profiles            GNMIProfilesConfig             `mapstructure:"profiles"`
 	CustomSubscriptions []GNMICustomSubscriptionConfig `mapstructure:"custom_subscriptions"`
 }
@@ -192,6 +276,404 @@ func defaultGNMIConfig() GNMIConfig {
 
 func (cfg GNMIConfig) hasTargets() bool { return len(cfg.Targets) > 0 }
 
+// canonicalGNMIDialInEndpoint validates the deliberately narrow direct-device
+// address contract and returns a comparison key. The original endpoint remains
+// untouched for dialing and TLS/SNI behavior.
+func canonicalGNMIDialInEndpoint(raw string) (string, error) {
+	if raw == "" || strings.TrimSpace(raw) != raw {
+		return "", errors.New("must be host:port without surrounding whitespace")
+	}
+	host, rawPort, err := net.SplitHostPort(raw)
+	if err != nil {
+		return "", fmt.Errorf("must be host:port: %w", err)
+	}
+	if host == "" || strings.TrimSpace(host) != host || strings.IndexFunc(host, func(character rune) bool {
+		return unicode.IsSpace(character) || unicode.IsControl(character)
+	}) >= 0 {
+		return "", errors.New("must contain a non-empty host without whitespace or control characters")
+	}
+	for _, character := range rawPort {
+		if character < '0' || character > '9' {
+			return "", errors.New("must contain a numeric port between 1 and 65535")
+		}
+	}
+	port, err := strconv.ParseUint(rawPort, 10, 16)
+	if err != nil || port == 0 {
+		return "", errors.New("must contain a numeric port between 1 and 65535")
+	}
+
+	var canonicalHost string
+	if address, parseErr := netip.ParseAddr(host); parseErr == nil {
+		if address.Zone() != "" {
+			return "", errors.New("must not use a scoped IPv6 zone")
+		}
+		address = address.Unmap()
+		if address.IsUnspecified() {
+			return "", errors.New("must not use an unspecified IP address")
+		}
+		canonicalHost = address.String()
+	} else {
+		canonicalHost, err = canonicalGNMIHostname(host)
+		if err != nil {
+			return "", err
+		}
+	}
+	return net.JoinHostPort(canonicalHost, strconv.FormatUint(port, 10)), nil
+}
+
+func canonicalGNMIHostname(host string) (string, error) {
+	if strings.Contains(host, ":") {
+		return "", errors.New("must contain a valid IP address or DNS hostname")
+	}
+	canonical := strings.ToLower(strings.TrimSuffix(host, "."))
+	if legacyNumericIPv4Hostname(canonical) {
+		return "", errors.New("must use canonical dotted-decimal syntax for an IPv4 address")
+	}
+	if canonical == "" || len(canonical) > 253 {
+		return "", errors.New("must contain a valid DNS hostname of at most 253 bytes")
+	}
+	for label := range strings.SplitSeq(canonical, ".") {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return "", errors.New("must contain a valid DNS hostname")
+		}
+		for _, character := range label {
+			if (character < 'a' || character > 'z') &&
+				(character < '0' || character > '9') && character != '-' {
+				return "", errors.New("must contain a valid DNS hostname")
+			}
+		}
+	}
+	return canonical, nil
+}
+
+// legacyNumericIPv4Hostname detects resolver-dependent IPv4 spellings such as
+// 127.1, 2130706433, 0177.0.0.1, and 0x7f000001. Treating these as DNS names
+// would let endpoint ownership validation disagree with the OS resolver.
+func legacyNumericIPv4Hostname(host string) bool {
+	parts := strings.Split(host, ".")
+	if len(parts) == 0 || len(parts) > 4 {
+		return false
+	}
+	for _, part := range parts {
+		if part == "" {
+			return false
+		}
+		digits := part
+		base := 10
+		if len(part) > 2 && strings.HasPrefix(part, "0x") {
+			digits = part[2:]
+			base = 16
+		}
+		if digits == "" {
+			return false
+		}
+		for _, character := range digits {
+			if (character < '0' || character > '9') &&
+				(base != 16 || character < 'a' || character > 'f') {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+type gnmiConfigurationShapeLimits struct {
+	customSubscriptionsPerTarget  int
+	customPathsPerSubscription    int
+	customMappingsPerSubscription int
+	customModelsPerSubscription   int
+	customMappingAttributes       int
+	encodingPreferences           int
+	profilePathOverrides          int
+	customPaths                   int
+	customMappings                int
+	profilePathOverridesTotal     int
+	customConfigurationBytes      uint64
+}
+
+func defaultGNMIConfigurationShapeLimits() gnmiConfigurationShapeLimits {
+	return gnmiConfigurationShapeLimits{
+		customSubscriptionsPerTarget:  gnmiMaximumCustomSubscriptionsPerTarget,
+		customPathsPerSubscription:    gnmiMaximumCustomPathsPerSubscription,
+		customMappingsPerSubscription: gnmiMaximumCustomMappingsPerSubscription,
+		customModelsPerSubscription:   gnmiMaximumCustomModelsPerSubscription,
+		customMappingAttributes:       gnmiMaximumCustomMappingAttributes,
+		encodingPreferences:           gnmiMaximumEncodingPreferences,
+		profilePathOverrides:          gnmiMaximumProfilePathOverrides,
+		customPaths:                   gnmiMaximumCustomPaths,
+		customMappings:                gnmiMaximumCustomMappings,
+		profilePathOverridesTotal:     gnmiMaximumProfilePathOverridesTotal,
+		customConfigurationBytes:      gnmiMaximumCustomConfigurationBytes,
+	}
+}
+
+func validateGNMIConfigurationShape(targets []GNMITargetConfig) error {
+	return validateGNMIConfigurationShapeWithLimits(targets, defaultGNMIConfigurationShapeLimits())
+}
+
+func validateGNMIConfigurationShapeWithLimits(targets []GNMITargetConfig, limits gnmiConfigurationShapeLimits) error {
+	if limits.customSubscriptionsPerTarget <= 0 || limits.customPathsPerSubscription <= 0 ||
+		limits.customMappingsPerSubscription <= 0 || limits.customModelsPerSubscription <= 0 || limits.customMappingAttributes <= 0 ||
+		limits.encodingPreferences <= 0 || limits.profilePathOverrides <= 0 || limits.customPaths <= 0 ||
+		limits.customMappings <= 0 || limits.profilePathOverridesTotal <= 0 || limits.customConfigurationBytes == 0 {
+		return errors.New("internal gNMI configuration shape limits must be positive")
+	}
+
+	customPaths := uint64(0)
+	customMappings := uint64(0)
+	profilePathOverrides := uint64(0)
+	for targetIndex := range targets {
+		target := &targets[targetIndex]
+		targetPrefix := fmt.Sprintf("gnmi.targets[%d]", targetIndex)
+		if len(target.EncodingPreference) > limits.encodingPreferences {
+			return fmt.Errorf("%s.encoding_preference must contain at most %d entries", targetPrefix, limits.encodingPreferences)
+		}
+		if len(target.CustomSubscriptions) > limits.customSubscriptionsPerTarget {
+			return fmt.Errorf("%s.custom_subscriptions must contain at most %d entries", targetPrefix, limits.customSubscriptionsPerTarget)
+		}
+
+		profiles := []struct {
+			name   string
+			config *GNMIProfileConfig
+		}{
+			{name: builtinGNMIProfileIdentity, config: &target.Profiles.Identity},
+			{name: builtinGNMIProfileSystem, config: &target.Profiles.System},
+			{name: builtinGNMIProfileInterfaces, config: &target.Profiles.Interfaces},
+			{name: builtinGNMIProfileOptics, config: &target.Profiles.Optics},
+			{name: builtinGNMIProfileCatalyst9800Wireless, config: &target.Profiles.Catalyst9800Wireless},
+		}
+		for _, profile := range profiles {
+			profilePrefix := targetPrefix + ".profiles." + profile.name
+			if len(profile.config.EncodingPreference) > limits.encodingPreferences {
+				return fmt.Errorf("%s.encoding_preference must contain at most %d entries", profilePrefix, limits.encodingPreferences)
+			}
+			if len(profile.config.PathOverrides) > limits.profilePathOverrides {
+				return fmt.Errorf("%s.path_overrides must contain at most %d entries", profilePrefix, limits.profilePathOverrides)
+			}
+			profilePathOverrides += uint64(len(profile.config.PathOverrides))
+			if profilePathOverrides > uint64(limits.profilePathOverridesTotal) {
+				return fmt.Errorf("gnmi profile path overrides must contain at most %d entries receiver-wide", limits.profilePathOverridesTotal)
+			}
+		}
+
+		for subscriptionIndex := range target.CustomSubscriptions {
+			subscription := &target.CustomSubscriptions[subscriptionIndex]
+			subscriptionPrefix := fmt.Sprintf("%s.custom_subscriptions[%d]", targetPrefix, subscriptionIndex)
+			if len(subscription.EncodingPreference) > limits.encodingPreferences {
+				return fmt.Errorf("%s.encoding_preference must contain at most %d entries", subscriptionPrefix, limits.encodingPreferences)
+			}
+			if len(subscription.Paths) > limits.customPathsPerSubscription {
+				return fmt.Errorf("%s.paths must contain at most %d entries", subscriptionPrefix, limits.customPathsPerSubscription)
+			}
+			if len(subscription.Mappings) > limits.customMappingsPerSubscription {
+				return fmt.Errorf("%s.mappings must contain at most %d entries", subscriptionPrefix, limits.customMappingsPerSubscription)
+			}
+			if len(subscription.Models) > limits.customModelsPerSubscription {
+				return fmt.Errorf("%s.models must contain at most %d entries", subscriptionPrefix, limits.customModelsPerSubscription)
+			}
+			effectivePaths := len(subscription.Paths)
+			if effectivePaths == 0 {
+				effectivePaths = len(subscription.Mappings)
+			}
+			if effectivePaths > limits.customPathsPerSubscription {
+				return fmt.Errorf("%s derives %d request paths; at most %d are allowed", subscriptionPrefix, effectivePaths, limits.customPathsPerSubscription)
+			}
+			customPaths += uint64(effectivePaths)
+			if customPaths > uint64(limits.customPaths) {
+				return fmt.Errorf("gnmi custom subscriptions must contain at most %d effective request paths receiver-wide", limits.customPaths)
+			}
+			customMappings += uint64(len(subscription.Mappings))
+			if customMappings > uint64(limits.customMappings) {
+				return fmt.Errorf("gnmi custom subscriptions must contain at most %d mappings receiver-wide", limits.customMappings)
+			}
+			for mappingIndex := range subscription.Mappings {
+				if len(subscription.Mappings[mappingIndex].PathKeys) > limits.customMappingAttributes {
+					return fmt.Errorf("%s.mappings[%d].path_keys must contain at most %d entries", subscriptionPrefix, mappingIndex, limits.customMappingAttributes)
+				}
+			}
+		}
+	}
+
+	configuredBytes := uint64(0)
+	addString := func(field, value string) error {
+		valueBytes := uint64(len(value))
+		if valueBytes > limits.customConfigurationBytes-configuredBytes {
+			return fmt.Errorf("gnmi custom subscription and profile plan strings exceed the receiver-wide limit of %d bytes at %s", limits.customConfigurationBytes, field)
+		}
+		configuredBytes += valueBytes
+		return nil
+	}
+	addStrings := func(field string, values []string) error {
+		for index, value := range values {
+			if err := addString(fmt.Sprintf("%s[%d]", field, index), value); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	for targetIndex := range targets {
+		target := &targets[targetIndex]
+		targetPrefix := fmt.Sprintf("gnmi.targets[%d]", targetIndex)
+		if err := addStrings(targetPrefix+".encoding_preference", target.EncodingPreference); err != nil {
+			return err
+		}
+		profiles := []struct {
+			name   string
+			config *GNMIProfileConfig
+		}{
+			{name: builtinGNMIProfileIdentity, config: &target.Profiles.Identity},
+			{name: builtinGNMIProfileSystem, config: &target.Profiles.System},
+			{name: builtinGNMIProfileInterfaces, config: &target.Profiles.Interfaces},
+			{name: builtinGNMIProfileOptics, config: &target.Profiles.Optics},
+			{name: builtinGNMIProfileCatalyst9800Wireless, config: &target.Profiles.Catalyst9800Wireless},
+		}
+		for _, profile := range profiles {
+			profilePrefix := targetPrefix + ".profiles." + profile.name
+			if err := addStrings(profilePrefix+".encoding_preference", profile.config.EncodingPreference); err != nil {
+				return err
+			}
+			paths := make([]string, 0, len(profile.config.PathOverrides))
+			for path := range profile.config.PathOverrides {
+				paths = append(paths, path)
+			}
+			sort.Strings(paths)
+			for _, path := range paths {
+				options := profile.config.PathOverrides[path]
+				if err := addString(profilePrefix+".path_overrides", path); err != nil {
+					return err
+				}
+				if err := addString(profilePrefix+".path_overrides.stream_mode", options.StreamMode); err != nil {
+					return err
+				}
+			}
+		}
+		for subscriptionIndex := range target.CustomSubscriptions {
+			subscription := &target.CustomSubscriptions[subscriptionIndex]
+			subscriptionPrefix := fmt.Sprintf("%s.custom_subscriptions[%d]", targetPrefix, subscriptionIndex)
+			for _, field := range []struct {
+				name  string
+				value string
+			}{
+				{name: "name", value: subscription.Name},
+				{name: "path_target", value: subscription.PathTarget},
+				{name: "origin", value: subscription.Origin},
+				{name: "mode", value: subscription.Mode},
+			} {
+				if err := addString(subscriptionPrefix+"."+field.name, field.value); err != nil {
+					return err
+				}
+			}
+			if err := addStrings(subscriptionPrefix+".encoding_preference", subscription.EncodingPreference); err != nil {
+				return err
+			}
+			if err := addStrings(subscriptionPrefix+".models", subscription.Models); err != nil {
+				return err
+			}
+			for pathIndex := range subscription.Paths {
+				pathPrefix := fmt.Sprintf("%s.paths[%d]", subscriptionPrefix, pathIndex)
+				if err := addString(pathPrefix+".path", subscription.Paths[pathIndex].Path); err != nil {
+					return err
+				}
+				if err := addString(pathPrefix+".stream_mode", subscription.Paths[pathIndex].StreamMode); err != nil {
+					return err
+				}
+			}
+			for mappingIndex := range subscription.Mappings {
+				mapping := &subscription.Mappings[mappingIndex]
+				mappingPrefix := fmt.Sprintf("%s.mappings[%d]", subscriptionPrefix, mappingIndex)
+				for _, field := range []struct {
+					name  string
+					value string
+				}{
+					{name: "path", value: mapping.Path},
+					{name: "metric_name", value: mapping.MetricName},
+					{name: "description", value: mapping.Description},
+					{name: "unit", value: mapping.Unit},
+					{name: "gauge_type", value: mapping.GaugeType},
+				} {
+					if err := addString(mappingPrefix+"."+field.name, field.value); err != nil {
+						return err
+					}
+				}
+				sources := make([]string, 0, len(mapping.PathKeys))
+				for source := range mapping.PathKeys {
+					sources = append(sources, source)
+				}
+				sort.Strings(sources)
+				for _, source := range sources {
+					attribute := mapping.PathKeys[source]
+					if err := addString(mappingPrefix+".path_keys.source", source); err != nil {
+						return err
+					}
+					if err := addString(mappingPrefix+".path_keys.attribute", attribute); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (cfg *Config) validateGNMIDialInEndpointOwnership() error {
+	type endpointDefinition struct {
+		prefix   string
+		endpoint string
+		legacy   string
+	}
+	definitions := make([]endpointDefinition, 0,
+		len(cfg.GNMI.Targets)+len(cfg.IOSXR.DialIn.Targets)+len(cfg.Catalyst9800.DialIn.Targets))
+	for index := range cfg.GNMI.Targets {
+		definitions = append(definitions, endpointDefinition{
+			prefix:   fmt.Sprintf("gnmi.targets[%d]", index),
+			endpoint: cfg.GNMI.Targets[index].Endpoint,
+		})
+	}
+	for index := range cfg.IOSXR.DialIn.Targets {
+		definitions = append(definitions, endpointDefinition{
+			prefix:   fmt.Sprintf("ios_xr.dial_in.targets[%d]", index),
+			endpoint: cfg.IOSXR.DialIn.Targets[index].Endpoint,
+			legacy:   "ios_xr",
+		})
+	}
+	for index := range cfg.Catalyst9800.DialIn.Targets {
+		definitions = append(definitions, endpointDefinition{
+			prefix:   fmt.Sprintf("catalyst_9800.dial_in.targets[%d]", index),
+			endpoint: cfg.Catalyst9800.DialIn.Targets[index].Endpoint,
+			legacy:   "catalyst_9800",
+		})
+	}
+
+	owners := make(map[string]endpointDefinition, len(definitions))
+	var validationErr error
+	for _, definition := range definitions {
+		key, err := canonicalGNMIDialInEndpoint(definition.endpoint)
+		if err != nil {
+			// The owning target validator reports the address diagnostic. Skip it
+			// here so endpoint ownership does not duplicate the same error.
+			continue
+		}
+		if previous, duplicate := owners[key]; duplicate {
+			message := fmt.Sprintf(
+				"%s.endpoint duplicates %s.endpoint after canonical address normalization",
+				definition.prefix,
+				previous.prefix,
+			)
+			legacy := definition.legacy
+			if legacy == "" {
+				legacy = previous.legacy
+			}
+			if legacy != "" {
+				message += fmt.Sprintf("; legacy %s dial_in cannot share endpoint ownership", legacy)
+			}
+			validationErr = multierr.Append(validationErr, errors.New(message))
+			continue
+		}
+		owners[key] = definition
+	}
+	return validationErr
+}
+
 func boolValue(value *bool, fallback bool) bool {
 	if value == nil {
 		return fallback
@@ -210,12 +692,25 @@ func (profile GNMIProfileConfig) withDefaults(enabled bool, interval time.Durati
 	return profile
 }
 
-func (profiles GNMIProfilesConfig) withDefaults() GNMIProfilesConfig {
-	profiles.Identity = profiles.Identity.withDefaults(true, 5*time.Minute)
-	profiles.System = profiles.System.withDefaults(true, time.Minute)
-	profiles.Interfaces = profiles.Interfaces.withDefaults(true, time.Minute)
-	profiles.Optics = profiles.Optics.withDefaults(false, 30*time.Second)
-	profiles.Catalyst9800Wireless = profiles.Catalyst9800Wireless.withDefaults(false, time.Minute)
+func (profiles GNMIProfilesConfig) withDefaults(contract *gnmiProductContract) GNMIProfilesConfig {
+	apply := func(name string, profile *GNMIProfileConfig) {
+		definition, ok := builtinGNMIProfile(contract, name)
+		if !ok && contract == nil {
+			definition, ok = defaultBuiltinGNMIProfile(name)
+		}
+		if !ok {
+			if profile.Enabled == nil {
+				profile.Enabled = new(bool)
+			}
+			return
+		}
+		*profile = profile.withDefaults(definition.DefaultEnabled, definition.DefaultInterval)
+	}
+	apply(builtinGNMIProfileIdentity, &profiles.Identity)
+	apply(builtinGNMIProfileSystem, &profiles.System)
+	apply(builtinGNMIProfileInterfaces, &profiles.Interfaces)
+	apply(builtinGNMIProfileOptics, &profiles.Optics)
+	apply(builtinGNMIProfileCatalyst9800Wireless, &profiles.Catalyst9800Wireless)
 	return profiles
 }
 
@@ -248,7 +743,8 @@ func (target GNMITargetConfig) withDefaults() GNMITargetConfig {
 		target.Keepalive.PermitWithoutStream = new(bool)
 		*target.Keepalive.PermitWithoutStream = true
 	}
-	target.Profiles = target.Profiles.withDefaults()
+	contract, _, _ := gnmiProductContractForTarget(target)
+	target.Profiles = target.Profiles.withDefaults(contract)
 	for i := range target.CustomSubscriptions {
 		if target.CustomSubscriptions[i].Mode == "" {
 			target.CustomSubscriptions[i].Mode = gnmiModeStream
@@ -265,6 +761,7 @@ func (target GNMITargetConfig) withDefaults() GNMITargetConfig {
 
 func (cfg *Config) validateGNMI() error {
 	var err error
+	err = multierr.Append(err, cfg.validateGNMIDialInEndpointOwnership())
 	err = multierr.Append(err, cfg.validateGNMITelemetryResourceLimits())
 	if !cfg.GNMI.hasTargets() {
 		return err
@@ -288,10 +785,11 @@ func (cfg *Config) validateGNMI() error {
 	} else if maxSeries > gnmiMaximumCachedSeries {
 		err = multierr.Append(err, fmt.Errorf("gnmi.max_cached_series must not exceed %d", gnmiMaximumCachedSeries))
 	}
+	if shapeErr := validateGNMIConfigurationShape(cfg.GNMI.Targets); shapeErr != nil {
+		return multierr.Append(err, shapeErr)
+	}
 
 	names := map[string]int{}
-	endpoints := map[string]int{}
-	legacy := cfg.legacyGNMIEndpoints()
 	selector := newDeviceSelectionMatcher(cfg.DeviceSelection)
 	selectedTargets := 0
 	for i := range cfg.GNMI.Targets {
@@ -305,17 +803,10 @@ func (cfg *Config) validateGNMI() error {
 		} else {
 			names[name] = i
 		}
-		endpoint := strings.ToLower(strings.TrimSpace(target.Endpoint))
-		if endpoint == "" {
+		if strings.TrimSpace(target.Endpoint) == "" {
 			err = multierr.Append(err, fmt.Errorf("%s.endpoint cannot be empty", prefix))
-		} else if _, _, splitErr := net.SplitHostPort(target.Endpoint); splitErr != nil {
-			err = multierr.Append(err, fmt.Errorf("%s.endpoint must be host:port: %w", prefix, splitErr))
-		} else if previous, ok := endpoints[endpoint]; ok {
-			err = multierr.Append(err, fmt.Errorf("%s.endpoint duplicates gnmi.targets[%d].endpoint", prefix, previous))
-		} else if legacyName, ok := legacy[endpoint]; ok {
-			err = multierr.Append(err, fmt.Errorf("%s.endpoint is already configured by legacy %s dial_in", prefix, legacyName))
-		} else {
-			endpoints[endpoint] = i
+		} else if _, endpointErr := canonicalGNMIDialInEndpoint(target.Endpoint); endpointErr != nil {
+			err = multierr.Append(err, fmt.Errorf("%s.endpoint %w", prefix, endpointErr))
 		}
 		err = multierr.Append(err, validateGNMITarget(prefix, target))
 		if selector.allows(sharedGNMITargetIdentity(target)) &&
@@ -394,10 +885,15 @@ func (cfg *Config) validateGNMITelemetryResourceLimits() error {
 
 func validateGNMITarget(prefix string, target GNMITargetConfig) error {
 	var err error
-	switch target.Platform {
-	case gnmiPlatformIOSXE, gnmiPlatformIOSXR, gnmiPlatformNXOS:
-	default:
-		err = multierr.Append(err, fmt.Errorf("%s.platform must be ios_xe, ios_xr, or nx_os", prefix))
+	if target.Platform != "" {
+		err = multierr.Append(err, fmt.Errorf(
+			"%s.platform is no longer supported; replace it with a canonical product and exact software_version",
+			prefix,
+		))
+	}
+	contract, _, contractErr := gnmiProductContractForTarget(target)
+	if contractErr != nil {
+		err = multierr.Append(err, fmt.Errorf("%s: %w", prefix, contractErr))
 	}
 	if target.MaxRecvMsgSizeMiB <= 0 {
 		err = multierr.Append(err, fmt.Errorf("%s.max_recv_msg_size_mib must be positive", prefix))
@@ -413,11 +909,13 @@ func validateGNMITarget(prefix string, target GNMITargetConfig) error {
 	if target.Keepalive.Time <= 0 || target.Keepalive.Timeout <= 0 {
 		err = multierr.Append(err, fmt.Errorf("%s.keepalive time and timeout must be positive", prefix))
 	}
+	err = multierr.Append(err, validateGNMIEncodingPreferences(prefix+".encoding_preference", target.EncodingPreference))
+	err = multierr.Append(err, validateGNMIProductEncodingPreferences(prefix+".encoding_preference", target.EncodingPreference, contract))
 	err = multierr.Append(err, validateGNMICredentials(prefix, target))
 	err = multierr.Append(err, validateGNMITLS(prefix, target.TLS))
-	err = multierr.Append(err, validateGNMIProfiles(prefix, target))
-	err = multierr.Append(err, validateGNMICustomSubscriptions(prefix, target))
-	if streams := estimateGNMIStreams(target); streams == 0 {
+	err = multierr.Append(err, validateGNMIProfiles(prefix, target, contract))
+	err = multierr.Append(err, validateGNMICustomSubscriptions(prefix, target, contract))
+	if streams := estimateGNMIStreamsForContract(target, contract); streams == 0 {
 		err = multierr.Append(err, fmt.Errorf("%s requires at least one enabled profile or custom subscription", prefix))
 	} else if streams > target.MaxStreams {
 		err = multierr.Append(err, fmt.Errorf("%s requires %d compatible subscription streams, exceeding max_streams %d", prefix, streams, target.MaxStreams))
@@ -456,9 +954,6 @@ func validateGNMITLS(prefix string, tls GNMITLSConfig) error {
 	if tls.Insecure {
 		err = multierr.Append(err, fmt.Errorf("%s.tls.insecure is forbidden", prefix))
 	}
-	if tls.InsecureSkipVerify {
-		err = multierr.Append(err, fmt.Errorf("%s.tls.insecure_skip_verify is forbidden", prefix))
-	}
 	if tls.MinVersion != "1.2" && tls.MinVersion != "1.3" {
 		err = multierr.Append(err, fmt.Errorf("%s.tls.min_version must be 1.2 or 1.3", prefix))
 	}
@@ -471,7 +966,7 @@ func validateGNMITLS(prefix string, tls GNMITLSConfig) error {
 	return err
 }
 
-func validateGNMIProfiles(prefix string, target GNMITargetConfig) error {
+func validateGNMIProfiles(prefix string, target GNMITargetConfig, contract *gnmiProductContract) error {
 	profiles := []struct {
 		name    string
 		profile GNMIProfileConfig
@@ -484,26 +979,287 @@ func validateGNMIProfiles(prefix string, target GNMITargetConfig) error {
 	}
 	var err error
 	for _, item := range profiles {
+		itemPrefix := fmt.Sprintf("%s.profiles.%s", prefix, item.name)
 		enabled := boolValue(item.profile.Enabled, false)
 		if item.profile.Required && !enabled {
-			err = multierr.Append(err, fmt.Errorf("%s.profiles.%s cannot be required when disabled", prefix, item.name))
+			err = multierr.Append(err, fmt.Errorf("%s cannot be required when disabled", itemPrefix))
 		}
 		if enabled && item.profile.SampleInterval <= 0 {
-			err = multierr.Append(err, fmt.Errorf("%s.profiles.%s.sample_interval must be positive", prefix, item.name))
+			err = multierr.Append(err, fmt.Errorf("%s.sample_interval must be positive", itemPrefix))
 		}
+		err = multierr.Append(err, validateGNMIEncodingPreferences(itemPrefix+".encoding_preference", item.profile.EncodingPreference))
+		err = multierr.Append(err, validateGNMIProductEncodingPreferences(itemPrefix+".encoding_preference", item.profile.EncodingPreference, contract))
+		effectiveEncodings := effectiveGNMIEncodingPreferences(item.profile.EncodingPreference, target.EncodingPreference, false)
+		err = multierr.Append(err, validateGNMIListOptions(
+			itemPrefix,
+			gnmiModeStream,
+			effectiveEncodings,
+			item.profile.UpdatesOnly,
+			item.profile.AllowAggregation,
+			item.profile.QoSMarking,
+			item.profile.GNMIExtensions,
+		))
+		if enabled {
+			err = multierr.Append(err, validateGNMIProductListPolicy(
+				itemPrefix, contract,
+				item.profile.UpdatesOnly, item.profile.AllowAggregation,
+				item.profile.QoSMarking, item.profile.GNMIExtensions,
+			))
+		}
+		definition, ok := builtinGNMIProfile(contract, item.name)
+		if !ok {
+			configured := enabled || item.profile.Required || item.profile.SampleInterval != 0 ||
+				len(item.profile.EncodingPreference) != 0 || item.profile.UpdatesOnly || item.profile.AllowAggregation ||
+				item.profile.QoSMarking != nil || item.profile.GNMIExtensions.Depth != nil || len(item.profile.PathOverrides) != 0
+			if configured && contract != nil {
+				err = multierr.Append(err, fmt.Errorf(
+					"%s is not supported on product %q release train %s",
+					itemPrefix,
+					contract.Product,
+					contract.ReleaseTrain,
+				))
+			}
+			for pathID := range item.profile.PathOverrides {
+				err = multierr.Append(err, fmt.Errorf("%s.path_overrides.%s is not a known path ID for the selected product", itemPrefix, pathID))
+			}
+			continue
+		}
+		if enabled {
+			pathOptions := make([]GNMIPathOptionsConfig, 0, len(definition.Paths))
+			for _, path := range definition.Paths {
+				pathOptions = append(pathOptions, item.profile.PathOverrides[path.ID])
+			}
+			err = multierr.Append(err, validateGNMIProductSamplePlan(itemPrefix, contract, item.profile.SampleInterval, pathOptions))
+		}
+		err = multierr.Append(err, validateGNMIBuiltinPathOverrides(itemPrefix, definition, item.profile, contract))
 	}
-	if boolValue(target.Profiles.Catalyst9800Wireless.Enabled, false) && target.Platform != gnmiPlatformIOSXE {
-		err = multierr.Append(err, fmt.Errorf("%s.profiles.catalyst_9800_wireless is supported only on ios_xe", prefix))
+	if boolValue(target.Profiles.Catalyst9800Wireless.Enabled, false) &&
+		(contract == nil || contract.Product != gnmiProductCatalyst9800) {
+		err = multierr.Append(err, fmt.Errorf("%s.profiles.catalyst_9800_wireless is supported only on product %s", prefix, gnmiProductCatalyst9800))
 	}
 	return err
 }
 
-func validateGNMICustomSubscriptions(prefix string, target GNMITargetConfig) error {
+func validateGNMIBuiltinPathOverrides(
+	prefix string,
+	definition builtinGNMIProfileDefinition,
+	profile GNMIProfileConfig,
+	contract *gnmiProductContract,
+) error {
+	known := make(map[string]struct{}, len(definition.Paths))
+	for _, path := range definition.Paths {
+		known[path.ID] = struct{}{}
+	}
+	var err error
+	pathIDs := make([]string, 0, len(profile.PathOverrides))
+	for pathID := range profile.PathOverrides {
+		pathIDs = append(pathIDs, pathID)
+	}
+	sort.Strings(pathIDs)
+	for _, pathID := range pathIDs {
+		options := profile.PathOverrides[pathID]
+		if _, ok := known[pathID]; !ok {
+			err = multierr.Append(err, fmt.Errorf("%s.path_overrides.%s is not a known path ID for this profile and selected product", prefix, pathID))
+			continue
+		}
+		err = multierr.Append(err, validateGNMIPathOptions(prefix+".path_overrides."+pathID, gnmiModeStream, options))
+		err = multierr.Append(err, validateGNMIProductPathPolicy(prefix+".path_overrides."+pathID, contract, options))
+	}
+
+	// Catalog entries can intentionally share one physical selector so their
+	// mappings are coalesced. Such aliases must resolve to identical wire
+	// behavior; a target cannot apply two modes to one selector deterministically.
+	type duplicatePath struct {
+		id      string
+		options resolvedGNMIPathOptions
+	}
+	seen := map[string]duplicatePath{}
+	for _, path := range definition.Paths {
+		options := resolveGNMIPathOptions(profile.PathOverrides[path.ID], profile.SampleInterval)
+		key := sharedGNMIPathKey(sharedGNMIPath{
+			PathTarget: path.PathTarget,
+			Origin:     path.Origin,
+			Path:       strings.Trim(path.Path, "/"),
+		})
+		if previous, ok := seen[key]; ok && previous.options != options {
+			err = multierr.Append(err, fmt.Errorf(
+				"%s.path_overrides.%s conflicts with %s for duplicate catalog selector %q",
+				prefix, path.ID, previous.id, path.Path,
+			))
+			continue
+		}
+		seen[key] = duplicatePath{id: path.ID, options: options}
+	}
+	return err
+}
+
+type resolvedGNMIPathOptions struct {
+	streamMode        string
+	sampleInterval    time.Duration
+	heartbeatInterval time.Duration
+	suppressRedundant bool
+}
+
+func resolveGNMIPathOptions(options GNMIPathOptionsConfig, fallbackSampleInterval time.Duration) resolvedGNMIPathOptions {
+	mode := options.StreamMode
+	if mode == "" {
+		mode = gnmiStreamModeSample
+	}
+	resolved := resolvedGNMIPathOptions{streamMode: mode}
+	switch mode {
+	case gnmiStreamModeSample:
+		resolved.sampleInterval = fallbackSampleInterval
+		if options.SampleInterval != nil {
+			resolved.sampleInterval = *options.SampleInterval
+		}
+		if options.HeartbeatInterval != nil {
+			resolved.heartbeatInterval = *options.HeartbeatInterval
+		}
+		resolved.suppressRedundant = boolValue(options.SuppressRedundant, false)
+	case gnmiStreamModeOnChange:
+		if options.HeartbeatInterval != nil {
+			resolved.heartbeatInterval = *options.HeartbeatInterval
+		}
+	}
+	return resolved
+}
+
+func validateGNMIEncodingPreferences(prefix string, preferences []string) error {
+	seen := map[gnmipb.Encoding]struct{}{}
+	var err error
+	for i, preference := range preferences {
+		encoding, ok := encodingNameToGNMI(preference)
+		if !ok {
+			err = multierr.Append(err, fmt.Errorf("%s[%d] must be json_ietf, json, or proto", prefix, i))
+			continue
+		}
+		if _, duplicate := seen[encoding]; duplicate {
+			err = multierr.Append(err, fmt.Errorf("%s[%d] duplicates encoding %q", prefix, i, strings.ToLower(strings.TrimSpace(preference))))
+			continue
+		}
+		seen[encoding] = struct{}{}
+	}
+	return err
+}
+
+func effectiveGNMIEncodingPreferences(local, target []string, dme bool) []string {
+	preferences := local
+	if len(preferences) == 0 {
+		preferences = target
+	}
+	if len(preferences) == 0 {
+		if dme {
+			return []string{"json", "json_ietf"}
+		}
+		return []string{"json_ietf", "json"}
+	}
+	out := make([]string, 0, len(preferences))
+	for _, preference := range preferences {
+		if encoding, ok := encodingNameToGNMI(preference); ok {
+			out = append(out, sharedGNMIEncodingName(encoding))
+		} else {
+			out = append(out, strings.ToLower(strings.TrimSpace(preference)))
+		}
+	}
+	return out
+}
+
+func sharedGNMIEncodingName(encoding gnmipb.Encoding) string {
+	switch encoding {
+	case gnmipb.Encoding_JSON_IETF:
+		return "json_ietf"
+	case gnmipb.Encoding_PROTO:
+		return "proto"
+	default:
+		return "json"
+	}
+}
+
+func validateGNMIListOptions(
+	prefix, mode string,
+	encodingPreferences []string,
+	updatesOnly, allowAggregation bool,
+	qosMarking *uint32,
+	extensions GNMIExtensionsConfig,
+) error {
+	var err error
+	if mode != gnmiModeStream && updatesOnly {
+		err = multierr.Append(err, fmt.Errorf("%s.updates_only is supported only for stream mode", prefix))
+	}
+	if qosMarking != nil && *qosMarking > 63 {
+		err = multierr.Append(err, fmt.Errorf("%s.qos_marking must be between 0 and 63", prefix))
+	}
+	if extensions.Depth != nil && (*extensions.Depth < 1 || *extensions.Depth > 128) {
+		err = multierr.Append(err, fmt.Errorf("%s.gnmi_extensions.depth must be between 1 and 128", prefix))
+	}
+	if allowAggregation && !gnmiEncodingPreferencesContainJSON(encodingPreferences) {
+		err = multierr.Append(err, fmt.Errorf("%s.allow_aggregation requires a json or json_ietf encoding preference", prefix))
+	}
+	return err
+}
+
+func gnmiEncodingPreferencesContainJSON(preferences []string) bool {
+	for _, preference := range preferences {
+		encoding, ok := encodingNameToGNMI(preference)
+		if ok && (encoding == gnmipb.Encoding_JSON || encoding == gnmipb.Encoding_JSON_IETF) {
+			return true
+		}
+	}
+	return false
+}
+
+func validateGNMIPathOptions(prefix, listMode string, options GNMIPathOptionsConfig) error {
+	if listMode != gnmiModeStream {
+		if gnmiPathOptionsConfigured(options) {
+			return fmt.Errorf("%s path options are supported only for stream mode", prefix)
+		}
+		return nil
+	}
+	mode := options.StreamMode
+	if mode == "" {
+		mode = gnmiStreamModeSample
+	}
+	var err error
+	switch mode {
+	case gnmiStreamModeSample:
+		if options.SampleInterval != nil && *options.SampleInterval < 0 {
+			err = multierr.Append(err, fmt.Errorf("%s.sample_interval must not be negative", prefix))
+		}
+		if options.HeartbeatInterval != nil && *options.HeartbeatInterval <= 0 {
+			err = multierr.Append(err, fmt.Errorf("%s.heartbeat_interval must be positive when configured", prefix))
+		}
+	case gnmiStreamModeOnChange:
+		if options.SampleInterval != nil {
+			err = multierr.Append(err, fmt.Errorf("%s.sample_interval is forbidden for on_change mode", prefix))
+		}
+		if options.SuppressRedundant != nil {
+			err = multierr.Append(err, fmt.Errorf("%s.suppress_redundant is forbidden for on_change mode", prefix))
+		}
+		if options.HeartbeatInterval != nil && *options.HeartbeatInterval <= 0 {
+			err = multierr.Append(err, fmt.Errorf("%s.heartbeat_interval must be positive when configured", prefix))
+		}
+	case gnmiStreamModeTargetDefined:
+		if options.SampleInterval != nil || options.HeartbeatInterval != nil || options.SuppressRedundant != nil {
+			err = multierr.Append(err, fmt.Errorf("%s timing and suppression fields are forbidden for target_defined mode", prefix))
+		}
+	default:
+		err = multierr.Append(err, fmt.Errorf("%s.stream_mode must be sample, on_change, or target_defined", prefix))
+	}
+	return err
+}
+
+func gnmiPathOptionsConfigured(options GNMIPathOptionsConfig) bool {
+	return options.StreamMode != "" || options.SampleInterval != nil || options.HeartbeatInterval != nil || options.SuppressRedundant != nil
+}
+
+func validateGNMICustomSubscriptions(prefix string, target GNMITargetConfig, contract *gnmiProductContract) error {
 	var err error
 	names := map[string]struct{}{}
 	outputIdentities := map[string]string{}
-	for i, subscription := range target.CustomSubscriptions {
+	for i := range target.CustomSubscriptions {
+		subscription := &target.CustomSubscriptions[i]
 		itemPrefix := fmt.Sprintf("%s.custom_subscriptions[%d]", prefix, i)
+		canonicalMappingSources := map[string]string{}
 		name := strings.ToLower(strings.TrimSpace(subscription.Name))
 		if name == "" {
 			err = multierr.Append(err, fmt.Errorf("%s.name cannot be empty", itemPrefix))
@@ -514,14 +1270,10 @@ func validateGNMICustomSubscriptions(prefix string, target GNMITargetConfig) err
 		} else {
 			names[name] = struct{}{}
 		}
-		if strings.TrimSpace(subscription.Origin) == "" {
-			err = multierr.Append(err, fmt.Errorf("%s.origin cannot be empty", itemPrefix))
-		}
+		err = multierr.Append(err, validateGNMICustomSubscriptionAddress(itemPrefix, *subscription))
+		err = multierr.Append(err, validateGNMICustomSubscriptionModels(itemPrefix, *subscription, contract))
 		if subscription.Mode != gnmiModeStream && subscription.Mode != gnmiModeOnce && subscription.Mode != gnmiModePoll {
 			err = multierr.Append(err, fmt.Errorf("%s.mode must be stream, once, or poll", itemPrefix))
-		}
-		if target.Platform == gnmiPlatformIOSXE && subscription.Mode != gnmiModeStream {
-			err = multierr.Append(err, fmt.Errorf("%s.mode %s is not supported on ios_xe", itemPrefix, subscription.Mode))
 		}
 		if subscription.SampleInterval <= 0 {
 			err = multierr.Append(err, fmt.Errorf("%s.sample_interval must be positive", itemPrefix))
@@ -529,6 +1281,40 @@ func validateGNMICustomSubscriptions(prefix string, target GNMITargetConfig) err
 		if subscription.Mode == gnmiModePoll && subscription.PollInterval <= 0 {
 			err = multierr.Append(err, fmt.Errorf("%s.poll_interval must be positive for poll mode", itemPrefix))
 		}
+		err = multierr.Append(err, validateGNMIEncodingPreferences(itemPrefix+".encoding_preference", subscription.EncodingPreference))
+		err = multierr.Append(err, validateGNMIProductEncodingPreferences(itemPrefix+".encoding_preference", subscription.EncodingPreference, contract))
+		effectiveEncodings := effectiveGNMIEncodingPreferences(
+			subscription.EncodingPreference,
+			target.EncodingPreference,
+			subscription.Origin == builtinGNMIOriginDME,
+		)
+		err = multierr.Append(err, validateGNMIListOptions(
+			itemPrefix,
+			subscription.Mode,
+			effectiveEncodings,
+			subscription.UpdatesOnly,
+			subscription.AllowAggregation,
+			subscription.QoSMarking,
+			subscription.GNMIExtensions,
+		))
+		if contract != nil && contract.RequestPolicy.StreamOnly && subscription.Mode != gnmiModeStream {
+			if contract.RequestPolicy.ConservativeSampleOnly {
+				err = multierr.Append(err, fmt.Errorf("%s supports only SAMPLE STREAM subscriptions on product %s", itemPrefix, contract.Product))
+			} else {
+				err = multierr.Append(err, fmt.Errorf("%s.mode must be stream on product %s", itemPrefix, contract.Product))
+			}
+		}
+		err = multierr.Append(err, validateGNMIProductListPolicy(
+			itemPrefix, contract,
+			subscription.UpdatesOnly, subscription.AllowAggregation,
+			subscription.QoSMarking, subscription.GNMIExtensions,
+		))
+		pathOptions := make([]GNMIPathOptionsConfig, 0, len(subscription.Paths))
+		for _, path := range subscription.Paths {
+			pathOptions = append(pathOptions, path.GNMIPathOptionsConfig)
+		}
+		err = multierr.Append(err, validateGNMIProductSamplePlan(itemPrefix, contract, subscription.SampleInterval, pathOptions))
+		err = multierr.Append(err, validateGNMICustomSubscriptionPaths(itemPrefix, *subscription, contract))
 		if len(subscription.Mappings) == 0 {
 			err = multierr.Append(err, fmt.Errorf("%s.mappings cannot be empty", itemPrefix))
 		}
@@ -537,12 +1323,18 @@ func validateGNMICustomSubscriptions(prefix string, target GNMITargetConfig) err
 			mappingPrefix := fmt.Sprintf("%s.mappings[%d]", itemPrefix, j)
 			path := strings.Trim(strings.TrimSpace(mapping.Path), "/")
 			mappingValid := true
-			if path == "" || gnmiPathIncludesOrigin(path, subscription.Origin) {
-				err = multierr.Append(err, fmt.Errorf("%s.path must be a non-empty origin-free path", mappingPrefix))
+			if path == "" || !gnmiCustomPathNamespaceValid(path, subscription.Origin) {
+				err = multierr.Append(err, fmt.Errorf("%s.path must be a non-empty origin-free path using the namespace form required by origin %q", mappingPrefix, subscription.Origin))
+				mappingValid = false
+			}
+			if contract != nil && !contract.RequestPolicy.AllowWildcards &&
+				gnmiPathContainsWildcard(sharedGNMIPath{PathTarget: subscription.PathTarget, Origin: subscription.Origin, Path: path}) {
+				err = multierr.Append(err, fmt.Errorf("%s.path must be explicit and non-wildcard on product %s", mappingPrefix, contract.Product))
 				mappingValid = false
 			}
 			if _, duplicate := paths[path]; duplicate {
 				err = multierr.Append(err, fmt.Errorf("%s.path duplicates another mapping", mappingPrefix))
+				mappingValid = false
 			}
 			paths[path] = struct{}{}
 			if !normalizedMetricNamePattern.MatchString(mapping.MetricName) || strings.HasSuffix(mapping.MetricName, "_info") {
@@ -571,8 +1363,9 @@ func validateGNMICustomSubscriptions(prefix string, target GNMITargetConfig) err
 			pathElements := map[string]struct{}{}
 			pathElementCounts := map[string]int{}
 			configuredPathKeys := map[string]struct{}{}
-			if path != "" && !gnmiPathIncludesOrigin(path, subscription.Origin) {
+			if path != "" && gnmiCustomPathNamespaceValid(path, subscription.Origin) {
 				parsed, parseErr := internalgnmi.ParsePath("", subscription.Origin, path)
+				parsed.PathTarget = subscription.PathTarget
 				if parseErr != nil {
 					err = multierr.Append(err, fmt.Errorf("%s.path is invalid: %w", mappingPrefix, parseErr))
 					mappingValid = false
@@ -622,7 +1415,7 @@ func validateGNMICustomSubscriptions(prefix string, target GNMITargetConfig) err
 				}
 				sort.Strings(attributeNames)
 				identity := mapping.MetricName + "\x00" + strings.Join(attributeNames, "\x00")
-				source := subscription.Origin + "\x00" + path
+				source := subscription.PathTarget + "\x00" + subscription.Origin + "\x00" + path
 				if previous, duplicate := outputIdentities[identity]; duplicate {
 					err = multierr.Append(err, fmt.Errorf("%s can collide with source %q because both produce metric %q with the same output attributes", mappingPrefix, previous, mapping.MetricName))
 					mappingValid = false
@@ -631,10 +1424,172 @@ func validateGNMICustomSubscriptions(prefix string, target GNMITargetConfig) err
 				}
 			}
 			if mappingValid {
-				if _, _, conversionErr := convertCustomGNMIMapping(subscription.Origin, mapping); conversionErr != nil {
+				converted, _, conversionErr := convertCustomGNMIMapping(subscription.PathTarget, subscription.Origin, mapping)
+				if conversionErr != nil {
 					err = multierr.Append(err, fmt.Errorf("%s is invalid: %w", mappingPrefix, conversionErr))
+					continue
+				}
+				sourceKey := converted.Mapping.Source.Key()
+				if previous, duplicate := canonicalMappingSources[sourceKey]; duplicate {
+					err = multierr.Append(err, fmt.Errorf(
+						"%s has the same canonical mapping source as %s; configured list-key values and key order do not distinguish mapping sources",
+						mappingPrefix,
+						previous,
+					))
+				} else {
+					canonicalMappingSources[sourceKey] = mappingPrefix
 				}
 			}
+		}
+	}
+	return err
+}
+
+func validateGNMICustomSubscriptionAddress(
+	prefix string,
+	subscription GNMICustomSubscriptionConfig,
+) error {
+	pathTarget := strings.TrimSpace(subscription.PathTarget)
+	origin := strings.TrimSpace(subscription.Origin)
+	if subscription.PathTarget != pathTarget {
+		return fmt.Errorf("%s.path_target must not contain surrounding whitespace", prefix)
+	}
+	if subscription.Origin != origin {
+		return fmt.Errorf("%s.origin must not contain surrounding whitespace", prefix)
+	}
+	if origin != "" && !gnmiYANGIdentifierPattern.MatchString(origin) {
+		return fmt.Errorf("%s.origin must be a valid YANG identifier", prefix)
+	}
+	if err := internalgnmi.ValidatePath(internalgnmi.Path{PathTarget: pathTarget, Origin: origin}); err != nil {
+		return fmt.Errorf("%s path_target/origin is invalid: %w", prefix, err)
+	}
+	var err error
+	if pathTarget != "" {
+		err = multierr.Append(err, fmt.Errorf("%s.path_target is not supported by a qualified Cisco product contract", prefix))
+	}
+	if origin == "" {
+		err = multierr.Append(err, fmt.Errorf("%s.origin cannot be empty", prefix))
+	}
+	return err
+}
+
+func validateGNMICustomSubscriptionModels(
+	prefix string,
+	subscription GNMICustomSubscriptionConfig,
+	contract *gnmiProductContract,
+) error {
+	var err error
+	origin := strings.TrimSpace(subscription.Origin)
+	if origin == builtinGNMIOriginOpenConfig && len(subscription.Models) == 0 {
+		err = multierr.Append(err, fmt.Errorf(
+			"%s.models must contain at least one exact Capabilities model name when origin is %q",
+			prefix,
+			builtinGNMIOriginOpenConfig,
+		))
+	}
+	if contract != nil && contract.OSFamily == gnmiPlatformNXOS {
+		if strings.EqualFold(origin, builtinGNMIOriginOpenConfig) && origin != builtinGNMIOriginOpenConfig {
+			err = multierr.Append(err, fmt.Errorf(
+				"%s.origin must use the exact NX-OS OpenConfig origin %q",
+				prefix,
+				builtinGNMIOriginOpenConfig,
+			))
+		}
+		if strings.HasPrefix(strings.ToLower(origin), "openconfig-") {
+			err = multierr.Append(err, fmt.Errorf(
+				"%s.origin must be %q for NX-OS OpenConfig requests; list %q in models instead",
+				prefix,
+				builtinGNMIOriginOpenConfig,
+				origin,
+			))
+		}
+	}
+	seen := make(map[string]struct{}, len(subscription.Models))
+	for index, rawModel := range subscription.Models {
+		modelPrefix := fmt.Sprintf("%s.models[%d]", prefix, index)
+		model := strings.TrimSpace(rawModel)
+		switch {
+		case model != rawModel:
+			err = multierr.Append(err, fmt.Errorf("%s must not contain surrounding whitespace", modelPrefix))
+		case !gnmiYANGIdentifierPattern.MatchString(model):
+			err = multierr.Append(err, fmt.Errorf("%s must be a valid YANG module identifier", modelPrefix))
+		case model == builtinGNMIOriginOpenConfig:
+			err = multierr.Append(err, fmt.Errorf("%s must identify a concrete model, not the generic origin %q", modelPrefix, model))
+		default:
+			if _, duplicate := seen[model]; duplicate {
+				err = multierr.Append(err, fmt.Errorf("%s duplicates another required model", modelPrefix))
+			} else {
+				seen[model] = struct{}{}
+			}
+		}
+	}
+	return err
+}
+
+func validateGNMICustomSubscriptionPaths(prefix string, subscription GNMICustomSubscriptionConfig, contract *gnmiProductContract) error {
+	if len(subscription.Paths) == 0 {
+		return nil
+	}
+	type parsedSelector struct {
+		index int
+		path  internalgnmi.Path
+	}
+	selectors := make([]parsedSelector, 0, len(subscription.Paths))
+	var err error
+	for i, configured := range subscription.Paths {
+		pathPrefix := fmt.Sprintf("%s.paths[%d]", prefix, i)
+		path := strings.Trim(strings.TrimSpace(configured.Path), "/")
+		if path == "" || !gnmiCustomPathNamespaceValid(path, subscription.Origin) {
+			err = multierr.Append(err, fmt.Errorf("%s.path must be a non-empty origin-free path using the namespace form required by origin %q", pathPrefix, subscription.Origin))
+			continue
+		}
+		if contract != nil && !contract.RequestPolicy.AllowWildcards &&
+			gnmiPathContainsWildcard(sharedGNMIPath{PathTarget: subscription.PathTarget, Origin: subscription.Origin, Path: path}) {
+			err = multierr.Append(err, fmt.Errorf("%s.path must be explicit and non-wildcard on product %s", pathPrefix, contract.Product))
+			continue
+		}
+		err = multierr.Append(err, validateGNMIPathOptions(pathPrefix, subscription.Mode, configured.GNMIPathOptionsConfig))
+		err = multierr.Append(err, validateGNMIProductPathPolicy(pathPrefix, contract, configured.GNMIPathOptionsConfig))
+		parsed, parseErr := internalgnmi.ParsePath("", subscription.Origin, path)
+		parsed.PathTarget = subscription.PathTarget
+		if parseErr != nil {
+			err = multierr.Append(err, fmt.Errorf("%s.path is invalid: %w", pathPrefix, parseErr))
+			continue
+		}
+		for _, previous := range selectors {
+			if parsed.HasPrefix(previous.path) || previous.path.HasPrefix(parsed) {
+				err = multierr.Append(err, fmt.Errorf(
+					"%s.path duplicates or conflicts with %s.paths[%d]",
+					pathPrefix, prefix, previous.index,
+				))
+				break
+			}
+		}
+		selectors = append(selectors, parsedSelector{index: i, path: parsed})
+	}
+
+	for i, mapping := range subscription.Mappings {
+		mappingPath := strings.Trim(strings.TrimSpace(mapping.Path), "/")
+		if mappingPath == "" || !gnmiCustomPathNamespaceValid(mappingPath, subscription.Origin) {
+			continue
+		}
+		parsed, parseErr := internalgnmi.ParsePath("", subscription.Origin, mappingPath)
+		parsed.PathTarget = subscription.PathTarget
+		if parseErr != nil {
+			continue
+		}
+		matched := false
+		for _, selector := range selectors {
+			if parsed.HasPrefix(selector.path) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			err = multierr.Append(err, fmt.Errorf(
+				"%s.mappings[%d].path must equal or descend from at least one subscription selector with compatible keys",
+				prefix, i,
+			))
 		}
 	}
 	return err
@@ -653,12 +1608,54 @@ func gnmiPathIncludesOrigin(path, origin string) bool {
 	if origin == "" {
 		return false
 	}
-	path = strings.TrimLeft(path, "/")
-	first, _, _ := strings.Cut(path, "/")
-	// Only the element name can carry an RFC7951 module/origin prefix. A
-	// colon inside a list-key value (for example an IPv6 address) is data.
-	name, _, _ := strings.Cut(first, "[")
-	return strings.Contains(name, ":")
+	parsed, err := internalgnmi.ParsePath("", origin, path)
+	if err != nil || len(parsed.Elements) == 0 {
+		return false
+	}
+	_, qualified := splitGNMIQualifiedName(parsed.Elements[0].Name)
+	return qualified
+}
+
+func gnmiCustomPathNamespaceValid(path, origin string) bool {
+	if origin != "" && !gnmiYANGIdentifierPattern.MatchString(origin) {
+		return false
+	}
+	parsed, err := internalgnmi.ParsePath("", origin, path)
+	if err != nil || len(parsed.Elements) == 0 {
+		return false
+	}
+	firstQualified := false
+	anyQualified := false
+	for index := range parsed.Elements {
+		element := parsed.Elements[index]
+		for key := range element.Keys {
+			if !gnmiYANGIdentifierPattern.MatchString(key) {
+				return false
+			}
+		}
+		name := element.Name
+		if name == "*" {
+			continue
+		}
+		if !strings.Contains(name, ":") {
+			if !gnmiYANGIdentifierPattern.MatchString(name) {
+				return false
+			}
+			continue
+		}
+		if _, qualified := splitGNMIQualifiedName(name); !qualified {
+			return false
+		}
+		anyQualified = true
+		firstQualified = firstQualified || index == 0
+	}
+	if origin == "" {
+		return true
+	}
+	if origin == builtinGNMIOriginRFC7951 {
+		return firstQualified
+	}
+	return !anyQualified
 }
 
 type gnmiConfigMetricContract struct {
@@ -671,8 +1668,13 @@ type gnmiConfigMetricContract struct {
 
 func validateGNMIMetricContracts(rawTargets []GNMITargetConfig) error {
 	contracts := map[string]gnmiConfigMetricContract{}
-	for _, platform := range []string{gnmiPlatformIOSXE, gnmiPlatformIOSXR, gnmiPlatformNXOS} {
-		for _, profile := range builtinGNMIProfiles(platform) {
+	seenCatalogs := map[gnmiProductContractKey]struct{}{}
+	for key, productContract := range gnmiProductContracts {
+		if _, seen := seenCatalogs[key]; seen {
+			continue
+		}
+		seenCatalogs[key] = struct{}{}
+		for _, profile := range builtinGNMIProfiles(productContract) {
 			mappings := append([]builtinGNMIMapping(nil), profile.SyntheticMappings...)
 			for _, path := range profile.Paths {
 				mappings = append(mappings, path.Mappings...)
@@ -697,8 +1699,10 @@ func validateGNMIMetricContracts(rawTargets []GNMITargetConfig) error {
 	var err error
 	for targetIndex := range rawTargets {
 		target := rawTargets[targetIndex].withDefaults()
-		for subscriptionIndex, subscription := range target.CustomSubscriptions {
-			for mappingIndex, mapping := range subscription.Mappings {
+		for subscriptionIndex := range target.CustomSubscriptions {
+			subscription := &target.CustomSubscriptions[subscriptionIndex]
+			for mappingIndex := range subscription.Mappings {
+				mapping := &subscription.Mappings[mappingIndex]
 				if !normalizedMetricNamePattern.MatchString(mapping.MetricName) || strings.HasSuffix(mapping.MetricName, "_info") || strings.TrimSpace(mapping.Description) == "" || !validGNMIUCUMUnit(mapping.Unit) {
 					continue
 				}
@@ -774,43 +1778,38 @@ func validGNMIUCUMTerm(term string) bool {
 }
 
 func estimateGNMIStreams(target GNMITargetConfig) int {
+	contract, _, err := gnmiProductContractForTarget(target)
+	if err != nil {
+		return 0
+	}
+	return estimateGNMIStreamsForContract(target, contract)
+}
+
+func estimateGNMIStreamsForContract(target GNMITargetConfig, contract *gnmiProductContract) int {
+	if contract == nil {
+		return 0
+	}
+	target = target.withDefaults()
 	streams := 0
-	if boolValue(target.Profiles.Identity.Enabled, false) && target.Platform != gnmiPlatformIOSXR {
-		streams++
-	}
-	if boolValue(target.Profiles.System.Enabled, false) {
-		if target.Platform == gnmiPlatformIOSXR {
-			streams += 3
-		} else {
-			streams++
+	for _, profileName := range []string{
+		builtinGNMIProfileIdentity,
+		builtinGNMIProfileSystem,
+		builtinGNMIProfileInterfaces,
+		builtinGNMIProfileOptics,
+		builtinGNMIProfileCatalyst9800Wireless,
+	} {
+		profileConfig := sharedGNMIProfileConfig(target.Profiles, profileName)
+		if !boolValue(profileConfig.Enabled, false) {
+			continue
 		}
-	}
-	if boolValue(target.Profiles.Interfaces.Enabled, false) {
-		streams++
-	}
-	if boolValue(target.Profiles.Optics.Enabled, false) {
-		if target.Platform == gnmiPlatformIOSXR {
-			streams += 2 // controller-optics and controller-otu module origins.
-		} else {
-			streams++
+		definition, ok := builtinGNMIProfile(contract, profileName)
+		if !ok {
+			continue
 		}
-	}
-	if boolValue(target.Profiles.Catalyst9800Wireless.Enabled, false) {
-		streams++
+		streams += len(buildBuiltinProfileStreams(contract, definition, profileConfig))
 	}
 	streams += len(target.CustomSubscriptions)
 	return streams
-}
-
-func (cfg *Config) legacyGNMIEndpoints() map[string]string {
-	legacy := map[string]string{}
-	for i := range cfg.IOSXR.DialIn.Targets {
-		legacy[strings.ToLower(strings.TrimSpace(cfg.IOSXR.DialIn.Targets[i].Endpoint))] = "ios_xr"
-	}
-	for i := range cfg.Catalyst9800.DialIn.Targets {
-		legacy[strings.ToLower(strings.TrimSpace(cfg.Catalyst9800.DialIn.Targets[i].Endpoint))] = "catalyst_9800"
-	}
-	return legacy
 }
 
 func sortedGNMIPathKeys(values map[string]string) []string {

@@ -21,17 +21,22 @@ import (
 )
 
 const (
-	estreamerDefaultPort                     = "8302"
-	estreamerMessageHeaderLen                = 8
-	estreamerMaxMessageBytes                 = 16 * 1024 * 1024
-	estreamerMaxBundleRecords                = 100_000
-	estreamerMessageNull              uint16 = 0
-	estreamerMessageError             uint16 = 1
-	estreamerMessageRequest           uint16 = 2
-	estreamerMessageEventV3           uint16 = 3
-	estreamerMessageEvent             uint16 = 4
-	estreamerMessageBundle            uint16 = 4002
-	estreamerRequestBitExtendedHeader        = uint32(1 << 23)
+	estreamerDefaultPort                         = "8302"
+	estreamerMessageHeaderLen                    = 8
+	estreamerRecordHeaderLen                     = 8
+	estreamerExtendedRecordHeaderLen             = 16
+	estreamerExtendedRecordFlag           uint16 = 1 << 15
+	estreamerMaxMessageBytes                     = 16 * 1024 * 1024
+	estreamerMaxBundleRecords                    = 100_000
+	estreamerMessageNull                  uint16 = 0
+	estreamerMessageError                 uint16 = 1
+	estreamerMessageRequest               uint16 = 2
+	estreamerMessageEventV3               uint16 = 3
+	estreamerMessageEvent                 uint16 = 4
+	estreamerMessageBundle                uint16 = 4002
+	estreamerRequestBitExtendedHeader            = uint32(1 << 23)
+	estreamerCAConfigPath                        = "fmc.estreamer.tls.ca_file"
+	estreamerInsecureSkipVerifyConfigPath        = "fmc.estreamer.tls.insecure_skip_verify"
 )
 
 // EStreamerConfig controls an eStreamer fully-qualified-event client.
@@ -87,7 +92,9 @@ func NewEStreamerClient(cfg EStreamerConfig) (*EStreamerClient, error) {
 		return nil, errors.New("fmc estreamer address is required")
 	}
 	address := cfg.Address
-	if _, _, err := net.SplitHostPort(address); err != nil && !strings.Contains(address, ":") {
+	if net.ParseIP(address) != nil {
+		address = net.JoinHostPort(address, estreamerDefaultPort)
+	} else if _, _, err := net.SplitHostPort(address); err != nil && !strings.Contains(address, ":") {
 		address = net.JoinHostPort(address, estreamerDefaultPort)
 	}
 	name := cfg.Name
@@ -154,6 +161,7 @@ func (c *EStreamerClient) RunFrom(ctx context.Context, initialTime time.Time, on
 	}
 	conn, err := dialContext(ctx, "tcp", c.address)
 	if err != nil {
+		err = httpclient.DecorateCertificateVerificationError(err, estreamerCAConfigPath, estreamerInsecureSkipVerifyConfigPath)
 		c.record(EStreamerStat{Controller: c.name, Outcome: "connect_error", Err: err})
 		return err
 	}
@@ -211,7 +219,11 @@ func (c *EStreamerClient) RunFrom(ctx context.Context, initialTime time.Time, on
 				}
 			}
 		case estreamerMessageEventV3, estreamerMessageEvent:
-			event := decodeEStreamerEvent(c.name, payload)
+			event, err := decodeEStreamerEvent(c.name, payload)
+			if err != nil {
+				c.record(EStreamerStat{Controller: c.name, Outcome: "decode_error", Bytes: len(payload), Err: err})
+				return err
+			}
 			c.record(EStreamerStat{Controller: c.name, Outcome: "events", Events: 1, Bytes: len(payload)})
 			if err := onEvent(event); err != nil {
 				return err
@@ -229,14 +241,22 @@ type estreamerHeader struct {
 }
 
 func (c *EStreamerClient) writeRequest(writer io.Writer, initialTime time.Time) error {
+	initial := ^uint32(0)
+	if !initialTime.IsZero() {
+		initial = uint32(initialTime.Unix())
+	}
+	// Cisco's FQE protocol requires a plain Event Stream request to establish
+	// the session before the follow-on request supplies the JSON data contract.
+	initializer := make([]byte, 8)
+	binary.BigEndian.PutUint32(initializer[0:4], initial)
+	if err := writeAll(writer, encodeEStreamerMessage(estreamerMessageRequest, initializer)); err != nil {
+		return err
+	}
+
 	request := defaultFQERequest(c.eventTypes)
 	jsonBytes, err := json.Marshal(request)
 	if err != nil {
 		return err
-	}
-	initial := ^uint32(0)
-	if !initialTime.IsZero() {
-		initial = uint32(initialTime.Unix())
 	}
 	payload := make([]byte, 8+len(jsonBytes))
 	binary.BigEndian.PutUint32(payload[0:4], initial)
@@ -293,7 +313,11 @@ func decodeEStreamerBundle(controller string, payload []byte) ([]EStreamerEvent,
 		body := remaining[estreamerMessageHeaderLen:total]
 		switch header.messageType {
 		case estreamerMessageEventV3, estreamerMessageEvent:
-			events = append(events, decodeEStreamerEvent(controller, body))
+			event, err := decodeEStreamerEvent(controller, body)
+			if err != nil {
+				return events, err
+			}
+			events = append(events, event)
 		case estreamerMessageNull:
 		case estreamerMessageError:
 			return events, decodeEStreamerError(body)
@@ -303,29 +327,35 @@ func decodeEStreamerBundle(controller string, payload []byte) ([]EStreamerEvent,
 	return events, nil
 }
 
-func decodeEStreamerEvent(controller string, payload []byte) EStreamerEvent {
+func decodeEStreamerEvent(controller string, payload []byte) (EStreamerEvent, error) {
 	event := EStreamerEvent{Controller: controller}
-	if len(payload) >= 8 {
-		event.RecordType = binary.BigEndian.Uint32(payload[0:4])
-		recordLength := int(binary.BigEndian.Uint32(payload[4:8]))
-		if recordLength > 0 && 8+recordLength <= len(payload) {
-			payload = payload[8 : 8+recordLength]
-		} else {
-			payload = payload[8:]
-		}
+	if len(payload) < estreamerRecordHeaderLen {
+		return event, fmt.Errorf("estreamer event record header is truncated: got %d bytes, need at least %d", len(payload), estreamerRecordHeaderLen)
 	}
-	trimmedPayload := bytes.TrimLeft(payload, "\x00\r\n\t ")
-	if len(payload) >= 8 && len(trimmedPayload) > 0 && trimmedPayload[0] != '{' {
-		if ts := binary.BigEndian.Uint32(payload[0:4]); ts > 0 {
+
+	netmapID := binary.BigEndian.Uint16(payload[0:2])
+	event.RecordType = uint32(binary.BigEndian.Uint16(payload[2:4]))
+	recordLength := uint64(binary.BigEndian.Uint32(payload[4:8]))
+	headerLength := estreamerRecordHeaderLen
+	if netmapID&estreamerExtendedRecordFlag != 0 {
+		headerLength = estreamerExtendedRecordHeaderLen
+		if len(payload) < headerLength {
+			return event, fmt.Errorf("estreamer extended event record header is truncated: got %d bytes, need at least %d", len(payload), headerLength)
+		}
+		if ts := binary.BigEndian.Uint32(payload[8:12]); ts > 0 {
 			event.Timestamp = time.Unix(int64(ts), 0).UTC()
-			payload = payload[8:]
 		}
 	}
+	available := uint64(len(payload) - headerLength)
+	if recordLength != available {
+		return event, fmt.Errorf("estreamer event record length %d does not match %d payload bytes", recordLength, available)
+	}
+	payload = payload[headerLength:]
 
 	text := string(bytes.Trim(payload, "\x00\r\n\t "))
 	event.Raw = text
 	if text == "" {
-		return event
+		return event, nil
 	}
 	start := strings.Index(text, "{")
 	end := strings.LastIndex(text, "}")
@@ -341,7 +371,7 @@ func decodeEStreamerEvent(controller string, payload []byte) EStreamerEvent {
 			"payload_sha256": fmt.Sprintf("%x", fingerprint),
 		}
 		event.Raw = ""
-		return event
+		return event, nil
 	}
 	// Only the decoded JSON object is part of the event contract. Framing text
 	// surrounding that object is device-controlled and can contain secrets.
@@ -361,7 +391,7 @@ func decodeEStreamerEvent(controller string, payload []byte) EStreamerEvent {
 			event.Timestamp = ts
 		}
 	}
-	return event
+	return event, nil
 }
 
 func decodeEStreamerError(payload []byte) error {

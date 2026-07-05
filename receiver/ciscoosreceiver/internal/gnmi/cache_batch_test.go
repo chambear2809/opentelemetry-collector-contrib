@@ -191,6 +191,38 @@ func TestCacheDeleteOnlyAtomicFlagDoesNotReplacePrefix(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestCacheDeleteThenUpdateRedeliveryIsIdempotent(t *testing.T) {
+	cache, err := NewCache(10)
+	require.NoError(t, err)
+	timestamp := time.Unix(100, 0)
+	point := testMappedPoint("switch-1", "Ethernet1", "temperature", 41, timestamp)
+	notification := CacheNotification{
+		OwnerID:   "owner-a",
+		Timestamp: timestamp,
+		Deletes:   []Path{point.Source.Path()},
+		Updates:   []MappedPoint{point},
+	}
+
+	first, err := cache.Apply(notification)
+	require.NoError(t, err)
+	require.Len(t, first.Applied, 1)
+	require.Len(t, cache.Snapshot(), 1, "the update is the final state after the delete")
+
+	redelivery, err := cache.Apply(notification)
+	require.NoError(t, err)
+	assert.Equal(t, 1, redelivery.Duplicates)
+	assert.Empty(t, redelivery.Removed)
+	require.Len(t, cache.Snapshot(), 1, "equal-timestamp redelivery must not erase the final update")
+	assert.Equal(t, point.DoubleValue, cache.Snapshot()[0].DoubleValue)
+	assertCacheRetainedByteInvariant(t, cache)
+
+	reset, err := cache.ResetOwner("owner-a")
+	require.NoError(t, err)
+	assert.Equal(t, 1, reset.Entries)
+	assert.Equal(t, 1, reset.Tombstones)
+	assert.Zero(t, cache.StateLen())
+}
+
 func TestCacheDeleteTombstonePreventsStaleResurrection(t *testing.T) {
 	cache, err := NewCache(10)
 	require.NoError(t, err)

@@ -5,6 +5,7 @@ package sdwan
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -67,6 +68,58 @@ func TestClientBearerList(t *testing.T) {
 	require.Len(t, objects, 1)
 	assert.Equal(t, "edge-1", String(objects[0], "host-name"))
 	assert.Equal(t, "Bearer token", authHeader)
+}
+
+func TestClientCertificateVerificationFailureIsTerminal(t *testing.T) {
+	t.Run("data", func(t *testing.T) {
+		client, err := NewClient(Config{
+			Endpoint:    "https://sdwan.example.test",
+			AuthMode:    "bearer",
+			BearerToken: "token",
+			MaxRetries:  3,
+		})
+		require.NoError(t, err)
+		client.spacing = 0
+		transport := &certificateFailureTransport{}
+		client.client.Transport = transport
+
+		_, err = client.List(t.Context(), "devices", "/device", nil, 0)
+		require.Error(t, err)
+		assert.True(t, httpclient.IsCertificateVerificationError(err))
+		assert.Equal(t, int64(1), transport.attempts.Load())
+		assert.Equal(t, []string{"/dataservice/device"}, transport.paths)
+	})
+
+	t.Run("auto authentication does not fall back", func(t *testing.T) {
+		client, err := NewClient(Config{
+			Endpoint:   "https://sdwan.example.test",
+			AuthMode:   "auto",
+			Username:   "admin",
+			Password:   "password",
+			MaxRetries: 3,
+		})
+		require.NoError(t, err)
+		client.spacing = 0
+		transport := &certificateFailureTransport{}
+		client.client.Transport = transport
+
+		_, err = client.List(t.Context(), "devices", "/device", nil, 0)
+		require.Error(t, err)
+		assert.True(t, httpclient.IsCertificateVerificationError(err))
+		assert.Equal(t, int64(1), transport.attempts.Load())
+		assert.Equal(t, []string{"/jwt/login"}, transport.paths)
+	})
+}
+
+type certificateFailureTransport struct {
+	attempts atomic.Int64
+	paths    []string
+}
+
+func (t *certificateFailureTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.attempts.Add(1)
+	t.paths = append(t.paths, req.URL.Path)
+	return nil, x509.UnknownAuthorityError{}
 }
 
 func TestClientListPaginatesStatisticsScrollID(t *testing.T) {
@@ -436,6 +489,18 @@ func TestClientSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {
 		})
 	}))
 	defer server.Close()
+
+	verifiedClient, err := NewClient(Config{
+		Endpoint:    server.URL,
+		AuthMode:    "bearer",
+		BearerToken: "token",
+		Timeout:     time.Second,
+	})
+	require.NoError(t, err)
+	verifiedClient.spacing = 0
+	_, err = verifiedClient.List(t.Context(), "devices", "/device", nil, 0)
+	require.ErrorContains(t, err, "trust the issuing CA in the Collector host trust store (preferred)")
+	require.ErrorContains(t, err, "set sdwan.insecure_skip_verify: true")
 
 	client, err := NewClient(Config{
 		Endpoint:           server.URL,

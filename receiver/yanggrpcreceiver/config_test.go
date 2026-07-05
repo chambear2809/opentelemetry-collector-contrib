@@ -19,7 +19,7 @@ import (
 
 func TestRuntimeHardeningVersion(t *testing.T) {
 	cfg := &Config{}
-	assert.Equal(t, 2, cfg.RuntimeHardeningVersion())
+	assert.Equal(t, 3, cfg.RuntimeHardeningVersion())
 	cfg.SetMaxConcurrentStreamsPerClient(7)
 	assert.Equal(t, uint32(7), cfg.MaxConcurrentStreamsPerClient)
 }
@@ -200,6 +200,7 @@ func TestServerResourceLimitValidation(t *testing.T) {
 	))
 	assert.Equal(t, uint32(defaultMaxConcurrentConversions), defaults.MaxConcurrentConversions)
 	assert.Equal(t, defaultConnectionTimeout, defaults.ConnectionTimeout)
+	assert.Equal(t, defaultStreamIdleTimeout, defaults.StreamIdleTimeout)
 	assert.Equal(t, defaultMaxConnectionIdle, defaults.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault().MaxConnectionIdle)
 	require.NoError(t, defaults.Validate())
 
@@ -253,9 +254,11 @@ func TestRuntimeAvailabilityValidation(t *testing.T) {
 		maxConnections        uint32
 		maxConversions        uint32
 		connectionTimeout     time.Duration
+		streamIdleTimeout     time.Duration
 		wantEffectiveConns    int
 		wantEffectiveConverts int
 		wantEffectiveTimeout  time.Duration
+		wantEffectiveIdle     time.Duration
 		errorPart             string
 	}{
 		{
@@ -263,24 +266,29 @@ func TestRuntimeAvailabilityValidation(t *testing.T) {
 			wantEffectiveConns:    defaultMaxConnections,
 			wantEffectiveConverts: defaultMaxConcurrentConversions,
 			wantEffectiveTimeout:  defaultConnectionTimeout,
+			wantEffectiveIdle:     defaultStreamIdleTimeout,
 		},
 		{
 			name:                  "minimum configured values",
 			maxConnections:        1,
 			maxConversions:        1,
 			connectionTimeout:     minConnectionTimeout,
+			streamIdleTimeout:     minStreamIdleTimeout,
 			wantEffectiveConns:    1,
 			wantEffectiveConverts: 1,
 			wantEffectiveTimeout:  minConnectionTimeout,
+			wantEffectiveIdle:     minStreamIdleTimeout,
 		},
 		{
 			name:                  "maximum configured values",
 			maxConnections:        maxMaxConnections,
 			maxConversions:        maxMaxConcurrentConversions,
 			connectionTimeout:     maxConnectionTimeout,
+			streamIdleTimeout:     maxStreamIdleTimeout,
 			wantEffectiveConns:    maxMaxConnections,
 			wantEffectiveConverts: maxMaxConcurrentConversions,
 			wantEffectiveTimeout:  maxConnectionTimeout,
+			wantEffectiveIdle:     maxStreamIdleTimeout,
 		},
 		{
 			name:           "too many connections",
@@ -302,12 +310,23 @@ func TestRuntimeAvailabilityValidation(t *testing.T) {
 			connectionTimeout: maxConnectionTimeout + time.Nanosecond,
 			errorPart:         "connection_timeout must be zero or between 1s and 2m0s",
 		},
+		{
+			name:              "stream idle timeout too short",
+			streamIdleTimeout: minStreamIdleTimeout - time.Nanosecond,
+			errorPart:         "stream_idle_timeout must be zero or between 1s and 1h0m0s",
+		},
+		{
+			name:              "stream idle timeout too long",
+			streamIdleTimeout: maxStreamIdleTimeout + time.Nanosecond,
+			errorPart:         "stream_idle_timeout must be zero or between 1s and 1h0m0s",
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			cfg := createDefaultConfig().(*Config)
 			cfg.MaxConnections = test.maxConnections
 			cfg.MaxConcurrentConversions = test.maxConversions
 			cfg.ConnectionTimeout = test.connectionTimeout
+			cfg.StreamIdleTimeout = test.streamIdleTimeout
 
 			err := cfg.Validate()
 			if test.errorPart != "" {
@@ -318,8 +337,18 @@ func TestRuntimeAvailabilityValidation(t *testing.T) {
 			assert.Equal(t, test.wantEffectiveConns, effectiveMaxConnections(cfg.MaxConnections))
 			assert.Equal(t, test.wantEffectiveConverts, effectiveMaxConcurrentConversions(cfg.MaxConcurrentConversions))
 			assert.Equal(t, test.wantEffectiveTimeout, effectiveConnectionTimeout(cfg.ConnectionTimeout))
+			assert.Equal(t, test.wantEffectiveIdle, effectiveStreamIdleTimeout(cfg.StreamIdleTimeout))
 		})
 	}
+}
+
+func TestYANGModulePathLimit(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	cfg.YANG.ModulePaths = make([]string, maxYANGModulePaths)
+	require.NoError(t, cfg.Validate())
+
+	cfg.YANG.ModulePaths = append(cfg.YANG.ModulePaths, "/extra/yang/modules")
+	require.ErrorContains(t, cfg.Validate(), "yang.module_paths must contain at most 64 entries")
 }
 
 func TestRemoteListenerSecurityValidation(t *testing.T) {

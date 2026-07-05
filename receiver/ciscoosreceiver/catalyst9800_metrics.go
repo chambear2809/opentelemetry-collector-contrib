@@ -5,6 +5,7 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 
 import (
 	"context"
+	"math"
 	"net"
 	"sort"
 	"strings"
@@ -183,6 +184,20 @@ func appendCatalyst9800AliasesForValueIndexed(builder *indexedMetricBuilder, mod
 		}
 		builder.appendNumberWithUnit(name, metricType, numericValue, ts, next, metricUnit)
 	}
+	appendPercentageRatio := func(name string, extra map[string]string) {
+		if !numeric {
+			return
+		}
+		raw := numericValue.doubleValue
+		if numericValue.isInt {
+			raw = float64(numericValue.intValue)
+		}
+		ratio, ok := catalyst9800PercentageRatio(raw)
+		if !ok {
+			return
+		}
+		builder.appendNumberWithUnit(name, pmetric.MetricTypeGauge, doubleMetricNumber(ratio), ts, mergeStringAttrs(aliasAttrs, extra), "1")
+	}
 	appendState := func(name string, extra map[string]string) {
 		next := mergeStringAttrs(aliasAttrs, extra)
 		if numeric {
@@ -225,9 +240,9 @@ func appendCatalyst9800AliasesForValueIndexed(builder *indexedMetricBuilder, mod
 	case "link_encryption_enabled":
 		appendState("cisco.wlc.ap.capwap.encryption.enabled", nil)
 	case "rx_util_percentage", "tx_util_percentage", "cca_util_percentage", "rx_noise_channel_utilization", "non_wifi_inter", "bss_chan_util":
-		appendNumber("cisco.wlc.rf.channel.utilization", map[string]string{"utilization.type": catalyst9800UtilizationType(leaf)}, false)
+		appendPercentageRatio("cisco.wlc.rf.channel.utilization", map[string]string{"utilization.type": catalyst9800UtilizationType(leaf)})
 		if strings.Contains(pathText, "ssid_counters") {
-			appendNumber("cisco.wlc.ssid.channel.utilization", map[string]string{"utilization.type": catalyst9800UtilizationType(leaf)}, false)
+			appendPercentageRatio("cisco.wlc.ssid.channel.utilization", map[string]string{"utilization.type": catalyst9800UtilizationType(leaf)})
 		}
 	case "noise_floor", "noise":
 		appendNumber("cisco.wlc.rf.noise_floor", nil, false)
@@ -293,7 +308,7 @@ func appendCatalyst9800AliasesForValueIndexed(builder *indexedMetricBuilder, mod
 		appendNumber("cisco.wlc.auth.radius.response.count", map[string]string{"radius.counter": leaf}, true)
 	case "five_seconds", "one_minute", "five_minutes", "five_sec", "one_min", "five_min":
 		if strings.Contains(pathText, "cpu") {
-			appendNumber("cisco.wlc.controller.cpu.utilization", map[string]string{"interval": leaf}, false)
+			appendPercentageRatio("cisco.wlc.controller.cpu.utilization", map[string]string{"interval": leaf})
 		}
 	case "memory_used", "used_memory", "memory_free", "free_memory":
 		appendNumber("cisco.wlc.controller.memory.bytes", map[string]string{"state": catalyst9800MemoryState(leaf)}, false)
@@ -310,6 +325,13 @@ func appendCatalyst9800AliasesForValueIndexed(builder *indexedMetricBuilder, mod
 			appendNumber("cisco.wlc.client.network.packets", map[string]string{"direction": catalyst9800Direction(leaf)}, true, "{packet}")
 		}
 	}
+}
+
+func catalyst9800PercentageRatio(value float64) (float64, bool) {
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 100 {
+		return 0, false
+	}
+	return value / 100, true
 }
 
 func catalyst9800AliasAttrs(attrs map[string]string) map[string]string {

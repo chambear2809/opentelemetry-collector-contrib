@@ -21,12 +21,6 @@
         "applyIfExists": true
       },
       {
-        "property": "host.ip",
-        "alias": "Router IP",
-        "description": "Cisco IOS XR router address.",
-        "applyIfExists": true
-      },
-      {
         "property": "network.interface.name",
         "alias": "Interface",
         "description": "IOS XR network interface.",

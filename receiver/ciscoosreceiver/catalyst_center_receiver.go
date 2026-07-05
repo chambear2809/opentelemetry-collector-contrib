@@ -509,7 +509,7 @@ func (b *catalystCenterMetricsBuilder) deviceResource(device catalystcenter.Devi
 	putIPAttrs(attrs, "host.ip", device.ManagementIPAddress, device.DNSResolvedManagementAddr, device.APManagerInterfaceIP)
 	putStr(attrs, "host.type", firstNonEmpty(device.PlatformID, device.Type, device.Family))
 	putStr(attrs, "hw.type", "network")
-	putStr(attrs, "os.name", "Catalyst Center")
+	putStr(attrs, "os.name", device.SoftwareType)
 	putStr(attrs, "os.version", device.SoftwareVersion)
 	putStr(attrs, "catalyst_center.device.id", device.ID)
 	putStr(attrs, "catalyst_center.device.instance_uuid", device.InstanceUUID)
@@ -529,7 +529,6 @@ func (b *catalystCenterMetricsBuilder) interfaceResource(iface catalystcenter.In
 	putStr(attrs, "host.id", firstNonEmpty(iface.DeviceID, iface.SerialNo, iface.MacAddress, "unknown"))
 	putStr(attrs, "host.type", iface.Series)
 	putStr(attrs, "hw.type", "network")
-	putStr(attrs, "os.name", "Catalyst Center")
 	putStr(attrs, "catalyst_center.device.id", iface.DeviceID)
 	putStr(attrs, "catalyst_center.device.serial", iface.SerialNo)
 	return rb

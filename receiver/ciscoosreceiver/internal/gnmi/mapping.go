@@ -36,9 +36,10 @@ const (
 // SourcePath is an exact scalar source path. List key values are intentionally
 // omitted because mappings apply to every instance of a modeled list.
 type SourcePath struct {
-	Origin   string
-	Elements []string
-	Leaf     string
+	PathTarget string
+	Origin     string
+	Elements   []string
+	Leaf       string
 }
 
 // MetricMetadata is the required metric contract for one mapping.
@@ -139,7 +140,7 @@ func (r *Registry) Map(point Point) (MappedPoint, bool) {
 	if r == nil {
 		return MappedPoint{}, false
 	}
-	source := SourcePath{Origin: point.Series.Origin, Leaf: point.Series.Leaf, Elements: make([]string, len(point.Series.Elements))}
+	source := SourcePath{PathTarget: point.Series.PathTarget, Origin: point.Series.Origin, Leaf: point.Series.Leaf, Elements: make([]string, len(point.Series.Elements))}
 	for i, elem := range point.Series.Elements {
 		source.Elements[i] = elem.Name
 	}
@@ -275,19 +276,47 @@ func validateMapping(mapping Mapping) error {
 	if len(mapping.Source.Elements) == 0 || strings.TrimSpace(mapping.Source.Leaf) == "" {
 		return errors.New("mapping source must contain elements and a leaf")
 	}
+	if len(mapping.Source.Elements)+1 > maxPathDepth {
+		return fmt.Errorf("mapping source exceeds %d path elements", maxPathDepth)
+	}
+	series := Series{
+		PathTarget: mapping.Source.PathTarget,
+		Origin:     mapping.Source.Origin,
+		Elements:   make([]PathElem, len(mapping.Source.Elements)),
+		Leaf:       mapping.Source.Leaf,
+	}
 	for _, elem := range mapping.Source.Elements {
 		if strings.TrimSpace(elem) == "" {
 			return errors.New("mapping source elements cannot be empty")
 		}
 	}
+	for index, elem := range mapping.Source.Elements {
+		series.Elements[index].Name = elem
+	}
+	if err := ValidateSeries(series); err != nil {
+		return fmt.Errorf("mapping source is invalid: %w", err)
+	}
 	if !metricNamePattern.MatchString(mapping.Metric.Name) {
 		return fmt.Errorf("invalid metric name %q", mapping.Metric.Name)
+	}
+	if len(mapping.Metric.Name) > maxCachedMetricNameBytes {
+		return fmt.Errorf("metric name exceeds %d bytes", maxCachedMetricNameBytes)
 	}
 	if strings.TrimSpace(mapping.Metric.Description) == "" {
 		return errors.New("metric description cannot be empty")
 	}
+	if len(mapping.Metric.Description) > maxCachedMetricDescriptionBytes {
+		return fmt.Errorf("metric description exceeds %d bytes", maxCachedMetricDescriptionBytes)
+	}
 	if strings.TrimSpace(mapping.Metric.Unit) == "" {
 		return errors.New("metric UCUM unit cannot be empty")
+	}
+	if len(mapping.Metric.Unit) > maxCachedMetricUnitBytes {
+		return fmt.Errorf("metric unit exceeds %d bytes", maxCachedMetricUnitBytes)
+	}
+	metadataBytes := len(mapping.Metric.Name) + len(mapping.Metric.Description) + len(mapping.Metric.Unit)
+	if metadataBytes > maxCachedMetricMetadataBytes {
+		return fmt.Errorf("metric metadata exceeds %d bytes", maxCachedMetricMetadataBytes)
 	}
 	if mapping.Scale == 0 || math.IsNaN(mapping.Scale) || math.IsInf(mapping.Scale, 0) {
 		return errors.New("mapping scale must be finite and non-zero")
@@ -306,12 +335,21 @@ func validateMapping(mapping Mapping) error {
 		elements[elem] = struct{}{}
 	}
 	attributes := map[string]struct{}{}
+	if len(mapping.KeyAttributes) > maxCachedPointAttributes {
+		return fmt.Errorf("mapping exceeds %d metric attributes", maxCachedPointAttributes)
+	}
 	for _, attr := range mapping.KeyAttributes {
 		if _, ok := elements[attr.Element]; !ok {
 			return fmt.Errorf("key attribute element %q is not in the source path", attr.Element)
 		}
 		if attr.Key == "" || attr.Attribute == "" {
 			return errors.New("key attribute key and attribute cannot be empty")
+		}
+		if len(attr.Key) > maxPathNameBytes {
+			return fmt.Errorf("key attribute key exceeds %d bytes", maxPathNameBytes)
+		}
+		if len(attr.Attribute) > maxPathNameBytes {
+			return fmt.Errorf("metric attribute name exceeds %d bytes", maxPathNameBytes)
 		}
 		if _, duplicate := attributes[attr.Attribute]; duplicate {
 			return fmt.Errorf("duplicate metric attribute %q", attr.Attribute)
@@ -321,16 +359,29 @@ func validateMapping(mapping Mapping) error {
 	return nil
 }
 
-func sourcePathKey(path SourcePath) string {
-	return path.Origin + "\x00" + strings.Join(path.Elements, "\x00") + "\x00" + path.Leaf
+// Key returns an unambiguous identity for an exact scalar source path. Every
+// component is length-prefixed because protobuf strings may legally contain a
+// NUL byte; delimiter concatenation could otherwise make a shorter,
+// device-controlled path collide with a configured mapping.
+func (p SourcePath) Key() string {
+	var key strings.Builder
+	appendKeyPart(&key, p.PathTarget)
+	appendKeyPart(&key, p.Origin)
+	for _, element := range p.Elements {
+		appendKeyPart(&key, element)
+	}
+	appendKeyPart(&key, p.Leaf)
+	return key.String()
 }
+
+func sourcePathKey(path SourcePath) string { return path.Key() }
 
 func (p SourcePath) String() string {
 	path := strings.Join(append(append([]string(nil), p.Elements...), p.Leaf), "/")
-	if p.Origin == "" {
+	if p.PathTarget == "" && p.Origin == "" {
 		return path
 	}
-	return p.Origin + " " + path
+	return "target=" + p.PathTarget + " origin=" + p.Origin + " " + path
 }
 
 func numericValue(value Value) (float64, bool) {

@@ -31,6 +31,10 @@ const (
 	minConnectionTimeout            = time.Second
 	maxConnectionTimeout            = 2 * time.Minute
 	defaultMaxConnectionIdle        = 2 * time.Minute
+	defaultStreamIdleTimeout        = 5 * time.Minute
+	minStreamIdleTimeout            = time.Second
+	maxStreamIdleTimeout            = time.Hour
+	maxYANGModulePaths              = 64
 )
 
 // SecurityConfig contains security hardening options
@@ -94,8 +98,9 @@ func (r *RateLimitingConfig) Validate() error {
 type YANGConfig struct {
 	_ struct{} `mapstructure:"-"`
 
-	// ModulePaths defines the directories where .yang files are stored.
-	// This is used by the internal parser to resolve Cisco-specific schemas.
+	// ModulePaths defines up to 64 regular .yang files or directories containing
+	// .yang files. This is used by the internal parser to resolve Cisco-specific
+	// schemas.
 	ModulePaths []string `mapstructure:"module_paths"`
 }
 
@@ -121,6 +126,10 @@ type Config struct {
 	// handshake. Zero uses the default of 30 seconds.
 	ConnectionTimeout time.Duration `mapstructure:"connection_timeout"`
 
+	// StreamIdleTimeout closes an admitted telemetry stream when no message is
+	// received for this duration. Zero uses the default of 5 minutes.
+	StreamIdleTimeout time.Duration `mapstructure:"stream_idle_timeout"`
+
 	// YANG contains YANG parser configuration
 	YANG YANGConfig `mapstructure:"yang"`
 
@@ -133,8 +142,9 @@ type Config struct {
 // internals. Version 2 includes bounded connections and decoded frames,
 // receiver-wide and per-client stream admission, aggregate telemetry
 // conversion, per-message stream security, and shutdown-canceled stream
-// contexts.
-func (*Config) RuntimeHardeningVersion() int { return 2 }
+// contexts. Version 3 adds a finite application-level idle deadline for every
+// admitted telemetry stream.
+func (*Config) RuntimeHardeningVersion() int { return 3 }
 
 // SetMaxConcurrentStreamsPerClient lets embedding receivers configure the
 // application-global per-client stream cap without accessing a newly added
@@ -142,6 +152,12 @@ func (*Config) RuntimeHardeningVersion() int { return 2 }
 // published module while RuntimeHardeningVersion still makes them fail closed.
 func (c *Config) SetMaxConcurrentStreamsPerClient(limit uint32) {
 	c.MaxConcurrentStreamsPerClient = limit
+}
+
+// SetStreamIdleTimeout lets embedding receivers configure the v3
+// application-level stream idle deadline without depending on struct layout.
+func (c *Config) SetStreamIdleTimeout(timeout time.Duration) {
+	c.StreamIdleTimeout = timeout
 }
 
 // Validate checks the receiver configuration is valid.
@@ -169,6 +185,9 @@ func (c *Config) Validate() error {
 	if err := c.validateRuntimeAvailability(); err != nil {
 		return err
 	}
+	if len(c.YANG.ModulePaths) > maxYANGModulePaths {
+		return fmt.Errorf("yang.module_paths must contain at most %d entries", maxYANGModulePaths)
+	}
 
 	// Validate security settings
 	if err := c.Security.Validate(); err != nil {
@@ -187,6 +206,9 @@ func (c *Config) validateRuntimeAvailability() error {
 	}
 	if c.ConnectionTimeout != 0 && (c.ConnectionTimeout < minConnectionTimeout || c.ConnectionTimeout > maxConnectionTimeout) {
 		return fmt.Errorf("connection_timeout must be zero or between %s and %s", minConnectionTimeout, maxConnectionTimeout)
+	}
+	if c.StreamIdleTimeout != 0 && (c.StreamIdleTimeout < minStreamIdleTimeout || c.StreamIdleTimeout > maxStreamIdleTimeout) {
+		return fmt.Errorf("stream_idle_timeout must be zero or between %s and %s", minStreamIdleTimeout, maxStreamIdleTimeout)
 	}
 	return nil
 }
@@ -222,6 +244,13 @@ func effectiveMaxConcurrentStreamsPerClient(configured, global uint32) int {
 func effectiveConnectionTimeout(configured time.Duration) time.Duration {
 	if configured == 0 {
 		return defaultConnectionTimeout
+	}
+	return configured
+}
+
+func effectiveStreamIdleTimeout(configured time.Duration) time.Duration {
+	if configured == 0 {
+		return defaultStreamIdleTimeout
 	}
 	return configured
 }

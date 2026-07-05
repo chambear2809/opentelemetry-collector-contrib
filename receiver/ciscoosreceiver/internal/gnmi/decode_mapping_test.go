@@ -4,7 +4,9 @@
 package gnmi
 
 import (
+	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +14,7 @@ import (
 	gnmipb "github.com/openconfig/gnmi/proto/gnmi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 func TestDecodeNotificationDuplicatePathUsesFinalUpdate(t *testing.T) {
@@ -67,6 +70,7 @@ func TestDecodeNotificationScalarsJSONAndUnsupportedValues(t *testing.T) {
 	require.Len(t, decoded.Touched, 10, "every wire update path must survive even when its value is unsupported")
 	assert.Equal(t, "unsupported", decoded.Touched[9].Elements[len(decoded.Touched[9].Elements)-1].Name)
 	assert.Equal(t, 1, stats.UnmappedValues)
+	assert.Equal(t, map[UnsupportedValueKind]int{UnsupportedValueProtoBytes: 1}, stats.UnsupportedValueKinds)
 	assert.Zero(t, stats.InvalidTimestamps)
 	assert.Equal(t, "switch-1", decoded.Prefix.Target)
 	require.Len(t, decoded.Deletes, 1)
@@ -88,6 +92,73 @@ func TestDecodeNotificationScalarsJSONAndUnsupportedValues(t *testing.T) {
 	assert.Equal(t, "hot", byLeaf["label"].Value.String)
 }
 
+func TestDecodeNotificationClassifiesBoundedUnsupportedTypedValues(t *testing.T) {
+	receipt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	decoded, stats, err := DecodeNotification("switch-1", &gnmipb.Notification{
+		Timestamp: receipt.UnixNano(),
+		Prefix:    protoPath("system", "state"),
+		Update: []*gnmipb.Update{
+			{Path: protoPath("bytes"), Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_BytesVal{BytesVal: []byte{1}}}},
+			{Path: protoPath("leaf-list"), Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_LeaflistVal{LeaflistVal: &gnmipb.ScalarArray{Element: []*gnmipb.TypedValue{
+				{Value: &gnmipb.TypedValue_StringVal{StringVal: "one"}},
+				{Value: &gnmipb.TypedValue_UintVal{UintVal: 2}},
+			}}}}},
+			{Path: protoPath("any"), Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_AnyVal{AnyVal: &anypb.Any{TypeUrl: "example.test/Value", Value: []byte{2}}}}},
+			{Path: protoPath("proto"), Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_ProtoBytes{ProtoBytes: []byte{3}}}},
+		},
+	}, receipt)
+	require.NoError(t, err)
+	assert.Empty(t, decoded.Updates)
+	assert.Len(t, decoded.Touched, 4)
+	assert.Equal(t, 4, stats.UnmappedValues)
+	assert.Equal(t, map[UnsupportedValueKind]int{
+		UnsupportedValueBytes:      1,
+		UnsupportedValueLeafList:   1,
+		UnsupportedValueAny:        1,
+		UnsupportedValueProtoBytes: 1,
+	}, stats.UnsupportedValueKinds)
+}
+
+func TestDecodeNotificationRejectsOversizedUnsupportedTypedValues(t *testing.T) {
+	receipt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	oversized := make([]byte, maxUnsupportedTypedValueBytes+1)
+	tests := []struct {
+		name  string
+		value *gnmipb.TypedValue
+	}{
+		{name: "bytes", value: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_BytesVal{BytesVal: oversized}}},
+		{name: "leaf-list", value: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_LeaflistVal{LeaflistVal: &gnmipb.ScalarArray{Element: []*gnmipb.TypedValue{{Value: &gnmipb.TypedValue_BytesVal{BytesVal: oversized}}}}}}},
+		{name: "Any", value: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_AnyVal{AnyVal: &anypb.Any{TypeUrl: "example.test/Value", Value: oversized}}}},
+		{name: "proto_bytes", value: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_ProtoBytes{ProtoBytes: oversized}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, stats, err := DecodeNotification("switch-1", &gnmipb.Notification{
+				Timestamp: receipt.UnixNano(), Prefix: protoPath("system"),
+				Update: []*gnmipb.Update{{Path: protoPath("value"), Val: tt.value}},
+			}, receipt)
+			require.ErrorContains(t, err, "payload exceeds")
+			assert.Zero(t, stats.UnmappedValues)
+			assert.Empty(t, stats.UnsupportedValueKinds)
+		})
+	}
+}
+
+func TestDecodeNotificationRejectsDeepUnsupportedLeafList(t *testing.T) {
+	receipt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	value := &gnmipb.TypedValue{Value: &gnmipb.TypedValue_UintVal{UintVal: 1}}
+	for range maxUnsupportedTypedValueDepth {
+		value = &gnmipb.TypedValue{Value: &gnmipb.TypedValue_LeaflistVal{LeaflistVal: &gnmipb.ScalarArray{Element: []*gnmipb.TypedValue{value}}}}
+	}
+	_, stats, err := DecodeNotification("switch-1", &gnmipb.Notification{
+		Timestamp: receipt.UnixNano(), Prefix: protoPath("system"),
+		Update: []*gnmipb.Update{{Path: protoPath("value"), Val: value}},
+	}, receipt)
+	require.ErrorContains(t, err, "nesting exceeds")
+	assert.Zero(t, stats.UnmappedValues)
+	assert.Empty(t, stats.UnsupportedValueKinds)
+}
+
 func TestDecodeNotificationInvalidTimestampFallsBackAndCounts(t *testing.T) {
 	receipt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
 	decoded, stats, err := DecodeNotification("switch-1", &gnmipb.Notification{
@@ -104,25 +175,41 @@ func TestDecodeNotificationInvalidTimestampFallsBackAndCounts(t *testing.T) {
 	assert.Equal(t, receipt, decoded.Updates[0].Timestamp)
 }
 
-func TestDecodeNotificationCanonicalizesWireTargetsToConfiguredIdentity(t *testing.T) {
+func TestDecodeNotificationKeepsWirePathTargetSeparateFromConfiguredIdentity(t *testing.T) {
 	receipt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
 	notification := &gnmipb.Notification{
 		Timestamp: receipt.UnixNano(),
 		Prefix:    &gnmipb.Path{Target: "device-wire-id", Origin: "openconfig", Elem: []*gnmipb.PathElem{{Name: "system"}}},
 		Update: []*gnmipb.Update{{
-			Path: &gnmipb.Path{Target: "proxy-wire-id", Elem: []*gnmipb.PathElem{{Name: "state"}, {Name: "up"}}},
+			Path: &gnmipb.Path{Elem: []*gnmipb.PathElem{{Name: "state"}, {Name: "up"}}},
 			Val:  &gnmipb.TypedValue{Value: &gnmipb.TypedValue_BoolVal{BoolVal: true}},
 		}},
-		Delete: []*gnmipb.Path{{Target: "device-wire-id", Elem: []*gnmipb.PathElem{{Name: "old"}}}},
+		Delete: []*gnmipb.Path{{Elem: []*gnmipb.PathElem{{Name: "old"}}}},
 	}
 
 	decoded, _, err := DecodeNotification("nexus-shard-01", notification, receipt)
 	require.NoError(t, err)
 	assert.Equal(t, "nexus-shard-01", decoded.Prefix.Target)
+	assert.Equal(t, "device-wire-id", decoded.Prefix.PathTarget)
 	require.Len(t, decoded.Updates, 1)
 	assert.Equal(t, "nexus-shard-01", decoded.Updates[0].Series.Target)
+	assert.Equal(t, "device-wire-id", decoded.Updates[0].Series.PathTarget)
 	require.Len(t, decoded.Deletes, 1)
 	assert.Equal(t, "nexus-shard-01", decoded.Deletes[0].Target)
+	assert.Equal(t, "device-wire-id", decoded.Deletes[0].PathTarget)
+}
+
+func TestDecodeNotificationRejectsConflictingWirePathTargets(t *testing.T) {
+	receipt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	_, _, err := DecodeNotification("nexus-shard-01", &gnmipb.Notification{
+		Timestamp: receipt.UnixNano(),
+		Prefix:    &gnmipb.Path{Target: "OC-YANG", Elem: []*gnmipb.PathElem{{Name: "system"}}},
+		Update: []*gnmipb.Update{{
+			Path: &gnmipb.Path{Target: "OTHERS", Elem: []*gnmipb.PathElem{{Name: "state"}, {Name: "up"}}},
+			Val:  &gnmipb.TypedValue{Value: &gnmipb.TypedValue_BoolVal{BoolVal: true}},
+		}},
+	}, receipt)
+	require.ErrorContains(t, err, "conflicting gNMI path targets")
 }
 
 func TestDecodeNotificationRejectsMalformedJSON(t *testing.T) {
@@ -194,6 +281,41 @@ func TestDecodeJSONArrayObjectsDerivesDistinctPathKeys(t *testing.T) {
 	assert.Equal(t, "Ethernet2", counters[1].Series.Elements[2].Keys["name"])
 }
 
+func TestDecodeJSONArrayObjectsPreservesIOSXEInstallLocationKeys(t *testing.T) {
+	receipt := time.Date(2026, 7, 4, 12, 0, 0, 0, time.UTC)
+	notification := &gnmipb.Notification{
+		Timestamp: receipt.UnixNano(),
+		Prefix:    protoPath("install-oper-data"),
+		Update: []*gnmipb.Update{{
+			Path: protoPath("install-location-information"),
+			Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`[
+				{"fru":"rp","slot":0,"bay":0,"chassis":1,"install-version-info":[{"version":"17.18.01.0.1186","version-extension":"build-a","current":0}]},
+				{"fru":"rp","slot":0,"bay":0,"chassis":2,"install-version-info":[{"version":"17.18.01.0.1186","version-extension":"build-a","current":0}]}
+			]`)}},
+		}},
+	}
+
+	decoded, stats, err := DecodeNotification("controller", notification, receipt)
+	require.NoError(t, err)
+	assert.Zero(t, stats.UnmappedValues)
+	var current []Point
+	for _, point := range decoded.Updates {
+		if point.Series.Leaf == "current" {
+			current = append(current, point)
+		}
+	}
+	require.Len(t, current, 2)
+	assert.NotEqual(t, current[0].Series.Key(), current[1].Series.Key())
+	for index, point := range current {
+		require.GreaterOrEqual(t, len(point.Series.Elements), 2)
+		keys := point.Series.Elements[1].Keys
+		assert.Equal(t, "rp", keys["fru"])
+		assert.Equal(t, "0", keys["slot"])
+		assert.Equal(t, "0", keys["bay"])
+		assert.Equal(t, strconv.Itoa(index+1), keys["chassis"])
+	}
+}
+
 func TestDecodeJSONArrayObjectPreservesEmptyListKey(t *testing.T) {
 	receipt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
 	notification := &gnmipb.Notification{
@@ -224,6 +346,24 @@ func TestDecodeJSONArrayObjectPreservesEmptyListKey(t *testing.T) {
 	value, present := counters[0].Series.Elements[2].Keys["name"]
 	assert.True(t, present)
 	assert.Empty(t, value)
+}
+
+func TestDecodeJSONArrayObjectsRejectDuplicateCanonicalListIdentity(t *testing.T) {
+	receipt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	_, _, err := DecodeNotification("switch-1", &gnmipb.Notification{
+		Timestamp: receipt.UnixNano(),
+		Prefix:    protoPath("root"),
+		Update: []*gnmipb.Update{{
+			Path: protoPath("interfaces"),
+			Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`{
+				"interface": [
+					{"name":"Ethernet1","state":{"counter":10}},
+					{"name":"Ethernet1","state":{"counter":20}}
+				]
+			}`)}},
+		}},
+	}, receipt)
+	require.ErrorContains(t, err, "duplicate canonical list identity")
 }
 
 func TestDecodeJSONArrayObjectRejectsConflictingNormalizedListKeys(t *testing.T) {
@@ -323,6 +463,75 @@ func TestMappingRegistryRequiresExplicitNumericContract(t *testing.T) {
 	require.ErrorContains(t, err, "gauge type")
 	_, err = NewRegistry(Mapping{Source: mapping.Source, Metric: MetricMetadata{Name: "bad", Unit: "1"}, Scale: 1, GaugeType: GaugeInt})
 	require.ErrorContains(t, err, "description")
+}
+
+func TestMappingRegistryRejectsMappingsThatCannotEnterTheBoundedCache(t *testing.T) {
+	base := Mapping{
+		Source:    SourcePath{Origin: "openconfig", Elements: []string{"system", "state"}, Leaf: "value"},
+		Metric:    MetricMetadata{Name: "example.value", Description: "Example value.", Unit: "1"},
+		Scale:     1,
+		GaugeType: GaugeDouble,
+	}
+
+	exact := base
+	exact.Metric = MetricMetadata{
+		Name:        strings.Repeat("a", maxCachedMetricNameBytes),
+		Description: strings.Repeat("d", maxCachedMetricDescriptionBytes),
+		Unit:        strings.Repeat("u", maxCachedMetricUnitBytes),
+	}
+	exact.KeyAttributes = make([]KeyAttribute, maxCachedPointAttributes)
+	for index := range exact.KeyAttributes {
+		exact.KeyAttributes[index] = KeyAttribute{
+			Element: "state", Key: fmt.Sprintf("key%d", index), Attribute: fmt.Sprintf("example.attribute.%d", index),
+		}
+	}
+	_, err := NewRegistry(exact)
+	require.NoError(t, err, "the exact cache payload boundaries must remain registrable")
+
+	tests := []struct {
+		name   string
+		mutate func(*Mapping)
+		want   string
+	}{
+		{name: "source element", mutate: func(mapping *Mapping) {
+			mapping.Source.Elements[0] = strings.Repeat("e", maxPathNameBytes+1)
+		}, want: "path element name exceeds 256 bytes"},
+		{name: "source leaf", mutate: func(mapping *Mapping) {
+			mapping.Source.Leaf = strings.Repeat("l", maxPathNameBytes+1)
+		}, want: "path element name exceeds 256 bytes"},
+		{name: "metric name", mutate: func(mapping *Mapping) {
+			mapping.Metric.Name = strings.Repeat("n", maxCachedMetricNameBytes+1)
+		}, want: "metric name exceeds 256 bytes"},
+		{name: "description", mutate: func(mapping *Mapping) {
+			mapping.Metric.Description = strings.Repeat("d", maxCachedMetricDescriptionBytes+1)
+		}, want: "metric description exceeds 4096 bytes"},
+		{name: "unit", mutate: func(mapping *Mapping) {
+			mapping.Metric.Unit = strings.Repeat("u", maxCachedMetricUnitBytes+1)
+		}, want: "metric unit exceeds 256 bytes"},
+		{name: "attribute count", mutate: func(mapping *Mapping) {
+			mapping.KeyAttributes = make([]KeyAttribute, maxCachedPointAttributes+1)
+			for index := range mapping.KeyAttributes {
+				mapping.KeyAttributes[index] = KeyAttribute{
+					Element: "state", Key: fmt.Sprintf("key%d", index), Attribute: fmt.Sprintf("example.attribute.%d", index),
+				}
+			}
+		}, want: "mapping exceeds 64 metric attributes"},
+		{name: "attribute key", mutate: func(mapping *Mapping) {
+			mapping.KeyAttributes = []KeyAttribute{{Element: "state", Key: strings.Repeat("k", maxPathNameBytes+1), Attribute: "example.name"}}
+		}, want: "key attribute key exceeds 256 bytes"},
+		{name: "attribute name", mutate: func(mapping *Mapping) {
+			mapping.KeyAttributes = []KeyAttribute{{Element: "state", Key: "name", Attribute: strings.Repeat("a", maxPathNameBytes+1)}}
+		}, want: "metric attribute name exceeds 256 bytes"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			mapping := base
+			mapping.Source.Elements = append([]string(nil), base.Source.Elements...)
+			test.mutate(&mapping)
+			_, err := NewRegistry(mapping)
+			require.ErrorContains(t, err, test.want)
+		})
+	}
 }
 
 func TestMappingRegistryPreservesRFC7951IntegerStringPrecision(t *testing.T) {

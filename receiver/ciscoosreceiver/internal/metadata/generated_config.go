@@ -272,110 +272,6 @@ func (ms *CiscoInterfaceUtilizationMetricConfig) Validate() error {
 	return nil
 }
 
-// CiscoOpticsChromaticDispersionMetricAttributeKey specifies the key of an attribute for the cisco.optics.chromatic_dispersion metric.
-type CiscoOpticsChromaticDispersionMetricAttributeKey string
-
-const (
-	CiscoOpticsChromaticDispersionMetricAttributeKeyNetworkInterfaceName    CiscoOpticsChromaticDispersionMetricAttributeKey = "network.interface.name"
-	CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsLane         CiscoOpticsChromaticDispersionMetricAttributeKey = "cisco.optics.lane"
-	CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsSensor       CiscoOpticsChromaticDispersionMetricAttributeKey = "cisco.optics.sensor"
-	CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsProfile      CiscoOpticsChromaticDispersionMetricAttributeKey = "cisco.optics.profile"
-	CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsExperimental CiscoOpticsChromaticDispersionMetricAttributeKey = "cisco.optics.experimental"
-)
-
-// CiscoOpticsChromaticDispersionMetricConfig provides config for the cisco.optics.chromatic_dispersion metric.
-type CiscoOpticsChromaticDispersionMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-
-	AggregationStrategy string                                             `mapstructure:"aggregation_strategy"`
-	EnabledAttributes   []CiscoOpticsChromaticDispersionMetricAttributeKey `mapstructure:"attributes"`
-}
-
-func (ms *CiscoOpticsChromaticDispersionMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-func (ms *CiscoOpticsChromaticDispersionMetricConfig) Validate() error {
-	for _, val := range ms.EnabledAttributes {
-		switch val {
-		case CiscoOpticsChromaticDispersionMetricAttributeKeyNetworkInterfaceName, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsLane, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsExperimental:
-		default:
-			return fmt.Errorf("metric cisco.optics.chromatic_dispersion doesn't have an attribute %v, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]", val)
-		}
-	}
-
-	switch ms.AggregationStrategy {
-	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
-	default:
-		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
-	}
-
-	return nil
-}
-
-// CiscoOpticsDgdMetricAttributeKey specifies the key of an attribute for the cisco.optics.dgd metric.
-type CiscoOpticsDgdMetricAttributeKey string
-
-const (
-	CiscoOpticsDgdMetricAttributeKeyNetworkInterfaceName    CiscoOpticsDgdMetricAttributeKey = "network.interface.name"
-	CiscoOpticsDgdMetricAttributeKeyCiscoOpticsLane         CiscoOpticsDgdMetricAttributeKey = "cisco.optics.lane"
-	CiscoOpticsDgdMetricAttributeKeyCiscoOpticsSensor       CiscoOpticsDgdMetricAttributeKey = "cisco.optics.sensor"
-	CiscoOpticsDgdMetricAttributeKeyCiscoOpticsProfile      CiscoOpticsDgdMetricAttributeKey = "cisco.optics.profile"
-	CiscoOpticsDgdMetricAttributeKeyCiscoOpticsExperimental CiscoOpticsDgdMetricAttributeKey = "cisco.optics.experimental"
-)
-
-// CiscoOpticsDgdMetricConfig provides config for the cisco.optics.dgd metric.
-type CiscoOpticsDgdMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-
-	AggregationStrategy string                             `mapstructure:"aggregation_strategy"`
-	EnabledAttributes   []CiscoOpticsDgdMetricAttributeKey `mapstructure:"attributes"`
-}
-
-func (ms *CiscoOpticsDgdMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-func (ms *CiscoOpticsDgdMetricConfig) Validate() error {
-	for _, val := range ms.EnabledAttributes {
-		switch val {
-		case CiscoOpticsDgdMetricAttributeKeyNetworkInterfaceName, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsLane, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsExperimental:
-		default:
-			return fmt.Errorf("metric cisco.optics.dgd doesn't have an attribute %v, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]", val)
-		}
-	}
-
-	switch ms.AggregationStrategy {
-	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
-	default:
-		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
-	}
-
-	return nil
-}
-
 // CiscoOpticsEsnrMetricAttributeKey specifies the key of an attribute for the cisco.optics.esnr metric.
 type CiscoOpticsEsnrMetricAttributeKey string
 
@@ -480,58 +376,6 @@ func (ms *CiscoOpticsLaserBiasCurrentMetricConfig) Validate() error {
 	return nil
 }
 
-// CiscoOpticsOsnrMetricAttributeKey specifies the key of an attribute for the cisco.optics.osnr metric.
-type CiscoOpticsOsnrMetricAttributeKey string
-
-const (
-	CiscoOpticsOsnrMetricAttributeKeyNetworkInterfaceName    CiscoOpticsOsnrMetricAttributeKey = "network.interface.name"
-	CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsLane         CiscoOpticsOsnrMetricAttributeKey = "cisco.optics.lane"
-	CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsSensor       CiscoOpticsOsnrMetricAttributeKey = "cisco.optics.sensor"
-	CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsProfile      CiscoOpticsOsnrMetricAttributeKey = "cisco.optics.profile"
-	CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsExperimental CiscoOpticsOsnrMetricAttributeKey = "cisco.optics.experimental"
-)
-
-// CiscoOpticsOsnrMetricConfig provides config for the cisco.optics.osnr metric.
-type CiscoOpticsOsnrMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-
-	AggregationStrategy string                              `mapstructure:"aggregation_strategy"`
-	EnabledAttributes   []CiscoOpticsOsnrMetricAttributeKey `mapstructure:"attributes"`
-}
-
-func (ms *CiscoOpticsOsnrMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-func (ms *CiscoOpticsOsnrMetricConfig) Validate() error {
-	for _, val := range ms.EnabledAttributes {
-		switch val {
-		case CiscoOpticsOsnrMetricAttributeKeyNetworkInterfaceName, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsLane, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsExperimental:
-		default:
-			return fmt.Errorf("metric cisco.optics.osnr doesn't have an attribute %v, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]", val)
-		}
-	}
-
-	switch ms.AggregationStrategy {
-	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
-	default:
-		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
-	}
-
-	return nil
-}
-
 // CiscoOpticsPreFecBerMetricAttributeKey specifies the key of an attribute for the cisco.optics.pre_fec_ber metric.
 type CiscoOpticsPreFecBerMetricAttributeKey string
 
@@ -623,110 +467,6 @@ func (ms *CiscoOpticsPresentMetricConfig) Validate() error {
 		case CiscoOpticsPresentMetricAttributeKeyNetworkInterfaceName, CiscoOpticsPresentMetricAttributeKeyCiscoOpticsLane, CiscoOpticsPresentMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsPresentMetricAttributeKeyCiscoOpticsExperimental:
 		default:
 			return fmt.Errorf("metric cisco.optics.present doesn't have an attribute %v, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.profile, cisco.optics.experimental]", val)
-		}
-	}
-
-	switch ms.AggregationStrategy {
-	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
-	default:
-		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
-	}
-
-	return nil
-}
-
-// CiscoOpticsQFactorMetricAttributeKey specifies the key of an attribute for the cisco.optics.q_factor metric.
-type CiscoOpticsQFactorMetricAttributeKey string
-
-const (
-	CiscoOpticsQFactorMetricAttributeKeyNetworkInterfaceName    CiscoOpticsQFactorMetricAttributeKey = "network.interface.name"
-	CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsLane         CiscoOpticsQFactorMetricAttributeKey = "cisco.optics.lane"
-	CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsSensor       CiscoOpticsQFactorMetricAttributeKey = "cisco.optics.sensor"
-	CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsProfile      CiscoOpticsQFactorMetricAttributeKey = "cisco.optics.profile"
-	CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsExperimental CiscoOpticsQFactorMetricAttributeKey = "cisco.optics.experimental"
-)
-
-// CiscoOpticsQFactorMetricConfig provides config for the cisco.optics.q_factor metric.
-type CiscoOpticsQFactorMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-
-	AggregationStrategy string                                 `mapstructure:"aggregation_strategy"`
-	EnabledAttributes   []CiscoOpticsQFactorMetricAttributeKey `mapstructure:"attributes"`
-}
-
-func (ms *CiscoOpticsQFactorMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-func (ms *CiscoOpticsQFactorMetricConfig) Validate() error {
-	for _, val := range ms.EnabledAttributes {
-		switch val {
-		case CiscoOpticsQFactorMetricAttributeKeyNetworkInterfaceName, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsLane, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsExperimental:
-		default:
-			return fmt.Errorf("metric cisco.optics.q_factor doesn't have an attribute %v, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]", val)
-		}
-	}
-
-	switch ms.AggregationStrategy {
-	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
-	default:
-		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
-	}
-
-	return nil
-}
-
-// CiscoOpticsQMarginMetricAttributeKey specifies the key of an attribute for the cisco.optics.q_margin metric.
-type CiscoOpticsQMarginMetricAttributeKey string
-
-const (
-	CiscoOpticsQMarginMetricAttributeKeyNetworkInterfaceName    CiscoOpticsQMarginMetricAttributeKey = "network.interface.name"
-	CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsLane         CiscoOpticsQMarginMetricAttributeKey = "cisco.optics.lane"
-	CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsSensor       CiscoOpticsQMarginMetricAttributeKey = "cisco.optics.sensor"
-	CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsProfile      CiscoOpticsQMarginMetricAttributeKey = "cisco.optics.profile"
-	CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsExperimental CiscoOpticsQMarginMetricAttributeKey = "cisco.optics.experimental"
-)
-
-// CiscoOpticsQMarginMetricConfig provides config for the cisco.optics.q_margin metric.
-type CiscoOpticsQMarginMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-
-	AggregationStrategy string                                 `mapstructure:"aggregation_strategy"`
-	EnabledAttributes   []CiscoOpticsQMarginMetricAttributeKey `mapstructure:"attributes"`
-}
-
-func (ms *CiscoOpticsQMarginMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-func (ms *CiscoOpticsQMarginMetricConfig) Validate() error {
-	for _, val := range ms.EnabledAttributes {
-		switch val {
-		case CiscoOpticsQMarginMetricAttributeKeyNetworkInterfaceName, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsLane, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsExperimental:
-		default:
-			return fmt.Errorf("metric cisco.optics.q_margin doesn't have an attribute %v, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]", val)
 		}
 	}
 
@@ -1103,10 +843,20 @@ func (ms *CiscoOpticsVoltageMetricConfig) Validate() error {
 	return nil
 }
 
+// SystemCPUUtilizationMetricAttributeKey specifies the key of an attribute for the system.cpu.utilization metric.
+type SystemCPUUtilizationMetricAttributeKey string
+
+const (
+	SystemCPUUtilizationMetricAttributeKeyCiscoNodeName SystemCPUUtilizationMetricAttributeKey = "cisco.node.name"
+)
+
 // SystemCPUUtilizationMetricConfig provides config for the system.cpu.utilization metric.
 type SystemCPUUtilizationMetricConfig struct {
 	Enabled          bool `mapstructure:"enabled"`
 	enabledSetByUser bool
+
+	AggregationStrategy string                                   `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []SystemCPUUtilizationMetricAttributeKey `mapstructure:"attributes"`
 }
 
 func (ms *SystemCPUUtilizationMetricConfig) Unmarshal(parser *confmap.Conf) error {
@@ -1123,10 +873,41 @@ func (ms *SystemCPUUtilizationMetricConfig) Unmarshal(parser *confmap.Conf) erro
 	return nil
 }
 
+func (ms *SystemCPUUtilizationMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case SystemCPUUtilizationMetricAttributeKeyCiscoNodeName:
+		default:
+			return fmt.Errorf("metric system.cpu.utilization doesn't have an attribute %v, valid attributes: [cisco.node.name]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// SystemMemoryUtilizationMetricAttributeKey specifies the key of an attribute for the system.memory.utilization metric.
+type SystemMemoryUtilizationMetricAttributeKey string
+
+const (
+	SystemMemoryUtilizationMetricAttributeKeyCiscoLocationFru     SystemMemoryUtilizationMetricAttributeKey = "cisco.location.fru"
+	SystemMemoryUtilizationMetricAttributeKeyCiscoLocationSlot    SystemMemoryUtilizationMetricAttributeKey = "cisco.location.slot"
+	SystemMemoryUtilizationMetricAttributeKeyCiscoLocationBay     SystemMemoryUtilizationMetricAttributeKey = "cisco.location.bay"
+	SystemMemoryUtilizationMetricAttributeKeyCiscoLocationChassis SystemMemoryUtilizationMetricAttributeKey = "cisco.location.chassis"
+)
+
 // SystemMemoryUtilizationMetricConfig provides config for the system.memory.utilization metric.
 type SystemMemoryUtilizationMetricConfig struct {
 	Enabled          bool `mapstructure:"enabled"`
 	enabledSetByUser bool
+
+	AggregationStrategy string                                      `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []SystemMemoryUtilizationMetricAttributeKey `mapstructure:"attributes"`
 }
 
 func (ms *SystemMemoryUtilizationMetricConfig) Unmarshal(parser *confmap.Conf) error {
@@ -1140,6 +921,24 @@ func (ms *SystemMemoryUtilizationMetricConfig) Unmarshal(parser *confmap.Conf) e
 	}
 
 	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *SystemMemoryUtilizationMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case SystemMemoryUtilizationMetricAttributeKeyCiscoLocationFru, SystemMemoryUtilizationMetricAttributeKeyCiscoLocationSlot, SystemMemoryUtilizationMetricAttributeKeyCiscoLocationBay, SystemMemoryUtilizationMetricAttributeKeyCiscoLocationChassis:
+		default:
+			return fmt.Errorf("metric system.memory.utilization doesn't have an attribute %v, valid attributes: [cisco.location.fru, cisco.location.slot, cisco.location.bay, cisco.location.chassis]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
 	return nil
 }
 
@@ -1410,36 +1209,31 @@ func (ms *SystemUptimeMetricConfig) Unmarshal(parser *confmap.Conf) error {
 
 // MetricsConfig provides config for cisco_os metrics.
 type MetricsConfig struct {
-	CiscoDeviceUp                  CiscoDeviceUpMetricConfig                  `mapstructure:"cisco.device.up"`
-	CiscoInterfaceAdminStatus      CiscoInterfaceAdminStatusMetricConfig      `mapstructure:"cisco.interface.admin.status"`
-	CiscoInterfaceIoRate           CiscoInterfaceIoRateMetricConfig           `mapstructure:"cisco.interface.io.rate"`
-	CiscoInterfacePacketRate       CiscoInterfacePacketRateMetricConfig       `mapstructure:"cisco.interface.packet.rate"`
-	CiscoInterfaceSpeed            CiscoInterfaceSpeedMetricConfig            `mapstructure:"cisco.interface.speed"`
-	CiscoInterfaceUtilization      CiscoInterfaceUtilizationMetricConfig      `mapstructure:"cisco.interface.utilization"`
-	CiscoOpticsChromaticDispersion CiscoOpticsChromaticDispersionMetricConfig `mapstructure:"cisco.optics.chromatic_dispersion"`
-	CiscoOpticsDgd                 CiscoOpticsDgdMetricConfig                 `mapstructure:"cisco.optics.dgd"`
-	CiscoOpticsEsnr                CiscoOpticsEsnrMetricConfig                `mapstructure:"cisco.optics.esnr"`
-	CiscoOpticsLaserBiasCurrent    CiscoOpticsLaserBiasCurrentMetricConfig    `mapstructure:"cisco.optics.laser_bias_current"`
-	CiscoOpticsOsnr                CiscoOpticsOsnrMetricConfig                `mapstructure:"cisco.optics.osnr"`
-	CiscoOpticsPreFecBer           CiscoOpticsPreFecBerMetricConfig           `mapstructure:"cisco.optics.pre_fec_ber"`
-	CiscoOpticsPresent             CiscoOpticsPresentMetricConfig             `mapstructure:"cisco.optics.present"`
-	CiscoOpticsQFactor             CiscoOpticsQFactorMetricConfig             `mapstructure:"cisco.optics.q_factor"`
-	CiscoOpticsQMargin             CiscoOpticsQMarginMetricConfig             `mapstructure:"cisco.optics.q_margin"`
-	CiscoOpticsRxPower             CiscoOpticsRxPowerMetricConfig             `mapstructure:"cisco.optics.rx_power"`
-	CiscoOpticsTdecq               CiscoOpticsTdecqMetricConfig               `mapstructure:"cisco.optics.tdecq"`
-	CiscoOpticsTecCurrent          CiscoOpticsTecCurrentMetricConfig          `mapstructure:"cisco.optics.tec_current"`
-	CiscoOpticsTecUtilization      CiscoOpticsTecUtilizationMetricConfig      `mapstructure:"cisco.optics.tec_utilization"`
-	CiscoOpticsTemperature         CiscoOpticsTemperatureMetricConfig         `mapstructure:"cisco.optics.temperature"`
-	CiscoOpticsTxPower             CiscoOpticsTxPowerMetricConfig             `mapstructure:"cisco.optics.tx_power"`
-	CiscoOpticsVoltage             CiscoOpticsVoltageMetricConfig             `mapstructure:"cisco.optics.voltage"`
-	SystemCPUUtilization           SystemCPUUtilizationMetricConfig           `mapstructure:"system.cpu.utilization"`
-	SystemMemoryUtilization        SystemMemoryUtilizationMetricConfig        `mapstructure:"system.memory.utilization"`
-	SystemNetworkErrors            SystemNetworkErrorsMetricConfig            `mapstructure:"system.network.errors"`
-	SystemNetworkInterfaceStatus   SystemNetworkInterfaceStatusMetricConfig   `mapstructure:"system.network.interface.status"`
-	SystemNetworkIo                SystemNetworkIoMetricConfig                `mapstructure:"system.network.io"`
-	SystemNetworkPacketCount       SystemNetworkPacketCountMetricConfig       `mapstructure:"system.network.packet.count"`
-	SystemNetworkPacketDropped     SystemNetworkPacketDroppedMetricConfig     `mapstructure:"system.network.packet.dropped"`
-	SystemUptime                   SystemUptimeMetricConfig                   `mapstructure:"system.uptime"`
+	CiscoDeviceUp                CiscoDeviceUpMetricConfig                `mapstructure:"cisco.device.up"`
+	CiscoInterfaceAdminStatus    CiscoInterfaceAdminStatusMetricConfig    `mapstructure:"cisco.interface.admin.status"`
+	CiscoInterfaceIoRate         CiscoInterfaceIoRateMetricConfig         `mapstructure:"cisco.interface.io.rate"`
+	CiscoInterfacePacketRate     CiscoInterfacePacketRateMetricConfig     `mapstructure:"cisco.interface.packet.rate"`
+	CiscoInterfaceSpeed          CiscoInterfaceSpeedMetricConfig          `mapstructure:"cisco.interface.speed"`
+	CiscoInterfaceUtilization    CiscoInterfaceUtilizationMetricConfig    `mapstructure:"cisco.interface.utilization"`
+	CiscoOpticsEsnr              CiscoOpticsEsnrMetricConfig              `mapstructure:"cisco.optics.esnr"`
+	CiscoOpticsLaserBiasCurrent  CiscoOpticsLaserBiasCurrentMetricConfig  `mapstructure:"cisco.optics.laser_bias_current"`
+	CiscoOpticsPreFecBer         CiscoOpticsPreFecBerMetricConfig         `mapstructure:"cisco.optics.pre_fec_ber"`
+	CiscoOpticsPresent           CiscoOpticsPresentMetricConfig           `mapstructure:"cisco.optics.present"`
+	CiscoOpticsRxPower           CiscoOpticsRxPowerMetricConfig           `mapstructure:"cisco.optics.rx_power"`
+	CiscoOpticsTdecq             CiscoOpticsTdecqMetricConfig             `mapstructure:"cisco.optics.tdecq"`
+	CiscoOpticsTecCurrent        CiscoOpticsTecCurrentMetricConfig        `mapstructure:"cisco.optics.tec_current"`
+	CiscoOpticsTecUtilization    CiscoOpticsTecUtilizationMetricConfig    `mapstructure:"cisco.optics.tec_utilization"`
+	CiscoOpticsTemperature       CiscoOpticsTemperatureMetricConfig       `mapstructure:"cisco.optics.temperature"`
+	CiscoOpticsTxPower           CiscoOpticsTxPowerMetricConfig           `mapstructure:"cisco.optics.tx_power"`
+	CiscoOpticsVoltage           CiscoOpticsVoltageMetricConfig           `mapstructure:"cisco.optics.voltage"`
+	SystemCPUUtilization         SystemCPUUtilizationMetricConfig         `mapstructure:"system.cpu.utilization"`
+	SystemMemoryUtilization      SystemMemoryUtilizationMetricConfig      `mapstructure:"system.memory.utilization"`
+	SystemNetworkErrors          SystemNetworkErrorsMetricConfig          `mapstructure:"system.network.errors"`
+	SystemNetworkInterfaceStatus SystemNetworkInterfaceStatusMetricConfig `mapstructure:"system.network.interface.status"`
+	SystemNetworkIo              SystemNetworkIoMetricConfig              `mapstructure:"system.network.io"`
+	SystemNetworkPacketCount     SystemNetworkPacketCountMetricConfig     `mapstructure:"system.network.packet.count"`
+	SystemNetworkPacketDropped   SystemNetworkPacketDroppedMetricConfig   `mapstructure:"system.network.packet.dropped"`
+	SystemUptime                 SystemUptimeMetricConfig                 `mapstructure:"system.uptime"`
 }
 
 func DefaultMetricsConfig() MetricsConfig {
@@ -1472,16 +1266,6 @@ func DefaultMetricsConfig() MetricsConfig {
 			AggregationStrategy: AggregationStrategyAvg,
 			EnabledAttributes:   []CiscoInterfaceUtilizationMetricAttributeKey{CiscoInterfaceUtilizationMetricAttributeKeyNetworkIoDirection, CiscoInterfaceUtilizationMetricAttributeKeyNetworkInterfaceName},
 		},
-		CiscoOpticsChromaticDispersion: CiscoOpticsChromaticDispersionMetricConfig{
-			Enabled:             true,
-			AggregationStrategy: AggregationStrategyAvg,
-			EnabledAttributes:   []CiscoOpticsChromaticDispersionMetricAttributeKey{CiscoOpticsChromaticDispersionMetricAttributeKeyNetworkInterfaceName, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsLane, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsExperimental},
-		},
-		CiscoOpticsDgd: CiscoOpticsDgdMetricConfig{
-			Enabled:             true,
-			AggregationStrategy: AggregationStrategyAvg,
-			EnabledAttributes:   []CiscoOpticsDgdMetricAttributeKey{CiscoOpticsDgdMetricAttributeKeyNetworkInterfaceName, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsLane, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsExperimental},
-		},
 		CiscoOpticsEsnr: CiscoOpticsEsnrMetricConfig{
 			Enabled:             true,
 			AggregationStrategy: AggregationStrategyAvg,
@@ -1492,11 +1276,6 @@ func DefaultMetricsConfig() MetricsConfig {
 			AggregationStrategy: AggregationStrategyAvg,
 			EnabledAttributes:   []CiscoOpticsLaserBiasCurrentMetricAttributeKey{CiscoOpticsLaserBiasCurrentMetricAttributeKeyNetworkInterfaceName, CiscoOpticsLaserBiasCurrentMetricAttributeKeyCiscoOpticsLane, CiscoOpticsLaserBiasCurrentMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsLaserBiasCurrentMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsLaserBiasCurrentMetricAttributeKeyCiscoOpticsExperimental},
 		},
-		CiscoOpticsOsnr: CiscoOpticsOsnrMetricConfig{
-			Enabled:             true,
-			AggregationStrategy: AggregationStrategyAvg,
-			EnabledAttributes:   []CiscoOpticsOsnrMetricAttributeKey{CiscoOpticsOsnrMetricAttributeKeyNetworkInterfaceName, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsLane, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsExperimental},
-		},
 		CiscoOpticsPreFecBer: CiscoOpticsPreFecBerMetricConfig{
 			Enabled:             true,
 			AggregationStrategy: AggregationStrategyAvg,
@@ -1506,16 +1285,6 @@ func DefaultMetricsConfig() MetricsConfig {
 			Enabled:             true,
 			AggregationStrategy: AggregationStrategyAvg,
 			EnabledAttributes:   []CiscoOpticsPresentMetricAttributeKey{CiscoOpticsPresentMetricAttributeKeyNetworkInterfaceName, CiscoOpticsPresentMetricAttributeKeyCiscoOpticsLane, CiscoOpticsPresentMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsPresentMetricAttributeKeyCiscoOpticsExperimental},
-		},
-		CiscoOpticsQFactor: CiscoOpticsQFactorMetricConfig{
-			Enabled:             true,
-			AggregationStrategy: AggregationStrategyAvg,
-			EnabledAttributes:   []CiscoOpticsQFactorMetricAttributeKey{CiscoOpticsQFactorMetricAttributeKeyNetworkInterfaceName, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsLane, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsExperimental},
-		},
-		CiscoOpticsQMargin: CiscoOpticsQMarginMetricConfig{
-			Enabled:             true,
-			AggregationStrategy: AggregationStrategyAvg,
-			EnabledAttributes:   []CiscoOpticsQMarginMetricAttributeKey{CiscoOpticsQMarginMetricAttributeKeyNetworkInterfaceName, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsLane, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsExperimental},
 		},
 		CiscoOpticsRxPower: CiscoOpticsRxPowerMetricConfig{
 			Enabled:             true,
@@ -1553,10 +1322,14 @@ func DefaultMetricsConfig() MetricsConfig {
 			EnabledAttributes:   []CiscoOpticsVoltageMetricAttributeKey{CiscoOpticsVoltageMetricAttributeKeyNetworkInterfaceName, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsLane, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsExperimental},
 		},
 		SystemCPUUtilization: SystemCPUUtilizationMetricConfig{
-			Enabled: true,
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []SystemCPUUtilizationMetricAttributeKey{SystemCPUUtilizationMetricAttributeKeyCiscoNodeName},
 		},
 		SystemMemoryUtilization: SystemMemoryUtilizationMetricConfig{
-			Enabled: true,
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []SystemMemoryUtilizationMetricAttributeKey{SystemMemoryUtilizationMetricAttributeKeyCiscoLocationFru, SystemMemoryUtilizationMetricAttributeKeyCiscoLocationSlot, SystemMemoryUtilizationMetricAttributeKeyCiscoLocationBay, SystemMemoryUtilizationMetricAttributeKeyCiscoLocationChassis},
 		},
 		SystemNetworkErrors: SystemNetworkErrorsMetricConfig{
 			Enabled:             true,
@@ -1619,12 +1392,16 @@ func (rac *ResourceAttributeConfig) Unmarshal(parser *confmap.Conf) error {
 type ResourceAttributesConfig struct {
 	CiscoOsName             ResourceAttributeConfig `mapstructure:"cisco.os.name"`
 	CiscoPlatformFamily     ResourceAttributeConfig `mapstructure:"cisco.platform.family"`
+	CiscoProductFamily      ResourceAttributeConfig `mapstructure:"cisco.product.family"`
 	CiscoTelemetryTransport ResourceAttributeConfig `mapstructure:"cisco.telemetry.transport"`
+	DeviceManufacturer      ResourceAttributeConfig `mapstructure:"device.manufacturer"`
+	DeviceModelIdentifier   ResourceAttributeConfig `mapstructure:"device.model.identifier"`
 	HostID                  ResourceAttributeConfig `mapstructure:"host.id"`
 	HostIP                  ResourceAttributeConfig `mapstructure:"host.ip"`
 	HostName                ResourceAttributeConfig `mapstructure:"host.name"`
 	HwType                  ResourceAttributeConfig `mapstructure:"hw.type"`
 	OsName                  ResourceAttributeConfig `mapstructure:"os.name"`
+	OsVersion               ResourceAttributeConfig `mapstructure:"os.version"`
 }
 
 func DefaultResourceAttributesConfig() ResourceAttributesConfig {
@@ -1635,7 +1412,16 @@ func DefaultResourceAttributesConfig() ResourceAttributesConfig {
 		CiscoPlatformFamily: ResourceAttributeConfig{
 			Enabled: true,
 		},
+		CiscoProductFamily: ResourceAttributeConfig{
+			Enabled: true,
+		},
 		CiscoTelemetryTransport: ResourceAttributeConfig{
+			Enabled: true,
+		},
+		DeviceManufacturer: ResourceAttributeConfig{
+			Enabled: true,
+		},
+		DeviceModelIdentifier: ResourceAttributeConfig{
 			Enabled: true,
 		},
 		HostID: ResourceAttributeConfig{
@@ -1651,6 +1437,9 @@ func DefaultResourceAttributesConfig() ResourceAttributesConfig {
 			Enabled: true,
 		},
 		OsName: ResourceAttributeConfig{
+			Enabled: true,
+		},
+		OsVersion: ResourceAttributeConfig{
 			Enabled: true,
 		},
 	}

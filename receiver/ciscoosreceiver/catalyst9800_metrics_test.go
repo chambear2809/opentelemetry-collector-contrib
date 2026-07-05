@@ -20,6 +20,29 @@ func TestCatalyst9800NormalizingConsumerDeclaresMutation(t *testing.T) {
 	assert.True(t, normalizer.Capabilities().MutatesData)
 }
 
+func TestCatalyst9800PercentageRatioIsBounded(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		value float64
+		want  float64
+		ok    bool
+	}{
+		{name: "zero", value: 0, ok: true},
+		{name: "one percent", value: 1, want: 0.01, ok: true},
+		{name: "one hundred percent", value: 100, want: 1, ok: true},
+		{name: "negative", value: -1},
+		{name: "over one hundred", value: 101},
+		{name: "not a number", value: math.NaN()},
+		{name: "infinite", value: math.Inf(1)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := catalyst9800PercentageRatio(tc.value)
+			assert.Equal(t, tc.ok, ok)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
 func TestCatalyst9800AliasPreservesPresentEmptyIdentity(t *testing.T) {
 	source := pmetric.NewMetrics()
 	sourceMetric := source.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()

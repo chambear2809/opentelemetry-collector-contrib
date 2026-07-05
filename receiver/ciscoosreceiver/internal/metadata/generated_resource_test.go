@@ -15,21 +15,25 @@ func TestResourceBuilder(t *testing.T) {
 			rb := NewResourceBuilder(cfg)
 			rb.SetCiscoOsName("cisco.os.name-val")
 			rb.SetCiscoPlatformFamily("cisco.platform.family-val")
+			rb.SetCiscoProductFamily("cisco.product.family-val")
 			rb.SetCiscoTelemetryTransport("cisco.telemetry.transport-val")
+			rb.SetDeviceManufacturer("device.manufacturer-val")
+			rb.SetDeviceModelIdentifier("device.model.identifier-val")
 			rb.SetHostID("host.id-val")
 			rb.SetHostIP("host.ip-val")
 			rb.SetHostName("host.name-val")
 			rb.SetHwType("hw.type-val")
 			rb.SetOsName("os.name-val")
+			rb.SetOsVersion("os.version-val")
 
 			res := rb.Emit()
 			assert.Equal(t, 0, rb.Emit().Attributes().Len()) // Second call should return empty Resource
 
 			switch tt {
 			case "default":
-				assert.Equal(t, 8, res.Attributes().Len())
+				assert.Equal(t, 12, res.Attributes().Len())
 			case "all_set":
-				assert.Equal(t, 8, res.Attributes().Len())
+				assert.Equal(t, 12, res.Attributes().Len())
 			case "none_set":
 				assert.Equal(t, 0, res.Attributes().Len())
 				return
@@ -46,10 +50,25 @@ func TestResourceBuilder(t *testing.T) {
 			if ok {
 				assert.Equal(t, "cisco.platform.family-val", ciscoPlatformFamilyAttrVal.Str())
 			}
+			ciscoProductFamilyAttrVal, ok := res.Attributes().Get("cisco.product.family")
+			assert.True(t, ok)
+			if ok {
+				assert.Equal(t, "cisco.product.family-val", ciscoProductFamilyAttrVal.Str())
+			}
 			ciscoTelemetryTransportAttrVal, ok := res.Attributes().Get("cisco.telemetry.transport")
 			assert.True(t, ok)
 			if ok {
 				assert.Equal(t, "cisco.telemetry.transport-val", ciscoTelemetryTransportAttrVal.Str())
+			}
+			deviceManufacturerAttrVal, ok := res.Attributes().Get("device.manufacturer")
+			assert.True(t, ok)
+			if ok {
+				assert.Equal(t, "device.manufacturer-val", deviceManufacturerAttrVal.Str())
+			}
+			deviceModelIdentifierAttrVal, ok := res.Attributes().Get("device.model.identifier")
+			assert.True(t, ok)
+			if ok {
+				assert.Equal(t, "device.model.identifier-val", deviceModelIdentifierAttrVal.Str())
 			}
 			hostIDAttrVal, ok := res.Attributes().Get("host.id")
 			assert.True(t, ok)
@@ -75,6 +94,11 @@ func TestResourceBuilder(t *testing.T) {
 			assert.True(t, ok)
 			if ok {
 				assert.Equal(t, "os.name-val", osNameAttrVal.Str())
+			}
+			osVersionAttrVal, ok := res.Attributes().Get("os.version")
+			assert.True(t, ok)
+			if ok {
+				assert.Equal(t, "os.version-val", osVersionAttrVal.Str())
 			}
 		})
 	}

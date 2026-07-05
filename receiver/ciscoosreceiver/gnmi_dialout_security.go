@@ -38,14 +38,20 @@ const (
 	maxGNMIDialOutModuleWalkEntries = 100_000
 	maxGNMIDialOutModuleFileBytes   = 16 * 1024 * 1024
 	maxGNMIDialOutModuleTotalBytes  = 128 * 1024 * 1024
+	gnmiDialOutModuleReadDirBatch   = 256
 	defaultGNMIDialOutStreamsPerIP  = 16
 	gnmiDialOutStartCleanupTimeout  = 5 * time.Second
 	minGNMIDialOutLimiterCleanup    = time.Second
 	maxGNMIDialOutLimiterIdleTTL    = time.Duration(1<<63 - 1)
-	minimumYangGRPCRuntimeHardening = 2
+	minimumYangGRPCRuntimeHardening = 3
 )
 
 var gnmiDialOutSecurityMiddlewareType = component.MustNewType("ciscoos_internal")
+
+type gnmiDialOutModuleDirectory struct {
+	path string
+	info os.FileInfo
+}
 
 type yangGRPCRuntimeHardening interface {
 	RuntimeHardeningVersion() int
@@ -53,6 +59,10 @@ type yangGRPCRuntimeHardening interface {
 
 type yangGRPCStreamAdmissionConfig interface {
 	SetMaxConcurrentStreamsPerClient(uint32)
+}
+
+type yangGRPCStreamIdleConfig interface {
+	SetStreamIdleTimeout(time.Duration)
 }
 
 func requireHardenedYangGRPCRuntime(config any) error {
@@ -83,6 +93,15 @@ func configureHardenedYangGRPCStreamAdmission(config any, maxStreamsPerClient ui
 		return errors.New("yanggrpcreceiver dependency does not expose required global stream-admission configuration")
 	}
 	streamAdmission.SetMaxConcurrentStreamsPerClient(maxStreamsPerClient)
+	return nil
+}
+
+func configureHardenedYangGRPCStreamIdleTimeout(config any, timeout time.Duration) error {
+	idleConfig, ok := config.(yangGRPCStreamIdleConfig)
+	if !ok {
+		return errors.New("yanggrpcreceiver dependency does not expose required stream-idle configuration")
+	}
+	idleConfig.SetStreamIdleTimeout(effectiveGNMIDialOutStreamIdleTimeout(timeout))
 	return nil
 }
 
@@ -807,7 +826,7 @@ func preflightGNMIDialOutModulePathsWithByteLimits(modulePaths []string, maxFile
 	totalEntries := 0
 	var totalBytes int64
 	for index, modulePath := range modulePaths {
-		info, err := os.Stat(modulePath)
+		info, err := os.Lstat(modulePath)
 		if err != nil {
 			return fmt.Errorf("gNMI dial-out YANG module_paths[%d] %q: %w", index, modulePath, err)
 		}
@@ -815,7 +834,7 @@ func preflightGNMIDialOutModulePathsWithByteLimits(modulePaths []string, maxFile
 			if !info.Mode().IsRegular() || filepath.Ext(modulePath) != ".yang" {
 				return fmt.Errorf("gNMI dial-out YANG module_paths[%d] %q must be a .yang file or directory", index, modulePath)
 			}
-			if readabilityErr := preflightReadableYANGFile(modulePath, maxFileBytes, maxTotalBytes, &totalBytes); readabilityErr != nil {
+			if readabilityErr := preflightReadableYANGFile(modulePath, info, maxFileBytes, maxTotalBytes, &totalBytes); readabilityErr != nil {
 				return fmt.Errorf("gNMI dial-out YANG module_paths[%d]: %w", index, readabilityErr)
 			}
 			totalFiles++
@@ -823,10 +842,7 @@ func preflightGNMIDialOutModulePathsWithByteLimits(modulePaths []string, maxFile
 		}
 
 		pathFiles := 0
-		err = filepath.WalkDir(modulePath, func(path string, entry os.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
+		err = walkGNMIDialOutModulePath(modulePath, func(path string, entry os.FileInfo) error {
 			totalEntries++
 			if totalEntries > maxGNMIDialOutModuleWalkEntries {
 				return fmt.Errorf("walk exceeds hard entry limit of %d", maxGNMIDialOutModuleWalkEntries)
@@ -839,7 +855,7 @@ func preflightGNMIDialOutModulePathsWithByteLimits(modulePaths []string, maxFile
 			if totalFiles > maxGNMIDialOutModuleFiles {
 				return fmt.Errorf("walk exceeds hard .yang file limit of %d", maxGNMIDialOutModuleFiles)
 			}
-			return preflightReadableYANGFile(path, maxFileBytes, maxTotalBytes, &totalBytes)
+			return preflightReadableYANGFile(path, entry, maxFileBytes, maxTotalBytes, &totalBytes)
 		})
 		if err != nil {
 			return fmt.Errorf("gNMI dial-out YANG module_paths[%d] %q: %w", index, modulePath, err)
@@ -851,26 +867,114 @@ func preflightGNMIDialOutModulePathsWithByteLimits(modulePaths []string, maxFile
 	return nil
 }
 
-func preflightReadableYANGFile(path string, maxFileBytes, maxTotalBytes int64, totalBytes *int64) error {
-	info, err := os.Stat(path)
+// walkGNMIDialOutModulePath uses fixed-size directory reads. filepath.WalkDir
+// sorts every name in a directory before invoking its callback, which lets one
+// oversized directory allocate outside the configured traversal ceiling.
+func walkGNMIDialOutModulePath(root string, visit func(string, os.FileInfo) error) error {
+	rootInfo, err := os.Lstat(root)
 	if err != nil {
-		return fmt.Errorf("stat YANG file %q: %w", path, err)
+		return err
 	}
-	if !info.Mode().IsRegular() {
+	if err := visit(root, rootInfo); err != nil {
+		return err
+	}
+	if !rootInfo.IsDir() {
+		return nil
+	}
+
+	pendingDirectories := []gnmiDialOutModuleDirectory{{path: root, info: rootInfo}}
+	for len(pendingDirectories) > 0 {
+		last := len(pendingDirectories) - 1
+		directory := pendingDirectories[last]
+		pendingDirectories = pendingDirectories[:last]
+		if err := walkGNMIDialOutDirectory(directory, visit, &pendingDirectories); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func walkGNMIDialOutDirectory(
+	directoryEntry gnmiDialOutModuleDirectory,
+	visit func(string, os.FileInfo) error,
+	pendingDirectories *[]gnmiDialOutModuleDirectory,
+) (returnErr error) {
+	directory, err := openYANGPath(directoryEntry.path)
+	if err != nil {
+		return fmt.Errorf("open YANG module directory %q: %w", directoryEntry.path, err)
+	}
+	directoryInfo, err := directory.Stat()
+	if err != nil {
+		return errors.Join(fmt.Errorf("stat opened YANG module directory %q: %w", directoryEntry.path, err), directory.Close())
+	}
+	if !directoryInfo.IsDir() || !os.SameFile(directoryEntry.info, directoryInfo) {
+		return errors.Join(
+			fmt.Errorf("YANG module directory %q changed after directory enumeration", directoryEntry.path),
+			directory.Close(),
+		)
+	}
+	defer func() {
+		returnErr = errors.Join(returnErr, directory.Close())
+	}()
+
+	for {
+		entries, readErr := directory.Readdir(gnmiDialOutModuleReadDirBatch)
+		for _, entry := range entries {
+			path := filepath.Join(directoryEntry.path, entry.Name())
+			if err := visit(path, entry); err != nil {
+				return err
+			}
+			if entry.IsDir() {
+				*pendingDirectories = append(*pendingDirectories, gnmiDialOutModuleDirectory{path: path, info: entry})
+			}
+		}
+		if errors.Is(readErr, io.EOF) {
+			return nil
+		}
+		if readErr != nil {
+			return readErr
+		}
+	}
+}
+
+func preflightReadableYANGFile(
+	path string,
+	expected os.FileInfo,
+	maxFileBytes,
+	maxTotalBytes int64,
+	totalBytes *int64,
+) error {
+	if expected == nil || !expected.Mode().IsRegular() {
 		return fmt.Errorf("YANG file %q is not a regular file", path)
 	}
-	if info.Size() == 0 {
-		return fmt.Errorf("YANG file %q is empty", path)
-	}
-	if maxFileBytes > 0 && info.Size() > maxFileBytes {
-		return fmt.Errorf("YANG file %q exceeds hard size limit of %d bytes", path, maxFileBytes)
-	}
-	if maxTotalBytes > 0 && (*totalBytes > maxTotalBytes-info.Size()) {
-		return fmt.Errorf("YANG modules exceed hard aggregate size limit of %d bytes", maxTotalBytes)
-	}
-	file, err := os.Open(path)
+	file, err := openYANGPath(path)
 	if err != nil {
 		return fmt.Errorf("open YANG file %q: %w", path, err)
+	}
+	info, statErr := file.Stat()
+	if statErr != nil {
+		return errors.Join(fmt.Errorf("stat opened YANG file %q: %w", path, statErr), file.Close())
+	}
+	if !info.Mode().IsRegular() {
+		return errors.Join(fmt.Errorf("YANG file %q is not a regular file", path), file.Close())
+	}
+	if !os.SameFile(expected, info) {
+		return errors.Join(fmt.Errorf("YANG file %q changed after directory enumeration", path), file.Close())
+	}
+	if info.Size() == 0 {
+		return errors.Join(fmt.Errorf("YANG file %q is empty", path), file.Close())
+	}
+	if maxFileBytes > 0 && info.Size() > maxFileBytes {
+		return errors.Join(
+			fmt.Errorf("YANG file %q exceeds hard size limit of %d bytes", path, maxFileBytes),
+			file.Close(),
+		)
+	}
+	if maxTotalBytes > 0 && (*totalBytes > maxTotalBytes-info.Size()) {
+		return errors.Join(
+			fmt.Errorf("YANG modules exceed hard aggregate size limit of %d bytes", maxTotalBytes),
+			file.Close(),
+		)
 	}
 	var probe [1]byte
 	_, readErr := file.Read(probe[:])

@@ -4,20 +4,25 @@
 package ciscoosreceiver
 
 import (
+	"errors"
+	"io"
+	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
+	"gopkg.in/yaml.v3"
 )
 
 func TestShippedCiscoOSReceiverExamplesUnmarshalAndValidate(t *testing.T) {
 	tests := []struct {
-		name      string
-		path      string
-		resolve   func(*Config)
-		assertion func(*testing.T, *Config)
+		name        string
+		path        string
+		receiverKey string
+		resolve     func(*Config)
+		assertion   func(*testing.T, *Config)
 	}{
 		{
 			name: "secure gNMI",
@@ -43,13 +48,31 @@ func TestShippedCiscoOSReceiverExamplesUnmarshalAndValidate(t *testing.T) {
 				assert.False(t, cfg.SDWAN.RealtimeDetails.Enabled)
 			},
 		},
+		{
+			name:        "ACI to Splunk Observability Cloud",
+			path:        filepath.Join("examples", "aci-splunk-o11y.yaml"),
+			receiverKey: "cisco_os/aci",
+			resolve: func(cfg *Config) {
+				cfg.ACI.Controllers[0].Endpoint = "https://apic.example.test"
+			},
+			assertion: func(t *testing.T, cfg *Config) {
+				assert.True(t, cfg.ACI.Enabled)
+				require.Len(t, cfg.ACI.Controllers, 1)
+				assert.Equal(t, "apic-primary", cfg.ACI.Controllers[0].Name)
+				assert.False(t, cfg.ACI.InsecureSkipVerify)
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			conf, err := confmaptest.LoadConf(tt.path)
 			require.NoError(t, err)
-			receiverConf, err := conf.Sub("receivers::cisco_os")
+			receiverKey := tt.receiverKey
+			if receiverKey == "" {
+				receiverKey = "cisco_os"
+			}
+			receiverConf, err := conf.Sub("receivers::" + receiverKey)
 			require.NoError(t, err)
 
 			cfg := NewFactory().CreateDefaultConfig().(*Config)
@@ -61,4 +84,53 @@ func TestShippedCiscoOSReceiverExamplesUnmarshalAndValidate(t *testing.T) {
 			tt.assertion(t, cfg)
 		})
 	}
+}
+
+func TestKubernetesGNMIShardEmbeddedCollectorConfigsUnmarshalAndValidate(t *testing.T) {
+	file, err := os.Open(filepath.Join("examples", "kubernetes-gnmi-shard.yaml"))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, file.Close()) })
+
+	type manifest struct {
+		Kind     string `yaml:"kind"`
+		Metadata struct {
+			Name string `yaml:"name"`
+		} `yaml:"metadata"`
+		Data map[string]string `yaml:"data"`
+	}
+	decoder := yaml.NewDecoder(file)
+	validated := map[string]string{}
+	for {
+		var document manifest
+		decodeErr := decoder.Decode(&document)
+		if errors.Is(decodeErr, io.EOF) {
+			break
+		}
+		require.NoError(t, decodeErr)
+		if document.Kind != "ConfigMap" || document.Data["collector.yaml"] == "" {
+			continue
+		}
+		t.Run(document.Metadata.Name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "collector.yaml")
+			require.NoError(t, os.WriteFile(path, []byte(document.Data["collector.yaml"]), 0o600))
+			conf, loadErr := confmaptest.LoadConf(path)
+			require.NoError(t, loadErr)
+			receiverConf, subErr := conf.Sub("receivers::cisco_os")
+			require.NoError(t, subErr)
+			cfg := NewFactory().CreateDefaultConfig().(*Config)
+			require.NoError(t, cfg.Unmarshal(receiverConf))
+			require.NoError(t, cfg.Validate())
+			require.Len(t, cfg.GNMI.Targets, 1)
+			target := cfg.GNMI.Targets[0]
+			validated[document.Metadata.Name] = target.Product
+			if target.Product == gnmiProductNexus9000 {
+				require.NotNil(t, target.Profiles.System.Enabled)
+				assert.False(t, *target.Profiles.System.Enabled, "Nexus example must explicitly disable the unavailable system profile")
+			}
+		})
+	}
+	assert.Equal(t, map[string]string{
+		"cisco-gnmi-shard-01": gnmiProductNexus9000,
+		"cisco-gnmi-shard-02": gnmiProductASR9000,
+	}, validated)
 }

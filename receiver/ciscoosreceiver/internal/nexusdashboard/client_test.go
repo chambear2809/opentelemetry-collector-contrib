@@ -468,6 +468,38 @@ func TestClientSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {
 	}))
 	defer server.Close()
 
+	verifiedClient, err := NewClient(Config{
+		Endpoint:   server.URL,
+		AuthMode:   "api_key",
+		Username:   "admin",
+		APIKey:     "nd-api-key",
+		Timeout:    time.Second,
+		MaxRetries: 3,
+	})
+	require.NoError(t, err)
+	verifiedAttempts := 0
+	verifiedClient.OnRequest = func(RequestStat) { verifiedAttempts++ }
+	_, err = verifiedClient.List(t.Context(), "fabrics", "/api/v1/manage/fabrics", nil, 0)
+	require.ErrorContains(t, err, "trust the issuing CA in the Collector host trust store (preferred)")
+	require.ErrorContains(t, err, "set nexus_dashboard.insecure_skip_verify: true")
+	assert.Equal(t, 1, verifiedAttempts)
+
+	passwordClient, err := NewClient(Config{
+		Endpoint:   server.URL,
+		AuthMode:   "username_password",
+		Username:   "admin",
+		Password:   "password",
+		Timeout:    time.Second,
+		MaxRetries: 3,
+	})
+	require.NoError(t, err)
+	passwordAttempts := 0
+	passwordClient.OnRequest = func(RequestStat) { passwordAttempts++ }
+	_, err = passwordClient.List(t.Context(), "fabrics", "/api/v1/manage/fabrics", nil, 0)
+	require.ErrorContains(t, err, "trust the issuing CA in the Collector host trust store (preferred)")
+	require.ErrorContains(t, err, "set nexus_dashboard.insecure_skip_verify: true")
+	assert.Equal(t, 1, passwordAttempts)
+
 	client, err := NewClient(Config{
 		Endpoint:           server.URL,
 		AuthMode:           "api_key",

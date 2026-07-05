@@ -244,5 +244,6 @@ func assertCacheRetainedByteInvariant(t *testing.T, cache *Cache) {
 	for key := range cache.tombstone {
 		expected += cache.tombstone[key].retainedBytes
 	}
+	expected += cache.ownerIndexRetainedBytesLocked()
 	assert.Equal(t, expected, cache.retainedBytes)
 }

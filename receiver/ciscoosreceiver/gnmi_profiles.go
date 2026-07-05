@@ -22,6 +22,7 @@ const (
 	builtinGNMIProfileOptics               = "optics"
 	builtinGNMIProfileCatalyst9800Wireless = "catalyst_9800_wireless"
 	builtinGNMIOriginRFC7951               = "rfc7951"
+	builtinGNMIOriginOpenConfig            = "openconfig"
 	builtinGNMIOriginDME                   = "DME"
 	builtinGNMIOriginNXDevice              = "Cisco-NX-OS-device"
 	builtinGNMISyntheticReceiverOrigin     = "cisco_os"
@@ -38,8 +39,12 @@ type builtinGNMIMapping struct {
 // builtinGNMIPathDefinition is one subscription path. Origin and Path remain
 // separate so request builders cannot accidentally encode "origin:path".
 type builtinGNMIPathDefinition struct {
-	ID           string
-	Origin       string
+	ID         string
+	PathTarget string
+	Origin     string
+	// Model is the Capabilities ModelData name when the wire origin does not
+	// identify one model, as with NX-OS's generic "openconfig" origin.
+	Model        string
 	Path         string
 	Experimental bool
 	Mappings     []builtinGNMIMapping
@@ -53,10 +58,13 @@ type builtinGNMIProfileDefinition struct {
 	Paths             []builtinGNMIPathDefinition
 }
 
-// builtinGNMIProfiles returns profiles in stable name order. Catalog values are
-// treated as immutable by receiver code.
-func builtinGNMIProfiles(platform string) []builtinGNMIProfileDefinition {
-	profiles := builtinGNMIProfileCatalog[platform]
+// builtinGNMIProfiles returns a product contract's profiles in stable name
+// order. Catalog values are treated as immutable by receiver code.
+func builtinGNMIProfiles(contract *gnmiProductContract) []builtinGNMIProfileDefinition {
+	if contract == nil {
+		return nil
+	}
+	profiles := contract.profiles
 	names := make([]string, 0, len(profiles))
 	for name := range profiles {
 		names = append(names, name)
@@ -69,15 +77,31 @@ func builtinGNMIProfiles(platform string) []builtinGNMIProfileDefinition {
 	return out
 }
 
-func builtinGNMIProfile(platform, profile string) (builtinGNMIProfileDefinition, bool) {
-	definition, ok := builtinGNMIProfileCatalog[platform][profile]
+func builtinGNMIProfile(contract *gnmiProductContract, profile string) (builtinGNMIProfileDefinition, bool) {
+	if contract == nil {
+		return builtinGNMIProfileDefinition{}, false
+	}
+	definition, ok := contract.profiles[profile]
 	return definition, ok
+}
+
+func defaultBuiltinGNMIProfile(profile string) (builtinGNMIProfileDefinition, bool) {
+	for _, catalog := range []map[string]builtinGNMIProfileDefinition{
+		iosXEBuiltinGNMIProfileCatalog,
+		iosXRBuiltinGNMIProfileCatalog,
+		nxOSBuiltinGNMIProfileCatalog,
+	} {
+		if definition, ok := catalog[profile]; ok {
+			return definition, true
+		}
+	}
+	return builtinGNMIProfileDefinition{}, false
 }
 
 var builtinGNMIMetricMetadata = map[string]internalgnmi.MetricMetadata{
 	"cisco.device.up":                 {Name: "cisco.device.up", Description: "Device availability (1 = up, 0 = down)", Unit: "1"},
-	"system.cpu.utilization":          {Name: "system.cpu.utilization", Description: "Percentage of CPU time in use.", Unit: "1"},
-	"system.memory.utilization":       {Name: "system.memory.utilization", Description: "Percentage of memory bytes in use.", Unit: "1"},
+	"system.cpu.utilization":          {Name: "system.cpu.utilization", Description: "Ratio of CPU time in use, from 0 to 1.", Unit: "1"},
+	"system.memory.utilization":       {Name: "system.memory.utilization", Description: "Ratio of memory bytes in use, from 0 to 1.", Unit: "1"},
 	"system.uptime":                   {Name: "system.uptime", Description: "The time the Cisco device has been running", Unit: "s"},
 	"system.network.interface.status": {Name: "system.network.interface.status", Description: "Interface operational status (1 = up, 0 = down)", Unit: "1"},
 	"system.network.io":               {Name: "system.network.io", Description: "The number of bytes transmitted and received", Unit: "By"},
@@ -90,33 +114,28 @@ var builtinGNMIMetricMetadata = map[string]internalgnmi.MetricMetadata{
 	"cisco.interface.packet.rate":     {Name: "cisco.interface.packet.rate", Description: "The device-reported interface packet rate", Unit: "{packet}/s"},
 	"cisco.interface.utilization":     {Name: "cisco.interface.utilization", Description: "Cisco interface traffic utilization as a ratio of line speed", Unit: "1"},
 
-	"cisco.optics.temperature":          {Name: "cisco.optics.temperature", Description: "Optical module temperature", Unit: "Cel"},
-	"cisco.optics.voltage":              {Name: "cisco.optics.voltage", Description: "Optical module supply voltage", Unit: "V"},
-	"cisco.optics.laser_bias_current":   {Name: "cisco.optics.laser_bias_current", Description: "Optical transmitter laser bias current", Unit: "mA"},
-	"cisco.optics.rx_power":             {Name: "cisco.optics.rx_power", Description: "Received optical power", Unit: "dB[mW]"},
-	"cisco.optics.tx_power":             {Name: "cisco.optics.tx_power", Description: "Transmitted optical power", Unit: "dB[mW]"},
-	"cisco.optics.present":              {Name: "cisco.optics.present", Description: "Optical module or lane presence (1 = present, 0 = absent)", Unit: "1"},
-	"cisco.optics.esnr":                 {Name: "cisco.optics.esnr", Description: "Effective signal-to-noise ratio reported by a qualified VDM sensor", Unit: "dB"},
-	"cisco.optics.tdecq":                {Name: "cisco.optics.tdecq", Description: "Transmitter and dispersion eye closure for PAM4 reported by a sensor explicitly identified as TDECQ in dB", Unit: "dB"},
-	"cisco.optics.pre_fec_ber":          {Name: "cisco.optics.pre_fec_ber", Description: "Pre-forward-error-correction bit error ratio", Unit: "1"},
-	"cisco.optics.tec_current":          {Name: "cisco.optics.tec_current", Description: "Thermoelectric cooler current when the device reports the sensor in milliamperes", Unit: "mA"},
-	"cisco.optics.tec_utilization":      {Name: "cisco.optics.tec_utilization", Description: "Thermoelectric cooler utilization normalized to a unitless ratio", Unit: "1"},
-	"cisco.optics.q_factor":             {Name: "cisco.optics.q_factor", Description: "Coherent optical Q-factor", Unit: "dB"},
-	"cisco.optics.q_margin":             {Name: "cisco.optics.q_margin", Description: "Coherent optical Q-margin", Unit: "dB"},
-	"cisco.optics.osnr":                 {Name: "cisco.optics.osnr", Description: "Coherent optical signal-to-noise ratio", Unit: "dB"},
-	"cisco.optics.dgd":                  {Name: "cisco.optics.dgd", Description: "Coherent optical differential group delay", Unit: "ps"},
-	"cisco.optics.chromatic_dispersion": {Name: "cisco.optics.chromatic_dispersion", Description: "Coherent optical chromatic dispersion", Unit: "ps/nm"},
+	"cisco.optics.temperature":        {Name: "cisco.optics.temperature", Description: "Optical module temperature", Unit: "Cel"},
+	"cisco.optics.voltage":            {Name: "cisco.optics.voltage", Description: "Optical module supply voltage", Unit: "V"},
+	"cisco.optics.laser_bias_current": {Name: "cisco.optics.laser_bias_current", Description: "Optical transmitter laser bias current", Unit: "mA"},
+	"cisco.optics.rx_power":           {Name: "cisco.optics.rx_power", Description: "Received optical power", Unit: "dB[mW]"},
+	"cisco.optics.tx_power":           {Name: "cisco.optics.tx_power", Description: "Transmitted optical power", Unit: "dB[mW]"},
+	"cisco.optics.present":            {Name: "cisco.optics.present", Description: "Optical module or lane presence (1 = present, 0 = absent)", Unit: "1"},
+	"cisco.optics.esnr":               {Name: "cisco.optics.esnr", Description: "Effective signal-to-noise ratio reported by an allowlisted device VDM sensor", Unit: "dB"},
+	"cisco.optics.tdecq":              {Name: "cisco.optics.tdecq", Description: "Transmitter and dispersion eye closure for PAM4 reported by a sensor explicitly identified as TDECQ in dB", Unit: "dB"},
+	"cisco.optics.pre_fec_ber":        {Name: "cisco.optics.pre_fec_ber", Description: "Pre-forward-error-correction bit error ratio", Unit: "1"},
+	"cisco.optics.tec_current":        {Name: "cisco.optics.tec_current", Description: "Thermoelectric cooler current when the device reports the sensor in milliamperes", Unit: "mA"},
+	"cisco.optics.tec_utilization":    {Name: "cisco.optics.tec_utilization", Description: "Thermoelectric cooler utilization normalized to a unitless ratio", Unit: "1"},
 
 	"cisco.wlc.ap.join.status":         {Name: "cisco.wlc.ap.join.status", Description: "Catalyst 9800 access point join status", Unit: "1"},
 	"cisco.wlc.rf.channel.utilization": {Name: "cisco.wlc.rf.channel.utilization", Description: "Catalyst 9800 RF channel utilization ratio", Unit: "1"},
 	"cisco.wlc.ssid.client.count":      {Name: "cisco.wlc.ssid.client.count", Description: "Catalyst 9800 associated client count", Unit: "{client}"},
 }
 
-var builtinGNMIProfileCatalog = map[string]map[string]builtinGNMIProfileDefinition{
-	builtinGNMIPlatformIOSXE: iosXEBuiltinGNMIProfiles(),
-	builtinGNMIPlatformIOSXR: iosXRBuiltinGNMIProfiles(),
-	builtinGNMIPlatformNXOS:  nxOSBuiltinGNMIProfiles(),
-}
+var (
+	iosXEBuiltinGNMIProfileCatalog = iosXEBuiltinGNMIProfiles()
+	iosXRBuiltinGNMIProfileCatalog = iosXRBuiltinGNMIProfiles()
+	nxOSBuiltinGNMIProfileCatalog  = nxOSBuiltinGNMIProfiles()
+)
 
 func iosXEBuiltinGNMIProfiles() map[string]builtinGNMIProfileDefinition {
 	return map[string]builtinGNMIProfileDefinition{
@@ -125,39 +144,49 @@ func iosXEBuiltinGNMIProfiles() map[string]builtinGNMIProfileDefinition {
 			builtinGNMIPathDefinition{ID: "identity.system", Origin: builtinGNMIOriginRFC7951, Path: "openconfig-system:system/state"}),
 		builtinGNMIProfileSystem: profileDefinition(builtinGNMIProfileSystem, true, time.Minute, nil,
 			builtinGNMIPathDefinition{ID: "system.cpu", Origin: builtinGNMIOriginRFC7951, Path: "Cisco-IOS-XE-process-cpu-oper:cpu-usage/cpu-utilization", Mappings: []builtinGNMIMapping{mapping(builtinGNMIOriginRFC7951, []string{"Cisco-IOS-XE-process-cpu-oper:cpu-usage", "cpu-utilization"}, "five-seconds", "system.cpu.utilization", .01, internalgnmi.GaugeDouble, nil, nil)}},
-			builtinGNMIPathDefinition{ID: "system.memory", Origin: builtinGNMIOriginRFC7951, Path: "Cisco-IOS-XE-memory-oper:memory-statistics/memory-statistic", Mappings: []builtinGNMIMapping{mapping(builtinGNMIOriginRFC7951, []string{"Cisco-IOS-XE-memory-oper:memory-statistics", "memory-statistic"}, "used-memory-percent", "system.memory.utilization", .01, internalgnmi.GaugeDouble, nil, nil)}},
-			builtinGNMIPathDefinition{ID: "system.uptime", Origin: builtinGNMIOriginRFC7951, Path: "Cisco-IOS-XE-platform-software-oper:cisco-platform-software/control-processes/control-process", Mappings: []builtinGNMIMapping{mapping(builtinGNMIOriginRFC7951, []string{"Cisco-IOS-XE-platform-software-oper:cisco-platform-software", "control-processes", "control-process"}, "uptime", "system.uptime", 1, internalgnmi.GaugeInt, nil, nil)}}),
+			builtinGNMIPathDefinition{
+				ID:     "system.memory",
+				Origin: builtinGNMIOriginRFC7951,
+				Path:   "Cisco-IOS-XE-platform-software-oper:cisco-platform-software/control-processes/control-process/memory-stats",
+				Mappings: []builtinGNMIMapping{mapping(
+					builtinGNMIOriginRFC7951,
+					[]string{"Cisco-IOS-XE-platform-software-oper:cisco-platform-software", "control-processes", "control-process", "memory-stats"},
+					"used-percent",
+					"system.memory.utilization",
+					.01,
+					internalgnmi.GaugeDouble,
+					[]internalgnmi.KeyAttribute{
+						{Element: "control-process", Key: "fru", Attribute: "cisco.location.fru"},
+						{Element: "control-process", Key: "slot", Attribute: "cisco.location.slot"},
+						{Element: "control-process", Key: "bay", Attribute: "cisco.location.bay"},
+						{Element: "control-process", Key: "chassis", Attribute: "cisco.location.chassis"},
+					},
+					nil,
+				)},
+			}),
 		builtinGNMIProfileInterfaces: profileDefinition(builtinGNMIProfileInterfaces, true, time.Minute, nil,
 			builtinGNMIPathDefinition{ID: "interfaces.openconfig", Origin: builtinGNMIOriginRFC7951, Path: "openconfig-interfaces:interfaces/interface/state", Mappings: interfaceMappings(builtinGNMIOriginRFC7951, []string{"openconfig-interfaces:interfaces", "interface"})}),
 		builtinGNMIProfileOptics: profileDefinition(builtinGNMIProfileOptics, false, 30*time.Second, nil,
-			builtinGNMIPathDefinition{ID: "optics.dom", Origin: builtinGNMIOriginRFC7951, Path: "Cisco-IOS-XE-transceiver-oper:transceiver-oper-data/transceiver", Mappings: domMappings(builtinGNMIOriginRFC7951, []string{"Cisco-IOS-XE-transceiver-oper:transceiver-oper-data", "transceiver"}, "transceiver", "name", "", "", false)}),
+			builtinGNMIPathDefinition{ID: "optics.dom", Origin: builtinGNMIOriginRFC7951, Path: "Cisco-IOS-XE-transceiver-oper:transceiver-oper-data/transceiver", Experimental: true, Mappings: iosXEDOMMappings()}),
 		builtinGNMIProfileCatalyst9800Wireless: profileDefinition(builtinGNMIProfileCatalyst9800Wireless, false, time.Minute, nil,
 			builtinGNMIPathDefinition{ID: "wireless.ap.join", Origin: builtinGNMIOriginRFC7951, Path: "Cisco-IOS-XE-wireless-ap-global-oper:ap-global-oper-data/ap-join-stats", Mappings: []builtinGNMIMapping{mapping(builtinGNMIOriginRFC7951, []string{"Cisco-IOS-XE-wireless-ap-global-oper:ap-global-oper-data", "ap-join-stats"}, "is-joined", "cisco.wlc.ap.join.status", 1, internalgnmi.GaugeInt, []internalgnmi.KeyAttribute{{Element: "ap-join-stats", Key: "wtp-mac", Attribute: "cisco.wlc.ap.mac"}}, nil)}},
 			builtinGNMIPathDefinition{ID: "wireless.rf", Origin: builtinGNMIOriginRFC7951, Path: "Cisco-IOS-XE-wireless-rrm-oper:rrm-oper-data/rrm-measurement", Mappings: []builtinGNMIMapping{mapping(builtinGNMIOriginRFC7951, []string{"Cisco-IOS-XE-wireless-rrm-oper:rrm-oper-data", "rrm-measurement"}, "cca-util-percentage", "cisco.wlc.rf.channel.utilization", .01, internalgnmi.GaugeDouble, []internalgnmi.KeyAttribute{{Element: "rrm-measurement", Key: "wtp-mac", Attribute: "cisco.wlc.ap.mac"}, {Element: "rrm-measurement", Key: "radio-slot-id", Attribute: "cisco.wlc.radio.slot"}}, nil)}},
-			builtinGNMIPathDefinition{ID: "wireless.ssid", Origin: builtinGNMIOriginRFC7951, Path: "Cisco-IOS-XE-wireless-access-point-oper:access-point-oper-data/ssid-counters", Mappings: []builtinGNMIMapping{mapping(builtinGNMIOriginRFC7951, []string{"Cisco-IOS-XE-wireless-access-point-oper:access-point-oper-data", "ssid-counters"}, "num-assoc-clients", "cisco.wlc.ssid.client.count", 1, internalgnmi.GaugeInt, []internalgnmi.KeyAttribute{{Element: "ssid-counters", Key: "wtp-mac", Attribute: "cisco.wlc.ap.mac"}, {Element: "ssid-counters", Key: "wlan-id", Attribute: "cisco.wlc.wlan.id"}}, nil)}}),
+			builtinGNMIPathDefinition{ID: "wireless.ssid", Origin: builtinGNMIOriginRFC7951, Path: "Cisco-IOS-XE-wireless-access-point-oper:access-point-oper-data/ssid-counters", Mappings: []builtinGNMIMapping{mapping(builtinGNMIOriginRFC7951, []string{"Cisco-IOS-XE-wireless-access-point-oper:access-point-oper-data", "ssid-counters"}, "num-assoc-clients", "cisco.wlc.ssid.client.count", 1, internalgnmi.GaugeInt, []internalgnmi.KeyAttribute{{Element: "ssid-counters", Key: "wtp-mac", Attribute: "cisco.wlc.ap.mac"}, {Element: "ssid-counters", Key: "slot-id", Attribute: "cisco.wlc.radio.slot"}, {Element: "ssid-counters", Key: "wlan-id", Attribute: "cisco.wlc.wlan.id"}}, nil)}}),
 	}
 }
 
 func iosXRBuiltinGNMIProfiles() map[string]builtinGNMIProfileDefinition {
-	const (
-		opticsOrigin = "Cisco-IOS-XR-controller-optics-oper"
-		otuOrigin    = "Cisco-IOS-XR-controller-otu-oper"
-		miscOrigin   = "Cisco-IOS-XR-n" + "to-misc-oper"
-	)
+	const opticsOrigin = "Cisco-IOS-XR-controller-optics-oper"
 	return map[string]builtinGNMIProfileDefinition{
 		builtinGNMIProfileIdentity: profileDefinition(builtinGNMIProfileIdentity, true, 5*time.Minute,
 			[]builtinGNMIMapping{availabilityMapping(builtinGNMIPlatformIOSXR)}),
 		builtinGNMIProfileSystem: profileDefinition(builtinGNMIProfileSystem, true, time.Minute, nil,
-			builtinGNMIPathDefinition{ID: "system.cpu", Origin: "Cisco-IOS-XR-wdsysmon-fd-oper", Path: "system-monitoring/cpu-utilization", Mappings: []builtinGNMIMapping{mapping("Cisco-IOS-XR-wdsysmon-fd-oper", []string{"system-monitoring", "cpu-utilization"}, "total-cpu-one-minute", "system.cpu.utilization", .01, internalgnmi.GaugeDouble, nil, nil)}},
-			builtinGNMIPathDefinition{ID: "system.memory", Origin: miscOrigin, Path: "memory-summary/nodes/node/summary", Mappings: []builtinGNMIMapping{mapping(miscOrigin, []string{"memory-summary", "nodes", "node", "summary"}, "memory-utilization", "system.memory.utilization", .01, internalgnmi.GaugeDouble, nil, nil)}},
-			builtinGNMIPathDefinition{ID: "system.uptime", Origin: "openconfig-system", Path: "system/state", Mappings: []builtinGNMIMapping{mapping("openconfig-system", []string{"system", "state"}, "uptime", "system.uptime", 1, internalgnmi.GaugeInt, nil, nil)}}),
+			builtinGNMIPathDefinition{ID: "system.cpu", Origin: "Cisco-IOS-XR-wdsysmon-fd-oper", Path: "system-monitoring/cpu-utilization", Mappings: []builtinGNMIMapping{mapping("Cisco-IOS-XR-wdsysmon-fd-oper", []string{"system-monitoring", "cpu-utilization"}, "total-cpu-one-minute", "system.cpu.utilization", .01, internalgnmi.GaugeDouble, []internalgnmi.KeyAttribute{{Element: "cpu-utilization", Key: "node-name", Attribute: "cisco.node.name"}}, nil)}}),
 		builtinGNMIProfileInterfaces: profileDefinition(builtinGNMIProfileInterfaces, true, time.Minute, nil,
 			builtinGNMIPathDefinition{ID: "interfaces.openconfig", Origin: "openconfig-interfaces", Path: "interfaces/interface/state", Mappings: interfaceMappings("openconfig-interfaces", []string{"interfaces", "interface"})}),
 		builtinGNMIProfileOptics: profileDefinition(builtinGNMIProfileOptics, false, 30*time.Second, nil,
-			builtinGNMIPathDefinition{ID: "optics.controllers", Origin: opticsOrigin, Path: "optics-oper/optics-ports/optics-port/optics-info", Mappings: domMappings(opticsOrigin, []string{"optics-oper", "optics-ports", "optics-port", "optics-info"}, "optics-port", "name", "", "", false)},
-			builtinGNMIPathDefinition{ID: "optics.lanes", Origin: opticsOrigin, Path: "optics-oper/optics-ports/optics-port/optics-lane-info", Mappings: domMappings(opticsOrigin, []string{"optics-oper", "optics-ports", "optics-port", "optics-lane-info"}, "optics-port", "name", "optics-lane-info", "lane-index", false)},
-			builtinGNMIPathDefinition{ID: "optics.coherent", Origin: opticsOrigin, Path: "optics-oper/optics-ports/optics-port/optics-info", Experimental: true, Mappings: coherentOpticsMappings(opticsOrigin, []string{"optics-oper", "optics-ports", "optics-port", "optics-info"}, "optics-port", "name")},
-			builtinGNMIPathDefinition{ID: "optics.otu", Origin: otuOrigin, Path: "otu/controllers/controller/info", Experimental: true, Mappings: otuMappings(otuOrigin, []string{"otu", "controllers", "controller", "info"})}),
+			builtinGNMIPathDefinition{ID: "optics.controllers", Origin: opticsOrigin, Path: "optics-oper/optics-ports/optics-port/optics-info", Experimental: true, Mappings: iosXRControllerDOMMappings(opticsOrigin)},
+			builtinGNMIPathDefinition{ID: "optics.lanes", Origin: opticsOrigin, Path: "optics-oper/optics-ports/optics-port/optics-lanes/optics-lane", Experimental: true, Mappings: iosXRLaneDOMMappings(opticsOrigin)}),
 	}
 }
 
@@ -165,15 +194,13 @@ func nxOSBuiltinGNMIProfiles() map[string]builtinGNMIProfileDefinition {
 	return map[string]builtinGNMIProfileDefinition{
 		builtinGNMIProfileIdentity: profileDefinition(builtinGNMIProfileIdentity, true, 5*time.Minute,
 			[]builtinGNMIMapping{availabilityMapping(builtinGNMIPlatformNXOS)},
-			builtinGNMIPathDefinition{ID: "identity.system", Origin: "openconfig-system", Path: "system/state"}),
-		builtinGNMIProfileSystem: profileDefinition(builtinGNMIProfileSystem, true, time.Minute, nil,
-			builtinGNMIPathDefinition{ID: "system.device", Origin: builtinGNMIOriginNXDevice, Path: "System/systemTable/sysEntry", Mappings: systemMappings(builtinGNMIOriginNXDevice, []string{"System", "systemTable", "sysEntry"}, "cpu-utilization", "memory-utilization", "uptime", .01, .01)}),
+			builtinGNMIPathDefinition{ID: "identity.system", Origin: builtinGNMIOriginOpenConfig, Model: "openconfig-system", Path: "system/state"}),
 		builtinGNMIProfileInterfaces: profileDefinition(builtinGNMIProfileInterfaces, true, time.Minute, nil,
-			builtinGNMIPathDefinition{ID: "interfaces.openconfig", Origin: "openconfig-interfaces", Path: "interfaces/interface/state", Mappings: interfaceMappings("openconfig-interfaces", []string{"interfaces", "interface"})}),
+			builtinGNMIPathDefinition{ID: "interfaces.openconfig", Origin: builtinGNMIOriginOpenConfig, Model: "openconfig-interfaces", Path: "interfaces/interface/state", Mappings: interfaceMappings(builtinGNMIOriginOpenConfig, []string{"interfaces", "interface"})}),
 		builtinGNMIProfileOptics: profileDefinition(builtinGNMIProfileOptics, false, 30*time.Second, nil,
 			// NX DME publishes a distinguished-name family, not the device YANG tree.
 			// Subscribe at the nearest static ancestor; the explicit mapper accepts
-			// only the sys/intf/phys-[...]/phys/fcotdd/lane-...-sensor-... family.
+			// only the documented sys/intf/phys-[...]/phys/fcot{,dd}/lane-...-sensor-... families.
 			builtinGNMIPathDefinition{ID: "optics.dme.sensors", Origin: builtinGNMIOriginDME, Path: "sys/intf", Experimental: true, Mappings: nxDMESensorMappings()}),
 	}
 }
@@ -184,14 +211,6 @@ func profileDefinition(name string, enabled bool, interval time.Duration, synthe
 
 func availabilityMapping(platform string) builtinGNMIMapping {
 	return mapping(builtinGNMISyntheticReceiverOrigin, []string{"target", platform}, "up", "cisco.device.up", 1, internalgnmi.GaugeInt, nil, nil)
-}
-
-func systemMappings(origin string, elements []string, cpuLeaf, memoryLeaf, uptimeLeaf string, cpuScale, memoryScale float64) []builtinGNMIMapping {
-	return []builtinGNMIMapping{
-		mapping(origin, elements, cpuLeaf, "system.cpu.utilization", cpuScale, internalgnmi.GaugeDouble, nil, nil),
-		mapping(origin, elements, memoryLeaf, "system.memory.utilization", memoryScale, internalgnmi.GaugeDouble, nil, nil),
-		mapping(origin, elements, uptimeLeaf, "system.uptime", 1, internalgnmi.GaugeInt, nil, nil),
-	}
 }
 
 func interfaceMappings(origin string, root []string) []builtinGNMIMapping {
@@ -205,13 +224,6 @@ func interfaceMappings(origin string, root []string) []builtinGNMIMapping {
 	return []builtinGNMIMapping{
 		mapping(origin, state, "oper-status", "system.network.interface.status", 1, internalgnmi.GaugeInt, key, nil),
 		mapping(origin, state, "admin-status", "cisco.interface.admin.status", 1, internalgnmi.GaugeInt, key, nil),
-		mapping(origin, state, "speed", "cisco.interface.speed", 1, internalgnmi.GaugeInt, key, nil),
-		mapping(origin, state, "in-bps", "cisco.interface.io.rate", 1, internalgnmi.GaugeInt, key, withDirection("receive")),
-		mapping(origin, state, "out-bps", "cisco.interface.io.rate", 1, internalgnmi.GaugeInt, key, withDirection("transmit")),
-		mapping(origin, state, "in-pps", "cisco.interface.packet.rate", 1, internalgnmi.GaugeInt, key, withDirection("receive")),
-		mapping(origin, state, "out-pps", "cisco.interface.packet.rate", 1, internalgnmi.GaugeInt, key, withDirection("transmit")),
-		mapping(origin, state, "in-utilization", "cisco.interface.utilization", .01, internalgnmi.GaugeDouble, key, withDirection("receive")),
-		mapping(origin, state, "out-utilization", "cisco.interface.utilization", .01, internalgnmi.GaugeDouble, key, withDirection("transmit")),
 		sumMapping(origin, counters, "in-octets", "system.network.io", key, withDirection("receive")),
 		sumMapping(origin, counters, "out-octets", "system.network.io", key, withDirection("transmit")),
 		sumMapping(origin, counters, "in-errors", "system.network.errors", key, withDirection("receive")),
@@ -227,78 +239,76 @@ func interfaceMappings(origin string, root []string) []builtinGNMIMapping {
 	}
 }
 
-func domMappings(origin string, elements []string, portElement, portKey, laneElement, laneKey string, experimental bool) []builtinGNMIMapping {
-	keys := []internalgnmi.KeyAttribute{{Element: portElement, Key: portKey, Attribute: "network.interface.name"}}
-	if laneElement != "" {
-		keys = append(keys, internalgnmi.KeyAttribute{Element: laneElement, Key: laneKey, Attribute: "cisco.optics.lane"})
-	}
-	definitions := []struct {
-		leaf, metric, sensor string
-		gauge                internalgnmi.GaugeValueType
-	}{
-		{"temperature", "cisco.optics.temperature", "temperature", internalgnmi.GaugeDouble},
-		{"voltage", "cisco.optics.voltage", "voltage", internalgnmi.GaugeDouble},
-		{"laser-bias-current", "cisco.optics.laser_bias_current", "laser_bias_current", internalgnmi.GaugeDouble},
-		{"rx-power", "cisco.optics.rx_power", "rx_power", internalgnmi.GaugeDouble},
-		{"tx-power", "cisco.optics.tx_power", "tx_power", internalgnmi.GaugeDouble},
-		{"present", "cisco.optics.present", "presence", internalgnmi.GaugeInt},
-	}
-	out := make([]builtinGNMIMapping, 0, len(definitions))
-	for _, definition := range definitions {
-		attrs := opticsAttributes("dom", definition.sensor, experimental)
-		if definition.metric == "cisco.optics.present" {
-			delete(attrs, "cisco.optics.sensor")
-		}
-		out = append(out, mapping(origin, elements, definition.leaf, definition.metric, 1, definition.gauge, keys, attrs))
-	}
-	return out
-}
-
-func coherentOpticsMappings(origin string, elements []string, portElement, portKey string) []builtinGNMIMapping {
-	keys := []internalgnmi.KeyAttribute{{Element: portElement, Key: portKey, Attribute: "network.interface.name"}}
-	definitions := []struct{ leaf, metric string }{
-		{"q-margin", "cisco.optics.q_margin"},
-		{"osnr", "cisco.optics.osnr"},
-		{"dgd", "cisco.optics.dgd"},
-		{"chromatic-dispersion", "cisco.optics.chromatic_dispersion"},
-	}
-	out := make([]builtinGNMIMapping, 0, len(definitions))
-	for _, definition := range definitions {
-		out = append(out, mapping(origin, elements, definition.leaf, definition.metric, 1, internalgnmi.GaugeDouble, keys, opticsAttributes("coherent", definition.leaf, true)))
-	}
-	return out
-}
-
-func otuMappings(origin string, elements []string) []builtinGNMIMapping {
-	keys := []internalgnmi.KeyAttribute{{Element: "controller", Key: "name", Attribute: "network.interface.name"}}
+func iosXEDOMMappings() []builtinGNMIMapping {
+	const origin = builtinGNMIOriginRFC7951
+	root := []string{"Cisco-IOS-XE-transceiver-oper:transceiver-oper-data", "transceiver"}
+	keys := []internalgnmi.KeyAttribute{{Element: "transceiver", Key: "name", Attribute: "network.interface.name"}}
 	return []builtinGNMIMapping{
-		mapping(origin, elements, "q-factor", "cisco.optics.q_factor", 1, internalgnmi.GaugeDouble, keys, opticsAttributes("coherent", "q_factor", true)),
-		mapping(origin, elements, "pre-fec-ber", "cisco.optics.pre_fec_ber", 1, internalgnmi.GaugeDouble, keys, opticsAttributes("coherent", "pre_fec_ber", true)),
+		opticsMapping(origin, root, "internal-temp", "cisco.optics.temperature", 1, internalgnmi.GaugeDouble, keys, "temperature"),
+		opticsMapping(origin, appendElements(root, "voltage"), "instant", "cisco.optics.voltage", 1, internalgnmi.GaugeDouble, keys, "voltage"),
+		opticsMapping(origin, appendElements(root, "laser-bias-current"), "instant", "cisco.optics.laser_bias_current", 1, internalgnmi.GaugeDouble, keys, "laser_bias_current"),
+		opticsMapping(origin, appendElements(root, "input-power"), "instant", "cisco.optics.rx_power", 1, internalgnmi.GaugeDouble, keys, "rx_power"),
+		opticsMapping(origin, appendElements(root, "output-power"), "instant", "cisco.optics.tx_power", 1, internalgnmi.GaugeDouble, keys, "tx_power"),
+		opticsMapping(origin, root, "present", "cisco.optics.present", 1, internalgnmi.GaugeInt, keys, ""),
 	}
+}
+
+func iosXRControllerDOMMappings(origin string) []builtinGNMIMapping {
+	root := []string{"optics-oper", "optics-ports", "optics-port", "optics-info"}
+	keys := []internalgnmi.KeyAttribute{{Element: "optics-port", Key: "name", Attribute: "network.interface.name"}}
+	return []builtinGNMIMapping{
+		opticsMapping(origin, root, "temperature", "cisco.optics.temperature", .01, internalgnmi.GaugeDouble, keys, "temperature"),
+		opticsMapping(origin, root, "voltage", "cisco.optics.voltage", .01, internalgnmi.GaugeDouble, keys, "voltage"),
+		opticsMapping(origin, root, "total-rx-power", "cisco.optics.rx_power", .01, internalgnmi.GaugeDouble, keys, "rx_power"),
+		opticsMapping(origin, root, "total-tx-power", "cisco.optics.tx_power", .01, internalgnmi.GaugeDouble, keys, "tx_power"),
+		opticsMapping(origin, root, "optics-present", "cisco.optics.present", 1, internalgnmi.GaugeInt, keys, ""),
+	}
+}
+
+func iosXRLaneDOMMappings(origin string) []builtinGNMIMapping {
+	root := []string{"optics-oper", "optics-ports", "optics-port", "optics-lanes", "optics-lane"}
+	keys := []internalgnmi.KeyAttribute{
+		{Element: "optics-port", Key: "name", Attribute: "network.interface.name"},
+		{Element: "optics-lane", Key: "number", Attribute: "cisco.optics.lane"},
+	}
+	return []builtinGNMIMapping{
+		opticsMapping(origin, root, "laser-bias-current-milli-amps", "cisco.optics.laser_bias_current", .01, internalgnmi.GaugeDouble, keys, "laser_bias_current"),
+		opticsMapping(origin, root, "receive-power", "cisco.optics.rx_power", .01, internalgnmi.GaugeDouble, keys, "rx_power"),
+		opticsMapping(origin, root, "transmit-power", "cisco.optics.tx_power", .01, internalgnmi.GaugeDouble, keys, "tx_power"),
+	}
+}
+
+func opticsMapping(origin string, elements []string, leaf, metricName string, scale float64, gauge internalgnmi.GaugeValueType, keys []internalgnmi.KeyAttribute, sensor string) builtinGNMIMapping {
+	attrs := opticsAttributes("dom", sensor, true)
+	if sensor == "" {
+		delete(attrs, "cisco.optics.sensor")
+	}
+	return mapping(origin, elements, leaf, metricName, scale, gauge, keys, attrs)
 }
 
 func nxDMESensorMappings() []builtinGNMIMapping {
 	origin := builtinGNMIOriginDME
-	elements := []string{"sys", "intf", "phys", "phys", "fcotdd", "lane", "sensor"}
 	keys := []internalgnmi.KeyAttribute{{Element: "phys", Key: "id", Attribute: "network.interface.name"}, {Element: "lane", Key: "id", Attribute: "cisco.optics.lane"}}
 	definitions := []struct {
 		leaf, metric, profile string
-		experimental          bool
 	}{
-		{"temperature", "cisco.optics.temperature", "dom", false},
-		{"voltage", "cisco.optics.voltage", "dom", false},
-		{"laser-bias-current", "cisco.optics.laser_bias_current", "dom", false},
-		{"rx-power", "cisco.optics.rx_power", "dom", false},
-		{"tx-power", "cisco.optics.tx_power", "dom", false},
-		{"esnr", "cisco.optics.esnr", "vdm", true},
-		{"tdecq", "cisco.optics.tdecq", "vdm", true},
-		{"pre-fec-ber", "cisco.optics.pre_fec_ber", "vdm", true},
-		{"tec-current", "cisco.optics.tec_current", "vdm", true},
-		{"tec-utilization", "cisco.optics.tec_utilization", "vdm", true},
+		{"temperature", "cisco.optics.temperature", "dom"},
+		{"voltage", "cisco.optics.voltage", "dom"},
+		{"laser-bias-current", "cisco.optics.laser_bias_current", "dom"},
+		{"rx-power", "cisco.optics.rx_power", "dom"},
+		{"tx-power", "cisco.optics.tx_power", "dom"},
+		{"esnr", "cisco.optics.esnr", "vdm"},
+		{"tdecq", "cisco.optics.tdecq", "vdm"},
+		{"pre-fec-ber", "cisco.optics.pre_fec_ber", "vdm"},
+		{"tec-current", "cisco.optics.tec_current", "vdm"},
+		{"tec-utilization", "cisco.optics.tec_utilization", "vdm"},
 	}
-	out := make([]builtinGNMIMapping, 0, len(definitions))
-	for _, definition := range definitions {
-		out = append(out, mapping(origin, elements, definition.leaf, definition.metric, 1, internalgnmi.GaugeDouble, keys, opticsAttributes(definition.profile, definition.leaf, definition.experimental)))
+	out := make([]builtinGNMIMapping, 0, 2*len(definitions))
+	for _, family := range []string{"fcot", "fcotdd"} {
+		elements := []string{"sys", "intf", "phys", "phys", family, "lane", "sensor"}
+		for _, definition := range definitions {
+			out = append(out, mapping(origin, elements, definition.leaf, definition.metric, 1, internalgnmi.GaugeDouble, keys, opticsAttributes(definition.profile, definition.leaf, true)))
+		}
 	}
 	return out
 }

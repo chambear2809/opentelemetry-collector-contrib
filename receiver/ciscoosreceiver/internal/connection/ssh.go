@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -21,6 +22,17 @@ import (
 const defaultMaxSSHCommandOutputBytes = 16 * 1024 * 1024
 
 var errSSHCommandOutputTooLarge = errors.New("SSH command output exceeds limit")
+
+var (
+	iosXEShowVersionSignature = regexp.MustCompile(`(?im)^\s*(?:cisco ios xe software|cisco ios software[^\r\n]*(?:\bios[- ]?xe software\b|(?:\b|_)iosxe\b))[^\r\n]*\bversion\s+\S+`)
+	iosShowVersionSignature   = regexp.MustCompile(`(?im)^\s*cisco ios software[^\r\n]*\bversion\s+\S+`)
+	// Older IOS releases split the product banner and the version-bearing image
+	// line. Requiring the adjacent, structured pair avoids treating login-banner
+	// prose containing the well-known product name as command output.
+	classicIOSShowVersionPair = regexp.MustCompile(`(?im)^[ \t]*cisco internetwork operating system software[ \t]*\r?\n[ \t]*(?:cisco[ \t]+)?ios[ \t]*\([ \t]*tm[ \t]*\)[ \t]+(?:[a-z0-9][a-z0-9._+/\-]*[ \t]+)+software[ \t]+\([a-z0-9][a-z0-9._+\-]*\),[ \t]+(?:experimental[ \t]+)?version[ \t]+([^,\s]+)(?:[ \t]+\[[^\]\r\n]+\])?(?:,[^\r\n]*)?[ \t]*\r?$`)
+	nxOSShowVersionSignature  = regexp.MustCompile(`(?im)(?:^\s*(?:nxos|host nxos|system|kickstart):\s*version\s+\S+|^\s*cisco nx-os[^\r\n]*\bversion\s+\S+)`)
+	showVersionFailureLine    = regexp.MustCompile(`(?im)^\s*%?\s*(?:authorization failed|command authorization failed|not authorized|permission denied|invalid input detected|unknown command)\b`)
+)
 
 // Client represents SSH client connection to Cisco device
 type Client struct {
@@ -468,25 +480,22 @@ func (s *Client) DetectDeviceMetadata(ctx context.Context) (DeviceMetadata, erro
 
 	metadata := parseDeviceMetadataFromShowVersion(output, time.Now())
 	if metadata.OSType == "" {
-		s.Logger.Warn("Unable to detect OS type from show version output, defaulting to IOS XE")
-		metadata.OSType = "IOS XE"
+		return DeviceMetadata{}, errors.New("show version did not identify a supported Cisco OS (IOS, IOS XE, or NX-OS)")
 	}
 
 	return metadata, nil
 }
 
 func detectOSTypeFromShowVersion(output string) string {
-	output = strings.ToLower(output)
+	if showVersionFailureLine.MatchString(output) {
+		return ""
+	}
 	switch {
-	case strings.Contains(output, "ios xe"):
+	case iosXEShowVersionSignature.MatchString(output):
 		return "IOS XE"
-	case strings.Contains(output, "nx-os") ||
-		strings.Contains(output, "nxos:") ||
-		strings.Contains(output, "host nxos") ||
-		strings.Contains(output, "nexus operating system") ||
-		strings.Contains(output, "nexus9000"):
+	case nxOSShowVersionSignature.MatchString(output):
 		return "NX-OS"
-	case strings.Contains(output, "ios software"):
+	case iosShowVersionSignature.MatchString(output), classicIOSShowVersionPair.MatchString(output):
 		return "IOS"
 	default:
 		return ""

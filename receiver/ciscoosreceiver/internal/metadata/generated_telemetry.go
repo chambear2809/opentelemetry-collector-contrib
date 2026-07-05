@@ -22,23 +22,28 @@ func Tracer(settings component.TelemetrySettings) trace.Tracer {
 // TelemetryBuilder provides an interface for components to report telemetry
 // as defined in metadata and user config.
 type TelemetryBuilder struct {
-	meter                                     metric.Meter
-	mu                                        sync.Mutex
-	registrations                             []metric.Registration
-	CiscoosreceiverGnmiAuthenticationFailures metric.Int64Counter
-	CiscoosreceiverGnmiCacheUtilization       metric.Float64Gauge
-	CiscoosreceiverGnmiConnections            metric.Int64Gauge
-	CiscoosreceiverGnmiConsumerRefusals       metric.Int64Counter
-	CiscoosreceiverGnmiDecodeErrors           metric.Int64Counter
-	CiscoosreceiverGnmiDeletes                metric.Int64Counter
-	CiscoosreceiverGnmiDuplicateUpdates       metric.Int64Counter
-	CiscoosreceiverGnmiInvalidTimestamps      metric.Int64Counter
-	CiscoosreceiverGnmiLastSuccessUnixtime    metric.Int64Gauge
-	CiscoosreceiverGnmiProfileDegraded        metric.Int64Gauge
-	CiscoosreceiverGnmiReconnects             metric.Int64Counter
-	CiscoosreceiverGnmiSubscriptions          metric.Int64Gauge
-	CiscoosreceiverGnmiUnmappedValues         metric.Int64Counter
-	CiscoosreceiverGnmiUpdates                metric.Int64Counter
+	meter                                        metric.Meter
+	mu                                           sync.Mutex
+	registrations                                []metric.Registration
+	CiscoosreceiverGnmiAuthenticationFailures    metric.Int64Counter
+	CiscoosreceiverGnmiAuxiliaryStateUtilization metric.Float64Gauge
+	CiscoosreceiverGnmiCacheOwnerResets          metric.Int64Counter
+	CiscoosreceiverGnmiCacheUtilization          metric.Float64Gauge
+	CiscoosreceiverGnmiConnections               metric.Int64Gauge
+	CiscoosreceiverGnmiConsumerRefusals          metric.Int64Counter
+	CiscoosreceiverGnmiDecodeErrors              metric.Int64Counter
+	CiscoosreceiverGnmiDeletes                   metric.Int64Counter
+	CiscoosreceiverGnmiDuplicateUpdates          metric.Int64Counter
+	CiscoosreceiverGnmiInvalidTimestamps         metric.Int64Counter
+	CiscoosreceiverGnmiLastSuccessUnixtime       metric.Int64Gauge
+	CiscoosreceiverGnmiPreflightFailures         metric.Int64Counter
+	CiscoosreceiverGnmiProductVerified           metric.Int64Gauge
+	CiscoosreceiverGnmiProfileDegraded           metric.Int64Gauge
+	CiscoosreceiverGnmiReconnects                metric.Int64Counter
+	CiscoosreceiverGnmiSubscriptions             metric.Int64Gauge
+	CiscoosreceiverGnmiUnmappedValues            metric.Int64Counter
+	CiscoosreceiverGnmiUnsupportedValueKinds     metric.Int64Counter
+	CiscoosreceiverGnmiUpdates                   metric.Int64Counter
 }
 
 // TelemetryBuilderOption applies changes to default builder.
@@ -76,9 +81,21 @@ func NewTelemetryBuilder(settings component.TelemetrySettings, options ...Teleme
 		metric.WithUnit("{failure}"),
 	)
 	errs = errors.Join(errs, err)
+	builder.CiscoosreceiverGnmiAuxiliaryStateUtilization, err = builder.meter.Float64Gauge(
+		"otelcol_ciscoosreceiver_gnmi_auxiliary_state_utilization",
+		metric.WithDescription("Maximum of the retained-entry and retained-byte utilization for the target's gNMI auxiliary-state partition [Development]"),
+		metric.WithUnit("1"),
+	)
+	errs = errors.Join(errs, err)
+	builder.CiscoosreceiverGnmiCacheOwnerResets, err = builder.meter.Int64Counter(
+		"otelcol_ciscoosreceiver_gnmi_cache_owner_resets",
+		metric.WithDescription("Number of silent owner-scoped gNMI cache resets performed before an updates-only stream reconnects [Development]"),
+		metric.WithUnit("{reset}"),
+	)
+	errs = errors.Join(errs, err)
 	builder.CiscoosreceiverGnmiCacheUtilization, err = builder.meter.Float64Gauge(
 		"otelcol_ciscoosreceiver_gnmi_cache_utilization",
-		metric.WithDescription("Fraction of the configured retained gNMI state cache currently in use, including mapped series, atomic baselines, and delete tombstones [Development]"),
+		metric.WithDescription("Maximum of the retained-entry and retained-byte utilization for the target's gNMI cache partition [Development]"),
 		metric.WithUnit("1"),
 	)
 	errs = errors.Join(errs, err)
@@ -90,7 +107,7 @@ func NewTelemetryBuilder(settings component.TelemetrySettings, options ...Teleme
 	errs = errors.Join(errs, err)
 	builder.CiscoosreceiverGnmiConsumerRefusals, err = builder.meter.Int64Counter(
 		"otelcol_ciscoosreceiver_gnmi_consumer_refusals",
-		metric.WithDescription("Number of metric chunks refused by the downstream consumer and dropped without device reconnect [Development]"),
+		metric.WithDescription("Number of metric chunks refused by the downstream consumer before the affected gNMI profile reconnects [Development]"),
 		metric.WithUnit("{refusal}"),
 	)
 	errs = errors.Join(errs, err)
@@ -124,6 +141,18 @@ func NewTelemetryBuilder(settings component.TelemetrySettings, options ...Teleme
 		metric.WithUnit("s"),
 	)
 	errs = errors.Join(errs, err)
+	builder.CiscoosreceiverGnmiPreflightFailures, err = builder.meter.Int64Counter(
+		"otelcol_ciscoosreceiver_gnmi_preflight_failures",
+		metric.WithDescription("Number of terminal gNMI product qualification failures. This metric emits only identity_missing, identity_ambiguous, product_mismatch, release_mismatch, missing_model, unsupported_encoding, or malformed_identity; profile-degradation reasons in the shared attribute catalog are not emitted here. [Development]"),
+		metric.WithUnit("{failure}"),
+	)
+	errs = errors.Join(errs, err)
+	builder.CiscoosreceiverGnmiProductVerified, err = builder.meter.Int64Gauge(
+		"otelcol_ciscoosreceiver_gnmi_product_verified",
+		metric.WithDescription("Whether the gNMI target passed product, model, release, and capability verification [Development]"),
+		metric.WithUnit("1"),
+	)
+	errs = errors.Join(errs, err)
 	builder.CiscoosreceiverGnmiProfileDegraded, err = builder.meter.Int64Gauge(
 		"otelcol_ciscoosreceiver_gnmi_profile_degraded",
 		metric.WithDescription("Whether a gNMI profile is degraded (1 = degraded, 0 = healthy) [Development]"),
@@ -145,6 +174,12 @@ func NewTelemetryBuilder(settings component.TelemetrySettings, options ...Teleme
 	builder.CiscoosreceiverGnmiUnmappedValues, err = builder.meter.Int64Counter(
 		"otelcol_ciscoosreceiver_gnmi_unmapped_values",
 		metric.WithDescription("Number of decoded gNMI values without an explicit metric mapping [Development]"),
+		metric.WithUnit("{value}"),
+	)
+	errs = errors.Join(errs, err)
+	builder.CiscoosreceiverGnmiUnsupportedValueKinds, err = builder.meter.Int64Counter(
+		"otelcol_ciscoosreceiver_gnmi_unsupported_value_kinds",
+		metric.WithDescription("Number of bounded opaque or aggregate gNMI TypedValues ignored by kind [Development]"),
 		metric.WithUnit("{value}"),
 	)
 	errs = errors.Join(errs, err)

@@ -1,7 +1,7 @@
 change_type: breaking
 component: receiver/yang_grpc
-note: Bound dial-out streams and protobuf expansion and publish runtime-hardening contract v2.
+note: Bound dial-out streams and protobuf expansion and publish runtime-hardening contract v3.
 issues: [42647]
 subtext: |
-  Adds bounded connection counts and lifetimes, lowers the default global stream limit to 64, adds a per-client stream limit and a 256 MiB stream-by-frame invariant, bounds receiver-wide conversion concurrency and per-payload expansion before allocation, cancels idle streams during deadline-aware shutdown, uses stream-scoped downstream contexts, enforces per-message security, preserves rate-limit buckets until natural refill, inherits labels only from explicit GPB-KV keys, and retains an injective raw field-path identity so normalized consumers cannot merge distinct YANG paths. Publishes runtime-hardening contract v2 for embedding receivers.
+  Adds bounded connection counts and lifetimes, a finite application-level stream idle timeout, a default global stream limit of 64, a per-client stream limit and a 256 MiB stream-by-frame invariant, receiver-wide conversion concurrency and per-payload expansion ceilings, deadline-aware shutdown cancellation, stream-scoped downstream contexts, per-message security, persistent rate-limit buckets until natural refill, bounded YANG module loading, explicit GPB-KV key inheritance, and an injective raw field-path identity so normalized consumers cannot merge distinct YANG paths. Publishes runtime-hardening contract v3 for embedding receivers.
 change_logs: [api, user]

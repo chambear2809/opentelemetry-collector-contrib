@@ -4,4 +4,5 @@ note: Add Meraki Dashboard API polling support with organization and serial-scop
 issues: [0]
 subtext: |
   Meraki support polls organization-wide Dashboard API endpoints, emits one resource per serial where possible, and adds Meraki-specific API, uplink, switch, wireless, VPN, power, and appliance metrics plus an importable Splunk Observability dashboard group while preserving existing SSH behavior.
+  Endpoint-specific pagination limits, primary-MX appliance polling, timestamp-selected recent-history windows, stable network resource identity, trusted Meraki redirect handling, and inventory-enforced filtering keep mixed-product organizations accurate and fail closed when scope cannot be resolved. The Meraki switch DOM beta endpoint requires the explicit `switch_transceivers.enabled` opt-in; hard pagination and scrape-time ceilings report partial success so larger fleets can be scoped or sharded deliberately.
 change_logs: [user]

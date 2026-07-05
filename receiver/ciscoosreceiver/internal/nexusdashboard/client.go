@@ -23,9 +23,10 @@ import (
 )
 
 const (
-	defaultUserAgent      = "opentelemetry-collector-contrib-ciscoosreceiver"
-	defaultRequestTimeout = 30 * time.Second
-	defaultPageSize       = 100
+	defaultUserAgent             = "opentelemetry-collector-contrib-ciscoosreceiver"
+	defaultRequestTimeout        = 30 * time.Second
+	defaultPageSize              = 100
+	insecureSkipVerifyConfigPath = "nexus_dashboard.insecure_skip_verify"
 )
 
 // Config controls the Nexus Dashboard API client.
@@ -294,6 +295,12 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 			return body, header, nil
 		}
 		lastErr = err
+		if ctx.Err() != nil {
+			return nil, nil, ctx.Err()
+		}
+		if httpclient.IsCertificateVerificationError(err) {
+			return nil, nil, err
+		}
 		if status == http.StatusUnauthorized {
 			// Login failures are charged by ensureToken. A data request clears only
 			// the exact token snapshot it used so a delayed response cannot erase a
@@ -364,6 +371,7 @@ func (c *Client) doOnce(
 	resp, err := c.client.Do(req)
 	duration := time.Since(start)
 	if err != nil {
+		err = httpclient.DecorateCertificateVerificationError(err, "", insecureSkipVerifyConfigPath)
 		c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", Duration: duration, Err: err})
 		return nil, nil, 0, requestAuth, err
 	}
@@ -499,6 +507,7 @@ func (c *Client) login(ctx context.Context) (string, int, error) {
 	resp, err := c.client.Do(req)
 	duration := time.Since(start)
 	if err != nil {
+		err = httpclient.DecorateCertificateVerificationError(err, "", insecureSkipVerifyConfigPath)
 		c.record(RequestStat{Operation: "infra.login", Method: http.MethodPost, Path: "/api/v1/infra/login", Outcome: "error", Duration: duration, Err: err})
 		return "", 0, err
 	}

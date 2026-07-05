@@ -189,10 +189,12 @@ func TestInternalGNMIScaleQualification_100Targets5000Ports500KSeries(t *testing
 	t.Logf(
 		"internal_gnmi_scale targets=%d ports=%d lanes_per_port=%d active_series=%d interval_datapoints=%d chunks=%d "+
 			"population_elapsed=%s interval_elapsed=%s interval_alloc_bytes=%d interval_mallocs=%d total_alloc_bytes=%d "+
-			"heap_alloc_bytes=%d heap_sys_bytes=%d rss_bytes=%d rss_source=%s burst_cpu_percent=%.2f one_second_cadence_cpu_percent=%.2f",
+			"cache_retained_bytes=%d cache_retained_limit_bytes=%d heap_alloc_bytes=%d heap_sys_bytes=%d rss_bytes=%d rss_source=%s "+
+			"burst_cpu_percent=%.2f one_second_cadence_cpu_percent=%.2f",
 		scaleTargetCount, scalePortCount, scaleLanesPerPort, cache.Len(), scaleIntervalPoints, len(chunks),
 		populationElapsed, intervalElapsed, intervalAllocated, intervalMallocs, processAllocated,
-		intervalAfter.HeapAlloc, intervalAfter.HeapSys, rssBytes, rssSource, burstCPUPercent, oneSecondCadenceCPUPercent,
+		cache.RetainedBytes(), cache.RetainedByteCapacity(), intervalAfter.HeapAlloc, intervalAfter.HeapSys,
+		rssBytes, rssSource, burstCPUPercent, oneSecondCadenceCPUPercent,
 	)
 }
 

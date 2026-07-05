@@ -71,7 +71,7 @@ service:
 See [configgrpc](https://pkg.go.dev/go.opentelemetry.io/collector/config/configgrpc).
 
 The default loopback listener is plaintext for local development. Validation rejects a listener bound to a non-loopback address unless TLS, per-message rate limiting, and either mutual TLS or an `allowed_clients` allowlist are configured.
-`max_recv_msg_size_mib` must be between 1 and 16, and `max_concurrent_streams` must be between 1 and 1000. Their product cannot exceed 256 MiB, which hard-bounds fully decoded application frames because each globally admitted stream can hold at most one unprocessed frame. The defaults are 4 MiB and 64 global streams. An omitted `max_concurrent_streams_per_client` uses the smaller of 16 and the global limit; an explicit value must not exceed the global limit. Receiver-wide availability controls also default to 256 accepted connections, 8 concurrent telemetry conversions/consumer calls, a 30-second HTTP/2 handshake timeout, and a 2-minute idle-connection timeout. `max_connections` is capped at 1024, `max_concurrent_conversions` at 16, and a configured `connection_timeout` must be between 1 second and 2 minutes.
+`max_recv_msg_size_mib` must be between 1 and 16, and `max_concurrent_streams` must be between 1 and 1000. Their product cannot exceed 256 MiB, which hard-bounds fully decoded application frames because each globally admitted stream can hold at most one unprocessed frame. The defaults are 4 MiB and 64 global streams. An omitted `max_concurrent_streams_per_client` uses the smaller of 16 and the global limit; an explicit value must not exceed the global limit. Receiver-wide availability controls also default to 256 accepted connections, 8 concurrent telemetry conversions/consumer calls, a 30-second HTTP/2 handshake timeout, a 2-minute idle-connection timeout, and a 5-minute application-level telemetry stream idle timeout. `max_connections` is capped at 1024, `max_concurrent_conversions` at 16, and a configured `connection_timeout` must be between 1 second and 2 minutes. A configured `stream_idle_timeout` must be between 1 second and 1 hour; zero or omission selects the 5-minute default and does not disable the deadline. Each successfully received message refreshes the stream deadline, so a silent client cannot retain a global or per-client admission slot indefinitely.
 
 ## Default Configuration
 ```yaml
@@ -86,6 +86,7 @@ yang_grpc:
   max_connections: 256
   max_concurrent_conversions: 8
   connection_timeout: 30s
+  stream_idle_timeout: 5m
   max_concurrent_streams: 64
   max_concurrent_streams_per_client: 16
   max_recv_msg_size_mib: 4
@@ -98,7 +99,7 @@ yang_grpc:
 Every payload also has non-configurable safety ceilings: 100,000 GPB-KV fields, 50,000 emitted metrics, 64 attributes per metric, 250,000 total attributes, and 16 MiB of copied attribute data. A wire-level preflight enforces field count, nesting, and string limits before protobuf unmarshalling can allocate an expanded object tree. A payload that exceeds a ceiling is rejected with `ResourceExhausted` and its stream is closed. The receiver-wide conversion limit is acquired after a stream message arrives and remains held through the synchronous downstream consumer call. The stream reader does not receive another frame until that call completes, so the global admission limit and 256 MiB configuration invariant bound fully decoded frames without allowing idle streams to reserve conversion capacity.
 
 ## YANG Parser Settings (yang)
-* `module_paths`: local directories containing Cisco/IETF `.yang` files used to enrich metric type and key interpretation.
+* `module_paths`: up to 64 local regular `.yang` files or directories containing Cisco/IETF `.yang` files used to enrich metric type and key interpretation. A direct regular file must use the `.yang` suffix; other direct files and non-regular entries are rejected. Across all configured paths, startup rejects a traversal beyond 100,000 filesystem entries, more than 10,000 YANG files, any individual module larger than 16 MiB, or more than 128 MiB of module data in aggregate.
 
 ## Production Deployment Example
 ```YAML

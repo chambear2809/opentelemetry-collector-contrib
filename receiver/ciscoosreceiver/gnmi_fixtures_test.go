@@ -42,7 +42,7 @@ func TestGNMIFixtureIOSXERFC7951DOM(t *testing.T) {
 	for _, point := range mapped {
 		assert.Equal(t, "TenGigabitEthernet1/0/1", point.Attributes["network.interface.name"])
 		assert.Equal(t, "dom", point.Attributes["cisco.optics.profile"])
-		assert.Equal(t, "false", point.Attributes["cisco.optics.experimental"])
+		assert.Equal(t, "true", point.Attributes["cisco.optics.experimental"])
 	}
 
 	temperature := fixtureGNMIMetric(t, mapped, "cisco.optics.temperature")
@@ -66,7 +66,7 @@ func TestGNMIFixtureIOSXERFC7951DOM(t *testing.T) {
 	assert.NotContains(t, present.Attributes, "cisco.optics.sensor")
 }
 
-func TestGNMIFixtureIOSXRNativeOpticsAndOTUScalar(t *testing.T) {
+func TestGNMIFixtureIOSXR2441NativeOptics(t *testing.T) {
 	runtime := fixtureGNMIRuntime(t, gnmiPlatformIOSXR, builtinGNMIProfileOptics)
 	opticsOrigin := "Cisco-IOS-XR-controller-optics-oper"
 	opticsStream := fixtureGNMIStream(t, runtime, opticsOrigin)
@@ -75,50 +75,39 @@ func TestGNMIFixtureIOSXRNativeOpticsAndOTUScalar(t *testing.T) {
 	decoded := fixtureGNMIDecode(t, response.GetUpdate())
 	_, mapped, _ := fixtureGNMIMap(t, runtime, opticsStream, decoded, false)
 	assert.ElementsMatch(t, []string{
-		"cisco.optics.chromatic_dispersion",
-		"cisco.optics.dgd",
-		"cisco.optics.osnr",
-		"cisco.optics.q_margin",
+		"cisco.optics.present",
 		"cisco.optics.rx_power",
 		"cisco.optics.temperature",
+		"cisco.optics.tx_power",
+		"cisco.optics.voltage",
 	}, fixtureGNMIMetricNames(mapped))
 
-	dom := fixtureGNMIMetric(t, mapped, "cisco.optics.temperature")
-	assert.Equal(t, "Cel", dom.Metric.Unit)
-	assert.Equal(t, "dom", dom.Attributes["cisco.optics.profile"])
-	assert.Equal(t, "false", dom.Attributes["cisco.optics.experimental"])
-	coherentUnits := map[string]string{
-		"cisco.optics.q_margin":             "dB",
-		"cisco.optics.osnr":                 "dB",
-		"cisco.optics.dgd":                  "ps",
-		"cisco.optics.chromatic_dispersion": "ps/nm",
-	}
-	for metricName, unit := range coherentUnits {
-		point := fixtureGNMIMetric(t, mapped, metricName)
-		assert.Equal(t, unit, point.Metric.Unit)
+	for _, point := range mapped {
 		assert.Equal(t, "HundredGigE0/0/0/0", point.Attributes["network.interface.name"])
-		assert.Equal(t, "coherent", point.Attributes["cisco.optics.profile"])
+		assert.Equal(t, "dom", point.Attributes["cisco.optics.profile"])
 		assert.Equal(t, "true", point.Attributes["cisco.optics.experimental"])
 	}
+	assert.InDelta(t, 44.25, fixtureGNMIMetric(t, mapped, "cisco.optics.temperature").DoubleValue, 0.0001)
+	assert.InDelta(t, 3.31, fixtureGNMIMetric(t, mapped, "cisco.optics.voltage").DoubleValue, 0.0001)
+	assert.InDelta(t, -3.10, fixtureGNMIMetric(t, mapped, "cisco.optics.rx_power").DoubleValue, 0.0001)
+	assert.InDelta(t, -1.05, fixtureGNMIMetric(t, mapped, "cisco.optics.tx_power").DoubleValue, 0.0001)
+	assert.Equal(t, int64(1), fixtureGNMIMetric(t, mapped, "cisco.optics.present").IntValue)
 
-	otuNotification := fixtureGNMILoadNotification(t, "ios_xr_otu_scalar.json")
-	otuDecoded := fixtureGNMIDecode(t, otuNotification)
-	require.Len(t, otuDecoded.Updates, 2)
-	for _, point := range otuDecoded.Updates {
-		assert.Equal(t, internalgnmi.ValueDouble, point.Value.Kind, "fixture must exercise scalar double wire values")
+	laneDecoded := fixtureGNMIDecode(t, fixtureGNMILoadNotification(t, "ios_xr_lane_scalar.json"))
+	_, laneMapped, _ := fixtureGNMIMap(t, runtime, opticsStream, laneDecoded, false)
+	assert.ElementsMatch(t, []string{
+		"cisco.optics.laser_bias_current",
+		"cisco.optics.rx_power",
+		"cisco.optics.tx_power",
+	}, fixtureGNMIMetricNames(laneMapped))
+	for _, point := range laneMapped {
+		assert.Equal(t, "HundredGigE0/0/0/0", point.Attributes["network.interface.name"])
+		assert.Equal(t, "0", point.Attributes["cisco.optics.lane"])
+		assert.Equal(t, "true", point.Attributes["cisco.optics.experimental"])
 	}
-	otuStream := fixtureGNMIStream(t, runtime, "Cisco-IOS-XR-controller-otu-oper")
-	_, otuMapped, _ := fixtureGNMIMap(t, runtime, otuStream, otuDecoded, false)
-	assert.ElementsMatch(t, []string{"cisco.optics.pre_fec_ber", "cisco.optics.q_factor"}, fixtureGNMIMetricNames(otuMapped))
-	qFactor := fixtureGNMIMetric(t, otuMapped, "cisco.optics.q_factor")
-	assert.Equal(t, "dB", qFactor.Metric.Unit)
-	assert.InDelta(t, 11.75, qFactor.DoubleValue, 0.0001)
-	assert.Equal(t, "Optics0/0/0/0", qFactor.Attributes["network.interface.name"])
-	assert.Equal(t, "coherent", qFactor.Attributes["cisco.optics.profile"])
-	assert.Equal(t, "true", qFactor.Attributes["cisco.optics.experimental"])
-	preFEC := fixtureGNMIMetric(t, otuMapped, "cisco.optics.pre_fec_ber")
-	assert.Equal(t, "1", preFEC.Metric.Unit)
-	assert.InDelta(t, 0.00000024, preFEC.DoubleValue, 0.000000001)
+	assert.InDelta(t, 6.40, fixtureGNMIMetric(t, laneMapped, "cisco.optics.laser_bias_current").DoubleValue, 0.0001)
+	assert.InDelta(t, -2.15, fixtureGNMIMetric(t, laneMapped, "cisco.optics.rx_power").DoubleValue, 0.0001)
+	assert.InDelta(t, -1.05, fixtureGNMIMetric(t, laneMapped, "cisco.optics.tx_power").DoubleValue, 0.0001)
 }
 
 func TestGNMIFixtureNXDMESensorAllowlist(t *testing.T) {
@@ -149,7 +138,7 @@ func TestGNMIFixtureNXDMESensorAllowlist(t *testing.T) {
 	assert.Equal(t, "Cel", temperature.Metric.Unit)
 	assert.InDelta(t, 46.5, temperature.DoubleValue, 0.0001)
 	assert.Equal(t, "dom", temperature.Attributes["cisco.optics.profile"])
-	assert.Equal(t, "false", temperature.Attributes["cisco.optics.experimental"])
+	assert.Equal(t, "true", temperature.Attributes["cisco.optics.experimental"])
 	assert.Equal(t, "31", fixtureGNMISensorID(temperature.Source.Elements))
 
 	var normalizedTDECQSensors, rejectedValueSensors []string
@@ -238,8 +227,15 @@ func fixtureGNMIRuntime(t *testing.T, platform, profile string) *sharedGNMITarge
 	}
 	cache, err := internalgnmi.NewCache(100)
 	require.NoError(t, err)
+	product, version := gnmiProductCatalyst9800, "17.18.1"
+	switch platform {
+	case gnmiPlatformIOSXR:
+		product, version = gnmiProductASR9000, "24.4.1"
+	case gnmiPlatformNXOS:
+		product, version = gnmiProductNexus9000, "10.6(1)"
+	}
 	runtime, err := newSharedGNMITargetRuntime(GNMITargetConfig{
-		Name: fixtureGNMITarget, Platform: platform, MaxStreams: 8, Profiles: profiles,
+		Name: fixtureGNMITarget, Product: product, SoftwareVersion: version, MaxStreams: 8, Profiles: profiles,
 	}, cache)
 	require.NoError(t, err)
 	return runtime
@@ -248,8 +244,8 @@ func fixtureGNMIRuntime(t *testing.T, platform, profile string) *sharedGNMITarge
 func fixtureGNMIStream(t *testing.T, runtime *sharedGNMITargetRuntime, origin string) sharedGNMIRuntimeStream {
 	t.Helper()
 	for i := range runtime.streams {
-		for _, path := range runtime.streams[i].Paths {
-			if path.Origin == origin {
+		for pathIndex := range runtime.streams[i].Paths {
+			if runtime.streams[i].Paths[pathIndex].Origin == origin {
 				return runtime.streams[i]
 			}
 		}

@@ -42,6 +42,7 @@ func parseDeviceMetadataFromShowVersion(output string, detectedAt time.Time) Dev
 	metadata.OSVersion = firstNonEmpty(
 		firstSubmatch(output, `(?im)\bCisco IOS XE Software,\s+Version\s+([^\r\n,]+)`),
 		firstSubmatch(output, `(?im)\bCisco IOS Software,[^\r\n]*,\s+Version\s+([^\r\n,]+)`),
+		classicIOSVersionFromShowVersion(output),
 		firstSubmatch(output, `(?im)\bNXOS:\s+version\s+([^\r\n\[]+)`),
 		firstSubmatch(output, `(?im)\bNX-OS.*?Version\s+([^\r\n,]+)`),
 		firstSubmatch(output, `(?im)\bSystem version:\s+([^\r\n]+)`),
@@ -70,6 +71,14 @@ func parseDeviceMetadataFromShowVersion(output string, detectedAt time.Time) Dev
 	metadata.HostID = metadata.Serial
 	metadata.OSVersion = cleanMetadataValue(metadata.OSVersion)
 	return metadata
+}
+
+func classicIOSVersionFromShowVersion(output string) string {
+	matches := classicIOSShowVersionPair.FindStringSubmatch(output)
+	if len(matches) != 2 {
+		return ""
+	}
+	return strings.TrimSpace(matches[1])
 }
 
 func parseCiscoUptime(output string) time.Duration {

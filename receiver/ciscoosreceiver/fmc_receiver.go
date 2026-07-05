@@ -134,12 +134,13 @@ type fmcEStreamerLogsReceiver struct {
 }
 
 type fmcEndpoint struct {
-	group      string
-	operation  string
-	path       string
-	objectType string
-	method     string
-	query      func(*Config, time.Time) url.Values
+	group               string
+	operation           string
+	path                string
+	objectType          string
+	method              string
+	query               func(*Config, time.Time) url.Values
+	controllerAggregate bool
 }
 
 type fmcScopedEndpoint struct {
@@ -399,7 +400,9 @@ func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 				continue
 			}
 			objects, err := r.fetchEndpoint(ctx, client, domainUUID, endpoint, now)
-			objects = filterFMCObjects(objects, r.config.FMC.Targets)
+			if !endpoint.controllerAggregate {
+				objects = filterFMCObjects(objects, r.config.FMC.Targets)
+			}
 			switch endpoint.operation {
 			case "deployment.deployable_devices":
 				cache.deployableDevices = append(cache.deployableDevices, objects...)
@@ -417,7 +420,7 @@ func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 				cache.prefilterPolicies = append(cache.prefilterPolicies, objects...)
 			}
 			for _, obj := range objects {
-				if !selector.allows(fmcObjectIdentity(obj)) {
+				if !endpoint.controllerAggregate && !selector.allows(fmcObjectIdentity(obj)) {
 					continue
 				}
 				builder.recordObject(client.ControllerName(), client.Endpoint(), domainUUID, endpoint, obj)
@@ -1344,11 +1347,11 @@ func appendFMCEStreamerLog(ld plog.Logs, controllerName, address string, event f
 
 func fmcMetricEndpoints() []fmcEndpoint {
 	return []fmcEndpoint{
-		{group: "manager", operation: "manager.domains", path: "/api/fmc_platform/v1/info/domain", objectType: "fmc.domain"},
-		{group: "manager", operation: "manager.server_versions", path: "/api/fmc_platform/v1/info/serverversion", objectType: "fmc.server_version"},
-		{group: "manager", operation: "manager.device_licenses", path: "/api/fmc_platform/v1/license/devicelicenses", objectType: "fmc.device_license"},
-		{group: "manager", operation: "manager.smart_licenses", path: "/api/fmc_platform/v1/license/smartlicenses", objectType: "fmc.smart_license"},
-		{group: "manager", operation: "manager.upgrade_packages", path: "/api/fmc_platform/v1/updates/upgradepackages", objectType: "fmc.upgrade_package"},
+		{group: "manager", operation: "manager.domains", path: "/api/fmc_platform/v1/info/domain", objectType: "fmc.domain", controllerAggregate: true},
+		{group: "manager", operation: "manager.server_versions", path: "/api/fmc_platform/v1/info/serverversion", objectType: "fmc.server_version", controllerAggregate: true},
+		{group: "manager", operation: "manager.device_licenses", path: "/api/fmc_platform/v1/license/devicelicenses", objectType: "fmc.device_license", controllerAggregate: true},
+		{group: "manager", operation: "manager.smart_licenses", path: "/api/fmc_platform/v1/license/smartlicenses", objectType: "fmc.smart_license", controllerAggregate: true},
+		{group: "manager", operation: "manager.upgrade_packages", path: "/api/fmc_platform/v1/updates/upgradepackages", objectType: "fmc.upgrade_package", controllerAggregate: true},
 		{group: "inventory", operation: "inventory.device_groups", path: "devicegroups/devicegrouprecords", objectType: "fmc.device_group"},
 		{group: "inventory", operation: "inventory.chassis", path: "chassis/fmcmanagedchassis", objectType: "fmc.chassis"},
 		{group: "health", operation: "health.alerts", path: "health/alerts", objectType: "fmc.health_alert", query: recentFMCQuery},

@@ -1,0 +1,7 @@
+change_type: bug_fix
+component: receiver/cisco_os
+note: Fix Catalyst SD-WAN alarm and event queries against current Manager APIs.
+issues: [0]
+subtext: |
+  Use the singular `/event` endpoint and encode `last_n_hours` lookback values as strings so alarm and event polling succeeds on Catalyst SD-WAN Manager 20.18.
+change_logs: [user]

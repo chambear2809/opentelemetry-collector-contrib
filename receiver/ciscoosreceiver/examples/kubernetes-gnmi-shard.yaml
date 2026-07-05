@@ -51,7 +51,8 @@ data:
             # Shard 01 owns nexus01 exclusively.
             - name: nexus-shard-01
               endpoint: nexus01.example.net:50051
-              platform: nx_os
+              product: nexus_9000
+              software_version: "10.6(1)"
               max_recv_msg_size_mib: 16
               credentials:
                 mode: username_password
@@ -66,13 +67,13 @@ data:
                 identity:
                   enabled: true
                 system:
-                  enabled: true
+                  # NX-OS has no schema-qualified system profile in the supported trains.
+                  enabled: false
                 interfaces:
                   enabled: true
                 optics:
-                  enabled: true
-                  required: true
-                  sample_interval: 30s
+                  # Enable only after separate chassis/line-card/optic qualification.
+                  enabled: false
     processors:
       memory_limiter:
         check_interval: 1s
@@ -107,10 +108,9 @@ data:
             # Shard 02 owns xr01 exclusively; it does not repeat nexus01.
             - name: xr-shard-02
               endpoint: xr01.example.net:50051
-              platform: ios_xr
+              product: asr_9000
+              software_version: "24.4.1"
               max_recv_msg_size_mib: 16
-              # Three native system origins, interfaces, and two optical origins.
-              max_streams: 6
               credentials:
                 mode: username_password
                 username: otel-telemetry-shard-02
@@ -128,9 +128,8 @@ data:
                 interfaces:
                   enabled: true
                 optics:
-                  enabled: true
-                  required: true
-                  sample_interval: 30s
+                  # Enable only after separate chassis/line-card/optic qualification.
+                  enabled: false
     processors:
       memory_limiter:
         check_interval: 1s

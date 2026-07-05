@@ -75,17 +75,27 @@ type MerakiDeviceConfig struct {
 	Serial         string `mapstructure:"serial"`
 }
 
+// MerakiSwitchTransceiversConfig controls the Meraki switch DOM beta endpoint.
+type MerakiSwitchTransceiversConfig struct {
+	// DO NOT USE unkeyed struct initialization
+	_ struct{} `mapstructure:"-"`
+
+	Enabled bool `mapstructure:"enabled"`
+}
+
 // MerakiConfig defines Meraki Dashboard API polling settings.
 type MerakiConfig struct {
 	// DO NOT USE unkeyed struct initialization
 	_ struct{} `mapstructure:"-"`
 
-	Auth          MerakiAuthConfig           `mapstructure:"auth"`
-	BaseURL       string                     `mapstructure:"base_url"`
-	UserAgent     string                     `mapstructure:"user_agent"`
-	MaxRetries    int                        `mapstructure:"max_retries"`
-	Organizations []MerakiOrganizationConfig `mapstructure:"organizations"`
-	Devices       []MerakiDeviceConfig       `mapstructure:"devices"`
+	Auth               MerakiAuthConfig               `mapstructure:"auth"`
+	BaseURL            string                         `mapstructure:"base_url"`
+	UserAgent          string                         `mapstructure:"user_agent"`
+	MaxRetries         int                            `mapstructure:"max_retries"`
+	InsecureSkipVerify bool                           `mapstructure:"insecure_skip_verify"`
+	SwitchTransceivers MerakiSwitchTransceiversConfig `mapstructure:"switch_transceivers"`
+	Organizations      []MerakiOrganizationConfig     `mapstructure:"organizations"`
+	Devices            []MerakiDeviceConfig           `mapstructure:"devices"`
 }
 
 func defaultMerakiConfig() MerakiConfig {
@@ -764,6 +774,8 @@ func (cfg *Config) Validate() error {
 		err = multierr.Append(err, errors.New("collection_interval must be positive"))
 	}
 
+	err = multierr.Append(err, cfg.DeviceSelection.Validate())
+
 	if len(cfg.Devices) == 0 && !cfg.Meraki.hasTargets() && !cfg.Intersight.hasTarget() && !cfg.CatalystCenter.hasTarget() && !cfg.Catalyst9800.hasTarget() && !cfg.SDWAN.hasTarget() && !cfg.NexusDashboard.hasTarget() && !cfg.ACI.hasTarget() && !cfg.FMC.hasTarget() && !cfg.ISE.hasTarget() && !cfg.IOSXR.hasTarget() && !cfg.GNMI.hasTargets() {
 		err = multierr.Append(err, errors.New("must specify at least one SSH device, Meraki target, Intersight target, Catalyst Center target, Catalyst 9800 target, SD-WAN target, Nexus Dashboard target, ACI target, FMC target, ISE target, or IOS XR target; alternatively, specify a shared gNMI target"))
 	}
@@ -851,6 +863,15 @@ func (cfg *Config) validateMeraki() error {
 		err = multierr.Append(err, validateNonEmptyStringList(fmt.Sprintf("meraki.organizations[%d].network_ids", i), org.NetworkIDs))
 		err = multierr.Append(err, validateNonEmptyStringList(fmt.Sprintf("meraki.organizations[%d].serials", i), org.Serials))
 		err = multierr.Append(err, validateNonEmptyStringList(fmt.Sprintf("meraki.organizations[%d].product_types", i), org.ProductTypes))
+		for j, productType := range org.ProductTypes {
+			if !validMerakiProductType(productType) {
+				err = multierr.Append(err, fmt.Errorf(
+					"meraki.organizations[%d].product_types[%d] must be one of appliance, camera, campusGateway, cellularGateway, secureConnect, sensor, switch, systemsManager, wireless, or wirelessController",
+					i,
+					j,
+				))
+			}
+		}
 		err = multierr.Append(err, validateNonEmptyStringList(fmt.Sprintf("meraki.organizations[%d].tags", i), org.Tags))
 	}
 
@@ -864,6 +885,15 @@ func (cfg *Config) validateMeraki() error {
 	}
 
 	return err
+}
+
+func validMerakiProductType(productType string) bool {
+	switch productType {
+	case "appliance", "camera", "campusGateway", "cellularGateway", "secureConnect", "sensor", "switch", "systemsManager", "wireless", "wirelessController":
+		return true
+	default:
+		return false
+	}
 }
 
 func (cfg *Config) validateIntersight() error {
@@ -1155,12 +1185,15 @@ func (cfg *Config) validateACI() error {
 	if len(cfg.ACI.Controllers) == 0 {
 		err = multierr.Append(err, errors.New("aci.controllers must include at least one APIC endpoint"))
 	}
+	controllerEndpoints := make(map[string]int, len(cfg.ACI.Controllers))
+	controllerNames := make(map[string]int, len(cfg.ACI.Controllers))
 	for i, controller := range cfg.ACI.Controllers {
 		if controller.Endpoint == "" {
 			err = multierr.Append(err, fmt.Errorf("aci.controllers[%d].endpoint cannot be empty", i))
 			continue
 		}
 		err = multierr.Append(err, validateHTTPURL(fmt.Sprintf("aci.controllers[%d].endpoint", i), controller.Endpoint, cfg.ACI.InsecureSkipVerify))
+		err = multierr.Append(err, validateUniqueHTTPController("aci.controllers", i, controller.Endpoint, controller.Name, controllerEndpoints, controllerNames))
 	}
 
 	authMode := inferredControllerAuthMode(cfg.ACI.Auth)
@@ -1220,12 +1253,15 @@ func (cfg *Config) validateFMC() error {
 		if len(cfg.FMC.Controllers) == 0 {
 			err = multierr.Append(err, errors.New("fmc.controllers must include at least one FMC endpoint"))
 		}
+		controllerEndpoints := make(map[string]int, len(cfg.FMC.Controllers))
+		controllerNames := make(map[string]int, len(cfg.FMC.Controllers))
 		for i, controller := range cfg.FMC.Controllers {
 			if controller.Endpoint == "" {
 				err = multierr.Append(err, fmt.Errorf("fmc.controllers[%d].endpoint cannot be empty", i))
 				continue
 			}
 			err = multierr.Append(err, validateHTTPURL(fmt.Sprintf("fmc.controllers[%d].endpoint", i), controller.Endpoint, cfg.FMC.InsecureSkipVerify))
+			err = multierr.Append(err, validateUniqueHTTPController("fmc.controllers", i, controller.Endpoint, controller.Name, controllerEndpoints, controllerNames))
 		}
 
 		authMode := inferredControllerAuthMode(cfg.FMC.Auth)
@@ -1285,12 +1321,23 @@ func (cfg *Config) validateFMCEStreamer() error {
 	if cfg.FMC.EStreamer.Enabled && len(cfg.FMC.EStreamer.Targets) == 0 && len(cfg.FMC.Controllers) == 0 {
 		err = multierr.Append(err, errors.New("fmc.estreamer.targets or fmc.controllers must include at least one eStreamer endpoint"))
 	}
+	targetEndpoints := make(map[string]int, len(cfg.FMC.EStreamer.Targets))
+	targetNames := make(map[string]int, len(cfg.FMC.EStreamer.Targets))
 	for i, target := range cfg.FMC.EStreamer.Targets {
 		if target.Endpoint == "" {
 			err = multierr.Append(err, fmt.Errorf("fmc.estreamer.targets[%d].endpoint cannot be empty", i))
 			continue
 		}
 		err = multierr.Append(err, validateHostPortOrHost(fmt.Sprintf("fmc.estreamer.targets[%d].endpoint", i), target.Endpoint))
+		endpointKey, defaultName, keyErr := canonicalHostPort(target.Endpoint, "8302")
+		if keyErr == nil {
+			if previous, duplicate := targetEndpoints[endpointKey]; duplicate {
+				err = multierr.Append(err, fmt.Errorf("fmc.estreamer.targets[%d].endpoint duplicates fmc.estreamer.targets[%d].endpoint after address normalization", i, previous))
+			} else {
+				targetEndpoints[endpointKey] = i
+			}
+			err = multierr.Append(err, validateUniqueEffectiveName("fmc.estreamer.targets", i, target.Name, defaultName, targetNames))
+		}
 	}
 	if cfg.FMC.EStreamer.TLS.CertFile == "" && cfg.FMC.EStreamer.TLS.KeyFile != "" {
 		err = multierr.Append(err, errors.New("fmc.estreamer.tls.cert_file must be provided when key_file is set"))
@@ -1316,6 +1363,87 @@ func (cfg *Config) validateFMCEStreamer() error {
 		}
 	}
 	return err
+}
+
+func validateUniqueHTTPController(prefix string, index int, endpoint, name string, endpoints, names map[string]int) error {
+	parsed, err := url.Parse(endpoint)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return nil
+	}
+	host, defaultName := canonicalURLHost(parsed)
+	path := strings.TrimRight(parsed.EscapedPath(), "/")
+	endpointKey := strings.ToLower(parsed.Scheme) + "://" + host + path
+	var validationErr error
+	if previous, duplicate := endpoints[endpointKey]; duplicate {
+		validationErr = multierr.Append(validationErr, fmt.Errorf("%s[%d].endpoint duplicates %s[%d].endpoint after URL normalization", prefix, index, prefix, previous))
+	} else {
+		endpoints[endpointKey] = index
+	}
+	return multierr.Append(validationErr, validateUniqueEffectiveName(prefix, index, name, defaultName, names))
+}
+
+func validateUniqueEffectiveName(prefix string, index int, configured, fallback string, names map[string]int) error {
+	if configured != strings.TrimSpace(configured) {
+		return fmt.Errorf("%s[%d].name must not contain surrounding whitespace", prefix, index)
+	}
+	if configured != "" && strings.TrimSpace(configured) == "" {
+		return fmt.Errorf("%s[%d].name cannot be blank", prefix, index)
+	}
+	effective := strings.ToLower(strings.TrimSpace(firstNonEmpty(configured, fallback)))
+	if previous, duplicate := names[effective]; duplicate {
+		return fmt.Errorf("%s[%d].name duplicates the effective name of %s[%d]", prefix, index, prefix, previous)
+	}
+	names[effective] = index
+	return nil
+}
+
+func canonicalURLHost(parsed *url.URL) (string, string) {
+	hostname := strings.ToLower(parsed.Hostname())
+	if address, err := netip.ParseAddr(hostname); err == nil {
+		hostname = address.Unmap().String()
+	}
+	port := parsed.Port()
+	if strings.EqualFold(parsed.Scheme, "https") && port == "443" {
+		port = ""
+	}
+	defaultName := hostname
+	if port != "" {
+		defaultName = net.JoinHostPort(hostname, port)
+		return defaultName, defaultName
+	}
+	if strings.Contains(hostname, ":") {
+		return "[" + hostname + "]", defaultName
+	}
+	return hostname, defaultName
+}
+
+func canonicalHostPort(value, defaultPort string) (string, string, error) {
+	value = strings.TrimSpace(value)
+	if address, err := netip.ParseAddr(value); err == nil {
+		host := address.Unmap().String()
+		endpoint := net.JoinHostPort(host, defaultPort)
+		return endpoint, endpoint, nil
+	}
+	host, port, err := net.SplitHostPort(value)
+	if err != nil {
+		if strings.Contains(value, ":") {
+			return "", "", err
+		}
+		host, port = value, defaultPort
+	}
+	host = strings.ToLower(strings.TrimSpace(host))
+	if address, parseErr := netip.ParseAddr(host); parseErr == nil {
+		host = address.Unmap().String()
+	}
+	if host == "" || port == "" {
+		return "", "", errors.New("host and port are required")
+	}
+	portNumber, err := strconv.ParseUint(port, 10, 16)
+	if err != nil || portNumber == 0 {
+		return "", "", errors.New("port must be between 1 and 65535")
+	}
+	endpoint := net.JoinHostPort(host, strconv.FormatUint(portNumber, 10))
+	return endpoint, endpoint, nil
 }
 
 func validateHTTPURL(name, value string, _ bool) error {
@@ -1346,7 +1474,11 @@ func endpointURLContentError(name string, parsed *url.URL) error {
 }
 
 func validateHostPortOrHost(name, value string) error {
-	value = strings.TrimSpace(value)
+	trimmed := strings.TrimSpace(value)
+	if trimmed != value {
+		return fmt.Errorf("%s must not contain surrounding whitespace", name)
+	}
+	value = trimmed
 	if value == "" {
 		return fmt.Errorf("%s cannot be empty", name)
 	}

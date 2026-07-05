@@ -24,7 +24,7 @@ func (r *RPCClient) GetOSType() string {
 	if r.OSType != "" {
 		return r.OSType
 	}
-	return "IOS XE" // Default
+	return "unknown"
 }
 
 func (r *RPCClient) GetDeviceMetadata() DeviceMetadata {

@@ -4,8 +4,10 @@
 package ciscoosreceiver
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/consumer/consumertest"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 
@@ -89,6 +92,106 @@ func TestACIScrapeAppliesSharedDeviceSelection(t *testing.T) {
 	assert.False(t, hasResourceHostID(md, "ACI-SERIAL-9"))
 }
 
+func TestACIScrapeKeepsAggregateHealthWithDeviceSelection(t *testing.T) {
+	server := newACIFixtureServer(t, map[string]string{
+		"/api/class/topSystem.json": `{"totalCount":"1","imdata":[
+			{"topSystem":{"attributes":{"id":"controller-1","name":"apic-1","state":"in-service"}}}
+		]}`,
+		"/api/class/firmwareCtrlrRunning.json": `{"totalCount":"1","imdata":[
+			{"firmwareCtrlrRunning":{"attributes":{"dn":"topology/pod-1/node-1/sys/ctrlrfwstatuscont/ctrlrrunning","version":"6.1(2)"}}}
+		]}`,
+		"/api/class/fabricPod.json": `{"totalCount":"1","imdata":[
+			{"fabricPod":{"attributes":{"dn":"topology/pod-1","id":"1","name":"pod-1"}}}
+		]}`,
+		"/api/class/fabricHealthTotal.json": `{"totalCount":"1","imdata":[
+			{"fabricHealthTotal":{"attributes":{"dn":"topology/health","cur":"95"}}}
+		]}`,
+		"/api/class/fabricOverallHealthHist5min.json": `{"totalCount":"1","imdata":[
+			{"fabricOverallHealthHist5min":{"attributes":{"dn":"uni/fabric/overallhealth5min-0","index":"0","healthAvg":"94"}}}
+		]}`,
+		"/api/class/fabricNode.json": `{"totalCount":"2","imdata":[
+			{"fabricNode":{"attributes":{"dn":"topology/pod-1/node-101","id":"101","serial":"ACI-SERIAL-1","name":"leaf101","fabricSt":"active"}}},
+			{"fabricNode":{"attributes":{"dn":"topology/pod-1/node-909","id":"909","serial":"ACI-SERIAL-9","name":"leaf909","fabricSt":"active"}}}
+		]}`,
+	})
+	defer server.Close()
+
+	receiver := newTestACIMetricsReceiver(t, server.URL)
+	receiver.config.ACI.Targets = ACITargetFilters{NodeIDs: []string{"101"}}
+	receiver.config.DeviceSelection.Include.DeviceIDs = []string{"101"}
+	md, err := receiver.scrape(t.Context())
+	require.NoError(t, err)
+
+	for _, resourceType := range []string{"aci.controller", "aci.controller_firmware", "aci.pod", "aci.fabric_health"} {
+		assert.True(t, hasMetricDatapointAttribute(md, "aci.resource.info", "aci.resource.type", resourceType), resourceType)
+	}
+	assert.Equal(t, 2, metricDataPointCount(md, "aci.fabric.health"))
+	assert.True(t, hasResourceHostID(md, "ACI-SERIAL-1"))
+	assert.False(t, hasResourceHostID(md, "ACI-SERIAL-9"))
+}
+
+func TestACIInterfaceResourcesRetainOwnDNRegardlessInputOrder(t *testing.T) {
+	endpoint := aciEndpoint{
+		group:      "stats",
+		operation:  "stats.interfaces.ingress",
+		className:  "eqptIngrTotal5min",
+		objectType: "aci.interface",
+	}
+	objects := []aci.Object{
+		{
+			"aci.class": "eqptIngrTotal5min",
+			"dn":        "topology/pod-1/node-101/sys/phys-[eth1/1]/ingrTotal5min",
+			"id":        "eth1/1",
+			"bytesRate": float64(125),
+		},
+		{
+			"aci.class": "eqptIngrTotal5min",
+			"dn":        "topology/pod-1/node-101/sys/phys-[eth1/2]/ingrTotal5min",
+			"id":        "eth1/2",
+			"bytesRate": float64(250),
+		},
+	}
+	want := map[string]string{
+		"eth1/1": "topology/pod-1/node-101/sys/phys-[eth1/1]/ingrTotal5min",
+		"eth1/2": "topology/pod-1/node-101/sys/phys-[eth1/2]/ingrTotal5min",
+	}
+
+	for _, tc := range []struct {
+		name  string
+		order []int
+	}{
+		{name: "forward", order: []int{0, 1}},
+		{name: "reverse", order: []int{1, 0}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			builder := newACIMetricsBuilder(time.Now(), "test", nil)
+			for _, index := range tc.order {
+				builder.recordObject("apic-1", "https://apic.example", endpoint, objects[index])
+			}
+
+			md := builder.emit()
+			require.Equal(t, 2, md.ResourceMetrics().Len(), "each interface must have an isolated resource")
+			got := make(map[string]string, 2)
+			for i := 0; i < md.ResourceMetrics().Len(); i++ {
+				rm := md.ResourceMetrics().At(i)
+				assert.Equal(t, "101", requireACIStringAttr(t, rm.Resource().Attributes(), "host.id"), "interface resources must retain node host identity")
+				dn := requireACIStringAttr(t, rm.Resource().Attributes(), "aci.dn")
+				metrics := rm.ScopeMetrics().At(0).Metrics()
+				for j := 0; j < metrics.Len(); j++ {
+					metric := metrics.At(j)
+					if metric.Name() != "cisco.interface.io.rate" {
+						continue
+					}
+					require.Equal(t, 1, metric.Gauge().DataPoints().Len())
+					ifName := requireACIStringAttr(t, metric.Gauge().DataPoints().At(0).Attributes(), "network.interface.name")
+					got[ifName] = dn
+				}
+			}
+			assert.Equal(t, want, got)
+		})
+	}
+}
+
 func TestACILogsApplySharedDeviceSelection(t *testing.T) {
 	server := newACIFixtureServer(t, map[string]string{
 		"/api/class/faultInst.json": `{"totalCount":"2","imdata":[
@@ -108,6 +211,88 @@ func TestACILogsApplySharedDeviceSelection(t *testing.T) {
 	assert.Equal(t, 1, ld.LogRecordCount())
 	assert.True(t, hasLogResourceAttribute(ld, "101"))
 	assert.False(t, hasLogResourceAttribute(ld, "909"))
+}
+
+func TestACIObjectFiltersApplyBeforeResultLimit(t *testing.T) {
+	tests := []struct {
+		name            string
+		className       string
+		firstPage       string
+		secondPage      string
+		targets         ACITargetFilters
+		deviceSelection DeviceSelectionConfig
+		wantID          string
+	}{
+		{
+			name:       "node target beyond first raw result",
+			className:  "fabricNode",
+			firstPage:  `{"totalCount":"2","imdata":[{"fabricNode":{"attributes":{"dn":"topology/pod-1/node-1010","id":"1010"}}}]}`,
+			secondPage: `{"totalCount":"2","imdata":[{"fabricNode":{"attributes":{"dn":"topology/pod-1/node-101","id":"101"}}}]}`,
+			targets:    ACITargetFilters{NodeIDs: []string{"101"}},
+			wantID:     "101",
+		},
+		{
+			name:       "interface target beyond prefix lookalike",
+			className:  "l1PhysIf",
+			firstPage:  `{"totalCount":"2","imdata":[{"l1PhysIf":{"attributes":{"dn":"topology/pod-1/node-101/sys/phys-[eth1/10]","id":"eth1/10"}}}]}`,
+			secondPage: `{"totalCount":"2","imdata":[{"l1PhysIf":{"attributes":{"dn":"topology/pod-1/node-101/sys/phys-[eth1/1]","id":"eth1/1"}}}]}`,
+			targets:    ACITargetFilters{InterfaceNames: []string{"ETH1/1"}},
+			wantID:     "eth1/1",
+		},
+		{
+			name:       "shared device selection beyond first target match",
+			className:  "fabricNode",
+			firstPage:  `{"totalCount":"2","imdata":[{"fabricNode":{"attributes":{"dn":"topology/pod-1/node-909","id":"909"}}}]}`,
+			secondPage: `{"totalCount":"2","imdata":[{"fabricNode":{"attributes":{"dn":"topology/pod-1/node-101","id":"101"}}}]}`,
+			targets:    ACITargetFilters{NodeIDs: []string{"909", "101"}},
+			deviceSelection: DeviceSelectionConfig{
+				Include: DeviceSelectionMatchConfig{DeviceIDs: []string{"101"}},
+			},
+			wantID: "101",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			requests := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/aaaLogin.json" {
+					_, _ = w.Write([]byte(`{"imdata":[{"aaaLogin":{"attributes":{"token":"apic-token"}}}]}`))
+					return
+				}
+				assert.Equal(t, "/api/class/"+tc.className+".json", r.URL.Path)
+				assert.Equal(t, "1", r.URL.Query().Get("page-size"))
+				requests++
+				switch r.URL.Query().Get("page") {
+				case "0":
+					_, _ = w.Write([]byte(tc.firstPage))
+				case "1":
+					_, _ = w.Write([]byte(tc.secondPage))
+				default:
+					assert.Fail(t, "unexpected APIC page", r.URL.RawQuery)
+					http.Error(w, "unexpected APIC page", http.StatusBadRequest)
+				}
+			}))
+			defer server.Close()
+
+			client, err := aci.NewClient(aci.Config{
+				Endpoint:   server.URL,
+				Username:   "admin",
+				Password:   "password",
+				Timeout:    time.Second,
+				MaxRetries: 0,
+				PageSize:   1,
+			})
+			require.NoError(t, err)
+			include := aciObjectIncludePredicate(tc.targets, newDeviceSelectionMatcher(tc.deviceSelection))
+
+			got, err := client.ListClassFiltered(t.Context(), "test", tc.className, nil, 1, include)
+			require.NoError(t, err)
+			require.Len(t, got, 1)
+			assert.Equal(t, tc.wantID, aci.String(got[0], "id"))
+			assert.Equal(t, 2, requests)
+		})
+	}
 }
 
 func TestACILogsEmitEvidenceAndDeduplicate(t *testing.T) {
@@ -138,6 +323,66 @@ func TestACILogsEmitEvidenceAndDeduplicate(t *testing.T) {
 	assert.Equal(t, 0, ld.LogRecordCount())
 }
 
+func TestACICollectionDropsCanceledPartialScrapes(t *testing.T) {
+	t.Run("metrics", func(t *testing.T) {
+		server, blocked := newACICancelAfterDataServer(t, map[string]string{
+			"/api/class/topSystem.json": `{"totalCount":"1","imdata":[
+				{"topSystem":{"attributes":{"dn":"topology/pod-1/node-101/sys","id":"101","serial":"APIC-SERIAL-1","status":"active"}}}
+			]}`,
+		}, "/api/class/firmwareCtrlrRunning.json")
+		defer server.Close()
+
+		sink := &consumertest.MetricsSink{}
+		receiver := newTestACIMetricsReceiver(t, server.URL)
+		receiver.config.ACI.Targets = ACITargetFilters{}
+		receiver.consumer = sink
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		done := make(chan struct{})
+		go func() {
+			receiver.collect(ctx)
+			close(done)
+		}()
+
+		waitForACITestSignal(t, blocked, "metrics scrape did not reach the blocking endpoint")
+		cancel()
+		waitForACITestSignal(t, done, "metrics collection did not stop after cancellation")
+		assert.Empty(t, sink.AllMetrics(), "cancellation must discard metrics built from earlier endpoints")
+	})
+
+	t.Run("logs rollback dedup", func(t *testing.T) {
+		server, blocked := newACICancelAfterDataServer(t, map[string]string{
+			"/api/class/faultInst.json": `{"totalCount":"1","imdata":[
+				{"faultInst":{"attributes":{"dn":"topology/pod-1/node-101/sys/ch/fault-F123","code":"F123","severity":"critical","lc":"raised","lastTransition":"2026-05-25T10:00:00Z"}}}
+			]}`,
+		}, "/api/class/aaaModLR.json")
+		defer server.Close()
+
+		sink := &consumertest.LogsSink{}
+		receiver := newTestACILogsReceiver(t, server.URL)
+		receiver.config.ACI.Targets = ACITargetFilters{}
+		receiver.consumer = sink
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		done := make(chan struct{})
+		go func() {
+			receiver.collect(ctx)
+			close(done)
+		}()
+
+		waitForACITestSignal(t, blocked, "logs scrape did not reach the blocking endpoint")
+		cancel()
+		waitForACITestSignal(t, done, "logs collection did not stop after cancellation")
+		assert.Empty(t, sink.AllLogs(), "cancellation must discard logs built from earlier endpoints")
+
+		receiver.collect(t.Context())
+		require.Len(t, sink.AllLogs(), 1, "the canceled fault must be eligible for replay")
+		replayed := sink.AllLogs()[0]
+		assert.Equal(t, 1, replayed.LogRecordCount())
+		assert.True(t, hasLogRecordAttribute(replayed, "event.name", "fault.instances"))
+	})
+}
+
 func TestACICatalogCoversTroubleshootingDomains(t *testing.T) {
 	groups := map[string]bool{}
 	operations := map[string]bool{}
@@ -159,6 +404,10 @@ func TestACICatalogCoversTroubleshootingDomains(t *testing.T) {
 		"audit.modifications",
 		"events.records",
 		"stats.interfaces.l1",
+		"stats.interfaces.ingress",
+		"stats.interfaces.egress",
+		"stats.interfaces.rmon_in",
+		"stats.interfaces.rmon_out",
 		"endpoints.mac",
 		"tenant.tenants",
 		"tenant.contracts",
@@ -172,6 +421,31 @@ func TestACICatalogCoversTroubleshootingDomains(t *testing.T) {
 func TestInterfaceNameFromACIDNHandlesSlashedInterfaceNames(t *testing.T) {
 	assert.Equal(t, "eth1/34", interfaceNameFromACIDN("topology/pod-1/node-202/sys/phys-[eth1/34]/phys"))
 	assert.Equal(t, "eth1/1", interfaceNameFromACIDN("topology/pod-1/node-101/sys/phys-[eth1/1]"))
+	assert.Equal(t, "po1", interfaceNameFromACIDN("topology/pod-1/node-101/sys/aggr-[po1]/dbgIfIn"))
+	assert.Equal(t, "mgmt0", interfaceNameFromACIDN("topology/pod-1/node-101/sys/mgmt-[mgmt0]/dbgIfOut"))
+	assert.Equal(t, "eth1/48", interfaceNameFromACIDN("eth1/48"))
+}
+
+func TestACITargetFiltersUseExactCanonicalNodeAndInterfaceNames(t *testing.T) {
+	t.Run("node ID", func(t *testing.T) {
+		objects := []aci.Object{
+			{"dn": "topology/pod-1/node-1010", "id": "1010"},
+			{"dn": "topology/pod-1/node-101", "id": "101"},
+		}
+		got := filterACIObjects(objects, ACITargetFilters{NodeIDs: []string{"NODE-101"}})
+		require.Len(t, got, 1)
+		assert.Equal(t, "101", aci.String(got[0], "id"))
+	})
+
+	t.Run("interface name", func(t *testing.T) {
+		objects := []aci.Object{
+			{"dn": "topology/pod-1/node-101/sys/phys-[eth1/10]", "id": "eth1/10"},
+			{"dn": "topology/pod-1/node-101/sys/phys-[eth1/1]", "id": "eth1/1"},
+		}
+		got := filterACIObjects(objects, ACITargetFilters{InterfaceNames: []string{"ETH1/1"}})
+		require.Len(t, got, 1)
+		assert.Equal(t, "eth1/1", aci.String(got[0], "id"))
+	})
 }
 
 func TestNodeIDFromACIDN(t *testing.T) {
@@ -197,6 +471,219 @@ func TestACIInterfaceRatesUseCanonicalDescriptors(t *testing.T) {
 	assert.Equal(t, "{packet}/s", packetRate.Unit())
 	assert.Equal(t, float64(2), packetRate.Gauge().DataPoints().At(0).DoubleValue())
 	assert.NotContains(t, metricNames(builder.emit()), "system.network.packets")
+}
+
+func TestACIEquipmentStatsEmitDirectionalRatesAndUtilization(t *testing.T) {
+	builder := newACIMetricsBuilder(time.Now(), "test", nil)
+	rb := builder.globalResource()
+	builder.recordStatsObject(rb, aci.Object{
+		"aci.class": "eqptIngrTotal5min",
+		"dn":        "topology/pod-1/node-101/sys/phys-[eth1/1]/ingrTotal5min",
+		"bytesRate": float64(125),
+		"pktsRate":  float64(20),
+		"utilLast":  float64(25),
+		"utilAvg":   float64(10),
+	})
+	builder.recordStatsObject(rb, aci.Object{
+		"aci.class": "eqptEgrTotal5min",
+		"dn":        "topology/pod-1/node-101/sys/aggr-[po1]/egrTotal5min",
+		"bytesRate": float64(250),
+		"pktsRate":  float64(40),
+		"utilAvg":   float64(50),
+	})
+
+	md := builder.emit()
+	assert.Equal(t, float64(1000), requireGaugeDoubleValueWithAttrs(t, md, "cisco.interface.io.rate", map[string]string{
+		"network.io.direction":   "receive",
+		"network.interface.name": "eth1/1",
+	}))
+	assert.Equal(t, float64(2000), requireGaugeDoubleValueWithAttrs(t, md, "cisco.interface.io.rate", map[string]string{
+		"network.io.direction":   "transmit",
+		"network.interface.name": "po1",
+	}))
+	assert.Equal(t, float64(20), requireGaugeDoubleValueWithAttrs(t, md, "cisco.interface.packet.rate", map[string]string{
+		"network.io.direction": "receive",
+	}))
+	assert.Equal(t, 0.25, requireGaugeDoubleValueWithAttrs(t, md, "cisco.interface.utilization", map[string]string{
+		"network.io.direction": "receive",
+	}), "utilLast must take precedence over utilAvg")
+	assert.Equal(t, 0.5, requireGaugeDoubleValueWithAttrs(t, md, "cisco.interface.utilization", map[string]string{
+		"network.io.direction": "transmit",
+	}), "utilAvg must be used when utilLast is absent")
+}
+
+func TestACIStatsRejectOutOfRangePercentageRatios(t *testing.T) {
+	for _, value := range []any{float64(-1), float64(101), "NaN", "+Inf"} {
+		builder := newACIMetricsBuilder(time.Now(), "test", nil)
+		builder.recordStatsObject(builder.globalResource(), aci.Object{
+			"aci.class": "eqptIngrTotal5min",
+			"utilLast":  value,
+		})
+		builder.recordStatsObject(builder.globalResource(), aci.Object{
+			"aci.class": "procSysCPU5min",
+			"userLast":  value,
+		})
+		assert.NotContains(t, metricNames(builder.emit()), "cisco.interface.utilization")
+		assert.NotContains(t, metricNames(builder.emit()), "system.cpu.utilization")
+	}
+}
+
+func TestACIRMONStatsEmitDirectionalCumulativeCounters(t *testing.T) {
+	builder := newACIMetricsBuilder(time.Now(), "test", nil)
+	rb := builder.globalResource()
+	builder.recordStatsObject(rb, aci.Object{
+		"aci.class":     "rmonIfIn",
+		"dn":            "topology/pod-1/node-101/sys/phys-[eth1/1]/dbgIfIn",
+		"octets":        "1000",
+		"ucastPkts":     "100",
+		"nUcastPkts":    "20",
+		"multicastPkts": "15",
+		"broadcastPkts": "5",
+		"errors":        "3",
+		"discards":      "4",
+	})
+	builder.recordStatsObject(rb, aci.Object{
+		"aci.class":  "rmonIfOut",
+		"dn":         "topology/pod-1/node-101/sys/mgmt-[mgmt0]/dbgIfOut",
+		"octets":     "2000",
+		"ucastPkts":  "200",
+		"nUcastPkts": "30",
+		"errors":     "6",
+		"discards":   "8",
+	})
+
+	md := builder.emit()
+	assert.Equal(t, int64(1000), requireCumulativeSumIntValueWithAttrs(t, md, "system.network.io", map[string]string{
+		"network.io.direction":   "receive",
+		"network.interface.name": "eth1/1",
+	}))
+	assert.Equal(t, int64(2000), requireCumulativeSumIntValueWithAttrs(t, md, "system.network.io", map[string]string{
+		"network.io.direction":   "transmit",
+		"network.interface.name": "mgmt0",
+	}))
+	assert.Equal(t, int64(120), requireCumulativeSumIntValueWithAttrs(t, md, "system.network.packet.count", map[string]string{
+		"network.io.direction": "receive",
+	}), "packet totals must use ucastPkts+nUcastPkts without double-counting multicast/broadcast")
+	assert.Equal(t, int64(3), requireCumulativeSumIntValueWithAttrs(t, md, "system.network.errors", map[string]string{
+		"network.io.direction": "receive",
+	}))
+	assert.Equal(t, int64(8), requireCumulativeSumIntValueWithAttrs(t, md, "system.network.packet.dropped", map[string]string{
+		"network.io.direction": "transmit",
+	}))
+}
+
+func TestACIStatsDeriveMemoryRatioFromDocumentedLastValues(t *testing.T) {
+	builder := newACIMetricsBuilder(time.Now(), "test", nil)
+	rb := builder.globalResource()
+	builder.recordStatsObject(rb, aci.Object{
+		"aci.class": "procSysMem5min",
+		"usedLast":  float64(14915112),
+		"totalLast": float64(24499856),
+	})
+	builder.recordStatsObject(rb, aci.Object{
+		"aci.class": "fabricOverallHealthHist5min",
+		"healthAvg": float64(88),
+	})
+
+	md := builder.emit()
+	assert.InDelta(t, 14915112.0/24499856.0, requireGaugeDoubleValueWithAttrs(t, md, "system.memory.utilization", map[string]string{
+		"system.memory.state": "used",
+	}), 1e-12)
+	assert.Equal(t, float64(88), requireGaugeDoubleValueWithAttrs(t, md, "aci.fabric.health", nil))
+
+	legacyBuilder := newACIMetricsBuilder(time.Now(), "test", nil)
+	legacyBuilder.recordStatsObject(legacyBuilder.globalResource(), aci.Object{"usedLast": float64(45)})
+	assert.NotContains(t, metricNames(legacyBuilder.emit()), "system.memory.utilization")
+}
+
+func TestACIStatsDeriveMemoryRatioFromFreeWhenTotalIsAbsent(t *testing.T) {
+	builder := newACIMetricsBuilder(time.Now(), "test", nil)
+	builder.recordStatsObject(builder.globalResource(), aci.Object{
+		"aci.class": "procSysMem5min",
+		"usedLast":  float64(75),
+		"freeLast":  float64(25),
+	})
+
+	assert.Equal(t, 0.75, requireGaugeDoubleValueWithAttrs(t, builder.emit(), "system.memory.utilization", map[string]string{
+		"system.memory.state": "used",
+	}))
+}
+
+func TestACIStatsRejectInvalidMemoryRatioInputs(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		obj  aci.Object
+	}{
+		{name: "non-finite used", obj: aci.Object{"usedLast": "NaN", "totalLast": "100"}},
+		{name: "non-finite total", obj: aci.Object{"usedLast": "50", "totalLast": "+Inf"}},
+		{name: "non-finite free", obj: aci.Object{"usedLast": "50", "freeLast": "+Inf"}},
+		{name: "used plus free overflow", obj: aci.Object{"usedLast": "1e308", "freeLast": "1e308"}},
+		{name: "negative used", obj: aci.Object{"usedLast": "-1", "totalLast": "100"}},
+		{name: "used exceeds total", obj: aci.Object{"usedLast": "101", "totalLast": "100"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			builder := newACIMetricsBuilder(time.Now(), "test", nil)
+			tc.obj["aci.class"] = "procSysMem5min"
+			builder.recordStatsObject(builder.globalResource(), tc.obj)
+			assert.NotContains(t, metricNames(builder.emit()), "system.memory.utilization")
+		})
+	}
+}
+
+func TestACIControllerHealthUsesFabricMappings(t *testing.T) {
+	builder := newACIMetricsBuilder(time.Now(), "test", nil)
+	builder.recordObject("apic-1", "https://apic.example", aciEndpoint{
+		group:      "controller_health",
+		operation:  "apic.top_system",
+		className:  "topSystem",
+		objectType: "aci.controller",
+	}, aci.Object{
+		"aci.class":   "topSystem",
+		"id":          "1",
+		"serial":      "APIC-SERIAL-1",
+		"status":      "active",
+		"healthScore": float64(97),
+	})
+
+	names := metricNames(builder.emit())
+	assert.Contains(t, names, "cisco.device.up")
+	assert.Contains(t, names, "aci.fabric.health")
+}
+
+func TestACICatalogIncludesDeepInterfaceStatsClasses(t *testing.T) {
+	want := map[string]string{
+		"eqptIngrTotal5min": "stats.interfaces.ingress",
+		"eqptEgrTotal5min":  "stats.interfaces.egress",
+		"rmonIfIn":          "stats.interfaces.rmon_in",
+		"rmonIfOut":         "stats.interfaces.rmon_out",
+	}
+	for _, endpoint := range aciMetricEndpoints() {
+		operation, ok := want[endpoint.className]
+		if !ok {
+			continue
+		}
+		assert.Equal(t, operation, endpoint.operation)
+		assert.Equal(t, "stats", endpoint.group)
+		assert.Equal(t, "aci.interface", endpoint.objectType)
+		delete(want, endpoint.className)
+	}
+	assert.Empty(t, want, "missing deep interface statistics classes")
+}
+
+func TestACIFabricHealthHistoryQueriesOnlyCurrentBucket(t *testing.T) {
+	var endpoint aciEndpoint
+	for _, candidate := range aciMetricEndpoints() {
+		if candidate.className == "fabricOverallHealthHist5min" {
+			endpoint = candidate
+			break
+		}
+	}
+	require.Equal(t, "stats.fabric_health", endpoint.operation)
+	require.NotNil(t, endpoint.query)
+
+	query := aciEndpointQuery(endpoint, &Config{}, time.Now())
+	assert.Equal(t, `eq(fabricOverallHealthHist5min.index,"0")`, query.Get("query-target-filter"))
+	assert.Len(t, query, 1)
 }
 
 func TestACIFabricHealthUsesFirstPresentSynonym(t *testing.T) {
@@ -226,6 +713,64 @@ func requireMetricByName(t *testing.T, md pmetric.Metrics, name string) pmetric.
 	}
 	require.FailNow(t, "metric not found", name)
 	return pmetric.Metric{}
+}
+
+func requireGaugeDoubleValueWithAttrs(t *testing.T, md pmetric.Metrics, name string, wantAttrs map[string]string) float64 {
+	t.Helper()
+	metric := requireMetricByName(t, md, name)
+	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+	points := metric.Gauge().DataPoints()
+	for i := 0; i < points.Len(); i++ {
+		point := points.At(i)
+		if aciTestAttrsMatch(point.Attributes(), wantAttrs) {
+			return point.DoubleValue()
+		}
+	}
+	require.FailNow(t, "metric data point not found", "%s attributes: %v", name, wantAttrs)
+	return 0
+}
+
+func requireCumulativeSumIntValueWithAttrs(t *testing.T, md pmetric.Metrics, name string, wantAttrs map[string]string) int64 {
+	t.Helper()
+	metric := requireMetricByName(t, md, name)
+	require.Equal(t, pmetric.MetricTypeSum, metric.Type())
+	require.True(t, metric.Sum().IsMonotonic())
+	require.Equal(t, pmetric.AggregationTemporalityCumulative, metric.Sum().AggregationTemporality())
+	points := metric.Sum().DataPoints()
+	for i := 0; i < points.Len(); i++ {
+		point := points.At(i)
+		if aciTestAttrsMatch(point.Attributes(), wantAttrs) {
+			return point.IntValue()
+		}
+	}
+	require.FailNow(t, "metric data point not found", "%s attributes: %v", name, wantAttrs)
+	return 0
+}
+
+func aciTestAttrsMatch(attrs pcommon.Map, want map[string]string) bool {
+	for key, value := range want {
+		actual, ok := attrs.Get(key)
+		if !ok || actual.Str() != value {
+			return false
+		}
+	}
+	return true
+}
+
+func requireACIStringAttr(t *testing.T, attrs pcommon.Map, key string) string {
+	t.Helper()
+	value, ok := attrs.Get(key)
+	require.True(t, ok, "missing attribute %q", key)
+	return value.Str()
+}
+
+func waitForACITestSignal(t *testing.T, signal <-chan struct{}, failureMessage string) {
+	t.Helper()
+	select {
+	case <-signal:
+	case <-time.After(2 * time.Second):
+		require.FailNow(t, failureMessage)
+	}
 }
 
 func newTestACIMetricsReceiver(t *testing.T, endpoint string) *aciMetricsReceiver {
@@ -284,4 +829,41 @@ func newACIFixtureServer(t *testing.T, routes map[string]string) *httptest.Serve
 		}
 		_, _ = w.Write([]byte(`{"totalCount":"0","imdata":[]}`))
 	}))
+}
+
+func newACICancelAfterDataServer(t *testing.T, routes map[string]string, blockingPath string) (*httptest.Server, <-chan struct{}) {
+	t.Helper()
+	blocked := make(chan struct{})
+	var blockOnce sync.Once
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/aaaLogin.json" {
+			_, _ = w.Write([]byte(`{"imdata":[{"aaaLogin":{"attributes":{"token":"apic-token"}}}]}`))
+			return
+		}
+		cookie, err := r.Cookie("APIC-cookie")
+		if err != nil || cookie.Value != "apic-token" {
+			http.Error(w, "missing authentication cookie", http.StatusUnauthorized)
+			return
+		}
+		if r.URL.Path == blockingPath {
+			blockThisRequest := false
+			blockOnce.Do(func() {
+				blockThisRequest = true
+				close(blocked)
+			})
+			if blockThisRequest {
+				select {
+				case <-r.Context().Done():
+				case <-t.Context().Done():
+				}
+				return
+			}
+		}
+		if body, ok := routes[r.URL.Path]; ok {
+			_, _ = w.Write([]byte(body))
+			return
+		}
+		_, _ = w.Write([]byte(`{"totalCount":"0","imdata":[]}`))
+	}))
+	return server, blocked
 }

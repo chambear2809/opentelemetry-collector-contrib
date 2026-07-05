@@ -1726,7 +1726,7 @@ func TestMetricsBuilder(t *testing.T) {
 					validatedMetrics["system.cpu.utilization"] = true
 					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-					assert.Equal(t, "Percentage of CPU time in use.", mi.Description())
+					assert.Equal(t, "Ratio of CPU time in use, from 0 to 1.", mi.Description())
 					assert.Equal(t, "1", mi.Unit())
 					dp := mi.Gauge().DataPoints().At(0)
 					assert.Equal(t, start, dp.StartTimestamp())
@@ -1738,7 +1738,7 @@ func TestMetricsBuilder(t *testing.T) {
 					validatedMetrics["system.memory.utilization"] = true
 					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-					assert.Equal(t, "Percentage of memory bytes in use.", mi.Description())
+					assert.Equal(t, "Ratio of memory bytes in use, from 0 to 1.", mi.Description())
 					assert.Equal(t, "1", mi.Unit())
 					dp := mi.Gauge().DataPoints().At(0)
 					assert.Equal(t, start, dp.StartTimestamp())

@@ -72,15 +72,10 @@ func TestMetricsBuilder(t *testing.T) {
 			aggMap["cisco.interface.packet.rate"] = mb.metricCiscoInterfacePacketRate.config.AggregationStrategy
 			aggMap["cisco.interface.speed"] = mb.metricCiscoInterfaceSpeed.config.AggregationStrategy
 			aggMap["cisco.interface.utilization"] = mb.metricCiscoInterfaceUtilization.config.AggregationStrategy
-			aggMap["cisco.optics.chromatic_dispersion"] = mb.metricCiscoOpticsChromaticDispersion.config.AggregationStrategy
-			aggMap["cisco.optics.dgd"] = mb.metricCiscoOpticsDgd.config.AggregationStrategy
 			aggMap["cisco.optics.esnr"] = mb.metricCiscoOpticsEsnr.config.AggregationStrategy
 			aggMap["cisco.optics.laser_bias_current"] = mb.metricCiscoOpticsLaserBiasCurrent.config.AggregationStrategy
-			aggMap["cisco.optics.osnr"] = mb.metricCiscoOpticsOsnr.config.AggregationStrategy
 			aggMap["cisco.optics.pre_fec_ber"] = mb.metricCiscoOpticsPreFecBer.config.AggregationStrategy
 			aggMap["cisco.optics.present"] = mb.metricCiscoOpticsPresent.config.AggregationStrategy
-			aggMap["cisco.optics.q_factor"] = mb.metricCiscoOpticsQFactor.config.AggregationStrategy
-			aggMap["cisco.optics.q_margin"] = mb.metricCiscoOpticsQMargin.config.AggregationStrategy
 			aggMap["cisco.optics.rx_power"] = mb.metricCiscoOpticsRxPower.config.AggregationStrategy
 			aggMap["cisco.optics.tdecq"] = mb.metricCiscoOpticsTdecq.config.AggregationStrategy
 			aggMap["cisco.optics.tec_current"] = mb.metricCiscoOpticsTecCurrent.config.AggregationStrategy
@@ -88,6 +83,8 @@ func TestMetricsBuilder(t *testing.T) {
 			aggMap["cisco.optics.temperature"] = mb.metricCiscoOpticsTemperature.config.AggregationStrategy
 			aggMap["cisco.optics.tx_power"] = mb.metricCiscoOpticsTxPower.config.AggregationStrategy
 			aggMap["cisco.optics.voltage"] = mb.metricCiscoOpticsVoltage.config.AggregationStrategy
+			aggMap["system.cpu.utilization"] = mb.metricSystemCPUUtilization.config.AggregationStrategy
+			aggMap["system.memory.utilization"] = mb.metricSystemMemoryUtilization.config.AggregationStrategy
 			aggMap["system.network.errors"] = mb.metricSystemNetworkErrors.config.AggregationStrategy
 			aggMap["system.network.interface.status"] = mb.metricSystemNetworkInterfaceStatus.config.AggregationStrategy
 			aggMap["system.network.io"] = mb.metricSystemNetworkIo.config.AggregationStrategy
@@ -136,18 +133,6 @@ func TestMetricsBuilder(t *testing.T) {
 			}
 			defaultMetricsCount++
 			allMetricsCount++
-			mb.RecordCiscoOpticsChromaticDispersionDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
-			if tt.name == "reaggregate_set" {
-				mb.RecordCiscoOpticsChromaticDispersionDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
-			}
-			defaultMetricsCount++
-			allMetricsCount++
-			mb.RecordCiscoOpticsDgdDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
-			if tt.name == "reaggregate_set" {
-				mb.RecordCiscoOpticsDgdDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
-			}
-			defaultMetricsCount++
-			allMetricsCount++
 			mb.RecordCiscoOpticsEsnrDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoOpticsEsnrDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
@@ -160,12 +145,6 @@ func TestMetricsBuilder(t *testing.T) {
 			}
 			defaultMetricsCount++
 			allMetricsCount++
-			mb.RecordCiscoOpticsOsnrDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
-			if tt.name == "reaggregate_set" {
-				mb.RecordCiscoOpticsOsnrDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
-			}
-			defaultMetricsCount++
-			allMetricsCount++
 			mb.RecordCiscoOpticsPreFecBerDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoOpticsPreFecBerDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
@@ -175,18 +154,6 @@ func TestMetricsBuilder(t *testing.T) {
 			mb.RecordCiscoOpticsPresentDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", AttributeCiscoOpticsProfileDom, false)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoOpticsPresentDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", AttributeCiscoOpticsProfileVdm, true)
-			}
-			defaultMetricsCount++
-			allMetricsCount++
-			mb.RecordCiscoOpticsQFactorDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
-			if tt.name == "reaggregate_set" {
-				mb.RecordCiscoOpticsQFactorDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
-			}
-			defaultMetricsCount++
-			allMetricsCount++
-			mb.RecordCiscoOpticsQMarginDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
-			if tt.name == "reaggregate_set" {
-				mb.RecordCiscoOpticsQMarginDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
 			}
 			defaultMetricsCount++
 			allMetricsCount++
@@ -232,10 +199,16 @@ func TestMetricsBuilder(t *testing.T) {
 			}
 			defaultMetricsCount++
 			allMetricsCount++
-			mb.RecordSystemCPUUtilizationDataPoint(ts, 1)
+			mb.RecordSystemCPUUtilizationDataPoint(ts, 1, "cisco.node.name-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordSystemCPUUtilizationDataPoint(ts, 3, "cisco.node.name-val-2")
+			}
 			defaultMetricsCount++
 			allMetricsCount++
-			mb.RecordSystemMemoryUtilizationDataPoint(ts, 1)
+			mb.RecordSystemMemoryUtilizationDataPoint(ts, 1, "cisco.location.fru-val", "cisco.location.slot-val", "cisco.location.bay-val", "cisco.location.chassis-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordSystemMemoryUtilizationDataPoint(ts, 3, "cisco.location.fru-val-2", "cisco.location.slot-val-2", "cisco.location.bay-val-2", "cisco.location.chassis-val-2")
+			}
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordSystemNetworkErrorsDataPoint(ts, 1, AttributeNetworkIoDirectionReceive, "network.interface.name-val")
@@ -273,12 +246,16 @@ func TestMetricsBuilder(t *testing.T) {
 			rb := mb.NewResourceBuilder()
 			rb.SetCiscoOsName("cisco.os.name-val")
 			rb.SetCiscoPlatformFamily("cisco.platform.family-val")
+			rb.SetCiscoProductFamily("cisco.product.family-val")
 			rb.SetCiscoTelemetryTransport("cisco.telemetry.transport-val")
+			rb.SetDeviceManufacturer("device.manufacturer-val")
+			rb.SetDeviceModelIdentifier("device.model.identifier-val")
 			rb.SetHostID("host.id-val")
 			rb.SetHostIP("host.ip-val")
 			rb.SetHostName("host.name-val")
 			rb.SetHwType("hw.type-val")
 			rb.SetOsName("os.name-val")
+			rb.SetOsVersion("os.version-val")
 			res := rb.Emit()
 			metrics := mb.Emit(WithResource(res))
 			if tt.name == "reaggregate_set" {
@@ -287,15 +264,10 @@ func TestMetricsBuilder(t *testing.T) {
 				assert.Empty(t, mb.metricCiscoInterfacePacketRate.aggDataPoints)
 				assert.Empty(t, mb.metricCiscoInterfaceSpeed.aggDataPoints)
 				assert.Empty(t, mb.metricCiscoInterfaceUtilization.aggDataPoints)
-				assert.Empty(t, mb.metricCiscoOpticsChromaticDispersion.aggDataPoints)
-				assert.Empty(t, mb.metricCiscoOpticsDgd.aggDataPoints)
 				assert.Empty(t, mb.metricCiscoOpticsEsnr.aggDataPoints)
 				assert.Empty(t, mb.metricCiscoOpticsLaserBiasCurrent.aggDataPoints)
-				assert.Empty(t, mb.metricCiscoOpticsOsnr.aggDataPoints)
 				assert.Empty(t, mb.metricCiscoOpticsPreFecBer.aggDataPoints)
 				assert.Empty(t, mb.metricCiscoOpticsPresent.aggDataPoints)
-				assert.Empty(t, mb.metricCiscoOpticsQFactor.aggDataPoints)
-				assert.Empty(t, mb.metricCiscoOpticsQMargin.aggDataPoints)
 				assert.Empty(t, mb.metricCiscoOpticsRxPower.aggDataPoints)
 				assert.Empty(t, mb.metricCiscoOpticsTdecq.aggDataPoints)
 				assert.Empty(t, mb.metricCiscoOpticsTecCurrent.aggDataPoints)
@@ -303,6 +275,8 @@ func TestMetricsBuilder(t *testing.T) {
 				assert.Empty(t, mb.metricCiscoOpticsTemperature.aggDataPoints)
 				assert.Empty(t, mb.metricCiscoOpticsTxPower.aggDataPoints)
 				assert.Empty(t, mb.metricCiscoOpticsVoltage.aggDataPoints)
+				assert.Empty(t, mb.metricSystemCPUUtilization.aggDataPoints)
+				assert.Empty(t, mb.metricSystemMemoryUtilization.aggDataPoints)
 				assert.Empty(t, mb.metricSystemNetworkErrors.aggDataPoints)
 				assert.Empty(t, mb.metricSystemNetworkInterfaceStatus.aggDataPoints)
 				assert.Empty(t, mb.metricSystemNetworkIo.aggDataPoints)
@@ -562,133 +536,13 @@ func TestMetricsBuilder(t *testing.T) {
 						_, ok = dp.Attributes().Get("network.interface.name")
 						assert.False(t, ok)
 					}
-				case "cisco.optics.chromatic_dispersion":
-					if tt.name != "reaggregate_set" {
-						assert.False(t, validatedMetrics["cisco.optics.chromatic_dispersion"], "Found a duplicate in the metrics slice: cisco.optics.chromatic_dispersion")
-						validatedMetrics["cisco.optics.chromatic_dispersion"] = true
-						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
-						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Coherent optical chromatic dispersion", mi.Description())
-						assert.Equal(t, "ps/nm", mi.Unit())
-						dp := mi.Gauge().DataPoints().At(0)
-						assert.Equal(t, start, dp.StartTimestamp())
-						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
-						assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
-						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
-						assert.True(t, ok)
-						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
-						ciscoOpticsLaneAttrVal, ok := dp.Attributes().Get("cisco.optics.lane")
-						assert.True(t, ok)
-						assert.Equal(t, "cisco.optics.lane-val", ciscoOpticsLaneAttrVal.Str())
-						ciscoOpticsSensorAttrVal, ok := dp.Attributes().Get("cisco.optics.sensor")
-						assert.True(t, ok)
-						assert.Equal(t, "cisco.optics.sensor-val", ciscoOpticsSensorAttrVal.Str())
-						ciscoOpticsProfileAttrVal, ok := dp.Attributes().Get("cisco.optics.profile")
-						assert.True(t, ok)
-						assert.Equal(t, "dom", ciscoOpticsProfileAttrVal.Str())
-						ciscoOpticsExperimentalAttrVal, ok := dp.Attributes().Get("cisco.optics.experimental")
-						assert.True(t, ok)
-						assert.False(t, ciscoOpticsExperimentalAttrVal.Bool())
-					} else {
-						assert.False(t, validatedMetrics["cisco.optics.chromatic_dispersion"], "Found a duplicate in the metrics slice: cisco.optics.chromatic_dispersion")
-						validatedMetrics["cisco.optics.chromatic_dispersion"] = true
-						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
-						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Coherent optical chromatic dispersion", mi.Description())
-						assert.Equal(t, "ps/nm", mi.Unit())
-						dp := mi.Gauge().DataPoints().At(0)
-						assert.Equal(t, start, dp.StartTimestamp())
-						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
-						switch aggMap["cisco.optics.chromatic_dispersion"] {
-						case "sum":
-							assert.InDelta(t, float64(4), dp.DoubleValue(), 0.01)
-						case "avg":
-							assert.InDelta(t, float64(2), dp.DoubleValue(), 0.01)
-						case "min":
-							assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
-						case "max":
-							assert.InDelta(t, float64(3), dp.DoubleValue(), 0.01)
-						}
-						_, ok := dp.Attributes().Get("network.interface.name")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.lane")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.sensor")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.profile")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.experimental")
-						assert.False(t, ok)
-					}
-				case "cisco.optics.dgd":
-					if tt.name != "reaggregate_set" {
-						assert.False(t, validatedMetrics["cisco.optics.dgd"], "Found a duplicate in the metrics slice: cisco.optics.dgd")
-						validatedMetrics["cisco.optics.dgd"] = true
-						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
-						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Coherent optical differential group delay", mi.Description())
-						assert.Equal(t, "ps", mi.Unit())
-						dp := mi.Gauge().DataPoints().At(0)
-						assert.Equal(t, start, dp.StartTimestamp())
-						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
-						assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
-						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
-						assert.True(t, ok)
-						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
-						ciscoOpticsLaneAttrVal, ok := dp.Attributes().Get("cisco.optics.lane")
-						assert.True(t, ok)
-						assert.Equal(t, "cisco.optics.lane-val", ciscoOpticsLaneAttrVal.Str())
-						ciscoOpticsSensorAttrVal, ok := dp.Attributes().Get("cisco.optics.sensor")
-						assert.True(t, ok)
-						assert.Equal(t, "cisco.optics.sensor-val", ciscoOpticsSensorAttrVal.Str())
-						ciscoOpticsProfileAttrVal, ok := dp.Attributes().Get("cisco.optics.profile")
-						assert.True(t, ok)
-						assert.Equal(t, "dom", ciscoOpticsProfileAttrVal.Str())
-						ciscoOpticsExperimentalAttrVal, ok := dp.Attributes().Get("cisco.optics.experimental")
-						assert.True(t, ok)
-						assert.False(t, ciscoOpticsExperimentalAttrVal.Bool())
-					} else {
-						assert.False(t, validatedMetrics["cisco.optics.dgd"], "Found a duplicate in the metrics slice: cisco.optics.dgd")
-						validatedMetrics["cisco.optics.dgd"] = true
-						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
-						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Coherent optical differential group delay", mi.Description())
-						assert.Equal(t, "ps", mi.Unit())
-						dp := mi.Gauge().DataPoints().At(0)
-						assert.Equal(t, start, dp.StartTimestamp())
-						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
-						switch aggMap["cisco.optics.dgd"] {
-						case "sum":
-							assert.InDelta(t, float64(4), dp.DoubleValue(), 0.01)
-						case "avg":
-							assert.InDelta(t, float64(2), dp.DoubleValue(), 0.01)
-						case "min":
-							assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
-						case "max":
-							assert.InDelta(t, float64(3), dp.DoubleValue(), 0.01)
-						}
-						_, ok := dp.Attributes().Get("network.interface.name")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.lane")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.sensor")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.profile")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.experimental")
-						assert.False(t, ok)
-					}
 				case "cisco.optics.esnr":
 					if tt.name != "reaggregate_set" {
 						assert.False(t, validatedMetrics["cisco.optics.esnr"], "Found a duplicate in the metrics slice: cisco.optics.esnr")
 						validatedMetrics["cisco.optics.esnr"] = true
 						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Effective signal-to-noise ratio reported by a qualified VDM sensor", mi.Description())
+						assert.Equal(t, "Effective signal-to-noise ratio reported by an allowlisted device VDM sensor", mi.Description())
 						assert.Equal(t, "dB", mi.Unit())
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
@@ -715,7 +569,7 @@ func TestMetricsBuilder(t *testing.T) {
 						validatedMetrics["cisco.optics.esnr"] = true
 						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Effective signal-to-noise ratio reported by a qualified VDM sensor", mi.Description())
+						assert.Equal(t, "Effective signal-to-noise ratio reported by an allowlisted device VDM sensor", mi.Description())
 						assert.Equal(t, "dB", mi.Unit())
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
@@ -782,66 +636,6 @@ func TestMetricsBuilder(t *testing.T) {
 						assert.Equal(t, ts, dp.Timestamp())
 						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
 						switch aggMap["cisco.optics.laser_bias_current"] {
-						case "sum":
-							assert.InDelta(t, float64(4), dp.DoubleValue(), 0.01)
-						case "avg":
-							assert.InDelta(t, float64(2), dp.DoubleValue(), 0.01)
-						case "min":
-							assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
-						case "max":
-							assert.InDelta(t, float64(3), dp.DoubleValue(), 0.01)
-						}
-						_, ok := dp.Attributes().Get("network.interface.name")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.lane")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.sensor")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.profile")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.experimental")
-						assert.False(t, ok)
-					}
-				case "cisco.optics.osnr":
-					if tt.name != "reaggregate_set" {
-						assert.False(t, validatedMetrics["cisco.optics.osnr"], "Found a duplicate in the metrics slice: cisco.optics.osnr")
-						validatedMetrics["cisco.optics.osnr"] = true
-						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
-						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Coherent optical signal-to-noise ratio", mi.Description())
-						assert.Equal(t, "dB", mi.Unit())
-						dp := mi.Gauge().DataPoints().At(0)
-						assert.Equal(t, start, dp.StartTimestamp())
-						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
-						assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
-						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
-						assert.True(t, ok)
-						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
-						ciscoOpticsLaneAttrVal, ok := dp.Attributes().Get("cisco.optics.lane")
-						assert.True(t, ok)
-						assert.Equal(t, "cisco.optics.lane-val", ciscoOpticsLaneAttrVal.Str())
-						ciscoOpticsSensorAttrVal, ok := dp.Attributes().Get("cisco.optics.sensor")
-						assert.True(t, ok)
-						assert.Equal(t, "cisco.optics.sensor-val", ciscoOpticsSensorAttrVal.Str())
-						ciscoOpticsProfileAttrVal, ok := dp.Attributes().Get("cisco.optics.profile")
-						assert.True(t, ok)
-						assert.Equal(t, "dom", ciscoOpticsProfileAttrVal.Str())
-						ciscoOpticsExperimentalAttrVal, ok := dp.Attributes().Get("cisco.optics.experimental")
-						assert.True(t, ok)
-						assert.False(t, ciscoOpticsExperimentalAttrVal.Bool())
-					} else {
-						assert.False(t, validatedMetrics["cisco.optics.osnr"], "Found a duplicate in the metrics slice: cisco.optics.osnr")
-						validatedMetrics["cisco.optics.osnr"] = true
-						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
-						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Coherent optical signal-to-noise ratio", mi.Description())
-						assert.Equal(t, "dB", mi.Unit())
-						dp := mi.Gauge().DataPoints().At(0)
-						assert.Equal(t, start, dp.StartTimestamp())
-						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
-						switch aggMap["cisco.optics.osnr"] {
 						case "sum":
 							assert.InDelta(t, float64(4), dp.DoubleValue(), 0.01)
 						case "avg":
@@ -971,126 +765,6 @@ func TestMetricsBuilder(t *testing.T) {
 						_, ok := dp.Attributes().Get("network.interface.name")
 						assert.False(t, ok)
 						_, ok = dp.Attributes().Get("cisco.optics.lane")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.profile")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.experimental")
-						assert.False(t, ok)
-					}
-				case "cisco.optics.q_factor":
-					if tt.name != "reaggregate_set" {
-						assert.False(t, validatedMetrics["cisco.optics.q_factor"], "Found a duplicate in the metrics slice: cisco.optics.q_factor")
-						validatedMetrics["cisco.optics.q_factor"] = true
-						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
-						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Coherent optical Q-factor", mi.Description())
-						assert.Equal(t, "dB", mi.Unit())
-						dp := mi.Gauge().DataPoints().At(0)
-						assert.Equal(t, start, dp.StartTimestamp())
-						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
-						assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
-						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
-						assert.True(t, ok)
-						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
-						ciscoOpticsLaneAttrVal, ok := dp.Attributes().Get("cisco.optics.lane")
-						assert.True(t, ok)
-						assert.Equal(t, "cisco.optics.lane-val", ciscoOpticsLaneAttrVal.Str())
-						ciscoOpticsSensorAttrVal, ok := dp.Attributes().Get("cisco.optics.sensor")
-						assert.True(t, ok)
-						assert.Equal(t, "cisco.optics.sensor-val", ciscoOpticsSensorAttrVal.Str())
-						ciscoOpticsProfileAttrVal, ok := dp.Attributes().Get("cisco.optics.profile")
-						assert.True(t, ok)
-						assert.Equal(t, "dom", ciscoOpticsProfileAttrVal.Str())
-						ciscoOpticsExperimentalAttrVal, ok := dp.Attributes().Get("cisco.optics.experimental")
-						assert.True(t, ok)
-						assert.False(t, ciscoOpticsExperimentalAttrVal.Bool())
-					} else {
-						assert.False(t, validatedMetrics["cisco.optics.q_factor"], "Found a duplicate in the metrics slice: cisco.optics.q_factor")
-						validatedMetrics["cisco.optics.q_factor"] = true
-						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
-						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Coherent optical Q-factor", mi.Description())
-						assert.Equal(t, "dB", mi.Unit())
-						dp := mi.Gauge().DataPoints().At(0)
-						assert.Equal(t, start, dp.StartTimestamp())
-						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
-						switch aggMap["cisco.optics.q_factor"] {
-						case "sum":
-							assert.InDelta(t, float64(4), dp.DoubleValue(), 0.01)
-						case "avg":
-							assert.InDelta(t, float64(2), dp.DoubleValue(), 0.01)
-						case "min":
-							assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
-						case "max":
-							assert.InDelta(t, float64(3), dp.DoubleValue(), 0.01)
-						}
-						_, ok := dp.Attributes().Get("network.interface.name")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.lane")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.sensor")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.profile")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.experimental")
-						assert.False(t, ok)
-					}
-				case "cisco.optics.q_margin":
-					if tt.name != "reaggregate_set" {
-						assert.False(t, validatedMetrics["cisco.optics.q_margin"], "Found a duplicate in the metrics slice: cisco.optics.q_margin")
-						validatedMetrics["cisco.optics.q_margin"] = true
-						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
-						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Coherent optical Q-margin", mi.Description())
-						assert.Equal(t, "dB", mi.Unit())
-						dp := mi.Gauge().DataPoints().At(0)
-						assert.Equal(t, start, dp.StartTimestamp())
-						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
-						assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
-						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
-						assert.True(t, ok)
-						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
-						ciscoOpticsLaneAttrVal, ok := dp.Attributes().Get("cisco.optics.lane")
-						assert.True(t, ok)
-						assert.Equal(t, "cisco.optics.lane-val", ciscoOpticsLaneAttrVal.Str())
-						ciscoOpticsSensorAttrVal, ok := dp.Attributes().Get("cisco.optics.sensor")
-						assert.True(t, ok)
-						assert.Equal(t, "cisco.optics.sensor-val", ciscoOpticsSensorAttrVal.Str())
-						ciscoOpticsProfileAttrVal, ok := dp.Attributes().Get("cisco.optics.profile")
-						assert.True(t, ok)
-						assert.Equal(t, "dom", ciscoOpticsProfileAttrVal.Str())
-						ciscoOpticsExperimentalAttrVal, ok := dp.Attributes().Get("cisco.optics.experimental")
-						assert.True(t, ok)
-						assert.False(t, ciscoOpticsExperimentalAttrVal.Bool())
-					} else {
-						assert.False(t, validatedMetrics["cisco.optics.q_margin"], "Found a duplicate in the metrics slice: cisco.optics.q_margin")
-						validatedMetrics["cisco.optics.q_margin"] = true
-						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
-						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Coherent optical Q-margin", mi.Description())
-						assert.Equal(t, "dB", mi.Unit())
-						dp := mi.Gauge().DataPoints().At(0)
-						assert.Equal(t, start, dp.StartTimestamp())
-						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
-						switch aggMap["cisco.optics.q_margin"] {
-						case "sum":
-							assert.InDelta(t, float64(4), dp.DoubleValue(), 0.01)
-						case "avg":
-							assert.InDelta(t, float64(2), dp.DoubleValue(), 0.01)
-						case "min":
-							assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
-						case "max":
-							assert.InDelta(t, float64(3), dp.DoubleValue(), 0.01)
-						}
-						_, ok := dp.Attributes().Get("network.interface.name")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.lane")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.sensor")
 						assert.False(t, ok)
 						_, ok = dp.Attributes().Get("cisco.optics.profile")
 						assert.False(t, ok)
@@ -1518,29 +1192,100 @@ func TestMetricsBuilder(t *testing.T) {
 						assert.False(t, ok)
 					}
 				case "system.cpu.utilization":
-					assert.False(t, validatedMetrics["system.cpu.utilization"], "Found a duplicate in the metrics slice: system.cpu.utilization")
-					validatedMetrics["system.cpu.utilization"] = true
-					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
-					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-					assert.Equal(t, "Percentage of CPU time in use.", mi.Description())
-					assert.Equal(t, "1", mi.Unit())
-					dp := mi.Gauge().DataPoints().At(0)
-					assert.Equal(t, start, dp.StartTimestamp())
-					assert.Equal(t, ts, dp.Timestamp())
-					assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
-					assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["system.cpu.utilization"], "Found a duplicate in the metrics slice: system.cpu.utilization")
+						validatedMetrics["system.cpu.utilization"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Ratio of CPU time in use, from 0 to 1.", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+						assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+						ciscoNodeNameAttrVal, ok := dp.Attributes().Get("cisco.node.name")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.node.name-val", ciscoNodeNameAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["system.cpu.utilization"], "Found a duplicate in the metrics slice: system.cpu.utilization")
+						validatedMetrics["system.cpu.utilization"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Ratio of CPU time in use, from 0 to 1.", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+						switch aggMap["system.cpu.utilization"] {
+						case "sum":
+							assert.InDelta(t, float64(4), dp.DoubleValue(), 0.01)
+						case "avg":
+							assert.InDelta(t, float64(2), dp.DoubleValue(), 0.01)
+						case "min":
+							assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+						case "max":
+							assert.InDelta(t, float64(3), dp.DoubleValue(), 0.01)
+						}
+						_, ok := dp.Attributes().Get("cisco.node.name")
+						assert.False(t, ok)
+					}
 				case "system.memory.utilization":
-					assert.False(t, validatedMetrics["system.memory.utilization"], "Found a duplicate in the metrics slice: system.memory.utilization")
-					validatedMetrics["system.memory.utilization"] = true
-					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
-					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-					assert.Equal(t, "Percentage of memory bytes in use.", mi.Description())
-					assert.Equal(t, "1", mi.Unit())
-					dp := mi.Gauge().DataPoints().At(0)
-					assert.Equal(t, start, dp.StartTimestamp())
-					assert.Equal(t, ts, dp.Timestamp())
-					assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
-					assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["system.memory.utilization"], "Found a duplicate in the metrics slice: system.memory.utilization")
+						validatedMetrics["system.memory.utilization"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Ratio of memory bytes in use, from 0 to 1.", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+						assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+						ciscoLocationFruAttrVal, ok := dp.Attributes().Get("cisco.location.fru")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.location.fru-val", ciscoLocationFruAttrVal.Str())
+						ciscoLocationSlotAttrVal, ok := dp.Attributes().Get("cisco.location.slot")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.location.slot-val", ciscoLocationSlotAttrVal.Str())
+						ciscoLocationBayAttrVal, ok := dp.Attributes().Get("cisco.location.bay")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.location.bay-val", ciscoLocationBayAttrVal.Str())
+						ciscoLocationChassisAttrVal, ok := dp.Attributes().Get("cisco.location.chassis")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.location.chassis-val", ciscoLocationChassisAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["system.memory.utilization"], "Found a duplicate in the metrics slice: system.memory.utilization")
+						validatedMetrics["system.memory.utilization"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Ratio of memory bytes in use, from 0 to 1.", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+						switch aggMap["system.memory.utilization"] {
+						case "sum":
+							assert.InDelta(t, float64(4), dp.DoubleValue(), 0.01)
+						case "avg":
+							assert.InDelta(t, float64(2), dp.DoubleValue(), 0.01)
+						case "min":
+							assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+						case "max":
+							assert.InDelta(t, float64(3), dp.DoubleValue(), 0.01)
+						}
+						_, ok := dp.Attributes().Get("cisco.location.fru")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.location.slot")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.location.bay")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.location.chassis")
+						assert.False(t, ok)
+					}
 				case "system.network.errors":
 					if tt.name != "reaggregate_set" {
 						assert.False(t, validatedMetrics["system.network.errors"], "Found a duplicate in the metrics slice: system.network.errors")

@@ -138,6 +138,20 @@ func TestReconnectDisablesPagingBeforeRequestedCommand(t *testing.T) {
 	assert.Equal(t, "show version", <-commands)
 }
 
+func TestDetectDeviceMetadataRejectsUnidentifiedCiscoOS(t *testing.T) {
+	address, commands := startSSHExecTestServer(t, "")
+	client := testReconnectClient(address)
+	t.Cleanup(func() { _ = client.Close() })
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	metadata, err := client.DetectDeviceMetadata(ctx)
+	require.ErrorContains(t, err, "did not identify a supported Cisco OS")
+	assert.Empty(t, metadata.OSType)
+	assert.Equal(t, "terminal length 0", <-commands)
+	assert.Equal(t, "show version", <-commands)
+}
+
 func TestReconnectRejectsConnectionWhenPagingInitializationFails(t *testing.T) {
 	address, commands := startSSHExecTestServer(t, "terminal length 0")
 	client := testReconnectClient(address)
@@ -225,8 +239,23 @@ func TestClient_DetectOSType(t *testing.T) {
 			expected: "IOS XE",
 		},
 		{
+			name:     "legacy IOS XE detection before standalone XE version banner",
+			output:   "Cisco IOS Software, IOS-XE Software (PPC_LINUX_IOSD-ADVENTERPRISEK9-M), Version 15.2(2)S2, RELEASE SOFTWARE (fc1)",
+			expected: "IOS XE",
+		},
+		{
+			name:     "legacy IOS XE experimental version detection",
+			output:   "Cisco IOS Software, IOS-XE Software, Catalyst 4500 L3 Switch Software (cat4500e-UNIVERSALK9-M), Experimental Version 3.1.0.SG",
+			expected: "IOS XE",
+		},
+		{
+			name:     "IOS XE image identifier detection",
+			output:   "Cisco IOS Software, Catalyst L3 Switch Software (CAT9K_IOSXE), Version 17.18.1, RELEASE SOFTWARE (fc2)",
+			expected: "IOS XE",
+		},
+		{
 			name:     "NX-OS detection with Nexus",
-			output:   "Cisco Nexus Operating System (NX-OS) Software",
+			output:   "Cisco Nexus Operating System (NX-OS) Software\nNXOS: version 10.4(5)",
 			expected: "NX-OS",
 		},
 		{
@@ -246,22 +275,63 @@ Hardware
 		},
 		{
 			name:     "IOS detection",
-			output:   "Cisco IOS Software, C2960 Software",
+			output:   "Cisco IOS Software, C2960 Software, Version 15.2(7)E10",
 			expected: "IOS",
 		},
 		{
-			name:     "Unknown defaults to IOS XE",
+			name: "classic IOS detection",
+			output: `Cisco Internetwork Operating System Software
+IOS (tm) C836 Software (C836-K9O3SY6-M), Version 12.2(4)YA, EARLY DEPLOYMENT RELEASE`,
+			expected: "IOS",
+		},
+		{
+			name:     "classic Cisco IOS detection with CRLF",
+			output:   "Cisco Internetwork Operating System Software\r\nCisco IOS (tm) C2950 Software (C2950-I6Q4L2-M), Version 12.1(12c)EA1, RELEASE SOFTWARE (fc1)",
+			expected: "IOS",
+		},
+		{
+			name:     "classic IOS banner alone is not a version response",
+			output:   "Cisco Internetwork Operating System Software",
+			expected: "",
+		},
+		{
+			name:     "classic IOS software line alone is not a version response",
+			output:   "IOS (tm) C836 Software (C836-K9O3SY6-M), Version 12.2(4)YA, EARLY DEPLOYMENT RELEASE",
+			expected: "",
+		},
+		{
+			name: "classic IOS banner does not pair across unrelated text",
+			output: `Cisco Internetwork Operating System Software
+Authorized users only
+IOS (tm) C836 Software (C836-K9O3SY6-M), Version 12.2(4)YA, EARLY DEPLOYMENT RELEASE`,
+			expected: "",
+		},
+		{
+			name: "classic IOS banner requires a structured image identifier",
+			output: `Cisco Internetwork Operating System Software
+IOS (tm) C836 Software, Version 12.2(4)YA, EARLY DEPLOYMENT RELEASE`,
+			expected: "",
+		},
+		{
+			name:     "IOS XE authorization banner is not a version response",
+			output:   "Authorized access to this Cisco IOS XE system only",
+			expected: "",
+		},
+		{
+			name:     "CLI authorization failure overrides banner text",
+			output:   "Cisco IOS XE Software, Version 17.9.4\n% Authorization failed",
+			expected: "",
+		},
+		{
+			name:     "Unknown remains unidentified",
 			output:   "Some other output",
-			expected: "IOS XE",
+			expected: "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := detectOSTypeFromShowVersion(tt.output)
-			if result == "" {
-				result = "IOS XE"
-			}
 			assert.Equal(t, tt.expected, result)
 		})
 	}
@@ -324,6 +394,52 @@ Switch uptime is 2 weeks, 3 days, 4 hours, 5 minutes`
 	assert.Equal(t, metadata.Model, metadata.HostType)
 	assert.Equal(t, int64((17*24*time.Hour + 4*time.Hour + 5*time.Minute).Seconds()), metadata.UptimeSeconds(now))
 	assert.Equal(t, int64((17*24*time.Hour + 4*time.Hour + 6*time.Minute).Seconds()), metadata.UptimeSeconds(now.Add(time.Minute)))
+}
+
+func TestParseDeviceMetadataFromShowVersionClassicIOS(t *testing.T) {
+	tests := []struct {
+		name    string
+		output  string
+		version string
+	}{
+		{
+			name: "IOS tm release",
+			output: `Cisco Internetwork Operating System Software
+IOS (tm) C836 Software (C836-K9O3SY6-M), Version 12.2(4)YA, EARLY DEPLOYMENT RELEASE`,
+			version: "12.2(4)YA",
+		},
+		{
+			name: "Cisco IOS tm release",
+			output: `Cisco Internetwork Operating System Software
+Cisco IOS(tm) C2950 Software (C2950-I6Q4L2-M), Version 12.1(12c)EA1, RELEASE SOFTWARE (fc1)`,
+			version: "12.1(12c)EA1",
+		},
+		{
+			name: "experimental release",
+			output: `Cisco Internetwork Operating System Software
+IOS (TM) GS Software (RSP-P-M), Experimental Version 11.1(5479) [dbath 119]`,
+			version: "11.1(5479)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			metadata := parseDeviceMetadataFromShowVersion(tt.output, time.Unix(100, 0))
+			assert.Equal(t, "IOS", metadata.OSType)
+			assert.Equal(t, tt.version, metadata.OSVersion)
+		})
+	}
+}
+
+func TestParseDeviceMetadataRejectsUnpairedClassicIOSText(t *testing.T) {
+	for _, output := range []string{
+		"Cisco Internetwork Operating System Software",
+		"Cisco IOS(tm) C2950 Software (C2950-I6Q4L2-M), Version 12.1(12c)EA1, RELEASE SOFTWARE (fc1)",
+	} {
+		metadata := parseDeviceMetadataFromShowVersion(output, time.Unix(100, 0))
+		assert.Empty(t, metadata.OSType)
+		assert.Empty(t, metadata.OSVersion)
+	}
 }
 
 func TestParseDeviceMetadataFromShowVersionNXOS(t *testing.T) {

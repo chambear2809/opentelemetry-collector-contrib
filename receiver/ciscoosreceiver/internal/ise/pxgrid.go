@@ -19,17 +19,21 @@ import (
 	"time"
 
 	"golang.org/x/net/websocket"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
 
 const (
-	pxGridDefaultPath      = "/pxgrid"
-	pxGridDefaultWSOrigin  = "https://localhost/"
-	stompHeartbeatInterval = 30 * time.Second
-	stompMaxFrameBytes     = 4 * 1024 * 1024
-	stompMaxBodyBytes      = 4 * 1024 * 1024
-	stompMaxHeaders        = 256
-	stompMaxHeaderBytes    = 64 * 1024
-	stompMaxLineBytes      = 8 * 1024
+	pxGridDefaultPath                  = "/pxgrid"
+	pxGridDefaultWSOrigin              = "https://localhost/"
+	stompHeartbeatInterval             = 30 * time.Second
+	stompMaxFrameBytes                 = 4 * 1024 * 1024
+	stompMaxBodyBytes                  = 4 * 1024 * 1024
+	stompMaxHeaders                    = 256
+	stompMaxHeaderBytes                = 64 * 1024
+	stompMaxLineBytes                  = 8 * 1024
+	pxGridCAConfigPath                 = "ise.pxgrid.ca_file"
+	pxGridInsecureSkipVerifyConfigPath = "ise.pxgrid.insecure_skip_verify"
 )
 
 // PxGridConfig controls the Cisco ISE pxGrid client.
@@ -107,15 +111,17 @@ func NewPxGridClient(cfg PxGridConfig) (*PxGridClient, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = tlsConfig
 	rest, err := NewClient(Config{
-		Endpoint:           pxGridRESTEndpoint(parsed).String(),
-		Username:           cfg.NodeName,
-		Password:           cfg.Password,
-		AllowEmptyPassword: true,
-		UserAgent:          cfg.UserAgent,
-		Timeout:            timeout,
-		MaxRetries:         cfg.MaxRetries,
-		PageSize:           defaultPageSize,
-		InsecureSkipVerify: cfg.InsecureSkipVerify,
+		Endpoint:                     pxGridRESTEndpoint(parsed).String(),
+		Username:                     cfg.NodeName,
+		Password:                     cfg.Password,
+		AllowEmptyPassword:           true,
+		UserAgent:                    cfg.UserAgent,
+		Timeout:                      timeout,
+		MaxRetries:                   cfg.MaxRetries,
+		PageSize:                     defaultPageSize,
+		InsecureSkipVerify:           cfg.InsecureSkipVerify,
+		caConfigPath:                 pxGridCAConfigPath,
+		insecureSkipVerifyConfigPath: pxGridInsecureSkipVerifyConfigPath,
 	})
 	if err != nil {
 		return nil, err
@@ -327,7 +333,17 @@ func (c *PxGridClient) subscribeEndpoint(ctx context.Context, wsURL, peerNodeNam
 	config.Protocol = []string{"v12.stomp"}
 	ws, err := config.DialContext(ctx)
 	if err != nil {
-		return err
+		// x/net/websocket's DialError predates error unwrapping. Inspect its
+		// exported cause so typed x509 failures still receive the shared hint.
+		var dialErr *websocket.DialError
+		if errors.As(err, &dialErr) && dialErr.Err != nil {
+			decoratedCause := httpclient.DecorateCertificateVerificationError(dialErr.Err, pxGridCAConfigPath, pxGridInsecureSkipVerifyConfigPath)
+			var certificateErr *httpclient.CertificateVerificationError
+			if errors.As(decoratedCause, &certificateErr) {
+				return errors.Join(err, decoratedCause)
+			}
+		}
+		return httpclient.DecorateCertificateVerificationError(err, pxGridCAConfigPath, pxGridInsecureSkipVerifyConfigPath)
 	}
 	defer ws.Close()
 	ws.MaxPayloadBytes = stompMaxFrameBytes
@@ -508,6 +524,9 @@ func validatePxGridURL(rawURL string, allowedSchemes ...string) error {
 	if err != nil || parsed.Host == "" || parsed.User != nil {
 		return errors.New("invalid discovered pxGrid URL")
 	}
+	if parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		return errors.New("discovered pxGrid URL must not contain a query or fragment")
+	}
 	for _, scheme := range allowedSchemes {
 		if strings.EqualFold(parsed.Scheme, scheme) {
 			return nil
@@ -593,14 +612,16 @@ func (c *PxGridClient) accessSecret(ctx context.Context, peerNodeName string) (s
 
 func (c *PxGridClient) discoveredRESTClient(endpoint, secret string) (*Client, error) {
 	client, err := NewClient(Config{
-		Endpoint:           endpoint,
-		Username:           c.nodeName,
-		Password:           secret,
-		AllowEmptyPassword: false,
-		UserAgent:          c.userAgent,
-		Timeout:            c.rest.client.Timeout,
-		MaxRetries:         c.rest.retries,
-		PageSize:           c.rest.pageSize,
+		Endpoint:                     endpoint,
+		Username:                     c.nodeName,
+		Password:                     secret,
+		AllowEmptyPassword:           false,
+		UserAgent:                    c.userAgent,
+		Timeout:                      c.rest.client.Timeout,
+		MaxRetries:                   c.rest.retries,
+		PageSize:                     c.rest.pageSize,
+		caConfigPath:                 c.rest.caConfigPath,
+		insecureSkipVerifyConfigPath: c.rest.insecureSkipVerifyConfigPath,
 	})
 	if err != nil {
 		return nil, err

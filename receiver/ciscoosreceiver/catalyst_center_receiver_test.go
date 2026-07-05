@@ -156,6 +156,27 @@ func TestCatalystCenterDeviceUtilizationNormalizesPercentages(t *testing.T) {
 	assert.InDelta(t, 0.42, metric.Gauge().DataPoints().At(1).DoubleValue(), 1e-12)
 }
 
+func TestCatalystCenterManagedDeviceUsesInventoryOSIdentity(t *testing.T) {
+	builder := newCatalystCenterMetricsBuilder(time.Now(), "test", nil)
+	deviceResource := builder.deviceResource(catalystcenter.Device{
+		ID:              "device-1",
+		Hostname:        "edge-1",
+		SoftwareType:    "IOS-XE",
+		SoftwareVersion: "17.12.1",
+	})
+
+	osName, ok := deviceResource.resource.Attributes().Get("os.name")
+	require.True(t, ok)
+	assert.Equal(t, "IOS-XE", osName.Str())
+	osVersion, ok := deviceResource.resource.Attributes().Get("os.version")
+	require.True(t, ok)
+	assert.Equal(t, "17.12.1", osVersion.Str())
+
+	unknownInterfaceResource := builder.interfaceResource(catalystcenter.Interface{DeviceID: "unknown-device"})
+	_, ok = unknownInterfaceResource.resource.Attributes().Get("os.name")
+	assert.False(t, ok, "an interface without inventory must not be labeled as the controller operating system")
+}
+
 func newTestCatalystCenterReceiver(t *testing.T, endpoint string, mutate func(*Config)) *catalystCenterMetricsReceiver {
 	t.Helper()
 	cfg := createDefaultConfig().(*Config)

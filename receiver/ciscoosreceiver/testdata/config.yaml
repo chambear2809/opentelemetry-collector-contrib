@@ -104,6 +104,9 @@ ciscoos:
     auth:
       api_key: "meraki-key"
     base_url: "https://api.meraki.com/api/v1"
+    insecure_skip_verify: true
+    switch_transceivers:
+      enabled: true
     organizations:
       - organization_id: "123456"
         network_ids: ["N_1"]
@@ -366,6 +369,7 @@ ciscoos:
         - sources: ["10.0.0.20"]
           node_ids: ["campus-wlc-1"]
       max_streams_per_client: 16
+      stream_idle_timeout: 30m
       rate_limiting:
         enabled: true
         requests_per_second: 100
@@ -413,6 +417,7 @@ ciscoos:
         - sources: ["10.0.0.10"]
           node_ids: ["core-asr9k-1"]
       max_streams_per_client: 16
+      stream_idle_timeout: 30m
       rate_limiting:
         enabled: true
         requests_per_second: 100

@@ -70,6 +70,7 @@ func createMetricsReceiver(
 	consumer consumer.Metrics,
 ) (receiver.Metrics, error) {
 	conf := cfg.(*Config)
+	warnInsecureTLSOptions(set.Logger, conf)
 	selector := newDeviceSelectionMatcher(conf.DeviceSelection)
 	consumer = newMetricFilteringConsumer(newAbsoluteCounterTrackingConsumer(consumer), conf)
 	gnmiResponseAdmission := newGNMIResponseAdmission()
@@ -242,6 +243,7 @@ func createLogsReceiver(
 	consumer consumer.Logs,
 ) (receiver.Logs, error) {
 	conf := cfg.(*Config)
+	warnInsecureTLSOptions(set.Logger, conf)
 	var receivers []receiver.Logs
 	if conf.Intersight.hasTarget() {
 		rcvr, err := newIntersightLogsReceiver(set, conf, consumer)

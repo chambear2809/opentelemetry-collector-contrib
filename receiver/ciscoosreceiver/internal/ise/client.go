@@ -25,27 +25,31 @@ import (
 )
 
 const (
-	defaultUserAgent      = "opentelemetry-collector-contrib-ciscoosreceiver"
-	defaultRequestTimeout = 30 * time.Second
-	defaultPageSize       = 100
-	defaultRequestSpacing = 20 * time.Millisecond
-	defaultMaxPages       = 100
-	defaultMaxResults     = 100000
+	defaultUserAgent                 = "opentelemetry-collector-contrib-ciscoosreceiver"
+	defaultRequestTimeout            = 30 * time.Second
+	defaultPageSize                  = 100
+	defaultRequestSpacing            = 20 * time.Millisecond
+	defaultMaxPages                  = 100
+	defaultMaxResults                = 100000
+	restCAConfigPath                 = "ise.ca_file"
+	restInsecureSkipVerifyConfigPath = "ise.insecure_skip_verify"
 )
 
 // Config controls the Cisco ISE REST/OpenAPI/ERS/MnT client.
 type Config struct {
-	Endpoint           string
-	Username           string
-	Password           string
-	AllowEmptyPassword bool
-	UserAgent          string
-	Timeout            time.Duration
-	MaxRetries         int
-	PageSize           int
-	CAFile             string
-	ServerName         string
-	InsecureSkipVerify bool
+	Endpoint                     string
+	Username                     string
+	Password                     string
+	AllowEmptyPassword           bool
+	UserAgent                    string
+	Timeout                      time.Duration
+	MaxRetries                   int
+	PageSize                     int
+	CAFile                       string
+	ServerName                   string
+	InsecureSkipVerify           bool
+	caConfigPath                 string
+	insecureSkipVerifyConfigPath string
 }
 
 // RequestStat describes a single Cisco ISE API request attempt.
@@ -83,16 +87,18 @@ func IsUnavailable(err error) bool {
 
 // Client is a compact Cisco ISE REST/OpenAPI/ERS/MnT client.
 type Client struct {
-	endpoint   *url.URL
-	username   string
-	password   string
-	userAgent  string
-	client     *http.Client
-	retries    int
-	pageSize   int
-	spacing    time.Duration
-	maxPages   int
-	maxResults int
+	endpoint                     *url.URL
+	username                     string
+	password                     string
+	userAgent                    string
+	client                       *http.Client
+	retries                      int
+	pageSize                     int
+	spacing                      time.Duration
+	maxPages                     int
+	maxResults                   int
+	caConfigPath                 string
+	insecureSkipVerifyConfigPath string
 
 	limitMu  sync.Mutex
 	nextSend time.Time
@@ -131,6 +137,14 @@ func NewClient(cfg Config) (*Client, error) {
 	if pageSize > defaultPageSize {
 		pageSize = defaultPageSize
 	}
+	caConfigPath := cfg.caConfigPath
+	if caConfigPath == "" {
+		caConfigPath = restCAConfigPath
+	}
+	insecureSkipVerifyConfigPath := cfg.insecureSkipVerifyConfigPath
+	if insecureSkipVerifyConfigPath == "" {
+		insecureSkipVerifyConfigPath = restInsecureSkipVerifyConfigPath
+	}
 	tlsConfig, err := clientTLSConfig(cfg)
 	if err != nil {
 		return nil, err
@@ -140,16 +154,18 @@ func NewClient(cfg Config) (*Client, error) {
 		transport.TLSClientConfig = tlsConfig
 	}
 	return &Client{
-		endpoint:   parsed,
-		username:   cfg.Username,
-		password:   cfg.Password,
-		userAgent:  userAgent,
-		client:     &http.Client{Timeout: timeout, Transport: transport, CheckRedirect: httpclient.SameOriginRedirectPolicy(parsed)},
-		retries:    retries,
-		pageSize:   pageSize,
-		spacing:    defaultRequestSpacing,
-		maxPages:   defaultMaxPages,
-		maxResults: defaultMaxResults,
+		endpoint:                     parsed,
+		username:                     cfg.Username,
+		password:                     cfg.Password,
+		userAgent:                    userAgent,
+		client:                       &http.Client{Timeout: timeout, Transport: transport, CheckRedirect: httpclient.SameOriginRedirectPolicy(parsed)},
+		retries:                      retries,
+		pageSize:                     pageSize,
+		spacing:                      defaultRequestSpacing,
+		maxPages:                     defaultMaxPages,
+		maxResults:                   defaultMaxResults,
+		caConfigPath:                 caConfigPath,
+		insecureSkipVerifyConfigPath: insecureSkipVerifyConfigPath,
 	}, nil
 }
 
@@ -627,7 +643,13 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 			return body, header, nil
 		}
 		lastErr = err
-		if ctx.Err() != nil || !retryableStatus(status) || attempt == attempts-1 {
+		if ctx.Err() != nil {
+			return nil, nil, ctx.Err()
+		}
+		if httpclient.IsCertificateVerificationError(err) {
+			break
+		}
+		if !retryableStatus(status) || attempt == attempts-1 {
 			break
 		}
 		sleep := time.Duration(1<<attempt)*100*time.Millisecond + time.Duration(rand.Int64N(int64(50*time.Millisecond)))
@@ -666,6 +688,7 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 	resp, err := c.client.Do(req)
 	duration := time.Since(start)
 	if err != nil {
+		err = httpclient.DecorateCertificateVerificationError(err, c.caConfigPath, c.insecureSkipVerifyConfigPath)
 		c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", Duration: duration, Err: err})
 		return nil, nil, 0, err
 	}

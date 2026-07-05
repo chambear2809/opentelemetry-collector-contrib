@@ -110,6 +110,21 @@ func TestClientSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {
 	}))
 	defer server.Close()
 
+	verifiedClient, err := NewClient(Config{
+		KeyID:      "test-key",
+		KeyPEM:     testPrivateKeyPEM(t),
+		Endpoint:   server.URL,
+		Timeout:    time.Second,
+		MaxRetries: 3,
+	})
+	require.NoError(t, err)
+	verifiedAttempts := 0
+	verifiedClient.OnRequest = func(RequestStat) { verifiedAttempts++ }
+	_, err = verifiedClient.List(t.Context(), "asset.targets", "/api/v1/asset/Targets", nil, 0)
+	require.ErrorContains(t, err, "trust the issuing CA in the Collector host trust store (preferred)")
+	require.ErrorContains(t, err, "set intersight.insecure_skip_verify: true")
+	assert.Equal(t, 1, verifiedAttempts)
+
 	client, err := NewClient(Config{
 		KeyID:              "test-key",
 		KeyPEM:             testPrivateKeyPEM(t),
@@ -149,6 +164,34 @@ func TestClientPaginatesWithTopSkipAndMaxResults(t *testing.T) {
 	require.Len(t, got, 3)
 	assert.Equal(t, int64(2), attempts.Load())
 	assert.Equal(t, "third", got[2]["Moid"])
+}
+
+func TestClientPaginationContinuesAfterShortPageWhenCountHasMore(t *testing.T) {
+	var attempts atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "2", r.URL.Query().Get("$top"))
+		switch attempts.Add(1) {
+		case 1:
+			assert.Equal(t, "0", r.URL.Query().Get("$skip"))
+			_, _ = w.Write([]byte(`{"Results":[{"Moid":"first"}],"Count":2}`))
+		case 2:
+			assert.Equal(t, "1", r.URL.Query().Get("$skip"))
+			_, _ = w.Write([]byte(`{"Results":[{"Moid":"second"}],"Count":2}`))
+		default:
+			t.Fatalf("unexpected Intersight request %d", attempts.Load())
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{KeyID: "test-key", KeyPEM: testPrivateKeyPEM(t), Endpoint: server.URL, Timeout: time.Second, MaxRetries: 1, PageSize: 2})
+	require.NoError(t, err)
+
+	got, err := client.List(t.Context(), "asset.targets", "/api/v1/asset/Targets", nil, 0)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, "first", got[0]["Moid"])
+	assert.Equal(t, "second", got[1]["Moid"])
+	assert.Equal(t, int64(2), attempts.Load())
 }
 
 func TestClientMaxResultsCapsOverReturnedPage(t *testing.T) {

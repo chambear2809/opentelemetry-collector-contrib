@@ -241,6 +241,10 @@ func (r *aciMetricsReceiver) collect(ctx context.Context) {
 
 	obsCtx := startMetricsOp(ctx, r.obs)
 	md, scrapeErr := r.scrape(scrapeCtx)
+	if scrapeErr != nil && ctx.Err() != nil && errors.Is(scrapeErr, context.Canceled) {
+		endMetricsOp(obsCtx, r.obs, 0, nil)
+		return
+	}
 	if scrapeErr != nil {
 		r.settings.Logger.Error("ACI scrape failed", zap.Error(scrapeErr))
 	}
@@ -263,11 +267,9 @@ func (r *aciMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 			if !aciGroupEnabled(r.config.ACI, endpoint.group) {
 				continue
 			}
-			objects, err := client.ListClass(ctx, endpoint.operation, endpoint.className, aciEndpointQuery(endpoint, r.config, now), aciGroupMaxResults(r.config.ACI, endpoint.group))
-			for _, obj := range filterACIObjects(objects, r.config.ACI.Targets) {
-				if !selector.allows(aciObjectIdentity(obj)) {
-					continue
-				}
+			include := aciEndpointIncludePredicate(endpoint, r.config.ACI.Targets, selector)
+			objects, err := client.ListClassFiltered(ctx, endpoint.operation, endpoint.className, aciEndpointQuery(endpoint, r.config, now), aciGroupMaxResults(r.config.ACI, endpoint.group), include)
+			for _, obj := range objects {
 				builder.recordObject(client.ControllerName(), client.Endpoint(), endpoint, obj)
 			}
 			if err != nil {
@@ -418,6 +420,11 @@ func (r *aciLogsReceiver) collect(ctx context.Context) {
 	r.seen.BeginBatch()
 	obsCtx := startLogsOp(ctx, r.obs)
 	ld, scrapeErr := r.scrape(scrapeCtx)
+	if scrapeErr != nil && ctx.Err() != nil && errors.Is(scrapeErr, context.Canceled) {
+		r.seen.RollbackBatch()
+		endLogsOp(obsCtx, r.obs, 0, nil)
+		return
+	}
 	if scrapeErr != nil {
 		r.settings.Logger.Error("ACI log scrape failed", zap.Error(scrapeErr))
 	}
@@ -438,11 +445,9 @@ func (r *aciLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 			if !aciGroupEnabled(r.config.ACI, endpoint.group) {
 				continue
 			}
-			objects, err := client.ListClass(ctx, endpoint.operation, endpoint.className, aciEndpointQuery(endpoint, r.config, now), aciGroupMaxResults(r.config.ACI, endpoint.group))
-			for _, obj := range filterACIObjects(objects, r.config.ACI.Targets) {
-				if !selector.allows(aciObjectIdentity(obj)) {
-					continue
-				}
+			include := aciEndpointIncludePredicate(endpoint, r.config.ACI.Targets, selector)
+			objects, err := client.ListClassFiltered(ctx, endpoint.operation, endpoint.className, aciEndpointQuery(endpoint, r.config, now), aciGroupMaxResults(r.config.ACI, endpoint.group), include)
+			for _, obj := range objects {
 				if r.seenBefore(client.ControllerName(), endpoint, obj, now) {
 					continue
 				}
@@ -543,12 +548,27 @@ func (b *aciMetricsBuilder) controllerResource(name, endpoint string) *resourceM
 func (b *aciMetricsBuilder) objectResource(controllerName, controllerEndpoint string, endpoint aciEndpoint, obj aci.Object) *resourceMetricsBuilder {
 	dn := aci.String(obj, "dn")
 	nodeID := firstNonEmpty(aci.String(obj, "nodeId", "id"), nodeIDFromACIDN(dn))
+	if endpoint.objectType == "aci.interface" {
+		nodeID = firstNonEmpty(aci.String(obj, "nodeId"), nodeIDFromACIDN(dn), aci.String(obj, "id"))
+	}
 	serial := aci.String(obj, "serial")
 	hostID := firstNonEmpty(serial, nodeID, dn, aci.String(obj, "name", "mac", "ip"), endpoint.operation)
-	if endpoint.group == "controllers" || strings.Contains(aci.String(obj, "role"), "controller") {
+	if endpoint.group == "controller_health" || strings.Contains(aci.String(obj, "role"), "controller") {
 		hostID = firstNonEmpty(hostID, controllerName)
 	}
-	rb := b.resource(controllerName + ":" + endpoint.operation + ":" + hostID)
+	resourceKey := controllerName + ":" + endpoint.operation + ":" + hostID
+	if endpoint.objectType == "aci.interface" {
+		interfaceID := interfaceNameFromACIDN(dn)
+		if interfaceID == "" {
+			interfaceID = interfaceNameFromACIDN(aci.String(obj, "id", "name"))
+		}
+		if interfaceID != "" {
+			resourceKey += ":interface:" + interfaceID
+		} else if dn != "" {
+			resourceKey += ":dn:" + dn
+		}
+	}
+	rb := b.resource(resourceKey)
 	attrs := rb.resource.Attributes()
 	putStr(attrs, "host.id", hostID)
 	putStr(attrs, "host.name", firstNonEmpty(aci.String(obj, "name", "hostName", "nodeName"), aciNodeName(nodeID), hostID))
@@ -621,7 +641,7 @@ func (b *aciMetricsBuilder) recordObject(controllerName, controllerEndpoint stri
 	}
 
 	switch endpoint.group {
-	case "fabric", "nodes", "controllers":
+	case "fabric", "nodes", "controller_health":
 		b.recordFabricObject(rb, obj, status)
 	case "faults":
 		b.recordFaultObject(rb, obj, severity)
@@ -664,13 +684,68 @@ func (*aciMetricsBuilder) recordStatsObject(rb *resourceMetricsBuilder, obj aci.
 				rb.recordInt("system.network.interface.status", "ACI interface operational status.", "1", up, attrs)
 			}
 		}
-		recordACINumeric(rb, obj, "bytesRate", "cisco.interface.io.rate", "Interface traffic rate.", "bit/s", attrs, 8)
-		recordACINumeric(rb, obj, "pktsRate", "cisco.interface.packet.rate", "Interface packet rate.", "{packet}/s", attrs, 1)
-		recordACINumeric(rb, obj, "dropRate", "cisco.interface.drop.rate", "Interface drop rate.", "{drop}/s", attrs, 1)
+		switch strings.ToLower(aci.String(obj, "aci.class")) {
+		case "eqptingrtotal5min":
+			recordACIEquipmentInterfaceStats(rb, obj, attrs, "receive")
+		case "eqptegrtotal5min":
+			recordACIEquipmentInterfaceStats(rb, obj, attrs, "transmit")
+		case "rmonifin":
+			recordACIRMONInterfaceStats(rb, obj, attrs, "receive")
+		case "rmonifout":
+			recordACIRMONInterfaceStats(rb, obj, attrs, "transmit")
+		default:
+			// Preserve the legacy generic mappings for APIC releases that expose
+			// these fields directly on the physical-interface classes.
+			recordACINumeric(rb, obj, "bytesRate", "cisco.interface.io.rate", "Interface traffic rate.", "bit/s", attrs, 8)
+			recordACINumeric(rb, obj, "pktsRate", "cisco.interface.packet.rate", "Interface packet rate.", "{packet}/s", attrs, 1)
+			recordACINumeric(rb, obj, "dropRate", "cisco.interface.drop.rate", "Interface drop rate.", "{drop}/s", attrs, 1)
+		}
 	}
-	recordACINumeric(rb, obj, "userLast", "system.cpu.utilization", "CPU utilization reported by APIC.", "1", map[string]string{"cpu.mode": "user"}, 0.01)
-	recordACINumeric(rb, obj, "kernelLast", "system.cpu.utilization", "CPU utilization reported by APIC.", "1", map[string]string{"cpu.mode": "kernel"}, 0.01)
-	recordACINumeric(rb, obj, "usedLast", "system.memory.utilization", "Memory utilization reported by APIC.", "1", map[string]string{"system.memory.state": "used"}, 0.01)
+	recordACIFirstPercentRatio(rb, obj, []string{"userLast"}, "system.cpu.utilization", "CPU utilization reported by APIC.", map[string]string{"cpu.mode": "user"})
+	recordACIFirstPercentRatio(rb, obj, []string{"kernelLast"}, "system.cpu.utilization", "CPU utilization reported by APIC.", map[string]string{"cpu.mode": "kernel"})
+	if strings.EqualFold(aci.String(obj, "aci.class"), "procSysMem5min") {
+		recordACIMemoryUtilization(rb, obj)
+	}
+	if strings.EqualFold(aci.String(obj, "aci.class"), "fabricOverallHealthHist5min") {
+		recordACINumeric(rb, obj, "healthAvg", "aci.fabric.health", "ACI fabric, pod, node, or tenant health score.", "1", nil, 1)
+	}
+}
+
+func recordACIMemoryUtilization(rb *resourceMetricsBuilder, obj aci.Object) {
+	used, ok := aci.Float64(obj, "usedLast")
+	if !ok || math.IsNaN(used) || math.IsInf(used, 0) || used < 0 {
+		return
+	}
+	total, ok := aci.Float64(obj, "totalLast")
+	if ok && (math.IsNaN(total) || math.IsInf(total, 0)) {
+		return
+	}
+	if !ok {
+		free, freeOK := aci.Float64(obj, "freeLast")
+		if !freeOK || math.IsNaN(free) || math.IsInf(free, 0) || free < 0 {
+			return
+		}
+		total = used + free
+	}
+	if math.IsNaN(total) || math.IsInf(total, 0) || total <= 0 || used > total {
+		return
+	}
+	rb.recordDouble("system.memory.utilization", "Memory utilization as a ratio from APIC usedLast and totalLast.", "1", used/total, map[string]string{"system.memory.state": "used"})
+}
+
+func recordACIEquipmentInterfaceStats(rb *resourceMetricsBuilder, obj aci.Object, attrs map[string]string, direction string) {
+	attrs = withAttr(attrs, "network.io.direction", direction)
+	recordACINumeric(rb, obj, "bytesRate", "cisco.interface.io.rate", "Interface traffic rate.", "bit/s", attrs, 8)
+	recordACINumeric(rb, obj, "pktsRate", "cisco.interface.packet.rate", "Interface packet rate.", "{packet}/s", attrs, 1)
+	recordACIFirstPercentRatio(rb, obj, []string{"utilLast", "utilAvg"}, "cisco.interface.utilization", "Interface utilization as a ratio from 0 to 1.", attrs)
+}
+
+func recordACIRMONInterfaceStats(rb *resourceMetricsBuilder, obj aci.Object, attrs map[string]string, direction string) {
+	attrs = withAttr(attrs, "network.io.direction", direction)
+	recordACIAbsoluteSumInt(rb, obj, "octets", "system.network.io", "The number of bytes transmitted and received.", "By", attrs)
+	recordACISummedAbsoluteSumInt(rb, obj, []string{"ucastPkts", "nUcastPkts"}, "system.network.packet.count", "The number of packets transmitted or received.", "{packet}", attrs)
+	recordACIAbsoluteSumInt(rb, obj, "errors", "system.network.errors", "The number of errors encountered.", "{error}", attrs)
+	recordACIAbsoluteSumInt(rb, obj, "discards", "system.network.packet.dropped", "The number of packets dropped.", "{packet}", attrs)
 }
 
 func (b *aciMetricsBuilder) recordEndpointObject(rb *resourceMetricsBuilder, obj aci.Object) {
@@ -798,9 +873,13 @@ func aciMetricEndpoints() []aciEndpoint {
 		{group: "events", operation: "events.records", className: "eventRecord", objectType: "aci.event", query: recentACIQuery},
 		{group: "stats", operation: "stats.interfaces.l1", className: "l1PhysIf", objectType: "aci.interface"},
 		{group: "stats", operation: "stats.interfaces.ethpm", className: "ethpmPhysIf", objectType: "aci.interface"},
+		{group: "stats", operation: "stats.interfaces.ingress", className: "eqptIngrTotal5min", objectType: "aci.interface"},
+		{group: "stats", operation: "stats.interfaces.egress", className: "eqptEgrTotal5min", objectType: "aci.interface"},
+		{group: "stats", operation: "stats.interfaces.rmon_in", className: "rmonIfIn", objectType: "aci.interface"},
+		{group: "stats", operation: "stats.interfaces.rmon_out", className: "rmonIfOut", objectType: "aci.interface"},
 		{group: "stats", operation: "stats.cpu", className: "procSysCPU5min", objectType: "aci.cpu"},
 		{group: "stats", operation: "stats.memory", className: "procSysMem5min", objectType: "aci.memory"},
-		{group: "stats", operation: "stats.fabric_health", className: "fabricOverallHealthHist5min", objectType: "aci.fabric_health"},
+		{group: "stats", operation: "stats.fabric_health", className: "fabricOverallHealthHist5min", objectType: "aci.fabric_health", query: currentACIStatsQuery},
 		{group: "endpoints", operation: "endpoints.mac", className: "fvCEp", objectType: "aci.endpoint"},
 		{group: "endpoints", operation: "endpoints.ip", className: "fvIp", objectType: "aci.endpoint_ip"},
 		{group: "tenants", operation: "tenant.tenants", className: "fvTenant", objectType: "aci.tenant"},
@@ -845,6 +924,12 @@ func recentACIQuery(cfg *Config, now time.Time, className string) url.Values {
 	}
 	return aci.Query(map[string]string{
 		"query-target-filter": fmt.Sprintf("gt(%s.created,%q)", className, now.Add(-lookback).UTC().Format(time.RFC3339)),
+	})
+}
+
+func currentACIStatsQuery(_ *Config, _ time.Time, className string) url.Values {
+	return aci.Query(map[string]string{
+		"query-target-filter": fmt.Sprintf(`eq(%s.index,"0")`, className),
 	})
 }
 
@@ -902,22 +987,107 @@ func aciGroupMaxResults(cfg ACIConfig, group string) int {
 	}
 }
 
+type aciTargetMatcher struct {
+	textNeedles    map[string]struct{}
+	nodeIDs        map[string]struct{}
+	interfaceNames map[string]struct{}
+}
+
+func newACITargetMatcher(filters ACITargetFilters) aciTargetMatcher {
+	return aciTargetMatcher{
+		textNeedles:    makeFilterNeedles(filters.Sites, filters.Fabrics, filters.Serials, filters.Tenants, filters.VRFs, filters.BridgeDomains, filters.EPGs),
+		nodeIDs:        normalizedSet(filters.NodeIDs, normalizeACINodeID),
+		interfaceNames: normalizedSet(filters.InterfaceNames, normalizeACIInterfaceName),
+	}
+}
+
+func (m aciTargetMatcher) empty() bool {
+	return len(m.textNeedles) == 0 && len(m.nodeIDs) == 0 && len(m.interfaceNames) == 0
+}
+
+func (m aciTargetMatcher) allows(obj aci.Object) bool {
+	if m.empty() {
+		return true
+	}
+	if matchAny(m.nodeIDs, []string{
+		aci.String(obj, "dn"),
+		aci.String(obj, "rn"),
+		aci.String(obj, "nodeId"),
+		aci.String(obj, "id"),
+	}, normalizeACINodeID) {
+		return true
+	}
+	if matchAny(m.interfaceNames, []string{
+		aci.String(obj, "dn"),
+		aci.String(obj, "rn"),
+		aci.String(obj, "id"),
+		aci.String(obj, "name"),
+		aci.String(obj, "ifId"),
+		aci.String(obj, "ifName"),
+		aci.String(obj, "interfaceName"),
+	}, normalizeACIInterfaceName) {
+		return true
+	}
+	text := aci.SearchText(obj)
+	for needle := range m.textNeedles {
+		if strings.Contains(text, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func aciObjectIncludePredicate(filters ACITargetFilters, selector deviceSelectionMatcher) func(aci.Object) bool {
+	targets := newACITargetMatcher(filters)
+	if targets.empty() && selector.empty() {
+		return nil
+	}
+	return func(obj aci.Object) bool {
+		return targets.allows(obj) && selector.allows(aciObjectIdentity(obj))
+	}
+}
+
+// aciEndpointIncludePredicate keeps controller, fabric, pod, and site-level
+// health visible when a receiver also selects individual devices. Those
+// aggregate objects do not reliably carry leaf/spine identity and applying a
+// node, serial, or interface selector would turn an enabled health group into
+// an empty result. Device- and object-scoped endpoint families retain the
+// intersection of the native ACI target and shared device selectors.
+func aciEndpointIncludePredicate(endpoint aciEndpoint, filters ACITargetFilters, selector deviceSelectionMatcher) func(aci.Object) bool {
+	if endpoint.group == "controller_health" || endpoint.objectType == "aci.pod" || endpoint.objectType == "aci.fabric_health" {
+		return nil
+	}
+	return aciObjectIncludePredicate(filters, selector)
+}
+
 func filterACIObjects(objects []aci.Object, filters ACITargetFilters) []aci.Object {
-	needles := makeFilterNeedles(filters.Sites, filters.Fabrics, filters.NodeIDs, filters.Serials, filters.Tenants, filters.VRFs, filters.BridgeDomains, filters.EPGs, filters.InterfaceNames)
-	if len(needles) == 0 {
+	matcher := newACITargetMatcher(filters)
+	if matcher.empty() {
 		return objects
 	}
 	filtered := make([]aci.Object, 0, len(objects))
 	for _, obj := range objects {
-		text := aci.SearchText(obj)
-		for needle := range needles {
-			if strings.Contains(text, needle) {
-				filtered = append(filtered, obj)
-				break
-			}
+		if matcher.allows(obj) {
+			filtered = append(filtered, obj)
 		}
 	}
 	return filtered
+}
+
+func normalizeACINodeID(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if nodeID := nodeIDFromACIDN(value); nodeID != "" {
+		return nodeID
+	}
+	return strings.TrimPrefix(value, "node-")
+}
+
+func normalizeACIInterfaceName(value string) string {
+	value = strings.TrimSpace(value)
+	if interfaceName := interfaceNameFromACIDN(value); interfaceName != "" {
+		value = interfaceName
+	}
+	return strings.ToLower(strings.TrimSpace(strings.Trim(value, "[]")))
 }
 
 func aciObjectStatus(obj aci.Object) string {
@@ -945,12 +1115,53 @@ func recordACINumeric(rb *resourceMetricsBuilder, obj aci.Object, key, name, des
 	rb.recordDouble(name, description, unit, value, attrs)
 }
 
+func recordACIAbsoluteSumInt(rb *resourceMetricsBuilder, obj aci.Object, key, name, description, unit string, attrs map[string]string) {
+	value, ok := aci.Int64(obj, key)
+	if !ok || value < 0 {
+		return
+	}
+	rb.recordAbsoluteSumInt(name, description, unit, value, attrs)
+}
+
+func recordACISummedAbsoluteSumInt(rb *resourceMetricsBuilder, obj aci.Object, keys []string, name, description, unit string, attrs map[string]string) {
+	var total int64
+	found := false
+	for _, key := range keys {
+		value, ok := aci.Int64(obj, key)
+		if !ok {
+			continue
+		}
+		if value < 0 || total > math.MaxInt64-value {
+			return
+		}
+		total += value
+		found = true
+	}
+	if found {
+		rb.recordAbsoluteSumInt(name, description, unit, total, attrs)
+	}
+}
+
 func recordACIFirstNumeric(rb *resourceMetricsBuilder, obj aci.Object, keys []string, name, description, unit string, attrs map[string]string, multiplier float64) {
 	for _, key := range keys {
 		if _, ok := aci.Float64(obj, key); !ok {
 			continue
 		}
 		recordACINumeric(rb, obj, key, name, description, unit, attrs, multiplier)
+		return
+	}
+}
+
+func recordACIFirstPercentRatio(rb *resourceMetricsBuilder, obj aci.Object, keys []string, name, description string, attrs map[string]string) {
+	for _, key := range keys {
+		value, ok := aci.Float64(obj, key)
+		if !ok {
+			continue
+		}
+		if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 100 {
+			return
+		}
+		rb.recordDouble(name, description, "1", value/100, attrs)
 		return
 	}
 }
@@ -1015,13 +1226,22 @@ func aciNodeName(nodeID string) string {
 }
 
 func interfaceNameFromACIDN(value string) string {
+	value = strings.TrimSpace(value)
 	if value == "" {
 		return ""
 	}
-	if start := strings.Index(value, "phys-["); start >= 0 {
-		rest := value[start+len("phys-["):]
-		if end := strings.Index(rest, "]"); end >= 0 {
-			return rest[:end]
+	for _, marker := range []string{"phys-[", "aggr-[", "mgmt-["} {
+		if start := strings.Index(value, marker); start >= 0 {
+			rest := value[start+len(marker):]
+			if end := strings.Index(rest, "]"); end >= 0 {
+				return rest[:end]
+			}
+		}
+	}
+	trimmed := strings.Trim(value, "[]")
+	for _, prefix := range []string{"eth", "po", "mgmt"} {
+		if strings.HasPrefix(strings.ToLower(trimmed), prefix) {
+			return trimmed
 		}
 	}
 	parts := strings.Split(value, "/")

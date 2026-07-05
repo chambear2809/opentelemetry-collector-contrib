@@ -90,7 +90,7 @@ func EstablishDeviceConnection(ctx context.Context, device DeviceConfig, timeout
 		return nil, fmt.Errorf("failed to build auth methods: %w", err)
 	}
 
-	hostKeyCallback, err := buildHostKeyCallback(device.Auth, logger)
+	hostKeyCallback, err := buildHostKeyCallback(device.Auth)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build host key callback: %w", err)
 	}
@@ -149,7 +149,7 @@ func EstablishDeviceConnection(ctx context.Context, device DeviceConfig, timeout
 
 // buildHostKeyCallback returns an SSH HostKeyCallback based on the auth config.
 // Requires either KnownHostsFile or InsecureSkipVerify to be set.
-func buildHostKeyCallback(auth AuthConfig, logger *zap.Logger) (cryptossh.HostKeyCallback, error) {
+func buildHostKeyCallback(auth AuthConfig) (cryptossh.HostKeyCallback, error) {
 	if auth.KnownHostsFile != "" {
 		cb, err := knownhosts.New(auth.KnownHostsFile)
 		if err != nil {
@@ -158,7 +158,6 @@ func buildHostKeyCallback(auth AuthConfig, logger *zap.Logger) (cryptossh.HostKe
 		return cb, nil
 	}
 	if auth.InsecureSkipVerify {
-		logger.Warn("SSH host key verification is disabled (insecure_skip_verify=true); this is insecure outside of isolated lab environments")
 		return cryptossh.InsecureIgnoreHostKey(), nil // #nosec G106
 	}
 	return nil, errors.New("SSH host key verification is not configured: set auth.known_hosts_file or set auth.insecure_skip_verify: true (lab only)")

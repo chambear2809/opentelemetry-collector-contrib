@@ -33,6 +33,7 @@ func createDefaultConfig() component.Config {
 		MaxConnections:           defaultMaxConnections,
 		MaxConcurrentConversions: defaultMaxConcurrentConversions,
 		ConnectionTimeout:        defaultConnectionTimeout,
+		StreamIdleTimeout:        defaultStreamIdleTimeout,
 		Security: SecurityConfig{
 			RateLimiting: RateLimitingConfig{
 				Enabled:           false,

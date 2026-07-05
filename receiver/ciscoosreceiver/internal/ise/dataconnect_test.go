@@ -5,6 +5,7 @@ package ise
 
 import (
 	"context"
+	"crypto/x509"
 	"database/sql"
 	"database/sql/driver"
 	"io"
@@ -42,6 +43,43 @@ func TestNewDataConnectClientRejectsPlaintextCredentials(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, client)
 	assert.ErrorContains(t, err, "SSL must be enabled")
+}
+
+func TestDataConnectPingPromptsForExplicitSelfSignedLabOptIn(t *testing.T) {
+	cause := x509.UnknownAuthorityError{Cert: &x509.Certificate{}}
+	verified := &DataConnectClient{
+		db:        sql.OpenDB(pingErrorConnector{err: cause}),
+		sslVerify: true,
+	}
+	t.Cleanup(func() { require.NoError(t, verified.Close()) })
+
+	err := verified.Ping(t.Context())
+	require.ErrorIs(t, err, cause)
+	assert.ErrorContains(t, err, "configure ise.data_connect.wallet_dir with the issuing CA (preferred)")
+	assert.ErrorContains(t, err, "set ise.data_connect.ssl_verify: false only for an isolated lab")
+
+	lab := &DataConnectClient{
+		db:        sql.OpenDB(pingErrorConnector{err: cause}),
+		sslVerify: false,
+	}
+	t.Cleanup(func() { require.NoError(t, lab.Close()) })
+	assert.ErrorIs(t, lab.Ping(t.Context()), cause)
+}
+
+func TestDataConnectQueryPromptsForExplicitSelfSignedLabOptIn(t *testing.T) {
+	cause := x509.UnknownAuthorityError{Cert: &x509.Certificate{}}
+	client := &DataConnectClient{
+		db:        sql.OpenDB(pingErrorConnector{err: cause}),
+		rowLimit:  10,
+		sslVerify: true,
+	}
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
+
+	objects, err := client.QueryView(t.Context(), DataConnectView{Name: "NODE_LIST"})
+	assert.Empty(t, objects)
+	require.ErrorIs(t, err, cause)
+	assert.ErrorContains(t, err, "configure ise.data_connect.wallet_dir with the issuing CA (preferred)")
+	assert.ErrorContains(t, err, "set ise.data_connect.ssl_verify: false only for an isolated lab")
 }
 
 func TestDataConnectQueryViewRejectsExcessiveColumnCount(t *testing.T) {
@@ -102,6 +140,18 @@ type captureConnector struct {
 	query string
 	args  []driver.NamedValue
 	rows  driver.Rows
+}
+
+type pingErrorConnector struct {
+	err error
+}
+
+func (c pingErrorConnector) Connect(context.Context) (driver.Conn, error) {
+	return nil, c.err
+}
+
+func (pingErrorConnector) Driver() driver.Driver {
+	return captureDriver{}
 }
 
 func (c *captureConnector) Connect(context.Context) (driver.Conn, error) {

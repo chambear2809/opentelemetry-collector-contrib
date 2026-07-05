@@ -297,6 +297,20 @@ func TestClientSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {
 	}))
 	defer server.Close()
 
+	verifiedClient, err := NewClient(Config{
+		Endpoint:   server.URL,
+		Username:   "admin",
+		Password:   "password",
+		MaxRetries: 3,
+	})
+	require.NoError(t, err)
+	verifiedAttempts := 0
+	verifiedClient.OnRequest = func(RequestStat) { verifiedAttempts++ }
+	_, err = verifiedClient.GetObject(t.Context(), "deployment.primary", "/api/v1/deployment/primary", nil)
+	require.ErrorContains(t, err, "configure ise.ca_file with the issuing CA (preferred)")
+	require.ErrorContains(t, err, "set ise.insecure_skip_verify: true")
+	assert.Equal(t, 1, verifiedAttempts)
+
 	client, err := NewClient(Config{
 		Endpoint:           server.URL,
 		Username:           "admin",

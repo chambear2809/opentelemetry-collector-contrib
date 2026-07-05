@@ -8,6 +8,7 @@ yang_grpc/default:
   max_concurrent_streams: 64
   max_concurrent_streams_per_client: 16
   max_recv_msg_size_mib: 4
+  stream_idle_timeout: 5m
   security:
     rate_limiting:
       burst_size: 10
@@ -42,6 +43,7 @@ yang_grpc/production:
   max_concurrent_streams: 64
   max_concurrent_streams_per_client: 16
   max_recv_msg_size_mib: 4
+  stream_idle_timeout: 5m
 
   # Keep-Alive Configuration
   keepalive:

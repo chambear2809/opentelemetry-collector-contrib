@@ -415,3 +415,27 @@ func TestCacheRetainedEstimatorsChargeSparseBucketsAndKeyedTombstoneTrie(t *test
 	require.ErrorAs(t, err, &capacity)
 	assert.Equal(t, keyedBytes, capacity.RequestedRetainedBytes)
 }
+
+func TestTombstoneRetainedEstimatorChargesCompositeScopeKey(t *testing.T) {
+	path := Path{
+		Target:     "configured-target",
+		PathTarget: "wire-path-target",
+		Origin:     "openconfig",
+		Elements:   []PathElem{{Name: "system"}},
+	}
+	scopeKey := tombstoneScopeKey(path.Target, path.PathTarget)
+	assert.Equal(t, retainedStringBytes(scopeKey), estimateTombstoneScopeKeyRetainedBytes(path))
+
+	key := path.Key()
+	withoutScopeKey := retainedCacheMapEntryBytes + retainedStringBytes(key)
+	withoutScopeKey = saturatingRetainedByteAdd(withoutScopeKey, estimatePathRetainedBytes(path))
+	withoutScopeKey = saturatingRetainedByteAdd(
+		withoutScopeKey,
+		retainedTombstoneRootIndexBytes+retainedTombstonePathElementBytes,
+	)
+	assert.Equal(
+		t,
+		saturatingRetainedByteAdd(withoutScopeKey, retainedStringBytes(scopeKey)),
+		estimateTombstoneRetainedBytes(key, path),
+	)
+}

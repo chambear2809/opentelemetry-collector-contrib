@@ -54,16 +54,6 @@ func TestMetricsBuilderConfig(t *testing.T) {
 						AggregationStrategy: AggregationStrategyAvg,
 						EnabledAttributes:   []CiscoInterfaceUtilizationMetricAttributeKey{CiscoInterfaceUtilizationMetricAttributeKeyNetworkIoDirection, CiscoInterfaceUtilizationMetricAttributeKeyNetworkInterfaceName},
 					},
-					CiscoOpticsChromaticDispersion: CiscoOpticsChromaticDispersionMetricConfig{
-						Enabled:             true,
-						AggregationStrategy: AggregationStrategyAvg,
-						EnabledAttributes:   []CiscoOpticsChromaticDispersionMetricAttributeKey{CiscoOpticsChromaticDispersionMetricAttributeKeyNetworkInterfaceName, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsLane, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsExperimental},
-					},
-					CiscoOpticsDgd: CiscoOpticsDgdMetricConfig{
-						Enabled:             true,
-						AggregationStrategy: AggregationStrategyAvg,
-						EnabledAttributes:   []CiscoOpticsDgdMetricAttributeKey{CiscoOpticsDgdMetricAttributeKeyNetworkInterfaceName, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsLane, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsExperimental},
-					},
 					CiscoOpticsEsnr: CiscoOpticsEsnrMetricConfig{
 						Enabled:             true,
 						AggregationStrategy: AggregationStrategyAvg,
@@ -74,11 +64,6 @@ func TestMetricsBuilderConfig(t *testing.T) {
 						AggregationStrategy: AggregationStrategyAvg,
 						EnabledAttributes:   []CiscoOpticsLaserBiasCurrentMetricAttributeKey{CiscoOpticsLaserBiasCurrentMetricAttributeKeyNetworkInterfaceName, CiscoOpticsLaserBiasCurrentMetricAttributeKeyCiscoOpticsLane, CiscoOpticsLaserBiasCurrentMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsLaserBiasCurrentMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsLaserBiasCurrentMetricAttributeKeyCiscoOpticsExperimental},
 					},
-					CiscoOpticsOsnr: CiscoOpticsOsnrMetricConfig{
-						Enabled:             true,
-						AggregationStrategy: AggregationStrategyAvg,
-						EnabledAttributes:   []CiscoOpticsOsnrMetricAttributeKey{CiscoOpticsOsnrMetricAttributeKeyNetworkInterfaceName, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsLane, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsExperimental},
-					},
 					CiscoOpticsPreFecBer: CiscoOpticsPreFecBerMetricConfig{
 						Enabled:             true,
 						AggregationStrategy: AggregationStrategyAvg,
@@ -88,16 +73,6 @@ func TestMetricsBuilderConfig(t *testing.T) {
 						Enabled:             true,
 						AggregationStrategy: AggregationStrategyAvg,
 						EnabledAttributes:   []CiscoOpticsPresentMetricAttributeKey{CiscoOpticsPresentMetricAttributeKeyNetworkInterfaceName, CiscoOpticsPresentMetricAttributeKeyCiscoOpticsLane, CiscoOpticsPresentMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsPresentMetricAttributeKeyCiscoOpticsExperimental},
-					},
-					CiscoOpticsQFactor: CiscoOpticsQFactorMetricConfig{
-						Enabled:             true,
-						AggregationStrategy: AggregationStrategyAvg,
-						EnabledAttributes:   []CiscoOpticsQFactorMetricAttributeKey{CiscoOpticsQFactorMetricAttributeKeyNetworkInterfaceName, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsLane, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsExperimental},
-					},
-					CiscoOpticsQMargin: CiscoOpticsQMarginMetricConfig{
-						Enabled:             true,
-						AggregationStrategy: AggregationStrategyAvg,
-						EnabledAttributes:   []CiscoOpticsQMarginMetricAttributeKey{CiscoOpticsQMarginMetricAttributeKeyNetworkInterfaceName, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsLane, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsExperimental},
 					},
 					CiscoOpticsRxPower: CiscoOpticsRxPowerMetricConfig{
 						Enabled:             true,
@@ -135,10 +110,14 @@ func TestMetricsBuilderConfig(t *testing.T) {
 						EnabledAttributes:   []CiscoOpticsVoltageMetricAttributeKey{CiscoOpticsVoltageMetricAttributeKeyNetworkInterfaceName, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsLane, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsExperimental},
 					},
 					SystemCPUUtilization: SystemCPUUtilizationMetricConfig{
-						Enabled: true,
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []SystemCPUUtilizationMetricAttributeKey{SystemCPUUtilizationMetricAttributeKeyCiscoNodeName},
 					},
 					SystemMemoryUtilization: SystemMemoryUtilizationMetricConfig{
-						Enabled: true,
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []SystemMemoryUtilizationMetricAttributeKey{SystemMemoryUtilizationMetricAttributeKeyCiscoLocationFru, SystemMemoryUtilizationMetricAttributeKeyCiscoLocationSlot, SystemMemoryUtilizationMetricAttributeKeyCiscoLocationBay, SystemMemoryUtilizationMetricAttributeKeyCiscoLocationChassis},
 					},
 					SystemNetworkErrors: SystemNetworkErrorsMetricConfig{
 						Enabled:             true,
@@ -172,12 +151,16 @@ func TestMetricsBuilderConfig(t *testing.T) {
 				ResourceAttributes: ResourceAttributesConfig{
 					CiscoOsName:             ResourceAttributeConfig{Enabled: true},
 					CiscoPlatformFamily:     ResourceAttributeConfig{Enabled: true},
+					CiscoProductFamily:      ResourceAttributeConfig{Enabled: true},
 					CiscoTelemetryTransport: ResourceAttributeConfig{Enabled: true},
+					DeviceManufacturer:      ResourceAttributeConfig{Enabled: true},
+					DeviceModelIdentifier:   ResourceAttributeConfig{Enabled: true},
 					HostID:                  ResourceAttributeConfig{Enabled: true},
 					HostIP:                  ResourceAttributeConfig{Enabled: true},
 					HostName:                ResourceAttributeConfig{Enabled: true},
 					HwType:                  ResourceAttributeConfig{Enabled: true},
 					OsName:                  ResourceAttributeConfig{Enabled: true},
+					OsVersion:               ResourceAttributeConfig{Enabled: true},
 				},
 			},
 		},
@@ -213,16 +196,6 @@ func TestMetricsBuilderConfig(t *testing.T) {
 						AggregationStrategy: AggregationStrategyAvg,
 						EnabledAttributes:   []CiscoInterfaceUtilizationMetricAttributeKey{CiscoInterfaceUtilizationMetricAttributeKeyNetworkIoDirection, CiscoInterfaceUtilizationMetricAttributeKeyNetworkInterfaceName},
 					},
-					CiscoOpticsChromaticDispersion: CiscoOpticsChromaticDispersionMetricConfig{
-						Enabled:             false,
-						AggregationStrategy: AggregationStrategyAvg,
-						EnabledAttributes:   []CiscoOpticsChromaticDispersionMetricAttributeKey{CiscoOpticsChromaticDispersionMetricAttributeKeyNetworkInterfaceName, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsLane, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsExperimental},
-					},
-					CiscoOpticsDgd: CiscoOpticsDgdMetricConfig{
-						Enabled:             false,
-						AggregationStrategy: AggregationStrategyAvg,
-						EnabledAttributes:   []CiscoOpticsDgdMetricAttributeKey{CiscoOpticsDgdMetricAttributeKeyNetworkInterfaceName, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsLane, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsExperimental},
-					},
 					CiscoOpticsEsnr: CiscoOpticsEsnrMetricConfig{
 						Enabled:             false,
 						AggregationStrategy: AggregationStrategyAvg,
@@ -233,11 +206,6 @@ func TestMetricsBuilderConfig(t *testing.T) {
 						AggregationStrategy: AggregationStrategyAvg,
 						EnabledAttributes:   []CiscoOpticsLaserBiasCurrentMetricAttributeKey{CiscoOpticsLaserBiasCurrentMetricAttributeKeyNetworkInterfaceName, CiscoOpticsLaserBiasCurrentMetricAttributeKeyCiscoOpticsLane, CiscoOpticsLaserBiasCurrentMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsLaserBiasCurrentMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsLaserBiasCurrentMetricAttributeKeyCiscoOpticsExperimental},
 					},
-					CiscoOpticsOsnr: CiscoOpticsOsnrMetricConfig{
-						Enabled:             false,
-						AggregationStrategy: AggregationStrategyAvg,
-						EnabledAttributes:   []CiscoOpticsOsnrMetricAttributeKey{CiscoOpticsOsnrMetricAttributeKeyNetworkInterfaceName, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsLane, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsExperimental},
-					},
 					CiscoOpticsPreFecBer: CiscoOpticsPreFecBerMetricConfig{
 						Enabled:             false,
 						AggregationStrategy: AggregationStrategyAvg,
@@ -247,16 +215,6 @@ func TestMetricsBuilderConfig(t *testing.T) {
 						Enabled:             false,
 						AggregationStrategy: AggregationStrategyAvg,
 						EnabledAttributes:   []CiscoOpticsPresentMetricAttributeKey{CiscoOpticsPresentMetricAttributeKeyNetworkInterfaceName, CiscoOpticsPresentMetricAttributeKeyCiscoOpticsLane, CiscoOpticsPresentMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsPresentMetricAttributeKeyCiscoOpticsExperimental},
-					},
-					CiscoOpticsQFactor: CiscoOpticsQFactorMetricConfig{
-						Enabled:             false,
-						AggregationStrategy: AggregationStrategyAvg,
-						EnabledAttributes:   []CiscoOpticsQFactorMetricAttributeKey{CiscoOpticsQFactorMetricAttributeKeyNetworkInterfaceName, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsLane, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsExperimental},
-					},
-					CiscoOpticsQMargin: CiscoOpticsQMarginMetricConfig{
-						Enabled:             false,
-						AggregationStrategy: AggregationStrategyAvg,
-						EnabledAttributes:   []CiscoOpticsQMarginMetricAttributeKey{CiscoOpticsQMarginMetricAttributeKeyNetworkInterfaceName, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsLane, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsExperimental},
 					},
 					CiscoOpticsRxPower: CiscoOpticsRxPowerMetricConfig{
 						Enabled:             false,
@@ -294,10 +252,14 @@ func TestMetricsBuilderConfig(t *testing.T) {
 						EnabledAttributes:   []CiscoOpticsVoltageMetricAttributeKey{CiscoOpticsVoltageMetricAttributeKeyNetworkInterfaceName, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsLane, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsExperimental},
 					},
 					SystemCPUUtilization: SystemCPUUtilizationMetricConfig{
-						Enabled: false,
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []SystemCPUUtilizationMetricAttributeKey{SystemCPUUtilizationMetricAttributeKeyCiscoNodeName},
 					},
 					SystemMemoryUtilization: SystemMemoryUtilizationMetricConfig{
-						Enabled: false,
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []SystemMemoryUtilizationMetricAttributeKey{SystemMemoryUtilizationMetricAttributeKeyCiscoLocationFru, SystemMemoryUtilizationMetricAttributeKeyCiscoLocationSlot, SystemMemoryUtilizationMetricAttributeKeyCiscoLocationBay, SystemMemoryUtilizationMetricAttributeKeyCiscoLocationChassis},
 					},
 					SystemNetworkErrors: SystemNetworkErrorsMetricConfig{
 						Enabled:             false,
@@ -331,12 +293,16 @@ func TestMetricsBuilderConfig(t *testing.T) {
 				ResourceAttributes: ResourceAttributesConfig{
 					CiscoOsName:             ResourceAttributeConfig{Enabled: false},
 					CiscoPlatformFamily:     ResourceAttributeConfig{Enabled: false},
+					CiscoProductFamily:      ResourceAttributeConfig{Enabled: false},
 					CiscoTelemetryTransport: ResourceAttributeConfig{Enabled: false},
+					DeviceManufacturer:      ResourceAttributeConfig{Enabled: false},
+					DeviceModelIdentifier:   ResourceAttributeConfig{Enabled: false},
 					HostID:                  ResourceAttributeConfig{Enabled: false},
 					HostIP:                  ResourceAttributeConfig{Enabled: false},
 					HostName:                ResourceAttributeConfig{Enabled: false},
 					HwType:                  ResourceAttributeConfig{Enabled: false},
 					OsName:                  ResourceAttributeConfig{Enabled: false},
+					OsVersion:               ResourceAttributeConfig{Enabled: false},
 				},
 			},
 		},
@@ -344,7 +310,7 @@ func TestMetricsBuilderConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := loadMetricsBuilderConfig(t, tt.name)
-			diff := cmp.Diff(tt.want, cfg, cmpopts.IgnoreUnexported(CiscoDeviceUpMetricConfig{}, CiscoInterfaceAdminStatusMetricConfig{}, CiscoInterfaceIoRateMetricConfig{}, CiscoInterfacePacketRateMetricConfig{}, CiscoInterfaceSpeedMetricConfig{}, CiscoInterfaceUtilizationMetricConfig{}, CiscoOpticsChromaticDispersionMetricConfig{}, CiscoOpticsDgdMetricConfig{}, CiscoOpticsEsnrMetricConfig{}, CiscoOpticsLaserBiasCurrentMetricConfig{}, CiscoOpticsOsnrMetricConfig{}, CiscoOpticsPreFecBerMetricConfig{}, CiscoOpticsPresentMetricConfig{}, CiscoOpticsQFactorMetricConfig{}, CiscoOpticsQMarginMetricConfig{}, CiscoOpticsRxPowerMetricConfig{}, CiscoOpticsTdecqMetricConfig{}, CiscoOpticsTecCurrentMetricConfig{}, CiscoOpticsTecUtilizationMetricConfig{}, CiscoOpticsTemperatureMetricConfig{}, CiscoOpticsTxPowerMetricConfig{}, CiscoOpticsVoltageMetricConfig{}, SystemCPUUtilizationMetricConfig{}, SystemMemoryUtilizationMetricConfig{}, SystemNetworkErrorsMetricConfig{}, SystemNetworkInterfaceStatusMetricConfig{}, SystemNetworkIoMetricConfig{}, SystemNetworkPacketCountMetricConfig{}, SystemNetworkPacketDroppedMetricConfig{}, SystemUptimeMetricConfig{}, ResourceAttributeConfig{}))
+			diff := cmp.Diff(tt.want, cfg, cmpopts.IgnoreUnexported(CiscoDeviceUpMetricConfig{}, CiscoInterfaceAdminStatusMetricConfig{}, CiscoInterfaceIoRateMetricConfig{}, CiscoInterfacePacketRateMetricConfig{}, CiscoInterfaceSpeedMetricConfig{}, CiscoInterfaceUtilizationMetricConfig{}, CiscoOpticsEsnrMetricConfig{}, CiscoOpticsLaserBiasCurrentMetricConfig{}, CiscoOpticsPreFecBerMetricConfig{}, CiscoOpticsPresentMetricConfig{}, CiscoOpticsRxPowerMetricConfig{}, CiscoOpticsTdecqMetricConfig{}, CiscoOpticsTecCurrentMetricConfig{}, CiscoOpticsTecUtilizationMetricConfig{}, CiscoOpticsTemperatureMetricConfig{}, CiscoOpticsTxPowerMetricConfig{}, CiscoOpticsVoltageMetricConfig{}, SystemCPUUtilizationMetricConfig{}, SystemMemoryUtilizationMetricConfig{}, SystemNetworkErrorsMetricConfig{}, SystemNetworkInterfaceStatusMetricConfig{}, SystemNetworkIoMetricConfig{}, SystemNetworkPacketCountMetricConfig{}, SystemNetworkPacketDroppedMetricConfig{}, SystemUptimeMetricConfig{}, ResourceAttributeConfig{}))
 			require.Emptyf(t, diff, "Config mismatch (-expected +actual):\n%s", diff)
 		})
 	}
@@ -410,30 +376,6 @@ func TestCiscoInterfaceUtilizationMetricsConfig_Validate(t *testing.T) {
 	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
 }
 
-func TestCiscoOpticsChromaticDispersionMetricsConfig_Validate(t *testing.T) {
-	cfg := DefaultMetricsConfig().CiscoOpticsChromaticDispersion
-	require.NoError(t, cfg.Validate())
-
-	cfg.EnabledAttributes = []CiscoOpticsChromaticDispersionMetricAttributeKey{"invalid"}
-	require.ErrorContains(t, cfg.Validate(), "metric cisco.optics.chromatic_dispersion doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]")
-
-	cfg = DefaultMetricsConfig().CiscoOpticsChromaticDispersion
-	cfg.AggregationStrategy = "invalid"
-	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
-}
-
-func TestCiscoOpticsDgdMetricsConfig_Validate(t *testing.T) {
-	cfg := DefaultMetricsConfig().CiscoOpticsDgd
-	require.NoError(t, cfg.Validate())
-
-	cfg.EnabledAttributes = []CiscoOpticsDgdMetricAttributeKey{"invalid"}
-	require.ErrorContains(t, cfg.Validate(), "metric cisco.optics.dgd doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]")
-
-	cfg = DefaultMetricsConfig().CiscoOpticsDgd
-	cfg.AggregationStrategy = "invalid"
-	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
-}
-
 func TestCiscoOpticsEsnrMetricsConfig_Validate(t *testing.T) {
 	cfg := DefaultMetricsConfig().CiscoOpticsEsnr
 	require.NoError(t, cfg.Validate())
@@ -458,18 +400,6 @@ func TestCiscoOpticsLaserBiasCurrentMetricsConfig_Validate(t *testing.T) {
 	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
 }
 
-func TestCiscoOpticsOsnrMetricsConfig_Validate(t *testing.T) {
-	cfg := DefaultMetricsConfig().CiscoOpticsOsnr
-	require.NoError(t, cfg.Validate())
-
-	cfg.EnabledAttributes = []CiscoOpticsOsnrMetricAttributeKey{"invalid"}
-	require.ErrorContains(t, cfg.Validate(), "metric cisco.optics.osnr doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]")
-
-	cfg = DefaultMetricsConfig().CiscoOpticsOsnr
-	cfg.AggregationStrategy = "invalid"
-	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
-}
-
 func TestCiscoOpticsPreFecBerMetricsConfig_Validate(t *testing.T) {
 	cfg := DefaultMetricsConfig().CiscoOpticsPreFecBer
 	require.NoError(t, cfg.Validate())
@@ -490,30 +420,6 @@ func TestCiscoOpticsPresentMetricsConfig_Validate(t *testing.T) {
 	require.ErrorContains(t, cfg.Validate(), "metric cisco.optics.present doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.profile, cisco.optics.experimental]")
 
 	cfg = DefaultMetricsConfig().CiscoOpticsPresent
-	cfg.AggregationStrategy = "invalid"
-	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
-}
-
-func TestCiscoOpticsQFactorMetricsConfig_Validate(t *testing.T) {
-	cfg := DefaultMetricsConfig().CiscoOpticsQFactor
-	require.NoError(t, cfg.Validate())
-
-	cfg.EnabledAttributes = []CiscoOpticsQFactorMetricAttributeKey{"invalid"}
-	require.ErrorContains(t, cfg.Validate(), "metric cisco.optics.q_factor doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]")
-
-	cfg = DefaultMetricsConfig().CiscoOpticsQFactor
-	cfg.AggregationStrategy = "invalid"
-	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
-}
-
-func TestCiscoOpticsQMarginMetricsConfig_Validate(t *testing.T) {
-	cfg := DefaultMetricsConfig().CiscoOpticsQMargin
-	require.NoError(t, cfg.Validate())
-
-	cfg.EnabledAttributes = []CiscoOpticsQMarginMetricAttributeKey{"invalid"}
-	require.ErrorContains(t, cfg.Validate(), "metric cisco.optics.q_margin doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]")
-
-	cfg = DefaultMetricsConfig().CiscoOpticsQMargin
 	cfg.AggregationStrategy = "invalid"
 	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
 }
@@ -602,6 +508,30 @@ func TestCiscoOpticsVoltageMetricsConfig_Validate(t *testing.T) {
 	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
 }
 
+func TestSystemCPUUtilizationMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().SystemCPUUtilization
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []SystemCPUUtilizationMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric system.cpu.utilization doesn't have an attribute invalid, valid attributes: [cisco.node.name]")
+
+	cfg = DefaultMetricsConfig().SystemCPUUtilization
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestSystemMemoryUtilizationMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().SystemMemoryUtilization
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []SystemMemoryUtilizationMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric system.memory.utilization doesn't have an attribute invalid, valid attributes: [cisco.location.fru, cisco.location.slot, cisco.location.bay, cisco.location.chassis]")
+
+	cfg = DefaultMetricsConfig().SystemMemoryUtilization
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
 func TestSystemNetworkErrorsMetricsConfig_Validate(t *testing.T) {
 	cfg := DefaultMetricsConfig().SystemNetworkErrors
 	require.NoError(t, cfg.Validate())
@@ -686,12 +616,16 @@ func TestResourceAttributesConfig(t *testing.T) {
 			want: ResourceAttributesConfig{
 				CiscoOsName:             ResourceAttributeConfig{Enabled: true},
 				CiscoPlatformFamily:     ResourceAttributeConfig{Enabled: true},
+				CiscoProductFamily:      ResourceAttributeConfig{Enabled: true},
 				CiscoTelemetryTransport: ResourceAttributeConfig{Enabled: true},
+				DeviceManufacturer:      ResourceAttributeConfig{Enabled: true},
+				DeviceModelIdentifier:   ResourceAttributeConfig{Enabled: true},
 				HostID:                  ResourceAttributeConfig{Enabled: true},
 				HostIP:                  ResourceAttributeConfig{Enabled: true},
 				HostName:                ResourceAttributeConfig{Enabled: true},
 				HwType:                  ResourceAttributeConfig{Enabled: true},
 				OsName:                  ResourceAttributeConfig{Enabled: true},
+				OsVersion:               ResourceAttributeConfig{Enabled: true},
 			},
 		},
 		{
@@ -699,12 +633,16 @@ func TestResourceAttributesConfig(t *testing.T) {
 			want: ResourceAttributesConfig{
 				CiscoOsName:             ResourceAttributeConfig{Enabled: false},
 				CiscoPlatformFamily:     ResourceAttributeConfig{Enabled: false},
+				CiscoProductFamily:      ResourceAttributeConfig{Enabled: false},
 				CiscoTelemetryTransport: ResourceAttributeConfig{Enabled: false},
+				DeviceManufacturer:      ResourceAttributeConfig{Enabled: false},
+				DeviceModelIdentifier:   ResourceAttributeConfig{Enabled: false},
 				HostID:                  ResourceAttributeConfig{Enabled: false},
 				HostIP:                  ResourceAttributeConfig{Enabled: false},
 				HostName:                ResourceAttributeConfig{Enabled: false},
 				HwType:                  ResourceAttributeConfig{Enabled: false},
 				OsName:                  ResourceAttributeConfig{Enabled: false},
+				OsVersion:               ResourceAttributeConfig{Enabled: false},
 			},
 		},
 	}

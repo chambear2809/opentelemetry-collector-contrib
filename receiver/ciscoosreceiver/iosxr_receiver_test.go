@@ -140,12 +140,13 @@ func TestIOSXRDialInReceiverPollWaitsForInitialSync(t *testing.T) {
 }
 
 func TestIOSXRDialInReceiverOnceRequiresCleanEOF(t *testing.T) {
+	const remoteStatusMessage = "device-echoed password=legacy-runtime-secret"
 	fake := &fakeGNMIServer{
 		caps: &gnmi.CapabilityResponse{
 			SupportedModels:    []*gnmi.ModelData{{Name: "openconfig-interfaces"}},
 			SupportedEncodings: []gnmi.Encoding{gnmi.Encoding_JSON_IETF},
 		},
-		afterSyncErr: status.Error(codes.PermissionDenied, "post-sync authorization failure"),
+		afterSyncErr: status.Error(codes.PermissionDenied, remoteStatusMessage),
 	}
 	endpoint := startFakeGNMIServer(t, fake)
 
@@ -172,6 +173,9 @@ func TestIOSXRDialInReceiverOnceRequiresCleanEOF(t *testing.T) {
 	err := receiver.subscribeTarget(t.Context(), target)
 	require.Error(t, err)
 	assert.Equal(t, codes.PermissionDenied, status.Code(err))
+	assert.ErrorContains(t, err, "code=PermissionDenied")
+	assert.NotContains(t, err.Error(), "device-echoed")
+	assert.NotContains(t, err.Error(), "legacy-runtime-secret")
 }
 
 func TestIOSXRDialInReceiverReturnsConsumerRefusal(t *testing.T) {

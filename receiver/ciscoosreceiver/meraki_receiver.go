@@ -9,6 +9,7 @@ import (
 	"maps"
 	"math"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -55,15 +56,29 @@ type merakiTarget struct {
 	ProductTypes   []string
 	Tags           []string
 	TagsFilterType string
+
+	filters                []merakiTargetFilter
+	explicitSerials        []string
+	selectAll              bool
+	unionRequiresInventory bool
+}
+
+type merakiTargetFilter struct {
+	NetworkIDs     []string
+	Serials        []string
+	ProductTypes   []string
+	Tags           []string
+	TagsFilterType string
 }
 
 func newMerakiMetricsReceiver(set receiver.Settings, conf *Config, consumer consumer.Metrics) (*merakiMetricsReceiver, error) {
 	client, err := meraki.NewClient(meraki.Config{
-		APIKey:     string(conf.Meraki.Auth.APIKey),
-		BaseURL:    conf.Meraki.BaseURL,
-		UserAgent:  conf.Meraki.UserAgent,
-		Timeout:    conf.Timeout,
-		MaxRetries: conf.Meraki.MaxRetries,
+		APIKey:             string(conf.Meraki.Auth.APIKey),
+		BaseURL:            conf.Meraki.BaseURL,
+		UserAgent:          conf.Meraki.UserAgent,
+		Timeout:            conf.Timeout,
+		MaxRetries:         conf.Meraki.MaxRetries,
+		InsecureSkipVerify: conf.Meraki.InsecureSkipVerify,
 	})
 	if err != nil {
 		return nil, err
@@ -87,21 +102,25 @@ func normalizeMerakiTargets(cfg MerakiConfig) []merakiTarget {
 	byOrganization := make(map[string]merakiTarget, len(cfg.Organizations)+len(cfg.Devices))
 	for i := range cfg.Organizations {
 		org := &cfg.Organizations[i]
-		target := byOrganization[org.OrganizationID]
-		target.OrganizationID = org.OrganizationID
-		target.NetworkIDs = uniqueStrings(append(target.NetworkIDs, org.NetworkIDs...))
-		target.Serials = uniqueStrings(append(target.Serials, org.Serials...))
-		target.ProductTypes = uniqueStrings(append(target.ProductTypes, org.ProductTypes...))
-		target.Tags = uniqueStrings(append(target.Tags, org.Tags...))
-		target.TagsFilterType = firstNonEmpty(target.TagsFilterType, org.TagsFilterType)
-		byOrganization[org.OrganizationID] = target
+		organizationID := strings.TrimSpace(org.OrganizationID)
+		target := byOrganization[organizationID]
+		target.OrganizationID = organizationID
+		target.filters = append(target.filters, merakiTargetFilter{
+			NetworkIDs:     uniqueStrings(org.NetworkIDs),
+			Serials:        uniqueStrings(org.Serials),
+			ProductTypes:   uniqueStrings(org.ProductTypes),
+			Tags:           uniqueStrings(org.Tags),
+			TagsFilterType: org.TagsFilterType,
+		})
+		byOrganization[organizationID] = target
 	}
 
 	for _, device := range cfg.Devices {
-		target := byOrganization[device.OrganizationID]
-		target.OrganizationID = device.OrganizationID
-		target.Serials = uniqueStrings(append(target.Serials, device.Serial))
-		byOrganization[device.OrganizationID] = target
+		organizationID := strings.TrimSpace(device.OrganizationID)
+		target := byOrganization[organizationID]
+		target.OrganizationID = organizationID
+		target.explicitSerials = uniqueStrings(append(target.explicitSerials, device.Serial))
+		byOrganization[organizationID] = target
 	}
 	orgs := make([]string, 0, len(byOrganization))
 	for orgID := range byOrganization {
@@ -110,9 +129,65 @@ func normalizeMerakiTargets(cfg MerakiConfig) []merakiTarget {
 	sort.Strings(orgs)
 	targets := make([]merakiTarget, 0, len(orgs))
 	for _, orgID := range orgs {
-		targets = append(targets, byOrganization[orgID])
+		target := byOrganization[orgID]
+		target.configureQueryScope()
+		targets = append(targets, target)
 	}
 	return targets
+}
+
+func (t *merakiTarget) configureQueryScope() {
+	for _, filter := range t.filters {
+		if filter.empty() {
+			t.selectAll = true
+			return
+		}
+	}
+
+	allSerialOnly := len(t.filters) > 0
+	for _, filter := range t.filters {
+		if !filter.serialOnly() {
+			allSerialOnly = false
+			break
+		}
+	}
+	if allSerialOnly {
+		serials := append([]string(nil), t.explicitSerials...)
+		for _, filter := range t.filters {
+			serials = append(serials, filter.Serials...)
+		}
+		t.Serials = uniqueStrings(serials)
+		return
+	}
+
+	if len(t.filters) == 1 && len(t.explicitSerials) == 0 {
+		filter := t.filters[0]
+		t.NetworkIDs = filter.NetworkIDs
+		t.Serials = filter.Serials
+		t.ProductTypes = filter.ProductTypes
+		t.Tags = filter.Tags
+		t.TagsFilterType = filter.TagsFilterType
+		return
+	}
+
+	if len(t.filters) == 0 {
+		t.Serials = append([]string(nil), t.explicitSerials...)
+		return
+	}
+
+	// A union of filtered organization targets and/or explicit device targets
+	// cannot be represented as one Dashboard query because query fields are
+	// intersected. Fetch inventory broadly, resolve the union locally, then use
+	// its serial allowlist for every downstream endpoint.
+	t.unionRequiresInventory = true
+}
+
+func (f merakiTargetFilter) empty() bool {
+	return len(f.NetworkIDs) == 0 && len(f.Serials) == 0 && len(f.ProductTypes) == 0 && len(f.Tags) == 0
+}
+
+func (f merakiTargetFilter) serialOnly() bool {
+	return len(f.Serials) > 0 && len(f.NetworkIDs) == 0 && len(f.ProductTypes) == 0 && len(f.Tags) == 0
 }
 
 func (r *merakiMetricsReceiver) Start(_ context.Context, _ component.Host) error {
@@ -254,7 +329,8 @@ func (r *merakiMetricsReceiver) scrapeTarget(ctx context.Context, builder *merak
 	partial := false
 	selector := newDeviceSelectionMatcher(r.config.DeviceSelection)
 	allowedSerials := target.serialSet()
-	devices, err := meraki.GetPaginatedJSON[meraki.Device](ctx, r.client, target.OrganizationID, "devices", meraki.OrganizationPath(target.OrganizationID, "/devices"), target.inventoryQuery())
+	devices, err := meraki.GetPaginatedJSON[meraki.Device](ctx, r.client, target.OrganizationID, "devices", meraki.OrganizationPath(target.OrganizationID, "/devices"), target.deviceInventoryQuery())
+	inventorySucceeded := err == nil
 	if err != nil {
 		if ctx.Err() != nil {
 			return partial, ctx.Err()
@@ -265,23 +341,124 @@ func (r *merakiMetricsReceiver) scrapeTarget(ctx context.Context, builder *merak
 	inventorySerials := make(map[string]struct{}, len(devices))
 	for i := range devices {
 		device := &devices[i]
-		if device.Serial == "" {
+		if device.Serial == "" || !allowsSerial(allowedSerials, device.Serial) || !target.allowsInventoryMetadata(*device) {
 			continue
 		}
 		resource := deviceResourceFromInventory(*device)
-		if !selector.allows(merakiDeviceIdentity(resource)) {
-			continue
-		}
-		inventorySerials[device.Serial] = struct{}{}
+		// Device status contributes public IP identity, so defer shared selector
+		// evaluation until inventory and status resources have been merged.
 		builder.deviceResource(resource)
+		inventorySerials[device.Serial] = struct{}{}
 	}
-	if len(inventorySerials) > 0 {
+	if inventorySucceeded {
+		// Inventory is the authoritative intersection for network, product,
+		// tag, serial, and shared device selectors. Replacing the allowlist even
+		// when it is empty prevents a configured serial from reappearing through
+		// an endpoint that lacks one of those filters or identity fields.
 		allowedSerials = inventorySerials
-	} else if len(target.Serials) == 0 {
-		allowedSerials = map[string]struct{}{}
+	} else if target.requiresInventoryResolution(selector) {
+		// A serial-only target can still be enforced exactly when inventory is
+		// unavailable. Every other target scope needs inventory to translate its
+		// filters into a serial allowlist for organization-wide endpoints. Keep
+		// safely selected results from any pages returned before a later page
+		// failed, but never broaden beyond that partial allowlist.
+		allowedSerials = inventorySerials
+		if selector.empty() {
+			maps.Copy(allowedSerials, target.fallbackSerialSet())
+		}
+		if len(allowedSerials) == 0 {
+			return partial, nil
+		}
+	}
+	serialScoped := target.scoped(selector)
+	if serialScoped {
+		if len(allowedSerials) == 0 {
+			// Dynamic selectors are resolved through inventory. With no selected
+			// devices, querying organization-wide endpoints would only add load
+			// and risks collecting data outside the configured scope.
+			return partial, nil
+		}
 	}
 
-	if r.scrapeDeviceStatuses(ctx, builder, target, allowedSerials, selector) {
+	statuses, statusErr := meraki.GetPaginatedJSON[meraki.DeviceStatus](ctx, r.client, target.OrganizationID, "device_statuses", meraki.OrganizationPath(target.OrganizationID, "/devices/statuses"), target.deviceStatusQuery())
+	if statusErr != nil {
+		partial = true
+		r.settings.Logger.Warn("Meraki device status endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(statusErr))
+	}
+	statusSerials := make(map[string]struct{}, len(statuses))
+	for i := range statuses {
+		status := &statuses[i]
+		if status.Serial == "" || !allowsSerial(allowedSerials, status.Serial) {
+			continue
+		}
+		builder.deviceResource(deviceResourceFromStatus(*status))
+		statusSerials[status.Serial] = struct{}{}
+	}
+	uplinkStatuses, uplinkStatusErr := meraki.GetPaginatedJSON[meraki.UplinkStatus](ctx, r.client, target.OrganizationID, "uplink_statuses", meraki.OrganizationPath(target.OrganizationID, "/uplinks/statuses"), target.uplinkStatusQuery())
+	if uplinkStatusErr != nil {
+		partial = true
+		r.settings.Logger.Warn("Meraki uplink status endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(uplinkStatusErr))
+	}
+	uplinkStatusSerials := make(map[string]struct{}, len(uplinkStatuses))
+	for i := range uplinkStatuses {
+		status := &uplinkStatuses[i]
+		if status.Serial == "" || !allowsSerial(allowedSerials, status.Serial) {
+			continue
+		}
+		builder.deviceResource(deviceResourceFromUplinkStatus(*status))
+		uplinkStatusSerials[status.Serial] = struct{}{}
+	}
+
+	if !selector.empty() {
+		completeIPIdentityRequired := len(selector.exclude.hostIPs) > 0
+		selectedSerials := make(map[string]struct{}, len(allowedSerials))
+		incompleteIPIdentity := false
+		for serial := range allowedSerials {
+			device, ok := builder.devices[serial]
+			if !ok {
+				continue
+			}
+			if completeIPIdentityRequired {
+				if _, ok := statusSerials[serial]; !ok {
+					// A missing status could hide a public-IP exclusion. Keep
+					// only devices whose complete IP identity was observed.
+					incompleteIPIdentity = true
+					continue
+				}
+				if merakiDeviceUsesUplinkStatus(device) {
+					if _, ok := uplinkStatusSerials[serial]; !ok {
+						// The uplink-status endpoint is the authoritative source
+						// for MX, vMX, MG, and Z uplink IP identities.
+						incompleteIPIdentity = true
+						continue
+					}
+				}
+			}
+			if !selector.allows(merakiDeviceIdentity(device)) {
+				continue
+			}
+			selectedSerials[serial] = struct{}{}
+		}
+		if incompleteIPIdentity {
+			partial = true
+			r.settings.Logger.Warn("Meraki IP selector identity was incomplete; affected devices were excluded", zap.String("organization_id", target.OrganizationID))
+		}
+		allowedSerials = selectedSerials
+		if len(allowedSerials) == 0 {
+			if ctx.Err() != nil {
+				return true, ctx.Err()
+			}
+			return partial, nil
+		}
+	}
+
+	recordMerakiDeviceStatuses(builder, statuses, allowedSerials)
+	recordMerakiUplinkStatuses(builder, uplinkStatuses, allowedSerials, selector)
+	if ctx.Err() != nil {
+		return true, ctx.Err()
+	}
+
+	if statusErr != nil {
 		partial = true
 	}
 	if r.scrapeMemoryUsage(ctx, builder, target, allowedSerials, selector) {
@@ -290,7 +467,7 @@ func (r *merakiMetricsReceiver) scrapeTarget(ctx context.Context, builder *merak
 	if r.scrapeSwitchPorts(ctx, builder, target, allowedSerials, selector) {
 		partial = true
 	}
-	if r.scrapeUplinks(ctx, builder, target, allowedSerials, selector) {
+	if r.scrapeUplinkLossLatency(ctx, builder, target, allowedSerials, selector) {
 		partial = true
 	}
 	if r.scrapeWireless(ctx, builder, target, allowedSerials, selector) {
@@ -318,23 +495,13 @@ func (r *merakiMetricsReceiver) scrapeTarget(ctx context.Context, builder *merak
 	return partial, nil
 }
 
-func (r *merakiMetricsReceiver) scrapeDeviceStatuses(ctx context.Context, builder *merakiMetricsBuilder, target merakiTarget, allowedSerials map[string]struct{}, selector deviceSelectionMatcher) bool {
-	statuses, err := meraki.GetPaginatedJSON[meraki.DeviceStatus](ctx, r.client, target.OrganizationID, "device_statuses", meraki.OrganizationPath(target.OrganizationID, "/devices/statuses"), target.deviceQuery())
-	if err != nil {
-		r.settings.Logger.Warn("Meraki device status endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
-		if ctx.Err() != nil {
-			return true
-		}
-	}
+func recordMerakiDeviceStatuses(builder *merakiMetricsBuilder, statuses []meraki.DeviceStatus, allowedSerials map[string]struct{}) {
 	for i := range statuses {
 		status := &statuses[i]
 		if !allowsSerial(allowedSerials, status.Serial) {
 			continue
 		}
 		resource := deviceResourceFromStatus(*status)
-		if !selector.allows(merakiDeviceIdentity(resource)) {
-			continue
-		}
 		rb := builder.deviceResource(resource)
 		if up, ok := merakiDeviceUp(status.Status); ok {
 			rb.recordInt("cisco.device.up", "Device availability (1 = up, 0 = down).", "1", up, nil)
@@ -346,11 +513,19 @@ func (r *merakiMetricsReceiver) scrapeDeviceStatuses(ctx context.Context, builde
 			})
 		}
 	}
-	return err != nil
+}
+
+func merakiDeviceUsesUplinkStatus(device deviceResource) bool {
+	productType := strings.ToLower(strings.TrimSpace(device.ProductType))
+	if productType == "appliance" || productType == "cellulargateway" {
+		return true
+	}
+	model := strings.ToUpper(strings.TrimSpace(device.Model))
+	return strings.HasPrefix(model, "MX") || strings.HasPrefix(model, "VMX") || strings.HasPrefix(model, "MG") || strings.HasPrefix(model, "Z")
 }
 
 func (r *merakiMetricsReceiver) scrapeMemoryUsage(ctx context.Context, builder *merakiMetricsBuilder, target merakiTarget, allowedSerials map[string]struct{}, selector deviceSelectionMatcher) bool {
-	usages, err := meraki.GetPaginatedItemsJSON[meraki.DeviceMemoryUsage](ctx, r.client, target.OrganizationID, "device_memory", meraki.OrganizationPath(target.OrganizationID, "/devices/system/memory/usage/history/byInterval"), target.deviceQuery())
+	usages, err := meraki.GetPaginatedItemsJSON[meraki.DeviceMemoryUsage](ctx, r.client, target.OrganizationID, "device_memory", meraki.OrganizationPath(target.OrganizationID, "/devices/system/memory/usage/history/byInterval"), target.memoryQuery())
 	if err != nil {
 		r.settings.Logger.Warn("Meraki memory usage endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
 		if ctx.Err() != nil {
@@ -363,12 +538,12 @@ func (r *merakiMetricsReceiver) scrapeMemoryUsage(ctx context.Context, builder *
 			continue
 		}
 		resource := deviceResourceFromMemory(*usage)
-		if !selector.allows(merakiDeviceIdentity(resource)) {
+		rb, selected := builder.selectedDeviceResource(resource, selector)
+		if !selected {
 			continue
 		}
-		rb := builder.deviceResource(resource)
-		if value, ok := memoryUtilization(*usage); ok {
-			rb.recordDouble("system.memory.utilization", "Memory utilization as a ratio from 0 to 1.", "1", value, map[string]string{"system.memory.state": "used"})
+		if value, observedAt, ok := memoryUtilization(*usage); ok {
+			rb.recordDoubleAt("system.memory.utilization", "Memory utilization as a ratio from 0 to 1.", "1", value, map[string]string{"system.memory.state": "used"}, observedAt)
 		}
 	}
 	return err != nil
@@ -376,7 +551,7 @@ func (r *merakiMetricsReceiver) scrapeMemoryUsage(ctx context.Context, builder *
 
 func (r *merakiMetricsReceiver) scrapeSwitchPorts(ctx context.Context, builder *merakiMetricsBuilder, target merakiTarget, allowedSerials map[string]struct{}, selector deviceSelectionMatcher) bool {
 	partial := false
-	statuses, err := meraki.GetPaginatedItemsJSON[meraki.SwitchPortsStatus](ctx, r.client, target.OrganizationID, "switch_ports_status", meraki.OrganizationPath(target.OrganizationID, "/switch/ports/statuses/bySwitch"), target.networkSerialQuery())
+	statuses, err := meraki.GetPaginatedItemsJSON[meraki.SwitchPortsStatus](ctx, r.client, target.OrganizationID, "switch_ports_status", meraki.OrganizationPath(target.OrganizationID, "/switch/ports/statuses/bySwitch"), target.switchStatusQuery())
 	if err != nil {
 		r.settings.Logger.Warn("Meraki switch port status endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
 		partial = true
@@ -390,10 +565,10 @@ func (r *merakiMetricsReceiver) scrapeSwitchPorts(ctx context.Context, builder *
 			continue
 		}
 		resource := deviceResourceFromSwitch(*sw)
-		if !selector.allows(merakiDeviceIdentity(resource)) {
+		rb, selected := builder.selectedDeviceResource(resource, selector)
+		if !selected {
 			continue
 		}
-		rb := builder.deviceResource(resource)
 		for j := range sw.Ports {
 			port := &sw.Ports[j]
 			speedBits, speedString := parseMerakiSpeed(port.Speed)
@@ -421,7 +596,7 @@ func (r *merakiMetricsReceiver) scrapeSwitchPorts(ctx context.Context, builder *
 		}
 	}
 
-	usages, err := meraki.GetPaginatedItemsJSON[meraki.SwitchPortsUsage](ctx, r.client, target.OrganizationID, "switch_ports_usage", meraki.OrganizationPath(target.OrganizationID, "/switch/ports/usage/history/byDevice/byInterval"), target.windowedSwitchQuery())
+	usages, err := meraki.GetPaginatedItemsJSON[meraki.SwitchPortsUsage](ctx, r.client, target.OrganizationID, "switch_ports_usage", meraki.OrganizationPath(target.OrganizationID, "/switch/ports/usage/history/byDevice/byInterval"), target.switchUsageQuery())
 	if err != nil {
 		r.settings.Logger.Warn("Meraki switch port usage endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
 		partial = true
@@ -435,16 +610,19 @@ func (r *merakiMetricsReceiver) scrapeSwitchPorts(ctx context.Context, builder *
 			continue
 		}
 		resource := deviceResourceFromSwitchUsage(*sw)
-		if !selector.allows(merakiDeviceIdentity(resource)) {
+		rb, selected := builder.selectedDeviceResource(resource, selector)
+		if !selected {
 			continue
 		}
-		rb := builder.deviceResource(resource)
 		for j := range sw.Ports {
 			port := &sw.Ports[j]
 			if len(port.Intervals) == 0 {
 				continue
 			}
-			interval := port.Intervals[len(port.Intervals)-1]
+			intervalIndex, observedAt := latestTimestampedIndex(len(port.Intervals), len(port.Intervals)-1, func(index int) string {
+				return firstValidTimestamp(port.Intervals[index].EndTS, port.Intervals[index].StartTS)
+			})
+			interval := port.Intervals[intervalIndex]
 			speedBits := builder.portSpeed(sw.Serial, port.PortID)
 			speedString := ""
 			if speedBits > 0 {
@@ -454,15 +632,25 @@ func (r *merakiMetricsReceiver) scrapeSwitchPorts(ctx context.Context, builder *
 			attrsRx["network.io.direction"] = "receive"
 			attrsTx := interfaceAttrs(port.PortID, sw.MAC, "", speedString)
 			attrsTx["network.io.direction"] = "transmit"
-			rxBits := int64(interval.Bandwidth.Usage.Downstream * 1000)
-			txBits := int64(interval.Bandwidth.Usage.Upstream * 1000)
-			rb.recordInt("cisco.interface.io.rate", "Interface traffic rate.", "bit/s", rxBits, attrsRx)
-			rb.recordInt("cisco.interface.io.rate", "Interface traffic rate.", "bit/s", txBits, attrsTx)
-			rb.recordDouble("meraki.switch.port.usage", "Windowed switch port usage reported by Meraki.", "kBy", interval.Data.Usage.Downstream, attrsRx)
-			rb.recordDouble("meraki.switch.port.usage", "Windowed switch port usage reported by Meraki.", "kBy", interval.Data.Usage.Upstream, attrsTx)
-			if speedBits > 0 {
-				rb.recordDouble("cisco.interface.utilization", "Interface traffic utilization as a ratio from 0 to 1.", "1", float64(rxBits)/float64(speedBits), attrsRx)
-				rb.recordDouble("cisco.interface.utilization", "Interface traffic utilization as a ratio from 0 to 1.", "1", float64(txBits)/float64(speedBits), attrsTx)
+			rxBits, rxRateOK := merakiKilobitsToBits(interval.Bandwidth.Usage.Downstream)
+			txBits, txRateOK := merakiKilobitsToBits(interval.Bandwidth.Usage.Upstream)
+			if rxRateOK {
+				rb.recordIntAt("cisco.interface.io.rate", "Interface traffic rate.", "bit/s", rxBits, attrsRx, observedAt)
+			}
+			if txRateOK {
+				rb.recordIntAt("cisco.interface.io.rate", "Interface traffic rate.", "bit/s", txBits, attrsTx, observedAt)
+			}
+			if validNonnegativeFloat(interval.Data.Usage.Downstream) {
+				rb.recordDoubleAt("meraki.switch.port.usage", "Windowed switch port usage reported by Meraki.", "kBy", interval.Data.Usage.Downstream, attrsRx, observedAt)
+			}
+			if validNonnegativeFloat(interval.Data.Usage.Upstream) {
+				rb.recordDoubleAt("meraki.switch.port.usage", "Windowed switch port usage reported by Meraki.", "kBy", interval.Data.Usage.Upstream, attrsTx, observedAt)
+			}
+			if utilization, ok := merakiInterfaceUtilization(rxBits, speedBits, rxRateOK); ok {
+				rb.recordDoubleAt("cisco.interface.utilization", "Interface traffic utilization as a ratio from 0 to 1.", "1", utilization, attrsRx, observedAt)
+			}
+			if utilization, ok := merakiInterfaceUtilization(txBits, speedBits, txRateOK); ok {
+				rb.recordDoubleAt("cisco.interface.utilization", "Interface traffic utilization as a ratio from 0 to 1.", "1", utilization, attrsTx, observedAt)
 			}
 		}
 	}
@@ -470,26 +658,17 @@ func (r *merakiMetricsReceiver) scrapeSwitchPorts(ctx context.Context, builder *
 	return partial
 }
 
-func (r *merakiMetricsReceiver) scrapeUplinks(ctx context.Context, builder *merakiMetricsBuilder, target merakiTarget, allowedSerials map[string]struct{}, selector deviceSelectionMatcher) bool {
-	partial := false
-	statuses, err := meraki.GetPaginatedJSON[meraki.UplinkStatus](ctx, r.client, target.OrganizationID, "uplink_statuses", meraki.OrganizationPath(target.OrganizationID, "/uplinks/statuses"), target.networkSerialQuery())
-	if err != nil {
-		r.settings.Logger.Warn("Meraki uplink status endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
-		partial = true
-		if ctx.Err() != nil {
-			return true
-		}
-	}
+func recordMerakiUplinkStatuses(builder *merakiMetricsBuilder, statuses []meraki.UplinkStatus, allowedSerials map[string]struct{}, selector deviceSelectionMatcher) {
 	for i := range statuses {
 		device := &statuses[i]
 		if !allowsSerial(allowedSerials, device.Serial) {
 			continue
 		}
 		resource := deviceResourceFromUplinkStatus(*device)
-		if !selector.allows(merakiDeviceIdentity(resource)) {
+		rb, selected := builder.selectedDeviceResource(resource, selector)
+		if !selected {
 			continue
 		}
-		rb := builder.deviceResource(resource)
 		for j := range device.Uplinks {
 			uplink := &device.Uplinks[j]
 			attrs := map[string]string{
@@ -509,33 +688,39 @@ func (r *merakiMetricsReceiver) scrapeUplinks(ctx context.Context, builder *mera
 			}
 		}
 	}
+}
 
+func (r *merakiMetricsReceiver) scrapeUplinkLossLatency(ctx context.Context, builder *merakiMetricsBuilder, target merakiTarget, allowedSerials map[string]struct{}, selector deviceSelectionMatcher) bool {
 	lossLatency, err := meraki.GetJSON[[]meraki.UplinkLossLatency](ctx, r.client, target.OrganizationID, "uplink_loss_latency", meraki.OrganizationPath(target.OrganizationID, "/devices/uplinksLossAndLatency"), nil)
 	if err != nil {
 		r.settings.Logger.Warn("Meraki uplink loss and latency endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
-		partial = true
-	} else {
-		for _, uplink := range lossLatency {
-			if !allowsSerial(allowedSerials, uplink.Serial) || len(uplink.TimeSeries) == 0 {
-				continue
-			}
-			sample := uplink.TimeSeries[len(uplink.TimeSeries)-1]
-			resource := deviceResource{Serial: uplink.Serial, NetworkID: uplink.NetworkID, LANIP: uplink.IP, OSName: "Meraki"}
-			if !selector.allows(merakiDeviceIdentity(resource)) {
-				continue
-			}
-			rb := builder.deviceResource(resource)
-			attrs := map[string]string{"meraki.uplink.interface": uplink.Uplink}
-			rb.recordDouble("meraki.uplink.loss", "Meraki uplink packet loss percentage.", "%", sample.LossPercent, attrs)
-			rb.recordDouble("meraki.uplink.latency", "Meraki uplink latency.", "ms", sample.LatencyMS, attrs)
-		}
+		return true
 	}
-	return partial
+	for _, uplink := range lossLatency {
+		if !allowsSerial(allowedSerials, uplink.Serial) || len(uplink.TimeSeries) == 0 {
+			continue
+		}
+		sampleIndex, observedAt := latestTimestampedIndex(len(uplink.TimeSeries), len(uplink.TimeSeries)-1, func(index int) string {
+			return uplink.TimeSeries[index].TS
+		})
+		sample := uplink.TimeSeries[sampleIndex]
+		// The loss/latency IP is the monitored target, not another stable
+		// device identity. Uplink device IPs come from /uplinks/statuses.
+		resource := deviceResource{Serial: uplink.Serial, NetworkID: uplink.NetworkID, OSName: "Meraki"}
+		rb, selected := builder.selectedDeviceResource(resource, selector)
+		if !selected {
+			continue
+		}
+		attrs := map[string]string{"meraki.uplink.interface": uplink.Uplink}
+		rb.recordDoubleAt("meraki.uplink.loss", "Meraki uplink packet loss percentage.", "%", sample.LossPercent, attrs, observedAt)
+		rb.recordDoubleAt("meraki.uplink.latency", "Meraki uplink latency.", "ms", sample.LatencyMS, attrs, observedAt)
+	}
+	return false
 }
 
 func (r *merakiMetricsReceiver) scrapeWireless(ctx context.Context, builder *merakiMetricsBuilder, target merakiTarget, allowedSerials map[string]struct{}, selector deviceSelectionMatcher) bool {
 	partial := false
-	clients, err := meraki.GetPaginatedItemsJSON[meraki.WirelessClientsOverview](ctx, r.client, target.OrganizationID, "wireless_clients", meraki.OrganizationPath(target.OrganizationID, "/wireless/clients/overview/byDevice"), target.networkSerialQuery())
+	clients, err := meraki.GetPaginatedItemsJSON[meraki.WirelessClientsOverview](ctx, r.client, target.OrganizationID, "wireless_clients", meraki.OrganizationPath(target.OrganizationID, "/wireless/clients/overview/byDevice"), target.wirelessClientsQuery())
 	if err != nil {
 		r.settings.Logger.Warn("Meraki wireless clients endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
 		partial = true
@@ -548,16 +733,16 @@ func (r *merakiMetricsReceiver) scrapeWireless(ctx context.Context, builder *mer
 			continue
 		}
 		resource := deviceResource{Serial: device.Serial, NetworkID: device.Network.ID, OSName: "Meraki"}
-		if !selector.allows(merakiDeviceIdentity(resource)) {
+		rb, selected := builder.selectedDeviceResource(resource, selector)
+		if !selected {
 			continue
 		}
-		rb := builder.deviceResource(resource)
 		for status, count := range device.Counts.ByStatus {
 			rb.recordInt("meraki.wireless.client.count", "Wireless client count by status.", "{client}", count, map[string]string{"meraki.wireless.client.status": status})
 		}
 	}
 
-	channels, err := meraki.GetPaginatedJSON[meraki.WirelessChannelUtilization](ctx, r.client, target.OrganizationID, "wireless_channel_utilization", meraki.OrganizationPath(target.OrganizationID, "/wireless/devices/channelUtilization/byDevice"), target.windowedDeviceQuery())
+	channels, err := meraki.GetPaginatedJSON[meraki.WirelessChannelUtilization](ctx, r.client, target.OrganizationID, "wireless_channel_utilization", meraki.OrganizationPath(target.OrganizationID, "/wireless/devices/channelUtilization/byDevice"), target.wirelessChannelQuery())
 	if err != nil {
 		r.settings.Logger.Warn("Meraki wireless channel utilization endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
 		partial = true
@@ -570,10 +755,10 @@ func (r *merakiMetricsReceiver) scrapeWireless(ctx context.Context, builder *mer
 			continue
 		}
 		resource := deviceResource{Serial: device.Serial, MAC: device.MAC, NetworkID: device.Network.ID, OSName: "Meraki"}
-		if !selector.allows(merakiDeviceIdentity(resource)) {
+		rb, selected := builder.selectedDeviceResource(resource, selector)
+		if !selected {
 			continue
 		}
-		rb := builder.deviceResource(resource)
 		for _, band := range device.ByBand {
 			attrs := map[string]string{"meraki.wireless.band": band.Band}
 			rb.recordDouble("meraki.wireless.channel_utilization", "Wireless channel utilization percentage.", "%", band.Total.Percentage, withAttr(attrs, "meraki.wireless.utilization.type", "total"))
@@ -582,7 +767,7 @@ func (r *merakiMetricsReceiver) scrapeWireless(ctx context.Context, builder *mer
 		}
 	}
 
-	packetLoss, err := meraki.GetPaginatedJSON[meraki.WirelessPacketLoss](ctx, r.client, target.OrganizationID, "wireless_packet_loss", meraki.OrganizationPath(target.OrganizationID, "/wireless/devices/packetLoss/byDevice"), target.windowedDeviceQuery())
+	packetLoss, err := meraki.GetPaginatedJSON[meraki.WirelessPacketLoss](ctx, r.client, target.OrganizationID, "wireless_packet_loss", meraki.OrganizationPath(target.OrganizationID, "/wireless/devices/packetLoss/byDevice"), target.wirelessPacketLossQuery())
 	if err != nil {
 		r.settings.Logger.Warn("Meraki wireless packet loss endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
 		partial = true
@@ -596,15 +781,15 @@ func (r *merakiMetricsReceiver) scrapeWireless(ctx context.Context, builder *mer
 			continue
 		}
 		resource := deviceResource{Serial: device.Device.Serial, Name: device.Device.Name, MAC: device.Device.MAC, NetworkID: device.Network.ID, OSName: "Meraki"}
-		if !selector.allows(merakiDeviceIdentity(resource)) {
+		rb, selected := builder.selectedDeviceResource(resource, selector)
+		if !selected {
 			continue
 		}
-		rb := builder.deviceResource(resource)
 		recordWirelessPacketLoss(rb, "receive", device.Downstream)
 		recordWirelessPacketLoss(rb, "transmit", device.Upstream)
 	}
 
-	ssids, err := meraki.GetPaginatedItemsJSON[meraki.WirelessSSIDStatus](ctx, r.client, target.OrganizationID, "wireless_ssids", meraki.OrganizationPath(target.OrganizationID, "/wireless/ssids/statuses/byDevice"), target.networkSerialQuery())
+	ssids, err := meraki.GetPaginatedItemsJSON[meraki.WirelessSSIDStatus](ctx, r.client, target.OrganizationID, "wireless_ssids", meraki.OrganizationPath(target.OrganizationID, "/wireless/ssids/statuses/byDevice"), target.wirelessSSIDQuery())
 	if err != nil {
 		r.settings.Logger.Warn("Meraki wireless SSID status endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
 		partial = true
@@ -617,10 +802,10 @@ func (r *merakiMetricsReceiver) scrapeWireless(ctx context.Context, builder *mer
 			continue
 		}
 		resource := deviceResource{Serial: device.Serial, Name: device.Name, NetworkID: device.Network.ID, OSName: "Meraki"}
-		if !selector.allows(merakiDeviceIdentity(resource)) {
+		rb, selected := builder.selectedDeviceResource(resource, selector)
+		if !selected {
 			continue
 		}
-		rb := builder.deviceResource(resource)
 		for _, bss := range device.BasicServiceSets {
 			attrs := map[string]string{
 				"meraki.wireless.ssid.name":   bss.SSID.Name,
@@ -638,7 +823,16 @@ func (r *merakiMetricsReceiver) scrapeWireless(ctx context.Context, builder *mer
 
 func (r *merakiMetricsReceiver) scrapeVPN(ctx context.Context, builder *merakiMetricsBuilder, target merakiTarget, allowedSerials map[string]struct{}, selector deviceSelectionMatcher) bool {
 	partial := false
-	statuses, err := meraki.GetPaginatedJSON[meraki.VPNStatus](ctx, r.client, target.OrganizationID, "vpn_statuses", meraki.OrganizationPath(target.OrganizationID, "/appliance/vpn/statuses"), target.networkQuery())
+	deviceScoped := target.unionRequiresInventory || len(target.explicitSerials) > 0 || len(target.Serials) > 0 || len(target.ProductTypes) > 0 || len(target.Tags) > 0 || !selector.empty()
+	networkScoped := len(target.NetworkIDs) > 0
+	filterNetworks := target.scoped(selector)
+	allowedNetworks := make(map[string]struct{}, len(target.NetworkIDs))
+	if networkScoped && !deviceScoped {
+		for _, networkID := range target.NetworkIDs {
+			allowedNetworks[networkID] = struct{}{}
+		}
+	}
+	statuses, err := meraki.GetPaginatedJSON[meraki.VPNStatus](ctx, r.client, target.OrganizationID, "vpn_statuses", meraki.OrganizationPath(target.OrganizationID, "/appliance/vpn/statuses"), target.vpnStatusQuery())
 	if err != nil {
 		r.settings.Logger.Warn("Meraki VPN status endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
 		partial = true
@@ -651,11 +845,14 @@ func (r *merakiMetricsReceiver) scrapeVPN(ctx context.Context, builder *merakiMe
 		if !allowsSerial(allowedSerials, status.DeviceSerial) {
 			continue
 		}
-		resource := deviceResource{Serial: status.DeviceSerial, Name: status.NetworkName, NetworkID: status.NetworkID, OSName: "Meraki"}
-		if !selector.allows(merakiDeviceIdentity(resource)) {
+		resource := deviceResource{Serial: status.DeviceSerial, NetworkID: status.NetworkID, OSName: "Meraki"}
+		rb, selected := builder.selectedDeviceResource(resource, selector)
+		if !selected {
 			continue
 		}
-		rb := builder.deviceResource(resource)
+		if status.NetworkID != "" {
+			allowedNetworks[status.NetworkID] = struct{}{}
+		}
 		for j := range status.MerakiVPNPeers {
 			peer := &status.MerakiVPNPeers[j]
 			if reachable, ok := reachableStatus(peer.Reachability); ok {
@@ -678,8 +875,11 @@ func (r *merakiMetricsReceiver) scrapeVPN(ctx context.Context, builder *merakiMe
 			}
 		}
 	}
+	if filterNetworks && len(allowedNetworks) == 0 {
+		return partial
+	}
 
-	stats, err := meraki.GetPaginatedJSON[meraki.VPNStats](ctx, r.client, target.OrganizationID, "vpn_stats", meraki.OrganizationPath(target.OrganizationID, "/appliance/vpn/stats"), target.windowedNetworkQuery())
+	stats, err := meraki.GetPaginatedJSON[meraki.VPNStats](ctx, r.client, target.OrganizationID, "vpn_stats", meraki.OrganizationPath(target.OrganizationID, "/appliance/vpn/stats"), target.vpnStatsQuery())
 	if err != nil {
 		r.settings.Logger.Warn("Meraki VPN stats endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
 		partial = true
@@ -688,8 +888,13 @@ func (r *merakiMetricsReceiver) scrapeVPN(ctx context.Context, builder *merakiMe
 		}
 	}
 	for _, stat := range stats {
-		if !builder.networkAllowed(stat.NetworkID, stat.NetworkName, selector) {
+		if stat.NetworkID == "" {
 			continue
+		}
+		if filterNetworks {
+			if _, ok := allowedNetworks[stat.NetworkID]; !ok {
+				continue
+			}
 		}
 		rb := builder.networkResource(stat.NetworkID, stat.NetworkName, target.OrganizationID)
 		for i := range stat.MerakiVPNPeers {
@@ -698,8 +903,8 @@ func (r *merakiMetricsReceiver) scrapeVPN(ctx context.Context, builder *merakiMe
 				"meraki.vpn.peer.network_id": peer.NetworkID,
 				"meraki.vpn.peer.name":       peer.NetworkName,
 			}
-			rb.recordInt("meraki.vpn.peer.usage", "Windowed Meraki VPN peer usage.", "kBy", peer.UsageSummary.ReceivedInKilobytes, withAttr(peerAttrs, "network.io.direction", "receive"))
-			rb.recordInt("meraki.vpn.peer.usage", "Windowed Meraki VPN peer usage.", "kBy", peer.UsageSummary.SentInKilobytes, withAttr(peerAttrs, "network.io.direction", "transmit"))
+			rb.recordInt("meraki.vpn.peer.usage", "Windowed Meraki VPN peer usage.", "kBy", int64(peer.UsageSummary.ReceivedInKilobytes), withAttr(peerAttrs, "network.io.direction", "receive"))
+			rb.recordInt("meraki.vpn.peer.usage", "Windowed Meraki VPN peer usage.", "kBy", int64(peer.UsageSummary.SentInKilobytes), withAttr(peerAttrs, "network.io.direction", "transmit"))
 			for _, latency := range peer.LatencySummaries {
 				rb.recordDouble("meraki.vpn.peer.latency", "Meraki VPN peer latency.", "ms", latency.AvgLatencyMS, withVPNUplinks(peerAttrs, latency.SenderUplink, latency.ReceiverUplink))
 			}
@@ -718,7 +923,7 @@ func (r *merakiMetricsReceiver) scrapeVPN(ctx context.Context, builder *merakiMe
 }
 
 func (r *merakiMetricsReceiver) scrapePowerModules(ctx context.Context, builder *merakiMetricsBuilder, target merakiTarget, allowedSerials map[string]struct{}, selector deviceSelectionMatcher) bool {
-	statuses, err := meraki.GetPaginatedJSON[meraki.PowerModuleStatus](ctx, r.client, target.OrganizationID, "power_modules", meraki.OrganizationPath(target.OrganizationID, "/devices/powerModules/statuses/byDevice"), target.inventoryQuery())
+	statuses, err := meraki.GetPaginatedJSON[meraki.PowerModuleStatus](ctx, r.client, target.OrganizationID, "power_modules", meraki.OrganizationPath(target.OrganizationID, "/devices/powerModules/statuses/byDevice"), target.powerModulesQuery())
 	if err != nil {
 		r.settings.Logger.Warn("Meraki power module endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
 		if ctx.Err() != nil {
@@ -731,10 +936,10 @@ func (r *merakiMetricsReceiver) scrapePowerModules(ctx context.Context, builder 
 			continue
 		}
 		resource := deviceResource{Serial: device.Serial, Name: device.Name, MAC: device.MAC, ProductType: device.ProductType, NetworkID: device.Network.ID, OSName: "Meraki"}
-		if !selector.allows(merakiDeviceIdentity(resource)) {
+		rb, selected := builder.selectedDeviceResource(resource, selector)
+		if !selected {
 			continue
 		}
-		rb := builder.deviceResource(resource)
 		for _, slot := range device.Slots {
 			if code, ok := powerModuleStatus(slot.Status); ok {
 				rb.recordInt("meraki.power.module.status", "Meraki power module status.", "1", code, map[string]string{
@@ -750,7 +955,7 @@ func (r *merakiMetricsReceiver) scrapePowerModules(ctx context.Context, builder 
 }
 
 func (r *merakiMetricsReceiver) scrapeTopology(ctx context.Context, builder *merakiMetricsBuilder, target merakiTarget, allowedSerials map[string]struct{}, selector deviceSelectionMatcher) bool {
-	devices, err := meraki.GetPaginatedItemsJSON[meraki.TopologyDiscovery](ctx, r.client, target.OrganizationID, "switch_topology", meraki.OrganizationPath(target.OrganizationID, "/switch/ports/topology/discovery/byDevice"), target.networkSerialQuery())
+	devices, err := meraki.GetPaginatedItemsJSON[meraki.TopologyDiscovery](ctx, r.client, target.OrganizationID, "switch_topology", meraki.OrganizationPath(target.OrganizationID, "/switch/ports/topology/discovery/byDevice"), target.topologyQuery())
 	if err != nil {
 		r.settings.Logger.Warn("Meraki topology discovery endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
 		if ctx.Err() != nil {
@@ -763,10 +968,10 @@ func (r *merakiMetricsReceiver) scrapeTopology(ctx context.Context, builder *mer
 			continue
 		}
 		resource := deviceResourceFromTopology(*device)
-		if !selector.allows(merakiDeviceIdentity(resource)) {
+		rb, selected := builder.selectedDeviceResource(resource, selector)
+		if !selected {
 			continue
 		}
-		rb := builder.deviceResource(resource)
 		for _, port := range device.Ports {
 			recordTopologyProtocol(rb, "cdp", port.PortID, port.CDP)
 			recordTopologyProtocol(rb, "lldp", port.PortID, port.LLDP)
@@ -776,38 +981,74 @@ func (r *merakiMetricsReceiver) scrapeTopology(ctx context.Context, builder *mer
 }
 
 func (r *merakiMetricsReceiver) scrapeTransceivers(ctx context.Context, builder *merakiMetricsBuilder, target merakiTarget, allowedSerials map[string]struct{}, selector deviceSelectionMatcher) bool {
-	devices, err := meraki.GetPaginatedItemsJSON[meraki.TransceiverReadings](ctx, r.client, target.OrganizationID, "transceivers", meraki.OrganizationPath(target.OrganizationID, "/appliance/devices/ports/transceivers/readings/history/byDevice"), target.windowedDeviceQuery())
-	if err != nil {
-		r.settings.Logger.Warn("Meraki transceiver endpoint failed", zap.String("organization_id", target.OrganizationID), zap.Error(err))
-		if ctx.Err() != nil {
-			return true
-		}
+	partial := false
+	type transceiverRequest struct {
+		operation string
+		path      string
+		query     url.Values
+		product   string
 	}
+	requests := []transceiverRequest{
+		{
+			operation: "appliance_transceivers",
+			path:      "/appliance/devices/ports/transceivers/readings/history/byDevice",
+			query:     target.applianceTransceiverQuery(),
+			product:   "appliance",
+		},
+	}
+	if r.config.Meraki.SwitchTransceivers.Enabled {
+		requests = append(requests, transceiverRequest{
+			operation: "switch_transceivers",
+			path:      "/switch/ports/transceivers/readings/history/bySwitch",
+			query:     target.switchTransceiverQuery(),
+			product:   "switch",
+		})
+	}
+	for _, request := range requests {
+		devices, err := meraki.GetPaginatedItemsJSON[meraki.TransceiverReadings](ctx, r.client, target.OrganizationID, request.operation, meraki.OrganizationPath(target.OrganizationID, request.path), request.query)
+		if err != nil {
+			r.settings.Logger.Warn("Meraki transceiver endpoint failed", zap.String("organization_id", target.OrganizationID), zap.String("product", request.product), zap.Error(err))
+			partial = true
+			if ctx.Err() != nil {
+				return true
+			}
+		}
+		recordMerakiTransceivers(builder, devices, allowedSerials, selector)
+	}
+	return partial
+}
+
+func recordMerakiTransceivers(builder *merakiMetricsBuilder, devices []meraki.TransceiverReadings, allowedSerials map[string]struct{}, selector deviceSelectionMatcher) {
 	for i := range devices {
 		device := &devices[i]
 		if !allowsSerial(allowedSerials, device.Serial) {
 			continue
 		}
 		resource := deviceResource{Serial: device.Serial, NetworkID: device.Network.ID, OSName: "Meraki"}
-		if !selector.allows(merakiDeviceIdentity(resource)) {
+		rb, selected := builder.selectedDeviceResource(resource, selector)
+		if !selected {
 			continue
 		}
-		rb := builder.deviceResource(resource)
 		for j := range device.Ports {
 			port := &device.Ports[j]
-			for k := range port.Readings {
-				reading := &port.Readings[k]
-				attrs := interfaceAttrs(firstNonEmpty(port.InterfaceName, port.PortID), "", "", "")
-				attrs["cisco.transceiver.lane"] = reading.SFPProductID
-				recordTransceiverValue(rb, attrs, "tx_power", "dBm", reading.ByMetric.Power.Transmit)
-				recordTransceiverValue(rb, attrs, "rx_power", "dBm", reading.ByMetric.Power.Receive)
-				recordTransceiverValue(rb, attrs, "temperature", "Cel", reading.ByMetric.Temperature.Celsius)
-				recordTransceiverValue(rb, attrs, "supply_voltage", "V", reading.ByMetric.SupplyVoltage.Level)
-				recordTransceiverValue(rb, attrs, "laser_bias_current", "mA", reading.ByMetric.LaserBiasCurrent.Draw)
+			if len(port.Readings) == 0 {
+				continue
 			}
+			// Emit only the newest completed DOM snapshot. Timestamp comparison
+			// keeps this correct even if an API version changes array order.
+			readingIndex, observedAt := latestTimestampedIndex(len(port.Readings), 0, func(index int) string {
+				return firstValidTimestamp(port.Readings[index].EndTS, port.Readings[index].StartTS)
+			})
+			reading := &port.Readings[readingIndex]
+			attrs := interfaceAttrs(firstNonEmpty(port.InterfaceName, port.PortID), "", "", "")
+			attrs["meraki.transceiver.sfp_product_id"] = reading.SFPProductID
+			recordTransceiverValueAt(rb, attrs, "tx_power", "dBm", reading.ByMetric.Power.Transmit, observedAt)
+			recordTransceiverValueAt(rb, attrs, "rx_power", "dBm", reading.ByMetric.Power.Receive, observedAt)
+			recordTransceiverValueAt(rb, attrs, "temperature", "Cel", reading.ByMetric.Temperature.Celsius, observedAt)
+			recordTransceiverValueAt(rb, attrs, "voltage", "V", reading.ByMetric.SupplyVoltage.Level, observedAt)
+			recordTransceiverValueAt(rb, attrs, "current", "mA", reading.ByMetric.LaserBiasCurrent.Draw, observedAt)
 		}
 	}
-	return err != nil
 }
 
 func (r *merakiMetricsReceiver) scrapeAppliancePerformance(ctx context.Context, builder *merakiMetricsBuilder, target merakiTarget, allowedSerials map[string]struct{}, selector deviceSelectionMatcher) bool {
@@ -819,10 +1060,13 @@ func (r *merakiMetricsReceiver) scrapeAppliancePerformance(ctx context.Context, 
 			continue
 		}
 		path := "/devices/" + url.PathEscape(device.Serial) + "/appliance/performance"
-		perf, err := meraki.GetJSON[meraki.AppliancePerformance](ctx, r.client, target.OrganizationID, "appliance_performance", path, nil)
+		perf, hasData, err := meraki.GetOptionalJSON[meraki.AppliancePerformance](ctx, r.client, target.OrganizationID, "appliance_performance", path, nil)
 		if err != nil {
 			r.settings.Logger.Warn("Meraki appliance performance endpoint failed", zap.String("organization_id", target.OrganizationID), zap.String("serial", device.Serial), zap.Error(err))
 			partial = true
+			continue
+		}
+		if !hasData {
 			continue
 		}
 		builder.deviceResource(*device).recordDouble("meraki.appliance.performance.score", "Meraki appliance performance score.", "1", perf.PerfScore, nil)
@@ -876,58 +1120,205 @@ func (r *merakiMetricsReceiver) recordAPIRequestMetrics(builder *merakiMetricsBu
 	}
 }
 
-func (t merakiTarget) inventoryQuery() url.Values {
+func (t merakiTarget) deviceFilterQuery(perPage string) url.Values {
 	return meraki.Query(map[string][]string{
 		"networkIds":   t.NetworkIDs,
 		"productTypes": t.ProductTypes,
 		"serials":      t.Serials,
 		"tags":         t.Tags,
 	}, map[string]string{
-		"perPage":        "1000",
+		"perPage":        perPage,
 		"tagsFilterType": t.TagsFilterType,
 	})
 }
 
-func (t merakiTarget) deviceQuery() url.Values {
-	return meraki.Query(map[string][]string{
+func (t merakiTarget) deviceInventoryQuery() url.Values {
+	return t.deviceFilterQuery("5000")
+}
+
+func (t merakiTarget) deviceStatusQuery() url.Values {
+	return t.deviceFilterQuery("1000")
+}
+
+func (t merakiTarget) memoryQuery() url.Values {
+	query := meraki.Query(map[string][]string{
 		"networkIds":   t.NetworkIDs,
 		"productTypes": t.ProductTypes,
 		"serials":      t.Serials,
-		"tags":         t.Tags,
-	}, map[string]string{
-		"perPage":        "1000",
-		"tagsFilterType": t.TagsFilterType,
-	})
-}
-
-func (t merakiTarget) networkSerialQuery() url.Values {
-	return meraki.Query(map[string][]string{
-		"networkIds": t.NetworkIDs,
-		"serials":    t.Serials,
-	}, map[string]string{"perPage": "1000"})
-}
-
-func (t merakiTarget) networkQuery() url.Values {
-	return meraki.Query(map[string][]string{"networkIds": t.NetworkIDs}, map[string]string{"perPage": "1000"})
-}
-
-func (t merakiTarget) windowedDeviceQuery() url.Values {
-	query := t.networkSerialQuery()
-	query.Set("timespan", "300")
-	return query
-}
-
-func (t merakiTarget) windowedSwitchQuery() url.Values {
-	query := t.networkSerialQuery()
+	}, map[string]string{"perPage": "20"})
 	query.Set("timespan", "300")
 	query.Set("interval", "300")
 	return query
 }
 
-func (t merakiTarget) windowedNetworkQuery() url.Values {
-	query := t.networkQuery()
+func (t merakiTarget) networkSerialQuery(perPage string) url.Values {
+	return meraki.Query(map[string][]string{
+		"networkIds": t.NetworkIDs,
+		"serials":    t.Serials,
+	}, map[string]string{"perPage": perPage})
+}
+
+func (t merakiTarget) networkQuery(perPage string) url.Values {
+	return meraki.Query(map[string][]string{"networkIds": t.NetworkIDs}, map[string]string{"perPage": perPage})
+}
+
+func (t merakiTarget) switchStatusQuery() url.Values {
+	return t.networkSerialQuery("20")
+}
+
+func (t merakiTarget) switchUsageQuery() url.Values {
+	query := t.networkSerialQuery("50")
+	// The API returns only completed intervals. A single five-minute
+	// lookback frequently straddles the active bucket and yields no ports.
+	query.Set("timespan", "1200")
+	query.Set("interval", "300")
+	return query
+}
+
+func (t merakiTarget) uplinkStatusQuery() url.Values {
+	return t.networkSerialQuery("1000")
+}
+
+func (t merakiTarget) wirelessClientsQuery() url.Values {
+	return t.networkSerialQuery("1000")
+}
+
+func (t merakiTarget) wirelessChannelQuery() url.Values {
+	query := t.networkSerialQuery("1000")
+	query.Set("timespan", "300")
+	query.Set("interval", "300")
+	return query
+}
+
+func (t merakiTarget) wirelessPacketLossQuery() url.Values {
+	query := t.networkSerialQuery("1000")
 	query.Set("timespan", "300")
 	return query
+}
+
+func (t merakiTarget) wirelessSSIDQuery() url.Values {
+	return t.networkSerialQuery("500")
+}
+
+func (t merakiTarget) vpnStatusQuery() url.Values {
+	return t.networkQuery("300")
+}
+
+func (t merakiTarget) vpnStatsQuery() url.Values {
+	query := t.networkQuery("300")
+	query.Set("timespan", "300")
+	return query
+}
+
+func (t merakiTarget) powerModulesQuery() url.Values {
+	return t.deviceFilterQuery("1000")
+}
+
+func (t merakiTarget) topologyQuery() url.Values {
+	return t.networkSerialQuery("20")
+}
+
+func (t merakiTarget) applianceTransceiverQuery() url.Values {
+	return t.transceiverQuery("10")
+}
+
+func (t merakiTarget) switchTransceiverQuery() url.Values {
+	return t.transceiverQuery("100")
+}
+
+func (t merakiTarget) transceiverQuery(perPage string) url.Values {
+	query := t.networkSerialQuery(perPage)
+	query.Set("timespan", "1200")
+	query.Set("interval", "300")
+	return query
+}
+
+func (t merakiTarget) scoped(selector deviceSelectionMatcher) bool {
+	if t.selectAll {
+		return !selector.empty()
+	}
+	return len(t.filters) > 0 || len(t.explicitSerials) > 0 || len(t.NetworkIDs) > 0 || len(t.Serials) > 0 || len(t.ProductTypes) > 0 || len(t.Tags) > 0 || !selector.empty()
+}
+
+func (t merakiTarget) requiresInventoryResolution(selector deviceSelectionMatcher) bool {
+	return t.unionRequiresInventory || len(t.NetworkIDs) > 0 || len(t.ProductTypes) > 0 || len(t.Tags) > 0 || !selector.empty()
+}
+
+func (t merakiTarget) allowsInventoryMetadata(device meraki.Device) bool {
+	if t.selectAll {
+		return true
+	}
+	if stringSliceContains(t.explicitSerials, device.Serial) {
+		return true
+	}
+	for _, filter := range t.filters {
+		if filter.allows(device) {
+			return true
+		}
+	}
+	if len(t.filters) > 0 || len(t.explicitSerials) > 0 {
+		return false
+	}
+	return merakiTargetFilter{
+		NetworkIDs:     t.NetworkIDs,
+		Serials:        t.Serials,
+		ProductTypes:   t.ProductTypes,
+		Tags:           t.Tags,
+		TagsFilterType: t.TagsFilterType,
+	}.allows(device)
+}
+
+func (f merakiTargetFilter) allows(device meraki.Device) bool {
+	if len(f.NetworkIDs) > 0 && !stringSliceContains(f.NetworkIDs, device.NetworkID) {
+		return false
+	}
+	if len(f.Serials) > 0 && !stringSliceContains(f.Serials, device.Serial) {
+		return false
+	}
+	if len(f.ProductTypes) > 0 && !stringSliceContains(f.ProductTypes, device.ProductType) {
+		return false
+	}
+	if len(f.Tags) == 0 {
+		return true
+	}
+
+	if f.TagsFilterType == "withAllTags" {
+		for _, tag := range f.Tags {
+			if !stringSliceContains(device.Tags, tag) {
+				return false
+			}
+		}
+		return true
+	}
+	for _, tag := range f.Tags {
+		if stringSliceContains(device.Tags, tag) {
+			return true
+		}
+	}
+	return false
+}
+
+func (t merakiTarget) fallbackSerialSet() map[string]struct{} {
+	out := make(map[string]struct{}, len(t.explicitSerials))
+	for _, serial := range t.explicitSerials {
+		if serial != "" {
+			out[serial] = struct{}{}
+		}
+	}
+	for _, filter := range t.filters {
+		if !filter.serialOnly() {
+			continue
+		}
+		for _, serial := range filter.Serials {
+			if serial != "" {
+				out[serial] = struct{}{}
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func (t merakiTarget) serialSet() map[string]struct{} {
@@ -943,28 +1334,33 @@ func (t merakiTarget) serialSet() map[string]struct{} {
 	return out
 }
 
+func stringSliceContains(values []string, expected string) bool {
+	return slices.Contains(values, expected)
+}
+
 type merakiMetricsBuilder struct {
-	metrics       pmetric.Metrics
-	now           pcommon.Timestamp
-	start         pcommon.Timestamp
-	resources     map[string]*resourceMetricsBuilder
-	devices       map[string]deviceResource
-	networkSerial map[string]string
-	portSpeeds    map[string]int64
-	counters      *counterStore
+	metrics    pmetric.Metrics
+	now        pcommon.Timestamp
+	start      pcommon.Timestamp
+	resources  map[string]*resourceMetricsBuilder
+	devices    map[string]deviceResource
+	portSpeeds map[string]int64
+	counters   *counterStore
 }
 
 type deviceResource struct {
-	Serial      string
-	Name        string
-	LANIP       string
-	PublicIP    string
-	MAC         string
-	Model       string
-	Firmware    string
-	ProductType string
-	NetworkID   string
-	OSName      string
+	Serial               string
+	Name                 string
+	LANIP                string
+	PublicIP             string
+	AdditionalIPs        []string
+	MAC                  string
+	Model                string
+	Firmware             string
+	ProductType          string
+	NetworkID            string
+	OSName               string
+	HighAvailabilityRole string
 }
 
 type resourceMetricsBuilder struct {
@@ -983,19 +1379,36 @@ func newMerakiMetricsBuilder(now time.Time, counters *counterStore) *merakiMetri
 	}
 	ts := pcommon.NewTimestampFromTime(now)
 	return &merakiMetricsBuilder{
-		metrics:       pmetric.NewMetrics(),
-		now:           ts,
-		start:         pcommon.NewTimestampFromTime(counters.StartTime()),
-		resources:     map[string]*resourceMetricsBuilder{},
-		devices:       map[string]deviceResource{},
-		networkSerial: map[string]string{},
-		portSpeeds:    map[string]int64{},
-		counters:      counters,
+		metrics:    pmetric.NewMetrics(),
+		now:        ts,
+		start:      pcommon.NewTimestampFromTime(counters.StartTime()),
+		resources:  map[string]*resourceMetricsBuilder{},
+		devices:    map[string]deviceResource{},
+		portSpeeds: map[string]int64{},
+		counters:   counters,
 	}
 }
 
 func (b *merakiMetricsBuilder) emit() pmetric.Metrics {
+	b.metrics.ResourceMetrics().RemoveIf(func(rm pmetric.ResourceMetrics) bool {
+		rm.ScopeMetrics().RemoveIf(func(sm pmetric.ScopeMetrics) bool {
+			return sm.Metrics().Len() == 0
+		})
+		return rm.ScopeMetrics().Len() == 0
+	})
 	return b.metrics
+}
+
+func (b *merakiMetricsBuilder) selectedDeviceResource(device deviceResource, selector deviceSelectionMatcher) (*resourceMetricsBuilder, bool) {
+	if device.Serial != "" {
+		if existing, ok := b.devices[device.Serial]; ok {
+			device = mergeDeviceResource(existing, device)
+		}
+	}
+	if !selector.allows(merakiDeviceIdentity(device)) {
+		return nil, false
+	}
+	return b.deviceResource(device), true
 }
 
 func (b *merakiMetricsBuilder) deviceResource(device deviceResource) *resourceMetricsBuilder {
@@ -1007,15 +1420,13 @@ func (b *merakiMetricsBuilder) deviceResource(device deviceResource) *resourceMe
 		device = mergeDeviceResource(existing, device)
 	}
 	b.devices[device.Serial] = device
-	if device.NetworkID != "" {
-		b.networkSerial[device.NetworkID] = device.Serial
-	}
 
 	key := "device:" + device.Serial
 	rb := b.resource(key)
 	attrs := rb.resource.Attributes()
 	putStr(attrs, "host.id", device.Serial)
-	putIPAttrs(attrs, "host.ip", device.LANIP, device.PublicIP)
+	hostIPs := append([]string{device.LANIP, device.PublicIP}, device.AdditionalIPs...)
+	putIPAttrs(attrs, "host.ip", hostIPs...)
 	putStr(attrs, "host.name", device.Name)
 	putStr(attrs, "host.type", firstNonEmpty(device.Model, device.ProductType))
 	putStr(attrs, "hw.type", "network")
@@ -1028,13 +1439,6 @@ func (b *merakiMetricsBuilder) deviceResource(device deviceResource) *resourceMe
 }
 
 func (b *merakiMetricsBuilder) networkResource(networkID, networkName, organizationID string) *resourceMetricsBuilder {
-	if serial := b.networkSerial[networkID]; serial != "" {
-		device := b.devices[serial]
-		if networkName != "" && device.Name == "" {
-			device.Name = networkName
-		}
-		return b.deviceResource(device)
-	}
 	rb := b.resource("network:" + networkID)
 	attrs := rb.resource.Attributes()
 	putStr(attrs, "host.id", "meraki:network:"+networkID)
@@ -1044,20 +1448,6 @@ func (b *merakiMetricsBuilder) networkResource(networkID, networkName, organizat
 	putStr(attrs, "meraki.network.id", networkID)
 	putStr(attrs, "meraki.organization.id", organizationID)
 	return rb
-}
-
-func (b *merakiMetricsBuilder) networkAllowed(networkID, networkName string, selector deviceSelectionMatcher) bool {
-	if selector.empty() {
-		return true
-	}
-	if serial := b.networkSerial[networkID]; serial != "" {
-		return selector.allows(merakiDeviceIdentity(b.devices[serial]))
-	}
-	return selector.allows(deviceIdentity{
-		hostNames: []string{networkName},
-		hostIDs:   []string{"meraki:network:" + networkID},
-		deviceIDs: []string{networkID},
-	})
 }
 
 func (b *merakiMetricsBuilder) orgResource(organizationID string) *resourceMetricsBuilder {
@@ -1108,7 +1498,7 @@ func (b *merakiMetricsBuilder) applianceDevices(allowedSerials map[string]struct
 		if !allowsSerial(allowedSerials, device.Serial) {
 			continue
 		}
-		if strings.EqualFold(device.ProductType, "appliance") || strings.HasPrefix(strings.ToUpper(device.Model), "MX") {
+		if isMerakiMXModel(device.Model) && !strings.EqualFold(device.HighAvailabilityRole, "spare") {
 			devices = append(devices, device)
 		}
 	}
@@ -1117,20 +1507,35 @@ func (b *merakiMetricsBuilder) applianceDevices(allowedSerials map[string]struct
 }
 
 func (rb *resourceMetricsBuilder) recordInt(name, description, unit string, value int64, attrs map[string]string) {
+	rb.recordIntAt(name, description, unit, value, attrs, time.Time{})
+}
+
+func (rb *resourceMetricsBuilder) recordIntAt(name, description, unit string, value int64, attrs map[string]string, observedAt time.Time) {
 	dp := rb.gaugeMetric(name, description, unit).Gauge().DataPoints().AppendEmpty()
-	dp.SetTimestamp(rb.now)
+	dp.SetTimestamp(metricTimestamp(observedAt, rb.now))
 	dp.SetIntValue(value)
 	putAttrs(dp.Attributes(), attrs)
 }
 
 func (rb *resourceMetricsBuilder) recordDouble(name, description, unit string, value float64, attrs map[string]string) {
+	rb.recordDoubleAt(name, description, unit, value, attrs, time.Time{})
+}
+
+func (rb *resourceMetricsBuilder) recordDoubleAt(name, description, unit string, value float64, attrs map[string]string, observedAt time.Time) {
 	if math.IsNaN(value) || math.IsInf(value, 0) {
 		return
 	}
 	dp := rb.gaugeMetric(name, description, unit).Gauge().DataPoints().AppendEmpty()
-	dp.SetTimestamp(rb.now)
+	dp.SetTimestamp(metricTimestamp(observedAt, rb.now))
 	dp.SetDoubleValue(value)
 	putAttrs(dp.Attributes(), attrs)
+}
+
+func metricTimestamp(observedAt time.Time, fallback pcommon.Timestamp) pcommon.Timestamp {
+	if observedAt.IsZero() {
+		return fallback
+	}
+	return pcommon.NewTimestampFromTime(observedAt)
 }
 
 // recordSum accumulates delta into the receiver-scoped counter store and emits
@@ -1259,7 +1664,16 @@ func deviceResourceFromSwitchUsage(sw meraki.SwitchPortsUsage) deviceResource {
 }
 
 func deviceResourceFromUplinkStatus(status meraki.UplinkStatus) deviceResource {
-	return deviceResource{Serial: status.Serial, LANIP: firstUplinkIP(status), Model: status.Model, NetworkID: status.NetworkID, OSName: "Meraki"}
+	return deviceResource{
+		Serial:               status.Serial,
+		LANIP:                firstUplinkIP(status),
+		PublicIP:             firstUplinkPublicIP(status),
+		AdditionalIPs:        merakiUplinkIPs(status),
+		Model:                status.Model,
+		NetworkID:            status.NetworkID,
+		OSName:               "Meraki",
+		HighAvailabilityRole: status.HighAvailability.Role,
+	}
 }
 
 func deviceResourceFromTopology(device meraki.TopologyDiscovery) deviceResource {
@@ -1267,42 +1681,108 @@ func deviceResourceFromTopology(device meraki.TopologyDiscovery) deviceResource 
 }
 
 func mergeDeviceResource(existing, update deviceResource) deviceResource {
+	additionalIPs := append([]string(nil), existing.AdditionalIPs...)
+	additionalIPs = append(additionalIPs, update.AdditionalIPs...)
+	additionalIPs = append(additionalIPs, existing.LANIP, existing.PublicIP, update.LANIP, update.PublicIP)
 	return deviceResource{
-		Serial:      firstNonEmpty(update.Serial, existing.Serial),
-		Name:        firstNonEmpty(update.Name, existing.Name),
-		LANIP:       firstNonEmpty(update.LANIP, existing.LANIP),
-		PublicIP:    firstNonEmpty(update.PublicIP, existing.PublicIP),
-		MAC:         firstNonEmpty(update.MAC, existing.MAC),
-		Model:       firstNonEmpty(update.Model, existing.Model),
-		Firmware:    firstNonEmpty(update.Firmware, existing.Firmware),
-		ProductType: firstNonEmpty(update.ProductType, existing.ProductType),
-		NetworkID:   firstNonEmpty(update.NetworkID, existing.NetworkID),
-		OSName:      firstNonEmpty(update.OSName, existing.OSName),
+		Serial:               firstNonEmpty(update.Serial, existing.Serial),
+		Name:                 firstNonEmpty(update.Name, existing.Name),
+		LANIP:                firstNonEmpty(update.LANIP, existing.LANIP),
+		PublicIP:             firstNonEmpty(update.PublicIP, existing.PublicIP),
+		AdditionalIPs:        uniqueStrings(additionalIPs),
+		MAC:                  firstNonEmpty(update.MAC, existing.MAC),
+		Model:                firstNonEmpty(update.Model, existing.Model),
+		Firmware:             firstNonEmpty(update.Firmware, existing.Firmware),
+		ProductType:          firstNonEmpty(update.ProductType, existing.ProductType),
+		NetworkID:            firstNonEmpty(update.NetworkID, existing.NetworkID),
+		OSName:               firstNonEmpty(update.OSName, existing.OSName),
+		HighAvailabilityRole: firstNonEmpty(update.HighAvailabilityRole, existing.HighAvailabilityRole),
 	}
 }
 
-func memoryUtilization(usage meraki.DeviceMemoryUsage) (float64, bool) {
+func isMerakiMXModel(model string) bool {
+	model = strings.ToUpper(strings.TrimSpace(model))
+	return strings.HasPrefix(model, "MX") || strings.HasPrefix(model, "VMX")
+}
+
+func memoryUtilization(usage meraki.DeviceMemoryUsage) (float64, time.Time, bool) {
 	if len(usage.Intervals) > 0 {
-		latest := usage.Intervals[len(usage.Intervals)-1]
-		if latest.Memory.Used.Percentages.Median > 0 {
-			return latest.Memory.Used.Percentages.Median / 100, true
+		latestIndex, observedAt := latestTimestampedIndex(len(usage.Intervals), 0, func(index int) string {
+			return firstValidTimestamp(usage.Intervals[index].EndTS, usage.Intervals[index].StartTS)
+		})
+		latest := usage.Intervals[latestIndex]
+		if invalidNonnegativeValue(latest.Memory.Used.Median) || invalidNonnegativeValue(latest.Memory.Free.Median) {
+			return 0, observedAt, false
 		}
-		if latest.Memory.Used.Percentages.Maximum > 0 {
-			return latest.Memory.Used.Percentages.Maximum / 100, true
+		if latest.Memory.Used.Percentages.Median != nil {
+			ratio, ok := merakiPercentageRatio(*latest.Memory.Used.Percentages.Median)
+			return ratio, observedAt, ok
 		}
-		used := latest.Memory.Used.Median
-		free := latest.Memory.Free.Median
-		if used+free > 0 {
-			return used / (used + free), true
+		if latest.Memory.Used.Percentages.Maximum != nil {
+			ratio, ok := merakiPercentageRatio(*latest.Memory.Used.Percentages.Maximum)
+			return ratio, observedAt, ok
+		}
+		if used, usedOK := merakiNonnegativeValue(latest.Memory.Used.Median); usedOK {
+			if free, freeOK := merakiNonnegativeValue(latest.Memory.Free.Median); freeOK && used+free > 0 && !math.IsInf(used+free, 0) {
+				return used / (used + free), observedAt, true
+			}
 		}
 	}
-	if usage.Used.Median+usage.Free.Median > 0 {
-		return usage.Used.Median / (usage.Used.Median + usage.Free.Median), true
+	if invalidNonnegativeValue(usage.Used.Median) || invalidNonnegativeValue(usage.Free.Median) || invalidNonnegativeValue(usage.Provisioned) {
+		return 0, time.Time{}, false
 	}
-	if usage.Provisioned > 0 && usage.Used.Median > 0 {
-		return usage.Used.Median / usage.Provisioned, true
+	used, usedOK := merakiNonnegativeValue(usage.Used.Median)
+	free, freeOK := merakiNonnegativeValue(usage.Free.Median)
+	if usedOK && freeOK && used+free > 0 && !math.IsInf(used+free, 0) {
+		return used / (used + free), time.Time{}, true
 	}
-	return 0, false
+	provisioned, provisionedOK := merakiNonnegativeValue(usage.Provisioned)
+	if usedOK && provisionedOK && provisioned > 0 && used <= provisioned {
+		return used / provisioned, time.Time{}, true
+	}
+	return 0, time.Time{}, false
+}
+
+func merakiPercentageRatio(value float64) (float64, bool) {
+	if !validNonnegativeFloat(value) || value > 100 {
+		return 0, false
+	}
+	return value / 100, true
+}
+
+func merakiNonnegativeValue(value *float64) (float64, bool) {
+	if value == nil || !validNonnegativeFloat(*value) {
+		return 0, false
+	}
+	return *value, true
+}
+
+func invalidNonnegativeValue(value *float64) bool {
+	return value != nil && !validNonnegativeFloat(*value)
+}
+
+func validNonnegativeFloat(value float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 0
+}
+
+func merakiKilobitsToBits(value float64) (int64, bool) {
+	if !validNonnegativeFloat(value) {
+		return 0, false
+	}
+	scaled := value * 1000
+	// float64(math.MaxInt64) rounds to 2^63, which is the exact exclusive
+	// upper bound for conversion to int64.
+	if math.IsInf(scaled, 0) || scaled >= float64(math.MaxInt64) {
+		return 0, false
+	}
+	return int64(scaled), true
+}
+
+func merakiInterfaceUtilization(rateBits, speedBits int64, validRate bool) (float64, bool) {
+	if !validRate || rateBits < 0 || speedBits <= 0 || rateBits > speedBits {
+		return 0, false
+	}
+	return float64(rateBits) / float64(speedBits), true
 }
 
 func recordWirelessPacketLoss(rb *resourceMetricsBuilder, direction string, loss meraki.PacketLossDirection) {
@@ -1331,7 +1811,12 @@ func recordTopologyProtocol(rb *resourceMetricsBuilder, protocol, portID string,
 }
 
 func recordTransceiverValue(rb *resourceMetricsBuilder, base map[string]string, sensor, unit string, value meraki.SummaryValue) {
-	if value.Median == 0 && value.Minimum == 0 && value.Maximum == 0 {
+	recordTransceiverValueAt(rb, base, sensor, unit, value, time.Time{})
+}
+
+func recordTransceiverValueAt(rb *resourceMetricsBuilder, base map[string]string, sensor, unit string, value meraki.SummaryValue, observedAt time.Time) {
+	median, ok := value.MedianValue()
+	if !ok {
 		return
 	}
 	attrs := cloneStringMap(base)
@@ -1339,7 +1824,39 @@ func recordTransceiverValue(rb *resourceMetricsBuilder, base map[string]string, 
 	attrs["cisco.transceiver.sensor.unit"] = unit
 	// One OTLP metric descriptor cannot change unit between datapoints. The
 	// physical unit remains explicit on each sensor datapoint.
-	rb.recordDouble("cisco.transceiver.sensor", "Transceiver DOM sensor value; physical unit is in cisco.transceiver.sensor.unit.", "1", value.Median, attrs)
+	rb.recordDoubleAt("cisco.transceiver.sensor", "Transceiver DOM sensor value; physical unit is in cisco.transceiver.sensor.unit.", "1", median, attrs, observedAt)
+}
+
+func latestTimestampedIndex(length, fallback int, timestampAt func(int) string) (int, time.Time) {
+	if length <= 0 {
+		return -1, time.Time{}
+	}
+	if fallback < 0 || fallback >= length {
+		fallback = 0
+	}
+	latestIndex := fallback
+	var latest time.Time
+	for i := range length {
+		parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(timestampAt(i)))
+		if err != nil {
+			continue
+		}
+		if latest.IsZero() || parsed.After(latest) {
+			latest = parsed
+			latestIndex = i
+		}
+	}
+	return latestIndex, latest
+}
+
+func firstValidTimestamp(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if _, err := time.Parse(time.RFC3339Nano, value); err == nil {
+			return value
+		}
+	}
+	return ""
 }
 
 func topologyValue(values []meraki.NameValue, names ...string) string {
@@ -1442,6 +1959,24 @@ func firstUplinkIP(status meraki.UplinkStatus) string {
 		}
 	}
 	return ""
+}
+
+func firstUplinkPublicIP(status meraki.UplinkStatus) string {
+	for i := range status.Uplinks {
+		uplink := &status.Uplinks[i]
+		if uplink.PublicIP != "" {
+			return uplink.PublicIP
+		}
+	}
+	return ""
+}
+
+func merakiUplinkIPs(status meraki.UplinkStatus) []string {
+	values := make([]string, 0, len(status.Uplinks)*2)
+	for i := range status.Uplinks {
+		values = append(values, status.Uplinks[i].IP, status.Uplinks[i].PublicIP)
+	}
+	return uniqueStrings(values)
 }
 
 func boolToInt(value bool) int64 {

@@ -24,9 +24,10 @@ import (
 )
 
 const (
-	defaultUserAgent      = "opentelemetry-collector-contrib-ciscoosreceiver"
-	defaultRequestTimeout = 30 * time.Second
-	defaultPageSize       = 100
+	defaultUserAgent             = "opentelemetry-collector-contrib-ciscoosreceiver"
+	defaultRequestTimeout        = 30 * time.Second
+	defaultPageSize              = 100
+	insecureSkipVerifyConfigPath = "aci.insecure_skip_verify"
 )
 
 // Config controls the Cisco APIC API client.
@@ -78,19 +79,25 @@ type Client struct {
 	pageSize   int
 	controller string
 
-	tokenMu       sync.Mutex
-	token         string
-	loginInflight chan struct{}
-	lastAuthErr   error
-	lastAuthAt    time.Time
-	authFailures  int
+	tokenMu         sync.Mutex
+	token           string
+	tokenGeneration uint64
+	loginInflight   chan struct{}
+	lastAuthErr     error
+	lastAuthAt      time.Time
+	authFailures    int
 
 	OnRequest func(RequestStat)
 }
 
+type tokenSnapshot struct {
+	value      string
+	generation uint64
+}
+
 // authBackoffSchedule defines the wait that ensureToken honors after a failed
-// login. It avoids hammering the APIC and locking out the user account when
-// credentials are wrong.
+// login or a token rejected by a data request. It avoids hammering the APIC and
+// locking out the user account when credentials are wrong.
 var authBackoffSchedule = []time.Duration{
 	1 * time.Second,
 	5 * time.Second,
@@ -188,16 +195,29 @@ func Query(values map[string]string) url.Values {
 
 // ListClass fetches all pages from an APIC class query endpoint.
 func (c *Client) ListClass(ctx context.Context, operation, className string, query url.Values, maxResults int) ([]Object, error) {
+	return c.ListClassFiltered(ctx, operation, className, query, maxResults, nil)
+}
+
+// ListClassFiltered fetches APIC class query pages until maxResults objects
+// accepted by include have been collected. The predicate is applied before the
+// result limit so selective filters do not silently discard matches that occur
+// after the first maxResults raw objects.
+func (c *Client) ListClassFiltered(ctx context.Context, operation, className string, query url.Values, maxResults int, include func(Object) bool) ([]Object, error) {
 	path := "/api/class/" + strings.TrimSuffix(strings.TrimPrefix(className, "/"), ".json") + ".json"
-	return c.List(ctx, operation, path, query, maxResults)
+	return c.list(ctx, operation, path, query, maxResults, include)
 }
 
 // List fetches all pages for an APIC endpoint.
 func (c *Client) List(ctx context.Context, operation, path string, query url.Values, maxResults int) ([]Object, error) {
+	return c.list(ctx, operation, path, query, maxResults, nil)
+}
+
+func (c *Client) list(ctx context.Context, operation, path string, query url.Values, maxResults int, include func(Object) bool) ([]Object, error) {
 	if query == nil {
 		query = url.Values{}
 	}
 	var results []Object
+	rawResults := 0
 	resultLimit, hardResultLimit := httpclient.EffectivePaginationResultLimit(maxResults)
 	page := 0
 	pages := 0
@@ -215,7 +235,7 @@ func (c *Client) List(ctx context.Context, operation, path string, query url.Val
 		}
 		pageQuery := cloneValues(query)
 		pageSize := c.pageSize
-		if remaining := resultLimit - len(results); remaining < pageSize {
+		if remaining := resultLimit - len(results); include == nil && remaining < pageSize {
 			pageSize = remaining
 		}
 		if _, ok := pageQuery["page-size"]; !ok {
@@ -241,9 +261,30 @@ func (c *Client) List(ctx context.Context, operation, path string, query url.Val
 		if err != nil {
 			return results, fmt.Errorf("decode apic %s response: %w", operation, err)
 		}
-		results = append(results, pageObjects...)
+		rawResults += len(pageObjects)
+		if include == nil {
+			results = append(results, pageObjects...)
+		} else {
+			for _, object := range pageObjects {
+				if include(object) {
+					results = append(results, object)
+				}
+			}
+		}
 		next := httpclient.NextLink(header.Get("Link"))
-		complete := len(pageObjects) == 0 || len(pageObjects) < pageSize || total > -1 && len(results) >= total || total < 0 && next == ""
+		complete := len(pageObjects) == 0
+		if !complete {
+			switch {
+			case next != "":
+				// An explicit continuation link is authoritative even when the
+				// controller returned fewer objects than requested.
+				complete = false
+			case total >= 0:
+				complete = rawResults >= total
+			default:
+				complete = len(pageObjects) < pageSize
+			}
+		}
 		truncated := len(results) > resultLimit
 		if len(results) >= resultLimit {
 			results = results[:resultLimit]
@@ -263,20 +304,24 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 	var lastErr error
 	attempts := c.retries + 1
 	for attempt := range attempts {
-		body, header, status, err := c.doOnce(ctx, method, operation, path, query, payload)
+		body, header, status, requestToken, err := c.doOnce(ctx, method, operation, path, query, payload)
 		if err == nil {
+			c.markTokenSuccess(requestToken)
 			return body, header, nil
 		}
 		lastErr = err
+		if ctx.Err() != nil {
+			return nil, nil, ctx.Err()
+		}
+		if httpclient.IsCertificateVerificationError(err) {
+			return nil, nil, err
+		}
 		if status == http.StatusUnauthorized || status == http.StatusForbidden {
 			// Drop the token but do not retry inline — a bad credential would
 			// otherwise loop login → fail → login on every attempt and risk
 			// locking the APIC user account. ensureToken applies a backoff so
 			// the next scrape is the next retry boundary.
-			c.clearToken()
-			if ctx.Err() != nil {
-				return nil, nil, ctx.Err()
-			}
+			c.rejectToken(requestToken, err)
 			return nil, nil, err
 		}
 		retryHeader := ""
@@ -296,7 +341,7 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 	return nil, nil, lastErr
 }
 
-func (c *Client) doOnce(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, http.Header, int, error) {
+func (c *Client) doOnce(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, http.Header, int, tokenSnapshot, error) {
 	reqURL := c.buildURL(path, query)
 	var body io.Reader
 	if payload != nil {
@@ -304,7 +349,7 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 	}
 	req, err := http.NewRequestWithContext(ctx, method, reqURL, body)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, tokenSnapshot{}, err
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", c.userAgent)
@@ -313,29 +358,30 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 	}
 	token, err := c.ensureToken(ctx)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, tokenSnapshot{}, err
 	}
-	req.AddCookie(&http.Cookie{Name: "APIC-cookie", Value: token})
+	req.AddCookie(&http.Cookie{Name: "APIC-cookie", Value: token.value})
 
 	start := time.Now()
 	resp, err := c.client.Do(req)
 	duration := time.Since(start)
 	if err != nil {
+		err = httpclient.DecorateCertificateVerificationError(err, "", insecureSkipVerifyConfigPath)
 		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", Duration: duration, Err: err})
-		return nil, nil, 0, err
+		return nil, nil, 0, token, err
 	}
 	bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
 		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
-		return nil, resp.Header, resp.StatusCode, readErr
+		return nil, resp.Header, resp.StatusCode, token, readErr
 	}
 	if closeErr != nil {
-		return nil, resp.Header, resp.StatusCode, closeErr
+		return nil, resp.Header, resp.StatusCode, token, closeErr
 	}
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "success", StatusCode: resp.StatusCode, Duration: duration})
-		return bodyBytes, resp.Header, resp.StatusCode, nil
+		return bodyBytes, resp.Header, resp.StatusCode, token, nil
 	}
 	apiErr := &APIError{StatusCode: resp.StatusCode}
 	c.record(RequestStat{
@@ -349,14 +395,14 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 		RateLimited: resp.StatusCode == http.StatusTooManyRequests,
 		Err:         apiErr,
 	})
-	return nil, resp.Header, resp.StatusCode, apiErr
+	return nil, resp.Header, resp.StatusCode, token, apiErr
 }
 
-func (c *Client) ensureToken(ctx context.Context) (string, error) {
+func (c *Client) ensureToken(ctx context.Context) (tokenSnapshot, error) {
 	for {
 		c.tokenMu.Lock()
 		if c.token != "" {
-			tok := c.token
+			tok := c.tokenSnapshotLocked()
 			c.tokenMu.Unlock()
 			return tok, nil
 		}
@@ -368,7 +414,7 @@ func (c *Client) ensureToken(ctx context.Context) (string, error) {
 			if err == nil {
 				err = errors.New("apic auth in backoff")
 			}
-			return "", err
+			return tokenSnapshot{}, err
 		}
 		// Concurrent callers wait on the inflight channel rather than racing
 		// the login.
@@ -378,7 +424,7 @@ func (c *Client) ensureToken(ctx context.Context) (string, error) {
 			select {
 			case <-ch:
 			case <-ctx.Done():
-				return "", ctx.Err()
+				return tokenSnapshot{}, ctx.Err()
 			}
 			continue
 		}
@@ -391,20 +437,23 @@ func (c *Client) ensureToken(ctx context.Context) (string, error) {
 		c.tokenMu.Lock()
 		c.loginInflight = nil
 		if err != nil {
-			c.authFailures++
-			c.lastAuthErr = err
-			c.lastAuthAt = time.Now()
+			if ctx.Err() == nil {
+				c.recordAuthFailureLocked(err)
+			}
 		} else {
+			c.tokenGeneration++
 			c.token = token
-			c.authFailures = 0
-			c.lastAuthErr = nil
 		}
+		snapshot := c.tokenSnapshotLocked()
 		close(ch)
 		c.tokenMu.Unlock()
 		if err != nil {
-			return "", err
+			if ctx.Err() != nil {
+				return tokenSnapshot{}, ctx.Err()
+			}
+			return tokenSnapshot{}, err
 		}
-		return token, nil
+		return snapshot, nil
 	}
 }
 
@@ -436,6 +485,7 @@ func (c *Client) login(ctx context.Context) (string, error) {
 	resp, err := c.client.Do(req)
 	duration := time.Since(start)
 	if err != nil {
+		err = httpclient.DecorateCertificateVerificationError(err, "", insecureSkipVerifyConfigPath)
 		c.record(RequestStat{Controller: c.name, Operation: "aaaLogin", Method: http.MethodPost, Path: "/api/aaaLogin.json", Outcome: "error", Duration: duration, Err: err})
 		return "", err
 	}
@@ -462,10 +512,45 @@ func (c *Client) login(ctx context.Context) (string, error) {
 	return token, nil
 }
 
-func (c *Client) clearToken() {
+func (c *Client) rejectToken(token tokenSnapshot, authErr error) {
+	if token.value == "" {
+		return
+	}
 	c.tokenMu.Lock()
 	defer c.tokenMu.Unlock()
+	if c.tokenGeneration != token.generation || c.token != token.value {
+		return
+	}
+	c.tokenGeneration++
 	c.token = ""
+	if authErr == nil {
+		authErr = errors.New("apic authentication rejected")
+	}
+	c.recordAuthFailureLocked(authErr)
+}
+
+func (c *Client) markTokenSuccess(token tokenSnapshot) {
+	if token.value == "" {
+		return
+	}
+	c.tokenMu.Lock()
+	defer c.tokenMu.Unlock()
+	if c.tokenGeneration != token.generation || c.token != token.value {
+		return
+	}
+	c.authFailures = 0
+	c.lastAuthErr = nil
+	c.lastAuthAt = time.Time{}
+}
+
+func (c *Client) recordAuthFailureLocked(err error) {
+	c.authFailures++
+	c.lastAuthErr = err
+	c.lastAuthAt = time.Now()
+}
+
+func (c *Client) tokenSnapshotLocked() tokenSnapshot {
+	return tokenSnapshot{value: c.token, generation: c.tokenGeneration}
 }
 
 func (c *Client) buildURL(path string, query url.Values) string {

@@ -93,45 +93,9 @@ Cisco interface traffic utilization as a ratio of line speed
 | network.io.direction | Direction of flow of bytes/operations (receive or transmit) | Str: ``receive``, ``transmit`` | Recommended | - |
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 
-### cisco.optics.chromatic_dispersion
-
-Coherent optical chromatic dispersion
-
-| Unit | Metric Type | Value Type | Stability |
-| ---- | ----------- | ---------- | --------- |
-| ps/nm | Gauge | Double | Development |
-
-#### Attributes
-
-| Name | Description | Values | Requirement Level | Semantic Convention |
-| ---- | ----------- | ------ | ----------------- | ------------------- |
-| network.interface.name | The name of the network interface | Any Str | Recommended | - |
-| cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
-| cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
-| cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
-
-### cisco.optics.dgd
-
-Coherent optical differential group delay
-
-| Unit | Metric Type | Value Type | Stability |
-| ---- | ----------- | ---------- | --------- |
-| ps | Gauge | Double | Development |
-
-#### Attributes
-
-| Name | Description | Values | Requirement Level | Semantic Convention |
-| ---- | ----------- | ------ | ----------------- | ------------------- |
-| network.interface.name | The name of the network interface | Any Str | Recommended | - |
-| cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
-| cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
-| cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
-
 ### cisco.optics.esnr
 
-Effective signal-to-noise ratio reported by a qualified VDM sensor
+Effective signal-to-noise ratio reported by an allowlisted device VDM sensor
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
@@ -144,7 +108,7 @@ Effective signal-to-noise ratio reported by a qualified VDM sensor
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 | cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
 | cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
+| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm`` | Recommended | - |
 | cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
 
 ### cisco.optics.laser_bias_current
@@ -162,25 +126,7 @@ Optical transmitter laser bias current
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 | cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
 | cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
-| cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
-
-### cisco.optics.osnr
-
-Coherent optical signal-to-noise ratio
-
-| Unit | Metric Type | Value Type | Stability |
-| ---- | ----------- | ---------- | --------- |
-| dB | Gauge | Double | Development |
-
-#### Attributes
-
-| Name | Description | Values | Requirement Level | Semantic Convention |
-| ---- | ----------- | ------ | ----------------- | ------------------- |
-| network.interface.name | The name of the network interface | Any Str | Recommended | - |
-| cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
-| cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
+| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm`` | Recommended | - |
 | cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
 
 ### cisco.optics.pre_fec_ber
@@ -198,7 +144,7 @@ Pre-forward-error-correction bit error ratio
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 | cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
 | cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
+| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm`` | Recommended | - |
 | cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
 
 ### cisco.optics.present
@@ -215,43 +161,7 @@ Optical module or lane presence (1 = present, 0 = absent)
 | ---- | ----------- | ------ | ----------------- | ------------------- |
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 | cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
-| cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
-
-### cisco.optics.q_factor
-
-Coherent optical Q-factor
-
-| Unit | Metric Type | Value Type | Stability |
-| ---- | ----------- | ---------- | --------- |
-| dB | Gauge | Double | Development |
-
-#### Attributes
-
-| Name | Description | Values | Requirement Level | Semantic Convention |
-| ---- | ----------- | ------ | ----------------- | ------------------- |
-| network.interface.name | The name of the network interface | Any Str | Recommended | - |
-| cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
-| cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
-| cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
-
-### cisco.optics.q_margin
-
-Coherent optical Q-margin
-
-| Unit | Metric Type | Value Type | Stability |
-| ---- | ----------- | ---------- | --------- |
-| dB | Gauge | Double | Development |
-
-#### Attributes
-
-| Name | Description | Values | Requirement Level | Semantic Convention |
-| ---- | ----------- | ------ | ----------------- | ------------------- |
-| network.interface.name | The name of the network interface | Any Str | Recommended | - |
-| cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
-| cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
+| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm`` | Recommended | - |
 | cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
 
 ### cisco.optics.rx_power
@@ -269,7 +179,7 @@ Received optical power
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 | cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
 | cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
+| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm`` | Recommended | - |
 | cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
 
 ### cisco.optics.tdecq
@@ -287,7 +197,7 @@ Transmitter and dispersion eye closure for PAM4 reported by a sensor explicitly 
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 | cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
 | cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
+| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm`` | Recommended | - |
 | cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
 
 ### cisco.optics.tec_current
@@ -305,7 +215,7 @@ Thermoelectric cooler current when the device reports the sensor in milliamperes
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 | cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
 | cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
+| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm`` | Recommended | - |
 | cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
 
 ### cisco.optics.tec_utilization
@@ -323,7 +233,7 @@ Thermoelectric cooler utilization normalized to a unitless ratio
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 | cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
 | cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
+| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm`` | Recommended | - |
 | cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
 
 ### cisco.optics.temperature
@@ -341,7 +251,7 @@ Optical module temperature
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 | cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
 | cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
+| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm`` | Recommended | - |
 | cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
 
 ### cisco.optics.tx_power
@@ -359,7 +269,7 @@ Transmitted optical power
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 | cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
 | cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
+| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm`` | Recommended | - |
 | cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
 
 ### cisco.optics.voltage
@@ -377,24 +287,39 @@ Optical module supply voltage
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 | cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
 | cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
+| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm`` | Recommended | - |
 | cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
 
 ### system.cpu.utilization
 
-Percentage of CPU time in use.
+Ratio of CPU time in use, from 0 to 1.
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
 | 1 | Gauge | Double | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.node.name | Device-reported node name within a modular chassis | Any Str | Recommended | - |
 
 ### system.memory.utilization
 
-Percentage of memory bytes in use.
+Ratio of memory bytes in use, from 0 to 1.
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
 | 1 | Gauge | Double | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.location.fru | Device-reported field-replaceable-unit identifier | Any Str | Recommended | - |
+| cisco.location.slot | Device-reported hardware slot identifier | Any Str | Recommended | - |
+| cisco.location.bay | Device-reported hardware bay identifier | Any Str | Recommended | - |
+| cisco.location.chassis | Device-reported hardware chassis identifier | Any Str | Recommended | - |
 
 ### system.network.errors
 
@@ -484,13 +409,17 @@ The time the Cisco device has been running
 | Name | Description | Values | Enabled | Semantic Convention | Stability |
 | ---- | ----------- | ------ | ------- | ------------------- | --------- |
 | cisco.os.name | Normalized Cisco operating-system family | Any Str | true | - | - |
-| cisco.platform.family | Configured Cisco platform family for the gNMI target | Any Str | true | - | - |
+| cisco.platform.family | Legacy Cisco platform or operating-system-family compatibility alias whose value depends on the source | Any Str | true | - | - |
+| cisco.product.family | Verified canonical Cisco product family | Any Str | true | - | - |
 | cisco.telemetry.transport | Cisco telemetry transport that produced the metrics | Any Str | true | - | - |
+| device.manufacturer | Manufacturer of the device | Any Str | true | - | - |
+| device.model.identifier | Verified device chassis model identifier | Any Str | true | - | - |
 | host.id | Stable configured identity of the Cisco target | Any Str | true | - | - |
 | host.ip | Management IP of the Cisco target when the endpoint uses an IP literal | Any Str | true | - | - |
 | host.name | Configured name of the Cisco target | Any Str | true | - | - |
 | hw.type | Type of the physical hardware | Any Str | true | - | - |
 | os.name | Human-readable Cisco operating-system name | Any Str | true | - | - |
+| os.version | Device-reported software version; shared gNMI emits the exact live-verified running build | Any Str | true | - | - |
 
 ## Internal Telemetry
 
@@ -510,13 +439,48 @@ Number of gNMI authentication or authorization failures
 | ---- | ----------- | ------ | ------------------- |
 | cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
 
-### otelcol_ciscoosreceiver_gnmi_cache_utilization
+### otelcol_ciscoosreceiver_gnmi_auxiliary_state_utilization
 
-Fraction of the configured retained gNMI state cache currently in use, including mapped series, atomic baselines, and delete tombstones
+Maximum of the retained-entry and retained-byte utilization for the target's gNMI auxiliary-state partition
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
 | 1 | Gauge | Double | Development |
+
+#### Attributes
+
+| Name | Description | Values | Semantic Convention |
+| ---- | ----------- | ------ | ------------------- |
+| cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
+
+### otelcol_ciscoosreceiver_gnmi_cache_owner_resets
+
+Number of silent owner-scoped gNMI cache resets performed before an updates-only stream reconnects
+
+| Unit | Metric Type | Value Type | Monotonic | Stability |
+| ---- | ----------- | ---------- | --------- | --------- |
+| {reset} | Sum | Int | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Semantic Convention |
+| ---- | ----------- | ------ | ------------------- |
+| cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
+| cisco.gnmi.profile | gNMI subscription profile name | Any Str | - |
+
+### otelcol_ciscoosreceiver_gnmi_cache_utilization
+
+Maximum of the retained-entry and retained-byte utilization for the target's gNMI cache partition
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Double | Development |
+
+#### Attributes
+
+| Name | Description | Values | Semantic Convention |
+| ---- | ----------- | ------ | ------------------- |
+| cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
 
 ### otelcol_ciscoosreceiver_gnmi_connections
 
@@ -534,7 +498,7 @@ Current number of established gNMI connections
 
 ### otelcol_ciscoosreceiver_gnmi_consumer_refusals
 
-Number of metric chunks refused by the downstream consumer and dropped without device reconnect
+Number of metric chunks refused by the downstream consumer before the affected gNMI profile reconnects
 
 | Unit | Metric Type | Value Type | Monotonic | Stability |
 | ---- | ----------- | ---------- | --------- | --------- |
@@ -622,6 +586,35 @@ Unix time of the most recent successfully decoded gNMI notification
 | cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
 | cisco.gnmi.profile | gNMI subscription profile name | Any Str | - |
 
+### otelcol_ciscoosreceiver_gnmi_preflight_failures
+
+Number of terminal gNMI product qualification failures. This metric emits only identity_missing, identity_ambiguous, product_mismatch, release_mismatch, missing_model, unsupported_encoding, or malformed_identity; profile-degradation reasons in the shared attribute catalog are not emitted here.
+
+| Unit | Metric Type | Value Type | Monotonic | Stability |
+| ---- | ----------- | ---------- | --------- | --------- |
+| {failure} | Sum | Int | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Semantic Convention |
+| ---- | ----------- | ------ | ------------------- |
+| cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
+| cisco.gnmi.reason | Bounded reason for a gNMI health or degradation event | Str: ``bisection_limit``, ``cache_limit``, ``identity_ambiguous``, ``identity_missing``, ``incompatible_path_group``, ``malformed_identity``, ``malformed_update``, ``missing_model``, ``product_mismatch``, ``release_mismatch``, ``unsupported_encoding``, ``unsupported_path``, ``unsupported_request_options`` | - |
+
+### otelcol_ciscoosreceiver_gnmi_product_verified
+
+Whether the gNMI target passed product, model, release, and capability verification
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Semantic Convention |
+| ---- | ----------- | ------ | ------------------- |
+| cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
+
 ### otelcol_ciscoosreceiver_gnmi_profile_degraded
 
 Whether a gNMI profile is degraded (1 = degraded, 0 = healthy)
@@ -636,7 +629,7 @@ Whether a gNMI profile is degraded (1 = degraded, 0 = healthy)
 | ---- | ----------- | ------ | ------------------- |
 | cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
 | cisco.gnmi.profile | gNMI subscription profile name | Any Str | - |
-| cisco.gnmi.reason | Bounded reason for a gNMI health or degradation event | Str: ``bisection_limit``, ``cache_limit``, ``incompatible_path_group``, ``unsupported_path`` | - |
+| cisco.gnmi.reason | Bounded reason for a gNMI health or degradation event | Str: ``bisection_limit``, ``cache_limit``, ``identity_ambiguous``, ``identity_missing``, ``incompatible_path_group``, ``malformed_identity``, ``malformed_update``, ``missing_model``, ``product_mismatch``, ``release_mismatch``, ``unsupported_encoding``, ``unsupported_path``, ``unsupported_request_options`` | - |
 
 ### otelcol_ciscoosreceiver_gnmi_reconnects
 
@@ -681,6 +674,22 @@ Number of decoded gNMI values without an explicit metric mapping
 | ---- | ----------- | ------ | ------------------- |
 | cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
 | cisco.gnmi.profile | gNMI subscription profile name | Any Str | - |
+
+### otelcol_ciscoosreceiver_gnmi_unsupported_value_kinds
+
+Number of bounded opaque or aggregate gNMI TypedValues ignored by kind
+
+| Unit | Metric Type | Value Type | Monotonic | Stability |
+| ---- | ----------- | ---------- | --------- | --------- |
+| {value} | Sum | Int | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Semantic Convention |
+| ---- | ----------- | ------ | ------------------- |
+| cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
+| cisco.gnmi.profile | gNMI subscription profile name | Any Str | - |
+| cisco.gnmi.value_kind | Bounded gNMI TypedValue kind that was safely ignored because it has no configured scalar decoder | Str: ``any``, ``bytes``, ``leaflist``, ``proto_bytes`` | - |
 
 ### otelcol_ciscoosreceiver_gnmi_updates
 

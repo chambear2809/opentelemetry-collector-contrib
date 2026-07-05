@@ -34,7 +34,7 @@ $defs:
     type: object
     properties:
       module_paths:
-        description: ModulePaths defines the directories where .yang files are stored. This is used by the internal parser to resolve Cisco-specific schemas.
+        description: ModulePaths defines up to 64 regular .yang files or directories containing .yang files. This is used by the internal parser to resolve Cisco-specific schemas.
         type: array
         items:
           type: string
@@ -60,6 +60,10 @@ properties:
   security:
     description: Security contains security hardening configuration
     $ref: security_config
+  stream_idle_timeout:
+    description: StreamIdleTimeout closes an admitted telemetry stream when no message is received for this duration. Zero uses the default of 5 minutes.
+    type: string
+    format: duration
   yang:
     description: YANG contains YANG parser configuration
     $ref: yang_config

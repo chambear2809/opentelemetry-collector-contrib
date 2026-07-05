@@ -24,6 +24,9 @@ import (
 
 const (
 	maxJSONTypedValueBytes          = 4 * 1024 * 1024
+	maxUnsupportedTypedValueBytes   = maxJSONTypedValueBytes
+	maxUnsupportedTypedValueNodes   = 100_000
+	maxUnsupportedTypedValueDepth   = 128
 	maxNotificationWireOperations   = 100_000
 	maxDecodedNotificationPoints    = 50_000
 	maxDecodedNotificationJSONNodes = 100_000
@@ -222,7 +225,7 @@ func decodeNotificationWithLimits(
 			return DecodedNotification{}, stats, err
 		}
 		out.Touched = append(out.Touched, full.Clone())
-		points, unmapped, err := decodeValue(full, update.GetVal(), timestamp, budget)
+		points, unmapped, err := decodeValue(full, update.GetVal(), timestamp, budget, &stats)
 		stats.UnmappedValues += unmapped
 		if err != nil {
 			return DecodedNotification{}, stats, err
@@ -233,7 +236,13 @@ func decodeNotificationWithLimits(
 }
 
 //nolint:staticcheck // gNMI still defines deprecated float and decimal wire variants that must be decoded.
-func decodeValue(path Path, typed *gnmipb.TypedValue, timestamp time.Time, budget *notificationDecodeBudget) ([]Point, int, error) {
+func decodeValue(
+	path Path,
+	typed *gnmipb.TypedValue,
+	timestamp time.Time,
+	budget *notificationDecodeBudget,
+	stats *DecodeStats,
+) ([]Point, int, error) {
 	if typed == nil {
 		return nil, 1, nil
 	}
@@ -282,11 +291,98 @@ func decodeValue(path Path, typed *gnmipb.TypedValue, timestamp time.Time, budge
 		return decodeJSON(path, value.JsonVal, timestamp, budget)
 	case *gnmipb.TypedValue_JsonIetfVal:
 		return decodeJSON(path, value.JsonIetfVal, timestamp, budget)
+	case *gnmipb.TypedValue_BytesVal:
+		if err := validateUnsupportedTypedValue(typed); err != nil {
+			return nil, 0, fmt.Errorf("decode unsupported bytes value: %w", err)
+		}
+		stats.recordUnsupportedValue(UnsupportedValueBytes)
+		return nil, 1, nil
+	case *gnmipb.TypedValue_LeaflistVal:
+		if err := validateUnsupportedTypedValue(typed); err != nil {
+			return nil, 0, fmt.Errorf("decode unsupported leaf-list value: %w", err)
+		}
+		stats.recordUnsupportedValue(UnsupportedValueLeafList)
+		return nil, 1, nil
+	case *gnmipb.TypedValue_AnyVal:
+		if err := validateUnsupportedTypedValue(typed); err != nil {
+			return nil, 0, fmt.Errorf("decode unsupported Any value: %w", err)
+		}
+		stats.recordUnsupportedValue(UnsupportedValueAny)
+		return nil, 1, nil
+	case *gnmipb.TypedValue_ProtoBytes:
+		if err := validateUnsupportedTypedValue(typed); err != nil {
+			return nil, 0, fmt.Errorf("decode unsupported proto_bytes value: %w", err)
+		}
+		stats.recordUnsupportedValue(UnsupportedValueProtoBytes)
+		return nil, 1, nil
 	default:
-		// bytes, proto_bytes, leaf-lists, Any, and future value kinds require
-		// an explicit decoder and are never promoted to ad-hoc metrics.
+		// Future value kinds require an explicit decoder and are never promoted
+		// to ad-hoc metrics.
 		return nil, 1, nil
 	}
+}
+
+type unsupportedTypedValueBudget struct {
+	nodes int
+	bytes int
+}
+
+func validateUnsupportedTypedValue(typed *gnmipb.TypedValue) error {
+	budget := &unsupportedTypedValueBudget{}
+	return budget.visit(typed, 1)
+}
+
+func (b *unsupportedTypedValueBudget) visit(typed *gnmipb.TypedValue, depth int) error {
+	if depth > maxUnsupportedTypedValueDepth {
+		return fmt.Errorf("nesting exceeds %d", maxUnsupportedTypedValueDepth)
+	}
+	if typed == nil {
+		return nil
+	}
+	if b.nodes >= maxUnsupportedTypedValueNodes {
+		return fmt.Errorf("value count exceeds %d", maxUnsupportedTypedValueNodes)
+	}
+	b.nodes++
+	reserveBytes := func(amount int) error {
+		if amount < 0 || amount > maxUnsupportedTypedValueBytes-b.bytes {
+			return fmt.Errorf("payload exceeds %d bytes", maxUnsupportedTypedValueBytes)
+		}
+		b.bytes += amount
+		return nil
+	}
+
+	switch value := typed.GetValue().(type) {
+	case *gnmipb.TypedValue_StringVal:
+		return reserveBytes(len(value.StringVal))
+	case *gnmipb.TypedValue_AsciiVal:
+		return reserveBytes(len(value.AsciiVal))
+	case *gnmipb.TypedValue_BytesVal:
+		return reserveBytes(len(value.BytesVal))
+	case *gnmipb.TypedValue_JsonVal:
+		return reserveBytes(len(value.JsonVal))
+	case *gnmipb.TypedValue_JsonIetfVal:
+		return reserveBytes(len(value.JsonIetfVal))
+	case *gnmipb.TypedValue_ProtoBytes:
+		return reserveBytes(len(value.ProtoBytes))
+	case *gnmipb.TypedValue_AnyVal:
+		if value.AnyVal == nil {
+			return nil
+		}
+		if err := reserveBytes(len(value.AnyVal.GetTypeUrl())); err != nil {
+			return err
+		}
+		return reserveBytes(len(value.AnyVal.GetValue()))
+	case *gnmipb.TypedValue_LeaflistVal:
+		if value.LeaflistVal == nil {
+			return nil
+		}
+		for _, element := range value.LeaflistVal.GetElement() {
+			if err := b.visit(element, depth+1); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func decodeJSON(path Path, raw []byte, timestamp time.Time, budget *notificationDecodeBudget) ([]Point, int, error) {
@@ -397,6 +493,7 @@ func walkJSON(path Path, value any, timestamp time.Time, points *[]Point, budget
 		return unmapped, nil
 	case []any:
 		unmapped := 0
+		var objectPaths map[string]struct{}
 		for _, item := range value {
 			switch item := item.(type) {
 			case map[string]any:
@@ -404,6 +501,14 @@ func walkJSON(path Path, value any, timestamp time.Time, points *[]Point, budget
 				if err != nil {
 					return 0, err
 				}
+				if objectPaths == nil {
+					objectPaths = make(map[string]struct{}, len(value))
+				}
+				key := keyed.Key()
+				if _, duplicate := objectPaths[key]; duplicate {
+					return 0, errors.New("decode JSON path: array contains duplicate canonical list identity")
+				}
+				objectPaths[key] = struct{}{}
 				if keyedBytes > 0 {
 					if budgetErr := budget.reservePathStringBytes(keyedBytes); budgetErr != nil {
 						return 0, budgetErr
@@ -455,6 +560,11 @@ var jsonListKeyNames = map[string]struct{}{
 	"sensor": {}, "sensor-id": {}, "channel": {}, "channel-id": {},
 	"component": {}, "component-name": {}, "node": {}, "node-id": {},
 	"neighbor": {}, "neighbor-address": {}, "address": {}, "serial": {},
+	// Product qualification reads bounded Cisco inventory/install lists. These
+	// fields are schema keys in those identity responses and must remain on the
+	// list element so sibling chassis/version entries cannot collapse together.
+	"hw-type": {}, "hw-dev-index": {}, "version": {}, "version-extension": {},
+	"fru": {}, "bay": {}, "chassis": {},
 }
 
 // withJSONListKeys derives stable list identity from common direct key leaves.

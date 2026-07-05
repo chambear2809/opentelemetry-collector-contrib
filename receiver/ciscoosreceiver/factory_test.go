@@ -76,6 +76,8 @@ func TestCreateDefaultConfig(t *testing.T) {
 	assert.Empty(t, config.Scrapers)
 	assert.Equal(t, "https://api.meraki.com/api/v1", config.Meraki.BaseURL)
 	assert.Equal(t, "opentelemetry-collector-contrib-ciscoosreceiver", config.Meraki.UserAgent)
+	assert.False(t, config.Meraki.InsecureSkipVerify)
+	assert.False(t, config.Meraki.SwitchTransceivers.Enabled)
 	assert.Equal(t, "https://intersight.com", config.Intersight.Endpoint)
 	assert.Equal(t, 100, config.Intersight.PageSize)
 	assert.Equal(t, 24*time.Hour, config.Intersight.EventLookback)

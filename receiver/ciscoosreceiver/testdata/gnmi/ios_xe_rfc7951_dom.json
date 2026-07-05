@@ -3,11 +3,19 @@
     "transceiver": [
       {
         "name": "TenGigabitEthernet1/0/1",
-        "temperature": "41.75",
-        "voltage": "3.31",
-        "laser-bias-current": "6.4",
-        "rx-power": "-2.15",
-        "tx-power": "-1.05",
+        "internal-temp": "41.75",
+        "voltage": {
+          "instant": "3.31"
+        },
+        "laser-bias-current": {
+          "instant": "6.40"
+        },
+        "input-power": {
+          "instant": "-2.15"
+        },
+        "output-power": {
+          "instant": "-1.05"
+        },
         "present": true
       }
     ]

@@ -1,0 +1,13 @@
+change_type: breaking
+component: receiver/cisco_os
+note: Require product-qualified shared gNMI targets and verify live hardware and software identity before subscribing.
+issues: [42647]
+subtext: |
+  Replaces `gnmi.targets[].platform` with required `product` and exact `software_version` fields for Catalyst 9800,
+  ASR 9000, NCS 5500, Nexus 9000, and Nexus 3500 contracts. OS-family-only selectors, including `platform: sonic`,
+  are rejected with actionable validation errors, and Cisco SONiC remains explicitly unsupported. Product identity
+  uses bounded read-only STATE Get probes after Capabilities and required-model validation;
+  terminal product, release, model, identity, and encoding incompatibilities quarantine only the affected target until
+  receiver restart. The common Nexus contract permits only JSON SAMPLE requests with one 1-to-604800-second cadence,
+  and any degraded curated or explicitly required stream withdraws target availability until restart.
+change_logs: [user]

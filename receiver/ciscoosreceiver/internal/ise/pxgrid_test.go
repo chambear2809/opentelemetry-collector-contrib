@@ -18,6 +18,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"golang.org/x/net/websocket"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
 
 func TestPxGridRESTDiscoversServiceEndpointAndPeerSecret(t *testing.T) {
@@ -432,6 +434,20 @@ func TestPxGridSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {
 	}))
 	defer server.Close()
 
+	verifiedClient, err := NewPxGridClient(PxGridConfig{
+		Endpoint:   server.URL + "/pxgrid",
+		NodeName:   "collector",
+		Password:   "account-password",
+		MaxRetries: 3,
+	})
+	require.NoError(t, err)
+	verifiedAttempts := 0
+	verifiedClient.SetOnRequest(func(RequestStat) { verifiedAttempts++ })
+	_, err = verifiedClient.Version(t.Context())
+	require.ErrorContains(t, err, "configure ise.pxgrid.ca_file with the issuing CA (preferred)")
+	require.ErrorContains(t, err, "set ise.pxgrid.insecure_skip_verify: true")
+	assert.Equal(t, 1, verifiedAttempts)
+
 	client, err := NewPxGridClient(PxGridConfig{
 		Endpoint:           server.URL + "/pxgrid",
 		NodeName:           "collector",
@@ -443,6 +459,33 @@ func TestPxGridSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {
 	version, err := client.Version(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, "2.0", String(version, "version"))
+}
+
+func TestPxGridWSSCertificateFailureNamesTrustAndOptInPaths(t *testing.T) {
+	server := httptest.NewTLSServer(websocket.Handler(func(*websocket.Conn) {}))
+	defer server.Close()
+
+	client, err := NewPxGridClient(PxGridConfig{
+		Endpoint: server.URL + "/pxgrid",
+		NodeName: "collector",
+		Password: "account-password",
+	})
+	require.NoError(t, err)
+	err = client.subscribeEndpoint(
+		t.Context(),
+		"wss"+server.URL[len("https"):],
+		"ise-pubsub",
+		"peer-secret",
+		"/topic/session",
+		func(StompMessage) error { return nil },
+	)
+	require.ErrorContains(t, err, "configure ise.pxgrid.ca_file with the issuing CA (preferred)")
+	require.ErrorContains(t, err, "set ise.pxgrid.insecure_skip_verify: true")
+	var dialErr *websocket.DialError
+	require.ErrorAs(t, err, &dialErr)
+	var certificateErr *httpclient.CertificateVerificationError
+	require.ErrorAs(t, err, &certificateErr)
+	assert.True(t, httpclient.IsCertificateVerificationError(err))
 }
 
 func TestPxGridRejectsPlaintextControlEndpoint(t *testing.T) {
@@ -504,6 +547,13 @@ func TestPxGridDiscoveredEndpointRequiresExactAuthorizedOrigin(t *testing.T) {
 	require.NoError(t, client.validateDiscoveredURL("https://ise-service.example:9443/pxgrid/mnt", "https"))
 	require.ErrorContains(t, client.validateDiscoveredURL("https://ise-control.example:9444/pxgrid/mnt", "https"), "not authorized")
 	require.ErrorContains(t, client.validateDiscoveredURL("wss://ise-service.example:9443/pxgrid/pubsub", "wss"), "not authorized")
+	for _, endpoint := range []string{
+		"https://ise-control.example:8910/pxgrid/mnt?",
+		"https://ise-control.example:8910/pxgrid/mnt?token=secret",
+		"wss://ise-control.example:8910/pxgrid/pubsub#fragment",
+	} {
+		require.ErrorContains(t, client.validateDiscoveredURL(endpoint, "https", "wss"), "must not contain a query or fragment")
+	}
 }
 
 func TestNewPxGridClientRejectsMalformedAllowedServiceOrigin(t *testing.T) {

@@ -150,6 +150,24 @@ func TestCatalyst9800GNMIDecoderWirelessAliasesAndRawMetrics(t *testing.T) {
 	assert.Equal(t, "AA:BB:CC:DD:EE:FF", attrValue(t, dp.Attributes(), "cisco.wlc.ap.mac"))
 	assert.Equal(t, []string{"192.0.2.21"}, stringSliceAttrValue(t, dp.Attributes()))
 
+	rfUtilization := mustFindIOSXRMetric(t, md, "cisco.wlc.rf.channel.utilization")
+	require.Equal(t, pmetric.MetricTypeGauge, rfUtilization.Type())
+	assert.Equal(t, "1", rfUtilization.Unit())
+	require.Equal(t, 1, rfUtilization.Gauge().DataPoints().Len())
+	assert.InDelta(t, 0.62, rfUtilization.Gauge().DataPoints().At(0).DoubleValue(), 0.0001)
+
+	ssidUtilization := mustFindIOSXRMetric(t, md, "cisco.wlc.ssid.channel.utilization")
+	require.Equal(t, pmetric.MetricTypeGauge, ssidUtilization.Type())
+	assert.Equal(t, "1", ssidUtilization.Unit())
+	require.Equal(t, 1, ssidUtilization.Gauge().DataPoints().Len())
+	assert.InDelta(t, 0.55, ssidUtilization.Gauge().DataPoints().At(0).DoubleValue(), 0.0001)
+
+	cpuUtilization := mustFindIOSXRMetric(t, md, "cisco.wlc.controller.cpu.utilization")
+	require.Equal(t, pmetric.MetricTypeGauge, cpuUtilization.Type())
+	assert.Equal(t, "1", cpuUtilization.Unit())
+	require.Equal(t, 1, cpuUtilization.Gauge().DataPoints().Len())
+	assert.InDelta(t, 0.22, cpuUtilization.Gauge().DataPoints().At(0).DoubleValue(), 0.0001)
+
 	clientBytes := mustFindIOSXRMetric(t, md, "cisco.wlc.client.network.io")
 	require.Equal(t, pmetric.MetricTypeSum, clientBytes.Type())
 	assert.Equal(t, "By", clientBytes.Unit())

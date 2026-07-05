@@ -78,7 +78,7 @@ func TestProcessNotificationAtomicReplacementRefusalPreservesPriorState(t *testi
 func TestProcessNXOpticsRefusalRollsBackCacheSensorAndPresenceState(t *testing.T) {
 	consumer := &deliveryTestScriptedConsumer{failCalls: map[int]struct{}{1: {}}}
 	targetConfig := GNMITargetConfig{
-		Name: "nx-delivery", Platform: gnmiPlatformNXOS, MaxStreams: 1,
+		Name: "nx-delivery", Product: gnmiProductNexus9000, SoftwareVersion: "10.6(1)", MaxStreams: 1,
 		Profiles: subscriptionProfilesOnly(builtinGNMIProfileOptics),
 	}
 	receiver, target, stream := newDeliveryTestReceiver(t, targetConfig, 10, consumer)
@@ -118,7 +118,7 @@ func TestProcessNXOpticsRefusalRollsBackCacheSensorAndPresenceState(t *testing.T
 
 func TestProcessNXOpticsFitsAuxiliaryMultiplierAtOneCachedSeries(t *testing.T) {
 	targetConfig := GNMITargetConfig{
-		Name: "nx-minimum-budget", Platform: gnmiPlatformNXOS, MaxStreams: 1,
+		Name: "nx-minimum-budget", Product: gnmiProductNexus9000, SoftwareVersion: "10.6(1)", MaxStreams: 1,
 		Profiles: subscriptionProfilesOnly(builtinGNMIProfileOptics),
 	}
 	config := createDefaultConfig().(*Config)
@@ -158,7 +158,7 @@ func TestProcessNXOpticsFitsAuxiliaryMultiplierAtOneCachedSeries(t *testing.T) {
 
 func TestProcessNXOpticsCombinesCrossComponentReplacementDeltasAtCapacity(t *testing.T) {
 	targetConfig := GNMITargetConfig{
-		Name: "nx-combined-budget", Platform: gnmiPlatformNXOS, MaxStreams: 1,
+		Name: "nx-combined-budget", Product: gnmiProductNexus9000, SoftwareVersion: "10.6(1)", MaxStreams: 1,
 		Profiles: subscriptionProfilesOnly(builtinGNMIProfileOptics),
 	}
 	receiver, target, stream := newDeliveryTestReceiver(t, targetConfig, 10, consumertest.NewNop())
@@ -217,7 +217,7 @@ func TestPendingNXTransactionsDoNotHoldGlobalBudgetLock(t *testing.T) {
 		cache, err := internalgnmi.NewCache(10)
 		require.NoError(t, err)
 		target, err := newSharedGNMITargetRuntimeWithBudget(GNMITargetConfig{
-			Name: name, Platform: gnmiPlatformNXOS, MaxStreams: 1,
+			Name: name, Product: gnmiProductNexus9000, SoftwareVersion: "10.6(1)", MaxStreams: 1,
 			Profiles: subscriptionProfilesOnly(builtinGNMIProfileOptics),
 		}, cache, budget)
 		require.NoError(t, err)

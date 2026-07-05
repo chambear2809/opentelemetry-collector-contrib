@@ -8,10 +8,10 @@ package gnmi // import "github.com/open-telemetry/opentelemetry-collector-contri
 
 import (
 	"encoding/json"
-	"fmt"
 	"maps"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -26,14 +26,18 @@ type PathElem struct {
 // Path identifies a branch on one target. Origin is deliberately separate
 // from Elements; callers must not encode an origin as an "origin:path" string.
 type Path struct {
-	Target   string
-	Origin   string
-	Elements []PathElem
+	// Target is the configured receiver target identity used for resource and
+	// cache isolation. PathTarget is the independent gNMI Path.target selector
+	// carried on the wire by proxy-style gNMI endpoints.
+	Target     string
+	PathTarget string
+	Origin     string
+	Elements   []PathElem
 }
 
 // Clone returns a deep copy of the path.
 func (p Path) Clone() Path {
-	out := Path{Target: p.Target, Origin: p.Origin, Elements: make([]PathElem, len(p.Elements))}
+	out := Path{Target: p.Target, PathTarget: p.PathTarget, Origin: p.Origin, Elements: make([]PathElem, len(p.Elements))}
 	for i, elem := range p.Elements {
 		out.Elements[i] = PathElem{Name: elem.Name, Keys: cloneStrings(elem.Keys)}
 	}
@@ -44,6 +48,7 @@ func (p Path) Clone() Path {
 func (p Path) Key() string {
 	var b strings.Builder
 	appendKeyPart(&b, p.Target)
+	appendKeyPart(&b, p.PathTarget)
 	appendKeyPart(&b, p.Origin)
 	for _, elem := range p.Elements {
 		appendKeyPart(&b, elem.Name)
@@ -67,6 +72,9 @@ func (p Path) HasPrefix(selector Path) bool {
 	if selector.Target != "" && p.Target != selector.Target {
 		return false
 	}
+	if selector.PathTarget != "" && p.PathTarget != selector.PathTarget {
+		return false
+	}
 	if selector.Origin != "" && p.Origin != selector.Origin {
 		return false
 	}
@@ -79,7 +87,8 @@ func (p Path) HasPrefix(selector Path) bool {
 			return false
 		}
 		for key, value := range want.Keys {
-			if got.Keys[key] != value {
+			gotValue, present := got.Keys[key]
+			if !present || gotValue != value {
 				return false
 			}
 		}
@@ -89,10 +98,11 @@ func (p Path) HasPrefix(selector Path) bool {
 
 // Series identifies one canonical leaf under a path.
 type Series struct {
-	Target   string
-	Origin   string
-	Elements []PathElem
-	Leaf     string
+	Target     string
+	PathTarget string
+	Origin     string
+	Elements   []PathElem
+	Leaf       string
 }
 
 // Path returns the full path, including the leaf as its final element.
@@ -102,7 +112,7 @@ func (s Series) Path() Path {
 		elems = append(elems, PathElem{Name: elem.Name, Keys: cloneStrings(elem.Keys)})
 	}
 	elems = append(elems, PathElem{Name: s.Leaf})
-	return Path{Target: s.Target, Origin: s.Origin, Elements: elems}
+	return Path{Target: s.Target, PathTarget: s.PathTarget, Origin: s.Origin, Elements: elems}
 }
 
 // Key returns an unambiguous, stable identity for the source series.
@@ -179,10 +189,33 @@ type DecodedNotification struct {
 	Deletes []Path
 }
 
+// UnsupportedValueKind is a bounded classification of TypedValue variants
+// that are valid on the wire but are intentionally not promoted to metrics.
+// Keep this list closed so it is safe to use as a telemetry attribute.
+type UnsupportedValueKind string
+
+const (
+	UnsupportedValueBytes      UnsupportedValueKind = "bytes"
+	UnsupportedValueLeafList   UnsupportedValueKind = "leaflist"
+	UnsupportedValueAny        UnsupportedValueKind = "any"
+	UnsupportedValueProtoBytes UnsupportedValueKind = "proto_bytes"
+)
+
 // DecodeStats contains non-fatal wire-data diagnostics.
 type DecodeStats struct {
-	UnmappedValues    int
-	InvalidTimestamps int
+	UnmappedValues        int
+	InvalidTimestamps     int
+	UnsupportedValueKinds map[UnsupportedValueKind]int
+}
+
+func (s *DecodeStats) recordUnsupportedValue(kind UnsupportedValueKind) {
+	if s == nil || kind == "" {
+		return
+	}
+	if s.UnsupportedValueKinds == nil {
+		s.UnsupportedValueKinds = make(map[UnsupportedValueKind]int, 4)
+	}
+	s.UnsupportedValueKinds[kind]++
 }
 
 func cloneStrings(values map[string]string) map[string]string {
@@ -193,7 +226,8 @@ func cloneStrings(values map[string]string) map[string]string {
 }
 
 func appendKeyPart(b *strings.Builder, value string) {
-	fmt.Fprintf(b, "%d:", len(value))
+	b.WriteString(strconv.Itoa(len(value)))
+	b.WriteByte(':')
 	b.WriteString(value)
 }
 

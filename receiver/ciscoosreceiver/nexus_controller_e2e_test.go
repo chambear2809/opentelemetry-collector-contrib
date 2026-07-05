@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/consumer/consumertest"
+	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
@@ -105,8 +106,24 @@ func TestE2EACIControllerAPI(t *testing.T) {
 	})
 
 	require.EventuallyWithT(t, func(tt *assert.CollectT) {
-		summary := summarizeCiscoOSE2EMetrics(sink.AllMetrics())
+		allMetrics := sink.AllMetrics()
+		summary := summarizeCiscoOSE2EMetrics(allMetrics)
 		assert.Contains(tt, summary.metricNames, "aci.api.request.duration")
-		assert.Contains(tt, summary.metricNames, "aci.controller.up")
+		assert.True(tt, ciscoOSE2EIntMetricValueExists(allMetrics, "aci.controller.up", 1),
+			"APIC authentication and collection must produce controller.up=1")
+		assert.True(tt, ciscoOSE2EIntMetricValueExists(allMetrics, "aci.scrape.partial_success", 0),
+			"every enabled APIC endpoint family must complete successfully")
+		assert.Contains(tt, summary.metricNames, "aci.resource.info")
+		assert.Contains(tt, summary.metricNames, "aci.fabric.health")
+		assert.True(tt, summary.deviceUp, "at least one APIC fabric node must be reported up")
 	}, durationEnv(t, nexusControllerE2EWaitTimeoutEnv, 2*time.Minute), time.Second)
+}
+
+func ciscoOSE2EIntMetricValueExists(allMetrics []pmetric.Metrics, name string, value int64) bool {
+	for _, metrics := range allMetrics {
+		if intMetricValueExists(metrics, name, value) {
+			return true
+		}
+	}
+	return false
 }

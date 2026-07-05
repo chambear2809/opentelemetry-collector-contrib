@@ -160,6 +160,9 @@ func newIOSXRDialOutReceiver(set receiver.Settings, cfg IOSXRConfig, selector de
 	if admissionErr := configureHardenedYangGRPCStreamAdmission(yangCfg, maxStreamsPerClient); admissionErr != nil {
 		return nil, fmt.Errorf("configure IOS XR dial-out global stream admission: %w", admissionErr)
 	}
+	if idleErr := configureHardenedYangGRPCStreamIdleTimeout(yangCfg, cfg.DialOut.StreamIdleTimeout); idleErr != nil {
+		return nil, fmt.Errorf("configure IOS XR dial-out stream idle timeout: %w", idleErr)
+	}
 	modulePaths := append([]string(nil), cfg.DialOut.ModulePaths...)
 	yangCfg.YANG.ModulePaths = modulePaths
 	middlewareID, middleware, err := configureGNMIDialOutSecurity(
@@ -318,16 +321,17 @@ func (r *iosXRDialInReceiver) subscribeTargetAttempt(ctx context.Context, target
 	defer r.setTargetSubscriptionActive(ctx, target, false)
 
 	err := legacyGNMISession{
-		settings:          r.settings,
-		host:              r.host,
-		clientConfig:      target.ClientConfig,
-		username:          target.Credentials.Username,
-		password:          string(target.Credentials.Password),
-		skipCapabilities:  target.SkipCapabilities,
-		pollInterval:      interval,
-		targetName:        target.Name,
-		onceCloseLog:      "IOS XR gNMI once close send failed",
-		responseAdmission: legacyGNMIResponseAdmission(r.processing),
+		settings:                     r.settings,
+		host:                         r.host,
+		clientConfig:                 target.ClientConfig,
+		username:                     target.Credentials.Username,
+		password:                     string(target.Credentials.Password),
+		skipCapabilities:             target.SkipCapabilities,
+		pollInterval:                 interval,
+		targetName:                   target.Name,
+		onceCloseLog:                 "IOS XR gNMI once close send failed",
+		insecureSkipVerifyConfigPath: "ios_xr.dial_in.targets[].tls.insecure_skip_verify",
+		responseAdmission:            legacyGNMIResponseAdmission(r.processing),
 		onSubscribed: func() {
 			r.setTargetSubscriptionActive(ctx, target, true)
 		},

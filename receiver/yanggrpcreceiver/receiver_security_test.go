@@ -215,6 +215,70 @@ func TestReceiverGracefulShutdownCancelsIdleStream(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestReceiverStreamIdleTimeoutReleasesAdmission(t *testing.T) {
+	endpoint := unusedLocalEndpoint(t)
+	cfg := createDefaultConfig().(*Config)
+	cfg.NetAddr.Endpoint = endpoint
+	cfg.MaxConcurrentStreams = 1
+	cfg.MaxConcurrentStreamsPerClient = 1
+	cfg.StreamIdleTimeout = minStreamIdleTimeout
+	receiver := createMetricsReceiver(t.Context(), createTestSettings(), cfg, consumertest.NewNop()).(*yangReceiver)
+	require.NoError(t, receiver.Start(t.Context(), componenttest.NewNopHost()))
+	t.Cleanup(func() { require.NoError(t, receiver.Shutdown(context.WithoutCancel(t.Context()))) })
+
+	conn, stream := openTelemetryStream(t, endpoint)
+	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+	require.Eventually(t, func() bool {
+		return receiver.streamAdmission.activeCount() == 1
+	}, 5*time.Second, 10*time.Millisecond)
+
+	_, err := stream.Recv()
+	require.Equal(t, codes.DeadlineExceeded, status.Code(err))
+	assert.ErrorContains(t, err, "telemetry stream idle timeout exceeded after 1s")
+	require.Eventually(t, func() bool {
+		return receiver.streamAdmission.activeCount() == 0
+	}, 5*time.Second, 10*time.Millisecond)
+
+	// The expired stream must not retain either the global or per-client slot.
+	replacementConn, replacement := openTelemetryStream(t, endpoint)
+	t.Cleanup(func() { require.NoError(t, replacementConn.Close()) })
+	require.NoError(t, replacement.CloseSend())
+	_, err = replacement.Recv()
+	require.ErrorIs(t, err, io.EOF)
+}
+
+func TestReceiverStreamActivityRefreshesIdleTimeout(t *testing.T) {
+	endpoint := unusedLocalEndpoint(t)
+	cfg := createDefaultConfig().(*Config)
+	cfg.NetAddr.Endpoint = endpoint
+	cfg.StreamIdleTimeout = 2 * minStreamIdleTimeout
+	sink := &consumertest.MetricsSink{}
+	receiver := createMetricsReceiver(t.Context(), createTestSettings(), cfg, sink).(*yangReceiver)
+	require.NoError(t, receiver.Start(t.Context(), componenttest.NewNopHost()))
+	t.Cleanup(func() { require.NoError(t, receiver.Shutdown(context.WithoutCancel(t.Context()))) })
+
+	conn, stream := openTelemetryStream(t, endpoint)
+	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+	payload, err := proto.Marshal(&pb.Telemetry{MsgTimestamp: 1})
+	require.NoError(t, err)
+
+	const messages = 5
+	for i := range messages {
+		require.NoError(t, stream.Send(&pb.MdtDialoutArgs{Data: payload}))
+		require.Eventually(t, func() bool {
+			return len(sink.AllMetrics()) == i+1
+		}, 5*time.Second, 10*time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	// More than one idle period has elapsed since the stream was admitted, but
+	// each received message refreshed the deadline.
+	assert.Equal(t, 1, receiver.streamAdmission.activeCount())
+	require.NoError(t, stream.CloseSend())
+	_, err = stream.Recv()
+	require.ErrorIs(t, err, io.EOF)
+}
+
 func TestReceiverStartFailureCleansUpSecurityAndListener(t *testing.T) {
 	endpoint := unusedLocalEndpoint(t)
 	cfg := createDefaultConfig().(*Config)

@@ -1,0 +1,7 @@
+change_type: bug_fix
+component: receiver/cisco_os
+note: Close controller, pagination, selector, and FMC eStreamer coverage gaps.
+issues: [0]
+subtext: |
+  Preserve ACI and FMC aggregate health under device filtering, validate shared selectors and duplicate controller identities, continue pagination when authoritative metadata reports more results, label Catalyst Center devices with their inventory operating system, and implement Cisco's two-request eStreamer FQE session and deterministic extended-record framing.
+change_logs: [user]

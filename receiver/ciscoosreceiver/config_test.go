@@ -40,6 +40,81 @@ func validTestDevice() DeviceConfig {
 	})
 }
 
+func TestConfigValidateRejectsUnsafeDeviceSelection(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  DeviceSelectionConfig
+		wantErr string
+	}{
+		{
+			name:    "blank include",
+			config:  DeviceSelectionConfig{Include: DeviceSelectionMatchConfig{Serials: []string{" "}}},
+			wantErr: "include.serials[0] cannot be empty",
+		},
+		{
+			name:    "blank exclude",
+			config:  DeviceSelectionConfig{Exclude: DeviceSelectionMatchConfig{DeviceIDs: []string{"\t"}}},
+			wantErr: "exclude.device_ids[0] cannot be empty",
+		},
+		{
+			name:    "invalid IP",
+			config:  DeviceSelectionConfig{Include: DeviceSelectionMatchConfig{HostIPs: []string{"192.0.2.999"}}},
+			wantErr: "include.host_ips[0] must be a valid IP address",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := createDefaultConfig().(*Config)
+			cfg.Devices = []DeviceConfig{validTestDevice()}
+			cfg.Scrapers = map[component.Type]component.Config{component.MustNewType("system"): nil}
+			cfg.DeviceSelection = tt.config
+			require.ErrorContains(t, cfg.Validate(), tt.wantErr)
+		})
+	}
+}
+
+func TestControllerConfigRejectsDuplicateEffectiveIdentities(t *testing.T) {
+	t.Run("ACI normalized endpoint", func(t *testing.T) {
+		cfg := createDefaultConfig().(*Config)
+		cfg.ACI.Enabled = true
+		cfg.ACI.Controllers = []ACIControllerConfig{
+			{Endpoint: "https://APIC.example.test", Name: "apic-a"},
+			{Endpoint: "https://apic.example.test:443/", Name: "apic-b"},
+		}
+		cfg.ACI.Auth.Username = "admin"
+		cfg.ACI.Auth.Password = configopaque.String("password")
+
+		require.ErrorContains(t, cfg.validateACI(), "aci.controllers[1].endpoint duplicates aci.controllers[0].endpoint after URL normalization")
+	})
+
+	t.Run("FMC effective name", func(t *testing.T) {
+		cfg := createDefaultConfig().(*Config)
+		cfg.FMC.Enabled = true
+		cfg.FMC.Controllers = []FMCControllerConfig{
+			{Endpoint: "https://fmc-a.example.test", Name: "production-fmc"},
+			{Endpoint: "https://fmc-b.example.test", Name: "PRODUCTION-FMC"},
+		}
+		cfg.FMC.Auth.Username = "admin"
+		cfg.FMC.Auth.Password = configopaque.String("password")
+
+		require.ErrorContains(t, cfg.validateFMC(), "fmc.controllers[1].name duplicates the effective name of fmc.controllers[0]")
+	})
+
+	t.Run("eStreamer default port", func(t *testing.T) {
+		cfg := createDefaultConfig().(*Config)
+		cfg.FMC.EStreamer.Enabled = true
+		cfg.FMC.EStreamer.Targets = []FMCEStreamerTargetConfig{
+			{Endpoint: "FMC.example.test", Name: "stream-a"},
+			{Endpoint: "fmc.example.test:8302", Name: "stream-b"},
+		}
+		cfg.FMC.EStreamer.TLS.CertFile = "client.crt"
+		cfg.FMC.EStreamer.TLS.KeyFile = "client.key"
+
+		require.ErrorContains(t, cfg.validateFMCEStreamer(), "fmc.estreamer.targets[1].endpoint duplicates fmc.estreamer.targets[0].endpoint after address normalization")
+	})
+}
+
 func TestConfigValidate(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -1084,6 +1159,17 @@ func TestMerakiConfigRejectsCredentialsInBaseURL(t *testing.T) {
 	require.ErrorContains(t, cfg.Validate(), "meraki.base_url must not include user information")
 }
 
+func TestMerakiConfigRejectsUnknownProductType(t *testing.T) {
+	cfg := NewFactory().CreateDefaultConfig().(*Config)
+	cfg.Meraki.Auth.APIKey = configopaque.String("secret")
+	cfg.Meraki.Organizations = []MerakiOrganizationConfig{{
+		OrganizationID: "org-1",
+		ProductTypes:   []string{"switch", "swich"},
+	}}
+
+	require.ErrorContains(t, cfg.Validate(), "meraki.organizations[0].product_types[1] must be one of")
+}
+
 func TestConfigRejectsBlankProviderTargetFilters(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -1281,6 +1367,8 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.False(t, cfg.Metrics["cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.*"].Enabled)
 	assert.Equal(t, "https://api.meraki.com/api/v1", cfg.Meraki.BaseURL)
 	assert.Equal(t, 3, cfg.Meraki.MaxRetries)
+	assert.True(t, cfg.Meraki.InsecureSkipVerify)
+	assert.True(t, cfg.Meraki.SwitchTransceivers.Enabled)
 	assert.Equal(t, "meraki-key", string(cfg.Meraki.Auth.APIKey))
 	require.Len(t, cfg.Meraki.Organizations, 1)
 	assert.Equal(t, "123456", cfg.Meraki.Organizations[0].OrganizationID)

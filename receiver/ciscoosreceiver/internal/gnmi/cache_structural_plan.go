@@ -26,6 +26,9 @@ func (budget *cacheStructuralPlanningBudget) consumePath(path Path) bool {
 	if !budget.consume() { // target
 		return false
 	}
+	if !budget.consume() { // gNMI path target
+		return false
+	}
 	if !budget.consume() { // origin
 		return false
 	}
@@ -44,6 +47,9 @@ func (budget *cacheStructuralPlanningBudget) consumePath(path Path) bool {
 
 func (budget *cacheStructuralPlanningBudget) consumeSeriesPath(series Series) bool {
 	if !budget.consume() { // target
+		return false
+	}
+	if !budget.consume() { // gNMI path target
 		return false
 	}
 	if !budget.consume() { // origin
@@ -75,7 +81,7 @@ func seriesPathForStructuralPlan(
 	elements := make([]PathElem, len(series.Elements)+1)
 	copy(elements, series.Elements)
 	elements[len(series.Elements)] = PathElem{Name: series.Leaf}
-	return Path{Target: series.Target, Origin: series.Origin, Elements: elements}, true
+	return Path{Target: series.Target, PathTarget: series.PathTarget, Origin: series.Origin, Elements: elements}, true
 }
 
 func (idx *tombstonePrefixIndex) isStaleForStructuralPlan(
@@ -83,25 +89,36 @@ func (idx *tombstonePrefixIndex) isStaleForStructuralPlan(
 	timestamp time.Time,
 	budget *cacheStructuralPlanningBudget,
 ) (bool, bool) {
+	return idx.isStaleForOwnerForStructuralPlan("", path, timestamp, budget)
+}
+
+func (idx *tombstonePrefixIndex) isStaleForOwnerForStructuralPlan(
+	ownerID string,
+	path Path,
+	timestamp time.Time,
+	budget *cacheStructuralPlanningBudget,
+) (bool, bool) {
 	for _, targetName := range exactAndWildcard(path.Target) {
-		if !budget.consume() {
-			return false, false
-		}
-		target := idx.targets[targetName]
-		if target == nil {
-			continue
-		}
-		for _, origin := range exactAndWildcard(path.Origin) {
+		for _, pathTarget := range exactAndWildcard(path.PathTarget) {
 			if !budget.consume() {
 				return false, false
 			}
-			root := target.origins[origin]
-			if root == nil {
+			target := idx.targets[tombstoneOwnerScopeKey(ownerID, targetName, pathTarget)]
+			if target == nil {
 				continue
 			}
-			stale, complete := root.isStaleForStructuralPlan(path.Elements, 0, timestamp, budget)
-			if !complete || stale {
-				return stale, complete
+			for _, origin := range exactAndWildcard(path.Origin) {
+				if !budget.consume() {
+					return false, false
+				}
+				root := target.origins[origin]
+				if root == nil {
+					continue
+				}
+				stale, complete := root.isStaleForStructuralPlan(path.Elements, 0, timestamp, budget)
+				if !complete || stale {
+					return stale, complete
+				}
 			}
 		}
 	}
@@ -179,11 +196,20 @@ func (idx *tombstonePrefixIndex) dominatedForStructuralPlan(
 	timestamp time.Time,
 	budget *cacheStructuralPlanningBudget,
 ) (map[string]struct{}, bool) {
+	return idx.dominatedForOwnerForStructuralPlan("", selector, timestamp, budget)
+}
+
+func (idx *tombstonePrefixIndex) dominatedForOwnerForStructuralPlan(
+	ownerID string,
+	selector Path,
+	timestamp time.Time,
+	budget *cacheStructuralPlanningBudget,
+) (map[string]struct{}, bool) {
 	dominated := map[string]struct{}{}
 	if !budget.consume() {
 		return nil, false
 	}
-	target := idx.targets[selector.Target]
+	target := idx.targets[tombstoneOwnerScopeKey(ownerID, selector.Target, selector.PathTarget)]
 	if target == nil {
 		return dominated, true
 	}
@@ -270,6 +296,12 @@ func (idx *tombstonePrefixIndex) hasSelectedDescendantForStructuralPlan(
 	budget *cacheStructuralPlanningBudget,
 ) (bool, bool) {
 	visitTarget := func(target *tombstoneTargetIndex) (bool, bool) {
+		if selector.Target != "" && target.target != selector.Target {
+			return false, true
+		}
+		if selector.PathTarget != "" && target.pathTarget != selector.PathTarget {
+			return false, true
+		}
 		if selector.Origin != "" {
 			if !budget.consume() {
 				return false, false
@@ -291,11 +323,11 @@ func (idx *tombstonePrefixIndex) hasSelectedDescendantForStructuralPlan(
 		}
 		return false, true
 	}
-	if selector.Target != "" {
+	if selector.Target != "" && selector.PathTarget != "" {
 		if !budget.consume() {
 			return false, false
 		}
-		target := idx.targets[selector.Target]
+		target := idx.targets[tombstoneScopeKey(selector.Target, selector.PathTarget)]
 		if target == nil {
 			return false, true
 		}
@@ -471,6 +503,12 @@ func pathHasPrefixForStructuralPlan(
 		return false, false
 	}
 	if selector.Target != "" && path.Target != selector.Target {
+		return false, true
+	}
+	if !budget.consume() {
+		return false, false
+	}
+	if selector.PathTarget != "" && path.PathTarget != selector.PathTarget {
 		return false, true
 	}
 	if !budget.consume() {

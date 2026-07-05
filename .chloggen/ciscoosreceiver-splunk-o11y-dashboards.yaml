@@ -1,0 +1,8 @@
+change_type: enhancement
+component: receiver/cisco_os
+note: Add production-oriented Splunk Observability Cloud dashboards and current integration metric guidance.
+issues: [0]
+subtext: |
+  Adds an FMC troubleshooting dashboard group for API trust, managed firewall health, interfaces, VPN/HA, policy, deployment, and change evidence; aligns dashboard payloads with the observed Splunk v2 chart and variable contract; adds a disposable create, read-back, and cleanup qualification workflow; and documents the receiver's current Meraki, Intersight, Catalyst Center, SD-WAN, Nexus Dashboard, ACI, ISE, FMC, Catalyst 9800, IOS XR, and shared gNMI metrics.
+  Catalyst 9800 RF, SSID, and controller CPU percentage aliases are normalized to unitless ratios so direct telemetry and shared gNMI use consistent values.
+change_logs: [user]

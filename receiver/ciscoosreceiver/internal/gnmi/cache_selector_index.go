@@ -47,24 +47,26 @@ func (budget *cacheSelectorPlanningBudget) consume() bool {
 // quadratic before the retained-state planning limit is checked.
 func (idx *cacheSelectorIndex) selectsForPlan(path Path, budget *cacheSelectorPlanningBudget) (bool, bool) {
 	for _, targetName := range exactAndWildcard(path.Target) {
-		if !budget.consume() {
-			return false, false
-		}
-		target := idx.paths.targets[targetName]
-		if target == nil {
-			continue
-		}
-		for _, origin := range exactAndWildcard(path.Origin) {
+		for _, pathTarget := range exactAndWildcard(path.PathTarget) {
 			if !budget.consume() {
 				return false, false
 			}
-			root := target.origins[origin]
-			if root == nil {
+			target := idx.paths.targets[tombstoneScopeKey(targetName, pathTarget)]
+			if target == nil {
 				continue
 			}
-			selected, complete := cacheSelectorPathSelectsForPlan(root, path.Elements, 0, budget)
-			if !complete || selected {
-				return selected, complete
+			for _, origin := range exactAndWildcard(path.Origin) {
+				if !budget.consume() {
+					return false, false
+				}
+				root := target.origins[origin]
+				if root == nil {
+					continue
+				}
+				selected, complete := cacheSelectorPathSelectsForPlan(root, path.Elements, 0, budget)
+				if !complete || selected {
+					return selected, complete
+				}
 			}
 		}
 	}
@@ -205,6 +207,9 @@ func buildCacheSelectorPlan(paths []Path) (cacheSelectorPlan, error) {
 		}
 		if (leftPath.Target == "") != (rightPath.Target == "") {
 			return leftPath.Target == ""
+		}
+		if (leftPath.PathTarget == "") != (rightPath.PathTarget == "") {
+			return leftPath.PathTarget == ""
 		}
 		if (leftPath.Origin == "") != (rightPath.Origin == "") {
 			return leftPath.Origin == ""

@@ -4,10 +4,29 @@ attributes:
     type: string
   cisco.gnmi.reason:
     description: Bounded reason for a gNMI health or degradation event
-    enum: [bisection_limit, cache_limit, incompatible_path_group, unsupported_path]
+    enum: [bisection_limit, cache_limit, identity_ambiguous, identity_missing, incompatible_path_group, malformed_identity, malformed_update, missing_model, product_mismatch, release_mismatch, unsupported_encoding, unsupported_path, unsupported_request_options]
     type: string
   cisco.gnmi.target:
     description: Static gNMI target name from the receiver configuration
+    type: string
+  cisco.gnmi.value_kind:
+    description: Bounded gNMI TypedValue kind that was safely ignored because it has no configured scalar decoder
+    enum: [any, bytes, leaflist, proto_bytes]
+    type: string
+  cisco.location.bay:
+    description: Device-reported hardware bay identifier
+    type: string
+  cisco.location.chassis:
+    description: Device-reported hardware chassis identifier
+    type: string
+  cisco.location.fru:
+    description: Device-reported field-replaceable-unit identifier
+    type: string
+  cisco.location.slot:
+    description: Device-reported hardware slot identifier
+    type: string
+  cisco.node.name:
+    description: Device-reported node name within a modular chassis
     type: string
   cisco.optics.experimental:
     description: Whether the source platform and optical profile still require physical-hardware qualification
@@ -17,7 +36,7 @@ attributes:
     type: string
   cisco.optics.profile:
     description: The optical telemetry profile that produced the reading
-    enum: [dom, vdm, coherent]
+    enum: [dom, vdm]
     type: string
   cisco.optics.sensor:
     description: The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted
@@ -38,8 +57,8 @@ description: |
   The Cisco OS Receiver is a modular receiver that collects metrics from Cisco network devices via SSH connections,
   Cisco Meraki Dashboard APIs, Cisco Intersight APIs, Cisco Catalyst Center Assurance APIs, Cisco Catalyst SD-WAN
   Manager APIs, Nexus Dashboard/NDFC APIs, Cisco APIC APIs, Cisco Secure Firewall Management Center APIs, Cisco
-  Identity Services Engine APIs, secure normalized gNMI dial-in for IOS XE, IOS XR, and NX-OS, and IOS XR MDT
-  telemetry. It supports metrics for device, cloud, controller,
+  Identity Services Engine APIs, product-qualified secure normalized gNMI dial-in for supported Catalyst, ASR, NCS,
+  and Nexus products, and IOS XR MDT telemetry. It supports metrics for device, cloud, controller,
   identity, security, core WAN, and infrastructure health plus logs for operational evidence such as faults, anomalies,
   advisories, audits, deployments, workflows, authentication failures, posture, pxGrid session signals, policy changes,
   and Secure Firewall security events.
@@ -92,25 +111,9 @@ metrics:
       value_type: double
     stability: development
     unit: "1"
-  cisco.optics.chromatic_dispersion:
-    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
-    description: Coherent optical chromatic dispersion
-    enabled: true
-    gauge:
-      value_type: double
-    stability: development
-    unit: "ps/nm"
-  cisco.optics.dgd:
-    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
-    description: Coherent optical differential group delay
-    enabled: true
-    gauge:
-      value_type: double
-    stability: development
-    unit: ps
   cisco.optics.esnr:
     attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
-    description: Effective signal-to-noise ratio reported by a qualified VDM sensor
+    description: Effective signal-to-noise ratio reported by an allowlisted device VDM sensor
     enabled: true
     gauge:
       value_type: double
@@ -124,14 +127,6 @@ metrics:
       value_type: double
     stability: development
     unit: mA
-  cisco.optics.osnr:
-    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
-    description: Coherent optical signal-to-noise ratio
-    enabled: true
-    gauge:
-      value_type: double
-    stability: development
-    unit: dB
   cisco.optics.pre_fec_ber:
     attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
     description: Pre-forward-error-correction bit error ratio
@@ -148,22 +143,6 @@ metrics:
       value_type: int
     stability: development
     unit: "1"
-  cisco.optics.q_factor:
-    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
-    description: Coherent optical Q-factor
-    enabled: true
-    gauge:
-      value_type: double
-    stability: development
-    unit: dB
-  cisco.optics.q_margin:
-    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
-    description: Coherent optical Q-margin
-    enabled: true
-    gauge:
-      value_type: double
-    stability: development
-    unit: dB
   cisco.optics.rx_power:
     attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
     description: Received optical power
@@ -221,14 +200,16 @@ metrics:
     stability: development
     unit: V
   system.cpu.utilization:
-    description: Percentage of CPU time in use.
+    attributes: [cisco.node.name]
+    description: Ratio of CPU time in use, from 0 to 1.
     enabled: true
     gauge:
       value_type: double
     stability: development
     unit: "1"
   system.memory.utilization:
-    description: Percentage of memory bytes in use.
+    attributes: [cisco.location.fru, cisco.location.slot, cisco.location.bay, cisco.location.chassis]
+    description: Ratio of memory bytes in use, from 0 to 1.
     enabled: true
     gauge:
       value_type: double
@@ -295,11 +276,23 @@ resource_attributes:
     enabled: true
     type: string
   cisco.platform.family:
-    description: Configured Cisco platform family for the gNMI target
+    description: Legacy Cisco platform or operating-system-family compatibility alias whose value depends on the source
+    enabled: true
+    type: string
+  cisco.product.family:
+    description: Verified canonical Cisco product family
     enabled: true
     type: string
   cisco.telemetry.transport:
     description: Cisco telemetry transport that produced the metrics
+    enabled: true
+    type: string
+  device.manufacturer:
+    description: Manufacturer of the device
+    enabled: true
+    type: string
+  device.model.identifier:
+    description: Verified device chassis model identifier
     enabled: true
     type: string
   host.id:
@@ -322,6 +315,10 @@ resource_attributes:
     description: Human-readable Cisco operating-system name
     enabled: true
     type: string
+  os.version:
+    description: Device-reported software version; shared gNMI emits the exact live-verified running build
+    enabled: true
+    type: string
 status:
   class: receiver
   codeowners:
@@ -340,8 +337,26 @@ telemetry:
         monotonic: true
         value_type: int
       unit: "{failure}"
+    ciscoosreceiver_gnmi_auxiliary_state_utilization:
+      attributes: [cisco.gnmi.target]
+      description: Maximum of the retained-entry and retained-byte utilization for the target's gNMI auxiliary-state partition
+      enabled: true
+      gauge:
+        value_type: double
+      stability: development
+      unit: "1"
+    ciscoosreceiver_gnmi_cache_owner_resets:
+      attributes: [cisco.gnmi.target, cisco.gnmi.profile]
+      description: Number of silent owner-scoped gNMI cache resets performed before an updates-only stream reconnects
+      enabled: true
+      stability: development
+      sum:
+        monotonic: true
+        value_type: int
+      unit: "{reset}"
     ciscoosreceiver_gnmi_cache_utilization:
-      description: Fraction of the configured retained gNMI state cache currently in use, including mapped series, atomic baselines, and delete tombstones
+      attributes: [cisco.gnmi.target]
+      description: Maximum of the retained-entry and retained-byte utilization for the target's gNMI cache partition
       enabled: true
       gauge:
         value_type: double
@@ -357,7 +372,7 @@ telemetry:
       unit: "{connection}"
     ciscoosreceiver_gnmi_consumer_refusals:
       attributes: [cisco.gnmi.target, cisco.gnmi.profile]
-      description: Number of metric chunks refused by the downstream consumer and dropped without device reconnect
+      description: Number of metric chunks refused by the downstream consumer before the affected gNMI profile reconnects
       enabled: true
       stability: development
       sum:
@@ -408,6 +423,26 @@ telemetry:
         value_type: int
       stability: development
       unit: s
+    ciscoosreceiver_gnmi_preflight_failures:
+      attributes: [cisco.gnmi.target, cisco.gnmi.reason]
+      description: >-
+        Number of terminal gNMI product qualification failures. This metric emits only identity_missing,
+        identity_ambiguous, product_mismatch, release_mismatch, missing_model, unsupported_encoding, or
+        malformed_identity; profile-degradation reasons in the shared attribute catalog are not emitted here.
+      enabled: true
+      stability: development
+      sum:
+        monotonic: true
+        value_type: int
+      unit: "{failure}"
+    ciscoosreceiver_gnmi_product_verified:
+      attributes: [cisco.gnmi.target]
+      description: Whether the gNMI target passed product, model, release, and capability verification
+      enabled: true
+      gauge:
+        value_type: int
+      stability: development
+      unit: "1"
     ciscoosreceiver_gnmi_profile_degraded:
       attributes: [cisco.gnmi.target, cisco.gnmi.profile, cisco.gnmi.reason]
       description: Whether a gNMI profile is degraded (1 = degraded, 0 = healthy)
@@ -436,6 +471,15 @@ telemetry:
     ciscoosreceiver_gnmi_unmapped_values:
       attributes: [cisco.gnmi.target, cisco.gnmi.profile]
       description: Number of decoded gNMI values without an explicit metric mapping
+      enabled: true
+      stability: development
+      sum:
+        monotonic: true
+        value_type: int
+      unit: "{value}"
+    ciscoosreceiver_gnmi_unsupported_value_kinds:
+      attributes: [cisco.gnmi.target, cisco.gnmi.profile, cisco.gnmi.value_kind]
+      description: Number of bounded opaque or aggregate gNMI TypedValues ignored by kind
       enabled: true
       stability: development
       sum:

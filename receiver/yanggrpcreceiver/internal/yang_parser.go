@@ -5,7 +5,9 @@ package internal // import "github.com/open-telemetry/opentelemetry-collector-co
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -13,6 +15,28 @@ import (
 	"slices"
 	"strings"
 )
+
+const (
+	maxYANGModuleFiles       = 10_000
+	maxYANGModuleWalkEntries = 100_000
+	maxYANGModuleFileBytes   = 16 * 1024 * 1024
+	maxYANGModuleTotalBytes  = 128 * 1024 * 1024
+	yangModuleReadDirBatch   = 256
+)
+
+type yangModuleLoadLimits struct {
+	files       int
+	walkEntries int
+	fileBytes   int64
+	totalBytes  int64
+}
+
+var defaultYANGModuleLoadLimits = yangModuleLoadLimits{
+	files:       maxYANGModuleFiles,
+	walkEntries: maxYANGModuleWalkEntries,
+	fileBytes:   maxYANGModuleFileBytes,
+	totalBytes:  maxYANGModuleTotalBytes,
+}
 
 // Helper function to create int64 pointers
 func int64Ptr(v int64) *int64 {
@@ -47,13 +71,29 @@ type YANGModule struct {
 
 // YANGParser handles parsing of YANG modules to identify keyed elements
 type YANGParser struct {
-	modules map[string]*YANGModule
+	modules           map[string]*YANGModule
+	moduleSources     map[string]yangModuleSource
+	nextModuleLoad    int
+	loadedModuleFiles int
+	walkedEntries     int
+	loadedModuleBytes int64
+}
+
+type yangModuleSource struct {
+	load int
+	path string
+}
+
+type yangModuleDirectory struct {
+	path string
+	info os.FileInfo
 }
 
 // NewYANGParser creates a new YANG parser instance
 func NewYANGParser() *YANGParser {
 	return &YANGParser{
-		modules: make(map[string]*YANGModule),
+		modules:       make(map[string]*YANGModule),
+		moduleSources: make(map[string]yangModuleSource),
 	}
 }
 
@@ -457,28 +497,169 @@ func (p *YANGParser) GetAvailableModules() []string {
 
 // ExtractYANGFromFiles attempts to extract YANG module information from .yang files
 func (p *YANGParser) ExtractYANGFromFiles(yangDir string) error {
-	return filepath.Walk(yangDir, func(path string, _ os.FileInfo, err error) error {
-		if err != nil {
+	return p.extractYANGFromFiles(yangDir, defaultYANGModuleLoadLimits)
+}
+
+func (p *YANGParser) extractYANGFromFiles(yangDir string, limits yangModuleLoadLimits) error {
+	if limits.files <= 0 || limits.walkEntries <= 0 || limits.fileBytes <= 0 || limits.totalBytes <= 0 {
+		return errors.New("YANG module load limits must be positive")
+	}
+	load := p.nextModuleLoad
+	p.nextModuleLoad++
+
+	rootInfo, err := os.Lstat(yangDir)
+	if err != nil {
+		return err
+	}
+	if !rootInfo.IsDir() {
+		if !rootInfo.Mode().IsRegular() || !strings.HasSuffix(yangDir, ".yang") {
+			return fmt.Errorf("YANG module path %q must be a regular .yang file or a directory", yangDir)
+		}
+		_, err = p.inspectYANGModuleEntry(yangDir, rootInfo, limits, load)
+		return err
+	}
+	isDirectory, err := p.inspectYANGModuleEntry(yangDir, rootInfo, limits, load)
+	if err != nil || !isDirectory {
+		return err
+	}
+
+	// filepath.Walk eagerly reads and sorts every name in a directory before
+	// invoking its callback. Read fixed-size batches instead so a single huge
+	// directory cannot allocate beyond the traversal budget before it is checked.
+	pendingDirectories := []yangModuleDirectory{{path: yangDir, info: rootInfo}}
+	for len(pendingDirectories) > 0 {
+		last := len(pendingDirectories) - 1
+		directory := pendingDirectories[last]
+		pendingDirectories = pendingDirectories[:last]
+		if err := p.inspectYANGModuleDirectory(directory, limits, load, &pendingDirectories); err != nil {
 			return err
 		}
+	}
+	return nil
+}
 
-		if !strings.HasSuffix(path, ".yang") {
+func (p *YANGParser) inspectYANGModuleDirectory(
+	directoryEntry yangModuleDirectory,
+	limits yangModuleLoadLimits,
+	load int,
+	pendingDirectories *[]yangModuleDirectory,
+) (returnErr error) {
+	directory, err := openYANGPath(directoryEntry.path)
+	if err != nil {
+		return fmt.Errorf("open YANG module directory %q: %w", directoryEntry.path, err)
+	}
+	directoryInfo, err := directory.Stat()
+	if err != nil {
+		return errors.Join(fmt.Errorf("stat opened YANG module directory %q: %w", directoryEntry.path, err), directory.Close())
+	}
+	if !directoryInfo.IsDir() || !os.SameFile(directoryEntry.info, directoryInfo) {
+		return errors.Join(
+			fmt.Errorf("YANG module directory %q changed after directory enumeration", directoryEntry.path),
+			directory.Close(),
+		)
+	}
+	defer func() {
+		returnErr = errors.Join(returnErr, directory.Close())
+	}()
+
+	for {
+		entries, readErr := directory.Readdir(yangModuleReadDirBatch)
+		for _, entry := range entries {
+			path := filepath.Join(directoryEntry.path, entry.Name())
+			isDirectory, inspectErr := p.inspectYANGModuleEntry(path, entry, limits, load)
+			if inspectErr != nil {
+				return inspectErr
+			}
+			if isDirectory {
+				*pendingDirectories = append(*pendingDirectories, yangModuleDirectory{path: path, info: entry})
+			}
+		}
+		if errors.Is(readErr, io.EOF) {
 			return nil
 		}
-
-		// Basic YANG file parsing - can be enhanced
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return err
+		if readErr != nil {
+			return readErr
 		}
+	}
+}
 
-		module := p.parseYANGContent(string(content), filepath.Base(path))
-		if module != nil {
+func (p *YANGParser) inspectYANGModuleEntry(path string, info os.FileInfo, limits yangModuleLoadLimits, load int) (bool, error) {
+	p.walkedEntries++
+	if p.walkedEntries > limits.walkEntries {
+		return false, fmt.Errorf("YANG module walk exceeds hard entry limit of %d", limits.walkEntries)
+	}
+
+	if info.IsDir() {
+		return true, nil
+	}
+	if !strings.HasSuffix(path, ".yang") {
+		return false, nil
+	}
+	if !info.Mode().IsRegular() {
+		return false, fmt.Errorf("YANG module %q is not a regular file", path)
+	}
+	p.loadedModuleFiles++
+	if p.loadedModuleFiles > limits.files {
+		return false, fmt.Errorf("YANG module load exceeds hard file limit of %d", limits.files)
+	}
+
+	content, err := readBoundedYANGModule(path, info, limits.fileBytes)
+	if err != nil {
+		return false, err
+	}
+	if int64(len(content)) > limits.totalBytes-p.loadedModuleBytes {
+		return false, fmt.Errorf("YANG module load exceeds hard aggregate size limit of %d bytes", limits.totalBytes)
+	}
+	p.loadedModuleBytes += int64(len(content))
+
+	module := p.parseYANGContent(string(content), filepath.Base(path))
+	if module != nil {
+		candidate := yangModuleSource{load: load, path: path}
+		current, exists := p.moduleSources[module.Name]
+		if !exists || candidate.load > current.load || (candidate.load == current.load && candidate.path > current.path) {
 			p.modules[module.Name] = module
+			p.moduleSources[module.Name] = candidate
 		}
+	}
+	return false, nil
+}
 
-		return nil
-	})
+func readBoundedYANGModule(path string, expected os.FileInfo, maximum int64) ([]byte, error) {
+	file, err := openYANGPath(path)
+	if err != nil {
+		return nil, fmt.Errorf("open YANG module %q: %w", path, err)
+	}
+	openedInfo, statErr := file.Stat()
+	if statErr != nil {
+		return nil, errors.Join(fmt.Errorf("stat opened YANG module %q: %w", path, statErr), file.Close())
+	}
+	if !openedInfo.Mode().IsRegular() {
+		return nil, errors.Join(fmt.Errorf("YANG module %q is not a regular file", path), file.Close())
+	}
+	if expected == nil || !os.SameFile(expected, openedInfo) {
+		return nil, errors.Join(
+			fmt.Errorf("YANG module %q changed after directory enumeration", path),
+			file.Close(),
+		)
+	}
+	if openedInfo.Size() > maximum {
+		return nil, errors.Join(
+			fmt.Errorf("YANG module %q exceeds hard size limit of %d bytes", path, maximum),
+			file.Close(),
+		)
+	}
+	content, readErr := io.ReadAll(io.LimitReader(file, maximum+1))
+	closeErr := file.Close()
+	if readErr != nil {
+		return nil, readErr
+	}
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	if int64(len(content)) > maximum {
+		return nil, fmt.Errorf("YANG module %q exceeds hard size limit of %d bytes", path, maximum)
+	}
+	return content, nil
 }
 
 // parseYANGContent performs basic parsing of YANG file content

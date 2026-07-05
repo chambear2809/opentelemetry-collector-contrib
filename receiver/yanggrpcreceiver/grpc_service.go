@@ -105,7 +105,13 @@ type telemetryConversionBudget struct {
 // MdtDialout processes the bidirectional gRPC stream.
 func (s *grpcService) MdtDialout(stream pb.GRPCMdtDialout_MdtDialoutServer) error {
 	s.receiver.settings.Logger.Info("New Cisco telemetry session established")
-	reader := newTelemetryStreamReader(stream.Context(), stream)
+	reader := newTelemetryStreamReader(
+		stream.Context(),
+		stream,
+		effectiveStreamIdleTimeout(s.receiver.config.StreamIdleTimeout),
+	)
+	s.receiver.wg.Go(reader.read)
+	defer reader.stop()
 	for {
 		req, releaseFrame, err := reader.receive()
 		if errors.Is(err, io.EOF) {

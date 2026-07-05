@@ -6,6 +6,7 @@ package ciscoosreceiver
 import (
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"go.opentelemetry.io/collector/receiver/receivertest"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/sdwan"
 )
 
 func TestSDWANScrapeEmitsCoreMetrics(t *testing.T) {
@@ -34,7 +36,7 @@ func TestSDWANScrapeEmitsCoreMetrics(t *testing.T) {
 		"/dataservice/device/app-route/statistics":       `{"data":[{"latency":12,"jitter":3,"loss":0.1,"local-color":"biz-internet","remote-color":"mpls","sla-class":"ai-critical","application":"openai-api","sla-state":"ok"}]}`,
 		"/dataservice/device/interface/synced":           `{"data":[{"ifname":"ge0/0","oper-status":"up","admin-status":"up","speed":1000000000,"rx-bytes":1024,"tx-bytes":2048,"rx-packets":10,"tx-packets":20,"rx-errors":1,"rx-drops":3,"tx-drops":2,"color":"biz-internet","vpn-id":"0"}]}`,
 		"/dataservice/alarms":                            `{"data":[{"id":"alarm-1","severity":"critical","status":"active","system-ip":"10.0.0.1","site-id":"100"}]}`,
-		"/dataservice/events":                            `{"data":[{"eventId":"event-1","severity":"info","system-ip":"10.0.0.1"}]}`,
+		"/dataservice/event":                             `{"data":[{"eventId":"event-1","severity":"info","system-ip":"10.0.0.1"}]}`,
 		"/dataservice/auditlog":                          `{"data":[{"entry_uuid":"audit-1","severity":"info","user":"admin"}]}`,
 	}, nil)
 	defer server.Close()
@@ -69,6 +71,165 @@ func TestSDWANScrapeEmitsCoreMetrics(t *testing.T) {
 	assert.True(t, intMetricValueExists(md, "cisco.device.up", 1))
 	assert.Equal(t, 2, metricDataPointCount(md, "system.network.packet.count"))
 	assert.Equal(t, 2, metricDataPointCount(md, "system.network.packet.dropped"))
+}
+
+func TestSDWANLookbackQueryUsesStringHours(t *testing.T) {
+	payload := sdwanLookbackQuery(90*time.Minute, 123)
+
+	query, ok := payload["query"].(map[string]any)
+	require.True(t, ok)
+	rules, ok := query["rules"].([]map[string]any)
+	require.True(t, ok)
+	require.Len(t, rules, 1)
+	assert.Equal(t, []string{"2"}, rules[0]["value"])
+	assert.Equal(t, 123, payload["size"])
+}
+
+func TestPostSDWANEventQueryUsesOnlyDocumentedCompatibilityFallbacks(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		status         int
+		wantFallback   bool
+		wantSelected   string
+		wantSuccessful bool
+	}{
+		{name: "not found", status: http.StatusNotFound, wantFallback: true, wantSelected: sdwanLegacyEventsPath, wantSuccessful: true},
+		{name: "method not allowed", status: http.StatusMethodNotAllowed, wantFallback: true, wantSelected: sdwanLegacyEventsPath, wantSuccessful: true},
+		{name: "unauthorized", status: http.StatusUnauthorized, wantSelected: sdwanEventsPath},
+		{name: "temporary failure", status: http.StatusServiceUnavailable, wantSelected: sdwanEventsPath},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var legacyRequests atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/dataservice" + sdwanEventsPath:
+					http.Error(w, "primary unavailable", tc.status)
+				case "/dataservice" + sdwanLegacyEventsPath:
+					legacyRequests.Add(1)
+					_, _ = w.Write([]byte(`{"data":[{"eventId":"legacy-event"}]}`))
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+
+			client, err := sdwan.NewClient(sdwan.Config{
+				Endpoint:    server.URL,
+				AuthMode:    "bearer",
+				BearerToken: "token",
+				MaxRetries:  0,
+			})
+			require.NoError(t, err)
+			defer client.CloseIdleConnections()
+
+			objects, selectedPath, queryErr := postSDWANEventQuery(
+				t.Context(),
+				client,
+				"events.events",
+				sdwanEventsPath,
+				sdwanLookbackQuery(time.Hour, 100),
+				100,
+			)
+			assert.Equal(t, tc.wantSelected, selectedPath)
+			assert.Equal(t, tc.wantFallback, legacyRequests.Load() == 1)
+			if tc.wantSuccessful {
+				require.NoError(t, queryErr)
+				require.Len(t, objects, 1)
+				assert.Equal(t, "legacy-event", sdwan.String(objects[0], "eventId"))
+			} else {
+				require.Error(t, queryErr)
+				assert.Empty(t, objects)
+			}
+		})
+	}
+}
+
+func TestPostSDWANEventQueryDoesNotReplaceValidPrefix(t *testing.T) {
+	var legacyRequests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/dataservice" + sdwanEventsPath:
+			if r.URL.Query().Get("scrollId") == "next" {
+				http.Error(w, "later page missing", http.StatusNotFound)
+				return
+			}
+			_, _ = w.Write([]byte(`{"data":[{"eventId":"current-event"}],"pageInfo":{"scrollId":"next","hasMoreData":true,"count":1}}`))
+		case "/dataservice" + sdwanLegacyEventsPath:
+			legacyRequests.Add(1)
+			_, _ = w.Write([]byte(`{"data":[{"eventId":"legacy-event"}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := sdwan.NewClient(sdwan.Config{
+		Endpoint:    server.URL,
+		AuthMode:    "bearer",
+		BearerToken: "token",
+		MaxRetries:  0,
+	})
+	require.NoError(t, err)
+	defer client.CloseIdleConnections()
+
+	objects, selectedPath, err := postSDWANEventQuery(
+		t.Context(),
+		client,
+		"events.events",
+		sdwanEventsPath,
+		sdwanLookbackQuery(time.Hour, 100),
+		100,
+	)
+	require.Error(t, err)
+	assert.Equal(t, sdwanEventsPath, selectedPath)
+	require.Len(t, objects, 1)
+	assert.Equal(t, "current-event", sdwan.String(objects[0], "eventId"))
+	assert.Zero(t, legacyRequests.Load())
+}
+
+func TestSDWANMetricsAndLogsUseLegacyEventEndpointWhenRequired(t *testing.T) {
+	var currentRequests atomic.Int64
+	var legacyRequests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer token", r.Header.Get("Authorization"))
+		switch r.URL.Path {
+		case "/dataservice" + sdwanEventsPath:
+			currentRequests.Add(1)
+			http.Error(w, "use legacy endpoint", http.StatusNotFound)
+		case "/dataservice" + sdwanLegacyEventsPath:
+			legacyRequests.Add(1)
+			assert.Equal(t, http.MethodPost, r.Method)
+			_, _ = w.Write([]byte(`{"data":[{"eventId":"legacy-event","severity":"info"}]}`))
+		default:
+			_, _ = w.Write([]byte(`{"data":[]}`))
+		}
+	}))
+	defer server.Close()
+
+	configure := func(cfg *Config) {
+		cfg.SDWAN.Manager.Enabled = false
+		cfg.SDWAN.Inventory.Enabled = false
+		cfg.SDWAN.ControlPlane.Enabled = false
+		cfg.SDWAN.BFD.Enabled = false
+		cfg.SDWAN.AppRoute.Enabled = false
+		cfg.SDWAN.Interfaces.Enabled = false
+		cfg.SDWAN.Alarms.Enabled = false
+		cfg.SDWAN.Audit.Enabled = false
+		cfg.SDWAN.MaxRetries = 0
+	}
+
+	metricsReceiver := newTestSDWANReceiver(t, server.URL, configure)
+	md, err := metricsReceiver.scrape(t.Context())
+	require.NoError(t, err)
+	assert.True(t, intMetricValueExists(md, "sdwan.event.count", 1))
+	assert.True(t, hasMetricDatapointAttribute(md, "sdwan.event.count", "sdwan.collection.url", sdwanLegacyEventsPath))
+
+	logsReceiver := newTestSDWANLogsReceiver(t, server.URL, configure)
+	ld, err := logsReceiver.scrape(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, 1, ld.LogRecordCount())
+	assert.Equal(t, int64(2), currentRequests.Load())
+	assert.Equal(t, int64(2), legacyRequests.Load())
 }
 
 func TestSDWANAllManagerEndpointsFailWithoutAdvancingLastSuccess(t *testing.T) {
@@ -109,7 +270,7 @@ func TestSDWANScrapeAppliesTargetAndDeviceSelection(t *testing.T) {
 			{"host-name":"edge-2","system-ip":"10.0.0.2","uuid":"uuid-2","chasisNumber":"SDWAN-SERIAL-2","site-id":"200","personality":"vedge","status":"reachable"}
 		]}`,
 		"/dataservice/alarms":   `{"data":[]}`,
-		"/dataservice/events":   `{"data":[]}`,
+		"/dataservice/event":    `{"data":[]}`,
 		"/dataservice/auditlog": `{"data":[]}`,
 	}, nil)
 	defer server.Close()
@@ -212,7 +373,7 @@ func TestSDWANEventMetricsAndLogsApplyNativeAndSharedFilters(t *testing.T) {
 			{"id":"alarm-2","severity":"critical","system-ip":"10.0.0.2","site-id":"200"},
 			{"id":"alarm-3","severity":"critical","system-ip":"10.0.0.3","site-id":"300"}
 		]}`,
-		"/dataservice/events":   `{"data":[]}`,
+		"/dataservice/event":    `{"data":[]}`,
 		"/dataservice/auditlog": `{"data":[]}`,
 	}, nil)
 	defer server.Close()
@@ -305,7 +466,7 @@ func TestMetricFilterDropsConfiguredMetrics(t *testing.T) {
 		"/dataservice/device/app-route/statistics": `{"data":[{"latency":12,"jitter":3,"loss":0.1,"local-color":"biz-internet","application":"openai-api","sla-state":"ok"}]}`,
 		"/dataservice/device/interface/synced":     `{"data":[{"ifname":"ge0/0","oper-status":"up","admin-status":"up","rx-bytes":1024,"rx-errors":1,"color":"biz-internet","vpn-id":"0"}]}`,
 		"/dataservice/alarms":                      `{"data":[]}`,
-		"/dataservice/events":                      `{"data":[]}`,
+		"/dataservice/event":                       `{"data":[]}`,
 		"/dataservice/auditlog":                    `{"data":[]}`,
 	}, nil)
 	defer server.Close()
@@ -338,7 +499,7 @@ func TestMetricFilterSupportsGlobPatternsWithExactOverride(t *testing.T) {
 		"/dataservice/device/app-route/statistics": `{"data":[{"latency":12,"jitter":3,"loss":0.1,"local-color":"biz-internet","application":"openai-api","sla-state":"ok"}]}`,
 		"/dataservice/device/interface/synced":     `{"data":[{"ifname":"ge0/0","oper-status":"up","admin-status":"up","rx-bytes":1024,"rx-errors":1,"color":"biz-internet","vpn-id":"0"}]}`,
 		"/dataservice/alarms":                      `{"data":[]}`,
-		"/dataservice/events":                      `{"data":[]}`,
+		"/dataservice/event":                       `{"data":[]}`,
 		"/dataservice/auditlog":                    `{"data":[]}`,
 	}, nil)
 	defer server.Close()
@@ -368,7 +529,7 @@ func TestMetricFilterSupportsGlobPatternsWithExactOverride(t *testing.T) {
 func TestSDWANLogsPreserveEventBodies(t *testing.T) {
 	server := newSDWANFixtureServer(t, map[string]string{
 		"/dataservice/alarms":   `{"data":[{"id":"alarm-1","severity":"critical","status":"active","system-ip":"10.0.0.1","message":"BFD down"}]}`,
-		"/dataservice/events":   `{"data":[{"eventId":"event-1","severity":"info","system-ip":"10.0.0.1"}]}`,
+		"/dataservice/event":    `{"data":[{"eventId":"event-1","severity":"info","system-ip":"10.0.0.1"}]}`,
 		"/dataservice/auditlog": `{"data":[{"entry_uuid":"audit-1","severity":"info","user":"admin","policyName":"app-route-ai"}]}`,
 	}, nil)
 	defer server.Close()

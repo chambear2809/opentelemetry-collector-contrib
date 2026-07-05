@@ -8,6 +8,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -160,19 +161,27 @@ type receivedTelemetryFrame struct {
 // aggregate in-flight frames by MaxConcurrentStreams without letting idle
 // streams reserve the smaller conversion semaphore.
 type telemetryStreamReader struct {
-	ctx      context.Context
-	stream   pb.GRPCMdtDialout_MdtDialoutServer
-	received chan receivedTelemetryFrame
+	ctx         context.Context
+	cancel      context.CancelFunc
+	stream      pb.GRPCMdtDialout_MdtDialoutServer
+	received    chan receivedTelemetryFrame
+	idleTimeout time.Duration
+	idleTimer   *time.Timer
 }
 
-func newTelemetryStreamReader(ctx context.Context, stream pb.GRPCMdtDialout_MdtDialoutServer) *telemetryStreamReader {
-	reader := &telemetryStreamReader{
-		ctx:      ctx,
-		stream:   stream,
-		received: make(chan receivedTelemetryFrame),
+func newTelemetryStreamReader(
+	ctx context.Context,
+	stream pb.GRPCMdtDialout_MdtDialoutServer,
+	idleTimeout time.Duration,
+) *telemetryStreamReader {
+	readerCtx, cancel := context.WithCancel(ctx)
+	return &telemetryStreamReader{
+		ctx:         readerCtx,
+		cancel:      cancel,
+		stream:      stream,
+		received:    make(chan receivedTelemetryFrame),
+		idleTimeout: idleTimeout,
 	}
-	go reader.read()
-	return reader
 }
 
 func (r *telemetryStreamReader) read() {
@@ -196,14 +205,47 @@ func (r *telemetryStreamReader) read() {
 }
 
 func (r *telemetryStreamReader) receive() (*pb.MdtDialoutArgs, func(), error) {
+	r.resetIdleTimer()
 	select {
 	case frame := <-r.received:
+		r.stopIdleTimer()
 		if frame.err != nil {
 			return nil, nil, frame.err
 		}
 		var once sync.Once
 		return frame.request, func() { once.Do(func() { close(frame.processed) }) }, nil
+	case <-r.idleTimer.C:
+		// Returning from the handler causes grpc-go to cancel the transport stream,
+		// which unblocks the in-progress Recv. Cancel the reader first so it also
+		// exits immediately when it is waiting to publish a decoded frame.
+		r.cancel()
+		return nil, nil, status.Errorf(codes.DeadlineExceeded, "telemetry stream idle timeout exceeded after %s", r.idleTimeout)
 	case <-r.ctx.Done():
+		r.stopIdleTimer()
 		return nil, nil, status.FromContextError(r.ctx.Err()).Err()
 	}
+}
+
+func (r *telemetryStreamReader) resetIdleTimer() {
+	if r.idleTimer == nil {
+		r.idleTimer = time.NewTimer(r.idleTimeout)
+		return
+	}
+	r.stopIdleTimer()
+	r.idleTimer.Reset(r.idleTimeout)
+}
+
+func (r *telemetryStreamReader) stopIdleTimer() {
+	if r.idleTimer == nil || r.idleTimer.Stop() {
+		return
+	}
+	select {
+	case <-r.idleTimer.C:
+	default:
+	}
+}
+
+func (r *telemetryStreamReader) stop() {
+	r.cancel()
+	r.stopIdleTimer()
 }

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
@@ -28,7 +29,11 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/sdwan"
 )
 
-const sdwanScopeName = "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/sdwan"
+const (
+	sdwanScopeName        = "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/sdwan"
+	sdwanEventsPath       = "/event"
+	sdwanLegacyEventsPath = "/events"
+)
 
 type sdwanMetricsReceiver struct {
 	settings receiver.Settings
@@ -264,7 +269,7 @@ func (r *sdwanMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, err
 		}
 	}
 	if r.config.SDWAN.Events.Enabled {
-		if err := r.scrapeEventMetricGroup(ctx, builder, selector, targets, "events", "/events", r.config.SDWAN.Events); err != nil {
+		if err := r.scrapeEventMetricGroup(ctx, builder, selector, targets, "events", sdwanEventsPath, r.config.SDWAN.Events); err != nil {
 			if ctx.Err() != nil {
 				return r.finishScrape(builder, now, true), ctx.Err()
 			}
@@ -437,7 +442,14 @@ func (r *sdwanMetricsReceiver) scrapeEventMetricGroup(
 	name, path string,
 	group SDWANGroupConfig,
 ) error {
-	objects, err := r.client.PostQuery(ctx, "events."+name, path, sdwanLookbackQuery(r.config.SDWAN.EventLookback, group.MaxResults), group.MaxResults)
+	objects, selectedPath, err := postSDWANEventQuery(
+		ctx,
+		r.client,
+		"events."+name,
+		path,
+		sdwanLookbackQuery(r.config.SDWAN.EventLookback, group.MaxResults),
+		group.MaxResults,
+	)
 	if err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -446,7 +458,7 @@ func (r *sdwanMetricsReceiver) scrapeEventMetricGroup(
 		// that valid prefix and surface the pagination failure; GET is only a
 		// compatibility fallback when POST produced no usable data at all.
 		if len(objects) == 0 {
-			objects, err = r.client.List(ctx, "events."+name+".get", path, nil, group.MaxResults)
+			objects, err = r.client.List(ctx, "events."+name+".get", selectedPath, nil, group.MaxResults)
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
@@ -463,7 +475,7 @@ func (r *sdwanMetricsReceiver) scrapeEventMetricGroup(
 			"sdwan.system_ip":      sdwan.String(obj, "system-ip", "systemIp", "system_ip", "deviceId"),
 			"sdwan.site.id":        sdwan.String(obj, "site-id", "siteId", "site_id"),
 			"sdwan.policy.name":    sdwan.String(obj, "policy", "policyName", "policy-name"),
-			"sdwan.collection.url": path,
+			"sdwan.collection.url": selectedPath,
 		})
 		builder.addCount("sdwan.event.count", attrs, 1)
 	}
@@ -727,13 +739,20 @@ func (r *sdwanLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 		group   SDWANGroupConfig
 	}{
 		{r.config.SDWAN.Alarms.Enabled, "alarms", "/alarms", r.config.SDWAN.Alarms},
-		{r.config.SDWAN.Events.Enabled, "events", "/events", r.config.SDWAN.Events},
+		{r.config.SDWAN.Events.Enabled, "events", sdwanEventsPath, r.config.SDWAN.Events},
 		{r.config.SDWAN.Audit.Enabled, "audit", "/auditlog", r.config.SDWAN.Audit},
 	} {
 		if !endpoint.enabled {
 			continue
 		}
-		objects, err := r.client.PostQuery(ctx, "logs."+endpoint.name, endpoint.path, sdwanLookbackQuery(r.config.SDWAN.EventLookback, endpoint.group.MaxResults), endpoint.group.MaxResults)
+		objects, selectedPath, err := postSDWANEventQuery(
+			ctx,
+			r.client,
+			"logs."+endpoint.name,
+			endpoint.path,
+			sdwanLookbackQuery(r.config.SDWAN.EventLookback, endpoint.group.MaxResults),
+			endpoint.group.MaxResults,
+		)
 		if err != nil {
 			if ctx.Err() != nil {
 				return builder.emit(), ctx.Err()
@@ -741,7 +760,7 @@ func (r *sdwanLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 			// Preserve a valid POST prefix on later-page failures. Fall back to
 			// GET only when POST did not return any usable objects.
 			if len(objects) == 0 {
-				objects, err = r.client.List(ctx, "logs."+endpoint.name+".get", endpoint.path, nil, endpoint.group.MaxResults)
+				objects, err = r.client.List(ctx, "logs."+endpoint.name+".get", selectedPath, nil, endpoint.group.MaxResults)
 				if ctx.Err() != nil {
 					return builder.emit(), ctx.Err()
 				}
@@ -763,6 +782,34 @@ func (r *sdwanLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 	}
 	r.expireSeen(now)
 	return builder.emit(), errors.Join(endpointErrors...)
+}
+
+// postSDWANEventQuery handles the event endpoint rename across supported
+// Catalyst SD-WAN Manager releases. Current releases use /event, while older
+// releases expose the same query API at /events. Only an explicit endpoint
+// absence with no usable response prefix permits the compatibility request.
+func postSDWANEventQuery(
+	ctx context.Context,
+	client *sdwan.Client,
+	operation, path string,
+	payload any,
+	maxResults int,
+) ([]sdwan.Object, string, error) {
+	objects, err := client.PostQuery(ctx, operation, path, payload, maxResults)
+	if path != sdwanEventsPath || len(objects) > 0 || !sdwanEndpointUnavailable(err) {
+		return objects, path, err
+	}
+
+	objects, err = client.PostQuery(ctx, operation+".legacy", sdwanLegacyEventsPath, payload, maxResults)
+	return objects, sdwanLegacyEventsPath, err
+}
+
+func sdwanEndpointUnavailable(err error) bool {
+	var apiErr *sdwan.APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	return apiErr.StatusCode == http.StatusNotFound || apiErr.StatusCode == http.StatusMethodNotAllowed
 }
 
 func (r *sdwanLogsReceiver) seenBefore(endpoint string, obj sdwan.Object, now time.Time) bool {
@@ -1351,7 +1398,7 @@ func sdwanLookbackQuery(lookback time.Duration, maxResults int) map[string]any {
 				"field":    "entry_time",
 				"type":     "date",
 				"operator": "last_n_hours",
-				"value":    []int64{hours},
+				"value":    []string{strconv.FormatInt(hours, 10)},
 			}},
 		},
 		"size": size,

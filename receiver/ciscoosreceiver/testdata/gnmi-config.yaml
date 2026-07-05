@@ -6,7 +6,8 @@ receivers:
       targets:
         - name: nexus-shard-01
           endpoint: nexus01.example.net:50051
-          platform: nx_os
+          product: nexus_9000
+          software_version: "10.6(1)"
           max_recv_msg_size_mib: 16
           credentials:
             mode: username_password
@@ -23,8 +24,6 @@ receivers:
             permit_without_stream: false
           profiles:
             identity:
-              enabled: true
-            system:
               enabled: true
             interfaces:
               enabled: true

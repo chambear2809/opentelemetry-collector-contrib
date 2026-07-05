@@ -69,6 +69,56 @@ func TestNexusDashboardScrapeEmitsTroubleshootingMetrics(t *testing.T) {
 	assert.False(t, hasMetricDatapointAttribute(md, "nexus_dashboard.audit.record.count", "user.name", "operator"))
 }
 
+func TestNexusDashboardMissingTargetFiltersReportSkippedPartial(t *testing.T) {
+	server := newNexusDashboardFixtureServer(t, map[string]string{
+		"/api/v1/infra/cluster/health": `{"name":"nd-cluster","status":"healthy","healthScore":98}`,
+	})
+	defer server.Close()
+
+	receiver := newTestNexusDashboardMetricsReceiver(t, server.URL)
+	receiver.config.NexusDashboard.Targets = NexusDashboardTargetFilters{}
+	md, err := receiver.scrape(t.Context())
+	require.NoError(t, err)
+
+	assert.True(t, intMetricValueExists(md, "nexus_dashboard.scrape.partial_success", 1))
+	assert.NotContains(t, metricNames(md), "nexus_dashboard.scrape.last_success")
+
+	skipped := requireMetricByName(t, md, "nexus_dashboard.service.skipped")
+	require.Equal(t, 4, skipped.Gauge().DataPoints().Len())
+	for _, operation := range []string{
+		"ndfc.fabric.switch_overview",
+		"ndfc.endpoints",
+		"ndfc.policy.deployment",
+		"ndfc.interface.stats",
+	} {
+		assert.True(t, hasMetricDatapointAttribute(md, "nexus_dashboard.service.skipped", "nexus_dashboard.api.operation", operation))
+	}
+	assert.True(t, hasMetricDatapointAttribute(md, "nexus_dashboard.service.skipped", "nexus_dashboard.skip.reason", "missing_target_filter"))
+}
+
+func TestNexusDashboardPlatformOnlyWithoutTargetsIsComplete(t *testing.T) {
+	server := newNexusDashboardFixtureServer(t, map[string]string{
+		"/api/v1/infra/cluster/health": `{"name":"nd-cluster","status":"healthy","healthScore":98}`,
+	})
+	defer server.Close()
+
+	receiver := newTestNexusDashboardMetricsReceiver(t, server.URL)
+	receiver.config.NexusDashboard.Targets = NexusDashboardTargetFilters{}
+	receiver.config.NexusDashboard.NDFC.Enabled = false
+	receiver.config.NexusDashboard.Insights.Enabled = false
+	receiver.config.NexusDashboard.Orchestrator.Enabled = false
+	receiver.config.NexusDashboard.DataBroker.Enabled = false
+	receiver.config.NexusDashboard.Performance.Enabled = false
+	md, err := receiver.scrape(t.Context())
+	require.NoError(t, err)
+
+	names := metricNames(md)
+	assert.True(t, intMetricValueExists(md, "nexus_dashboard.scrape.partial_success", 0))
+	assert.Contains(t, names, "nexus_dashboard.scrape.last_success")
+	assert.NotContains(t, names, "nexus_dashboard.service.skipped")
+	assert.Contains(t, names, "nexus_dashboard.service.health")
+}
+
 func TestNexusDashboardScrapeAppliesSharedDeviceSelection(t *testing.T) {
 	server := newNexusDashboardFixtureServer(t, map[string]string{
 		"/api/v1/manage/fabric-switches/summary": `{"switches":[

@@ -1,0 +1,7 @@
+change_type: enhancement
+component: receiver/cisco_os
+note: Add ACI interface counters, rates, utilization, and health statistics.
+issues: [0]
+subtext: |
+  Adds APIC five-minute ingress and egress statistics plus RMON interface counters, corrects memory utilization to use the percentage field, maps fabric health history, and adds an opt-in live metrics/log inventory qualification harness.
+change_logs: [user]
