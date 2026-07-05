@@ -284,7 +284,11 @@ func (r *intersightMetricsReceiver) scrapeTelemetry(ctx context.Context, builder
 	if err != nil {
 		return err
 	}
-	builder.recordTelemetry(query, response, selector)
+	results, ok := response.([]any)
+	if !ok {
+		return fmt.Errorf("decode Intersight telemetry.%s response: expected array", query.name)
+	}
+	builder.recordTelemetry(query, results, selector, r.config.Intersight.Telemetry.MaxResults)
 	return nil
 }
 
@@ -488,8 +492,10 @@ func (b *intersightMetricsBuilder) accountResource() *resourceMetricsBuilder {
 
 func (b *intersightMetricsBuilder) objectResource(objectType string, obj intersight.Object) *resourceMetricsBuilder {
 	serial := firstNonEmpty(intersight.String(obj, "Serial", "SerialNumber"), firstString(intersight.StringSlice(obj, "Serial")))
-	hostID := firstNonEmpty(serial, intersight.String(obj, "Moid"), intersight.String(obj, "DeviceMoId"), intersight.String(obj, "ClusterUuid", "NodeUuid"), intersight.String(obj, "Name", "HostName"), objectType)
-	rb := b.resource(objectType + ":" + hostID)
+	moid := intersight.String(obj, "Moid")
+	hostID := firstNonEmpty(serial, moid, intersight.String(obj, "DeviceMoId"), intersight.String(obj, "ClusterUuid", "NodeUuid"), intersight.String(obj, "Name", "HostName"), objectType)
+	resourceID := firstNonEmpty(moid, serial, intersight.String(obj, "DeviceMoId"), intersight.String(obj, "ClusterUuid", "NodeUuid"), intersight.String(obj, "Name", "HostName"), objectType)
+	rb := b.resource(objectType + ":" + resourceID)
 	attrs := rb.resource.Attributes()
 	putStr(attrs, "host.id", hostID)
 	putStr(attrs, "host.name", firstNonEmpty(intersight.String(obj, "Name", "HostName"), firstString(intersight.StringSlice(obj, "DeviceHostname")), hostID))
@@ -502,7 +508,7 @@ func (b *intersightMetricsBuilder) objectResource(objectType string, obj intersi
 	putStr(attrs, "host.type", firstNonEmpty(intersight.String(obj, "Model", "PlatformType", "SourceObjectType"), objectType))
 	putStr(attrs, "os.name", "Intersight")
 	putStr(attrs, "os.version", firstNonEmpty(intersight.String(obj, "Firmware", "Version", "BundleVersion", "HxdpBuildVersion"), intersight.String(obj, "DisplayVersion")))
-	putStr(attrs, "intersight.moid", intersight.String(obj, "Moid"))
+	putStr(attrs, "intersight.moid", moid)
 	putStr(attrs, "intersight.resource.type", objectType)
 	putStr(attrs, "intersight.device.registration_moid", intersight.RelationshipMoid(obj, "RegisteredDevice"))
 	putStr(attrs, "intersight.serial", serial)
@@ -563,6 +569,10 @@ func (b *intersightMetricsBuilder) flushCounts() {
 
 func (b *intersightMetricsBuilder) recordObject(endpoint intersightEndpoint, obj intersight.Object) {
 	objectType := intersight.ObjectType(obj, endpoint.objectType)
+	if endpoint.group == "audit" {
+		b.addCount("intersight.audit.record.count", map[string]string{"intersight.audit.user": firstNonEmpty(intersight.String(obj, "UserIdOrEmail", "Email"), "unknown")})
+		return
+	}
 	rb := b.objectResource(objectType, obj)
 	status := objectStatus(obj)
 	severity := strings.ToLower(firstNonEmpty(intersight.String(obj, "Severity", "OrigSeverity"), status))
@@ -590,8 +600,6 @@ func (b *intersightMetricsBuilder) recordObject(endpoint intersightEndpoint, obj
 	switch endpoint.group {
 	case "events":
 		b.recordEventObject(rb, endpoint, obj, objectType, status, severity)
-	case "audit":
-		b.addCount("intersight.audit.record.count", map[string]string{"intersight.audit.user": firstNonEmpty(intersight.String(obj, "UserIdOrEmail", "Email"), "unknown")})
 	case "inventory", "equipment", "network":
 		b.recordInventoryObject(rb, obj, objectType, status)
 	case "firmware":
@@ -620,7 +628,7 @@ func (b *intersightMetricsBuilder) recordEventObject(rb *resourceMetricsBuilder,
 	case strings.Contains(endpoint.operation, "alarm"):
 		rb.recordInt("intersight.alarm.active", "Active Intersight alarm.", "1", 1, attrs)
 		b.addCount("intersight.alarm.count", attrs)
-	case strings.Contains(endpoint.operation, "advisory"):
+	case strings.Contains(endpoint.operation, "advisory") || strings.Contains(endpoint.operation, "advisories"):
 		rb.recordInt("intersight.advisory.active", "Active Intersight advisory exposure.", "1", 1, attrs)
 		b.addCount("intersight.advisory.count", attrs)
 	case strings.Contains(endpoint.operation, "hcl"):
@@ -681,25 +689,40 @@ func (*intersightMetricsBuilder) recordVirtualizationObject(rb *resourceMetricsB
 	recordStringState(rb, "intersight.virtual_machine.power_state", "Virtual machine power state.", intersight.String(obj, "PowerState"))
 }
 
-func (b *intersightMetricsBuilder) recordTelemetry(query intersightTelemetryQuery, response any, selector deviceSelectionMatcher) {
-	results, ok := response.([]any)
-	if !ok {
-		return
+func (b *intersightMetricsBuilder) recordTelemetry(query intersightTelemetryQuery, results []any, selector deviceSelectionMatcher, maxResults int) {
+	outcomes := map[string]int64{"emitted": 0}
+	retained := results
+	if maxResults > 0 && len(retained) > maxResults {
+		outcomes["max_results"] = int64(len(retained) - maxResults)
+		retained = retained[:maxResults]
 	}
-	for _, item := range results {
+	for _, item := range retained {
 		obj, ok := item.(map[string]any)
 		if !ok {
+			outcomes["malformed_row"]++
 			continue
 		}
 		event, ok := obj["event"].(map[string]any)
 		if !ok {
+			outcomes["malformed_row"]++
 			continue
 		}
 		if !selector.allows(intersightTelemetryIdentity(event)) {
+			outcomes["device_filtered"]++
 			continue
 		}
-		value, ok := numberFromAny(event[query.fieldName])
+		rawValue, exists := event[query.fieldName]
+		if !exists {
+			outcomes["missing_value"]++
+			continue
+		}
+		if rawValue == nil {
+			outcomes["null_value"]++
+			continue
+		}
+		value, ok := numberFromAny(rawValue)
 		if !ok {
+			outcomes["invalid_value"]++
 			continue
 		}
 		resourceID := firstNonEmpty(stringFromAny(event["host.name"]), stringFromAny(event["name"]), stringFromAny(event["deviceId"]), query.name)
@@ -723,6 +746,19 @@ func (b *intersightMetricsBuilder) recordTelemetry(query intersightTelemetryQuer
 			putNonEmpty(pointAttrs, "intersight."+strings.ReplaceAll(dim, ".", "_"), stringFromAny(event[dim]))
 		}
 		rb.recordDouble(query.metricName, query.description, query.unit, value, pointAttrs)
+		outcomes["emitted"]++
+	}
+
+	rb := b.accountResource()
+	for _, outcome := range []string{"emitted", "max_results", "device_filtered", "null_value", "missing_value", "invalid_value", "malformed_row"} {
+		rows := outcomes[outcome]
+		if rows == 0 && outcome != "emitted" {
+			continue
+		}
+		rb.recordInt("intersight.telemetry.query.rows", "Rows processed from an Intersight telemetry GroupBy query.", "{row}", rows, map[string]string{
+			"intersight.telemetry.query":   query.name,
+			"intersight.telemetry.outcome": outcome,
+		})
 	}
 }
 
@@ -770,6 +806,7 @@ func intersightMetricEndpoints() []intersightEndpoint {
 		{group: "inventory", operation: "compute.physical_summaries", path: "/api/v1/compute/PhysicalSummaries", objectType: "compute.PhysicalSummary", selectFields: []string{"Moid", "ObjectType", "Name", "Serial", "Model", "PlatformType", "SourceObjectType", "ConnectionStatus", "OperState", "Operability", "OperPowerState", "MgmtIpAddress", "Ipv4Address", "Firmware", "AvailableMemory", "NumCpuCores", "NumCpus", "NumThreads", "FaultSummary", "ServiceProfile", "RegisteredDevice"}},
 		{group: "inventory", operation: "compute.blades", path: "/api/v1/compute/Blades", objectType: "compute.Blade", selectFields: []string{"Moid", "ObjectType", "Name", "Serial", "Model", "OperState", "Operability", "OperPowerState", "FaultSummary", "RegisteredDevice"}},
 		{group: "inventory", operation: "compute.rack_units", path: "/api/v1/compute/RackUnits", objectType: "compute.RackUnit", selectFields: []string{"Moid", "ObjectType", "Name", "Serial", "Model", "OperState", "Operability", "OperPowerState", "FaultSummary", "RegisteredDevice"}},
+		intersightAuditEndpoint(),
 		{group: "events", operation: "cond.alarms", path: "/api/v1/cond/Alarms", objectType: "cond.Alarm", selectFields: []string{"Moid", "ObjectType", "CreateTime", "ModTime", "Acknowledge", "AffectedMoDisplayName", "AffectedMoId", "AffectedMoType", "AffectedObject", "Code", "CreationTime", "Description", "LastTransitionTime", "Name", "OrigSeverity", "Severity", "RegisteredDevice"}, query: activeAlarmQuery},
 		{group: "events", operation: "cond.hcl_statuses", path: "/api/v1/cond/HclStatuses", objectType: "cond.HclStatus", selectFields: []string{"Moid", "ObjectType", "CreateTime", "ModTime", "Name", "Status", "Model", "Serial", "ManagedObject", "RegisteredDevice"}},
 		{group: "events", operation: "tam.advisory_instances", path: "/api/v1/tam/AdvisoryInstances", objectType: "tam.AdvisoryInstance", selectFields: []string{"Moid", "ObjectType", "CreateTime", "ModTime", "AffectedObjectMoid", "AffectedObjectType", "LastStateChangeTime", "LastVerifiedTime", "State", "AffectedObject", "DeviceRegistration"}, query: recentCreateQuery},
@@ -790,7 +827,7 @@ func intersightMetricEndpoints() []intersightEndpoint {
 		{group: "storage", operation: "storage.controllers", path: "/api/v1/storage/Controllers", objectType: "storage.Controller", selectFields: []string{"Moid", "ObjectType", "Name", "ControllerStatus", "OperState", "Operability", "Model", "Type", "MemoryCorrectableErrors", "RebuildRatePercent", "RegisteredDevice"}},
 		{group: "storage", operation: "storage.physical_disks", path: "/api/v1/storage/PhysicalDisks", objectType: "storage.PhysicalDisk", selectFields: []string{"Moid", "ObjectType", "Name", "DiskState", "DriveState", "Operability", "OperPowerState", "MediaErrorCount", "PredictiveFailureCount", "PercentLifeLeft", "OperatingTemperature", "PowerOnHours", "Serial", "Pid", "RegisteredDevice"}},
 		{group: "storage", operation: "storage.virtual_drives", path: "/api/v1/storage/VirtualDrives", objectType: "storage.VirtualDrive", selectFields: []string{"Moid", "ObjectType", "Name", "ConfigState", "DriveState", "OperState", "Operability", "Size", "VirtualDriveId", "RegisteredDevice"}},
-		{group: "hyperflex", operation: "hyperflex.clusters", path: "/api/v1/hyperflex/Clusters", objectType: "hyperflex.Cluster", selectFields: []string{"Moid", "ObjectType", "Name", "ClusterUuid", "DeviceId", "EncryptionStatus", "FltAggr", "HxdpBuildVersion", "UpgradeStatus", "VmCount", "RegisteredDevice"}},
+		{group: "hyperflex", operation: "hyperflex.clusters", path: "/api/v1/hyperflex/Clusters", objectType: "hyperflex.Cluster", selectFields: []string{"Moid", "ObjectType", "Name", "ClusterUuid", "DeviceId", "EncryptionStatus", "FltAggr", "HxdpBuildVersion", "Status", "UpgradeStatus", "VmCount", "RegisteredDevice"}},
 		{group: "hyperflex", operation: "hyperflex.nodes", path: "/api/v1/hyperflex/Nodes", objectType: "hyperflex.Node", selectFields: []string{"Moid", "ObjectType", "HostName", "Hypervisor", "ModelNumber", "NodeMaintenanceMode", "NodeStatus", "NodeUuid", "Role", "SerialNumber", "Status", "Version", "ClusterMember"}},
 		{group: "kubernetes", operation: "kubernetes.clusters", path: "/api/v1/kubernetes/Clusters", objectType: "kubernetes.Cluster", selectFields: []string{"Moid", "ObjectType", "Name", "ConnectionStatus", "RegisteredDevices"}},
 		{group: "kubernetes", operation: "kubernetes.nodes", path: "/api/v1/kubernetes/Nodes", objectType: "kubernetes.Node", selectFields: []string{"Moid", "ObjectType", "Name", "Status", "RegisteredDevice"}},
@@ -800,7 +837,7 @@ func intersightMetricEndpoints() []intersightEndpoint {
 
 func intersightLogEndpoints() []intersightEndpoint {
 	return []intersightEndpoint{
-		{group: "audit", operation: "aaa.audit_records", path: "/api/v1/aaa/AuditRecords", objectType: "aaa.AuditRecord", selectFields: []string{"Moid", "ObjectType", "CreateTime", "ModTime", "Email", "InstId", "SessionId", "SourceIp", "Timestamp", "UserIdOrEmail"}, query: recentCreateQuery},
+		intersightAuditEndpoint(),
 		{group: "events", operation: "cond.alarms", path: "/api/v1/cond/Alarms", objectType: "cond.Alarm", selectFields: []string{"Moid", "ObjectType", "CreateTime", "ModTime", "Acknowledge", "AffectedMoDisplayName", "AffectedMoId", "AffectedMoType", "AffectedObject", "Code", "CreationTime", "Description", "LastTransitionTime", "Name", "OrigSeverity", "Severity", "RegisteredDevice"}, query: activeAlarmQuery},
 		{group: "events", operation: "tam.advisory_instances", path: "/api/v1/tam/AdvisoryInstances", objectType: "tam.AdvisoryInstance", selectFields: []string{"Moid", "ObjectType", "CreateTime", "ModTime", "AffectedObjectMoid", "AffectedObjectType", "LastStateChangeTime", "LastVerifiedTime", "State", "AffectedObject", "DeviceRegistration"}, query: recentCreateQuery},
 		{group: "events", operation: "tam.security_advisories", path: "/api/v1/tam/SecurityAdvisories", objectType: "tam.SecurityAdvisory", selectFields: []string{"Moid", "ObjectType", "CreateTime", "ModTime", "Name", "Severity", "Status", "State"}, query: recentCreateQuery},
@@ -808,6 +845,10 @@ func intersightLogEndpoints() []intersightEndpoint {
 		{group: "events", operation: "workflow.task_infos", path: "/api/v1/workflow/TaskInfos", objectType: "workflow.TaskInfo", selectFields: []string{"Moid", "ObjectType", "CreateTime", "ModTime", "Description", "EndTime", "FailureReason", "Name", "RetryCount", "StartTime", "Status", "WorkflowInfo"}, query: recentCreateQuery},
 		{group: "events", operation: "techsupportmanagement.techsupport_statuses", path: "/api/v1/techsupportmanagement/TechSupportStatuses", objectType: "techsupportmanagement.TechSupportStatus", selectFields: []string{"Moid", "ObjectType", "CreateTime", "ModTime", "FileName", "Reason", "RelayReason", "RelayStatus", "RequestTs", "Status", "DeviceRegistration", "OriginResource"}, query: recentCreateQuery},
 	}
+}
+
+func intersightAuditEndpoint() intersightEndpoint {
+	return intersightEndpoint{group: "audit", operation: "aaa.audit_records", path: "/api/v1/aaa/AuditRecords", objectType: "aaa.AuditRecord", selectFields: []string{"Moid", "ObjectType", "CreateTime", "ModTime", "Email", "InstId", "SessionId", "SourceIp", "Timestamp", "UserIdOrEmail"}, query: recentCreateQuery}
 }
 
 func intersightTelemetryQueries() []intersightTelemetryQuery {

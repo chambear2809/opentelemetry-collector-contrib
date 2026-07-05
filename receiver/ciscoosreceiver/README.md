@@ -272,7 +272,7 @@ Collection groups default to enabled and can be disabled or capped independently
 |-------|----------|
 | `inventory` | device registrations, targets, compute physical summaries, blades, rack units |
 | `events` | alarms, HCL status, advisories, security advisories, workflows, tasks, tech-support status |
-| `audit` | audit/config-change records emitted as logs |
+| `audit` | audit/config-change records emitted as logs plus recent-record count metrics |
 | `telemetry` | GroupBy performance queries for hardware, CPU, memory, network, power, fan, temperature, voltage, and HyperFlex |
 | `equipment` | chassis, fans, fan modules, PSUs, IO cards, FEXes, transceivers |
 | `network` | network elements and fabric-facing inventory |
@@ -291,6 +291,10 @@ intersight:
   storage:
     max_results: 250
 ```
+
+For `telemetry`, `max_results` is applied independently to each GroupBy response before device selection and value
+conversion. Set it to `0` to disable the configured per-query cap. Rows that are emitted, filtered, sparse, malformed,
+or truncated by the cap are reported through `intersight.telemetry.query.rows`.
 
 ### Catalyst Center Configuration
 

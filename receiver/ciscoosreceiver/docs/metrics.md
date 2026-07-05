@@ -304,6 +304,7 @@ fields such as descriptions, affected object names, failure reasons, and audit p
 | `intersight.api.rate_limited` | Sum, int, cumulative | `{request}` | Requests that received HTTP 429. | Confirm the receiver is hitting Intersight rate limits. |
 | `intersight.scrape.partial_success` | Gauge, int | `1` | Whether one or more Intersight endpoint families failed during a scrape. | Keep dashboards honest when part of the API surface is unavailable. |
 | `intersight.scrape.last_success` | Gauge, int | `s` | Unix timestamp of the most recent fully successful Intersight scrape. | Detect stale or persistently partial Intersight data. |
+| `intersight.telemetry.query.rows` | Gauge, int | `{row}` | Per-query telemetry rows classified by the bounded `intersight.telemetry.outcome` attribute as emitted, capped, filtered, sparse, invalid, or malformed. | Prove GroupBy coverage and distinguish expected sparse data from selection, cap, or payload-shape loss. |
 | `intersight.resource.info` | Gauge, int | `1` | Inventory metadata for an Intersight resource. | Build inventory and drilldown pages without making status labels too broad. |
 | `intersight.resource.status` | Gauge, int | `1` | Encoded resource status, with the original status retained as an attribute. | Standardize online, healthy, degraded, failed, and unknown state across object families. |
 | `intersight.resource.count` | Gauge, int | `1` | Resource count grouped by type, status, and severity. | Track fleet composition and health by domain. |

@@ -21,7 +21,7 @@ were exercised.
 | --- | --- | --- | --- | --- | --- |
 | Cisco IOS, IOS XE, and NX-OS | `devices`; SSH with password or key authentication | Metrics | Parser, scraper, connection, and factory tests | `TestE2ELiveSwitch` | `Partial` (NX-OS only) |
 | Meraki Dashboard | `meraki`; Dashboard REST API with API key | Metrics | Client, receiver, filtering, pagination, and payload-variant tests | `TestE2ELiveMeraki` | `Qualified` for the tested organization and product set |
-| Cisco Intersight | `intersight`; signed REST API requests | Metrics, logs | Client, receiver, signing, filtering, and pagination tests | `TestE2ELiveIntersight` | `Not run` |
+| Cisco Intersight | `intersight`; signed REST API requests | Metrics, logs | Client, receiver, signing, filtering, pagination, identity-collision, telemetry-row, all-event-family, and live-empty-domain contract tests | `TestE2ELiveIntersight` | `Passed (limited scope)` for the tested account: metrics qualified end to end; logs qualified locally and accepted by OTLP ingest, but full backend log readback remains unavailable |
 | Cisco Catalyst Center | `catalyst_center`; HTTPS token flow | Metrics | Client, receiver, authentication, detail, and pagination tests | `TestE2ELiveCatalystCenter` | `Not run` |
 | Cisco Catalyst 9800 WLC | `catalyst_9800`; gNMI dial-in and MDT gRPC dial-out | Metrics | Path catalog, decode, receiver, security, and runtime-contract tests | None dedicated | `Not run` |
 | Cisco Catalyst SD-WAN Manager | `sdwan`; HTTPS REST API with JWT, session, bearer, or cookie auth | Metrics, logs | Client, auth/backoff, pagination, receiver, filtering, and all-group endpoint coverage tests | `TestE2ELiveSDWAN` | `Passed (limited scope)` for default groups; opt-in run has findings |

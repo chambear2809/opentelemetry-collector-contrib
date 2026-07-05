@@ -1,0 +1,7 @@
+change_type: bug_fix
+component: receiver/cisco_os
+note: Fix Intersight resource identity, audit metrics, and telemetry result accounting.
+issues: [0]
+subtext: |
+  Keep objects with shared serial numbers in distinct OpenTelemetry resources, emit recent audit-record counts, enforce `intersight.telemetry.max_results` per query, and report emitted, capped, filtered, sparse, invalid, and malformed rows through `intersight.telemetry.query.rows`.
+change_logs: [user]
