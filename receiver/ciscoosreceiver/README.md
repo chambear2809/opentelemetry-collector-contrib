@@ -425,6 +425,7 @@ leaf and spine is unavailable.
 |---------|------|----------|-------------|
 | `nexus_dashboard.enabled` | bool | No | Enables Nexus Dashboard API collection. |
 | `nexus_dashboard.endpoint` | string | Yes | Nexus Dashboard base URL. |
+| `nexus_dashboard.api_profile` | string | No | `legacy` (default) preserves the existing mixed platform/App Center catalog; `unified` uses the current verified `/api/v1/infra` and `/api/v1/manage` metrics APIs. |
 | `nexus_dashboard.insecure_skip_verify` | bool | No | Disables Nexus Dashboard certificate verification for self-signed lab certificates. |
 | `nexus_dashboard.auth.mode` | string | No | `api_key` or `username_password`; inferred from populated credentials when omitted. |
 | `nexus_dashboard.auth.username` | string | Yes | Username for API-key headers or login token auth. |
@@ -438,6 +439,14 @@ leaf and spine is unavailable.
 *Required for `api_key` auth.
 
 **Required for `username_password` auth.
+
+The `unified` profile currently polls cluster health, nodes, node hardware, system-resource summaries, fabrics,
+fabric switch inventory, and fabric switch summaries. Nested hardware, system-resource, and switch-summary values are
+not yet mapped into numeric telemetry; those routes currently provide request-health and generic resource-presence
+evidence. The profile does not emit Nexus Dashboard logs; current audit/event APIs must be verified before log routes
+are added. The `legacy` profile remains the default for compatibility with existing deployments and retains the prior
+endpoint catalog unchanged. The unified catalog currently registers only the `platform` and `ndfc` groups; the
+`insights`, `orchestrator`, `data_broker`, and `performance` group settings do not add unified endpoints yet.
 
 Collection groups default to enabled and can be disabled or capped independently:
 
@@ -456,6 +465,10 @@ exact selector requirements:
 - `nexus_dashboard.targets.fabrics` expands `ndfc.fabric.switch_overview` and `ndfc.endpoints`;
 - `nexus_dashboard.targets.switch_serials` expands `ndfc.policy.deployment`; and
 - `nexus_dashboard.targets.switch_ids` expands `ndfc.interface.stats` in the `performance` group.
+
+With `api_profile: unified`, `nexus_dashboard.targets.fabrics` is required to expand both fabric-scoped switch
+inventory and switch-summary operations. Omitting it while the NDFC group is enabled reports both operations as
+skipped and makes the scrape partial.
 
 Because every collection group defaults to enabled, omitting one of those selectors intentionally emits
 `nexus_dashboard.service.skipped` with `nexus_dashboard.skip.reason=missing_target_filter`, sets
@@ -502,7 +515,9 @@ pipeline with batching, retry, and secure certificate verification by default.
 | `aci.auth.domain` | string | No | Optional APIC login domain. |
 | `aci.page_size` | int | No | APIC class query page size. Defaults to `100`. |
 | `aci.max_retries` | int | No | Retries for 429 and transient 5xx responses. Defaults to `3`. |
-| `aci.insecure_skip_verify` | bool | No | Disables APIC certificate verification for self-signed lab certificates. |
+| `aci.ca_file` | string | No | PEM CA bundle appended to the host trust store when verifying APIC certificates. |
+| `aci.server_name` | string | No | TLS certificate name and SNI override, useful when an APIC endpoint is configured by IP address. |
+| `aci.insecure_skip_verify` | bool | No | Disables APIC certificate verification for self-signed lab certificates. Prefer `ca_file` and a matching endpoint or `server_name`; use this only in an isolated lab. |
 | `aci.event_lookback` | duration | No | Lookback for faults, audits, and events. Defaults to `24h`. |
 | `aci.targets.*` | lists | No | Optional filters for sites, fabrics, node IDs, serials, tenants, VRFs, bridge domains, EPGs, and interfaces. |
 
@@ -520,6 +535,24 @@ Collection groups default to enabled and can be disabled or capped independently
 | `endpoints` | endpoint MAC/IP presence |
 | `tenants` | tenants, VRFs, bridge domains, EPGs, app profiles, contracts, and L3Outs |
 | `topology` | LLDP, CDP, and fabric links |
+
+Target values use exact, case-insensitive canonical matching. Multiple values in one target list are ORed; different
+configured target dimensions are ANDed, so an object must expose and match every configured dimension. Node IDs,
+tenants, VRFs, bridge domains, EPGs, and interface names are read only from their explicit APIC fields or canonical
+DN segments. Site and fabric names require explicit fields in the APIC object. These filters are applied while APIC
+pages are consumed, so they constrain emitted telemetry but do not reduce APIC request volume. Aggregate controller
+and fabric-health objects remain visible even when object targets are configured.
+
+Every group accepts `enabled` and `max_results`. Reaching `max_results` is successful only when APIC confirms the
+result set is complete. If APIC reports more objects, the receiver emits the retained partial results, records
+`aci.api.endpoint.error` with `aci.error.kind=pagination_limit`, and sets `aci.scrape.partial_success=1`. Audit and
+event queries are ordered by `created` newest first, ensuring a bounded collection retains the newest records. Size
+`audit.max_results`, `events.max_results`, and `event_lookback` for the deployment's peak event volume.
+
+For production, keep certificate verification enabled. When the APIC certificate is issued by a private CA, configure
+`ca_file` with that CA chain. If a controller endpoint uses an IP address, set `server_name` to a DNS name listed in
+the certificate SAN. A single `server_name` applies to every configured controller, so omit it unless all controllers
+present certificates valid for that identity.
 
 ### Cisco Secure Firewall Management Center Configuration
 
@@ -629,7 +662,7 @@ delete, policy mutation, certificate mutation, license mutation, repository muta
 | `ise.server_name` | string | No | TLS server name/SNI override for ISE REST/OpenAPI/ERS/MnT, useful when `ise.endpoint` is an IP but the certificate is issued to a DNS name. |
 | `ise.insecure_skip_verify` | bool | No | Disables ISE REST certificate verification. Use only for isolated labs; prefer `ise.ca_file` plus a matching endpoint or `ise.server_name`. |
 | `ise.event_lookback` | duration | No | Lookback for evidence dedupe. Defaults to `24h`. |
-| `ise.session_lookback` | duration | No | Lookback for session/auth list windows. Defaults to `15m`. |
+| `ise.session_lookback` | duration | No | Lookback for the `session_details` authentication-list window. Defaults to `15m`. |
 | `ise.targets.*` | lists | No | Optional filters for node names, network device names/IPs, endpoint MACs, usernames, policy names, security group names, and pxGrid services. Network-device IPs must be literal IP addresses and endpoint MACs must be valid 48-bit addresses. |
 | `ise.pxgrid.*` | map | No | Optional pxGrid endpoint, node name, password or cert/key/CA, `auto_activate`, streaming subscriptions, and result cap. |
 | `ise.pxgrid.ca_file` | string | No | PEM CA bundle used to verify the pxGrid REST/WebSocket certificate. |
@@ -637,24 +670,40 @@ delete, policy mutation, certificate mutation, license mutation, repository muta
 | `ise.pxgrid.insecure_skip_verify` | bool | No | Disables pxGrid certificate verification for self-signed lab certificates. |
 | `ise.pxgrid.allowed_service_hosts` | list | No | Additional pxGrid cluster hostnames or IPs authorized only at the configured control endpoint's port. The configured control host and port are always authorized for HTTPS and WSS. |
 | `ise.pxgrid.allowed_service_origins` | list | No | Additional exact service-discovery origins, such as `https://ise-psn.example.com:8910` or `wss://ise-pubsub.example.com:8910`. Include each required scheme and port explicitly; paths, credentials, queries, and fragments are rejected. |
-| `ise.data_connect.*` | map | No | Optional Data Connect host, port, service name, username, password, wallet directory, mandatory TLS, lookback, row cap, and view overrides. Plaintext credential transport is rejected. |
-| `ise.data_connect.ssl_verify` | bool | No | Set to `false` only when Data Connect TLS cannot be verified by configured wallet/CA material. Defaults to `true`. |
+| `ise.data_connect.*` | map | No | Optional Data Connect host, port, service name, username, password, mandatory TLS, lookback, row cap, and view overrides. Plaintext credential transport is rejected. |
+| `ise.data_connect.wallet_dir` | string | No | Oracle wallet directory used by go-ora for Data Connect trust. Mutually exclusive with `ca_file`. |
+| `ise.data_connect.ca_file` | string | No | PEM CA bundle appended to the Collector host trust store for Data Connect. Mutually exclusive with `wallet_dir`. |
+| `ise.data_connect.server_name` | string | No | TLS certificate name and SNI override while connecting to `host`, useful when `host` is an IP address. Works with either wallet or PEM trust. |
+| `ise.data_connect.ssl_verify` | bool | No | Verifies the Data Connect certificate. Defaults to `true`; set to `false` only for an isolated lab and only without `ca_file` or `server_name`. |
 
-Collection groups default to enabled for REST-safe APIs and can be disabled or capped independently. `pxgrid` and
-`data_connect` default to disabled. pxGrid streaming rejects WebSocket/STOMP frames or bodies over 4 MiB, more than
+For production Data Connect, keep `ssl_verify: true` and configure either `wallet_dir` or `ca_file` when the issuing
+CA is not already trusted by the Collector host. Set `server_name` to a DNS name or IP SAN in the Data Connect
+certificate when `host` is not itself a certificate identity. The receiver validates PEM trust material at startup.
+
+Only the three scalar MnT counters in the `sessions` group default to enabled. Row-level `session_details` and every
+other collection group are opt-in because their availability and volume depend on the ISE release, installed features,
+node persona, API-service settings, and account permissions. In ISE 3.4, OpenAPI
+is enabled by default but ERS is disabled by default; enable ERS on ISE and use an `ERS Operator` account before opting
+in to a group that includes ERS routes. `pxgrid` and `data_connect` also default to disabled and require independent
+credentials and trust configuration. pxGrid streaming rejects WebSocket/STOMP frames or bodies over 4 MiB, more than
 256 headers, more than 64 KiB of aggregate headers, or any protocol line over 8 KiB.
+
+The ERS client fails closed on redirects, HTML login pages, and unsupported or mismatched response types. It
+automatically negotiates ISE enhanced-security CSRF tokens with a cookie-backed session, refreshes an expired token
+once, and treats advertised ERS totals as authoritative when a server clamps page sizes.
 
 | Group | Coverage |
 |-------|----------|
-| `deployment` | ISE deployment node/persona/session-service status, node groups, PAN HA, task service, repository, backup/upgrade/patch status, IPsec nodes, LSD settings, and read-only system settings |
-| `network_devices` | ERS network devices, network device groups, nodes, external RADIUS servers, and telemetry info |
-| `endpoints` | ERS/OpenAPI endpoints, endpoint groups, rejected endpoints, endpoint custom attributes, device-type summaries, and 5G subscribers/user equipment |
-| `sessions` | MnT active/posture/profiler counts, active sessions, and auth session lists |
-| `auth_failures` | MnT failure reasons and pxGrid RADIUS failure records |
-| `accounting` | Accounting/session evidence through Data Connect and targeted troubleshooting APIs |
-| `policy` | Network-access/device-admin policy sets, conditions, dictionaries, identity stores, RBAC, MFA/OIDC/Duo sync, guest/portal policy, TACACS objects, alertmanager rules, and authorization profiles |
-| `posture`, `profiler`, `trustsec` | Endpoint posture import/export status, profiling dictionaries/policy, TrustSec settings/rules/matrix/SGT/SGACL/SXP/ACI/workload connections, ANC, and SGT reservations |
-| `alarms`, `certificates`, `licensing`, `webhooks` | OpenAPI/ERS alarm rules/instances/summaries, CSRs/trusted/system certificate evidence, license state, webhook alarm-rule, and delivery evidence |
+| `deployment` (opt-in) | ISE deployment node/persona/session-service status, node groups, PAN HA, task service, repository, backup/upgrade/patch status, IPsec nodes, and read-only system settings |
+| `network_devices` (opt-in; ERS) | ERS network devices, network device groups, nodes, external RADIUS servers, and telemetry info |
+| `endpoints` (opt-in; ERS/OpenAPI) | ERS/OpenAPI endpoints, endpoint groups, rejected endpoints, endpoint custom attributes, device-type summaries, and 5G subscribers/user equipment |
+| `sessions` (default) | MnT `ActiveCount`, `PostureCount`, and `ProfilerCount` scalar totals |
+| `session_details` (opt-in) | MnT `ActiveList` and time-windowed `AuthList` row-level session evidence and logs |
+| `auth_failures` (opt-in) | MnT version and the static failure-reason reference catalog. Actual RADIUS/TACACS failure records require pxGrid or Data Connect. |
+| `accounting` (opt-in; Data Connect) | Accounting/session evidence through Data Connect and targeted troubleshooting APIs |
+| `policy` (opt-in) | Network-access/device-admin policy sets, conditions, dictionaries, identity stores, RBAC, MFA/OIDC/Duo sync, guest/portal policy, TACACS objects, alertmanager rules, and authorization profiles. RBAC requires ISE 3.5+ and OIDC requires 3.5 patch 1+. |
+| `posture`, `profiler`, `trustsec` (opt-in) | Endpoint posture import/export status, profiling dictionaries/policy, TrustSec settings/rules/matrix/SGT/SGACL/SXP/ACI/workload connections, ANC, and SGT reservations. OpenAPI profiler requires ISE 3.5+; Exim posture routes require ISE 3.6 beta or later. |
+| `alarms`, `certificates`, `licensing`, `webhooks` (opt-in) | OpenAPI/ERS alarm rules/instances/summaries, CSRs/trusted/system certificate evidence, license state, webhook alarm-rule, and delivery evidence. Alarms and webhooks require ISE 3.6 beta or later. |
 | `pxgrid` | pxGrid service lookup/version, session, RADIUS failure, system health, TrustSec, endpoint, pxGrid Cloud/Direct status, and streaming topics |
 | `data_connect` | Allowlisted read-only Data Connect views for RADIUS, TACACS, posture, profiler, policy, network devices, admin/audit, and security evidence |
 
@@ -671,7 +720,11 @@ ise:
     network_device_names: ["edge-switch-1"]
     endpoint_macs: ["00:11:22:33:44:55"]
     usernames: ["alice@example.com"]
+  session_details:
+    enabled: true
+    max_results: 1000
   auth_failures:
+    enabled: true
     max_results: 1000
   pxgrid:
     enabled: true
@@ -682,11 +735,53 @@ ise:
     streaming: true
   data_connect:
     enabled: true
-    host: ise.example.com
+    host: 192.0.2.10
+    server_name: ise.example.com
     service_name: cpm10
     username: ${env:ISE_DATACONNECT_USERNAME}
     password: ${env:ISE_DATACONNECT_PASSWORD}
     wallet_dir: /etc/otelcol/ise-wallet
+```
+
+Run the bounded REST/MnT live gate with explicit groups. The harness disables every unselected group and always
+disables pxGrid and Data Connect, which require separate credentials and qualification:
+
+```shell
+export CISCOOS_E2E_ISE_ENDPOINT=https://ise.example.com
+export CISCOOS_E2E_ISE_USERNAME=ise-readonly
+export CISCOOS_E2E_ISE_CA_FILE=/etc/otelcol/ise-rest-ca.crt
+export CISCOOS_E2E_ISE_GROUPS=sessions,session_details,licensing
+export CISCOOS_E2E_ISE_MAX_RESULTS=100
+read -rs CISCOOS_E2E_ISE_PASSWORD
+export CISCOOS_E2E_ISE_PASSWORD
+
+(cd receiver/ciscoosreceiver && go test -tags=e2e -run '^TestE2ELiveISE$' -count=1 -timeout=5m -v .)
+```
+
+The strict gate requires every selected operation to succeed, `ise.controller.up=1`, zero partial success, no request,
+endpoint, rate-limit, skipped-service, or unavailable-service telemetry, and a current `ise.scrape.last_success`.
+Use `CISCOOS_E2E_ISE_INSECURE_SKIP_VERIFY=true` only for an isolated lab; such a run does not qualify production TLS.
+Set `CISCOOS_E2E_ISE_OPERATIONS` to an exact comma-separated subset for focused release/feature qualification.
+`CISCOOS_E2E_ISE_PAGE_SIZE` independently forces ERS pagination; `CISCOOS_E2E_ISE_REQUIRE_NONEMPTY=true` requires
+each selected operation to return decoded objects; and `CISCOOS_E2E_ISE_REQUIRE_CSRF=true` requires every selected
+ERS request to carry a negotiated token.
+
+Run the separate Data Connect gate with verified TLS and explicitly selected views. Use `none` to validate only REST
+status and the TCPS database ping. Set `CISCOOS_E2E_ISE_DATACONNECT_INCLUDE_LOGS=true` to validate allowlisted logs
+and a second-poll deduplication check without printing row bodies:
+
+```shell
+export CISCOOS_E2E_ISE_DATACONNECT_HOST=ise-mnt.example.com
+export CISCOOS_E2E_ISE_DATACONNECT_SERVICE_NAME=cpm10
+export CISCOOS_E2E_ISE_DATACONNECT_USERNAME=dataconnect
+export CISCOOS_E2E_ISE_DATACONNECT_CA_FILE=/etc/otelcol/ise-mnt-ca.crt
+export CISCOOS_E2E_ISE_DATACONNECT_SERVER_NAME=ise-mnt.example.com
+export CISCOOS_E2E_ISE_DATACONNECT_VIEWS=NODE_LIST,NETWORK_DEVICES,NETWORK_DEVICE_GROUPS
+export CISCOOS_E2E_ISE_DATACONNECT_ROW_LIMIT=25
+read -rs CISCOOS_E2E_ISE_DATACONNECT_PASSWORD
+export CISCOOS_E2E_ISE_DATACONNECT_PASSWORD
+
+(cd receiver/ciscoosreceiver && go test -tags=e2e -run '^TestE2ELiveISEDataConnect$' -count=1 -timeout=5m -v .)
 ```
 
 ### Product-Qualified gNMI Dial-In
@@ -1282,7 +1377,7 @@ state, NX-OS NVE/EVPN fabric metrics, vPC, LACP counters, and detailed QoS queue
 - Identity and access evidence: `ise.session.active.count`, `ise.session.count`, `ise.radius.failure.count`, `ise.tacacs.failure.count`, `ise.accounting.session.count`, `ise.endpoint.posture.status`, `ise.endpoint.posture.count`, and `ise.endpoint.profile.count`.
 - Policy and security posture: `ise.policy.object.count`, `ise.policy.status`, `ise.profiler.policy.status`, `ise.trustsec.resource.count`, `ise.trustsec.resource.status`, `ise.alarm.count`, `ise.certificate.expiration`, `ise.license.status`, and `ise.webhook.delivery.count`.
 - pxGrid and Data Connect: `ise.pxgrid.service.status`, `ise.pxgrid.subscription.status`, `ise.pxgrid.message.count`, `ise.dataconnect.query.duration`, `ise.dataconnect.query.rows`, `ise.dataconnect.query.errors`, and `ise.dataconnect.row.count`.
-- Logs: ISE logs preserve raw REST/OpenAPI/ERS/MnT, pxGrid, and Data Connect records with `event.domain=ise`, `event.name`, node, protocol, outcome, failure reason, policy, network device, endpoint MAC, user, session/audit ID, and HTTP status attributes where present.
+- Logs: ISE logs preserve raw REST/OpenAPI/ERS/MnT, pxGrid, and Data Connect records with `event.domain=ise`, `event.name`, node, protocol, outcome, failure reason, policy, network device, endpoint MAC, user, session/audit ID, and HTTP status attributes where present. MnT `ActiveList` and `AuthList` records require the opt-in `session_details` group.
 
 ### Catalyst 9800 Metrics
 - Generic YANG telemetry: numeric leaves are emitted as `cisco.catalyst9800.yang.<module>.<path>.<leaf>`; integral values are preserved as int64 datapoints when representable, while other numeric values use double datapoints. String and enum leaves use an `_info` metric with the original value on the `value` attribute, known counters are cumulative sums, and other numeric leaves are gauges.
@@ -1604,7 +1699,7 @@ export CISCOOS_E2E_EXPECT_INTERFACES=mgmt0,Eth1/1,Eth1/15,Eth1/16,Lo0,Lo1,Vlan1
 read -rs CISCOOS_E2E_PASSWORD
 export CISCOOS_E2E_PASSWORD
 
-go test -tags=e2e -run TestE2ELiveSwitch -count=1 -timeout=3m ./receiver/ciscoosreceiver
+(cd receiver/ciscoosreceiver && go test -tags=e2e -run TestE2ELiveSwitch -count=1 -timeout=3m .)
 ```
 
 Set `CISCOOS_E2E_ENABLE_OPTIONAL_COMMANDS=true` to also exercise opt-in troubleshooting and detailed counter command
@@ -1630,7 +1725,7 @@ export CISCOOS_E2E_APIC_PASSWORD=...
 export CISCOOS_E2E_APIC_NODE_IDS=101
 export CISCOOS_E2E_APIC_TENANTS=prod
 
-go test -tags=e2e -run 'TestE2E(NexusDashboardControllerAPI|ACIControllerAPI|ACIFullTelemetryInventory)' -count=1 -timeout=5m ./receiver/ciscoosreceiver
+(cd receiver/ciscoosreceiver && go test -tags=e2e -run 'TestE2E(NexusDashboardControllerAPI|ACIControllerAPI|ACIFullTelemetryInventory)' -count=1 -timeout=5m .)
 ```
 
 `TestE2EACIFullTelemetryInventory` performs one bounded metrics scrape and one logs scrape, requires every enabled
@@ -1648,7 +1743,7 @@ export CISCOOS_E2E_IOSXR_PASSWORD
 export CISCOOS_E2E_IOSXR_TLS_INSECURE=false
 export CISCOOS_E2E_IOSXR_PATH_GROUPS=interfaces,optics,bgp
 
-go test -tags=e2e -run TestE2EIOSXRGNMIDialIn -count=1 -timeout=3m ./receiver/ciscoosreceiver
+(cd receiver/ciscoosreceiver && go test -tags=e2e -run TestE2EIOSXRGNMIDialIn -count=1 -timeout=3m .)
 ```
 
 For MDT gRPC dial-out, configure the IOS XR router subscription to stream to the collector endpoint, then run:
@@ -1661,5 +1756,5 @@ export CISCOOS_E2E_IOSXR_DIALOUT_CLIENT_CA_FILE=/etc/otelcol/certs/device-ca.crt
 # Required instead of client mTLS when the router cannot present a client certificate:
 export CISCOOS_E2E_IOSXR_DIALOUT_ALLOWED_CLIENTS=10.0.0.10/32
 
-go test -tags=e2e -run TestE2EIOSXRMDTDialOut -count=1 -timeout=3m ./receiver/ciscoosreceiver
+(cd receiver/ciscoosreceiver && go test -tags=e2e -run TestE2EIOSXRMDTDialOut -count=1 -timeout=3m .)
 ```

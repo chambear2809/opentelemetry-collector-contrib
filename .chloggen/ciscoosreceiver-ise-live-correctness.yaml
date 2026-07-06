@@ -1,0 +1,7 @@
+change_type: bug_fix
+component: receiver/cisco_os
+note: Harden and validate Cisco ISE 3.4 collection with release-safe defaults.
+issues: [0]
+subtext: |
+  Keep only the three scalar MnT session counters enabled by default and move row-level ActiveList and AuthList collection into the opt-in session_details group. Also correct OpenAPI v1 paths and scalar/list response handling, negotiate ERS enhanced-CSRF sessions, reject redirects and HTML API responses, fix authoritative ERS pagination, keep AAA metrics semantically distinct, report truncated inventories as partial, add verified PEM CA/SAN support for Data Connect, and provide bounded REST and Data Connect live gates.
+change_logs: [user]

@@ -163,7 +163,7 @@ Use this table when deciding what to enable.
 | FMC | REST manager/version/license state, inventory, health, VPN, HA, deployments, audit, and bounded policy/object state | eStreamer security events, broad object/rule sweeps, per-device interface/routing/chassis detail, health aggregate metrics, and pending-change detail |
 | Catalyst 9800 | Default AP/RF/SSID/mobility/HA/auth/controller groups, safe path minimum sample intervals, and `max_datapoints_per_batch` | client detail, CAPWAP packets, neighbors, broad custom YANG paths, and low sample intervals |
 | IOS XR | A small set of enabled path groups with 60s+ sample intervals, such as interfaces, optics, and BGP, plus `max_datapoints_per_batch` | high-volume routing tables, FIB/CEF, QoS, ASIC, SR/SRv6, and broad native paths |
-| ISE | REST/OpenAPI/ERS/MnT deployment, backup/upgrade status, network devices, endpoints, sessions, auth failures, RBAC/policy/identity stores, posture, profiler, TrustSec, alarms, certificates, licensing, webhooks, pxGrid Cloud/Direct status | pxGrid streaming, broad Data Connect historical views, and high-volume endpoint/session evidence |
+| ISE | Scalar MnT active, posture, and profiler session counts | Opt-in `session_details` row evidence; release-, feature-, and ERS-dependent REST groups; pxGrid; broad Data Connect historical views; and high-volume endpoint/session evidence |
 
 ## Common Recipes
 

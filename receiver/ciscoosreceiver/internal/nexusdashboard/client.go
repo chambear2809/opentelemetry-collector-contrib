@@ -27,6 +27,8 @@ const (
 	defaultRequestTimeout        = 30 * time.Second
 	defaultPageSize              = 100
 	insecureSkipVerifyConfigPath = "nexus_dashboard.insecure_skip_verify"
+	modernLoginPath              = "/api/v1/infra/login"
+	legacyLoginPath              = "/login"
 )
 
 // Config controls the Nexus Dashboard API client.
@@ -86,6 +88,7 @@ type Client struct {
 	lastAuthStatus  int
 	lastAuthAt      time.Time
 	authFailures    int
+	loginPath       string
 
 	OnRequest func(RequestStat)
 }
@@ -193,6 +196,7 @@ func NewClient(cfg Config) (*Client, error) {
 		client:    &http.Client{Timeout: timeout, Transport: transport, CheckRedirect: httpclient.SameOriginRedirectPolicy(parsed)},
 		retries:   retries,
 		pageSize:  pageSize,
+		loginPath: modernLoginPath,
 	}, nil
 }
 
@@ -495,10 +499,32 @@ func (c *Client) login(ctx context.Context) (string, int, error) {
 	if err != nil {
 		return "", 0, err
 	}
-	reqURL := c.buildURL("/api/v1/infra/login", nil)
+
+	path := c.loginPath
+	token, status, body, stat, err := c.loginAtPath(ctx, path, payload)
+	if !loginEndpointUnsupported(status, body, err) {
+		c.record(stat)
+		return token, status, err
+	}
+	stat.Outcome = "fallback"
+	stat.Err = nil
+	c.record(stat)
+
+	path = alternateLoginPath(path)
+	c.loginPath = path
+	token, status, _, stat, err = c.loginAtPath(ctx, path, payload)
+	c.record(stat)
+	return token, status, err
+}
+
+func (c *Client) loginAtPath(ctx context.Context, path string, payload []byte) (string, int, []byte, RequestStat, error) {
+	stat := RequestStat{Operation: "infra.login", Method: http.MethodPost, Path: path}
+	reqURL := c.buildURL(path, nil)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(payload))
 	if err != nil {
-		return "", 0, err
+		stat.Outcome = "error"
+		stat.Err = err
+		return "", 0, nil, stat, err
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
@@ -506,32 +532,41 @@ func (c *Client) login(ctx context.Context) (string, int, error) {
 	start := time.Now()
 	resp, err := c.client.Do(req)
 	duration := time.Since(start)
+	stat.Duration = duration
 	if err != nil {
 		err = httpclient.DecorateCertificateVerificationError(err, "", insecureSkipVerifyConfigPath)
-		c.record(RequestStat{Operation: "infra.login", Method: http.MethodPost, Path: "/api/v1/infra/login", Outcome: "error", Duration: duration, Err: err})
-		return "", 0, err
+		stat.Outcome = "error"
+		stat.Err = err
+		return "", 0, nil, stat, err
 	}
+	stat.StatusCode = resp.StatusCode
+	stat.RateLimited = resp.StatusCode == http.StatusTooManyRequests
 	bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
-		c.record(RequestStat{Operation: "infra.login", Method: http.MethodPost, Path: "/api/v1/infra/login", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
-		return "", resp.StatusCode, readErr
+		stat.Outcome = "error"
+		stat.Err = readErr
+		return "", resp.StatusCode, bodyBytes, stat, readErr
 	}
 	if closeErr != nil {
-		return "", resp.StatusCode, closeErr
+		stat.Outcome = "error"
+		stat.Err = closeErr
+		return "", resp.StatusCode, bodyBytes, stat, closeErr
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		apiErr := &APIError{StatusCode: resp.StatusCode}
-		c.record(RequestStat{Operation: "infra.login", Method: http.MethodPost, Path: "/api/v1/infra/login", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: apiErr})
-		return "", resp.StatusCode, apiErr
+		stat.Outcome = "error"
+		stat.Err = apiErr
+		return "", resp.StatusCode, bodyBytes, stat, apiErr
 	}
 	var login struct {
 		Token    string `json:"token"`
 		JWTToken string `json:"jwttoken"`
 	}
 	if err := json.Unmarshal(bodyBytes, &login); err != nil {
-		c.record(RequestStat{Operation: "infra.login", Method: http.MethodPost, Path: "/api/v1/infra/login", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: err})
-		return "", resp.StatusCode, err
+		stat.Outcome = "error"
+		stat.Err = err
+		return "", resp.StatusCode, bodyBytes, stat, err
 	}
 	token := login.Token
 	if token == "" {
@@ -539,11 +574,34 @@ func (c *Client) login(ctx context.Context) (string, int, error) {
 	}
 	if token == "" {
 		err := errors.New("nexus dashboard login response did not include a token")
-		c.record(RequestStat{Operation: "infra.login", Method: http.MethodPost, Path: "/api/v1/infra/login", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: err})
-		return "", resp.StatusCode, err
+		stat.Outcome = "error"
+		stat.Err = err
+		return "", resp.StatusCode, bodyBytes, stat, err
 	}
-	c.record(RequestStat{Operation: "infra.login", Method: http.MethodPost, Path: "/api/v1/infra/login", Outcome: "success", StatusCode: resp.StatusCode, Duration: duration})
-	return token, resp.StatusCode, nil
+	stat.Outcome = "success"
+	return token, resp.StatusCode, bodyBytes, stat, nil
+}
+
+func alternateLoginPath(path string) string {
+	if path == legacyLoginPath {
+		return modernLoginPath
+	}
+	return legacyLoginPath
+}
+
+func loginEndpointUnsupported(status int, body []byte, err error) bool {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != status {
+		return false
+	}
+	switch status {
+	case http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotImplemented:
+		return true
+	case http.StatusUnauthorized:
+		return bytes.Contains(bytes.ToLower(body), []byte("authorization field missing"))
+	default:
+		return false
+	}
 }
 
 func (c *Client) clearToken(token tokenSnapshot, authErr error) {
@@ -627,6 +685,9 @@ func objectsFromValue(value any) []Object {
 		}
 		return out
 	case map[string]any:
+		if _, ok := typed["isHealthy"]; ok {
+			return []Object{Object(typed)}
+		}
 		for _, key := range []string{"items", "data", "results", "fabrics", "switches", "interfaces", "anomalies", "advisories", "nodes", "services", "sites", "schemas", "rules", "sessions", "flows", "events", "faults", "auditLog", "logs", "records"} {
 			if items, ok := typed[key].([]any); ok {
 				out := make([]Object, 0, len(items))

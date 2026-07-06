@@ -92,8 +92,10 @@ func TestCreateDefaultConfig(t *testing.T) {
 	assert.Equal(t, 100, config.ISE.PageSize)
 	assert.Equal(t, 24*time.Hour, config.ISE.EventLookback)
 	assert.Equal(t, 15*time.Minute, config.ISE.SessionLookback)
-	assert.True(t, config.ISE.NetworkDevices.Enabled)
-	assert.True(t, config.ISE.AuthFailures.Enabled)
+	assert.True(t, config.ISE.Sessions.Enabled)
+	assert.False(t, config.ISE.SessionDetails.Enabled)
+	assert.False(t, config.ISE.NetworkDevices.Enabled)
+	assert.False(t, config.ISE.AuthFailures.Enabled)
 	assert.False(t, config.ISE.PxGrid.Enabled)
 	assert.False(t, config.ISE.DataConnect.Enabled)
 }

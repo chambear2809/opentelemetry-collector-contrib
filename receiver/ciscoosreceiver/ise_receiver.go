@@ -60,11 +60,22 @@ func classifyISEError(err error) string {
 		case http.StatusRequestTimeout, http.StatusGatewayTimeout:
 			return "timeout"
 		default:
+			if apiErr.StatusCode >= 300 && apiErr.StatusCode < 400 {
+				return "redirect"
+			}
 			if apiErr.StatusCode >= 500 {
 				return "transport"
 			}
 			return "other"
 		}
+	}
+	var contentErr *ise.ResponseContentError
+	if errors.As(err, &contentErr) {
+		return "protocol"
+	}
+	var paginationErr *httpclient.PaginationLimitError
+	if errors.As(err, &paginationErr) {
+		return "pagination_limit"
 	}
 	var netErr net.Error
 	if errors.As(err, &netErr) {
@@ -102,6 +113,10 @@ type iseMetricsReceiver struct {
 
 	queryMu sync.Mutex
 	queries []ise.DataConnectStat
+
+	referenceMu          sync.Mutex
+	failureReasons       []ise.Object
+	failureReasonsLoaded bool
 }
 
 type iseLogsReceiver struct {
@@ -265,6 +280,8 @@ func newISEDataConnectClient(iseCfg ISEConfig) (*ise.DataConnectClient, error) {
 		Username:           dc.Username,
 		Password:           string(dc.Password),
 		WalletDir:          dc.WalletDir,
+		CAFile:             dc.CAFile,
+		ServerName:         dc.ServerName,
 		SSL:                dc.SSL,
 		SSLVerify:          dc.SSLVerify,
 		Lookback:           dc.Lookback,
@@ -468,24 +485,46 @@ func (r *iseMetricsReceiver) scrapeWebhookDeliveries(ctx context.Context, builde
 }
 
 func (r *iseMetricsReceiver) fetchEndpoint(ctx context.Context, spec iseEndpointSpec, now time.Time) ([]ise.Object, error) {
+	if spec.operation == "mnt.failure_reasons" {
+		r.referenceMu.Lock()
+		if r.failureReasonsLoaded {
+			objects := append([]ise.Object(nil), r.failureReasons...)
+			r.referenceMu.Unlock()
+			return objects, nil
+		}
+		r.referenceMu.Unlock()
+	}
 	query := url.Values{}
 	if spec.query != nil {
 		query = spec.query(r.config, now)
 	}
 	path := iseEndpointPath(r.config, spec, now)
 	maxResults := iseGroupMaxResults(r.iseConfig, spec.group)
+	var (
+		objects []ise.Object
+		err     error
+	)
 	switch spec.mode {
 	case iseEndpointERSList:
-		return r.client.ListERS(ctx, spec.operation, path, query, maxResults)
+		objects, err = r.client.ListERS(ctx, spec.operation, path, query, maxResults)
 	case iseEndpointGet:
-		obj, err := r.client.GetObject(ctx, spec.operation, path, query)
-		if err != nil {
-			return nil, err
+		var obj ise.Object
+		obj, err = r.client.GetObject(ctx, spec.operation, path, query)
+		if err == nil {
+			objects = []ise.Object{obj}
 		}
-		return []ise.Object{obj}, nil
 	default:
-		return r.client.List(ctx, spec.operation, path, query, maxResults)
+		objects, err = r.client.List(ctx, spec.operation, path, query, maxResults)
 	}
+	if spec.operation == "mnt.failure_reasons" && err == nil {
+		r.referenceMu.Lock()
+		if !r.failureReasonsLoaded {
+			r.failureReasons = append([]ise.Object(nil), objects...)
+			r.failureReasonsLoaded = true
+		}
+		r.referenceMu.Unlock()
+	}
+	return objects, err
 }
 
 func iseEndpointSpecWithPath(conf *Config, spec iseEndpointSpec, now time.Time) iseEndpointSpec {
@@ -625,7 +664,7 @@ func (r *iseMetricsReceiver) recordAPIRequestMetrics(builder *iseMetricsBuilder)
 		attrs := map[string]string{
 			"ise.api.operation":   stat.Operation,
 			"http.request.method": stat.Method,
-			"ise.api.path":        stat.Path,
+			"ise.api.path":        iseMetricAPIPath(stat.Operation, stat.Path),
 			"ise.api.outcome":     stat.Outcome,
 		}
 		if stat.StatusCode > 0 {
@@ -1046,7 +1085,7 @@ func (b *iseMetricsBuilder) objectResource(spec iseEndpointSpec, obj ise.Object)
 
 func iseControllerResourceMetricGroup(group string) bool {
 	switch group {
-	case "sessions", "auth_failures", "accounting", "pxgrid", "data_connect":
+	case "sessions", "session_details", "auth_failures", "accounting", "pxgrid", "data_connect":
 		return true
 	default:
 		return false
@@ -1078,8 +1117,13 @@ func (b *iseMetricsBuilder) recordObject(spec iseEndpointSpec, obj ise.Object) {
 	status := iseObjectStatus(obj)
 	attrs := iseMetricObjectAttrs(spec, obj)
 	evidenceAttrs := iseMetricEvidenceAttrs(spec, obj, attrs)
-	rb.recordInt("ise.resource.info", "Cisco ISE resource inventory and evidence information.", "1", 1, evidenceAttrs)
-	recordISEStatus(rb, "ise.resource.status", "Cisco ISE resource status encoded as a numeric state.", status, withAttr(evidenceAttrs, "ise.status", status))
+	// FailureReasons is a static reference catalog, not authentication-event
+	// inventory. Emitting a generic evidence row for every long-form cause would
+	// create thousands of high-cardinality metric series on every scrape.
+	if spec.operation != "mnt.failure_reasons" {
+		rb.recordInt("ise.resource.info", "Cisco ISE resource inventory and evidence information.", "1", 1, evidenceAttrs)
+		recordISEStatus(rb, "ise.resource.status", "Cisco ISE resource status encoded as a numeric state.", status, withAttr(evidenceAttrs, "ise.status", status))
+	}
 	switch spec.group {
 	case "deployment":
 		if spec.objectType == "deployment" || strings.Contains(spec.objectType, "node") {
@@ -1096,10 +1140,10 @@ func (b *iseMetricsBuilder) recordObject(spec iseEndpointSpec, obj ise.Object) {
 			b.addCount("ise.endpoint.count", withAttr(attrs, "ise.status", status))
 			recordISEStatus(rb, "ise.endpoint.status", "Cisco ISE endpoint status.", status, withAttr(attrs, "ise.status", status))
 		}
-	case "sessions":
-		b.recordSessionObject(rb, obj, attrs, evidenceAttrs)
+	case "sessions", "session_details":
+		b.recordSessionObject(rb, spec, obj, attrs, evidenceAttrs)
 	case "auth_failures":
-		b.recordAuthFailureObject(rb, obj, attrs, evidenceAttrs)
+		recordISEAuthFailureObject(rb, spec, obj)
 	case "accounting":
 		b.addCount("ise.accounting.session.count", attrs)
 	case "policy":
@@ -1128,23 +1172,32 @@ func (b *iseMetricsBuilder) recordObject(spec iseEndpointSpec, obj ise.Object) {
 			b.addCount("ise.webhook.delivery.count", withAttr(attrs, "ise.status", status))
 		}
 	case "pxgrid":
-		b.addCount("ise.pxgrid.message.count", attrs)
-		if strings.Contains(spec.objectType, "service") || strings.Contains(spec.operation, "service") {
-			rb.recordInt("ise.pxgrid.service.status", "Cisco ISE pxGrid service lookup status.", "1", 1, evidenceAttrs)
-		}
+		b.recordPxGridObject(rb, spec, obj, attrs, evidenceAttrs)
 	case "data_connect":
-		b.addCount("ise.dataconnect.row.count", attrs)
+		b.recordDataConnectObject(rb, spec, obj, attrs, evidenceAttrs)
 	}
 }
 
-func (b *iseMetricsBuilder) recordSessionObject(rb *resourceMetricsBuilder, obj ise.Object, attrs, evidenceAttrs map[string]string) {
-	if count, ok := ise.Float64(obj, "count", "activeCount", "active_count", "total"); ok {
-		rb.recordDouble("ise.session.active.count", "Cisco ISE active session count.", "{session}", count, evidenceAttrs)
+func (b *iseMetricsBuilder) recordSessionObject(rb *resourceMetricsBuilder, spec iseEndpointSpec, obj ise.Object, attrs, evidenceAttrs map[string]string) {
+	count, hasCount := ise.Float64(obj, "count", "activeCount", "active_count", "total")
+	switch spec.operation {
+	case "mnt.session.active_count":
+		if hasCount {
+			rb.recordDouble("ise.session.active.count", "Cisco ISE active session count.", "{session}", count, evidenceAttrs)
+		}
+		return
+	case "mnt.session.posture_count":
+		if hasCount {
+			rb.recordInt("ise.endpoint.posture.count", "Cisco ISE active posture session count.", "{item}", int64(count), evidenceAttrs)
+		}
+		return
+	case "mnt.session.profiler_count":
+		if hasCount {
+			rb.recordInt("ise.endpoint.profile.count", "Cisco ISE active profiler session count.", "{item}", int64(count), evidenceAttrs)
+		}
 		return
 	}
-	b.addCount("ise.session.count", withAttr(attrs, "ise.posture.status", ise.String(obj, "posture_status", "postureStatus")))
-	posture := ise.String(obj, "posture_status", "postureStatus")
-	recordISEStatus(rb, "ise.endpoint.posture.status", "Cisco ISE endpoint posture status.", posture, withAttr(evidenceAttrs, "ise.posture.status", posture))
+	b.recordSessionEvidence(rb, obj, attrs, evidenceAttrs)
 }
 
 func recordISEStatus(rb *resourceMetricsBuilder, name, description, value string, attrs map[string]string) {
@@ -1153,28 +1206,121 @@ func recordISEStatus(rb *resourceMetricsBuilder, name, description, value string
 	}
 }
 
-func (b *iseMetricsBuilder) recordAuthFailureObject(rb *resourceMetricsBuilder, obj ise.Object, attrs, evidenceAttrs map[string]string) {
-	protocol := strings.ToLower(firstNonEmpty(ise.String(obj, "authentication_protocol", "authenticationProtocol", "protocol"), "radius"))
+func (b *iseMetricsBuilder) recordSessionEvidence(rb *resourceMetricsBuilder, obj ise.Object, attrs, evidenceAttrs map[string]string) {
+	b.addCount("ise.session.count", withAttr(attrs, "ise.posture.status", ise.String(obj, "posture_status", "postureStatus")))
+	posture := ise.String(obj, "posture_status", "postureStatus")
+	recordISEStatus(rb, "ise.endpoint.posture.status", "Cisco ISE endpoint posture status.", posture, withAttr(evidenceAttrs, "ise.posture.status", posture))
+}
+
+func recordISEAuthFailureObject(rb *resourceMetricsBuilder, spec iseEndpointSpec, obj ise.Object) {
+	if spec.operation != "mnt.failure_reasons" {
+		// The remaining MnT object in this group is Version. It proves API
+		// reachability but is not authentication-failure evidence.
+		return
+	}
+	code := ise.String(obj, "message_code", "messageCode", "code")
+	if code == "" {
+		return
+	}
+	reasonAttrs := map[string]string{
+		"ise.group":        spec.group,
+		"ise.object.type":  spec.objectType,
+		"ise.message.code": code,
+	}
+	rb.recordInt("ise.auth.failure.reason.info", "Cisco ISE authentication failure reason reference.", "1", 1, reasonAttrs)
+}
+
+func (b *iseMetricsBuilder) recordAuthenticationFailure(obj ise.Object, attrs map[string]string) {
+	protocol := strings.ToLower(firstNonEmpty(
+		ise.String(obj, "authentication_protocol", "authenticationProtocol", "protocol"),
+		attrs["ise.protocol"],
+	))
 	if strings.Contains(protocol, "tacacs") {
 		b.addCount("ise.tacacs.failure.count", attrs)
 		return
 	}
-	b.addCount("ise.radius.failure.count", attrs)
-	if reason := ise.String(obj, "failure_reason", "failureReason", "cause"); reason != "" {
-		rb.recordInt("ise.auth.failure.reason.info", "Cisco ISE authentication failure reason evidence.", "1", 1, withAttr(evidenceAttrs, "ise.failure.reason", reason))
+	if strings.Contains(protocol, "radius") {
+		b.addCount("ise.radius.failure.count", attrs)
 	}
+}
+
+func (b *iseMetricsBuilder) recordPxGridObject(rb *resourceMetricsBuilder, spec iseEndpointSpec, obj ise.Object, attrs, evidenceAttrs map[string]string) {
+	switch spec.operation {
+	case "pxgrid.service_lookup":
+		rb.recordInt("ise.pxgrid.service.status", "Cisco ISE pxGrid service lookup status.", "1", 1, evidenceAttrs)
+	case "pxgrid.session.get_sessions":
+		b.addCount("ise.pxgrid.message.count", attrs)
+		b.recordSessionEvidence(rb, obj, attrs, evidenceAttrs)
+	case "pxgrid.radius.get_failures":
+		b.addCount("ise.pxgrid.message.count", attrs)
+		b.recordAuthenticationFailure(obj, attrs)
+	case "pxgrid.trustsec.get_security_groups", "pxgrid.trustsec.get_sgacls", "pxgrid.trustsec.get_egress_policies":
+		b.addCount("ise.pxgrid.message.count", attrs)
+		b.addCount("ise.trustsec.resource.count", attrs)
+		status := iseObjectStatus(obj)
+		recordISEStatus(rb, "ise.trustsec.resource.status", "Cisco ISE TrustSec resource status.", status, withAttr(attrs, "ise.status", status))
+	case "pxgrid.session.get_user_groups", "pxgrid.system.get_healths", "pxgrid.system.get_performances":
+		b.addCount("ise.pxgrid.message.count", attrs)
+	}
+}
+
+func (b *iseMetricsBuilder) recordDataConnectObject(rb *resourceMetricsBuilder, spec iseEndpointSpec, obj ise.Object, attrs, evidenceAttrs map[string]string) {
+	b.addCount("ise.dataconnect.row.count", attrs)
+	operation := strings.ToLower(spec.operation)
+	switch {
+	case strings.Contains(operation, "radius_accounting"),
+		strings.Contains(operation, "tacacs_accounting"),
+		strings.Contains(operation, "tacacs_command_accounting"):
+		b.addCount("ise.accounting.session.count", attrs)
+	case strings.Contains(operation, "radius_authentication"), strings.Contains(operation, "tacacs_authentication"), strings.Contains(operation, "tacacs_authorization"):
+		if iseAuthenticationFailed(obj) {
+			b.recordAuthenticationFailure(obj, attrs)
+		}
+	case strings.Contains(operation, "posture"):
+		posture := ise.String(obj, "posture_status", "postureStatus", "status")
+		b.addCount("ise.endpoint.posture.count", withAttr(attrs, "ise.posture.status", posture))
+		recordISEStatus(rb, "ise.endpoint.posture.status", "Cisco ISE endpoint posture status.", posture, withAttr(evidenceAttrs, "ise.posture.status", posture))
+	case strings.Contains(operation, "profil"):
+		b.addCount("ise.endpoint.profile.count", attrs)
+	}
+}
+
+func iseAuthenticationFailed(obj ise.Object) bool {
+	if ise.String(obj, "failure_reason", "failureReason", "cause") != "" {
+		return true
+	}
+	outcome := strings.ToLower(ise.String(obj,
+		"authentication_status", "authenticationStatus", "status", "response", "outcome",
+	))
+	return strings.Contains(outcome, "fail") ||
+		strings.Contains(outcome, "reject") ||
+		strings.Contains(outcome, "deny") ||
+		strings.Contains(outcome, "error")
 }
 
 func (b *iseMetricsBuilder) recordEndpointError(spec iseEndpointSpec, err error) {
 	attrs := map[string]string{
 		"ise.group":         spec.group,
 		"ise.api.operation": spec.operation,
-		"ise.api.path":      spec.path,
+		"ise.api.path":      iseMetricAPIPath(spec.operation, spec.path),
 		"ise.error.kind":    classifyISEError(err),
 	}
 	b.controllerResource().recordSum("ise.api.endpoint.error", "Cisco ISE endpoint scrape error.", "{error}", 1, attrs)
 	if ise.IsUnavailable(err) {
 		b.recordServiceUnavailable(spec.group, spec.operation, err)
+	}
+}
+
+func iseMetricAPIPath(operation, path string) string {
+	switch operation {
+	case "mnt.session.auth_list":
+		return "/admin/API/mnt/Session/AuthList/{start}/{end}"
+	case "openapi.alarm_instances":
+		return "/api/v1/alarms/instances/{page}/{size}"
+	case "openapi.webhook_deliveries":
+		return "/api/v1/webhooks/{webhookId}/deliveries"
+	default:
+		return path
 	}
 }
 
@@ -1256,27 +1402,25 @@ func (b *iseLogsBuilder) recordObject(spec iseEndpointSpec, obj ise.Object) {
 
 func iseMetricEndpoints() []iseEndpointSpec {
 	return []iseEndpointSpec{
-		{group: "deployment", operation: "deployment.primary", path: "/api/v1/deployment/primary", objectType: "deployment", mode: iseEndpointGet},
 		{group: "deployment", operation: "deployment.nodes", path: "/api/v1/deployment/node", objectType: "deployment_node", mode: iseEndpointList},
-		{group: "deployment", operation: "openapi.deployment.nodes", path: "/deployment/node/", objectType: "deployment_node", mode: iseEndpointList},
-		{group: "deployment", operation: "openapi.deployment.node_groups", path: "/deployment/node-group", objectType: "deployment_node_group", mode: iseEndpointList},
-		{group: "deployment", operation: "openapi.deployment.pan_ha", path: "/deployment/pan-ha", objectType: "deployment_ha", mode: iseEndpointGet},
+		{group: "deployment", operation: "openapi.deployment.node_groups", path: "/api/v1/deployment/node-group", objectType: "deployment_node_group", mode: iseEndpointList},
+		{group: "deployment", operation: "openapi.deployment.pan_ha", path: "/api/v1/deployment/pan-ha", objectType: "deployment_ha", mode: iseEndpointGet},
 		{group: "deployment", operation: "openapi.task_service", path: "/api/v1/task", objectType: "task", mode: iseEndpointList},
 		{group: "deployment", operation: "openapi.system.proxy", path: "/api/v1/system-settings/proxy", objectType: "system_setting", mode: iseEndpointGet},
 		{group: "deployment", operation: "openapi.system.transport_gateway", path: "/api/v1/system-settings/telemetry/transport-gateway", objectType: "system_setting", mode: iseEndpointGet},
 		{group: "deployment", operation: "openapi.repository", path: "/api/v1/repository", objectType: "repository", mode: iseEndpointList},
 		{group: "deployment", operation: "openapi.backup_restore.last_backup_status", path: "/api/v1/backup-restore/config/last-backup-status", objectType: "backup_restore_status", mode: iseEndpointGet},
-		{group: "deployment", operation: "openapi.upgrade.prepare_status", path: "/upgrade/prepare/get-status", objectType: "upgrade_status", mode: iseEndpointGet},
-		{group: "deployment", operation: "openapi.upgrade.stage_status", path: "/upgrade/stage/get-status", objectType: "upgrade_status", mode: iseEndpointGet},
-		{group: "deployment", operation: "openapi.upgrade.proceed_status", path: "/upgrade/proceed/get-status", objectType: "upgrade_status", mode: iseEndpointGet},
-		{group: "deployment", operation: "openapi.upgrade.summary_status", path: "/upgrade/summary/get-status", objectType: "upgrade_status", mode: iseEndpointGet},
-		{group: "deployment", operation: "openapi.patch.prechecks_status", path: "/upgrade-patch/patch-install/pre-checks-status", objectType: "patch_status", mode: iseEndpointGet},
-		{group: "deployment", operation: "openapi.patch.install_status", path: "/upgrade-patch/patch-install/get-status", objectType: "patch_status", mode: iseEndpointGet},
-		{group: "deployment", operation: "openapi.patch.list", path: "/upgrade-patch/patch-install/list-patch", objectType: "patch", mode: iseEndpointList},
-		{group: "deployment", operation: "openapi.patch.install_summary", path: "/upgrade-patch/patch-install/get-summary", objectType: "patch_status", mode: iseEndpointGet},
-		{group: "deployment", operation: "openapi.patch.rollback_prechecks_status", path: "/rollback/patch-rollback/pre-checks-status", objectType: "patch_status", mode: iseEndpointGet},
-		{group: "deployment", operation: "openapi.patch.rollback_summary", path: "/rollback/patch-rollback/summary", objectType: "patch_status", mode: iseEndpointGet},
-		{group: "deployment", operation: "openapi.patch.rollback_status", path: "/rollback/patch-rollback/get-status", objectType: "patch_status", mode: iseEndpointGet},
+		{group: "deployment", operation: "openapi.upgrade.prepare_status", path: "/api/v1/upgrade/prepare/get-status", objectType: "upgrade_status", mode: iseEndpointGet},
+		{group: "deployment", operation: "openapi.upgrade.stage_status", path: "/api/v1/upgrade/stage/get-status", objectType: "upgrade_status", mode: iseEndpointGet},
+		{group: "deployment", operation: "openapi.upgrade.proceed_status", path: "/api/v1/upgrade/proceed/get-status", objectType: "upgrade_status", mode: iseEndpointGet},
+		{group: "deployment", operation: "openapi.upgrade.summary_status", path: "/api/v1/upgrade/summary/get-status", objectType: "upgrade_status", mode: iseEndpointGet},
+		{group: "deployment", operation: "openapi.patch.prechecks_status", path: "/api/v1/upgrade-patch/patch-install/pre-checks-status", objectType: "patch_status", mode: iseEndpointGet},
+		{group: "deployment", operation: "openapi.patch.install_status", path: "/api/v1/upgrade-patch/patch-install/get-status", objectType: "patch_status", mode: iseEndpointGet},
+		{group: "deployment", operation: "openapi.patch.list", path: "/api/v1/upgrade-patch/patch-install/list-patch", objectType: "patch", mode: iseEndpointList},
+		{group: "deployment", operation: "openapi.patch.install_summary", path: "/api/v1/upgrade-patch/patch-install/get-summary", objectType: "patch_status", mode: iseEndpointGet},
+		{group: "deployment", operation: "openapi.patch.rollback_prechecks_status", path: "/api/v1/rollback/patch-rollback/pre-checks-status", objectType: "patch_status", mode: iseEndpointGet},
+		{group: "deployment", operation: "openapi.patch.rollback_summary", path: "/api/v1/rollback/patch-rollback/summary", objectType: "patch_status", mode: iseEndpointGet},
+		{group: "deployment", operation: "openapi.patch.rollback_status", path: "/api/v1/rollback/patch-rollback/get-status", objectType: "patch_status", mode: iseEndpointGet},
 		{group: "deployment", operation: "ers.nodes", path: "/ers/config/node", objectType: "deployment_node", mode: iseEndpointERSList},
 		{group: "deployment", operation: "ers.session_service_nodes", path: "/ers/config/sessionservicenode", objectType: "session_service_node", mode: iseEndpointERSList},
 		{group: "deployment", operation: "ers.deployment_info", path: "/ers/config/deploymentinfo/getAllInfo", objectType: "deployment", mode: iseEndpointGet},
@@ -1292,13 +1436,13 @@ func iseMetricEndpoints() []iseEndpointSpec {
 		{group: "endpoints", operation: "openapi.endpoints", path: "/api/v1/endpoint", objectType: "endpoint", mode: iseEndpointList},
 		{group: "endpoints", operation: "openapi.endpoint_device_type_summary", path: "/api/v1/endpoint/deviceType/summary", objectType: "endpoint_summary", mode: iseEndpointList},
 		{group: "endpoints", operation: "openapi.endpoint_custom_attributes", path: "/api/v1/endpoint-custom-attribute", objectType: "endpoint_custom_attribute", mode: iseEndpointList},
-		{group: "endpoints", operation: "openapi.fiveg.user_equipment", path: "/fiveg/user-equipment", objectType: "fiveg_user_equipment", mode: iseEndpointList},
-		{group: "endpoints", operation: "openapi.fiveg.subscribers", path: "/fiveg/subscriber", objectType: "fiveg_subscriber", mode: iseEndpointList},
+		{group: "endpoints", operation: "openapi.fiveg.user_equipment", path: "/api/v1/fiveg/user-equipment", objectType: "fiveg_user_equipment", mode: iseEndpointList},
+		{group: "endpoints", operation: "openapi.fiveg.subscribers", path: "/api/v1/fiveg/subscriber", objectType: "fiveg_subscriber", mode: iseEndpointList},
 		{group: "sessions", operation: "mnt.session.active_count", path: "/admin/API/mnt/Session/ActiveCount", objectType: "session_count", mode: iseEndpointGet},
 		{group: "sessions", operation: "mnt.session.posture_count", path: "/admin/API/mnt/Session/PostureCount", objectType: "session_count", mode: iseEndpointGet},
 		{group: "sessions", operation: "mnt.session.profiler_count", path: "/admin/API/mnt/Session/ProfilerCount", objectType: "session_count", mode: iseEndpointGet},
-		{group: "sessions", operation: "mnt.session.active_list", path: "/admin/API/mnt/Session/ActiveSessionsList", objectType: "session", mode: iseEndpointList},
-		{group: "sessions", operation: "mnt.session.auth_list", objectType: "auth_session", mode: iseEndpointList, pathFunc: iseAuthSessionsListPath},
+		{group: "session_details", operation: "mnt.session.active_list", path: "/admin/API/mnt/Session/ActiveList", objectType: "session", mode: iseEndpointList},
+		{group: "session_details", operation: "mnt.session.auth_list", objectType: "auth_session", mode: iseEndpointList, pathFunc: iseAuthSessionsListPath},
 		{group: "auth_failures", operation: "mnt.version", path: "/admin/API/mnt/Version", objectType: "mnt_version", mode: iseEndpointGet},
 		{group: "auth_failures", operation: "mnt.failure_reasons", path: "/admin/API/mnt/FailureReasons", objectType: "failure_reason", mode: iseEndpointList},
 		{group: "policy", operation: "openapi.rbac.admin_groups", path: "/api/v1/rbac/admin-group", objectType: "rbac_admin_group", mode: iseEndpointList},
@@ -1466,7 +1610,7 @@ func iseMetricEndpoints() []iseEndpointSpec {
 		{group: "licensing", operation: "openapi.license.miscellaneous", path: "/api/v1/license/system/miscellaneous-license", objectType: "license", mode: iseEndpointGet},
 		{group: "licensing", operation: "openapi.license.registration", path: "/api/v1/license/system/register", objectType: "license", mode: iseEndpointGet},
 		{group: "licensing", operation: "openapi.license.smart_state", path: "/api/v1/license/system/smart-state", objectType: "license", mode: iseEndpointGet},
-		{group: "licensing", operation: "openapi.license.tier_state", path: "/api/v1/license/system/tier-state", objectType: "license", mode: iseEndpointGet},
+		{group: "licensing", operation: "openapi.license.tier_state", path: "/api/v1/license/system/tier-state", objectType: "license", mode: iseEndpointList},
 		{group: "webhooks", operation: "openapi.webhooks", path: "/api/v1/webhooks", objectType: "webhook", mode: iseEndpointList},
 		{group: "webhooks", operation: "openapi.webhook_alarm_rules", path: "/api/v1/webhooks/alarms", objectType: "webhook_alarm_rule", mode: iseEndpointList},
 		{group: "pxgrid", operation: "ers.pxgrid_nodes", path: "/ers/config/pxgridnode", objectType: "pxgrid_node", mode: iseEndpointERSList},
@@ -1477,7 +1621,6 @@ func iseMetricEndpoints() []iseEndpointSpec {
 		{group: "pxgrid", operation: "openapi.pxgrid_direct.dictionary_references", path: "/api/v1/pxgrid-direct/dictionary-references", objectType: "pxgrid_direct_dictionary", mode: iseEndpointList},
 		{group: "data_connect", operation: "openapi.data_connect.details", path: "/api/v1/mnt/data-connect/details", objectType: "data_connect_status", mode: iseEndpointGet},
 		{group: "data_connect", operation: "openapi.data_connect.settings", path: "/api/v1/mnt/data-connect/settings", objectType: "data_connect_status", mode: iseEndpointGet},
-		{group: "deployment", operation: "openapi.lsd.settings", path: "/api/v1/lsd/updateLsdSettings", objectType: "lsd_setting", mode: iseEndpointGet},
 	}
 }
 
@@ -1535,7 +1678,7 @@ func iseLogEndpointAllowed(operation string) bool {
 func iseAuthSessionsListPath(conf *Config, now time.Time) string {
 	lookback := conf.ISE.withDefaults().SessionLookback
 	start := now.Add(-lookback).UTC().Format("2006-01-02 15:04:05")
-	return "/admin/API/mnt/Session/AuthSessionsList/" + start + "/null"
+	return "/admin/API/mnt/Session/AuthList/" + start + "/null"
 }
 
 func iseAlarmInstancesPath(conf *Config, _ time.Time) string {

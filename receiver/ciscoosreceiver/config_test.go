@@ -115,6 +115,81 @@ func TestControllerConfigRejectsDuplicateEffectiveIdentities(t *testing.T) {
 	})
 }
 
+func TestValidateACITLSConfig(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		config  ACIConfig
+		wantErr string
+	}{
+		{
+			name: "private CA with DNS server name",
+			config: ACIConfig{
+				CAFile:     filepath.Join("certs", "apic-ca.pem"),
+				ServerName: "apic.example.com",
+			},
+		},
+		{
+			name:   "IP server name",
+			config: ACIConfig{ServerName: "192.0.2.10"},
+		},
+		{
+			name:    "CA path surrounding whitespace",
+			config:  ACIConfig{CAFile: " /etc/otelcol/apic-ca.pem"},
+			wantErr: "aci.ca_file must not contain surrounding whitespace",
+		},
+		{
+			name:    "CA path NUL",
+			config:  ACIConfig{CAFile: "apic\x00.pem"},
+			wantErr: "aci.ca_file must be a valid file path",
+		},
+		{
+			name:    "server name surrounding whitespace",
+			config:  ACIConfig{ServerName: " apic.example.com "},
+			wantErr: "aci.server_name must not contain surrounding whitespace",
+		},
+		{
+			name:    "server name URL",
+			config:  ACIConfig{ServerName: "https://apic.example.com"},
+			wantErr: "aci.server_name must be a valid hostname or IP address without a scheme or port",
+		},
+		{
+			name:    "server name port",
+			config:  ACIConfig{ServerName: "apic.example.com:443"},
+			wantErr: "aci.server_name must be a valid hostname or IP address without a scheme or port",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateACITLSConfig(tt.config)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestACIConfigUnmarshalTLSSettings(t *testing.T) {
+	cfg := NewFactory().CreateDefaultConfig().(*Config)
+	require.NoError(t, cfg.Unmarshal(confmap.NewFromStringMap(map[string]any{
+		"aci": map[string]any{
+			"ca_file":     "/etc/otelcol/apic-ca.pem",
+			"server_name": "apic.example.com",
+		},
+	})))
+	assert.Equal(t, "/etc/otelcol/apic-ca.pem", cfg.ACI.CAFile)
+	assert.Equal(t, "apic.example.com", cfg.ACI.ServerName)
+}
+
+func TestACIConfigTLSSettingsActivateValidation(t *testing.T) {
+	cfg := NewFactory().CreateDefaultConfig().(*Config)
+	cfg.ACI.ServerName = "https://apic.example.com"
+
+	err := cfg.Validate()
+	require.ErrorContains(t, err, "aci.server_name must be a valid hostname or IP address without a scheme or port")
+	require.ErrorContains(t, err, "aci.controllers must include at least one APIC endpoint")
+}
+
 func TestConfigValidate(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -731,6 +806,26 @@ func TestConfigValidate(t *testing.T) {
 				},
 			},
 			expectedErr: "",
+		},
+		{
+			name: "invalid nexus dashboard api profile",
+			config: &Config{
+				ControllerConfig: scraperhelper.ControllerConfig{
+					Timeout:            30 * time.Second,
+					CollectionInterval: 60 * time.Second,
+				},
+				NexusDashboard: NexusDashboardConfig{
+					Enabled:    true,
+					Endpoint:   "https://nd.example.com",
+					APIProfile: "automatic",
+					Auth: ControllerAuthConfig{
+						Mode:     "api_key",
+						Username: "admin",
+						APIKey:   configopaque.String("nd-api-key"),
+					},
+				},
+			},
+			expectedErr: "nexus_dashboard.api_profile must be legacy or unified",
 		},
 		{
 			name: "valid aci target",
@@ -1446,6 +1541,7 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.Equal(t, 75, cfg.SDWAN.CloudOnRamp.MaxResults)
 	assert.True(t, cfg.NexusDashboard.Enabled)
 	assert.Equal(t, "https://nexus-dashboard.example.com", cfg.NexusDashboard.Endpoint)
+	assert.Equal(t, nexusDashboardAPIProfileUnified, cfg.NexusDashboard.APIProfile)
 	assert.True(t, cfg.NexusDashboard.InsecureSkipVerify)
 	assert.Equal(t, "api_key", cfg.NexusDashboard.Auth.Mode)
 	assert.Equal(t, "admin", cfg.NexusDashboard.Auth.Username)
@@ -1533,6 +1629,8 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.Equal(t, []string{"Employees"}, cfg.ISE.Targets.SecurityGroupNames)
 	assert.Equal(t, []string{"com.cisco.ise.session"}, cfg.ISE.Targets.PxGridServices)
 	assert.Equal(t, 750, cfg.ISE.Sessions.MaxResults)
+	assert.True(t, cfg.ISE.SessionDetails.Enabled)
+	assert.Equal(t, 125, cfg.ISE.SessionDetails.MaxResults)
 	assert.Equal(t, 300, cfg.ISE.AuthFailures.MaxResults)
 	assert.Equal(t, 200, cfg.ISE.TrustSec.MaxResults)
 	assert.True(t, cfg.ISE.PxGrid.Enabled)
@@ -1647,6 +1745,12 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.True(t, interfaceCfg.Transceiver.Enabled)
 	assert.Equal(t, []string{"Te*", "Eth*"}, interfaceCfg.Transceiver.Include)
 	assert.Equal(t, 16, interfaceCfg.Transceiver.MaxInterfaces)
+}
+
+func TestNexusDashboardAPIProfileDefaultsToLegacy(t *testing.T) {
+	cfg := NewFactory().CreateDefaultConfig().(*Config)
+	assert.Equal(t, nexusDashboardAPIProfileLegacy, cfg.NexusDashboard.APIProfile)
+	assert.Equal(t, nexusDashboardAPIProfileLegacy, normalizeNexusDashboardAPIProfile(""))
 }
 
 func TestConfigUnmarshalNil(t *testing.T) {

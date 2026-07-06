@@ -9,11 +9,14 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
 	"math/rand/v2"
+	"mime"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"strconv"
@@ -33,6 +36,12 @@ const (
 	defaultMaxResults                = 100000
 	restCAConfigPath                 = "ise.ca_file"
 	restInsecureSkipVerifyConfigPath = "ise.insecure_skip_verify"
+	ersCSRFHeader                    = "X-CSRF-TOKEN"
+	ersCSRFFetchValue                = "fetch"
+	ersCSRFRequiredValue             = "required"
+	ersCSRFOperation                 = "ers.csrf_token"
+	ersCSRFStatPath                  = "/ers/config"
+	maxERSCSRFTokenLength            = 4096
 )
 
 // Config controls the Cisco ISE REST/OpenAPI/ERS/MnT client.
@@ -54,14 +63,15 @@ type Config struct {
 
 // RequestStat describes a single Cisco ISE API request attempt.
 type RequestStat struct {
-	Operation   string
-	Method      string
-	Path        string
-	Outcome     string
-	StatusCode  int
-	Duration    time.Duration
-	RateLimited bool
-	Err         error
+	Operation     string
+	Method        string
+	Path          string
+	Outcome       string
+	StatusCode    int
+	Duration      time.Duration
+	RateLimited   bool
+	CSRFProtected bool
+	Err           error
 }
 
 // APIError is returned for non-success Cisco ISE API responses.
@@ -71,6 +81,20 @@ type APIError struct {
 
 func (e *APIError) Error() string {
 	return httpclient.StatusError("ise", e.StatusCode)
+}
+
+// ResponseContentError reports a successful HTTP response that is not a
+// supported ISE API representation. It deliberately excludes response data.
+type ResponseContentError struct {
+	Kind        string
+	ContentType string
+}
+
+func (e *ResponseContentError) Error() string {
+	if e.ContentType == "" {
+		return fmt.Sprintf("ISE API response has %s content", e.Kind)
+	}
+	return fmt.Sprintf("ISE API response has %s content (content-type %s)", e.Kind, e.ContentType)
 }
 
 // IsUnavailable reports whether err means an ISE API family is missing, disabled, or unauthorized.
@@ -102,6 +126,10 @@ type Client struct {
 
 	limitMu  sync.Mutex
 	nextSend time.Time
+
+	ersMu             sync.Mutex
+	ersCSRFToken      string
+	ersCSRFNegotiated bool
 
 	OnRequest func(RequestStat)
 }
@@ -153,12 +181,23 @@ func NewClient(cfg Config) (*Client, error) {
 	if tlsConfig != nil {
 		transport.TLSClientConfig = tlsConfig
 	}
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		return nil, fmt.Errorf("create ISE cookie jar: %w", err)
+	}
 	return &Client{
-		endpoint:                     parsed,
-		username:                     cfg.Username,
-		password:                     cfg.Password,
-		userAgent:                    userAgent,
-		client:                       &http.Client{Timeout: timeout, Transport: transport, CheckRedirect: httpclient.SameOriginRedirectPolicy(parsed)},
+		endpoint:  parsed,
+		username:  cfg.Username,
+		password:  cfg.Password,
+		userAgent: userAgent,
+		client: &http.Client{
+			Timeout:   timeout,
+			Transport: transport,
+			Jar:       jar,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 		retries:                      retries,
 		pageSize:                     pageSize,
 		spacing:                      defaultRequestSpacing,
@@ -257,10 +296,7 @@ func (c *Client) List(ctx context.Context, operation, path string, query url.Val
 		}
 		results = append(results, objects...)
 		if len(results) > c.maxResults {
-			return results[:c.maxResults], fmt.Errorf("paginate ise %s response: exceeded %d results", operation, c.maxResults)
-		}
-		if maxResults > 0 && len(results) >= maxResults {
-			return results[:maxResults], nil
+			return results[:c.maxResults], httpclient.NewPaginationLimitError(operation, "result", c.maxResults, c.maxResults)
 		}
 
 		pagination := paginationFromResponse(body, header)
@@ -268,11 +304,19 @@ func (c *Client) List(ctx context.Context, operation, path string, query url.Val
 		if err != nil {
 			return results, fmt.Errorf("paginate ise %s response: %w", operation, err)
 		}
+		if maxResults > 0 && len(results) >= maxResults {
+			truncated := len(results) > maxResults
+			results = results[:maxResults]
+			if truncated || more {
+				return results, httpclient.NewConfiguredPaginationLimitError(operation, "result", maxResults, len(results))
+			}
+			return results, nil
+		}
 		if !more {
 			return results, nil
 		}
 		if len(results) >= c.maxResults {
-			return results, fmt.Errorf("paginate ise %s response: exceeded %d results", operation, c.maxResults)
+			return results, httpclient.NewPaginationLimitError(operation, "result", c.maxResults, len(results))
 		}
 		pagePath = nextPath
 		pageQuery = nextQuery
@@ -295,9 +339,10 @@ func (c *Client) ListERS(ctx context.Context, operation, path string, query url.
 	seenRequests := make(map[string]struct{})
 	var results []Object
 	var byteBudget httpclient.PaginationByteBudget
+	authoritativeTotal := -1
 	for requestNumber, page := 0, startPage; ; requestNumber, page = requestNumber+1, page+1 {
 		if requestNumber >= c.maxPages {
-			return results, fmt.Errorf("paginate ise %s response: exceeded %d pages", operation, c.maxPages)
+			return results, httpclient.NewPaginationLimitError(operation, "page", c.maxPages, len(results))
 		}
 		pageQuery := cloneValues(query)
 		pageSize := configuredPageSize
@@ -311,7 +356,7 @@ func (c *Client) ListERS(ctx context.Context, operation, path string, query url.
 			}
 		}
 		if remaining := c.maxResults - len(results); remaining <= 0 {
-			return results, fmt.Errorf("paginate ise %s response: exceeded %d results", operation, c.maxResults)
+			return results, httpclient.NewPaginationLimitError(operation, "result", c.maxResults, len(results))
 		} else if remaining < pageSize {
 			pageSize = remaining
 		}
@@ -333,18 +378,50 @@ func (c *Client) ListERS(ctx context.Context, operation, path string, query url.
 		if err != nil {
 			return results, fmt.Errorf("decode ise %s response: %w", operation, err)
 		}
+		if total >= 0 {
+			if authoritativeTotal >= 0 && total != authoritativeTotal {
+				return results, fmt.Errorf(
+					"paginate ise %s response: page %d changed advertised total from %d to %d",
+					operation,
+					page,
+					authoritativeTotal,
+					total,
+				)
+			}
+			authoritativeTotal = total
+		}
 		results = append(results, objects...)
 		if len(results) > c.maxResults {
-			return results[:c.maxResults], fmt.Errorf("paginate ise %s response: exceeded %d results", operation, c.maxResults)
+			return results[:c.maxResults], httpclient.NewPaginationLimitError(operation, "result", c.maxResults, c.maxResults)
+		}
+		var complete bool
+		if authoritativeTotal >= 0 {
+			complete = len(results) >= authoritativeTotal
+			if len(objects) == 0 && !complete {
+				return results, fmt.Errorf(
+					"paginate ise %s response: page %d returned no results after %d of %d advertised results",
+					operation,
+					page,
+					len(results),
+					authoritativeTotal,
+				)
+			}
+		} else {
+			complete = len(objects) == 0 || len(objects) < pageSize
 		}
 		if maxResults > 0 && len(results) >= maxResults {
-			return results[:maxResults], nil
+			truncated := len(results) > maxResults
+			results = results[:maxResults]
+			if truncated || !complete {
+				return results, httpclient.NewConfiguredPaginationLimitError(operation, "result", maxResults, len(results))
+			}
+			return results, nil
 		}
-		if len(objects) == 0 || len(objects) < pageSize || total > -1 && len(results) >= total {
+		if complete {
 			return results, nil
 		}
 		if len(results) >= c.maxResults {
-			return results, fmt.Errorf("paginate ise %s response: exceeded %d results", operation, c.maxResults)
+			return results, httpclient.NewPaginationLimitError(operation, "result", c.maxResults, len(results))
 		}
 	}
 }
@@ -363,7 +440,10 @@ func (c *Client) PostQuery(ctx context.Context, operation, path string, payload 
 	if err != nil {
 		return nil, fmt.Errorf("decode ise %s response: %w", operation, err)
 	}
-	return capObjects(objects, maxResults), nil
+	if maxResults > 0 && len(objects) > maxResults {
+		return objects[:maxResults], httpclient.NewConfiguredPaginationLimitError(operation, "result", maxResults, maxResults)
+	}
+	return objects, nil
 }
 
 // PostObject posts a JSON payload and returns one normalized object from the response.
@@ -634,22 +714,91 @@ func linkHasNextRelation(parameters string) bool {
 	return false
 }
 
+type ersCSRFMode uint8
+
+const (
+	ersCSRFNone ersCSRFMode = iota
+	ersCSRFFetch
+	ersCSRFToken
+)
+
 func (c *Client) do(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, http.Header, error) {
+	ersRequest := isERSRequestPath(path)
+	if !ersRequest {
+		body, header, _, err := c.doWithRetries(ctx, method, operation, path, query, payload, ersCSRFNone)
+		return body, header, err
+	}
+
+	// An ERS CSRF token is tied to the HTTP session cookies. Serialize ERS
+	// negotiation and requests so concurrently completing token-fetch requests
+	// cannot pair a token from one session with cookies from another.
+	c.ersMu.Lock()
+	defer c.ersMu.Unlock()
+
+	if !c.ersCSRFNegotiated {
+		if err := c.negotiateERSCSRF(ctx, path, query); err != nil {
+			return nil, nil, err
+		}
+	}
+	mode := c.ersRequestCSRFMode()
+	body, header, status, err := c.doWithRetries(ctx, method, operation, path, query, payload, mode)
+	if err == nil || status != http.StatusForbidden || !ersCSRFFailureNeedsRefresh(header, mode == ersCSRFToken) {
+		return body, header, err
+	}
+
+	// A token/session can expire independently of the long-lived collector.
+	// Refresh at most once for this logical request; ordinary retry policy does
+	// not retry 403 responses.
+	c.ersCSRFToken = ""
+	c.ersCSRFNegotiated = false
+	if refreshErr := c.negotiateERSCSRF(ctx, path, query); refreshErr != nil {
+		return nil, header, fmt.Errorf("refresh ISE ERS CSRF session: %w", errors.Join(err, refreshErr))
+	}
+	body, header, _, err = c.doWithRetries(ctx, method, operation, path, query, payload, c.ersRequestCSRFMode())
+	return body, header, err
+}
+
+func (c *Client) negotiateERSCSRF(ctx context.Context, path string, query url.Values) error {
+	_, _, _, err := c.doWithRetries(ctx, http.MethodGet, ersCSRFOperation, path, query, nil, ersCSRFFetch)
+	if err != nil {
+		return fmt.Errorf("negotiate ISE ERS CSRF session: %w", err)
+	}
+	c.ersCSRFNegotiated = true
+	return nil
+}
+
+func (c *Client) ersRequestCSRFMode() ersCSRFMode {
+	if c.ersCSRFToken != "" {
+		return ersCSRFToken
+	}
+	return ersCSRFNone
+}
+
+func (c *Client) doWithRetries(
+	ctx context.Context,
+	method, operation, path string,
+	query url.Values,
+	payload []byte,
+	csrfMode ersCSRFMode,
+) ([]byte, http.Header, int, error) {
 	var lastErr error
-	attempts := c.retries + 1
-	for attempt := range attempts {
-		body, header, status, err := c.doOnce(ctx, method, operation, path, query, payload)
+	var lastHeader http.Header
+	var lastStatus int
+	for attempt := 0; ; attempt++ {
+		body, header, status, err := c.doOnce(ctx, method, operation, path, query, payload, csrfMode)
 		if err == nil {
-			return body, header, nil
+			return body, header, status, nil
 		}
 		lastErr = err
+		lastHeader = header
+		lastStatus = status
 		if ctx.Err() != nil {
-			return nil, nil, ctx.Err()
+			return nil, nil, status, ctx.Err()
 		}
 		if httpclient.IsCertificateVerificationError(err) {
 			break
 		}
-		if !retryableStatus(status) || attempt == attempts-1 {
+		if !retryableStatus(status) || attempt >= c.retries {
 			break
 		}
 		sleep := time.Duration(1<<attempt)*100*time.Millisecond + time.Duration(rand.Int64N(int64(50*time.Millisecond)))
@@ -657,14 +806,20 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			return nil, nil, ctx.Err()
+			return nil, nil, status, ctx.Err()
 		case <-timer.C:
 		}
 	}
-	return nil, nil, lastErr
+	return nil, lastHeader, lastStatus, lastErr
 }
 
-func (c *Client) doOnce(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, http.Header, int, error) {
+func (c *Client) doOnce(
+	ctx context.Context,
+	method, operation, path string,
+	query url.Values,
+	payload []byte,
+	csrfMode ersCSRFMode,
+) ([]byte, http.Header, int, error) {
 	if err := c.waitTurn(ctx); err != nil {
 		return nil, nil, 0, err
 	}
@@ -682,30 +837,166 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	csrfProtected := false
+	switch csrfMode {
+	case ersCSRFFetch:
+		// ISE's ERS CSRF fetch flow expects an explicit representation type
+		// even though the handshake itself is a GET with no body.
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(ersCSRFHeader, ersCSRFFetchValue)
+	case ersCSRFToken:
+		if c.ersCSRFToken != "" {
+			req.Header.Set(ersCSRFHeader, c.ersCSRFToken)
+			csrfProtected = true
+		}
+	}
 	req.SetBasicAuth(c.username, c.password)
+	statPath := path
+	if operation == ersCSRFOperation {
+		statPath = ersCSRFStatPath
+	}
 
 	start := time.Now()
 	resp, err := c.client.Do(req)
 	duration := time.Since(start)
 	if err != nil {
 		err = httpclient.DecorateCertificateVerificationError(err, c.caConfigPath, c.insecureSkipVerifyConfigPath)
-		c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", Duration: duration, Err: err})
+		c.record(RequestStat{Operation: operation, Method: method, Path: statPath, Outcome: "error", Duration: duration, CSRFProtected: csrfProtected, Err: err})
 		return nil, nil, 0, err
 	}
 	defer resp.Body.Close()
 
 	respBody, readErr := httpclient.ReadResponseBody(resp.Body)
 	if readErr != nil {
-		c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
+		c.record(RequestStat{Operation: operation, Method: method, Path: statPath, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, CSRFProtected: csrfProtected, Err: readErr})
 		return nil, resp.Header, resp.StatusCode, readErr
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		apiErr := &APIError{StatusCode: resp.StatusCode}
-		c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, RateLimited: resp.StatusCode == http.StatusTooManyRequests, Err: apiErr})
+		c.record(RequestStat{Operation: operation, Method: method, Path: statPath, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, RateLimited: resp.StatusCode == http.StatusTooManyRequests, CSRFProtected: csrfProtected, Err: apiErr})
 		return nil, resp.Header, resp.StatusCode, apiErr
 	}
-	c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "success", StatusCode: resp.StatusCode, Duration: duration})
+	if contentErr := validateISEResponseContent(respBody, resp.Header.Get("Content-Type")); contentErr != nil {
+		c.record(RequestStat{Operation: operation, Method: method, Path: statPath, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, CSRFProtected: csrfProtected, Err: contentErr})
+		return nil, resp.Header, resp.StatusCode, contentErr
+	}
+	if csrfMode != ersCSRFNone {
+		c.captureERSCSRFToken(resp.Header)
+	}
+	c.record(RequestStat{Operation: operation, Method: method, Path: statPath, Outcome: "success", StatusCode: resp.StatusCode, Duration: duration, CSRFProtected: csrfProtected})
 	return respBody, resp.Header, resp.StatusCode, nil
+}
+
+func isERSRequestPath(path string) bool {
+	parsed, err := url.Parse(path)
+	if err == nil && parsed.Path != "" {
+		path = parsed.Path
+	}
+	for segment := range strings.SplitSeq(strings.Trim(path, "/"), "/") {
+		if segment == "ers" {
+			return true
+		}
+	}
+	return false
+}
+
+func ersCSRFFailureNeedsRefresh(header http.Header, sentToken bool) bool {
+	if sentToken {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(header.Get(ersCSRFHeader)), ersCSRFRequiredValue)
+}
+
+func (c *Client) captureERSCSRFToken(header http.Header) {
+	token := strings.TrimSpace(header.Get(ersCSRFHeader))
+	if token == "" || len(token) > maxERSCSRFTokenLength ||
+		strings.EqualFold(token, ersCSRFFetchValue) ||
+		strings.EqualFold(token, ersCSRFRequiredValue) {
+		return
+	}
+	c.ersCSRFToken = token
+}
+
+type iseResponseFormat uint8
+
+const (
+	iseResponseUnknown iseResponseFormat = iota
+	iseResponseJSON
+	iseResponseXML
+	iseResponseHTML
+)
+
+func validateISEResponseContent(body []byte, contentType string) error {
+	format := detectISEResponseFormat(body)
+	mediaType := ""
+	if strings.TrimSpace(contentType) != "" {
+		parsed, _, err := mime.ParseMediaType(contentType)
+		if err != nil {
+			return &ResponseContentError{Kind: "invalid-content-type"}
+		}
+		mediaType = strings.ToLower(parsed)
+	}
+
+	if mediaType == "text/html" || format == iseResponseHTML {
+		return &ResponseContentError{Kind: "HTML", ContentType: mediaType}
+	}
+	if format == iseResponseUnknown {
+		return &ResponseContentError{Kind: "unrecognized", ContentType: mediaType}
+	}
+
+	switch {
+	case mediaType == "", mediaType == "text/plain":
+		// A few legacy ISE routes and test doubles omit a media type or use
+		// text/plain for otherwise valid JSON/XML. Require a recognized body in
+		// those cases instead of accepting arbitrary text.
+		return nil
+	case mediaType == "application/json" || strings.HasSuffix(mediaType, "+json"):
+		if format != iseResponseJSON {
+			return &ResponseContentError{Kind: "content-type-mismatch", ContentType: mediaType}
+		}
+		return nil
+	case mediaType == "application/xml" || mediaType == "text/xml" || strings.HasSuffix(mediaType, "+xml"):
+		if format != iseResponseXML {
+			return &ResponseContentError{Kind: "content-type-mismatch", ContentType: mediaType}
+		}
+		return nil
+	default:
+		return &ResponseContentError{Kind: "unsupported", ContentType: mediaType}
+	}
+}
+
+func detectISEResponseFormat(body []byte) iseResponseFormat {
+	trimmed := bytes.TrimSpace(body)
+	trimmed = bytes.TrimPrefix(trimmed, []byte{0xef, 0xbb, 0xbf})
+	trimmed = bytes.TrimSpace(trimmed)
+	if len(trimmed) == 0 {
+		return iseResponseUnknown
+	}
+	if json.Valid(trimmed) {
+		return iseResponseJSON
+	}
+	if trimmed[0] != '<' {
+		return iseResponseUnknown
+	}
+
+	decoder := xml.NewDecoder(bytes.NewReader(trimmed))
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			return iseResponseUnknown
+		}
+		switch typed := token.(type) {
+		case xml.Directive:
+			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(string(typed))), "doctype html") {
+				return iseResponseHTML
+			}
+		case xml.StartElement:
+			if strings.EqualFold(typed.Name.Local, "html") {
+				return iseResponseHTML
+			}
+			return iseResponseXML
+		}
+	}
 }
 
 func (c *Client) resolve(path string, query url.Values) string {
@@ -759,11 +1050,4 @@ func cloneValues(values url.Values) url.Values {
 		clone[key] = append([]string(nil), current...)
 	}
 	return clone
-}
-
-func capObjects(objects []Object, maxResults int) []Object {
-	if maxResults > 0 && len(objects) > maxResults {
-		return objects[:maxResults]
-	}
-	return objects
 }

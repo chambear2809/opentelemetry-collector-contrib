@@ -635,10 +635,10 @@ func (r *merakiMetricsReceiver) scrapeSwitchPorts(ctx context.Context, builder *
 			rxBits, rxRateOK := merakiKilobitsToBits(interval.Bandwidth.Usage.Downstream)
 			txBits, txRateOK := merakiKilobitsToBits(interval.Bandwidth.Usage.Upstream)
 			if rxRateOK {
-				rb.recordIntAt("cisco.interface.io.rate", "Interface traffic rate.", "bit/s", rxBits, attrsRx, observedAt)
+				rb.recordDoubleAt("cisco.interface.io.rate", "Interface traffic rate.", "bit/s", float64(rxBits), attrsRx, observedAt)
 			}
 			if txRateOK {
-				rb.recordIntAt("cisco.interface.io.rate", "Interface traffic rate.", "bit/s", txBits, attrsTx, observedAt)
+				rb.recordDoubleAt("cisco.interface.io.rate", "Interface traffic rate.", "bit/s", float64(txBits), attrsTx, observedAt)
 			}
 			if validNonnegativeFloat(interval.Data.Usage.Downstream) {
 				rb.recordDoubleAt("meraki.switch.port.usage", "Windowed switch port usage reported by Meraki.", "kBy", interval.Data.Usage.Downstream, attrsRx, observedAt)

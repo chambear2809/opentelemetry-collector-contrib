@@ -28,6 +28,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/aci"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
 
 // classifyACIError buckets a client error returned by the APIC into a small
@@ -39,6 +40,10 @@ func classifyACIError(err error) string {
 	}
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 		return "timeout"
+	}
+	var paginationErr *httpclient.PaginationLimitError
+	if errors.As(err, &paginationErr) {
+		return "pagination_limit"
 	}
 	var apiErr *aci.APIError
 	if errors.As(err, &apiErr) {
@@ -174,6 +179,8 @@ func newACIClients(conf *Config) ([]*aci.Client, error) {
 			Timeout:            conf.Timeout,
 			MaxRetries:         conf.ACI.MaxRetries,
 			PageSize:           conf.ACI.PageSize,
+			CAFile:             conf.ACI.CAFile,
+			ServerName:         conf.ACI.ServerName,
 			InsecureSkipVerify: conf.ACI.InsecureSkipVerify,
 		})
 		if err != nil {
@@ -924,6 +931,7 @@ func recentACIQuery(cfg *Config, now time.Time, className string) url.Values {
 	}
 	return aci.Query(map[string]string{
 		"query-target-filter": fmt.Sprintf("gt(%s.created,%q)", className, now.Add(-lookback).UTC().Format(time.RFC3339)),
+		"order-by":            className + ".created|desc",
 	})
 }
 
@@ -988,53 +996,156 @@ func aciGroupMaxResults(cfg ACIConfig, group string) int {
 }
 
 type aciTargetMatcher struct {
-	textNeedles    map[string]struct{}
+	sites          map[string]struct{}
+	fabrics        map[string]struct{}
 	nodeIDs        map[string]struct{}
+	serials        map[string]struct{}
+	tenants        map[string]struct{}
+	vrfs           map[string]struct{}
+	bridgeDomains  map[string]struct{}
+	epgs           map[string]struct{}
 	interfaceNames map[string]struct{}
 }
 
 func newACITargetMatcher(filters ACITargetFilters) aciTargetMatcher {
 	return aciTargetMatcher{
-		textNeedles:    makeFilterNeedles(filters.Sites, filters.Fabrics, filters.Serials, filters.Tenants, filters.VRFs, filters.BridgeDomains, filters.EPGs),
+		sites:          normalizedSet(filters.Sites, normalizeACITargetName),
+		fabrics:        normalizedSet(filters.Fabrics, normalizeACITargetName),
 		nodeIDs:        normalizedSet(filters.NodeIDs, normalizeACINodeID),
+		serials:        normalizedSet(filters.Serials, normalizeACITargetName),
+		tenants:        normalizedSet(filters.Tenants, normalizeACITargetName),
+		vrfs:           normalizedSet(filters.VRFs, normalizeACITargetName),
+		bridgeDomains:  normalizedSet(filters.BridgeDomains, normalizeACITargetName),
+		epgs:           normalizedSet(filters.EPGs, normalizeACITargetName),
 		interfaceNames: normalizedSet(filters.InterfaceNames, normalizeACIInterfaceName),
 	}
 }
 
 func (m aciTargetMatcher) empty() bool {
-	return len(m.textNeedles) == 0 && len(m.nodeIDs) == 0 && len(m.interfaceNames) == 0
+	return len(m.sites) == 0 && len(m.fabrics) == 0 && len(m.nodeIDs) == 0 && len(m.serials) == 0 &&
+		len(m.tenants) == 0 && len(m.vrfs) == 0 && len(m.bridgeDomains) == 0 && len(m.epgs) == 0 &&
+		len(m.interfaceNames) == 0
 }
 
 func (m aciTargetMatcher) allows(obj aci.Object) bool {
-	if m.empty() {
-		return true
+	return aciTargetDimensionAllows(m.sites, aciObjectFields(obj, "siteName", "site"), normalizeACITargetName) &&
+		aciTargetDimensionAllows(m.fabrics, aciObjectFields(obj, "fabricName", "fabric"), normalizeACITargetName) &&
+		aciTargetDimensionAllows(m.nodeIDs, aciObjectNodeIDs(obj), normalizeACINodeID) &&
+		aciTargetDimensionAllows(m.serials, aciObjectFields(obj, "serial"), normalizeACITargetName) &&
+		aciTargetDimensionAllows(m.tenants, aciObjectTenantNames(obj), normalizeACITargetName) &&
+		aciTargetDimensionAllows(m.vrfs, aciObjectVRFNames(obj), normalizeACITargetName) &&
+		aciTargetDimensionAllows(m.bridgeDomains, aciObjectBridgeDomainNames(obj), normalizeACITargetName) &&
+		aciTargetDimensionAllows(m.epgs, aciObjectEPGNames(obj), normalizeACITargetName) &&
+		aciTargetDimensionAllows(m.interfaceNames, aciObjectInterfaceNames(obj), normalizeACIInterfaceName)
+}
+
+func aciTargetDimensionAllows(configured map[string]struct{}, values []string, normalize func(string) string) bool {
+	return len(configured) == 0 || matchAny(configured, values, normalize)
+}
+
+func aciObjectFields(obj aci.Object, keys ...string) []string {
+	values := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if value := aci.String(obj, key); value != "" {
+			values = append(values, value)
+		}
 	}
-	if matchAny(m.nodeIDs, []string{
-		aci.String(obj, "dn"),
-		aci.String(obj, "rn"),
+	return values
+}
+
+func aciObjectNodeIDs(obj aci.Object) []string {
+	values := []string{
+		nodeIDFromACIDN(aci.String(obj, "dn")),
+		nodeIDFromACIDN(aci.String(obj, "rn")),
 		aci.String(obj, "nodeId"),
-		aci.String(obj, "id"),
-	}, normalizeACINodeID) {
-		return true
+		aci.String(obj, "nodeID"),
 	}
-	if matchAny(m.interfaceNames, []string{
-		aci.String(obj, "dn"),
-		aci.String(obj, "rn"),
-		aci.String(obj, "id"),
-		aci.String(obj, "name"),
+	switch strings.ToLower(aci.String(obj, "aci.class")) {
+	case "fabricnode", "fabricloosenode", "topsystem":
+		values = append(values, aci.String(obj, "id"))
+	case "fabriclink":
+		values = append(values, aci.String(obj, "n1"), aci.String(obj, "n2"))
+	}
+	return values
+}
+
+func aciObjectTenantNames(obj aci.Object) []string {
+	values := []string{
+		tenantFromACIDN(aci.String(obj, "dn")),
+		tenantFromACIDN(aci.String(obj, "rn")),
+		tenantFromACIDN(aci.String(obj, "tenantDn")),
+		aci.String(obj, "tenant"),
+		aci.String(obj, "tenantName"),
+		aci.String(obj, "tnFvTenantName"),
+	}
+	if strings.EqualFold(aci.String(obj, "aci.class"), "fvTenant") {
+		values = append(values, aci.String(obj, "name"))
+	}
+	return values
+}
+
+func aciObjectVRFNames(obj aci.Object) []string {
+	values := []string{
+		vrfFromACIDN(aci.String(obj, "dn")),
+		vrfFromACIDN(aci.String(obj, "rn")),
+		vrfFromACIDN(aci.String(obj, "ctxDn")),
+		aci.String(obj, "vrf"),
+		aci.String(obj, "vrfName"),
+		aci.String(obj, "tnFvCtxName"),
+	}
+	if strings.EqualFold(aci.String(obj, "aci.class"), "fvCtx") {
+		values = append(values, aci.String(obj, "name"))
+	}
+	return values
+}
+
+func aciObjectBridgeDomainNames(obj aci.Object) []string {
+	values := []string{
+		bdFromACIDN(aci.String(obj, "dn")),
+		bdFromACIDN(aci.String(obj, "rn")),
+		bdFromACIDN(aci.String(obj, "bdDn")),
+		aci.String(obj, "bd"),
+		aci.String(obj, "bdName"),
+		aci.String(obj, "tnFvBDName"),
+	}
+	if strings.EqualFold(aci.String(obj, "aci.class"), "fvBD") {
+		values = append(values, aci.String(obj, "name"))
+	}
+	return values
+}
+
+func aciObjectEPGNames(obj aci.Object) []string {
+	values := []string{
+		epgFromACIDN(aci.String(obj, "dn")),
+		epgFromACIDN(aci.String(obj, "rn")),
+		epgFromACIDN(aci.String(obj, "epgDn")),
+		aci.String(obj, "epg"),
+		aci.String(obj, "epgName"),
+		aci.String(obj, "tnFvAEPgName"),
+	}
+	if strings.EqualFold(aci.String(obj, "aci.class"), "fvAEPg") {
+		values = append(values, aci.String(obj, "name"))
+	}
+	return values
+}
+
+func aciObjectInterfaceNames(obj aci.Object) []string {
+	values := []string{
+		interfaceNameFromACIDN(aci.String(obj, "dn")),
+		interfaceNameFromACIDN(aci.String(obj, "rn")),
 		aci.String(obj, "ifId"),
 		aci.String(obj, "ifName"),
 		aci.String(obj, "interfaceName"),
-	}, normalizeACIInterfaceName) {
-		return true
 	}
-	text := aci.SearchText(obj)
-	for needle := range m.textNeedles {
-		if strings.Contains(text, needle) {
-			return true
-		}
+	switch strings.ToLower(aci.String(obj, "aci.class")) {
+	case "l1physif", "ethpmphysif":
+		values = append(values, aci.String(obj, "id"), aci.String(obj, "name"))
 	}
-	return false
+	return values
+}
+
+func normalizeACITargetName(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
 }
 
 func aciObjectIncludePredicate(filters ACITargetFilters, selector deviceSelectionMatcher) func(aci.Object) bool {
@@ -1230,7 +1341,7 @@ func interfaceNameFromACIDN(value string) string {
 	if value == "" {
 		return ""
 	}
-	for _, marker := range []string{"phys-[", "aggr-[", "mgmt-["} {
+	for _, marker := range []string{"phys-[", "aggr-[", "mgmt-[", "if-["} {
 		if start := strings.Index(value, marker); start >= 0 {
 			rest := value[start+len(marker):]
 			if end := strings.Index(rest, "]"); end >= 0 {

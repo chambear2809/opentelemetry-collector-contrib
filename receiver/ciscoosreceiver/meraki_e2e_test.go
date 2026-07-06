@@ -232,6 +232,26 @@ func TestE2ELiveCatalystCenter(t *testing.T) {
 	), "expected at least one Catalyst Center assurance metric, got %v with API statuses %v", names, catalystCenterE2EAPIStatuses(md))
 }
 
+func TestE2EAPIErrorDiagnosticsHandleCumulativeSums(t *testing.T) {
+	md := pmetric.NewMetrics()
+	metrics := md.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics()
+
+	catalystErrors := metrics.AppendEmpty()
+	catalystErrors.SetName("catalyst_center.api.request.errors")
+	catalystPoint := catalystErrors.SetEmptySum().DataPoints().AppendEmpty()
+	catalystPoint.Attributes().PutStr("catalyst_center.api.operation", "devices")
+	catalystPoint.Attributes().PutInt("http.response.status_code", 401)
+
+	intersightErrors := metrics.AppendEmpty()
+	intersightErrors.SetName("intersight.api.request.errors")
+	intersightPoint := intersightErrors.SetEmptySum().DataPoints().AppendEmpty()
+	intersightPoint.Attributes().PutInt("http.response.status_code", 403)
+
+	assert.Equal(t, map[string]int{"401": 1}, catalystCenterE2EAPIStatuses(md))
+	assert.Equal(t, map[string]int{"devices/401": 1}, catalystCenterE2EAPIErrors(md))
+	assert.True(t, intersightE2EHasAPIStatus(md, "403"))
+}
+
 func merakiE2EMetricNames(md pmetric.Metrics) map[string]struct{} {
 	names := map[string]struct{}{}
 	for i := 0; i < md.ResourceMetrics().Len(); i++ {
@@ -399,81 +419,57 @@ func merakiE2EHasAny(names map[string]struct{}, candidates ...string) bool {
 }
 
 func intersightE2EHasAPIStatus(md pmetric.Metrics, status string) bool {
-	for i := 0; i < md.ResourceMetrics().Len(); i++ {
-		rm := md.ResourceMetrics().At(i)
-		for j := 0; j < rm.ScopeMetrics().Len(); j++ {
-			sm := rm.ScopeMetrics().At(j)
-			for k := 0; k < sm.Metrics().Len(); k++ {
-				metric := sm.Metrics().At(k)
-				if metric.Name() != "intersight.api.request.errors" {
-					continue
-				}
-				points := metric.Gauge().DataPoints()
-				for l := 0; l < points.Len(); l++ {
-					value, ok := points.At(l).Attributes().Get("http.response.status_code")
-					if ok && value.AsString() == status {
-						return true
-					}
-				}
-			}
-		}
-	}
-	return false
+	matched := false
+	visitE2EMetricNumberDataPoints(md, "intersight.api.request.errors", func(point pmetric.NumberDataPoint) {
+		value, ok := point.Attributes().Get("http.response.status_code")
+		matched = matched || ok && value.AsString() == status
+	})
+	return matched
 }
 
 func catalystCenterE2EAPIStatuses(md pmetric.Metrics) map[string]int {
 	statuses := map[string]int{}
-	for i := 0; i < md.ResourceMetrics().Len(); i++ {
-		rm := md.ResourceMetrics().At(i)
-		for j := 0; j < rm.ScopeMetrics().Len(); j++ {
-			sm := rm.ScopeMetrics().At(j)
-			for k := 0; k < sm.Metrics().Len(); k++ {
-				metric := sm.Metrics().At(k)
-				if metric.Name() != "catalyst_center.api.request.errors" {
-					continue
-				}
-				points := metric.Gauge().DataPoints()
-				for l := 0; l < points.Len(); l++ {
-					status := "none"
-					if value, ok := points.At(l).Attributes().Get("http.response.status_code"); ok {
-						status = value.AsString()
-					}
-					statuses[status]++
-				}
-			}
+	visitE2EMetricNumberDataPoints(md, "catalyst_center.api.request.errors", func(point pmetric.NumberDataPoint) {
+		status := "none"
+		if value, ok := point.Attributes().Get("http.response.status_code"); ok {
+			status = value.AsString()
 		}
-	}
+		statuses[status]++
+	})
 	return statuses
 }
 
 func catalystCenterE2EAPIErrors(md pmetric.Metrics) map[string]int {
 	errors := map[string]int{}
+	visitE2EMetricNumberDataPoints(md, "catalyst_center.api.request.errors", func(point pmetric.NumberDataPoint) {
+		attrs := point.Attributes()
+		operation := "unknown"
+		if value, ok := attrs.Get("catalyst_center.api.operation"); ok {
+			operation = value.Str()
+		}
+		status := "none"
+		if value, ok := attrs.Get("http.response.status_code"); ok {
+			status = value.AsString()
+		}
+		errors[operation+"/"+status]++
+	})
+	return errors
+}
+
+func visitE2EMetricNumberDataPoints(md pmetric.Metrics, name string, visit func(pmetric.NumberDataPoint)) {
 	for i := 0; i < md.ResourceMetrics().Len(); i++ {
 		rm := md.ResourceMetrics().At(i)
 		for j := 0; j < rm.ScopeMetrics().Len(); j++ {
 			sm := rm.ScopeMetrics().At(j)
 			for k := 0; k < sm.Metrics().Len(); k++ {
 				metric := sm.Metrics().At(k)
-				if metric.Name() != "catalyst_center.api.request.errors" {
+				if metric.Name() != name {
 					continue
 				}
-				points := metric.Gauge().DataPoints()
-				for l := 0; l < points.Len(); l++ {
-					attrs := points.At(l).Attributes()
-					operation := "unknown"
-					if value, ok := attrs.Get("catalyst_center.api.operation"); ok {
-						operation = value.Str()
-					}
-					status := "none"
-					if value, ok := attrs.Get("http.response.status_code"); ok {
-						status = value.AsString()
-					}
-					errors[operation+"/"+status]++
-				}
+				visitNumberDataPoints(metric, visit)
 			}
 		}
 	}
-	return errors
 }
 
 func merakiE2ECSVEnv(key string) []string {

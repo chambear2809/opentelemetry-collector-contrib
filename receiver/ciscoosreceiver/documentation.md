@@ -40,7 +40,7 @@ The device-reported interface traffic rate
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
-| bit/s | Gauge | Int | Development |
+| bit/s | Gauge | Double | Development |
 
 #### Attributes
 
@@ -55,7 +55,7 @@ The device-reported interface packet rate
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
-| {packet}/s | Gauge | Int | Development |
+| {packet}/s | Gauge | Double | Development |
 
 #### Attributes
 

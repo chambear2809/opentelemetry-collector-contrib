@@ -189,7 +189,7 @@ metrics:
     description: The device-reported interface traffic rate
     unit: "bit/s"
     gauge:
-      value_type: int
+      value_type: double
     attributes: [network.io.direction, network.interface.description, network.interface.mac, network.interface.name, network.interface.speed]
 
   cisco.interface.packet.rate:
@@ -198,7 +198,7 @@ metrics:
     description: The device-reported interface packet rate
     unit: "{packet}/s"
     gauge:
-      value_type: int
+      value_type: double
     attributes: [network.io.direction, network.interface.description, network.interface.mac, network.interface.name, network.interface.speed]
 
   cisco.interface.pause.frames:

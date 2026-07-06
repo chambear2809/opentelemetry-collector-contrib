@@ -5,6 +5,7 @@ package ciscoosreceiver
 
 import (
 	"context"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -20,6 +21,7 @@ import (
 	"go.opentelemetry.io/collector/receiver/receivertest"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/aci"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
 )
 
@@ -69,6 +71,41 @@ func TestACIScrapeEmitsTroubleshootingMetrics(t *testing.T) {
 	assert.True(t, intMetricValueExists(md, "aci.event.count", 1))
 	assert.True(t, hasMetricDatapointAttribute(md, "aci.audit.record.count", "aci.operation", "audit.modifications"))
 	assert.False(t, hasMetricDatapointAttribute(md, "aci.audit.record.count", "user.name", "operator"))
+}
+
+func TestACIScrapeReportsConfiguredPaginationTruncation(t *testing.T) {
+	server := newACIFixtureServer(t, map[string]string{
+		"/api/class/fabricNode.json": `{"totalCount":"3","imdata":[
+			{"fabricNode":{"attributes":{"dn":"topology/pod-1/node-101","id":"101","serial":"ACI-SERIAL-1","name":"leaf101","fabricSt":"active"}}},
+			{"fabricNode":{"attributes":{"dn":"topology/pod-1/node-102","id":"102","serial":"ACI-SERIAL-2","name":"leaf102","fabricSt":"active"}}}
+		]}`,
+	})
+	defer server.Close()
+
+	receiver := newTestACIMetricsReceiver(t, server.URL)
+	receiver.config.ACI.Nodes.MaxResults = 2
+	md, err := receiver.scrape(t.Context())
+	require.NoError(t, err)
+
+	assert.True(t, hasResourceHostID(md, "ACI-SERIAL-1"), "partial results must remain observable")
+	assert.True(t, hasResourceHostID(md, "ACI-SERIAL-2"), "partial results must remain observable")
+	assert.True(t, intMetricValueExists(md, "aci.scrape.partial_success", 1))
+	errorMetric := requireMetricByName(t, md, "aci.api.endpoint.error")
+	require.Equal(t, pmetric.MetricTypeSum, errorMetric.Type())
+	require.Equal(t, 1, errorMetric.Sum().DataPoints().Len())
+	assert.True(t, aciTestAttrsMatch(errorMetric.Sum().DataPoints().At(0).Attributes(), map[string]string{
+		"aci.api.operation": "fabric.nodes",
+		"aci.error.kind":    "pagination_limit",
+	}))
+}
+
+func TestClassifyACIErrorRecognizesPaginationLimits(t *testing.T) {
+	for _, err := range []error{
+		httpclient.NewConfiguredPaginationLimitError("events.records", "result", 1000, 1000),
+		httpclient.NewPaginationLimitError("events.records", "page", 100, 1000),
+	} {
+		assert.Equal(t, "pagination_limit", classifyACIError(err))
+	}
 }
 
 func TestACIScrapeAppliesSharedDeviceSelection(t *testing.T) {
@@ -448,6 +485,131 @@ func TestACITargetFiltersUseExactCanonicalNodeAndInterfaceNames(t *testing.T) {
 	})
 }
 
+func TestACITargetFiltersRequireEveryConfiguredDimension(t *testing.T) {
+	filters := ACITargetFilters{
+		Sites:          []string{"SITE-A"},
+		Fabrics:        []string{"FABRIC-A"},
+		NodeIDs:        []string{"NODE-101"},
+		Serials:        []string{"SERIAL-101"},
+		Tenants:        []string{"PROD"},
+		VRFs:           []string{"USER"},
+		BridgeDomains:  []string{"WEB-BD"},
+		EPGs:           []string{"WEB"},
+		InterfaceNames: []string{"ETH1/1"},
+	}
+	matching := aci.Object{
+		"siteName":      "site-a",
+		"fabricName":    "fabric-a",
+		"nodeId":        "101",
+		"serial":        "serial-101",
+		"tenant":        "prod",
+		"vrf":           "user",
+		"bd":            "web-bd",
+		"epg":           "web",
+		"interfaceName": "eth1/1",
+	}
+
+	matcher := newACITargetMatcher(filters)
+	assert.True(t, matcher.allows(matching))
+
+	for _, tc := range []struct {
+		name  string
+		field string
+		value string
+	}{
+		{name: "site", field: "siteName", value: "site-a-secondary"},
+		{name: "fabric", field: "fabricName", value: "fabric-a-secondary"},
+		{name: "node", field: "nodeId", value: "1010"},
+		{name: "serial", field: "serial", value: "serial-101-extra"},
+		{name: "tenant", field: "tenant", value: "prod-east"},
+		{name: "vrf", field: "vrf", value: "user-services"},
+		{name: "bridge domain", field: "bd", value: "web-bd-backup"},
+		{name: "EPG", field: "epg", value: "web-api"},
+		{name: "interface", field: "interfaceName", value: "eth1/10"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			obj := make(aci.Object, len(matching))
+			maps.Copy(obj, matching)
+			obj[tc.field] = tc.value
+			assert.False(t, matcher.allows(obj), "a substring match in one dimension must not satisfy the complete target")
+		})
+	}
+}
+
+func TestACITargetFiltersDeriveCanonicalValuesFromAPICFieldsAndDNs(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		object  aci.Object
+		filters ACITargetFilters
+	}{
+		{
+			name:    "node from topology DN",
+			object:  aci.Object{"dn": "topology/pod-1/node-101/sys/procsys/CDprocSysCPU5min"},
+			filters: ACITargetFilters{NodeIDs: []string{"node-101"}},
+		},
+		{
+			name:    "fabric node ID field",
+			object:  aci.Object{"aci.class": "fabricNode", "id": "101"},
+			filters: ACITargetFilters{NodeIDs: []string{"101"}},
+		},
+		{
+			name:    "tenant from DN",
+			object:  aci.Object{"dn": "uni/tn-prod/ap-app/epg-web"},
+			filters: ACITargetFilters{Tenants: []string{"prod"}},
+		},
+		{
+			name:    "VRF from reference DN",
+			object:  aci.Object{"ctxDn": "uni/tn-prod/ctx-user"},
+			filters: ACITargetFilters{VRFs: []string{"user"}},
+		},
+		{
+			name:    "bridge domain from class name",
+			object:  aci.Object{"aci.class": "fvBD", "name": "web-bd"},
+			filters: ACITargetFilters{BridgeDomains: []string{"WEB-BD"}},
+		},
+		{
+			name:    "EPG from DN",
+			object:  aci.Object{"dn": "uni/tn-prod/ap-app/epg-web"},
+			filters: ACITargetFilters{EPGs: []string{"web"}},
+		},
+		{
+			name:    "interface from physical DN",
+			object:  aci.Object{"dn": "topology/pod-1/node-101/sys/phys-[eth1/1]"},
+			filters: ACITargetFilters{InterfaceNames: []string{"ETH1/1"}},
+		},
+		{
+			name:    "interface from LLDP DN",
+			object:  aci.Object{"dn": "topology/pod-1/node-101/sys/lldp/inst/if-[eth1/1]/adj-1"},
+			filters: ACITargetFilters{InterfaceNames: []string{"eth1/1"}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.True(t, newACITargetMatcher(tc.filters).allows(tc.object))
+		})
+	}
+}
+
+func TestACITargetFiltersDoNotInferSiteFabricOrNodeFromUnrelatedText(t *testing.T) {
+	obj := aci.Object{
+		"aci.class": "eventRecord",
+		"id":        "101",
+		"name":      "site-a",
+		"descr":     "event in fabric-a for tenant prod",
+	}
+
+	assert.False(t, newACITargetMatcher(ACITargetFilters{Sites: []string{"site-a"}}).allows(obj))
+	assert.False(t, newACITargetMatcher(ACITargetFilters{Fabrics: []string{"fabric-a"}}).allows(obj))
+	assert.False(t, newACITargetMatcher(ACITargetFilters{NodeIDs: []string{"101"}}).allows(obj))
+	assert.False(t, newACITargetMatcher(ACITargetFilters{Tenants: []string{"prod"}}).allows(obj))
+
+	obj["siteName"] = "site-a"
+	obj["fabricName"] = "fabric-a"
+	assert.True(t, newACITargetMatcher(ACITargetFilters{
+		Sites:   []string{"SITE-A"},
+		Fabrics: []string{"FABRIC-A"},
+	}).allows(obj))
+}
+
 func TestNodeIDFromACIDN(t *testing.T) {
 	assert.Equal(t, "202", nodeIDFromACIDN("topology/pod-1/node-202/sys/procsys/CDprocSysCPU5min"))
 	assert.Equal(t, "101", nodeIDFromACIDN("topology/pod-1/node-101/sys/phys-[eth1/1]"))
@@ -799,13 +961,6 @@ func testACIConfig(endpoint string) *Config {
 	cfg.ACI.Auth = ControllerAuthConfig{
 		Username: "admin",
 		Password: configopaque.String("password"),
-	}
-	cfg.ACI.Targets = ACITargetFilters{
-		NodeIDs:        []string{"101"},
-		Serials:        []string{"ACI-SERIAL-1"},
-		Tenants:        []string{"prod"},
-		EPGs:           []string{"web"},
-		InterfaceNames: []string{"eth1/1"},
 	}
 	return cfg
 }

@@ -7,6 +7,8 @@ $defs:
         $ref: nexus_controller_group_config
       auth:
         $ref: controller_auth_config
+      ca_file:
+        type: string
       controller_health:
         $ref: nexus_controller_group_config
       controllers:
@@ -34,6 +36,8 @@ $defs:
         $ref: nexus_controller_group_config
       page_size:
         type: integer
+      server_name:
+        type: string
       stats:
         $ref: nexus_controller_group_config
       targets:
@@ -1057,6 +1061,8 @@ $defs:
       session_lookback:
         type: string
         format: duration
+      session_details:
+        $ref: ise_group_config
       sessions:
         $ref: ise_group_config
       targets:
@@ -1075,6 +1081,8 @@ $defs:
         type: array
         items:
           type: string
+      ca_file:
+        type: string
       enabled:
         type: boolean
       full_views:
@@ -1091,6 +1099,8 @@ $defs:
       row_limit:
         type: integer
       service_name:
+        type: string
+      server_name:
         type: string
       ssl:
         type: boolean
@@ -1286,6 +1296,8 @@ $defs:
     description: NexusDashboardConfig defines Nexus Dashboard, NDFC, Insights, NDO, OneManage, and Data Broker polling settings.
     type: object
     properties:
+      api_profile:
+        type: string
       auth:
         $ref: controller_auth_config
       data_broker:

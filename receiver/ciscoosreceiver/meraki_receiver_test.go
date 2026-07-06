@@ -86,13 +86,14 @@ func TestMerakiScrapeEmitsResourcesAndMetrics(t *testing.T) {
 	assert.True(t, intMetricValueExists(md, "cisco.scrape.partial_success", 0))
 	assert.Equal(t, pmetric.MetricTypeGauge, requireMetricByName(t, md, "meraki.switch.port.alert.active").Type())
 	assert.Equal(t, 2, metricDataPointCount(md, "meraki.switch.port.alert.active"))
-	assert.True(t, intMetricValueExists(md, "cisco.interface.io.rate", 3000), "expected the interval with the latest endTs")
-	assert.False(t, intMetricValueExists(md, "cisco.interface.io.rate", 1000), "older switch interval must not be emitted")
+	assert.Equal(t, float64(3000), requireGaugeDoubleValueWithAttrs(t, md, "cisco.interface.io.rate", map[string]string{"network.io.direction": "receive"}), "expected the interval with the latest endTs")
 	ioRate := requireMetricByName(t, md, "cisco.interface.io.rate")
 	foundLatestReceive := false
 	for i := 0; i < ioRate.Gauge().DataPoints().Len(); i++ {
 		point := ioRate.Gauge().DataPoints().At(i)
-		if point.IntValue() == 3000 {
+		require.Equal(t, pmetric.NumberDataPointValueTypeDouble, point.ValueType())
+		assert.NotEqual(t, float64(1000), point.DoubleValue(), "older switch interval must not be emitted")
+		if point.DoubleValue() == 3000 {
 			foundLatestReceive = true
 			assert.Equal(t, time.Date(2026, 1, 1, 0, 10, 0, 0, time.UTC), point.Timestamp().AsTime())
 		}

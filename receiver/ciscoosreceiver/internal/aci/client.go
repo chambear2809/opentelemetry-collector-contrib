@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,6 +29,8 @@ const (
 	defaultUserAgent             = "opentelemetry-collector-contrib-ciscoosreceiver"
 	defaultRequestTimeout        = 30 * time.Second
 	defaultPageSize              = 100
+	caFileConfigPath             = "aci.ca_file"
+	serverNameConfigPath         = "aci.server_name"
 	insecureSkipVerifyConfigPath = "aci.insecure_skip_verify"
 )
 
@@ -41,6 +45,8 @@ type Config struct {
 	Timeout            time.Duration
 	MaxRetries         int
 	PageSize           int
+	CAFile             string
+	ServerName         string
 	InsecureSkipVerify bool
 }
 
@@ -144,9 +150,13 @@ func NewClient(cfg Config) (*Client, error) {
 	if pageSize <= 0 {
 		pageSize = defaultPageSize
 	}
+	tlsConfig, err := clientTLSConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-	if cfg.InsecureSkipVerify {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	if tlsConfig != nil {
+		transport.TLSClientConfig = tlsConfig
 	}
 	name := cfg.Name
 	if name == "" {
@@ -165,6 +175,42 @@ func NewClient(cfg Config) (*Client, error) {
 		pageSize:   pageSize,
 		controller: parsed.Host,
 	}, nil
+}
+
+func clientTLSConfig(cfg Config) (*tls.Config, error) {
+	if cfg.CAFile == "" && cfg.ServerName == "" && !cfg.InsecureSkipVerify {
+		return nil, nil
+	}
+	tlsConfig := &tls.Config{
+		ServerName:         cfg.ServerName,
+		InsecureSkipVerify: cfg.InsecureSkipVerify,
+	}
+	if cfg.CAFile == "" {
+		return tlsConfig, nil
+	}
+
+	caBytes, err := os.ReadFile(cfg.CAFile)
+	if err != nil {
+		return nil, fmt.Errorf("read APIC CA file %q: %w", cfg.CAFile, err)
+	}
+	rootCAs, err := x509.SystemCertPool()
+	if err != nil || rootCAs == nil {
+		rootCAs = x509.NewCertPool()
+	}
+	if !rootCAs.AppendCertsFromPEM(caBytes) {
+		return nil, fmt.Errorf("%s %q did not contain PEM certificates", caFileConfigPath, cfg.CAFile)
+	}
+	tlsConfig.RootCAs = rootCAs
+	return tlsConfig, nil
+}
+
+func decorateCertificateVerificationError(err error) error {
+	decorated := httpclient.DecorateCertificateVerificationError(err, caFileConfigPath, insecureSkipVerifyConfigPath)
+	var hostnameErr x509.HostnameError
+	if errors.As(err, &hostnameErr) {
+		return fmt.Errorf("configure %s with a DNS name or IP address present in the APIC certificate SAN: %w", serverNameConfigPath, decorated)
+	}
+	return decorated
 }
 
 // CloseIdleConnections closes idle HTTP connections held by the client.
@@ -288,8 +334,11 @@ func (c *Client) list(ctx context.Context, operation, path string, query url.Val
 		truncated := len(results) > resultLimit
 		if len(results) >= resultLimit {
 			results = results[:resultLimit]
-			if hardResultLimit && (truncated || !complete) {
-				return results, httpclient.NewPaginationLimitError(operation, "result", resultLimit, len(results))
+			if truncated || !complete {
+				if hardResultLimit {
+					return results, httpclient.NewPaginationLimitError(operation, "result", resultLimit, len(results))
+				}
+				return results, httpclient.NewConfiguredPaginationLimitError(operation, "result", resultLimit, len(results))
 			}
 			return results, nil
 		}
@@ -366,7 +415,7 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 	resp, err := c.client.Do(req)
 	duration := time.Since(start)
 	if err != nil {
-		err = httpclient.DecorateCertificateVerificationError(err, "", insecureSkipVerifyConfigPath)
+		err = decorateCertificateVerificationError(err)
 		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", Duration: duration, Err: err})
 		return nil, nil, 0, token, err
 	}
@@ -485,7 +534,7 @@ func (c *Client) login(ctx context.Context) (string, error) {
 	resp, err := c.client.Do(req)
 	duration := time.Since(start)
 	if err != nil {
-		err = httpclient.DecorateCertificateVerificationError(err, "", insecureSkipVerifyConfigPath)
+		err = decorateCertificateVerificationError(err)
 		c.record(RequestStat{Controller: c.name, Operation: "aaaLogin", Method: http.MethodPost, Path: "/api/aaaLogin.json", Outcome: "error", Duration: duration, Err: err})
 		return "", err
 	}

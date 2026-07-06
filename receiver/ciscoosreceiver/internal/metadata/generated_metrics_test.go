@@ -372,8 +372,8 @@ func TestMetricsBuilder(t *testing.T) {
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
 						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
-						assert.Equal(t, int64(1), dp.IntValue())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+						assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
 						networkIoDirectionAttrVal, ok := dp.Attributes().Get("network.io.direction")
 						assert.True(t, ok)
 						assert.Equal(t, "receive", networkIoDirectionAttrVal.Str())
@@ -390,16 +390,16 @@ func TestMetricsBuilder(t *testing.T) {
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
 						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
 						switch aggMap["cisco.interface.io.rate"] {
 						case "sum":
-							assert.Equal(t, int64(4), dp.IntValue())
+							assert.InDelta(t, float64(4), dp.DoubleValue(), 0.01)
 						case "avg":
-							assert.Equal(t, int64(2), dp.IntValue())
+							assert.InDelta(t, float64(2), dp.DoubleValue(), 0.01)
 						case "min":
-							assert.Equal(t, int64(1), dp.IntValue())
+							assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
 						case "max":
-							assert.Equal(t, int64(3), dp.IntValue())
+							assert.InDelta(t, float64(3), dp.DoubleValue(), 0.01)
 						}
 						_, ok := dp.Attributes().Get("network.io.direction")
 						assert.False(t, ok)
@@ -417,8 +417,8 @@ func TestMetricsBuilder(t *testing.T) {
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
 						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
-						assert.Equal(t, int64(1), dp.IntValue())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+						assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
 						networkIoDirectionAttrVal, ok := dp.Attributes().Get("network.io.direction")
 						assert.True(t, ok)
 						assert.Equal(t, "receive", networkIoDirectionAttrVal.Str())
@@ -435,16 +435,16 @@ func TestMetricsBuilder(t *testing.T) {
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
 						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
 						switch aggMap["cisco.interface.packet.rate"] {
 						case "sum":
-							assert.Equal(t, int64(4), dp.IntValue())
+							assert.InDelta(t, float64(4), dp.DoubleValue(), 0.01)
 						case "avg":
-							assert.Equal(t, int64(2), dp.IntValue())
+							assert.InDelta(t, float64(2), dp.DoubleValue(), 0.01)
 						case "min":
-							assert.Equal(t, int64(1), dp.IntValue())
+							assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
 						case "max":
-							assert.Equal(t, int64(3), dp.IntValue())
+							assert.InDelta(t, float64(3), dp.DoubleValue(), 0.01)
 						}
 						_, ok := dp.Attributes().Get("network.io.direction")
 						assert.False(t, ok)

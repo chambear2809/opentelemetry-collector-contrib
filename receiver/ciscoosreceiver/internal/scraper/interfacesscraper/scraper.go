@@ -136,12 +136,12 @@ func (s *interfacesScraper) ScrapeMetrics(ctx context.Context) (pmetric.Metrics,
 		}
 
 		if s.config.Rates.Enabled && intf.HasInputRate {
-			s.mb.RecordCiscoInterfaceIoRateDataPoint(timestamp, intf.InputRateBits, metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
-			s.mb.RecordCiscoInterfacePacketRateDataPoint(timestamp, intf.InputRatePackets, metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
+			s.mb.RecordCiscoInterfaceIoRateDataPoint(timestamp, float64(intf.InputRateBits), metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
+			s.mb.RecordCiscoInterfacePacketRateDataPoint(timestamp, float64(intf.InputRatePackets), metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
 		}
 		if s.config.Rates.Enabled && intf.HasOutputRate {
-			s.mb.RecordCiscoInterfaceIoRateDataPoint(timestamp, intf.OutputRateBits, metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
-			s.mb.RecordCiscoInterfacePacketRateDataPoint(timestamp, intf.OutputRatePackets, metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
+			s.mb.RecordCiscoInterfaceIoRateDataPoint(timestamp, float64(intf.OutputRateBits), metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
+			s.mb.RecordCiscoInterfacePacketRateDataPoint(timestamp, float64(intf.OutputRatePackets), metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
 		}
 
 		if intf.HasOperStatus {

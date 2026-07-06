@@ -6,10 +6,14 @@ package aci
 import (
 	"context"
 	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -100,7 +104,7 @@ func TestClientSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {
 	})
 	require.NoError(t, err)
 	_, err = verifiedClient.ListClass(t.Context(), "fabric.nodes", "fabricNode", nil, 0)
-	require.ErrorContains(t, err, "trust the issuing CA in the Collector host trust store (preferred)")
+	require.ErrorContains(t, err, "configure aci.ca_file with the issuing CA (preferred)")
 	require.ErrorContains(t, err, "set aci.insecure_skip_verify: true")
 
 	client, err := NewClient(Config{
@@ -116,6 +120,82 @@ func TestClientSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {
 	got, err := client.ListClass(t.Context(), "fabric.nodes", "fabricNode", nil, 0)
 	require.NoError(t, err)
 	assert.Empty(t, got)
+}
+
+func TestClientSupportsPrivateCAAndServerName(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/aaaLogin.json" {
+			_, _ = w.Write([]byte(`{"imdata":[{"aaaLogin":{"attributes":{"token":"apic-token"}}}]}`))
+			return
+		}
+		assert.Equal(t, "/api/class/fabricNode.json", r.URL.Path)
+		_, _ = w.Write([]byte(`{"totalCount":"0","imdata":[]}`))
+	}))
+	defer server.Close()
+
+	certificate := server.Certificate()
+	require.NotEmpty(t, certificate.DNSNames)
+	caFile := filepath.Join(t.TempDir(), "apic-ca.pem")
+	require.NoError(t, os.WriteFile(caFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certificate.Raw}), 0o600))
+	endpoint := strings.Replace(server.URL, "127.0.0.1", "localhost", 1)
+
+	nameMismatchClient, err := NewClient(Config{
+		Endpoint:   endpoint,
+		Username:   "admin",
+		Password:   "password",
+		CAFile:     caFile,
+		MaxRetries: 0,
+	})
+	require.NoError(t, err)
+	_, err = nameMismatchClient.ListClass(t.Context(), "fabric.nodes", "fabricNode", nil, 0)
+	require.ErrorContains(t, err, "configure aci.server_name")
+	require.ErrorContains(t, err, "certificate SAN")
+
+	client, err := NewClient(Config{
+		Endpoint:   endpoint,
+		Username:   "admin",
+		Password:   "password",
+		CAFile:     caFile,
+		ServerName: certificate.DNSNames[0],
+		MaxRetries: 0,
+	})
+	require.NoError(t, err)
+
+	transport := client.client.Transport.(*http.Transport)
+	require.NotNil(t, transport.TLSClientConfig)
+	assert.Equal(t, certificate.DNSNames[0], transport.TLSClientConfig.ServerName)
+	require.NotNil(t, transport.TLSClientConfig.RootCAs)
+
+	got, err := client.ListClass(t.Context(), "fabric.nodes", "fabricNode", nil, 0)
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
+
+func TestClientRejectsInvalidCAFile(t *testing.T) {
+	t.Run("missing", func(t *testing.T) {
+		caFile := filepath.Join(t.TempDir(), "missing-ca.pem")
+		_, err := NewClient(Config{
+			Endpoint: "https://apic.example.test",
+			Username: "admin",
+			Password: "password",
+			CAFile:   caFile,
+		})
+		require.ErrorContains(t, err, "read APIC CA file")
+		require.ErrorContains(t, err, caFile)
+	})
+
+	t.Run("invalid PEM", func(t *testing.T) {
+		caFile := filepath.Join(t.TempDir(), "invalid-ca.pem")
+		require.NoError(t, os.WriteFile(caFile, []byte("not a certificate"), 0o600))
+		_, err := NewClient(Config{
+			Endpoint: "https://apic.example.test",
+			Username: "admin",
+			Password: "password",
+			CAFile:   caFile,
+		})
+		require.ErrorContains(t, err, "aci.ca_file")
+		require.ErrorContains(t, err, "did not contain PEM certificates")
+	})
 }
 
 func TestClientCertificateVerificationFailureIsTerminal(t *testing.T) {
@@ -389,6 +469,101 @@ func TestClientFiltersBeforeMaxResultsAcrossPages(t *testing.T) {
 	assert.Equal(t, "3", String(got[0], "id"))
 	assert.Equal(t, "5", String(got[1], "id"))
 	assert.Equal(t, int64(3), requests.Load())
+}
+
+func TestClientConfiguredPaginationResultLimit(t *testing.T) {
+	tests := []struct {
+		name      string
+		total     string
+		filtered  bool
+		wantError bool
+	}{
+		{
+			name:  "exact complete at cap",
+			total: "2",
+		},
+		{
+			name:      "truncated at cap",
+			total:     "3",
+			wantError: true,
+		},
+		{
+			name:     "filtered exact complete at cap",
+			total:    "3",
+			filtered: true,
+		},
+		{
+			name:      "filtered truncated at cap",
+			total:     "4",
+			filtered:  true,
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var requests atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/aaaLogin.json" {
+					_, _ = w.Write([]byte(`{"imdata":[{"aaaLogin":{"attributes":{"token":"apic-token"}}}]}`))
+					return
+				}
+				assert.Equal(t, "/api/class/fabricNode.json", r.URL.Path)
+				assert.Equal(t, "0", r.URL.Query().Get("page"))
+				requests.Add(1)
+				if tt.filtered {
+					assert.Equal(t, "3", r.URL.Query().Get("page-size"), "filtered pagination must keep the configured raw page size")
+					_, _ = fmt.Fprintf(w, `{"totalCount":%q,"imdata":[
+						{"fabricNode":{"attributes":{"id":"skip"}}},
+						{"fabricNode":{"attributes":{"id":"101"}}},
+						{"fabricNode":{"attributes":{"id":"102"}}}
+					]}`, tt.total)
+					return
+				}
+				assert.Equal(t, "2", r.URL.Query().Get("page-size"))
+				_, _ = fmt.Fprintf(w, `{"totalCount":%q,"imdata":[
+					{"fabricNode":{"attributes":{"id":"101"}}},
+					{"fabricNode":{"attributes":{"id":"102"}}}
+				]}`, tt.total)
+			}))
+			defer server.Close()
+
+			client, err := NewClient(Config{
+				Endpoint:   server.URL,
+				Username:   "admin",
+				Password:   "password",
+				Timeout:    time.Second,
+				MaxRetries: 0,
+				PageSize:   3,
+			})
+			require.NoError(t, err)
+
+			var got []Object
+			if tt.filtered {
+				got, err = client.ListClassFiltered(t.Context(), "fabric.nodes", "fabricNode", nil, 2, func(obj Object) bool {
+					return String(obj, "id") != "skip"
+				})
+			} else {
+				got, err = client.ListClass(t.Context(), "fabric.nodes", "fabricNode", nil, 2)
+			}
+			require.Len(t, got, 2)
+			assert.Equal(t, "101", String(got[0], "id"))
+			assert.Equal(t, "102", String(got[1], "id"))
+			assert.Equal(t, int64(1), requests.Load())
+			if !tt.wantError {
+				require.NoError(t, err)
+				return
+			}
+			var limitErr *httpclient.PaginationLimitError
+			require.ErrorAs(t, err, &limitErr)
+			assert.Equal(t, "fabric.nodes", limitErr.Operation)
+			assert.Equal(t, "result", limitErr.Kind)
+			assert.Equal(t, 2, limitErr.Maximum)
+			assert.Equal(t, 2, limitErr.Results)
+			assert.False(t, limitErr.Hard)
+			require.ErrorContains(t, err, "configured result limit")
+		})
+	}
 }
 
 func TestClientPaginationContinuesAfterShortPageWhenTotalCountHasMore(t *testing.T) {

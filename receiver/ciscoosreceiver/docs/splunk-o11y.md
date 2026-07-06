@@ -165,12 +165,15 @@ Charts:
 | ACI endpoint presence | `aci.endpoint.present` and `aci.endpoint.count` by tenant, EPG, MAC, IP, and node | Workload endpoint disappeared, moved, or churned. |
 | ACI topology and interface symptoms | `system.network.interface.status`, `cisco.interface.io.rate`, `cisco.interface.packet.rate`, `cisco.interface.drop.rate`, `cisco.interface.utilization`, `system.network.io`, `system.network.packet.count`, `system.network.errors`, `system.network.packet.dropped`, and `cisco.topology.neighbor.info` by node/interface/direction/protocol | Leaf/spine interface traffic, errors, drops, or adjacency change precedes endpoint impact. |
 
-Nexus Dashboard selector omissions are coverage failures when the owning group is enabled: `fabrics` is required for
-NDFC fabric switch-overview and endpoint operations, `switch_serials` for policy deployment, and `switch_ids` for
-interface statistics. The receiver reports those omissions with `nexus_dashboard.service.skipped` and
-`nexus_dashboard.scrape.partial_success=1`. A platform-only deployment should explicitly disable `ndfc`, `insights`,
-`orchestrator`, `data_broker`, and `performance` so successful platform scrapes can advance
-`nexus_dashboard.scrape.last_success`.
+Nexus Dashboard selector omissions are coverage failures when the owning group is enabled. In the `legacy` profile,
+`fabrics` is required for NDFC fabric switch-overview and endpoint operations, `switch_serials` for policy deployment,
+and `switch_ids` for interface statistics. In the `unified` profile, `fabrics` is required for fabric-scoped switch
+inventory and switch-summary operations. The receiver reports those omissions with
+`nexus_dashboard.service.skipped` and `nexus_dashboard.scrape.partial_success=1`. A legacy platform-only deployment
+should explicitly disable `ndfc`, `insights`, `orchestrator`, `data_broker`, and `performance` so successful platform
+scrapes can advance `nexus_dashboard.scrape.last_success`. The unified catalog currently registers only platform and
+NDFC metrics; nested hardware and summary values provide API-health and generic resource-presence evidence, and no
+unified log endpoints are registered yet.
 
 Autopsy questions:
 

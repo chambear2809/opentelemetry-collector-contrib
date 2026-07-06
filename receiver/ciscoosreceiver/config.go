@@ -472,6 +472,18 @@ type NexusControllerGroupConfig struct {
 	MaxResults int  `mapstructure:"max_results"`
 }
 
+const (
+	nexusDashboardAPIProfileLegacy  = "legacy"
+	nexusDashboardAPIProfileUnified = "unified"
+)
+
+func normalizeNexusDashboardAPIProfile(profile string) string {
+	if profile == "" {
+		return nexusDashboardAPIProfileLegacy
+	}
+	return profile
+}
+
 // NexusDashboardConfig defines Nexus Dashboard, NDFC, Insights, NDO, OneManage, and Data Broker polling settings.
 type NexusDashboardConfig struct {
 	// DO NOT USE unkeyed struct initialization
@@ -479,6 +491,7 @@ type NexusDashboardConfig struct {
 
 	Enabled            bool                        `mapstructure:"enabled"`
 	Endpoint           string                      `mapstructure:"endpoint"`
+	APIProfile         string                      `mapstructure:"api_profile"`
 	Auth               ControllerAuthConfig        `mapstructure:"auth"`
 	UserAgent          string                      `mapstructure:"user_agent"`
 	PageSize           int                         `mapstructure:"page_size"`
@@ -505,6 +518,8 @@ type ACIConfig struct {
 	UserAgent          string                     `mapstructure:"user_agent"`
 	PageSize           int                        `mapstructure:"page_size"`
 	MaxRetries         int                        `mapstructure:"max_retries"`
+	CAFile             string                     `mapstructure:"ca_file"`
+	ServerName         string                     `mapstructure:"server_name"`
 	InsecureSkipVerify bool                       `mapstructure:"insecure_skip_verify"`
 	EventLookback      time.Duration              `mapstructure:"event_lookback"`
 	Targets            ACITargetFilters           `mapstructure:"targets"`
@@ -625,6 +640,7 @@ func defaultNexusControllerGroupConfig(maxResults int) NexusControllerGroupConfi
 
 func defaultNexusDashboardConfig() NexusDashboardConfig {
 	return NexusDashboardConfig{
+		APIProfile:    nexusDashboardAPIProfileLegacy,
 		UserAgent:     "opentelemetry-collector-contrib-ciscoosreceiver",
 		PageSize:      100,
 		MaxRetries:    3,
@@ -693,7 +709,8 @@ func (cfg NexusDashboardConfig) hasTarget() bool {
 }
 
 func (cfg ACIConfig) hasTarget() bool {
-	return cfg.Enabled || len(cfg.Controllers) > 0 || cfg.Auth.Username != "" || cfg.Auth.Password != ""
+	return cfg.Enabled || len(cfg.Controllers) > 0 || cfg.Auth.Username != "" || cfg.Auth.Password != "" ||
+		cfg.CAFile != "" || cfg.ServerName != "" || cfg.InsecureSkipVerify
 }
 
 func (cfg FMCConfig) hasTarget() bool {
@@ -1122,6 +1139,11 @@ func (cfg *Config) validateNexusDashboard() error {
 	}
 
 	var err error
+	switch normalizeNexusDashboardAPIProfile(cfg.NexusDashboard.APIProfile) {
+	case nexusDashboardAPIProfileLegacy, nexusDashboardAPIProfileUnified:
+	default:
+		err = multierr.Append(err, errors.New("nexus_dashboard.api_profile must be legacy or unified"))
+	}
 	if cfg.NexusDashboard.Endpoint == "" {
 		err = multierr.Append(err, errors.New("nexus_dashboard.endpoint must be provided"))
 	} else {
@@ -1209,6 +1231,7 @@ func (cfg *Config) validateACI() error {
 
 	err = multierr.Append(err, validatePageSize("aci.page_size", cfg.ACI.PageSize))
 	err = multierr.Append(err, validateMaxRetries("aci.max_retries", cfg.ACI.MaxRetries))
+	err = multierr.Append(err, validateACITLSConfig(cfg.ACI))
 	if cfg.ACI.EventLookback < 0 {
 		err = multierr.Append(err, errors.New("aci.event_lookback must not be negative"))
 	}
@@ -1239,6 +1262,23 @@ func (cfg *Config) validateACI() error {
 	}
 	err = multierr.Append(err, validateNexusControllerGroups("aci", groups))
 
+	return err
+}
+
+func validateACITLSConfig(cfg ACIConfig) error {
+	var err error
+	if cfg.CAFile != strings.TrimSpace(cfg.CAFile) {
+		err = multierr.Append(err, errors.New("aci.ca_file must not contain surrounding whitespace"))
+	} else if cfg.CAFile != "" && strings.IndexByte(cfg.CAFile, 0) >= 0 {
+		err = multierr.Append(err, errors.New("aci.ca_file must be a valid file path"))
+	}
+
+	serverName := strings.TrimSpace(cfg.ServerName)
+	if cfg.ServerName != serverName {
+		err = multierr.Append(err, errors.New("aci.server_name must not contain surrounding whitespace"))
+	} else if serverName != "" && !validHostOrIP(serverName) {
+		err = multierr.Append(err, errors.New("aci.server_name must be a valid hostname or IP address without a scheme or port"))
+	}
 	return err
 }
 

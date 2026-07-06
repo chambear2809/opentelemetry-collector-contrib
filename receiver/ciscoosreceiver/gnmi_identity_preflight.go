@@ -286,7 +286,15 @@ func validateGNMIIdentityProbePoints(probe gnmiIdentityProbe, points []internalg
 		point := &points[i]
 		path := point.Series.Path()
 		matched := slices.ContainsFunc(roots, func(root internalgnmi.Path) bool {
-			return path.PathTarget == root.PathTarget && path.Origin == root.Origin && path.HasPrefix(root)
+			if path.PathTarget != root.PathTarget || !gnmiIdentityResponseOriginMatches(probe, path.Origin, root.Origin) {
+				return false
+			}
+			// NX-OS 10.6 omits the requested generic OpenConfig origin from
+			// identity Get responses. Normalize only the comparison copy so the
+			// decoded response remains an exact representation of the wire data.
+			candidate := path
+			candidate.Origin = root.Origin
+			return candidate.HasPrefix(root)
 		})
 		if !matched {
 			// Do not include a peer-controlled path or key value in this error. It
@@ -316,6 +324,16 @@ func validateGNMIIdentityProbePoints(probe gnmiIdentityProbe, points []internalg
 		}
 	}
 	return nil
+}
+
+func gnmiIdentityResponseOriginMatches(probe gnmiIdentityProbe, responseOrigin, configuredOrigin string) bool {
+	if responseOrigin == configuredOrigin {
+		return true
+	}
+	return responseOrigin == "" &&
+		configuredOrigin == builtinGNMIOriginOpenConfig &&
+		probe.Name == "nx_os_openconfig_platform" &&
+		probe.Model == "openconfig-platform"
 }
 
 type gnmiIdentityResponseStatusError struct{ err error }

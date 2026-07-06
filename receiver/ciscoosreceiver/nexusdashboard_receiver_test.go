@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/consumer/consumertest"
+	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
@@ -188,11 +190,11 @@ func TestNexusDashboardLogsEmitEvidenceAndDeduplicate(t *testing.T) {
 func TestNexusDashboardCatalogCoversTroubleshootingDomains(t *testing.T) {
 	groups := map[string]bool{}
 	operations := map[string]bool{}
-	for _, endpoint := range nexusDashboardMetricEndpoints() {
+	for _, endpoint := range nexusDashboardMetricEndpoints(nexusDashboardAPIProfileLegacy) {
 		groups[endpoint.group] = true
 		operations[endpoint.operation] = true
 	}
-	for _, endpoint := range nexusDashboardLogEndpoints() {
+	for _, endpoint := range nexusDashboardLogEndpoints(nexusDashboardAPIProfileLegacy) {
 		groups[endpoint.group] = true
 		operations[endpoint.operation] = true
 	}
@@ -214,6 +216,163 @@ func TestNexusDashboardCatalogCoversTroubleshootingDomains(t *testing.T) {
 	} {
 		assert.True(t, operations[operation], "missing Nexus Dashboard operation %q", operation)
 	}
+}
+
+func TestNexusDashboardUnifiedCatalogUsesVerifiedCurrentAPIs(t *testing.T) {
+	endpoints := nexusDashboardMetricEndpoints(nexusDashboardAPIProfileUnified)
+	require.Len(t, endpoints, 7)
+	assert.Empty(t, nexusDashboardLogEndpoints(nexusDashboardAPIProfileUnified))
+
+	wantPaths := map[string]bool{
+		"/api/v1/infra/clusterhealth/status":                   true,
+		"/api/v1/infra/cluster/nodes":                          true,
+		"/api/v1/infra/systemResources/nodes/hardware":         true,
+		"/api/v1/infra/systemResources/summary":                true,
+		"/api/v1/manage/fabrics":                               true,
+		"/api/v1/manage/fabrics/{fabricName}/switches":         true,
+		"/api/v1/manage/fabrics/{fabricName}/switches/summary": true,
+	}
+	for _, endpoint := range endpoints {
+		assert.True(t, wantPaths[endpoint.path], "unexpected unified endpoint %q", endpoint.path)
+		assert.NotContains(t, endpoint.path, "/appcenter/")
+		assert.NotContains(t, endpoint.path, "/nexus/insights/")
+		assert.NotContains(t, endpoint.path, "/mso/")
+		assert.NotContains(t, endpoint.path, "/nddb/")
+		delete(wantPaths, endpoint.path)
+	}
+	assert.Empty(t, wantPaths)
+
+	legacyPaths := map[string]bool{}
+	for _, endpoint := range nexusDashboardMetricEndpoints("") {
+		legacyPaths[endpoint.path] = true
+	}
+	assert.True(t, legacyPaths["/api/v1/infra/cluster/health"])
+	assert.True(t, legacyPaths["/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/fabrics/fabricstatus"])
+	assert.False(t, legacyPaths["/api/v1/infra/clusterhealth/status"])
+}
+
+func TestNexusDashboardUnifiedScrapeUsesAllVerifiedEndpoints(t *testing.T) {
+	routes := map[string]string{
+		"/api/v1/infra/clusterhealth/status":               `{"isHealthy":true,"severity":"info","nodes":[],"coreInfra":[],"features":[],"k8s":[]}`,
+		"/api/v1/infra/cluster/nodes":                      `{"nodes":[{"name":"nd-node-1","serialNumber":"ND-SERIAL-1","firmwareVersion":"4.2.0","operationalState":"active"}]}`,
+		"/api/v1/infra/systemResources/nodes/hardware":     `{"nodes":[{"cpus":{"processorsCount":8},"memory":{"total":"32 GB"},"storage":{"total":"1 TB"}}]}`,
+		"/api/v1/infra/systemResources/summary":            `{"nodes":[{"name":"nd-node-1","namespaces":[]}]}`,
+		"/api/v1/manage/fabrics":                           `{"fabrics":[{"name":"fabric-a","category":"vxlan"}]}`,
+		"/api/v1/manage/fabrics/fabric-a/switches":         `{"switches":[{"hostname":"leaf101","serialNumber":"N9K-SERIAL-1","switchId":"switch-1","fabricName":"fabric-a","switchRole":"leaf","model":"N9K-C93180YC-FX3","softwareVersion":"10.6(1)","fabricManagementIp":"192.0.2.10","additionalData":{"discoveryStatus":"ok","configSyncStatus":"inSync"}}]}`,
+		"/api/v1/manage/fabrics/fabric-a/switches/summary": `{"anomalyLevel":{"counters":[]},"configSyncStatus":{"counters":[{"name":"inSync","count":1}]},"role":{"counters":[{"name":"leaf","count":1}]},"softwareVersion":{"counters":[{"name":"10.6(1)","count":1}]}}`,
+	}
+
+	var callsMu sync.Mutex
+	calls := map[string]int{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "admin", r.Header.Get("X-Nd-Username"))
+		assert.Equal(t, "nd-api-key", r.Header.Get("X-Nd-Apikey"))
+		callsMu.Lock()
+		calls[r.URL.Path]++
+		callsMu.Unlock()
+		body, ok := routes[r.URL.Path]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(body))
+	}))
+	defer server.Close()
+
+	receiver := newTestNexusDashboardMetricsReceiver(t, server.URL)
+	receiver.config.NexusDashboard.APIProfile = nexusDashboardAPIProfileUnified
+	receiver.config.NexusDashboard.Targets = NexusDashboardTargetFilters{Fabrics: []string{"fabric-a"}}
+	md, err := receiver.scrape(t.Context())
+	require.NoError(t, err)
+
+	callsMu.Lock()
+	assert.Len(t, calls, len(routes))
+	for path := range routes {
+		assert.Equal(t, 1, calls[path], path)
+	}
+	callsMu.Unlock()
+
+	names := metricNames(md)
+	assert.True(t, intMetricValueExists(md, "nexus_dashboard.scrape.partial_success", 0))
+	assert.Contains(t, names, "nexus_dashboard.scrape.last_success")
+	assert.Contains(t, names, "nexus_dashboard.resource.info")
+	assert.Contains(t, names, "nexus_dashboard.resource.count")
+	assert.NotContains(t, names, "nexus_dashboard.api.request.errors")
+	assert.NotContains(t, names, "nexus_dashboard.api.endpoint.error")
+	assert.NotContains(t, names, "nexus_dashboard.service.unavailable")
+	assert.NotContains(t, names, "nexus_dashboard.service.skipped")
+	assert.True(t, intMetricValueExists(md, "cisco.device.up", 1))
+	assert.True(t, hasResourceHostID(md, "N9K-SERIAL-1"))
+	assert.True(t, hasNexusDashboardResourceAttribute(md, "N9K-SERIAL-1", "os.version", "10.6(1)"))
+	for _, resourceType := range []string{
+		"nd.cluster",
+		"nd.node",
+		"nd.node_hardware",
+		"nd.system_resources",
+		"ndfc.fabric",
+		"ndfc.switch",
+		"ndfc.switch_summary",
+	} {
+		assert.True(t, hasMetricDatapointAttribute(md, "nexus_dashboard.resource.info", "nexus_dashboard.resource.type", resourceType), resourceType)
+	}
+	for _, operation := range []string{
+		"nd.cluster.health",
+		"nd.nodes",
+		"nd.hardware",
+		"nd.system.resources",
+		"ndfc.manage.fabrics",
+		"ndfc.manage.fabric_switches",
+		"ndfc.manage.fabric_switches_summary",
+	} {
+		assert.True(t, hasMetricDatapointAttribute(md, "nexus_dashboard.api.request.duration", "nexus_dashboard.api.operation", operation), operation)
+	}
+}
+
+func TestNexusDashboardUnifiedMissingFabricReportsScopedEndpoints(t *testing.T) {
+	server := newNexusDashboardFixtureServer(t, map[string]string{
+		"/api/v1/manage/fabrics": `{"fabrics":[]}`,
+	})
+	defer server.Close()
+
+	receiver := newTestNexusDashboardMetricsReceiver(t, server.URL)
+	receiver.config.NexusDashboard.APIProfile = nexusDashboardAPIProfileUnified
+	receiver.config.NexusDashboard.Targets = NexusDashboardTargetFilters{}
+	receiver.config.NexusDashboard.Platform.Enabled = false
+	md, err := receiver.scrape(t.Context())
+	require.NoError(t, err)
+
+	assert.True(t, intMetricValueExists(md, "nexus_dashboard.scrape.partial_success", 1))
+	skipped := requireMetricByName(t, md, "nexus_dashboard.service.skipped")
+	require.Equal(t, 2, skipped.Gauge().DataPoints().Len())
+	for _, operation := range []string{"ndfc.manage.fabric_switches", "ndfc.manage.fabric_switches_summary"} {
+		assert.True(t, hasMetricDatapointAttribute(md, "nexus_dashboard.service.skipped", "nexus_dashboard.api.operation", operation))
+	}
+}
+
+func TestNexusDashboardCurrentStatusAliases(t *testing.T) {
+	assert.Equal(t, "active", nexusDashboardObjectStatus(nexusdashboard.Object{"operationalState": "active"}))
+	assert.Equal(t, "healthy", nexusDashboardObjectStatus(nexusdashboard.Object{"isHealthy": true}))
+	assert.Equal(t, "unhealthy", nexusDashboardObjectStatus(nexusdashboard.Object{"isHealthy": false}))
+	assert.Equal(t, "ok", nexusDashboardObjectStatus(nexusdashboard.Object{"additionalData": map[string]any{"discoveryStatus": "ok"}}))
+	assert.Empty(t, nexusDashboardObjectStatus(nexusdashboard.Object{"configSyncStatus": map[string]any{"counters": []any{map[string]any{"name": "inSync", "count": 1}}}}))
+}
+
+func TestNexusDashboardLoginNegotiationIsNotAnAPIError(t *testing.T) {
+	receiver := &nexusDashboardMetricsReceiver{}
+	receiver.recordRequest(nexusdashboard.RequestStat{
+		Operation:  "infra.login",
+		Method:     http.MethodPost,
+		Path:       "/api/v1/infra/login",
+		Outcome:    "fallback",
+		StatusCode: http.StatusUnauthorized,
+		Duration:   time.Millisecond,
+	})
+	builder := newNexusDashboardMetricsBuilder(time.Now(), "test", nil)
+	receiver.recordAPIRequestMetrics(builder)
+
+	names := metricNames(builder.emit())
+	assert.Contains(t, names, "nexus_dashboard.api.request.duration")
+	assert.NotContains(t, names, "nexus_dashboard.api.request.errors")
 }
 
 func TestNexusDashboardFabricHealthUsesFirstPresentSynonym(t *testing.T) {
@@ -287,4 +446,19 @@ func newNexusDashboardFixtureServer(t *testing.T, routes map[string]string) *htt
 			_, _ = w.Write([]byte(`[]`))
 		}
 	}))
+}
+
+func hasNexusDashboardResourceAttribute(md pmetric.Metrics, hostID, key, expected string) bool {
+	for i := 0; i < md.ResourceMetrics().Len(); i++ {
+		attrs := md.ResourceMetrics().At(i).Resource().Attributes()
+		id, ok := attrs.Get("host.id")
+		if !ok || id.Str() != hostID {
+			continue
+		}
+		value, ok := attrs.Get(key)
+		if ok && value.Str() == expected {
+			return true
+		}
+	}
+	return false
 }

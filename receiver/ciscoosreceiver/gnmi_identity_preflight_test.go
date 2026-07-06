@@ -388,6 +388,58 @@ func TestValidateGNMIIdentityProbePointsRejectsForeignQualifiedNames(t *testing.
 	}
 }
 
+func TestValidateGNMIIdentityProbePointsAllowsNXOSOmittedOpenConfigOrigin(t *testing.T) {
+	contract, _, err := resolveGNMIProductContract(gnmiProductNexus9000, "10.6(1)")
+	require.NoError(t, err)
+	probe := contract.IdentityProbes[0]
+	point := internalgnmi.Point{Series: internalgnmi.Series{
+		Target: "target",
+		Elements: []internalgnmi.PathElem{
+			{Name: "components"},
+			{Name: "component", Keys: map[string]string{"name": "Chassis"}},
+			{Name: "state"},
+		},
+		Leaf: "model-name",
+	}}
+	require.NoError(t, validateGNMIIdentityProbePoints(probe, []internalgnmi.Point{point}))
+
+	for _, origin := range []string{"openconfig-platform", "OpenConfig", "peer-origin"} {
+		malformed := point
+		malformed.Series.Origin = origin
+		err := validateGNMIIdentityProbePoints(probe, []internalgnmi.Point{malformed})
+		require.ErrorContains(t, err, "does not match a configured probe path")
+	}
+
+	wrongTarget := point
+	wrongTarget.Series.PathTarget = "peer-target"
+	require.ErrorContains(t, validateGNMIIdentityProbePoints(probe, []internalgnmi.Point{wrongTarget}), "does not match a configured probe path")
+
+	for _, mutate := range []func(*gnmiIdentityProbe){
+		func(probe *gnmiIdentityProbe) { probe.Name += "-other" },
+		func(probe *gnmiIdentityProbe) { probe.Model += "-other" },
+	} {
+		nearMiss := probe
+		mutate(&nearMiss)
+		require.ErrorContains(t, validateGNMIIdentityProbePoints(nearMiss, []internalgnmi.Point{point}), "does not match a configured probe path")
+	}
+}
+
+func TestValidateGNMIIdentityProbePointsDoesNotGenerallyAllowOmittedOrigin(t *testing.T) {
+	probe := gnmiIdentityProbe{
+		Name:         "xr",
+		Model:        "Cisco-IOS-XR-install-oper",
+		PrefixOrigin: "Cisco-IOS-XR-install-oper",
+		Paths:        []sharedGNMIPath{{Path: "install/version"}},
+	}
+	point := internalgnmi.Point{Series: internalgnmi.Series{
+		Target:   "target",
+		Elements: []internalgnmi.PathElem{{Name: "install"}, {Name: "version"}},
+		Leaf:     "label",
+	}}
+	err := validateGNMIIdentityProbePoints(probe, []internalgnmi.Point{point})
+	require.ErrorContains(t, err, "does not match a configured probe path")
+}
+
 func TestRunGNMIIdentityPreflightDoesNotReflectMalformedPeerData(t *testing.T) {
 	contract, configured, err := resolveGNMIProductContract(gnmiProductASR9000, "24.4.1")
 	require.NoError(t, err)
@@ -526,13 +578,23 @@ func TestProductIdentityExtractionFromSubtreeJSON(t *testing.T) {
 	t.Run("NX-OS OpenConfig platform JSON", func(t *testing.T) {
 		contract, _, err := resolveGNMIProductContract(gnmiProductNexus9000, "10.6(1)F")
 		require.NoError(t, err)
-		points := decodeIdentityJSONResponse(t, "nx", "openconfig", "components/component[name=Chassis]/state",
-			`{"type":"openconfig-platform-types:CHASSIS","model-name":"N9K-C93180YC-FX3","software-version":"10.6(1)F"}`, false)
-		require.NoError(t, validateGNMIIdentityProbePoints(contract.IdentityProbes[0], points))
-		model, build, err := extractNXOSGNMIIdentity(points)
-		require.NoError(t, err)
-		assert.Equal(t, "N9K-C93180YC-FX3", model)
-		assert.Equal(t, "10.6(1)F", build)
+		for _, test := range []struct {
+			name   string
+			origin string
+		}{
+			{name: "requested origin retained", origin: "openconfig"},
+			{name: "requested origin omitted", origin: ""},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				points := decodeIdentityJSONResponse(t, "nx", test.origin, "components/component[name=Chassis]/state",
+					`{"type":"openconfig-platform-types:CHASSIS","model-name":"N9K-C93180YC-FX3","software-version":"10.6(1)F"}`, false)
+				require.NoError(t, validateGNMIIdentityProbePoints(contract.IdentityProbes[0], points))
+				model, build, err := extractNXOSGNMIIdentity(points)
+				require.NoError(t, err)
+				assert.Equal(t, "N9K-C93180YC-FX3", model)
+				assert.Equal(t, "10.6(1)F", build)
+			})
+		}
 	})
 }
 

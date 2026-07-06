@@ -10,8 +10,11 @@ receivers:
       auth:
         username: ${env:APIC_USERNAME}
         password: ${env:APIC_PASSWORD}
-      # Verification remains enabled by default. Set this only for an isolated
-      # lab whose APIC certificate cannot be trusted through the host CA store.
+      # Append a private APIC CA to the host trust store. When APIC_ENDPOINT is
+      # an IP address, APIC_SERVER_NAME must match a DNS/IP SAN in its certificate.
+      ca_file: ${env:APIC_CA_FILE}
+      server_name: ${env:APIC_SERVER_NAME}
+      # Verification remains enabled by default. Set this only for an isolated lab.
       insecure_skip_verify: false
       event_lookback: 24h
 

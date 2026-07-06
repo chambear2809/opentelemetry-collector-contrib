@@ -6,6 +6,7 @@ package nexusdashboard
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -433,6 +434,26 @@ func TestDecodeObjectsPreservesLargeInteger(t *testing.T) {
 	assert.Equal(t, int64(9007199254740993), value)
 }
 
+func TestDecodeObjectsPreservesClusterHealthEnvelope(t *testing.T) {
+	objects, _, _, err := decodeObjects([]byte(`{"isHealthy":true,"severity":"info","nodes":[{"name":"node-1"}]}`), nil)
+	require.NoError(t, err)
+	require.Len(t, objects, 1)
+	assert.Equal(t, "info", String(objects[0], "severity"))
+	healthy, ok := Bool(objects[0], "isHealthy")
+	require.True(t, ok)
+	assert.True(t, healthy)
+}
+
+func TestScalarStringDoesNotFormatStructuredValues(t *testing.T) {
+	obj := Object{
+		"map":   map[string]any{"status": "inSync"},
+		"array": []any{"active"},
+		"bool":  true,
+	}
+	assert.Empty(t, ScalarString(obj, "map", "array"))
+	assert.Equal(t, "true", ScalarString(obj, "map", "array", "bool"))
+}
+
 func TestClientRejectsPaginationCycle(t *testing.T) {
 	var requests atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -549,6 +570,99 @@ func TestClientUsernamePasswordLoginToken(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	assert.Equal(t, int64(1), logins.Load())
+}
+
+func TestClientFallsBackToLegacyLoginAndCachesPath(t *testing.T) {
+	var modernLogins atomic.Int64
+	var legacyLogins atomic.Int64
+	var dataCalls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case modernLoginPath:
+			modernLogins.Add(1)
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"Authorization field missing"}`))
+		case legacyLoginPath:
+			legacyLogins.Add(1)
+			_, _ = w.Write([]byte(`{"jwttoken":"legacy-token"}`))
+		default:
+			dataCalls.Add(1)
+			assert.Equal(t, "Bearer legacy-token", r.Header.Get("Authorization"))
+			cookie, err := r.Cookie("AuthCookie")
+			if !assert.NoError(t, err) {
+				http.Error(w, "missing auth cookie", http.StatusUnauthorized)
+				return
+			}
+			assert.Equal(t, "legacy-token", cookie.Value)
+			_, _ = w.Write([]byte(`{"items":[]}`))
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:   server.URL,
+		AuthMode:   "username_password",
+		Username:   "admin",
+		Password:   "password",
+		Timeout:    time.Second,
+		MaxRetries: 1,
+	})
+	require.NoError(t, err)
+
+	var loginStats []RequestStat
+	client.OnRequest = func(stat RequestStat) {
+		if stat.Operation == "infra.login" {
+			loginStats = append(loginStats, stat)
+		}
+	}
+
+	_, err = client.List(t.Context(), "fabrics", "/api/v1/manage/fabrics", nil, 1)
+	require.NoError(t, err)
+
+	client.tokenMu.Lock()
+	client.token = ""
+	client.tokenMu.Unlock()
+	_, err = client.List(t.Context(), "switches", "/api/v1/manage/switches", nil, 1)
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(1), modernLogins.Load())
+	assert.Equal(t, int64(2), legacyLogins.Load())
+	assert.Equal(t, int64(2), dataCalls.Load())
+	require.Len(t, loginStats, 3)
+	assert.Equal(t, modernLoginPath, loginStats[0].Path)
+	assert.Equal(t, "fallback", loginStats[0].Outcome)
+	assert.Equal(t, http.StatusUnauthorized, loginStats[0].StatusCode)
+	assert.Equal(t, legacyLoginPath, loginStats[1].Path)
+	assert.Equal(t, "success", loginStats[1].Outcome)
+	assert.Equal(t, legacyLoginPath, loginStats[2].Path)
+	assert.Equal(t, "success", loginStats[2].Outcome)
+}
+
+func TestLoginEndpointUnsupported(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+		err    error
+		want   bool
+	}{
+		{name: "not found", status: http.StatusNotFound, err: &APIError{StatusCode: http.StatusNotFound}, want: true},
+		{name: "method not allowed", status: http.StatusMethodNotAllowed, err: &APIError{StatusCode: http.StatusMethodNotAllowed}, want: true},
+		{name: "not implemented", status: http.StatusNotImplemented, err: &APIError{StatusCode: http.StatusNotImplemented}, want: true},
+		{name: "legacy gateway authorization response", status: http.StatusUnauthorized, body: `{"error":"Authorization field missing"}`, err: &APIError{StatusCode: http.StatusUnauthorized}, want: true},
+		{name: "invalid credentials", status: http.StatusUnauthorized, body: `{"error":"Invalid Username/Password"}`, err: &APIError{StatusCode: http.StatusUnauthorized}},
+		{name: "body read failure", status: http.StatusUnauthorized, body: `{"error":"Authorization field missing"}`, err: io.ErrUnexpectedEOF},
+		{name: "status mismatch", status: http.StatusUnauthorized, body: `{"error":"Authorization field missing"}`, err: &APIError{StatusCode: http.StatusNotFound}},
+		{name: "forbidden", status: http.StatusForbidden, err: &APIError{StatusCode: http.StatusForbidden}},
+		{name: "rate limited", status: http.StatusTooManyRequests, err: &APIError{StatusCode: http.StatusTooManyRequests}},
+		{name: "server error", status: http.StatusInternalServerError, err: &APIError{StatusCode: http.StatusInternalServerError}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, loginEndpointUnsupported(tt.status, []byte(tt.body), tt.err))
+		})
+	}
 }
 
 func TestClientStopsWhenFullPageHasNoNextOrRemaining(t *testing.T) {

@@ -251,7 +251,7 @@ func (r *nexusDashboardMetricsReceiver) scrape(ctx context.Context) (pmetric.Met
 			continue
 		}
 		objects, err := r.client.List(ctx, endpoint.operation, endpoint.path, nexusDashboardEndpointQuery(endpoint.nexusDashboardEndpoint, r.config, now), nexusDashboardGroupMaxResults(r.config.NexusDashboard, endpoint.group))
-		for _, obj := range filterNexusDashboardObjects(objects, r.config.NexusDashboard.Targets) {
+		for _, obj := range filterNexusDashboardEndpointObjects(objects, *endpoint, r.config) {
 			if !selector.allows(nexusDashboardObjectIdentity(obj)) {
 				continue
 			}
@@ -314,7 +314,7 @@ func (r *nexusDashboardMetricsReceiver) recordAPIRequestMetrics(builder *nexusDa
 		if stat.StatusCode > 0 {
 			attrs["http.response.status_code"] = strconv.Itoa(stat.StatusCode)
 		}
-		observations = append(observations, apiRequestObservation{attrs: attrs, durationSeconds: stat.Duration.Seconds(), failed: stat.Outcome != "success", rateLimited: stat.RateLimited})
+		observations = append(observations, apiRequestObservation{attrs: attrs, durationSeconds: stat.Duration.Seconds(), failed: stat.Outcome == "error", rateLimited: stat.RateLimited})
 	}
 	for _, aggregate := range aggregateAPIRequestObservations(observations) {
 		rb := builder.controllerResource()
@@ -402,7 +402,7 @@ func (r *nexusDashboardLogsReceiver) scrape(ctx context.Context) (plog.Logs, err
 			continue
 		}
 		objects, err := r.client.List(ctx, endpoint.operation, endpoint.path, nexusDashboardEndpointQuery(endpoint.nexusDashboardEndpoint, r.config, now), nexusDashboardGroupMaxResults(r.config.NexusDashboard, endpoint.group))
-		for _, obj := range filterNexusDashboardObjects(objects, r.config.NexusDashboard.Targets) {
+		for _, obj := range filterNexusDashboardEndpointObjects(objects, *endpoint, r.config) {
 			if !selector.allows(nexusDashboardObjectIdentity(obj)) {
 				continue
 			}
@@ -494,7 +494,7 @@ func (b *nexusDashboardMetricsBuilder) objectResource(endpoint nexusDashboardEnd
 	attrs := rb.resource.Attributes()
 	putStr(attrs, "host.id", hostID)
 	putStr(attrs, "host.name", firstNonEmpty(nexusdashboard.String(obj, "hostName", "hostname", "switchName", "nodeName", "name"), hostID))
-	putIPAttrs(attrs, "host.ip", nexusdashboard.String(obj, "ipAddress"), nexusdashboard.String(obj, "ip"), nexusdashboard.String(obj, "mgmtIpAddress"), nexusdashboard.String(obj, "managementIp"), nexusdashboard.String(obj, "oobMgmtIpAddress"))
+	putIPAttrs(attrs, "host.ip", nexusdashboard.String(obj, "ipAddress"), nexusdashboard.String(obj, "ip"), nexusdashboard.String(obj, "mgmtIpAddress"), nexusdashboard.String(obj, "managementIp"), nexusdashboard.String(obj, "oobMgmtIpAddress"), nexusdashboard.String(obj, "fabricManagementIp"))
 	putStr(attrs, "host.type", firstNonEmpty(nexusdashboard.String(obj, "model", "platform", "deviceType", "role"), endpoint.objectType))
 	putStr(attrs, "hw.type", "network")
 	putStr(attrs, "os.name", firstNonEmpty(nexusdashboard.String(obj, "osType", "imageName"), "NX-OS"))
@@ -758,11 +758,11 @@ func appendNexusDashboardLog(ld plog.Logs, endpoint nexusDashboardEndpointInstan
 }
 
 func nexusDashboardMetricEndpointInstances(cfg *Config) []nexusDashboardEndpointInstance {
-	return expandNexusDashboardEndpoints(nexusDashboardMetricEndpoints(), cfg)
+	return expandNexusDashboardEndpoints(nexusDashboardMetricEndpoints(cfg.NexusDashboard.APIProfile), cfg)
 }
 
 func nexusDashboardLogEndpointInstances(cfg *Config) []nexusDashboardEndpointInstance {
-	return expandNexusDashboardEndpoints(nexusDashboardLogEndpoints(), cfg)
+	return expandNexusDashboardEndpoints(nexusDashboardLogEndpoints(cfg.NexusDashboard.APIProfile), cfg)
 }
 
 func expandNexusDashboardEndpoints(endpoints []nexusDashboardEndpoint, cfg *Config) []nexusDashboardEndpointInstance {
@@ -815,7 +815,26 @@ func expandNexusDashboardEndpoints(endpoints []nexusDashboardEndpoint, cfg *Conf
 	return out
 }
 
-func nexusDashboardMetricEndpoints() []nexusDashboardEndpoint {
+func nexusDashboardMetricEndpoints(apiProfile string) []nexusDashboardEndpoint {
+	if normalizeNexusDashboardAPIProfile(apiProfile) == nexusDashboardAPIProfileUnified {
+		return nexusDashboardUnifiedMetricEndpoints()
+	}
+	return nexusDashboardLegacyMetricEndpoints()
+}
+
+func nexusDashboardUnifiedMetricEndpoints() []nexusDashboardEndpoint {
+	return []nexusDashboardEndpoint{
+		{group: "platform", product: "platform", operation: "nd.cluster.health", path: "/api/v1/infra/clusterhealth/status", objectType: "nd.cluster"},
+		{group: "platform", product: "platform", operation: "nd.nodes", path: "/api/v1/infra/cluster/nodes", objectType: "nd.node"},
+		{group: "platform", product: "platform", operation: "nd.hardware", path: "/api/v1/infra/systemResources/nodes/hardware", objectType: "nd.node_hardware"},
+		{group: "platform", product: "platform", operation: "nd.system.resources", path: "/api/v1/infra/systemResources/summary", objectType: "nd.system_resources"},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.manage.fabrics", path: "/api/v1/manage/fabrics", objectType: "ndfc.fabric"},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.manage.fabric_switches", path: "/api/v1/manage/fabrics/{fabricName}/switches", objectType: "ndfc.switch", selectorKey: "fabric"},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.manage.fabric_switches_summary", path: "/api/v1/manage/fabrics/{fabricName}/switches/summary", objectType: "ndfc.switch_summary", selectorKey: "fabric"},
+	}
+}
+
+func nexusDashboardLegacyMetricEndpoints() []nexusDashboardEndpoint {
 	return []nexusDashboardEndpoint{
 		{group: "platform", product: "platform", operation: "nd.cluster.health", path: "/api/v1/infra/cluster/health", objectType: "nd.cluster"},
 		{group: "platform", product: "platform", operation: "nd.nodes", path: "/api/v1/infra/nodes", objectType: "nd.node"},
@@ -854,7 +873,14 @@ func nexusDashboardMetricEndpoints() []nexusDashboardEndpoint {
 	}
 }
 
-func nexusDashboardLogEndpoints() []nexusDashboardEndpoint {
+func nexusDashboardLogEndpoints(apiProfile string) []nexusDashboardEndpoint {
+	if normalizeNexusDashboardAPIProfile(apiProfile) == nexusDashboardAPIProfileUnified {
+		return nil
+	}
+	return nexusDashboardLegacyLogEndpoints()
+}
+
+func nexusDashboardLegacyLogEndpoints() []nexusDashboardEndpoint {
 	return []nexusDashboardEndpoint{
 		{group: "ndfc", product: "ndfc", operation: "ndfc.audit", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/audit", objectType: "ndfc.audit", query: recentNexusDashboardQuery},
 		{group: "ndfc", product: "ndfc", operation: "ndfc.events", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/events", objectType: "ndfc.event", query: recentNexusDashboardQuery},
@@ -941,6 +967,15 @@ func filterNexusDashboardObjects(objects []nexusdashboard.Object, filters NexusD
 	return filtered
 }
 
+func filterNexusDashboardEndpointObjects(objects []nexusdashboard.Object, endpoint nexusDashboardEndpointInstance, cfg *Config) []nexusdashboard.Object {
+	if normalizeNexusDashboardAPIProfile(cfg.NexusDashboard.APIProfile) == nexusDashboardAPIProfileUnified {
+		if endpoint.group == "platform" || endpoint.selectorKey != "" {
+			return objects
+		}
+	}
+	return filterNexusDashboardObjects(objects, cfg.NexusDashboard.Targets)
+}
+
 func makeFilterNeedles(groups ...[]string) map[string]struct{} {
 	needles := map[string]struct{}{}
 	for _, group := range groups {
@@ -955,14 +990,30 @@ func makeFilterNeedles(groups ...[]string) map[string]struct{} {
 }
 
 func nexusDashboardObjectStatus(obj nexusdashboard.Object) string {
-	return firstNonEmpty(
-		nexusdashboard.String(obj, "status", "Status"),
-		nexusdashboard.String(obj, "operSt", "operState", "operStatus"),
-		nexusdashboard.String(obj, "state", "State"),
-		nexusdashboard.String(obj, "health", "healthStatus"),
-		nexusdashboard.String(obj, "severity", "Severity"),
-		nexusdashboard.String(obj, "deploymentStatus", "syncStatus", "configStatus", "complianceStatus"),
+	if healthy, ok := nexusdashboard.Bool(obj, "isHealthy"); ok {
+		if healthy {
+			return "healthy"
+		}
+		return "unhealthy"
+	}
+	status := firstNonEmpty(
+		nexusdashboard.ScalarString(obj, "status", "Status"),
+		nexusdashboard.ScalarString(obj, "operSt", "operState", "operStatus", "operationalState"),
+		nexusdashboard.ScalarString(obj, "state", "State"),
+		nexusdashboard.ScalarString(obj, "health", "healthStatus"),
+		nexusdashboard.ScalarString(obj, "severity", "Severity"),
+		nexusdashboard.ScalarString(obj, "deploymentStatus", "syncStatus", "configStatus", "complianceStatus", "bootstrapStatus"),
 	)
+	if status != "" {
+		return status
+	}
+	if additional, ok := obj["additionalData"].(map[string]any); ok {
+		status = nexusdashboard.ScalarString(nexusdashboard.Object(additional), "discoveryStatus", "nodeStatus", "configSyncStatus", "systemMode")
+		if status != "" {
+			return status
+		}
+	}
+	return ""
 }
 
 func nexusDashboardEvidenceMetric(endpoint nexusDashboardEndpointInstance) string {

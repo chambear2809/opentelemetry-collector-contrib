@@ -499,11 +499,13 @@ correlation without turning event text into metric dimensions.
 
 ## Nexus Dashboard, NDFC, Insights, Orchestrator, And Data Broker Metrics And Logs
 
-Nexus Dashboard support is API-first and switch-centered. NDFC, Insights, Orchestrator, and Data Broker objects are
-correlated back to Nexus switch identity with serial, switch ID, fabric, site, role, interface, service, and controller
-endpoint attributes whenever the API response exposes them. Missing or disabled apps do not fail the whole scrape:
-the receiver emits partial-success and unavailable-service metrics so dashboards can distinguish fabric problems from
-management-plane coverage gaps.
+Nexus Dashboard support is API-first and switch-centered. With `api_profile: legacy`, NDFC, Insights, Orchestrator,
+and Data Broker objects are correlated back to Nexus switch identity with serial, switch ID, fabric, site, role,
+interface, service, and controller endpoint attributes whenever the API response exposes them. Missing or disabled
+legacy-profile apps do not fail the whole scrape: the receiver emits partial-success and unavailable-service metrics
+so dashboards can distinguish fabric problems from management-plane coverage gaps. The `unified` profile currently
+polls only the verified platform and Manage metric routes. Its nested hardware and summary payloads provide API health
+and generic resource-presence evidence; their numeric values are not yet mapped into dedicated telemetry.
 
 | Metric | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
@@ -539,10 +541,12 @@ management-plane coverage gaps.
 | `nexus_dashboard.storage.utilization` | Gauge, double | `1` | Nexus Dashboard storage utilization as a ratio. | Detect platform storage pressure before services degrade. |
 | `nexus_dashboard.vpc.peer.count` | Gauge, double | `{peer}` | vPC peer count reported by NDFC. | Detect missing redundant peers from the controller view. |
 
-Nexus Dashboard logs are emitted for NDFC audits/events, Insights anomalies/advisories/root-cause evidence, NDO
-audit/deployment records, and Data Broker events. Every record includes `event.domain=nexus_dashboard`, `event.name`,
-`nexus_dashboard.group`, `nexus_dashboard.status`, `nexus_dashboard.severity`, and bounded correlation attributes such
-as `host.id`, `cisco.switch.serial`, `ndfc.switch.id`, `cisco.fabric.name`, `cisco.site.name`, and `user.name` when present.
+With `api_profile: legacy`, Nexus Dashboard logs are emitted for NDFC audits/events, Insights
+anomalies/advisories/root-cause evidence, NDO audit/deployment records, and Data Broker events. Every record includes
+`event.domain=nexus_dashboard`, `event.name`, `nexus_dashboard.group`, `nexus_dashboard.status`,
+`nexus_dashboard.severity`, and bounded correlation attributes such as `host.id`, `cisco.switch.serial`,
+`ndfc.switch.id`, `cisco.fabric.name`, `cisco.site.name`, and `user.name` when present. The `unified` profile does not
+register log endpoints until current audit/event routes are verified.
 
 ## Cisco ACI/APIC Metrics And Logs
 
@@ -586,7 +590,8 @@ ACI logs are emitted for active faults, audit/config changes, and event records.
 ## Cisco ISE Metrics And Logs
 
 Cisco ISE support is identity, access, and policy evidence for the same incidents investigated with Catalyst,
-wireless, SD-WAN, Nexus, ACI, and firewall telemetry. REST-safe APIs default on; pxGrid and Data Connect are opt-in.
+wireless, SD-WAN, Nexus, ACI, and firewall telemetry. Only the three scalar MnT session counters default on;
+row-level `session_details`, other REST groups, pxGrid, and Data Connect are opt-in.
 
 | Metric | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
@@ -635,7 +640,8 @@ wireless, SD-WAN, Nexus, ACI, and firewall telemetry. REST-safe APIs default on;
 | `ise.dataconnect.query.errors` | Sum, int, cumulative | `{error}` | Data Connect query failures. | Alert on wallet, TLS, credential, view, or database availability issues. |
 | `ise.dataconnect.row.count` | Gauge, int | `{item}` | Data Connect evidence rows by bounded view and outcome attributes. | Correlate historical evidence volume with query coverage and row caps. |
 
-ISE logs preserve raw REST/OpenAPI/ERS/MnT objects, pxGrid messages, and Data Connect rows. Each record includes
+ISE logs preserve raw REST/OpenAPI/ERS/MnT objects, pxGrid messages, and Data Connect rows. MnT `ActiveList` and
+`AuthList` records require the opt-in `session_details` group. Each record includes
 `event.domain=ise`, `event.name`, `ise.group`, `ise.object.type`, and bounded correlation attributes for node,
 protocol, outcome, failure reason, message code, policy set/rule, authorization profile, network device, endpoint MAC,
 user, and event/session/audit IDs when present.
@@ -855,8 +861,8 @@ Enable with `scrapers.interfaces.rates.enabled: true`.
 
 | Metric | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
-| `cisco.interface.io.rate` | Gauge, int | `bit/s` | Device-reported traffic rate for an interface. | Use this for near-real-time bandwidth monitoring without calculating rates from byte counters. |
-| `cisco.interface.packet.rate` | Gauge, int | `{packet}/s` | Device-reported packet rate for an interface. | Useful when packet volume matters more than data volume, such as small-packet floods. |
+| `cisco.interface.io.rate` | Gauge, double | `bit/s` | Device-reported traffic rate for an interface. | Use this for near-real-time bandwidth monitoring without calculating rates from byte counters. |
+| `cisco.interface.packet.rate` | Gauge, double | `{packet}/s` | Device-reported packet rate for an interface. | Useful when packet volume matters more than data volume, such as small-packet floods. |
 
 ## Optional Detailed Interface Counter Metrics
 

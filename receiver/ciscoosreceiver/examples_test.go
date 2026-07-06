@@ -54,11 +54,15 @@ func TestShippedCiscoOSReceiverExamplesUnmarshalAndValidate(t *testing.T) {
 			receiverKey: "cisco_os/aci",
 			resolve: func(cfg *Config) {
 				cfg.ACI.Controllers[0].Endpoint = "https://apic.example.test"
+				cfg.ACI.CAFile = "/etc/otelcol/apic-ca.pem"
+				cfg.ACI.ServerName = "apic.example.test"
 			},
 			assertion: func(t *testing.T, cfg *Config) {
 				assert.True(t, cfg.ACI.Enabled)
 				require.Len(t, cfg.ACI.Controllers, 1)
 				assert.Equal(t, "apic-primary", cfg.ACI.Controllers[0].Name)
+				assert.Equal(t, "/etc/otelcol/apic-ca.pem", cfg.ACI.CAFile)
+				assert.Equal(t, "apic.example.test", cfg.ACI.ServerName)
 				assert.False(t, cfg.ACI.InsecureSkipVerify)
 			},
 		},

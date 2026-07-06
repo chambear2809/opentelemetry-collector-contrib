@@ -27,6 +27,8 @@ const (
 	nexusDashboardE2EUsernameEnv       = "CISCOOS_E2E_NEXUS_DASHBOARD_USERNAME"
 	nexusDashboardE2EAPIKeyEnv         = "CISCOOS_E2E_NEXUS_DASHBOARD_API_KEY"
 	nexusDashboardE2EPasswordEnv       = "CISCOOS_E2E_NEXUS_DASHBOARD_PASSWORD"
+	nexusDashboardE2EDomainEnv         = "CISCOOS_E2E_NEXUS_DASHBOARD_DOMAIN"
+	nexusDashboardE2EAPIProfileEnv     = "CISCOOS_E2E_NEXUS_DASHBOARD_API_PROFILE"
 	nexusDashboardE2EInsecureSkipEnv   = "CISCOOS_E2E_NEXUS_DASHBOARD_INSECURE_SKIP_VERIFY"
 	nexusDashboardE2EFabricsEnv        = "CISCOOS_E2E_NEXUS_DASHBOARD_FABRICS"
 	nexusDashboardE2ESwitchIDsEnv      = "CISCOOS_E2E_NEXUS_DASHBOARD_SWITCH_IDS"
@@ -50,17 +52,22 @@ func TestE2ENexusDashboardControllerAPI(t *testing.T) {
 	cfg.NexusDashboard = defaultNexusDashboardConfig()
 	cfg.NexusDashboard.Enabled = true
 	cfg.NexusDashboard.Endpoint = requiredEnvOrSkip(t, nexusDashboardE2EEndpointEnv)
+	cfg.NexusDashboard.APIProfile = normalizeNexusDashboardAPIProfile(os.Getenv(nexusDashboardE2EAPIProfileEnv))
 	cfg.NexusDashboard.InsecureSkipVerify = boolEnv(t, nexusDashboardE2EInsecureSkipEnv, false)
 	cfg.NexusDashboard.Targets.Fabrics = csvEnv(nexusDashboardE2EFabricsEnv)
 	cfg.NexusDashboard.Targets.SwitchIDs = csvEnv(nexusDashboardE2ESwitchIDsEnv)
 	cfg.NexusDashboard.Targets.SwitchSerials = csvEnv(nexusDashboardE2ESwitchSerialsEnv)
 	cfg.NexusDashboard.Auth.Username = requiredEnvOrSkip(t, nexusDashboardE2EUsernameEnv)
+	cfg.NexusDashboard.Auth.Domain = os.Getenv(nexusDashboardE2EDomainEnv)
 	if apiKey := os.Getenv(nexusDashboardE2EAPIKeyEnv); apiKey != "" {
 		cfg.NexusDashboard.Auth.Mode = "api_key"
 		cfg.NexusDashboard.Auth.APIKey = configopaque.String(apiKey)
 	} else {
 		cfg.NexusDashboard.Auth.Mode = "username_password"
 		cfg.NexusDashboard.Auth.Password = configopaque.String(requiredEnvOrSkip(t, nexusDashboardE2EPasswordEnv))
+	}
+	if cfg.NexusDashboard.APIProfile == nexusDashboardAPIProfileUnified {
+		require.NotEmpty(t, cfg.NexusDashboard.Targets.Fabrics, "unified Nexus Dashboard E2E requires an explicit fabric target")
 	}
 	require.NoError(t, cfg.Validate())
 
@@ -73,9 +80,38 @@ func TestE2ENexusDashboardControllerAPI(t *testing.T) {
 	})
 
 	require.EventuallyWithT(t, func(tt *assert.CollectT) {
-		summary := summarizeCiscoOSE2EMetrics(sink.AllMetrics())
+		allMetrics := sink.AllMetrics()
+		summary := summarizeCiscoOSE2EMetrics(allMetrics)
 		assert.Contains(tt, summary.metricNames, "nexus_dashboard.api.request.duration")
 		assert.Contains(tt, summary.metricNames, "nexus_dashboard.scrape.partial_success")
+		if cfg.NexusDashboard.APIProfile != nexusDashboardAPIProfileUnified {
+			return
+		}
+		assert.True(tt, ciscoOSE2EIntMetricValueExists(allMetrics, "nexus_dashboard.scrape.partial_success", 0))
+		assert.Contains(tt, summary.metricNames, "nexus_dashboard.scrape.last_success")
+		assert.Contains(tt, summary.metricNames, "nexus_dashboard.resource.info")
+		for _, operation := range []string{
+			"nd.cluster.health",
+			"nd.nodes",
+			"nd.hardware",
+			"nd.system.resources",
+			"ndfc.manage.fabrics",
+			"ndfc.manage.fabric_switches",
+			"ndfc.manage.fabric_switches_summary",
+		} {
+			assert.True(tt, ciscoOSE2EMetricHasAttribute(allMetrics, "nexus_dashboard.api.request.duration", "nexus_dashboard.api.operation", operation), operation)
+		}
+		for _, resourceType := range []string{
+			"nd.cluster",
+			"nd.node",
+			"nd.node_hardware",
+			"nd.system_resources",
+			"ndfc.fabric",
+			"ndfc.switch",
+			"ndfc.switch_summary",
+		} {
+			assert.True(tt, ciscoOSE2EMetricHasAttribute(allMetrics, "nexus_dashboard.resource.info", "nexus_dashboard.resource.type", resourceType), resourceType)
+		}
 	}, durationEnv(t, nexusControllerE2EWaitTimeoutEnv, 2*time.Minute), time.Second)
 }
 
@@ -122,6 +158,15 @@ func TestE2EACIControllerAPI(t *testing.T) {
 func ciscoOSE2EIntMetricValueExists(allMetrics []pmetric.Metrics, name string, value int64) bool {
 	for _, metrics := range allMetrics {
 		if intMetricValueExists(metrics, name, value) {
+			return true
+		}
+	}
+	return false
+}
+
+func ciscoOSE2EMetricHasAttribute(allMetrics []pmetric.Metrics, metricName, attrName, attrValue string) bool {
+	for _, metrics := range allMetrics {
+		if hasMetricDatapointAttribute(metrics, metricName, attrName, attrValue) {
 			return true
 		}
 	}

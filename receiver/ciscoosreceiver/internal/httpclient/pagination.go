@@ -40,12 +40,18 @@ type PaginationLimitError struct {
 	Kind      string
 	Maximum   int
 	Results   int
+	Hard      bool
 }
 
 func (e *PaginationLimitError) Error() string {
+	source := "configured"
+	if e.Hard {
+		source = "hard"
+	}
 	return fmt.Sprintf(
-		"paginate %s: hard %s limit of %d exhausted after %d partial results",
+		"paginate %s: %s %s limit of %d exhausted after %d partial results",
 		e.Operation,
+		source,
 		e.Kind,
 		e.Maximum,
 		e.Results,
@@ -63,6 +69,18 @@ func EffectivePaginationResultLimit(configured int) (limit int, hard bool) {
 
 // NewPaginationLimitError builds the common partial-result exhaustion error.
 func NewPaginationLimitError(operation, kind string, maximum, results int) error {
+	return &PaginationLimitError{
+		Operation: operation,
+		Kind:      kind,
+		Maximum:   maximum,
+		Results:   results,
+		Hard:      true,
+	}
+}
+
+// NewConfiguredPaginationLimitError reports partial results caused by a
+// caller-configured result cap rather than a non-configurable safety ceiling.
+func NewConfiguredPaginationLimitError(operation, kind string, maximum, results int) error {
 	return &PaginationLimitError{
 		Operation: operation,
 		Kind:      kind,

@@ -92,7 +92,7 @@ var defaultCiscoOSE2EMetrics = []string{
 //	CISCOOS_E2E_EXPECT_OS=NX-OS
 //	CISCOOS_E2E_MIN_INTERFACES=20
 //	CISCOOS_E2E_EXPECT_INTERFACES=mgmt0,Eth1/1,Eth1/15,Eth1/16,Lo0,Lo1,Vlan1
-//	go test -tags=e2e -run TestE2ELiveSwitch -count=1 -timeout=3m ./receiver/ciscoosreceiver
+//	(cd receiver/ciscoosreceiver && go test -tags=e2e -run TestE2ELiveSwitch -count=1 -timeout=3m .)
 func TestE2ELiveSwitch(t *testing.T) {
 	cfg := newCiscoOSE2EConfig(t)
 	sink := new(consumertest.MetricsSink)

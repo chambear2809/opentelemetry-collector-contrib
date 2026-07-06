@@ -202,6 +202,7 @@ ciscoos:
   nexus_dashboard:
     enabled: true
     endpoint: "https://nexus-dashboard.example.com"
+    api_profile: "unified"
     insecure_skip_verify: true
     user_agent: "ciscoosreceiver-test"
     page_size: 75
@@ -288,6 +289,9 @@ ciscoos:
     sessions:
       enabled: true
       max_results: 750
+    session_details:
+      enabled: true
+      max_results: 125
     auth_failures:
       enabled: true
       max_results: 300
