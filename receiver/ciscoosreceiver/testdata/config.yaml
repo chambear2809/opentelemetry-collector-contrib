@@ -302,6 +302,9 @@ ciscoos:
       enabled: true
       node_name: "otel-collector"
       password: "pxgrid-secret"
+      cert_file: "/etc/otelcol/pxgrid.crt"
+      key_file: "/etc/otelcol/pxgrid.key"
+      key_password: "pxgrid-key-password"
       streaming: true
       max_results: 250
       subscriptions:

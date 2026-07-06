@@ -10,6 +10,7 @@ require (
 	github.com/openconfig/gnmi v0.14.1
 	github.com/sijms/go-ora/v2 v2.9.0
 	github.com/stretchr/testify v1.11.1
+	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78
 	go.opentelemetry.io/collector/component v1.61.1-0.20260703073134-a6b5d5cc637e
 	go.opentelemetry.io/collector/component/componenttest v0.155.1-0.20260703073134-a6b5d5cc637e
 	go.opentelemetry.io/collector/config/configgrpc v0.155.1-0.20260703073134-a6b5d5cc637e

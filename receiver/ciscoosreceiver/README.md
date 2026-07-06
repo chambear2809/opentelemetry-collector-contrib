@@ -643,7 +643,7 @@ fmc:
 Cisco ISE targets are polled over HTTPS using read-only ERS, OpenAPI, and MnT/Monitoring APIs. The receiver treats ISE
 as identity and policy evidence beside forwarding devices: RADIUS/TACACS failures, endpoint posture, profiler state,
 network device inventory, TrustSec state, alarms, certificates, licensing, webhooks, and policy objects are emitted as
-bounded metrics plus raw evidence logs.
+bounded metrics plus recursively redacted evidence logs.
 
 pxGrid and Data Connect are full-coverage add-ons. pxGrid REST and WebSocket/STOMP subscriptions are opt-in because
 they require pxGrid client credentials or certificates. Data Connect is opt-in because it requires ISE 3.2+ database
@@ -664,7 +664,10 @@ delete, policy mutation, certificate mutation, license mutation, repository muta
 | `ise.event_lookback` | duration | No | Lookback for evidence dedupe. Defaults to `24h`. |
 | `ise.session_lookback` | duration | No | Lookback for the `session_details` authentication-list window. Defaults to `15m`. |
 | `ise.targets.*` | lists | No | Optional filters for node names, network device names/IPs, endpoint MACs, usernames, policy names, security group names, and pxGrid services. Network-device IPs must be literal IP addresses and endpoint MACs must be valid 48-bit addresses. |
-| `ise.pxgrid.*` | map | No | Optional pxGrid endpoint, node name, password or cert/key/CA, `auto_activate`, streaming subscriptions, and result cap. |
+| `ise.pxgrid.*` | map | No | Optional pxGrid endpoint, node name, password or client certificate identity, `auto_activate`, streaming subscriptions, and result cap. |
+| `ise.pxgrid.cert_file` | string | No* | PEM pxGrid client certificate. Configure together with `key_file`. |
+| `ise.pxgrid.key_file` | string | No* | PEM pxGrid client private key. Unencrypted keys retain standard Go TLS support; encrypted keys must be PKCS#8 `ENCRYPTED PRIVATE KEY` PEM using PBES2 with PBKDF2 and AES-128/192/256-CBC, or Cisco ISE's legacy PKCS#12 SHA-1/3-key Triple-DES PBE, and require `key_password`. |
+| `ise.pxgrid.key_password` | string | No** | Password for an encrypted PKCS#8 `key_file`. It is treated as an opaque secret and is valid only with both `cert_file` and `key_file`. |
 | `ise.pxgrid.ca_file` | string | No | PEM CA bundle used to verify the pxGrid REST/WebSocket certificate. |
 | `ise.pxgrid.server_name` | string | No | TLS server name/SNI override for pxGrid. |
 | `ise.pxgrid.insecure_skip_verify` | bool | No | Disables pxGrid certificate verification for self-signed lab certificates. |
@@ -675,6 +678,10 @@ delete, policy mutation, certificate mutation, license mutation, repository muta
 | `ise.data_connect.ca_file` | string | No | PEM CA bundle appended to the Collector host trust store for Data Connect. Mutually exclusive with `wallet_dir`. |
 | `ise.data_connect.server_name` | string | No | TLS certificate name and SNI override while connecting to `host`, useful when `host` is an IP address. Works with either wallet or PEM trust. |
 | `ise.data_connect.ssl_verify` | bool | No | Verifies the Data Connect certificate. Defaults to `true`; set to `false` only for an isolated lab and only without `ca_file` or `server_name`. |
+
+*`ise.pxgrid.cert_file` and `ise.pxgrid.key_file` are required together for certificate-based pxGrid authentication.
+
+**`ise.pxgrid.key_password` is required only when `ise.pxgrid.key_file` contains an encrypted PKCS#8 private key.
 
 For production Data Connect, keep `ssl_verify: true` and configure either `wallet_dir` or `ca_file` when the issuing
 CA is not already trusted by the Collector host. Set `server_name` to a DNS name or IP SAN in the Data Connect
@@ -687,6 +694,17 @@ is enabled by default but ERS is disabled by default; enable ERS on ISE and use 
 in to a group that includes ERS routes. `pxgrid` and `data_connect` also default to disabled and require independent
 credentials and trust configuration. pxGrid streaming rejects WebSocket/STOMP frames or bodies over 4 MiB, more than
 256 headers, more than 64 KiB of aggregate headers, or any protocol line over 8 KiB.
+Subscriptions send binary STOMP messages with STOMP heartbeat negotiation disabled and use an empty WebSocket Ping
+control frame every 54 seconds instead. Ping writes are bounded to one second. Quiet topics do not have a data-read
+deadline; context cancellation closes the socket and joins the reader.
+
+The pxGrid client decrypts bounded PBES2/PBKDF2 AES-CBC and Cisco ISE-generated legacy PKCS#12 SHA-1/3-key Triple-DES
+encrypted PKCS#8 private keys only in memory and passes the resulting key directly to the TLS client; it never writes decrypted key
+material to disk. Legacy PBE is accepted only for ISE interoperability; generate new keys with PBES2 where possible.
+Supply `key_password` through a secret-backed environment variable or another Collector secret provider rather than
+placing it directly in a configuration file.
+The pxGrid loader caps CA and certificate PEM files at 1 MiB, private-key PEM files at 128 KiB, and encrypted PKCS#8
+DER at 64 KiB before parsing.
 
 The ERS client fails closed on redirects, HTML login pages, and unsupported or mismatched response types. It
 automatically negotiates ISE enhanced-security CSRF tokens with a cookie-backed session, refreshes an expired token
@@ -731,6 +749,7 @@ ise:
     node_name: otel-collector
     cert_file: /etc/otelcol/pxgrid.crt
     key_file: /etc/otelcol/pxgrid.key
+    key_password: ${env:ISE_PXGRID_KEY_PASSWORD}
     ca_file: /etc/otelcol/ise-ca.crt
     streaming: true
   data_connect:
@@ -765,6 +784,74 @@ Set `CISCOOS_E2E_ISE_OPERATIONS` to an exact comma-separated subset for focused 
 `CISCOOS_E2E_ISE_PAGE_SIZE` independently forces ERS pagination; `CISCOOS_E2E_ISE_REQUIRE_NONEMPTY=true` requires
 each selected operation to return decoded objects; and `CISCOOS_E2E_ISE_REQUIRE_CSRF=true` requires every selected
 ERS request to carry a negotiated token.
+
+Run the separate pxGrid gate with a dedicated pxGrid client identity, an exact top-level operation allowlist, a bounded
+result cap, and verified TLS. The configured control origin is authorized automatically; list every additional
+discovered HTTPS or WSS origin exactly, including its scheme and port. Certificate authentication accepts an
+unencrypted private key or an encrypted PKCS#8 key plus `CISCOOS_E2E_ISE_PXGRID_KEY_PASSWORD`. Password-based pxGrid
+authentication is also supported through `CISCOOS_E2E_ISE_PXGRID_PASSWORD`.
+Leave `CISCOOS_E2E_ISE_PXGRID_SERVER_NAME` unset when the endpoint and discovered origins use certificate-matching
+FQDNs. A configured override applies to every pxGrid REST and WebSocket connection, so every discovered node
+certificate must match that one name.
+
+```shell
+export CISCOOS_E2E_ISE_PXGRID_ENDPOINT=https://ise-pan.example.com:8910/pxgrid
+export CISCOOS_E2E_ISE_PXGRID_NODE_NAME=otel-ciscoosreceiver.example.com
+export CISCOOS_E2E_ISE_PXGRID_CERT_FILE=/etc/otelcol/pxgrid-client.crt
+export CISCOOS_E2E_ISE_PXGRID_KEY_FILE=/etc/otelcol/pxgrid-client.key
+export CISCOOS_E2E_ISE_PXGRID_CA_FILE=/etc/otelcol/ise-pxgrid-ca.crt
+export CISCOOS_E2E_ISE_PXGRID_ALLOWED_SERVICE_ORIGINS=https://ise-psn.example.com:8910,wss://ise-psn.example.com:8910
+export CISCOOS_E2E_ISE_PXGRID_OPERATIONS=pxgrid.version,pxgrid.service_lookup,pxgrid.session.get_sessions
+export CISCOOS_E2E_ISE_PXGRID_SERVICES=com.cisco.ise.session,com.cisco.ise.radius
+export CISCOOS_E2E_ISE_PXGRID_MAX_RESULTS=100
+export CISCOOS_E2E_ISE_EVENT_LOOKBACK=1h
+read -rs CISCOOS_E2E_ISE_PXGRID_KEY_PASSWORD
+export CISCOOS_E2E_ISE_PXGRID_KEY_PASSWORD
+
+(cd receiver/ciscoosreceiver && go test -tags=e2e -run '^TestE2ELiveISEPxGrid$' -count=1 -timeout=5m -v .)
+```
+
+Qualify pxGrid polling logs separately. Keep the endpoint, client identity, key-password, CA, and allowed-origin exports
+from the preceding block, then use exactly one or both of the only supported log operations,
+`pxgrid.session.get_sessions` and `pxgrid.radius.get_failures`. Every selected operation must return at least one log,
+so generate a current session or authentication failure before running its gate. The test enforces
+`CISCOOS_E2E_ISE_PXGRID_REQUIRE_NONEMPTY=true`, commits the first batch through the production deduplicator, and polls
+the same request window again. Any exact replay that is re-emitted fails the gate; genuinely new records are accepted
+and reported only as counts. The second source response must include at least one unchanged first-poll record for every
+selected operation, preventing a vacuous pass when all earlier records disappear or change. Only fixed-size one-way
+dedup fingerprints are retained between polls. Credentials and discovered URLs are never logged; response bodies,
+raw IDs, and raw dedup inputs are not retained between polls.
+
+```shell
+unset CISCOOS_E2E_ISE_PXGRID_SERVICES
+unset CISCOOS_E2E_ISE_PXGRID_AUTO_ACTIVATE
+unset CISCOOS_E2E_ISE_PXGRID_SUBSCRIPTIONS
+export CISCOOS_E2E_ISE_PXGRID_OPERATIONS=pxgrid.session.get_sessions
+export CISCOOS_E2E_ISE_PXGRID_REQUIRE_NONEMPTY=true
+export CISCOOS_E2E_ISE_PXGRID_STREAMING=false
+export CISCOOS_E2E_ISE_PXGRID_MAX_RESULTS=100
+export CISCOOS_E2E_ISE_EVENT_LOOKBACK=1h
+
+(cd receiver/ciscoosreceiver && go test -tags=e2e -run '^TestE2ELiveISEPxGridLogs$' -count=1 -timeout=5m -v .)
+```
+
+The pxGrid gate leaves account activation off by default. Initial enrollment requires both
+`CISCOOS_E2E_ISE_PXGRID_AUTO_ACTIVATE=true` and exact operation `pxgrid.account_activate`; omit both after the account
+is approved. `CISCOOS_E2E_ISE_PXGRID_REQUIRE_NONEMPTY=true` requires every selected operation and named service lookup
+to return an object. Streaming is also off by default. To qualify it, set `CISCOOS_E2E_ISE_PXGRID_STREAMING=true`, set
+`CISCOOS_E2E_ISE_PXGRID_SUBSCRIPTIONS` to an exact subset of `session,radius_failures,endpoint,trustsec`, and generate
+at least one event for every selected subscription before `CISCOOS_E2E_ISE_PXGRID_STREAM_TIMEOUT` expires. This
+message-delivery requirement defaults to `true`. Set `CISCOOS_E2E_ISE_PXGRID_STREAM_REQUIRE_MESSAGE=false` to instead
+qualify an idle stream. Readiness must complete within the lesser of the receiver request timeout and stream timeout:
+every selected stream must receive STOMP `CONNECTED` and successfully write `SUBSCRIBE`. This confirms the client sent
+the subscription but is not a broker receipt. After all streams are ready, each must remain open for a new, full stream
+timeout and stop cleanly on cancellation. Each service must emit exactly one readiness signal; a disconnect, endpoint
+fallback, second readiness signal, or any additional service-lookup/access-secret request after readiness fails the
+continuous-connection gate. Zero delivered messages are accepted in this mode. In message-required mode, the gate
+waits for the handler and the subsequent client ACK write to complete for every selected service; this proves a
+successful client write, not broker processing of the ACK. It never prints or retains message bodies. Use
+`CISCOOS_E2E_ISE_PXGRID_INSECURE_SKIP_VERIFY=true` only for an isolated lab; such a run does not qualify production
+TLS.
 
 Run the separate Data Connect gate with verified TLS and explicitly selected views. Use `none` to validate only REST
 status and the TCPS database ping. Set `CISCOOS_E2E_ISE_DATACONNECT_INCLUDE_LOGS=true` to validate allowlisted logs
@@ -1377,7 +1464,7 @@ state, NX-OS NVE/EVPN fabric metrics, vPC, LACP counters, and detailed QoS queue
 - Identity and access evidence: `ise.session.active.count`, `ise.session.count`, `ise.radius.failure.count`, `ise.tacacs.failure.count`, `ise.accounting.session.count`, `ise.endpoint.posture.status`, `ise.endpoint.posture.count`, and `ise.endpoint.profile.count`.
 - Policy and security posture: `ise.policy.object.count`, `ise.policy.status`, `ise.profiler.policy.status`, `ise.trustsec.resource.count`, `ise.trustsec.resource.status`, `ise.alarm.count`, `ise.certificate.expiration`, `ise.license.status`, and `ise.webhook.delivery.count`.
 - pxGrid and Data Connect: `ise.pxgrid.service.status`, `ise.pxgrid.subscription.status`, `ise.pxgrid.message.count`, `ise.dataconnect.query.duration`, `ise.dataconnect.query.rows`, `ise.dataconnect.query.errors`, and `ise.dataconnect.row.count`.
-- Logs: ISE logs preserve raw REST/OpenAPI/ERS/MnT, pxGrid, and Data Connect records with `event.domain=ise`, `event.name`, node, protocol, outcome, failure reason, policy, network device, endpoint MAC, user, session/audit ID, and HTTP status attributes where present. MnT `ActiveList` and `AuthList` records require the opt-in `session_details` group.
+- Logs: ISE logs preserve recursively redacted REST/OpenAPI/ERS/MnT, pxGrid, and Data Connect records with `event.domain=ise`, `event.name`, node, protocol, outcome, failure reason, policy, network device, endpoint MAC, user, session/audit ID, and HTTP status attributes where present. MnT `ActiveList` and `AuthList` records require the opt-in `session_details` group.
 
 ### Catalyst 9800 Metrics
 - Generic YANG telemetry: numeric leaves are emitted as `cisco.catalyst9800.yang.<module>.<path>.<leaf>`; integral values are preserved as int64 datapoints when representable, while other numeric values use double datapoints. String and enum leaves use an `_info` metric with the original value on the `value` attribute, known counters are cumulative sums, and other numeric leaves are gauges.

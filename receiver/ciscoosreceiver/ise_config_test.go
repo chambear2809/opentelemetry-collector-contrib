@@ -83,6 +83,26 @@ func TestISEConfigValidatePxGridCredentials(t *testing.T) {
 	assert.Contains(t, err.Error(), "ise.pxgrid.password or both ise.pxgrid.cert_file and ise.pxgrid.key_file must be provided")
 }
 
+func TestISEConfigValidatePxGridKeyPasswordRequiresCertificateAndKey(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	cfg.ISE.Enabled = true
+	cfg.ISE.Endpoint = "https://ise.example.com"
+	cfg.ISE.Auth.Username = "admin"
+	cfg.ISE.Auth.Password = configopaque.String("password")
+	cfg.ISE.PxGrid.Enabled = true
+	cfg.ISE.PxGrid.NodeName = "otel-collector"
+	cfg.ISE.PxGrid.Password = configopaque.String("pxgrid-secret")
+	cfg.ISE.PxGrid.KeyPassword = configopaque.String("private-key-secret")
+
+	err := cfg.Validate()
+	require.ErrorContains(t, err, "ise.pxgrid.key_password requires both ise.pxgrid.cert_file and ise.pxgrid.key_file")
+	assert.NotContains(t, err.Error(), string(cfg.ISE.PxGrid.KeyPassword))
+
+	cfg.ISE.PxGrid.CertFile = "/etc/otelcol/pxgrid.crt"
+	cfg.ISE.PxGrid.KeyFile = "/etc/otelcol/pxgrid.key"
+	require.NoError(t, cfg.Validate())
+}
+
 func TestISEConfigValidatePxGridServiceOrigins(t *testing.T) {
 	base := createDefaultConfig().(*Config)
 	base.ISE.Enabled = true

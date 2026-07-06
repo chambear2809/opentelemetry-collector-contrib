@@ -75,6 +75,7 @@ type ISEPxGridConfig struct {
 	Password              configopaque.String         `mapstructure:"password"`
 	CertFile              string                      `mapstructure:"cert_file"`
 	KeyFile               string                      `mapstructure:"key_file"`
+	KeyPassword           configopaque.String         `mapstructure:"key_password"`
 	CAFile                string                      `mapstructure:"ca_file"`
 	ServerName            string                      `mapstructure:"server_name"`
 	InsecureSkipVerify    bool                        `mapstructure:"insecure_skip_verify"`
@@ -235,7 +236,8 @@ func (cfg ISEPxGridConfig) hasTarget() bool {
 		cfg.NodeName != "" ||
 		cfg.Password != "" ||
 		cfg.CertFile != "" ||
-		cfg.KeyFile != ""
+		cfg.KeyFile != "" ||
+		cfg.KeyPassword != ""
 }
 
 func (cfg ISEDataConnectConfig) hasTarget() bool {
@@ -455,6 +457,9 @@ func validateISEPxGrid(cfg ISEPxGridConfig) error {
 	}
 	if (cfg.CertFile == "") != (cfg.KeyFile == "") {
 		err = multierr.Append(err, errors.New("ise.pxgrid.cert_file and ise.pxgrid.key_file must be provided together"))
+	}
+	if cfg.KeyPassword != "" && (cfg.CertFile == "" || cfg.KeyFile == "") {
+		err = multierr.Append(err, errors.New("ise.pxgrid.key_password requires both ise.pxgrid.cert_file and ise.pxgrid.key_file"))
 	}
 	if cfg.Streaming && !cfg.Enabled {
 		err = multierr.Append(err, errors.New("ise.pxgrid.streaming requires ise.pxgrid.enabled"))

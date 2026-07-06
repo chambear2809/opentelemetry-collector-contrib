@@ -164,6 +164,7 @@ func TestClientERSCSRFNegotiatesSessionAndReusesToken(t *testing.T) {
 	)
 	var fetches, protected int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "application/json", r.Header.Get("Accept"))
 		switch r.Header.Get(ersCSRFHeader) {
 		case ersCSRFFetchValue:
 			fetches++
@@ -324,9 +325,16 @@ func TestClientERSCSRFDoesNotRefreshMoreThanOnce(t *testing.T) {
 }
 
 func TestClientListERSPaginatesAndRecordsStats(t *testing.T) {
+	var fetchAccept string
+	var pageAccepts []string
 	var pages []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "Basic "+base64.StdEncoding.EncodeToString([]byte("admin:password")), r.Header.Get("Authorization"))
+		if r.Header.Get(ersCSRFHeader) == ersCSRFFetchValue {
+			fetchAccept = r.Header.Get("Accept")
+		} else {
+			pageAccepts = append(pageAccepts, r.Header.Get("Accept"))
+		}
 		pages = append(pages, r.URL.Query().Get("page"))
 		switch r.URL.Query().Get("page") {
 		case "1":
@@ -348,12 +356,30 @@ func TestClientListERSPaginatesAndRecordsStats(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, objects, 3)
 	assert.Equal(t, []string{"1", "1", "2"}, pages)
+	assert.Equal(t, "application/json", fetchAccept)
+	assert.Equal(t, []string{"application/json", "application/json"}, pageAccepts)
 	assert.Equal(t, "3", String(objects[2], "id"))
 	require.Len(t, stats, 3)
 	assert.Equal(t, ersCSRFOperation, stats[0].Operation)
 	assert.Equal(t, ersCSRFStatPath, stats[0].Path)
 	assert.Equal(t, "success", stats[0].Outcome)
 	assert.Equal(t, "ers.network_devices", stats[1].Operation)
+}
+
+func TestClientNonERSRequestsPreserveBroadAcceptHeader(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "application/json, application/xml, text/xml", r.Header.Get("Accept"))
+		_, _ = w.Write([]byte(`{"id":"one"}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password"})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	obj, err := client.GetObject(t.Context(), "openapi.resource", "/api/v1/resource", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "one", String(obj, "id"))
 }
 
 func TestClientListERSUsesAuthoritativeTotalWhenServerClampsPages(t *testing.T) {

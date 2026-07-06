@@ -1058,11 +1058,11 @@ $defs:
         $ref: ise_px_grid_config
       server_name:
         type: string
+      session_details:
+        $ref: ise_group_config
       session_lookback:
         type: string
         format: duration
-      session_details:
-        $ref: ise_group_config
       sessions:
         $ref: ise_group_config
       targets:
@@ -1098,9 +1098,9 @@ $defs:
         type: integer
       row_limit:
         type: integer
-      service_name:
-        type: string
       server_name:
+        type: string
+      service_name:
         type: string
       ssl:
         type: boolean
@@ -1148,6 +1148,8 @@ $defs:
         type: boolean
       key_file:
         type: string
+      key_password:
+        $ref: go.opentelemetry.io/collector/config/configopaque.string
       max_results:
         type: integer
       node_name:

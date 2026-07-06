@@ -260,6 +260,7 @@ func newISEPxGridClient(conf *Config, iseCfg ISEConfig) (*ise.PxGridClient, erro
 		Password:              string(iseCfg.PxGrid.Password),
 		CertFile:              iseCfg.PxGrid.CertFile,
 		KeyFile:               iseCfg.PxGrid.KeyFile,
+		KeyPassword:           string(iseCfg.PxGrid.KeyPassword),
 		CAFile:                iseCfg.PxGrid.CAFile,
 		ServerName:            iseCfg.PxGrid.ServerName,
 		InsecureSkipVerify:    iseCfg.PxGrid.InsecureSkipVerify,

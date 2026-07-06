@@ -34,6 +34,8 @@ const (
 	defaultRequestSpacing            = 20 * time.Millisecond
 	defaultMaxPages                  = 100
 	defaultMaxResults                = 100000
+	defaultAcceptHeader              = "application/json, application/xml, text/xml"
+	ersAcceptHeader                  = "application/json"
 	restCAConfigPath                 = "ise.ca_file"
 	restInsecureSkipVerifyConfigPath = "ise.insecure_skip_verify"
 	ersCSRFHeader                    = "X-CSRF-TOKEN"
@@ -833,7 +835,14 @@ func (c *Client) doOnce(
 		return nil, nil, 0, err
 	}
 	req.Header.Set("User-Agent", c.userAgent)
-	req.Header.Set("Accept", "application/json, application/xml, text/xml")
+	accept := defaultAcceptHeader
+	if isERSRequestPath(path) {
+		// ISE 3.4 rejects ERS requests whose Accept header advertises multiple
+		// representations. OpenAPI and MnT endpoints continue to accept both
+		// JSON and XML, but ERS requires this exact value.
+		accept = ersAcceptHeader
+	}
+	req.Header.Set("Accept", accept)
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
