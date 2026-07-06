@@ -65,7 +65,7 @@ type IOSXRSubscriptionConfig struct {
 	Mode              string                        `mapstructure:"mode"`
 	StreamMode        string                        `mapstructure:"stream_mode"`
 	SampleInterval    time.Duration                 `mapstructure:"sample_interval"`
-	HeartbeatInterval time.Duration                 `mapstructure:"heartbeat_interval"`
+	HeartbeatInterval *time.Duration                `mapstructure:"heartbeat_interval"`
 	PollInterval      time.Duration                 `mapstructure:"poll_interval"`
 	SuppressRedundant configoptional.Optional[bool] `mapstructure:"suppress_redundant"`
 	UpdatesOnly       configoptional.Optional[bool] `mapstructure:"updates_only"`
@@ -189,7 +189,6 @@ func defaultIOSXRSubscriptionConfig() IOSXRSubscriptionConfig {
 		Mode:              iosXRSubscribeModeStream,
 		StreamMode:        iosXRStreamModeSample,
 		SampleInterval:    time.Minute,
-		HeartbeatInterval: time.Minute,
 		SuppressRedundant: configoptional.Some(true),
 		UpdatesOnly:       configoptional.Some(false),
 		AllowAggregation:  configoptional.Some(false),
@@ -345,7 +344,7 @@ func (sub IOSXRSubscriptionConfig) withDefaults(defaults IOSXRSubscriptionConfig
 	if sub.SampleInterval == 0 {
 		sub.SampleInterval = defaults.SampleInterval
 	}
-	if sub.HeartbeatInterval == 0 {
+	if sub.HeartbeatInterval == nil {
 		sub.HeartbeatInterval = defaults.HeartbeatInterval
 	}
 	if !sub.SuppressRedundant.HasValue() {
@@ -366,6 +365,13 @@ func (sub IOSXRSubscriptionConfig) withDefaults(defaults IOSXRSubscriptionConfig
 func (sub IOSXRSubscriptionConfig) suppressRedundant() bool {
 	value := sub.SuppressRedundant.Get()
 	return value != nil && *value
+}
+
+func (sub IOSXRSubscriptionConfig) heartbeatInterval() time.Duration {
+	if sub.HeartbeatInterval == nil {
+		return 0
+	}
+	return *sub.HeartbeatInterval
 }
 
 func (sub IOSXRSubscriptionConfig) updatesOnly() bool {
@@ -417,7 +423,7 @@ func validateIOSXRSubscription(prefix string, sub IOSXRSubscriptionConfig, targe
 	if sub.SampleInterval < 0 {
 		err = multierr.Append(err, fmt.Errorf("%s.sample_interval must not be negative", prefix))
 	}
-	if sub.HeartbeatInterval < 0 {
+	if sub.HeartbeatInterval != nil && *sub.HeartbeatInterval < 0 {
 		err = multierr.Append(err, fmt.Errorf("%s.heartbeat_interval must not be negative", prefix))
 	}
 	if sub.PollInterval < 0 {

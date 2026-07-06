@@ -131,7 +131,7 @@ func TestIOSXRNormalizingConsumerCoalescesStreamsAndPreservesIntDatapoints(t *te
 	raw := pmetric.NewMetrics()
 	rm := raw.ResourceMetrics().AppendEmpty()
 	rm.Resource().Attributes().PutStr("cisco.node_id", "xr-1")
-	rm.Resource().Attributes().PutStr("cisco.encoding_path", "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/latest/generic-counters")
+	rm.Resource().Attributes().PutStr("cisco.encoding_path", "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/generic-counters")
 	sm := rm.ScopeMetrics().AppendEmpty()
 	for iface, value := range map[string]int64{
 		"GigabitEthernet0/0": math.MaxInt64,
@@ -499,7 +499,7 @@ func rawIOSXRDialOutMetrics(metricName string, value float64) pmetric.Metrics {
 	md := pmetric.NewMetrics()
 	rm := md.ResourceMetrics().AppendEmpty()
 	rm.Resource().Attributes().PutStr("cisco.node_id", "xr-1")
-	rm.Resource().Attributes().PutStr("cisco.encoding_path", "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/latest/generic-counters")
+	rm.Resource().Attributes().PutStr("cisco.encoding_path", "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/generic-counters")
 	sm := rm.ScopeMetrics().AppendEmpty()
 	metric := sm.Metrics().AppendEmpty()
 	metric.SetName(metricName)

@@ -1,0 +1,12 @@
+change_type: bug_fix
+component: receiver/cisco_os
+note: Correct IOS XR telemetry paths, metric semantics, and subscription behavior.
+issues: [0]
+subtext: |
+  Remove obsolete native interface, FlowSpec, and SRv6 accounting path segments discovered against XRd 25.3.1.
+  Disable the legacy IOS XR SAMPLE heartbeat by default because current IOS XR gNMI servers can reject that request;
+  operators can still enable a heartbeat after qualifying their target. Preserve counter types and standard interface
+  attributes for native and OpenConfig interface telemetry, emit only mode-compatible Subscribe fields, and preserve an
+  explicit per-target zero heartbeat. Add CA and server-name controls to the live IOS XR gNMI test and require decoded
+  YANG telemetry so verified private-PKI targets can be reproduced without a health-only false positive.
+change_logs: [user]

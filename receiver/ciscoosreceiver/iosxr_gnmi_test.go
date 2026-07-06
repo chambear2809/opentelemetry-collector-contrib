@@ -106,6 +106,33 @@ func TestIOSXRGNMIDecoderScalarsJSONLeaflistsAndDeletes(t *testing.T) {
 	assert.Equal(t, int64(1), health.snapshot().compactGPBPayloads)
 }
 
+func TestIOSXRGNMIDecoderPreservesInterfaceCounterSemantics(t *testing.T) {
+	decoder := iosXRGNMIUpdateDecoder{
+		target: IOSXRTargetConfig{Name: "xr-1"},
+		health: &iosXRHealth{},
+	}
+
+	md := decoder.decodeNotification(&gnmi.Notification{
+		Timestamp: time.Unix(1700000000, 0).UnixNano(),
+		Prefix: mustParseIOSXRPath(t,
+			"Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface[interface-name=Null0]/generic-counters"),
+		Update: []*gnmi.Update{
+			{Path: mustParseIOSXRPath(t, "resets"), Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_UintVal{UintVal: 3}}},
+			{Path: mustParseIOSXRPath(t, "seconds-since-packet-received"), Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_UintVal{UintVal: 7}}},
+		},
+	}, iosXRTelemetryTransportDialIn)
+
+	resets := mustFindIOSXRMetric(t, md,
+		"cisco.iosxr.yang.cisco_ios_xr_infra_statsd_oper.infra_statistics.interfaces.interface.generic_counters.resets")
+	require.Equal(t, pmetric.MetricTypeSum, resets.Type())
+	assert.Equal(t, "Null0", attrValue(t, resets.Sum().DataPoints().At(0).Attributes(), "network.interface.name"))
+
+	elapsed := mustFindIOSXRMetric(t, md,
+		"cisco.iosxr.yang.cisco_ios_xr_infra_statsd_oper.infra_statistics.interfaces.interface.generic_counters.seconds_since_packet_received")
+	require.Equal(t, pmetric.MetricTypeGauge, elapsed.Type())
+	assert.Equal(t, "Null0", attrValue(t, elapsed.Gauge().DataPoints().At(0).Attributes(), "network.interface.name"))
+}
+
 func TestIOSXRGNMIDecoderCoalescesMetricStreamsAndPreservesUint64(t *testing.T) {
 	decoder := iosXRGNMIUpdateDecoder{
 		target: IOSXRTargetConfig{Name: "xr-1"},
@@ -384,6 +411,35 @@ func TestDirectGNMIPathIdentityIsDeterministicAndCollisionSafe(t *testing.T) {
 		assert.Equal(t, want, attrs)
 		assert.Zero(t, budget.dropped)
 	}
+}
+
+func TestDirectGNMIPathExplicitInterfaceNameBypassesFallbackHeuristic(t *testing.T) {
+	for _, interfaceName := range []string{"Null0", "srte_c_100_ep_100.100.100.102"} {
+		t.Run(interfaceName, func(t *testing.T) {
+			budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
+			parts, attrs, ok := pathPartsAndAttrs(&gnmi.Path{Elem: []*gnmi.PathElem{{
+				Name: "interface",
+				Key:  map[string]string{"interface-name": interfaceName},
+			}}}, nil, budget)
+
+			require.True(t, ok)
+			assert.Equal(t, []string{"interface"}, parts)
+			assert.Equal(t, interfaceName, attrs["network.interface.name"])
+			assert.Zero(t, budget.dropped)
+		})
+	}
+
+	t.Run("generic name still requires an interface-shaped value", func(t *testing.T) {
+		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
+		_, attrs, ok := pathPartsAndAttrs(&gnmi.Path{Elem: []*gnmi.PathElem{{
+			Name: "interface",
+			Key:  map[string]string{"name": "not-an-interface"},
+		}}}, nil, budget)
+
+		require.True(t, ok)
+		assert.NotContains(t, attrs, "network.interface.name")
+		assert.Zero(t, budget.dropped)
+	})
 }
 
 func TestDirectGNMIPathIdentityCollisionBoundaries(t *testing.T) {

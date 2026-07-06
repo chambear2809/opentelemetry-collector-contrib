@@ -364,7 +364,43 @@ func sanitizeMetricSegment(value string) string {
 }
 
 func isIOSXRCounterMetric(pathParts []string) bool {
-	return isUnambiguousYANGCounter(pathParts)
+	if len(pathParts) == 0 {
+		return false
+	}
+	leaf := sanitizeMetricSegment(pathParts[len(pathParts)-1])
+	if idx := strings.LastIndexByte(leaf, '.'); idx >= 0 {
+		leaf = leaf[idx+1:]
+	}
+	if isIOSXRCounterContainerGauge(leaf) {
+		return false
+	}
+	if isUnambiguousYANGCounter(pathParts) {
+		return true
+	}
+	for _, part := range pathParts[:len(pathParts)-1] {
+		switch sanitizeMetricSegment(part) {
+		case "counters", "generic_counters":
+			return true
+		}
+	}
+	return false
+}
+
+func isIOSXRCounterContainerGauge(leaf string) bool {
+	switch leaf {
+	case "availability_flag",
+		"hardware_timestamp",
+		"last_clear",
+		"last_data_time",
+		"last_discontinuity_time",
+		"last_read_time",
+		"seconds_since_last_clear_counters",
+		"seconds_since_packet_received",
+		"seconds_since_packet_sent":
+		return true
+	default:
+		return false
+	}
 }
 
 func applyStringAttrs(attrs pcommon.Map, values map[string]string) {

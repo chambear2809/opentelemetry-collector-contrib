@@ -1229,9 +1229,10 @@ negotiated in configured order (`json_ietf`, `json`, `proto`), unsupported model
 | `ios_xr.dial_out.max_concurrent_streams` | int | No | Global maximum concurrent streams, from 1 through 1000. Defaults to `64`; its product with `max_recv_msg_size_mib` cannot exceed 256 MiB and is also charged to the receiver-wide 512 MiB gNMI envelope. |
 | `ios_xr.dial_out.module_paths` | list | No | Up to 64 local regular `.yang` files or directories. Startup rejects traversal beyond 100000 entries, more than 10000 YANG files, a file over 16 MiB, or more than 128 MiB of module data in aggregate. |
 | `ios_xr.encoding_preference` | list | No | Encoding negotiation order. Defaults to `["json_ietf", "json", "proto"]`. |
-| `ios_xr.subscription.mode` | string | No | `once`, `poll`, or `stream`. Defaults to `stream`. |
-| `ios_xr.subscription.stream_mode` | string | No | `sample`, `on_change`, or `target_defined`. Native Cisco paths fall back to `sample` for `target_defined` unless capabilities prove support. |
+| `ios_xr.subscription.mode` | string | No | `once`, `poll`, or `stream`. Defaults to `stream`. ONCE and POLL requests omit per-path stream mode, sample, suppression, and heartbeat fields. |
+| `ios_xr.subscription.stream_mode` | string | No | `sample`, `on_change`, or `target_defined`. Native Cisco paths fall back to `sample` for `target_defined` unless capabilities prove support. TARGET_DEFINED omits timing and suppression fields; ON_CHANGE permits only heartbeat. |
 | `ios_xr.subscription.sample_interval` | duration | No | Sample interval. Defaults to `60s`; high-volume catalog paths enforce safe minimums. |
+| `ios_xr.subscription.heartbeat_interval` | duration | No | Requests periodic heartbeat updates. Disabled by default because some IOS XR gNMI servers reject heartbeat on `SAMPLE` subscriptions; enable it only after target qualification. A target inherits an omitted receiver-level value and can explicitly set `0s` to disable it. |
 | `ios_xr.subscription.suppress_redundant` | bool | No | Suppresses unchanged values in streaming subscriptions. Defaults to `true`; a target inherits the receiver-level value when omitted, and can explicitly set `false`. |
 | `ios_xr.subscription.updates_only` | bool | No | Requests only post-subscription updates. Defaults to `false`; a target inherits the receiver-level value when omitted, and can explicitly override it. |
 | `ios_xr.subscription.allow_aggregation` | bool | No | Allows target-defined aggregation. Defaults to `false`; a target inherits the receiver-level value when omitted, and can explicitly override it. |
@@ -1271,7 +1272,6 @@ ios_xr:
           mode: stream
           stream_mode: sample
           sample_interval: 60s
-          heartbeat_interval: 60s
           suppress_redundant: true
         encoding_preference: [json_ietf, proto]
   dial_out:
@@ -1827,11 +1827,17 @@ export CISCOOS_E2E_IOSXR_ENDPOINT=10.0.0.10:57400
 export CISCOOS_E2E_IOSXR_USERNAME=automation
 read -rs CISCOOS_E2E_IOSXR_PASSWORD
 export CISCOOS_E2E_IOSXR_PASSWORD
-export CISCOOS_E2E_IOSXR_TLS_INSECURE=false
+export CISCOOS_E2E_IOSXR_CA_FILE=/etc/otelcol/certs/ios-xr-ca.pem
+export CISCOOS_E2E_IOSXR_SERVER_NAME=router.example.net
+export CISCOOS_E2E_IOSXR_INSECURE_SKIP_VERIFY=false
 export CISCOOS_E2E_IOSXR_PATH_GROUPS=interfaces,optics,bgp
+export CISCOOS_E2E_IOSXR_EXPECT_METRICS=cisco.iosxr.yang.cisco_ios_xr_infra_statsd_oper.infra_statistics.interfaces.interface.generic_counters.bytes_received
 
 (cd receiver/ciscoosreceiver && go test -tags=e2e -run TestE2EIOSXRGNMIDialIn -count=1 -timeout=3m .)
 ```
+
+The dial-in test always requires at least one decoded `cisco.iosxr.yang.*` metric, so receiver-health metrics alone cannot
+satisfy the live gate. `CISCOOS_E2E_IOSXR_EXPECT_METRICS` optionally adds exact comma-separated metric assertions.
 
 For MDT gRPC dial-out, configure the IOS XR router subscription to stream to the collector endpoint, then run:
 

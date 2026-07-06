@@ -41,7 +41,7 @@ func TestGNMIDialOutNetworkPathDeliversNormalizedTelemetry(t *testing.T) {
 	}{
 		{
 			name:         "IOS XR",
-			encodingPath: "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/latest/generic-counters",
+			encodingPath: "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/generic-counters",
 			metricPrefix: "cisco.iosxr.yang.",
 			transport:    iosXRTelemetryTransportDialOut,
 			create: func(endpoint string, next consumer.Metrics) (receiver.Metrics, error) {

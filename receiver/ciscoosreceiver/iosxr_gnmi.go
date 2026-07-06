@@ -964,7 +964,11 @@ func pathPartsAndAttrs(prefix, update *gnmi.Path, budget *directGNMIDecodeBudget
 					return false
 				}
 			}
-			if !putDirectGNMIPathSemanticAttribute(attrs, "network.interface.name", preferredGNMIPathKeyValue(keys, orderedKeys, looksLikeInterfaceName, "interface-name", "name"), parts, budget) {
+			interfaceName := preferredGNMIPathKeyValue(keys, orderedKeys, nil, "interface-name")
+			if interfaceName == "" {
+				interfaceName = preferredGNMIPathKeyValue(keys, orderedKeys, looksLikeInterfaceName, "name")
+			}
+			if !putDirectGNMIPathSemanticAttribute(attrs, "network.interface.name", interfaceName, parts, budget) {
 				return false
 			}
 			if !putDirectGNMIPathSemanticAttribute(attrs, "network.vrf.name", preferredGNMIPathKeyValue(keys, orderedKeys, nil, "vrf-name", "vrf"), parts, budget) {

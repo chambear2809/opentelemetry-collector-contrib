@@ -21,6 +21,7 @@ func isUnambiguousYANGCounter(pathParts []string) bool {
 		"rate", "per_second", "utilization", "percentage", "percent", "ratio",
 		"temperature", "voltage", "current", "power", "rssi", "snr", "noise",
 		"state", "status", "reason", "type", "enum", "delay", "latency",
+		"time", "timestamp", "seconds_since",
 	} {
 		if containsMetricWord(leaf, gaugeHint) || strings.Contains(gaugeHint, "_") && strings.Contains(leaf, gaugeHint) {
 			return false

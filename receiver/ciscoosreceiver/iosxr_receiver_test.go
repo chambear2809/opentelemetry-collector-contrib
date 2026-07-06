@@ -82,7 +82,10 @@ func TestIOSXRDialInReceiverSubscribesAndConsumesGNMI(t *testing.T) {
 	assert.Equal(t, gnmi.Encoding_JSON_IETF, subscribe.Encoding)
 	assert.Equal(t, gnmi.SubscriptionList_ONCE, subscribe.Mode)
 	require.Len(t, subscribe.Subscription, 1)
-	assert.Equal(t, gnmi.SubscriptionMode_SAMPLE, subscribe.Subscription[0].Mode)
+	assert.Equal(t, gnmi.SubscriptionMode_TARGET_DEFINED, subscribe.Subscription[0].Mode)
+	assert.Zero(t, subscribe.Subscription[0].SampleInterval)
+	assert.Zero(t, subscribe.Subscription[0].HeartbeatInterval)
+	assert.False(t, subscribe.Subscription[0].SuppressRedundant)
 	assert.Equal(t, "admin", firstMetadataValue(fake.capabilitiesMD, "username"))
 	assert.Equal(t, "password", firstMetadataValue(fake.subscribeMD, "password"))
 }
@@ -380,17 +383,18 @@ func TestIOSXREncodingNegotiation(t *testing.T) {
 }
 
 func TestBuildIOSXRSubscribeRequestModesAndGuardrails(t *testing.T) {
+	heartbeat := 10 * time.Second
 	req := buildIOSXRSubscribeRequest(IOSXRSubscriptionConfig{
 		Mode:              iosXRSubscribeModePoll,
 		StreamMode:        iosXRStreamModeTargetDefined,
 		SampleInterval:    30 * time.Second,
-		HeartbeatInterval: 10 * time.Second,
+		HeartbeatInterval: &heartbeat,
 		SuppressRedundant: configoptional.Some(true),
 		UpdatesOnly:       configoptional.Some(true),
 		AllowAggregation:  configoptional.Some(true),
 	}, []iosXRPathDefinition{
 		{ID: "oc", Path: "openconfig-interfaces:interfaces/interface/state", MinSampleInterval: time.Minute},
-		{ID: "native", Path: "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/latest/generic-counters", MinSampleInterval: time.Minute},
+		{ID: "native", Path: "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/generic-counters", MinSampleInterval: time.Minute},
 	}, gnmi.Encoding_JSON)
 
 	subscribe := req.GetSubscribe()
@@ -401,20 +405,25 @@ func TestBuildIOSXRSubscribeRequestModesAndGuardrails(t *testing.T) {
 	assert.True(t, subscribe.AllowAggregation)
 	require.Len(t, subscribe.Subscription, 2)
 	assert.Equal(t, gnmi.SubscriptionMode_TARGET_DEFINED, subscribe.Subscription[0].Mode)
-	assert.Equal(t, gnmi.SubscriptionMode_SAMPLE, subscribe.Subscription[1].Mode)
-	assert.Equal(t, uint64(time.Minute.Nanoseconds()), subscribe.Subscription[0].SampleInterval)
-	assert.Equal(t, uint64((10 * time.Second).Nanoseconds()), subscribe.Subscription[0].HeartbeatInterval)
-	assert.True(t, subscribe.Subscription[0].SuppressRedundant)
+	assert.Equal(t, gnmi.SubscriptionMode_TARGET_DEFINED, subscribe.Subscription[1].Mode)
+	for _, subscription := range subscribe.Subscription {
+		assert.Zero(t, subscription.SampleInterval)
+		assert.Zero(t, subscription.HeartbeatInterval)
+		assert.False(t, subscription.SuppressRedundant)
+	}
 }
 
 func TestBuildIOSXRSubscribeRequestPathDefaultStreamModeOverrides(t *testing.T) {
+	heartbeat := 10 * time.Second
 	req := buildIOSXRSubscribeRequest(IOSXRSubscriptionConfig{
-		Mode:           iosXRSubscribeModeStream,
-		StreamMode:     iosXRStreamModeSample,
-		SampleInterval: 30 * time.Second,
+		Mode:              iosXRSubscribeModeStream,
+		StreamMode:        iosXRStreamModeSample,
+		SampleInterval:    30 * time.Second,
+		HeartbeatInterval: &heartbeat,
+		SuppressRedundant: configoptional.Some(true),
 	}, []iosXRPathDefinition{
 		{ID: "alarms", Path: "Cisco-IOS-XR-alarmgr-server-oper:alarms", DefaultStreamMode: iosXRStreamModeOnChange},
-		{ID: "counters", Path: "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/latest/generic-counters"},
+		{ID: "counters", Path: "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/generic-counters"},
 	}, gnmi.Encoding_JSON)
 
 	subscribe := req.GetSubscribe()
@@ -422,8 +431,50 @@ func TestBuildIOSXRSubscribeRequestPathDefaultStreamModeOverrides(t *testing.T) 
 	require.Len(t, subscribe.Subscription, 2)
 	// Per-path catalog DefaultStreamMode wins over the global sample default.
 	assert.Equal(t, gnmi.SubscriptionMode_ON_CHANGE, subscribe.Subscription[0].Mode)
+	assert.Zero(t, subscribe.Subscription[0].SampleInterval)
+	assert.Equal(t, uint64(heartbeat.Nanoseconds()), subscribe.Subscription[0].HeartbeatInterval)
+	assert.False(t, subscribe.Subscription[0].SuppressRedundant)
 	// Path with no catalog default falls back to the global stream_mode.
 	assert.Equal(t, gnmi.SubscriptionMode_SAMPLE, subscribe.Subscription[1].Mode)
+	assert.Equal(t, uint64((30 * time.Second).Nanoseconds()), subscribe.Subscription[1].SampleInterval)
+	assert.Equal(t, uint64(heartbeat.Nanoseconds()), subscribe.Subscription[1].HeartbeatInterval)
+	assert.True(t, subscribe.Subscription[1].SuppressRedundant)
+}
+
+func TestBuildIOSXRSubscribeRequestTargetDefinedOmitsTimingFields(t *testing.T) {
+	heartbeat := 10 * time.Second
+	req := buildIOSXRSubscribeRequest(IOSXRSubscriptionConfig{
+		Mode:              iosXRSubscribeModeStream,
+		StreamMode:        iosXRStreamModeTargetDefined,
+		SampleInterval:    30 * time.Second,
+		HeartbeatInterval: &heartbeat,
+		SuppressRedundant: configoptional.Some(true),
+	}, []iosXRPathDefinition{{
+		ID:                "interfaces.oc",
+		Path:              "openconfig-interfaces:interfaces/interface/state",
+		MinSampleInterval: time.Minute,
+	}}, gnmi.Encoding_JSON_IETF)
+
+	subscribe := req.GetSubscribe()
+	require.NotNil(t, subscribe)
+	require.Len(t, subscribe.Subscription, 1)
+	assert.Equal(t, gnmi.SubscriptionMode_TARGET_DEFINED, subscribe.Subscription[0].Mode)
+	assert.Zero(t, subscribe.Subscription[0].SampleInterval)
+	assert.Zero(t, subscribe.Subscription[0].HeartbeatInterval)
+	assert.False(t, subscribe.Subscription[0].SuppressRedundant)
+}
+
+func TestBuildIOSXRSubscribeRequestDefaultDoesNotForceHeartbeat(t *testing.T) {
+	req := buildIOSXRSubscribeRequest(defaultIOSXRSubscriptionConfig(), []iosXRPathDefinition{{
+		ID:                "interfaces.counters",
+		Path:              "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/generic-counters",
+		MinSampleInterval: time.Minute,
+	}}, gnmi.Encoding_JSON_IETF)
+
+	subscribe := req.GetSubscribe()
+	require.NotNil(t, subscribe)
+	require.Len(t, subscribe.Subscription, 1)
+	assert.Zero(t, subscribe.Subscription[0].HeartbeatInterval)
 }
 
 func TestDirectGNMIRetryDelayIsBoundedExponentialWithJitter(t *testing.T) {

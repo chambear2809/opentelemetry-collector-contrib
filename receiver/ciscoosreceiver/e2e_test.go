@@ -54,7 +54,9 @@ const (
 	ciscoOSE2EIOSXREndpointEnv    = "CISCOOS_E2E_IOSXR_ENDPOINT"
 	ciscoOSE2EIOSXRUsernameEnv    = "CISCOOS_E2E_IOSXR_USERNAME"
 	ciscoOSE2EIOSXRPasswordEnv    = "CISCOOS_E2E_IOSXR_PASSWORD"
-	ciscoOSE2EIOSXRInsecureEnv    = "CISCOOS_E2E_IOSXR_TLS_INSECURE"
+	ciscoOSE2EIOSXRCAFileEnv      = "CISCOOS_E2E_IOSXR_CA_FILE"
+	ciscoOSE2EIOSXRServerNameEnv  = "CISCOOS_E2E_IOSXR_SERVER_NAME"
+	ciscoOSE2EIOSXRSkipVerifyEnv  = "CISCOOS_E2E_IOSXR_INSECURE_SKIP_VERIFY"
 	ciscoOSE2EIOSXRGroupsEnv      = "CISCOOS_E2E_IOSXR_PATH_GROUPS"
 	ciscoOSE2EIOSXRMetricsEnv     = "CISCOOS_E2E_IOSXR_EXPECT_METRICS"
 	ciscoOSE2EIOSXRDialOutEnv     = "CISCOOS_E2E_IOSXR_DIALOUT_ENDPOINT"
@@ -161,12 +163,12 @@ func TestE2EIOSXRGNMIDialIn(t *testing.T) {
 		assert.NoError(t, rcvr.Shutdown(context.Background()))
 	})
 
-	expectedMetrics := append([]string{"cisco.iosxr.receiver.updates"}, csvEnv(ciscoOSE2EIOSXRMetricsEnv)...)
+	expectedMetrics := csvEnv(ciscoOSE2EIOSXRMetricsEnv)
 	waitTimeout := durationEnv(t, ciscoOSE2EWaitTimeoutEnv, 2*time.Minute)
 	require.EventuallyWithT(t, func(tt *assert.CollectT) {
 		summary := summarizeCiscoOSE2EMetrics(sink.AllMetrics())
 		assert.Positive(tt, sink.DataPointCount())
-		assert.True(tt, summaryHasMetricPrefix(summary, "cisco.iosxr."), "expected IOS XR metrics")
+		assert.True(tt, summaryHasMetricPrefix(summary, "cisco.iosxr.yang."), "expected decoded IOS XR YANG metrics")
 		for _, metricName := range expectedMetrics {
 			assert.Contains(tt, summary.metricNames, metricName)
 		}
@@ -217,7 +219,7 @@ func TestE2EIOSXRMDTDialOut(t *testing.T) {
 	require.EventuallyWithT(t, func(tt *assert.CollectT) {
 		summary := summarizeCiscoOSE2EMetrics(sink.AllMetrics())
 		assert.Positive(tt, sink.DataPointCount())
-		assert.True(tt, summaryHasMetricPrefix(summary, "cisco.iosxr."), "expected IOS XR dial-out metrics")
+		assert.True(tt, summaryHasMetricPrefix(summary, "cisco.iosxr.yang."), "expected decoded IOS XR dial-out YANG metrics")
 	}, waitTimeout, time.Second)
 }
 
@@ -284,7 +286,9 @@ func newIOSXRDialInE2EConfig(t *testing.T) *Config {
 	}
 	clientCfg := configgrpc.NewDefaultClientConfig()
 	clientCfg.Endpoint = endpoint
-	clientCfg.TLS.Insecure = boolEnv(t, ciscoOSE2EIOSXRInsecureEnv, false)
+	clientCfg.TLS.CAFile = os.Getenv(ciscoOSE2EIOSXRCAFileEnv)
+	clientCfg.TLS.ServerName = os.Getenv(ciscoOSE2EIOSXRServerNameEnv)
+	clientCfg.TLS.InsecureSkipVerify = boolEnv(t, ciscoOSE2EIOSXRSkipVerifyEnv, false)
 	cfg.IOSXR.DialIn.Targets = []IOSXRTargetConfig{{
 		ClientConfig: clientCfg,
 		Name:         "iosxr-e2e",
@@ -296,7 +300,6 @@ func newIOSXRDialInE2EConfig(t *testing.T) *Config {
 			Mode:              iosXRSubscribeModeOnce,
 			StreamMode:        iosXRStreamModeSample,
 			SampleInterval:    durationEnv(t, ciscoOSE2ECollectionIntEnv, time.Minute),
-			HeartbeatInterval: durationEnv(t, ciscoOSE2ECollectionIntEnv, time.Minute),
 			SuppressRedundant: configoptional.Some(true),
 		},
 	}}

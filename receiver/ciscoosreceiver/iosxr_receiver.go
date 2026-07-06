@@ -575,14 +575,20 @@ func buildIOSXRSubscribeRequest(sub IOSXRSubscriptionConfig, paths []iosXRPathDe
 		if streamMode == iosXRStreamModeTargetDefined && !strings.HasPrefix(def.Path, "openconfig-") {
 			streamMode = iosXRStreamModeSample
 		}
-		sampleInterval := max(def.MinSampleInterval, sub.SampleInterval)
-		list.Subscription = append(list.Subscription, &gnmi.Subscription{
-			Path:              p,
-			Mode:              subscriptionStreamMode(streamMode),
-			SampleInterval:    uint64(sampleInterval.Nanoseconds()),
-			SuppressRedundant: sub.suppressRedundant(),
-			HeartbeatInterval: uint64(sub.HeartbeatInterval.Nanoseconds()),
-		})
+		subscription := &gnmi.Subscription{Path: p}
+		if sub.Mode == iosXRSubscribeModeStream {
+			subscription.Mode = subscriptionStreamMode(streamMode)
+			switch streamMode {
+			case iosXRStreamModeSample:
+				sampleInterval := max(def.MinSampleInterval, sub.SampleInterval)
+				subscription.SampleInterval = uint64(sampleInterval.Nanoseconds())
+				subscription.SuppressRedundant = sub.suppressRedundant()
+				subscription.HeartbeatInterval = uint64(sub.heartbeatInterval().Nanoseconds())
+			case iosXRStreamModeOnChange:
+				subscription.HeartbeatInterval = uint64(sub.heartbeatInterval().Nanoseconds())
+			}
+		}
+		list.Subscription = append(list.Subscription, subscription)
 	}
 	return &gnmi.SubscribeRequest{Request: &gnmi.SubscribeRequest_Subscribe{Subscribe: list}}
 }
