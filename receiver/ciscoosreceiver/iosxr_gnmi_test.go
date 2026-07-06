@@ -866,6 +866,53 @@ func TestIOSXRGNMIJSONRejectsAmbiguousUnrecognizedListIdentity(t *testing.T) {
 	}
 }
 
+func TestIOSXRGNMIJSONUsesUniqueEntryAsListIdentity(t *testing.T) {
+	health := &iosXRHealth{}
+	decoder := iosXRGNMIUpdateDecoder{target: IOSXRTargetConfig{Name: "xr-1"}, health: health}
+	md := decoder.decodeNotification(&gnmi.Notification{
+		Prefix: mustParseIOSXRPath(t, "Cisco-IOS-XR-clns-isis-oper:isis/instances/instance"),
+		Update: []*gnmi.Update{{
+			Path: mustParseIOSXRPath(t, "neighbors/neighbor"),
+			Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`{
+				"backup-label-stack": [
+					{"entry": 16103},
+					{"entry": 16105}
+				]
+			}`)}},
+		}},
+	}, iosXRTelemetryTransportDialIn)
+
+	metric := mustFindIOSXRMetric(t, md, "cisco.iosxr.yang.cisco_ios_xr_clns_isis_oper.isis.instances.instance.neighbors.neighbor.backup_label_stack.entry")
+	dps := metric.Gauge().DataPoints()
+	require.Equal(t, 2, dps.Len())
+	entries := map[string]struct{}{}
+	for index := 0; index < dps.Len(); index++ {
+		entries[attrValue(t, dps.At(index).Attributes(), "cisco.yang.key.entry")] = struct{}{}
+	}
+	assert.Equal(t, map[string]struct{}{"16103": {}, "16105": {}}, entries)
+	assert.Zero(t, health.snapshot().droppedDatapoints)
+}
+
+func TestIOSXRGNMIJSONRejectsDuplicateEntryIdentity(t *testing.T) {
+	health := &iosXRHealth{}
+	decoder := iosXRGNMIUpdateDecoder{target: IOSXRTargetConfig{Name: "xr-1"}, health: health}
+	md := decoder.decodeNotification(&gnmi.Notification{
+		Prefix: mustParseIOSXRPath(t, "Cisco-IOS-XR-clns-isis-oper:isis/instances/instance"),
+		Update: []*gnmi.Update{{
+			Path: mustParseIOSXRPath(t, "neighbors/neighbor"),
+			Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`{
+				"backup-label-stack": [
+					{"entry": 16103},
+					{"entry": 16103}
+				]
+			}`)}},
+		}},
+	}, iosXRTelemetryTransportDialIn)
+
+	assert.Zero(t, directTelemetryDataPointCount(md))
+	assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
+}
+
 func TestIOSXRGNMINestedJSONPreservesOuterAndInnerIdentity(t *testing.T) {
 	decoder := iosXRGNMIUpdateDecoder{target: IOSXRTargetConfig{Name: "xr-1"}, health: &iosXRHealth{}}
 	md := decoder.decodeNotification(&gnmi.Notification{

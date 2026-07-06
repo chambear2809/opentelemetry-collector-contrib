@@ -327,8 +327,15 @@ func (s *grpcService) emitMetrics(sm pmetric.ScopeMetrics, field *pb.TelemetryFi
 	if field == nil {
 		return nil
 	}
-	if err := budget.visitField(field.Name, depth); err != nil {
-		return err
+	anonymousRow := isAnonymousTopLevelGPBKVRow(field, pathPrefix, sourcePathPrefix, depth)
+	var visitErr error
+	if anonymousRow {
+		visitErr = budget.visitAnonymousTopLevelRow(depth)
+	} else {
+		visitErr = budget.visitField(field.Name, depth)
+	}
+	if visitErr != nil {
+		return visitErr
 	}
 	effectiveTimestamp := timestamp
 	if field.Timestamp != 0 {
@@ -339,16 +346,20 @@ func (s *grpcService) emitMetrics(sm pmetric.ScopeMetrics, field *pb.TelemetryFi
 		}
 	}
 	currentPath := pathPrefix
-	if currentPath != "" {
-		currentPath += "."
+	currentSourcePath := sourcePathPrefix
+	if !anonymousRow {
+		if currentPath != "" {
+			currentPath += "."
+		}
+		currentPath += field.Name
+		var err error
+		currentSourcePath, err = extendTelemetrySourcePath(sourcePathPrefix, field.Name, budget.limits.MaxAttrValueBytes)
+		if err != nil {
+			return err
+		}
 	}
-	currentPath += field.Name
 	if len(currentPath) > budget.limits.MaxMetricNameBytes {
 		return status.Errorf(codes.ResourceExhausted, "telemetry metric path exceeds %d bytes", budget.limits.MaxMetricNameBytes)
-	}
-	currentSourcePath, err := extendTelemetrySourcePath(sourcePathPrefix, field.Name, budget.limits.MaxAttrValueBytes)
-	if err != nil {
-		return err
 	}
 
 	localCtx := ctxBag
@@ -428,6 +439,38 @@ func (s *grpcService) emitMetrics(sm pmetric.ScopeMetrics, field *pb.TelemetryFi
 		}
 	}
 	return nil
+}
+
+// IOS XR represents each top-level GPB-KV list row as an anonymous wrapper
+// around exactly one keys subtree and one content subtree. Treat only that
+// wire shape as transparent; arbitrary empty field names remain invalid.
+func isAnonymousTopLevelGPBKVRow(field *pb.TelemetryField, pathPrefix, sourcePathPrefix string, depth int) bool {
+	if field == nil || field.Name != "" || field.ValueByType != nil || depth != 1 || pathPrefix != "" || sourcePathPrefix != "" || len(field.Fields) != 2 {
+		return false
+	}
+
+	hasKeys := false
+	hasContent := false
+	for _, child := range field.Fields {
+		if child == nil {
+			return false
+		}
+		switch child.Name {
+		case "keys":
+			if hasKeys {
+				return false
+			}
+			hasKeys = true
+		case "content":
+			if hasContent {
+				return false
+			}
+			hasContent = true
+		default:
+			return false
+		}
+	}
+	return hasKeys && hasContent
 }
 
 func extendTelemetrySourcePath(prefix, name string, maximum int) (string, error) {
@@ -560,6 +603,20 @@ func (b *telemetryConversionBudget) visitField(name string, depth int) error {
 	}
 	if len(name) > b.limits.MaxAttrKeyBytes {
 		return status.Errorf(codes.ResourceExhausted, "telemetry field name exceeds %d bytes", b.limits.MaxAttrKeyBytes)
+	}
+	return nil
+}
+
+func (b *telemetryConversionBudget) visitAnonymousTopLevelRow(depth int) error {
+	if depth != 1 {
+		return status.Error(codes.InvalidArgument, "anonymous telemetry row must be top-level")
+	}
+	if depth > b.limits.MaxDepth {
+		return status.Errorf(codes.ResourceExhausted, "telemetry field nesting exceeds %d levels", b.limits.MaxDepth)
+	}
+	b.fields++
+	if b.fields > b.limits.MaxFields {
+		return status.Errorf(codes.ResourceExhausted, "telemetry payload exceeds %d fields", b.limits.MaxFields)
 	}
 	return nil
 }

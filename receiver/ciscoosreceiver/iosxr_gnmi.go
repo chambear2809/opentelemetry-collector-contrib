@@ -400,6 +400,9 @@ func directGNMIAttributeProjectionDigest(attrs, inherited map[string]string) ([s
 }
 
 func extractJSONIdentityAttrs(value map[string]any, attrs map[string]string, budget *directGNMIDecodeBudget, objectPath []string) bool {
+	if !putPreferredScalarJSONIdentity(attrs, directGNMIPathKeyAttributePrefix+"entry", value, objectPath, budget, "entry") {
+		return false
+	}
 	name, namePresent, ok := preferredScalarJSONIdentity(value, budget, "name")
 	if !ok || (namePresent && !putDirectGNMIJSONIdentityAttribute(attrs, "name", name, objectPath, budget)) {
 		return false

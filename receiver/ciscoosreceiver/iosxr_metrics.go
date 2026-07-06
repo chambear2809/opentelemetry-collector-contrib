@@ -618,7 +618,9 @@ func (c *iosXRNormalizingConsumer) normalize(md pmetric.Metrics, budget *finalDa
 				default:
 					if strings.HasPrefix(metric.Name(), "cisco.") && !strings.HasPrefix(metric.Name(), "cisco.iosxr.") {
 						name := strings.TrimPrefix(metric.Name(), "cisco.")
-						metric.SetName(iosXRMetricName(module, strings.Split(name, ".")))
+						pathParts := strings.Split(name, ".")
+						metric.SetName(iosXRMetricName(module, pathParts))
+						normalizeIOSXRDialOutMetricSemantics(metric, encodingPath, pathParts)
 					}
 				}
 				annotateMetricDatapoints(metric, module, encodingPath, c.transport, budget)
@@ -629,6 +631,34 @@ func (c *iosXRNormalizingConsumer) normalize(md pmetric.Metrics, budget *finalDa
 		})
 		return rm.ScopeMetrics().Len() == 0
 	})
+}
+
+func normalizeIOSXRDialOutMetricSemantics(metric pmetric.Metric, encodingPath string, relativePath []string) {
+	if metric.Type() != pmetric.MetricTypeGauge || strings.HasSuffix(metric.Name(), "_info") {
+		return
+	}
+	pathParts := append(iosXREncodingPathParts(encodingPath), relativePath...)
+	if !isIOSXRCounterMetric(pathParts) {
+		return
+	}
+
+	datapoints := pmetric.NewNumberDataPointSlice()
+	metric.Gauge().DataPoints().CopyTo(datapoints)
+	sum := metric.SetEmptySum()
+	sum.SetIsMonotonic(true)
+	sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+	datapoints.MoveAndAppendTo(sum.DataPoints())
+}
+
+func iosXREncodingPathParts(value string) []string {
+	value = strings.Trim(strings.TrimSpace(value), "/")
+	if index := strings.IndexByte(value, ':'); index >= 0 {
+		value = value[index+1:]
+	}
+	if value == "" {
+		return nil
+	}
+	return strings.Split(value, "/")
 }
 
 func metricNumericTotal(metric pmetric.Metric) int64 {
@@ -801,8 +831,14 @@ func iosXRDatapointAttributeAdditions(attrs pcommon.Map, module, yangPath, trans
 	if transport != "" {
 		additions["cisco.telemetry.transport"] = transport
 	}
-	iface := firstIOSXRAttr(attrs, "interface", "interface-name", "if-name", "name")
-	if iface != "" && looksLikeInterfaceName(iface) {
+	iface := firstIOSXRAttr(attrs, "interface-name", "if-name")
+	if iface == "" {
+		candidate := firstIOSXRAttr(attrs, "interface", "name")
+		if looksLikeInterfaceName(candidate) {
+			iface = candidate
+		}
+	}
+	if iface != "" {
 		planAttrIfMissing(attrs, additions, "network.interface.name", iface)
 	}
 	if vrf := firstIOSXRAttr(attrs, "vrf", "vrf-name", "vrf-name-xr"); vrf != "" {

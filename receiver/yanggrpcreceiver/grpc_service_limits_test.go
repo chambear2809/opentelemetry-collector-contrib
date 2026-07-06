@@ -136,6 +136,10 @@ func TestConversionRejectsEmptyFieldAndKeyNames(t *testing.T) {
 			NodeId:    &pb.Telemetry_NodeIdStr{NodeIdStr: "router-1"},
 			DataGpbkv: []*pb.TelemetryField{numericTelemetryField("")},
 		},
+		"whitespace metric field": {
+			NodeId:    &pb.Telemetry_NodeIdStr{NodeIdStr: "router-1"},
+			DataGpbkv: []*pb.TelemetryField{numericTelemetryField(" ")},
+		},
 		"list key": {
 			NodeId: &pb.Telemetry_NodeIdStr{NodeIdStr: "router-1"},
 			DataGpbkv: []*pb.TelemetryField{{
@@ -148,6 +152,35 @@ func TestConversionRejectsEmptyFieldAndKeyNames(t *testing.T) {
 				},
 			}},
 		},
+		"anonymous row missing keys": {
+			NodeId: &pb.Telemetry_NodeIdStr{NodeIdStr: "router-1"},
+			DataGpbkv: []*pb.TelemetryField{{
+				Fields: []*pb.TelemetryField{
+					{Name: "content", Fields: []*pb.TelemetryField{numericTelemetryField("packets")}},
+				},
+			}},
+		},
+		"anonymous row duplicate content": {
+			NodeId: &pb.Telemetry_NodeIdStr{NodeIdStr: "router-1"},
+			DataGpbkv: []*pb.TelemetryField{{
+				Fields: []*pb.TelemetryField{
+					{Name: "content", Fields: []*pb.TelemetryField{numericTelemetryField("packets")}},
+					{Name: "content", Fields: []*pb.TelemetryField{numericTelemetryField("errors")}},
+				},
+			}},
+		},
+		"nested anonymous row": {
+			NodeId: &pb.Telemetry_NodeIdStr{NodeIdStr: "router-1"},
+			DataGpbkv: []*pb.TelemetryField{{
+				Name: "root",
+				Fields: []*pb.TelemetryField{{
+					Fields: []*pb.TelemetryField{
+						{Name: "keys"},
+						{Name: "content", Fields: []*pb.TelemetryField{numericTelemetryField("packets")}},
+					},
+				}},
+			}},
+		},
 	}
 	for name, telemetry := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -157,6 +190,50 @@ func TestConversionRejectsEmptyFieldAndKeyNames(t *testing.T) {
 			assert.ErrorContains(t, err, "cannot be empty")
 		})
 	}
+}
+
+func TestConversionAcceptsAnonymousTopLevelGPBKVRow(t *testing.T) {
+	service := newLimitsTestService(t)
+	telemetry := &pb.Telemetry{
+		NodeId:       &pb.Telemetry_NodeIdStr{NodeIdStr: "xrd-1"},
+		EncodingPath: "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/generic-counters",
+		MsgTimestamp: 1_000,
+		DataGpbkv: []*pb.TelemetryField{{
+			Timestamp: 2_000,
+			Fields: []*pb.TelemetryField{
+				{
+					Name: "keys",
+					Fields: []*pb.TelemetryField{{
+						Name:        "interface-name",
+						ValueByType: &pb.TelemetryField_StringValue{StringValue: "GigabitEthernet0/0/0/0"},
+					}},
+				},
+				{
+					Name:   "content",
+					Fields: []*pb.TelemetryField{numericTelemetryField("bytes-received")},
+				},
+			},
+		}},
+	}
+
+	metrics, err := service.convertToOTELMetrics(telemetry, time.Unix(1, 0))
+	require.NoError(t, err)
+	metricSlice := metrics.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics()
+	require.Equal(t, 1, metricSlice.Len())
+	metric := metricSlice.At(0)
+	assert.Equal(t, "cisco.bytes-received", metric.Name())
+	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+	dp := metric.Gauge().DataPoints().At(0)
+	assert.Equal(t, uint64(2_000_000_000), uint64(dp.Timestamp()))
+	interfaceName, ok := dp.Attributes().Get("interface-name")
+	require.True(t, ok)
+	assert.Equal(t, "GigabitEthernet0/0/0/0", interfaceName.Str())
+	interfaceAlias, ok := dp.Attributes().Get("interface")
+	require.True(t, ok)
+	assert.Equal(t, "GigabitEthernet0/0/0/0", interfaceAlias.Str())
+	sourcePath, ok := dp.Attributes().Get("cisco.yang.source_path")
+	require.True(t, ok)
+	assert.Equal(t, "content/bytes-received", sourcePath.Str())
 }
 
 func TestConversionUsesYANGTypeAndSafeCounterTimestamp(t *testing.T) {

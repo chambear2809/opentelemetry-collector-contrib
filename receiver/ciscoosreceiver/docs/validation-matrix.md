@@ -33,8 +33,8 @@ campaigns in [Consolidated Validation Campaigns](#consolidated-validation-campai
 | Cisco ACI/APIC | `aci`; HTTPS metrics/logs | `Run with findings` | A pre-hardening metrics pilot passed locally and in Splunk. | Rebuild and rerun the current patch with verified TLS, least privilege, endpoints, and soak coverage; keep logs disabled until raw-body privacy and restart-safe deduplication are addressed. |
 | Cisco Secure FMC | `fmc`; HTTPS/eStreamer metrics/logs | `Not run` | Automated coverage exists; no retained live qualification. | Run a bounded live campaign with verified TLS and destination delivery. |
 | Cisco Identity Services Engine | `ise`; REST, OpenAPI, ERS, MnT, pxGrid, Data Connect | `Passed (limited scope)` | [ISE 3.4 campaign](#ise-3-4-campaign): REST/MnT/OpenAPI, ERS, pxGrid queries/polling logs/idle stream, all 19 default Data Connect views, and a bounded REST/ERS/pxGrid-polling metric profile delivered to Splunk; polling logs were validated locally. | Unique pxGrid identity, secondary port-443 API Gateway, live pxGrid events/ACKs, searchable backend logs, failover, soak, and scale. |
-| Cisco IOS XR | `ios_xr`; gNMI/MDT metrics | `Passed (limited scope)` | [XRd 25.3.1 campaign](#ios-xr-xrd-25-3-1-campaign): verified-TLS dial-in, repaired paths and metric semantics, forced reconnect recovery, a non-vacuous E2E gate, four default-suppression intervals, and exact post-fix backend readback passed. | Qualify shared `gnmi` on exact physical ASR 9000/NCS 5500 builds, plus least privilege, MDT dial-out, optics, scale, and soak. |
-| Product-qualified shared gNMI | `gnmi`; secure Get/Subscribe metrics | `Run with findings` for Nexus 9000; otherwise `Not run` | The Nexus 9000 campaign reached semantic identity validation but did not start subscriptions. | Restore representative identity data, verified TLS, read-only auth, and backend assertion. |
+| Cisco IOS XR | `ios_xr`; gNMI/MDT metrics | `Passed (limited scope)` | [XRd 25.3.1 campaign](#ios-xr-xrd-25-3-1-campaign): verified-TLS eight-target dial-in, bounded soak and target-isolated recovery, path-compatibility inventory, and backend-confirmed hardened 30-second MDT dial-out. | Qualify shared `gnmi` on exact physical ASR 9000/NCS 5500 builds with least privilege, VDM/coherent/FEC optics, 5,000-port scale, and a production soak. |
+| Product-qualified shared gNMI | `gnmi`; secure Get/Subscribe metrics | `Run with findings` for Nexus 9000; otherwise `Not run` | Nexus 9000 reached semantic identity validation; XRd verified IOS XR model/identity failures quarantine before Subscribe. Neither is a success-path qualification. | Run exact physical product/build success paths with verified TLS, least privilege, required profiles, and backend assertion. |
 | VAST VMS and CSI | Standard Prometheus receivers | `Not run` | Adjacent example/dashboard coverage only; not a `cisco_os` source. | Run the documented manual checklist if this adjacent integration is in scope. |
 
 `Not run` does not mean unimplemented: automated coverage or a harness may exist without retained live evidence. The
@@ -143,49 +143,66 @@ focused tests but was not present in the streaming-disabled backend binary.
 
 <a id="ios-xr-xrd-25-3-1-campaign"></a>
 
-### Cisco IOS XR XRd gNMI dial-in — 2026-07-06
+### Cisco IOS XR XRd gNMI and MDT — 2026-07-06
 
-- **What was done:** XRd Control Plane `25.3.1 LNT` was exercised through the legacy `ios_xr` gNMI dial-in surface
-  with JSON_IETF, the router's default CA and certificate name verified, and the complete curated `interfaces` group.
-  Negative gates covered bad credentials, an untrusted CA, and a certificate-name mismatch. A forced gRPC outage tested
-  bounded retry, subscription-state transitions, verified-TLS reconnect, and resumed collection. A separate sweep tested
-  all 45 curated paths individually, the repository-native verified-TLS E2E test passed with an exact native counter,
-  and the shared `gnmi` engine was checked for fail-closed product preflight.
-- **Result:** `Passed (limited scope)` after post-review remediation. Correcting five stale native paths and disabling the
-  incompatible default SAMPLE heartbeat produced 25 data-producing paths, 12 valid empty paths, 7 modules absent by
-  Capabilities, and one
-  schema-valid OpenConfig NTP path rejected by the XRd provider. The repaired native hierarchies match Cisco's published
-  IOS XR `24.4.1` and `24.4.2` YANG models. After reconnect, the full interface group delivered at four 60-second
-  timestamps. Historical Splunk readback contained 114 metric names across 565 MTS: 51 native IOS XR, 51 OpenConfig, and
-  12 receiver-health names. Decode errors, dropped datapoints, and unsupported paths remained zero, and target
-  subscription state returned to active. Post-run review found 12 metric names across 72 MTS with incorrect gauge/counter
-  types and 100 of 300 native interface MTS missing `network.interface.name` for two valid virtual interface names. The
-  default E2E assertion could also pass on receiver-health metrics without a gNMI connection, although the recorded live
-  E2E run used an exact native metric and remains non-vacuous.
-- **Post-review remediation:** Counter-container semantics, explicit interface-key attribution, mode-compatible Subscribe
-  fields, explicit target `0s` heartbeat inheritance, and a YANG-payload E2E gate now have deterministic coverage. The
-  verified-TLS exact-metric E2E test passes against the same XRd target, and a dead endpoint now fails. Post-fix backend
-  run `iosxr-postfix-20260706T182746Z` used the default `suppress_redundant: true` and delivered four exact 60-second
-  native-counter timestamps. Splunk readback was complete at 565 MTS and 114 names: 51 native, 51 OpenConfig, and 12
-  receiver health. All 12 corrected names had the intended metric type; all 300 native interface MTS had
-  `network.interface.name`, including `Null0` and the SR-TE virtual interface; seven standard interface names were present.
-  Decode errors, dropped datapoints, unsupported paths, and missing core resource attributes were zero, and subscription
-  state remained active through the final interval.
-- **Scope boundary:** This qualifies one virtual XRd control-plane image and legacy dial-in only. It does not qualify a
-  physical ASR 9000 or NCS 5500, IOS XR `24.4.x`, the shared `gnmi` success path, MDT dial-out, optics, a least-privilege
-  account, production scale, or soak. Explicit SAMPLE heartbeats remain target-dependent, and OpenConfig NTP remained
-  unavailable on this image.
-- **Evidence:** Backend runs `iosxr-fixed-canary-1783358542`, `iosxr-fixed-stream-1783358581`, and
-  `iosxr-postfix-20260706T182746Z`; source base
-  `644bad5e8f40fe1dd98bba0591421ec751354b94`; historical binary SHA-256
-  `ecb36f72041d73ef8a4cdf596670d88d318b9c84bf3e84420f63cf780f5b30ae`; backend stream-query SHA-256
-  `12d3795bdb3dda7a8152bfb48c0ad9a0f9001691473d24d9259dbd2935a1abac`; backend canary-query SHA-256
-  `63b3cd007949613da286391ccaf01b91128cc34c6709bbf951efd15dfcf5195f`; post-fix binary SHA-256
-  `21f822af4dd69b4c3cdc48a82533d941f7ef8b3378900602bf2a42ea2dc1c806`; post-fix backend-query SHA-256
-  `dec699067b5eccd002e690a5c4e42c3ba0aa7beb76ba9b90e64d0b413a7f7fb5`; post-fix representative SignalFlow SHA-256
-  `e1881fb60e0ae6f1e430a7b84b0f0645fb4c15ac3d3904f56b14217a1e729814`; sanitized evidence SHA-256
-  `b29fc756ffbde91d70586356218437561807e82ccf8b07bfc69a6806085b0df2`. The sanitized local evidence and backend query
-  artifacts are not committed.
+- **Dial-in compatibility and correctness:** The legacy `ios_xr` JSON_IETF surface passed verified TLS, authentication
+  failures, untrusted-CA and name-mismatch failures, a non-vacuous exact-metric E2E gate, and all 45 curated paths against
+  XRd Control Plane `25.3.1 LNT`. The path sweep found 25 data-producing paths, 12 valid empty paths, 7 models absent from
+  Capabilities, and one schema-valid OpenConfig NTP path rejected by the provider. The initial one-target post-fix run
+  retained four 60-second timestamps and complete Splunk readback at 114 names/565 MTS, including corrected counter
+  semantics and interface attribution for `Null0` and an SR-TE virtual interface.
+- **Eight-target extension:** All eight topology nodes used verified TLS 1.2+, explicit local AAA login/EXEC
+  authorization, and one collector process. A broad compatibility sweep delivered 736,402 points to each exporter and
+  reached Splunk at 991 names/120,506 MTS. A production-safe selection removed capability-absent paths and wire arrays
+  whose list identity remained ambiguous. Recognizing IOS XR's unique scalar `entry` list key removed the remaining
+  deterministic IS-IS loss while duplicate entries still fail closed. The post-fix run maintained eight active
+  subscriptions for 20 minutes, delivered 1,037,979 points to each exporter with an empty queue, and ended with zero
+  decode errors, dropped datapoints, unsupported paths, or compact-GPB payloads. Disabling one router's gRPC service
+  reduced only that target and the aggregate active count, while the other seven continued; restoring the hardened
+  stanza re-established verified TLS, resumed updates, and returned the active count to eight.
+- **AAA finding:** The XRd read-only task group allowed operational CLI reads and denied configuration changes, but gNMI
+  Subscribe returned `PermissionDenied`. Operator, sysadmin, and a constrained custom task group did not make the stream
+  usable; `root-lr` did. The temporary elevated memberships were removed. This records a live XRd limitation and does not
+  establish an acceptable least-privilege role for physical customer routers.
+- **Shared `gnmi` preflight:** XRd is not an ASR 9000 or NCS 5500 and is outside the exact `24.4.x` product contracts.
+  The shared surface correctly quarantined it before Subscribe: first for a missing required CPU model, then at the
+  bounded IOS XR install-identity Get after the system profile was disabled. Each attempt emitted only
+  `cisco.device.up=0`; this validates fail-closed behavior, not the shared success path.
+- **MDT dial-out:** Live 30-second self-describing GPB exposed and then verified fixes for IOS XR's anonymous top-level
+  `{keys, content}` row wrapper, cumulative counter semantics without optional external YANG files, and explicit virtual
+  interface keys. The final hardened listener used verified TLS, a source allowlist, required source-to-node identity
+  binding, receive/stream ceilings, an idle timeout, and rate limiting. Run
+  `iosxr-xrd-dialout-final-20260706T201131Z` completed 23 router-confirmed collections over 681 seconds with zero deferred,
+  send, drop, other, or collector errors. At the final checkpoint both exporters had accepted 5,106 points with an empty
+  queue. Splunk readback contained all 222 MTS (37 names across 6 interfaces): 180 cumulative-counter and 42 gauge MTS.
+  The representative byte counter retained all physical, management, `Null0`, and SR-TE identities and 6–8 backend
+  buckets. The retained local file includes one final in-flight collection, for 24 intervals/5,328 points.
+- **Splunk capacity finding:** The broad raw-YANG sweeps exceeded the POC organization's custom-MTS ceiling and Splunk's
+  organization telemetry recorded 10,284 rejected custom-MTS creations even though ingest returned success. The limit
+  was 93,073 and the rejection counter later returned to zero; final low-cardinality MDT series then became searchable.
+  Full raw-YANG export is therefore not a production profile. Production validation must use a bounded normalized
+  catalog, preflight expected MTS/DPM, and monitor Splunk limit/throttle metrics.
+- **POC requirement decision:** The 5,000-port predictive-optics requirement remains `Not qualified`. XRd exposes no
+  physical optics, its Capabilities omitted the tested optics models, and the current shared IOS XR optics catalog covers
+  experimental controller/lane DOM only. It does not yet map the required IOS XR VDM, coherent DSP, or FEC sensor paths.
+  No result in this campaign supports laser-EOL, Rx-fade, or coherent-degradation claims.
+- **Scope boundary:** The campaign qualifies XRd `25.3.1` legacy dial-in and one hardened XRd MDT dial-out path only. It
+  does not qualify the shared `gnmi` success path, physical ASR 9000/NCS/8201 hardware, IOS XR `24.4.x`, optical modules,
+  least privilege, 5,000 ports, HA/failover, certificate rotation, a 24-hour soak, or production Splunk entitlements.
+- **Evidence:** Historical runs remain `iosxr-fixed-canary-1783358542`, `iosxr-fixed-stream-1783358581`, and
+  `iosxr-postfix-20260706T182746Z`. Extension runs are `iosxr-xrd8-20260706T185515Z`,
+  `iosxr-xrd8-safe-postfix-20260706T192859Z`, and `iosxr-xrd-dialout-final-20260706T201131Z`. Current source base is
+  `93506dc2e7ff171f3fdba4989777c70d5e0479b1`; the six-file runtime patch SHA-256 is
+  `d0e232d14789f9bc5532790d0097e2b394ee4286ff230f6bc513fe7c96cef8f3`; the final Linux binary SHA-256 is
+  `f7be5cb69ed168c2d20334cbaa530b990b9666d43008e7bc7bd3043aad0f6f09`. Dial-out metrics, collector log, complete
+  backend MTS, representative MTS metadata, representative window, and Splunk limit evidence SHA-256 values are
+  `86e56e67adcaccc343198ace87bd6ea1370721366e13ee7e54260f14c09e3a92`,
+  `a7eb8badd0b42ec3002bcc3f4315160729d683f97ae76b8c37707269d2a05d6b`,
+  `cd6346d60672b5d25c5cbc5e2f7fff560f8606fc8da0e2ca1f2191d1d3a8504b`,
+  `4013fa476ec9a99c376d0cfc45141b4bc9b76a8142418cfa1eef3fa333b8eba3`,
+  `2e78c1be1d7d84d986cec8e43f685f799d60e4d0b063a283d80075f4de62f7da`, and
+  `df2aad8b4f0de1085c8d451bd5320e7ac28e1fb1e0abb62a86c4f5999cc1b490`. Sanitized artifacts remain local and are not
+  committed.
 
 ### Cisco ACI/APIC — 2026-07-05
 
