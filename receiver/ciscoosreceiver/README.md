@@ -570,6 +570,9 @@ source of deployment, policy, VPN, HA, and inventory state. Logical aliases such
 `security_intelligence` are accepted, but eStreamer fully-qualified events are ultimately requested through Cisco's
 supported connection/file/intrusion/intrusion-packet event blocks.
 
+For a complete metrics pipeline into Splunk Observability Cloud, start with the
+[FMC to Splunk Observability Cloud example](examples/fmc-splunk-o11y.yaml).
+
 | Setting | Type | Required | Description |
 |---------|------|----------|-------------|
 | `fmc.enabled` | bool | No | Enables FMC REST collection. |
@@ -1705,8 +1708,9 @@ For a production Splunk Observability Cloud deployment, send metrics through a n
 pipeline with batching and retry. When building a custom upstream Collector, use the `otlphttp` exporter. In the Splunk
 Distribution of the OpenTelemetry Collector, the same exporter may be named `otlp_http`.
 
-For a complete APIC pipeline using the Splunk Distribution exporter name, start with the
-[ACI to Splunk Observability Cloud example](examples/aci-splunk-o11y.yaml).
+For complete platform pipelines using the Splunk Distribution exporter name, start with the
+[ACI to Splunk Observability Cloud example](examples/aci-splunk-o11y.yaml) or the
+[FMC to Splunk Observability Cloud example](examples/fmc-splunk-o11y.yaml).
 
 ```yaml
 exporters:

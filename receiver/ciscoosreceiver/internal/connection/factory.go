@@ -124,10 +124,16 @@ func EstablishDeviceConnection(ctx context.Context, device DeviceConfig, timeout
 		config:         sshConfig,
 	}
 
-	// Disable CLI pagination once per connection so all subsequent show
-	// commands return full output without interactive page prompts.
-	if disablePagingErr := sshClient.DisablePaging(ctx); disablePagingErr != nil {
-		logger.Warn("Failed to disable CLI pagination; output may be truncated", zap.Error(disablePagingErr))
+	// When enable-mode shell execution is configured, each command session
+	// already runs "terminal length 0" before the show command. Skipping the
+	// standalone exec here avoids breaking IOS XE targets that drop the
+	// connection after that one-off request.
+	if !sshClient.usesInteractiveShell() {
+		// Disable CLI pagination once per connection so all subsequent show
+		// commands return full output without interactive page prompts.
+		if disablePagingErr := sshClient.DisablePaging(ctx); disablePagingErr != nil {
+			logger.Warn("Failed to disable CLI pagination; output may be truncated", zap.Error(disablePagingErr))
+		}
 	}
 
 	deviceMetadata, err := sshClient.DetectDeviceMetadata(ctx)

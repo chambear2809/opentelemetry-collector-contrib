@@ -48,6 +48,7 @@ type Client struct {
 	connectionMu   sync.Mutex
 	reconnectMu    sync.Mutex
 	closed         bool
+	forceShell     atomic.Bool
 	// maxCommandOutputBytes is test-injectable; zero uses the production cap.
 	maxCommandOutputBytes int
 }
@@ -113,6 +114,10 @@ func (s *Client) commandOutputLimit() int {
 	return defaultMaxSSHCommandOutputBytes
 }
 
+func (s *Client) usesInteractiveShell() bool {
+	return s.EnablePassword != "" || s.forceShell.Load()
+}
+
 // DisablePaging disables CLI pagination so command output is not truncated.
 // This must be called once after establishing the SSH connection, before any
 // show commands are issued. On Cisco IOS/IOS-XE/NX-OS, "terminal length 0"
@@ -129,11 +134,16 @@ func (s *Client) DisablePaging(ctx context.Context) error {
 // directly without interactive pagination. The session is explicitly closed
 // when the context expires so that the underlying goroutine is unblocked.
 func (s *Client) ExecuteCommand(ctx context.Context, command string) (string, error) {
-	if s.EnablePassword != "" {
-		return s.executeCommandInShell(ctx, command, true)
+	if s.usesInteractiveShell() {
+		return s.executeCommandInShell(ctx, command, s.EnablePassword != "")
 	}
 	output, err := s.executeCommand(ctx, command, false)
+	if err != nil && shouldRetryWithInteractiveShell(err) {
+		s.forceShell.Store(true)
+		return s.executeCommandInShell(ctx, command, false)
+	}
 	if err == nil && outputNeedsInteractiveShell(output) {
+		s.forceShell.Store(true)
 		return s.executeCommandInShell(ctx, command, false)
 	}
 	return output, err
@@ -304,6 +314,25 @@ func outputNeedsInteractiveShell(output string) bool {
 	return strings.Contains(strings.ToLower(output), "line has invalid autocommand")
 }
 
+func shouldRetryWithInteractiveShell(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, net.ErrClosed) {
+		return true
+	}
+	message := strings.ToLower(err.Error())
+	if strings.Contains(message, "failed to disable cli pagination after ssh reconnect") {
+		return false
+	}
+	return strings.Contains(message, "failed to create ssh session") ||
+		strings.Contains(message, "failed to reconnect after session creation failed") ||
+		strings.Contains(message, "command execution timeout") ||
+		strings.Contains(message, "broken pipe") ||
+		strings.Contains(message, "connection reset") ||
+		strings.Contains(message, "eof")
+}
+
 func (s *Client) newSession(ctx context.Context) (*cryptossh.Session, error) {
 	conn, closed := s.currentConnection()
 	if closed {
@@ -422,18 +451,23 @@ func (s *Client) reconnect(ctx context.Context, failedConn *cryptossh.Client) er
 		return err
 	}
 
-	// Cisco pagination settings are scoped to the SSH connection. Reapply the
-	// same initialization performed for the original connection before a show
-	// command is allowed to use this replacement connection. Open the session
-	// directly rather than calling DisablePaging, which would route back through
-	// newSession and could recurse into reconnect.
-	pagingSession, err := s.openSession(ctx, conn)
-	if err == nil {
-		_, err = s.executeCommandWithSession(ctx, pagingSession, "terminal length 0", true)
-	}
-	if err != nil {
-		_ = conn.Close()
-		return fmt.Errorf("failed to disable CLI pagination after SSH reconnect: %w", err)
+	// Interactive-shell mode already prepends "terminal length 0" inside the
+	// PTY-backed command session, so repeating the standalone exec request here
+	// is redundant and can destabilize some IOS XE devices.
+	if !s.usesInteractiveShell() {
+		// Cisco pagination settings are scoped to the SSH connection. Reapply the
+		// same initialization performed for the original connection before a show
+		// command is allowed to use this replacement connection. Open the session
+		// directly rather than calling DisablePaging, which would route back through
+		// newSession and could recurse into reconnect.
+		pagingSession, err := s.openSession(ctx, conn)
+		if err == nil {
+			_, err = s.executeCommandWithSession(ctx, pagingSession, "terminal length 0", true)
+		}
+		if err != nil {
+			_ = conn.Close()
+			return fmt.Errorf("failed to disable CLI pagination after SSH reconnect: %w", err)
+		}
 	}
 
 	s.connectionMu.Lock()

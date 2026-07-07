@@ -4,9 +4,11 @@
 package connection
 
 import (
+	"bufio"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
 	"io"
 	"net"
 	"strings"
@@ -109,6 +111,107 @@ func startSSHExecTestServer(t *testing.T, rejectedCommand string) (string, <-cha
 	return listener.Addr().String(), commands
 }
 
+func startSSHShellTestServer(t *testing.T, outputs map[string]string) (string, <-chan string) {
+	t.Helper()
+
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	signer, err := cryptossh.NewSignerFromKey(privateKey)
+	require.NoError(t, err)
+	serverConfig := &cryptossh.ServerConfig{NoClientAuth: true}
+	serverConfig.AddHostKey(signer)
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	transcript := make(chan string, 16)
+	serverDone := make(chan struct{})
+	var (
+		acceptedMu sync.Mutex
+		accepted   net.Conn
+	)
+	go func() {
+		defer close(serverDone)
+		connection, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			return
+		}
+		acceptedMu.Lock()
+		accepted = connection
+		acceptedMu.Unlock()
+		defer connection.Close()
+
+		serverConnection, channels, requests, handshakeErr := cryptossh.NewServerConn(connection, serverConfig)
+		if handshakeErr != nil {
+			return
+		}
+		defer serverConnection.Close()
+		go cryptossh.DiscardRequests(requests)
+
+		for newChannel := range channels {
+			if newChannel.ChannelType() != "session" {
+				_ = newChannel.Reject(cryptossh.UnknownChannelType, "session channel required")
+				continue
+			}
+			channel, sessionRequests, channelErr := newChannel.Accept()
+			if channelErr != nil {
+				return
+			}
+			go func(channel cryptossh.Channel, sessionRequests <-chan *cryptossh.Request) {
+				defer channel.Close()
+				for request := range sessionRequests {
+					switch request.Type {
+					case "pty-req":
+						_ = request.Reply(true, nil)
+					case "shell":
+						_ = request.Reply(true, nil)
+						scanner := bufio.NewScanner(channel)
+						for scanner.Scan() {
+							line := scanner.Text()
+							transcript <- "shell:" + line
+							if output, ok := outputs[line]; ok {
+								_, _ = io.WriteString(channel, output)
+							}
+							if line == "exit" {
+								_, _ = channel.SendRequest("exit-status", false, cryptossh.Marshal(struct{ Status uint32 }{Status: 0}))
+								return
+							}
+						}
+						return
+					case "exec":
+						var payload struct {
+							Command string
+						}
+						if cryptossh.Unmarshal(request.Payload, &payload) == nil {
+							transcript <- "exec:" + payload.Command
+						} else {
+							transcript <- "exec:<unmarshal-failed>"
+						}
+						_ = request.Reply(false, nil)
+						return
+					default:
+						_ = request.Reply(false, nil)
+					}
+				}
+			}(channel, sessionRequests)
+		}
+	}()
+
+	t.Cleanup(func() {
+		_ = listener.Close()
+		acceptedMu.Lock()
+		if accepted != nil {
+			_ = accepted.Close()
+		}
+		acceptedMu.Unlock()
+		select {
+		case <-serverDone:
+		case <-time.After(2 * time.Second):
+			t.Error("SSH shell test server did not stop")
+		}
+	})
+	return listener.Addr().String(), transcript
+}
+
 func testReconnectClient(address string) *Client {
 	return &Client{
 		Target:  address,
@@ -169,6 +272,51 @@ func TestReconnectRejectsConnectionWhenPagingInitializationFails(t *testing.T) {
 		t.Fatalf("requested command %q ran before paging initialization succeeded", command)
 	case <-time.After(100 * time.Millisecond):
 	}
+}
+
+func TestReconnectSkipsPagingInitializationWhenInteractiveShellIsRequired(t *testing.T) {
+	address, transcript := startSSHShellTestServer(t, map[string]string{
+		"show version": "Cisco IOS XE Software, Version 17.12.02\r\n",
+	})
+	client := testReconnectClient(address)
+	client.EnablePassword = "enable-secret"
+	t.Cleanup(func() { _ = client.Close() })
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	output, err := client.ExecuteCommand(ctx, "show version")
+	require.NoError(t, err)
+	assert.Contains(t, output, "Cisco IOS XE Software")
+	assert.Equal(t, int64(1), client.ReconnectCount())
+
+	var lines []string
+	for i := 0; i < 5; i++ {
+		select {
+		case line := <-transcript:
+			lines = append(lines, line)
+		case <-time.After(time.Second):
+			t.Fatalf("timed out waiting for shell transcript line %d", i+1)
+		}
+	}
+	assert.Equal(t, []string{
+		"shell:enable",
+		"shell:enable-secret",
+		"shell:terminal length 0",
+		"shell:show version",
+		"shell:exit",
+	}, lines)
+	select {
+	case line := <-transcript:
+		t.Fatalf("unexpected extra transcript line: %s", line)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestShouldRetryWithInteractiveShell(t *testing.T) {
+	assert.True(t, shouldRetryWithInteractiveShell(errors.New("failed to create SSH session after reconnect: EOF")))
+	assert.True(t, shouldRetryWithInteractiveShell(errors.New("command execution timeout: context deadline exceeded")))
+	assert.False(t, shouldRetryWithInteractiveShell(errors.New("failed to disable CLI pagination after SSH reconnect: EOF")))
+	assert.False(t, shouldRetryWithInteractiveShell(errors.New("permission denied")))
 }
 
 func TestClientClosePreventsInFlightReconnectFromPublishingConnection(t *testing.T) {

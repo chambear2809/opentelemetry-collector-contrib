@@ -23,7 +23,7 @@ campaigns in [Consolidated Validation Campaigns](#consolidated-validation-campai
 
 | Integration | Surface | Status | Validated scope | Main remaining gate |
 | --- | --- | --- | --- | --- |
-| Cisco IOS, IOS XE, and NX-OS | `devices`; SSH metrics | `Partial` (latest NX-OS run: `Run with findings`) | NX-OS parsing and collection passed a short live run; the later persistent-session campaign has findings. | Fix and rerun persistent-session timeouts, verify host keys independently, and qualify IOS/IOS XE. |
+| Cisco IOS, IOS XE, and NX-OS | `devices`; SSH metrics | `Partial` | One IOS XE Cat8000V and one NX-OS 9000v passed bounded local and Splunk backend gates; classic IOS remains unqualified. | Qualify classic IOS, verify host keys independently, and complete a longer representative soak/scale campaign. |
 | Meraki Dashboard | `meraki`; HTTPS REST metrics | `Qualified` | Selected devices and the full tested organization passed local and Splunk delivery gates. | Rerun after material changes; add cellular only if required. |
 | Cisco Intersight | `intersight`; signed HTTPS metrics/logs | `Passed (limited scope)` | Metrics passed five intervals and exact-name backend readback; logs passed local deduplication and OTLP ingest. | Exercise nonempty optional domains and obtain exact searchable backend log readback. |
 | Cisco Catalyst Center | `catalyst_center`; HTTPS metrics | `Passed (limited scope)` | Core groups and one targeted device passed four-interval local and backend gates. | Use verified production TLS and exercise a connected client plus additional identifier variants. |
@@ -80,16 +80,40 @@ Evidence: backend run `ise20260706T052704Z93625516450d`; source base
 committed. The final implementation is commit `cd1e4dde26`; its post-run streaming ACK lifecycle delta was covered by
 focused tests but was not present in the streaming-disabled backend binary.
 
-### Cisco NX-OS over SSH — 2026-05-24 and 2026-07-05
+### Cisco NX-OS over SSH — 2026-05-24, 2026-07-05, and 2026-07-06
 
 - **What was combined:** The initial three-interval system/interface run and the later `N9K-C9300v` `10.6(1)`
   stress/cadence runs.
 - **Result:** The initial run parsed 20 interfaces and emitted 8 metric families/245 points per interval. The later
   10-second steady-state window completed three clean intervals with 15 names, 966 points, and 69 interfaces, but the
   intended 30-second cadence reproduced persistent-session and command timeouts. Current status is `Run with findings`.
+- **2026-07-06 live recheck:** The built-in SSH e2e harness passed locally against one `N9K-C9300v` `10.6(1)` switch
+  at a 10-second collection interval and emitted 15 metric names, 974 datapoints, and 70 interfaces in one collection
+  batch. This improves confidence that the post-fix SSH path is currently healthy on the live lab image, but the run
+  used a fresh `ssh-keyscan` pin and therefore retained TOFU host-key trust rather than an independently verified host
+  key. It does not close the 30-second persistent-session or production host-key gates.
 - **Evidence:** Latest sanitized SHA-256 values are
   `b33c4b192787561496a2fab58e599138d61dd7dbf3b0a83dcc1ea0ae71673bdb` and
   `3c19e3ac55d9c15fcb273bd56c901e9bc4c3ba66151f1a04f4a17f508b46b9a8`.
+
+### Cisco IOS XE and NX-OS over SSH — 2026-07-07
+
+- **What was done:** A production-like two-device SSH validation ran against one Cat8000V (`IOS XE 17.12.02`) and one
+  Nexus 9000v (`NX-OS 9.3(5)`) using the receiver's `devices` surface, runtime-generated `known_hosts`, local file
+  capture, and OTLP metric export with exact-name Splunk Observability Cloud readback.
+- **Result:** `Partial` for the broader IOS/IOS XE/NX-OS family, but `Passed (limited scope)` for the tested lab
+  targets. The run retained 10 host-scoped scrapes per device over 258 seconds, emitted 31 metric families and 13,765
+  local datapoints, kept `cisco.device.up=1` and `cisco.scrape.partial_success=0` for both hosts, and confirmed both
+  host dimensions in Splunk (`10.10.20.48`: 397 MTS, `10.10.20.40`: 2,358 MTS). Cat8000V-specific `cisco.qfp.*`
+  dataplane metrics were present locally and in Splunk.
+- **Scope boundary:** The run used fresh `ssh-keyscan` trust-on-first-use host keys, covered one IOS XE VM and one
+  NX-OS VM only, and did not exercise classic IOS, IOS XR telemetry, production CA/host-key distribution, HA/failover,
+  or a 24-hour soak.
+- **Evidence:** Run `sshlab20260707T040201Z0614ed1776e3`; source base
+  `9cd8989ef047b079f728a1423a0913d44c453696`; runtime patch SHA-256
+  `ba80f6f0bbdbe839cfe5dff4b404b13b2c2e48d750d68014153e7fa221571780`; binary SHA-256
+  `18ff57c1cba9495b03fe55c436d0ec07b8519df3dd87c8ca6608d484106ee60d`; sanitized evidence SHA-256
+  `7a766fed70bd57c35765caf6fd15ee04ce067e7520072e33ddc424c4f40c3ec3`. The evidence file is local and not committed.
 
 ### Meraki Dashboard — 2026-07-04
 
@@ -119,27 +143,42 @@ focused tests but was not present in the streaming-disabled backend binary.
 - **Evidence:** Runs `cc-20260705T165205Z-f0d7670fa6c5` and
   `cc-detail-device-4x-20260705T171727Z-29e4fb4e7be3`.
 
-### Nexus Dashboard and NDFC — 2026-07-05
+### Nexus Dashboard and NDFC — 2026-07-05 and 2026-07-06
 
 - **What was combined:** Four platform scrapes and four targeted one-switch NDFC scrapes against Nexus Dashboard
   `4.1.1g`.
 - **Result:** `Passed (limited scope)`: platform metrics matched 7 names/20 MTS; targeted fabric metrics matched
   8 names/12 MTS, with four buckets per family and no exception points. TLS verification was bypassed.
+- **2026-07-06 local recheck:** The unified-API e2e harness passed in 5 seconds against the same one-fabric, five-switch
+  sandbox using username/password authentication. This repeated only the local receiver assertion path and did not
+  repeat backend readback, so the row remains `Passed (limited scope)`.
 - **Evidence:** Runs `ndplatform20260705T235228Za8a9cc1a7157` and
   `ndfabric20260705T235228Z254cb7ed4ac9`; sanitized SHA-256
   `b3b9664d96262581a59c6fae7a527b8828955b22a35ededda25debbecd3eccd3`.
 
-### Nexus 9000 direct gNMI — 2026-07-05
+### Nexus 9000 direct gNMI — 2026-07-05 and 2026-07-06
 
 - **What was combined:** Three staged preflights on one `N9K-C9300v` `10.6(1)`: OpenConfig disabled, then generic
   origin omission, then post-fix semantic identity validation.
 - **Result:** `Run with findings`: the final attempt lacked a recognizable chassis identity, kept
   `product_verified=0`, started no subscriptions, and attempted no backend delivery. TLS verification was disabled;
   the short-lived certificate lacked a SAN.
+- **2026-07-06 live follow-up:** On one switch, `feature openconfig` was disabled initially. Enabling it in running
+  configuration caused `Capabilities` to advertise `openconfig-platform`, `openconfig-system`, and
+  `openconfig-interfaces`, but the platform identity `Get` still returned only `LINECARD`, `CPU`, `FABRIC`, and `FRU`
+  components. It exposed `N9K-X9364v` and `N9K-vSUP` component names and `10.6(1)` software versions, but no
+  `CHASSIS` component and no `model-name` leaf. The receiver therefore continued to quarantine the target with
+  `identity_missing` before `Subscribe`, emitting only `cisco.device.up`. Attempting `feature hardware-telemetry`
+  returned `Invalid command` on the same 9000v image, so there was no additional obvious device-side knob to enrich
+  OpenConfig platform identity. A second strict local receiver run against the same switch again quarantined immediately
+  with `identity_missing` and emitted only `cisco.device.up=0`. A second `N9K-C9300v` switch still failed earlier with
+  `missing_model` immediately after the same feature enable, so the current 9000v lab still does not prove a
+  shared-gNMI success path.
 - **Evidence:** Runs `nxgnmilab20260706T000752Za194d3339a20`,
   `nxgnmilab20260706T001755Zfdd37c840a34`, and
   `nxgnmilab20260706T002633Zecf650307b9b`; latest sanitized SHA-256
-  `8152f5208e3dd083f6646d2c5d7f21bc23b7dbfde1f100615744b16d52dbfd43`.
+  `8152f5208e3dd083f6646d2c5d7f21bc23b7dbfde1f100615744b16d52dbfd43`. The 2026-07-06 follow-up was a local live
+  recheck and no additional sanitized artifact was retained.
 
 <a id="ios-xr-xrd-25-3-1-campaign"></a>
 

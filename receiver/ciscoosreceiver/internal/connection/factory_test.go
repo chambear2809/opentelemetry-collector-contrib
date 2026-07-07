@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -614,4 +615,45 @@ func TestEstablishDeviceConnection_AllFieldsPopulated(t *testing.T) {
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "is required")
 	assert.NotContains(t, err.Error(), "at least one of")
+}
+
+func TestEstablishDeviceConnection_SkipsStandalonePagingWhenEnablePasswordSet(t *testing.T) {
+	address, transcript := startSSHShellTestServer(t, map[string]string{
+		"show version": "Cisco IOS XE Software, Version 17.12.02\r\n",
+	})
+	host, portText, err := net.SplitHostPort(address)
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+
+	deviceConfig := createTestDeviceConfig("test-device", host, port, "testuser", "testpass", "")
+	deviceConfig.Auth.EnablePassword = configopaque.String("enable-secret")
+	client, err := EstablishDeviceConnection(t.Context(), deviceConfig, 30*time.Second, zap.NewNop())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		assert.NoError(t, client.SSHClient.Close())
+	})
+	assert.Equal(t, "IOS XE", client.OSType)
+
+	var lines []string
+	for i := 0; i < 5; i++ {
+		select {
+		case line := <-transcript:
+			lines = append(lines, line)
+		case <-time.After(time.Second):
+			t.Fatalf("timed out waiting for transcript line %d", i+1)
+		}
+	}
+	assert.Equal(t, []string{
+		"shell:enable",
+		"shell:enable-secret",
+		"shell:terminal length 0",
+		"shell:show version",
+		"shell:exit",
+	}, lines)
+	select {
+	case line := <-transcript:
+		t.Fatalf("unexpected extra transcript line: %s", line)
+	case <-time.After(100 * time.Millisecond):
+	}
 }

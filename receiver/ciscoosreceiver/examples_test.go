@@ -66,6 +66,29 @@ func TestShippedCiscoOSReceiverExamplesUnmarshalAndValidate(t *testing.T) {
 				assert.False(t, cfg.ACI.InsecureSkipVerify)
 			},
 		},
+		{
+			name:        "FMC to Splunk Observability Cloud",
+			path:        filepath.Join("examples", "fmc-splunk-o11y.yaml"),
+			receiverKey: "cisco_os/fmc",
+			resolve: func(cfg *Config) {
+				cfg.FMC.Controllers[0].Endpoint = "https://fmc.example.test"
+			},
+			assertion: func(t *testing.T, cfg *Config) {
+				assert.True(t, cfg.FMC.Enabled)
+				require.Len(t, cfg.FMC.Controllers, 1)
+				assert.Equal(t, "fmc-primary", cfg.FMC.Controllers[0].Name)
+				assert.False(t, cfg.FMC.InsecureSkipVerify)
+				assert.True(t, cfg.FMC.Manager.Enabled)
+				assert.True(t, cfg.FMC.Inventory.Enabled)
+				assert.True(t, cfg.FMC.Interfaces.Enabled)
+				assert.True(t, cfg.FMC.Health.Enabled)
+				assert.True(t, cfg.FMC.VPN.Enabled)
+				assert.True(t, cfg.FMC.HA.Enabled)
+				assert.True(t, cfg.FMC.Policy.Enabled)
+				assert.True(t, cfg.FMC.Deployments.Enabled)
+				assert.False(t, cfg.FMC.Audit.Enabled)
+			},
+		},
 	}
 
 	for _, tt := range tests {

@@ -545,6 +545,23 @@ func TestIdentityExtractionRejectsExpectedLeafNamesAtUnexpectedDescendants(t *te
 	})
 }
 
+func TestExtractNXOSGNMIIdentityRejectsVirtualModuleOnlyPayload(t *testing.T) {
+	contract, _, err := resolveGNMIProductContract(gnmiProductNexus9000, "10.6(1)")
+	require.NoError(t, err)
+	assert.True(t, contract.MatchesChassis("N9K-X9364v"))
+
+	points := append(
+		decodeIdentityJSONResponse(t, "nx", "", "components/component[name=N9K-X9364v]/state",
+			`{"name":"N9K-X9364v","type":"openconfig-platform-types:LINECARD","software-version":"10.6(1)","serial-no":"9B2YV6E0ORW"}`, false),
+		decodeIdentityJSONResponse(t, "nx", "", "components/component[name=N9K-vSUP]/state",
+			`{"name":"N9K-vSUP","type":"openconfig-platform-types:CPU","software-version":"10.6(1)","serial-no":"9QQYQ58YQ52"}`, false)...,
+	)
+	require.NoError(t, validateGNMIIdentityProbePoints(contract.IdentityProbes[0], points))
+
+	_, _, err = extractNXOSGNMIIdentity(points)
+	assertGNMICompatibilityReason(t, err, gnmiPreflightIdentityMissing)
+}
+
 func TestProductIdentityExtractionFromSubtreeJSON(t *testing.T) {
 	t.Run("IOS XE inventory and install JSON-IETF", func(t *testing.T) {
 		contract, _, err := resolveGNMIProductContract(gnmiProductCatalyst9800, "17.18.1a")
