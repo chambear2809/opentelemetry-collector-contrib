@@ -407,6 +407,97 @@ func TestDecodeJSONArrayObjectAllowsDuplicateNormalizedListKeyWithSameValue(t *t
 	assert.Equal(t, "Ethernet1", counter.Series.Elements[2].Keys["interface-name"])
 }
 
+func TestDecodeJSONArrayObjectsUsesRegistryRequiredCustomListKeys(t *testing.T) {
+	receipt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	registry, err := NewRegistry(Mapping{
+		Source: SourcePath{Origin: "custom", Elements: []string{"neighbors", "neighbor", "state"}, Leaf: "value"},
+		Metric: MetricMetadata{Name: "custom.neighbor.value", Description: "Custom neighbor value.", Unit: "1"},
+		Scale:  1, GaugeType: GaugeInt,
+		KeyAttributes: []KeyAttribute{{Element: "neighbor", Key: "routing_instance", Attribute: "network.vrf.name"}},
+	})
+	require.NoError(t, err)
+	notification := &gnmipb.Notification{
+		Timestamp: receipt.UnixNano(),
+		Prefix:    &gnmipb.Path{Origin: "custom"},
+		Update: []*gnmipb.Update{{
+			Path: protoPath("neighbors", "neighbor"),
+			Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`[
+				{"routing_instance":"red","state":{"value":10}},
+				{"routing_instance":"blue","state":{"value":20}}
+			]`)}},
+		}},
+	}
+
+	decoded, stats, err := DecodeNotificationWithRegistry("switch-1", notification, receipt, registry)
+	require.NoError(t, err)
+	assert.Zero(t, stats.UnmappedValues)
+	var mapped []MappedPoint
+	for _, point := range decoded.Updates {
+		if point.Series.Leaf != "value" {
+			continue
+		}
+		value, present := point.Series.Elements[1].Keys["routing_instance"]
+		assert.True(t, present)
+		assert.NotContains(t, point.Series.Elements[1].Keys, "routing-instance")
+		metric, ok := registry.Map(point)
+		require.True(t, ok)
+		assert.Equal(t, value, metric.Attributes["network.vrf.name"])
+		mapped = append(mapped, metric)
+	}
+	require.Len(t, mapped, 2)
+	assert.NotEqual(t, mapped[0].Source.Key(), mapped[1].Source.Key())
+}
+
+//nolint:staticcheck // This test verifies compatibility with the deprecated gNMI Value field.
+func TestDecodeNotificationSupportsDeprecatedUpdateValue(t *testing.T) {
+	receipt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	legacyNotification := func(encoding gnmipb.Encoding, raw []byte, path *gnmipb.Path) *gnmipb.Notification {
+		return &gnmipb.Notification{
+			Timestamp: receipt.UnixNano(), Prefix: protoPath("system"),
+			Update: []*gnmipb.Update{{Path: path, Value: &gnmipb.Value{Type: encoding, Value: raw}}},
+		}
+	}
+
+	for _, encoding := range []gnmipb.Encoding{gnmipb.Encoding_JSON, gnmipb.Encoding_JSON_IETF} {
+		decoded, stats, err := DecodeNotification("switch-1", legacyNotification(encoding, []byte(`{"value":7}`), protoPath("state")), receipt)
+		require.NoError(t, err)
+		assert.Zero(t, stats.UnmappedValues)
+		require.Len(t, decoded.Updates, 1)
+		assert.Equal(t, IntValue(7), decoded.Updates[0].Value)
+	}
+
+	decoded, stats, err := DecodeNotification("switch-1", legacyNotification(gnmipb.Encoding_ASCII, []byte("42"), protoPath("value")), receipt)
+	require.NoError(t, err)
+	assert.Zero(t, stats.UnmappedValues)
+	require.Len(t, decoded.Updates, 1)
+	assert.Equal(t, StringValue("42"), decoded.Updates[0].Value)
+
+	for _, test := range []struct {
+		encoding gnmipb.Encoding
+		kind     UnsupportedValueKind
+	}{
+		{encoding: gnmipb.Encoding_BYTES, kind: UnsupportedValueBytes},
+		{encoding: gnmipb.Encoding_PROTO, kind: UnsupportedValueProtoBytes},
+	} {
+		decoded, stats, err = DecodeNotification("switch-1", legacyNotification(test.encoding, []byte{1, 2, 3}, protoPath("value")), receipt)
+		require.NoError(t, err)
+		assert.Empty(t, decoded.Updates)
+		assert.Equal(t, 1, stats.UnmappedValues)
+		assert.Equal(t, map[UnsupportedValueKind]int{test.kind: 1}, stats.UnsupportedValueKinds)
+	}
+
+	unknown := legacyNotification(gnmipb.Encoding(99), []byte("value"), protoPath("value"))
+	_, _, err = DecodeNotification("switch-1", unknown, receipt)
+	require.ErrorContains(t, err, "legacy value has unknown encoding 99")
+
+	precedence := legacyNotification(gnmipb.Encoding(99), []byte("ignored"), protoPath("value"))
+	precedence.Update[0].Val = &gnmipb.TypedValue{Value: &gnmipb.TypedValue_IntVal{IntVal: 9}}
+	decoded, _, err = DecodeNotification("switch-1", precedence, receipt)
+	require.NoError(t, err)
+	require.Len(t, decoded.Updates, 1)
+	assert.Equal(t, IntValue(9), decoded.Updates[0].Value)
+}
+
 func TestMappingRegistryRequiresExplicitNumericContract(t *testing.T) {
 	mapping := Mapping{
 		Source:    SourcePath{Origin: "openconfig", Elements: []string{"interfaces", "interface", "state"}, Leaf: "temperature"},

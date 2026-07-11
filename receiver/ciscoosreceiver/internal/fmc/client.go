@@ -357,7 +357,9 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 		if header != nil {
 			retryHeader = header.Get("Retry-After")
 		}
-		if !retryableStatus(status) || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
+		retryable := retryableStatus(status) ||
+			httpclient.IsResponseBodyReadError(err) && status >= 200 && status < 300
+		if !retryable || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
 			if ctx.Err() != nil {
 				return nil, nil, ctx.Err()
 			}
@@ -402,7 +404,7 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 	bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
-		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
+		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, RateLimited: resp.StatusCode == http.StatusTooManyRequests, Err: readErr})
 		return nil, resp.Header, resp.StatusCode, requestToken, readErr
 	}
 	if closeErr != nil {
@@ -539,7 +541,9 @@ func (c *Client) retryAuthentication(ctx context.Context, request func() (tokenB
 		if header != nil {
 			retryHeader = header.Get("Retry-After")
 		}
-		if !retryableStatus(status) || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
+		retryable := retryableStatus(status) ||
+			httpclient.IsResponseBodyReadError(err) && status >= 200 && status < 300
+		if !retryable || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
 			if ctx.Err() != nil {
 				return tokenBundle{}, status, ctx.Err()
 			}
@@ -573,7 +577,7 @@ func (c *Client) generateTokenOnce(ctx context.Context) (tokenBundle, http.Heade
 	_, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
-		c.record(RequestStat{Controller: c.name, Operation: "auth.generatetoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/generatetoken", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
+		c.record(RequestStat{Controller: c.name, Operation: "auth.generatetoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/generatetoken", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, RateLimited: resp.StatusCode == http.StatusTooManyRequests, Err: readErr})
 		return tokenBundle{}, resp.Header, resp.StatusCode, readErr
 	}
 	if closeErr != nil {
@@ -625,7 +629,7 @@ func (c *Client) refreshOnce(ctx context.Context, refreshToken string) (tokenBun
 	_, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
-		c.record(RequestStat{Controller: c.name, Operation: "auth.refreshtoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/refreshtoken", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
+		c.record(RequestStat{Controller: c.name, Operation: "auth.refreshtoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/refreshtoken", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, RateLimited: resp.StatusCode == http.StatusTooManyRequests, Err: readErr})
 		return tokenBundle{}, resp.Header, resp.StatusCode, readErr
 	}
 	if closeErr != nil {

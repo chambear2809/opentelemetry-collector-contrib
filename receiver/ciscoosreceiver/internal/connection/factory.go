@@ -122,6 +122,7 @@ func EstablishDeviceConnection(ctx context.Context, device DeviceConfig, timeout
 		network:        "tcp",
 		address:        address,
 		config:         sshConfig,
+		metadataStore:  device.MetadataStore,
 	}
 
 	// When enable-mode shell execution is configured, each command session
@@ -141,6 +142,7 @@ func EstablishDeviceConnection(ctx context.Context, device DeviceConfig, timeout
 		conn.Close()
 		return nil, fmt.Errorf("OS detection failed: %w", err)
 	}
+	sshClient.storeDeviceMetadata(deviceMetadata)
 
 	rpcClient := &RPCClient{
 		SSHClient:      sshClient,

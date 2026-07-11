@@ -329,7 +329,9 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 		if header != nil {
 			retryHeader = header.Get("Retry-After")
 		}
-		if !retryableStatus(status) || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
+		retryable := retryableStatus(status) ||
+			httpclient.IsResponseBodyReadError(err) && status >= 200 && status < 300
+		if !retryable || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
 			if ctx.Err() != nil {
 				return nil, nil, ctx.Err()
 			}
@@ -382,7 +384,7 @@ func (c *Client) doOnce(
 	bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
-		c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
+		c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, RateLimited: resp.StatusCode == http.StatusTooManyRequests, Err: readErr})
 		return nil, resp.Header, resp.StatusCode, requestAuth, readErr
 	}
 	if closeErr != nil {
@@ -590,14 +592,17 @@ func alternateLoginPath(path string) string {
 }
 
 func loginEndpointUnsupported(status int, body []byte, err error) bool {
-	var apiErr *APIError
-	if !errors.As(err, &apiErr) || apiErr.StatusCode != status {
-		return false
-	}
 	switch status {
 	case http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotImplemented:
+		// These statuses identify an unsupported login route independently of
+		// the response body. Preserve endpoint fallback even if that error body
+		// is truncated before it can be read completely.
 		return true
 	case http.StatusUnauthorized:
+		var apiErr *APIError
+		if !errors.As(err, &apiErr) || apiErr.StatusCode != status {
+			return false
+		}
 		return bytes.Contains(bytes.ToLower(body), []byte("authorization field missing"))
 	default:
 		return false

@@ -107,6 +107,8 @@ Use `device_selection` when one receiver config covers many controllers, organiz
 
 Provider-native targets still apply. The effective scope is the provider target plus this shared selector. For example, Meraki `organizations.serials`, Intersight `targets.serials`, Nexus Dashboard `targets.switch_ids`, ACI `targets.node_ids`, FMC `targets.serials`, and ISE `targets.network_device_names` can reduce provider API scope while `device_selection` guarantees emitted OTel metrics and logs are also filtered.
 
+SSH host names and serials are resolved from `show version` before emitted telemetry is filtered; configured host IPs can be filtered before connecting. Before the first successful identity lookup, SSH targets with host-name, host-ID, or serial exclusions fail closed. The last verified identity remains authoritative for selection and enabled resource identity fields during later connection failures. Shared `gnmi.targets` currently expose only the configured target name, endpoint, and endpoint host to `device_selection`, so use `host_names`, `host_ids`, or `host_ips` for those targets. Serial and provider-device-ID selectors require a provider inventory identity and do not select shared gNMI targets by themselves.
+
 ```yaml
 receivers:
   cisco_os:

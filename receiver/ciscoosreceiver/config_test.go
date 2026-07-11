@@ -4,6 +4,7 @@
 package ciscoosreceiver
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -75,6 +76,42 @@ func TestConfigValidateRejectsUnsafeDeviceSelection(t *testing.T) {
 }
 
 func TestControllerConfigRejectsDuplicateEffectiveIdentities(t *testing.T) {
+	t.Run("SSH normalized endpoint", func(t *testing.T) {
+		for _, tt := range []struct {
+			name       string
+			firstHost  string
+			secondHost string
+			endpoint   string
+		}{
+			{name: "DNS case and trailing dot", firstHost: "Router.EXAMPLE.test.", secondHost: "router.example.test", endpoint: "router.example.test:22"},
+			{name: "canonical IPv6", firstHost: "2001:0db8:0:0:0:0:0:10", secondHost: "2001:db8::10", endpoint: "[2001:db8::10]:22"},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				first := validTestDevice()
+				first.Host = tt.firstHost
+				second := validTestDevice()
+				second.Host = tt.secondHost
+				cfg := createDefaultConfig().(*Config)
+				cfg.Devices = []DeviceConfig{first, second}
+				cfg.Scrapers = map[component.Type]component.Config{component.MustNewType("system"): nil}
+
+				require.ErrorContains(t, cfg.Validate(), fmt.Sprintf("devices[1] endpoint %q duplicates devices[0] after host normalization", tt.endpoint))
+			})
+		}
+	})
+
+	t.Run("SSH same host different port", func(t *testing.T) {
+		first := validTestDevice()
+		second := validTestDevice()
+		second.Host = "192.168.1.1"
+		second.Port = 2222
+		cfg := createDefaultConfig().(*Config)
+		cfg.Devices = []DeviceConfig{first, second}
+		cfg.Scrapers = map[component.Type]component.Config{component.MustNewType("system"): nil}
+
+		require.NoError(t, cfg.Validate())
+	})
+
 	t.Run("ACI normalized endpoint", func(t *testing.T) {
 		cfg := createDefaultConfig().(*Config)
 		cfg.ACI.Enabled = true
@@ -1748,6 +1785,23 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.True(t, interfaceCfg.Transceiver.Enabled)
 	assert.Equal(t, []string{"Te*", "Eth*"}, interfaceCfg.Transceiver.Include)
 	assert.Equal(t, 16, interfaceCfg.Transceiver.MaxInterfaces)
+}
+
+func TestConfigUnmarshalDefaultsEmptyMetricEntryToEnabled(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	require.NoError(t, cfg.Unmarshal(confmap.NewFromStringMap(map[string]any{
+		"metrics": map[string]any{
+			"empty":          map[string]any{},
+			"explicit_true":  map[string]any{"enabled": true},
+			"explicit_false": map[string]any{"enabled": false},
+		},
+	})))
+
+	assert.True(t, cfg.Metrics["empty"].Enabled)
+	assert.True(t, cfg.Metrics["explicit_true"].Enabled)
+	assert.False(t, cfg.Metrics["explicit_false"].Enabled)
+	assert.True(t, cfg.metricEnabled("empty"))
+	assert.False(t, cfg.metricEnabled("explicit_false"))
 }
 
 func TestNexusDashboardAPIProfileDefaultsToLegacy(t *testing.T) {

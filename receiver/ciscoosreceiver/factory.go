@@ -79,7 +79,7 @@ func createMetricsReceiver(
 	var receivers []receiver.Metrics
 	for i := range conf.Devices {
 		device := &conf.Devices[i]
-		if !selector.allows(sshDeviceIdentity(*device)) {
+		if !selector.allowsSSHConfiguration(sshDeviceIdentity(*device)) {
 			continue
 		}
 		connDevice := connection.DeviceConfig{
@@ -92,6 +92,8 @@ func createMetricsReceiver(
 			},
 			Auth: device.Auth,
 		}
+		metadataStore := &connection.DeviceMetadataStore{}
+		connDevice.MetadataStore = metadataStore
 
 		var scraperOptions []scraperhelper.ControllerOption
 		for scraperType, scraperCfg := range conf.Scrapers {
@@ -122,7 +124,7 @@ func createMetricsReceiver(
 		rcvr, err := scraperhelper.NewMetricsController(
 			&conf.ControllerConfig,
 			set,
-			consumer,
+			newSSHDeviceSelectionConsumer(consumer, selector, *device, metadataStore),
 			scraperOptions...,
 		)
 		if err != nil {

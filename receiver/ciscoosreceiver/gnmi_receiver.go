@@ -12,6 +12,7 @@ import (
 	"maps"
 	"math/rand/v2"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -123,6 +124,13 @@ type sharedGNMITargetRuntime struct {
 	isolate           map[string]struct{}
 	stopped           map[string]struct{}
 	rejects           map[string]int
+	// updatesOnlyCacheOwners records physical cache scopes created by runtime
+	// bisection until the next reconnect reset. Logical stream ownership remains
+	// independent so one split group can still stop all of its siblings.
+	updatesOnlyCacheOwners map[string]map[string]struct{}
+	// cacheTopologies retains the last accepted physical owner grouping for each
+	// logical stream across reconnects. deliveryMu serializes all mutations.
+	cacheTopologies map[string]*sharedGNMICacheTopology
 
 	identityMu            sync.RWMutex
 	verifiedIdentity      verifiedGNMIIdentity
@@ -144,12 +152,21 @@ type sharedGNMITargetRuntime struct {
 
 type sharedGNMIRuntimeStream struct {
 	sharedGNMIStream
+	cacheOwnerID              string
+	cacheTopologyOwners       []string
 	registry                  *internalgnmi.Registry
 	staticAttr                map[string]map[string]string
 	responseSelectors         []internalgnmi.Path
 	encoding                  gnmipb.Encoding
 	baselineEncoding          gnmipb.Encoding
 	baselineEncodingAvailable bool
+}
+
+type sharedGNMICacheTopology struct {
+	current   []string
+	candidate []string
+	accepted  map[string]struct{}
+	orphaned  map[string]struct{}
 }
 
 type nxSensorState struct {
@@ -715,16 +732,18 @@ func newSharedGNMITargetRuntimeWithBudget(
 		return nil, errors.New("shared gNMI auxiliary-state count and byte budgets must be positive")
 	}
 	runtime := &sharedGNMITargetRuntime{
-		config:                target,
-		contract:              contract,
-		configuredVersion:     configuredVersion,
-		cache:                 cache,
-		isolate:               map[string]struct{}{},
-		stopped:               map[string]struct{}{},
-		rejects:               map[string]int{},
-		nxBudget:              auxiliaryBudget,
-		pendingQualification:  map[string]struct{}{},
-		degradedQualification: map[string]struct{}{},
+		config:                 target,
+		contract:               contract,
+		configuredVersion:      configuredVersion,
+		cache:                  cache,
+		isolate:                map[string]struct{}{},
+		stopped:                map[string]struct{}{},
+		rejects:                map[string]int{},
+		updatesOnlyCacheOwners: map[string]map[string]struct{}{},
+		cacheTopologies:        map[string]*sharedGNMICacheTopology{},
+		nxBudget:               auxiliaryBudget,
+		pendingQualification:   map[string]struct{}{},
+		degradedQualification:  map[string]struct{}{},
 	}
 	for streamIndex := range streams {
 		stream := streams[streamIndex]
@@ -747,10 +766,16 @@ func newSharedGNMITargetRuntimeWithBudget(
 		}
 		runtime.streams = append(runtime.streams, sharedGNMIRuntimeStream{
 			sharedGNMIStream:  stream,
+			cacheOwnerID:      stream.OwnerID,
 			registry:          registry,
 			staticAttr:        staticAttrs,
 			responseSelectors: responseSelectors,
 		})
+		if stream.OwnerID != "" {
+			if _, exists := runtime.cacheTopologies[stream.OwnerID]; !exists {
+				runtime.cacheTopologies[stream.OwnerID] = &sharedGNMICacheTopology{current: []string{stream.OwnerID}}
+			}
+		}
 	}
 	runtime.resetSessionQualification()
 	return runtime, nil
@@ -1016,13 +1041,32 @@ func (r *sharedGNMIReceiver) resetUpdatesOnlyOwners(ctx context.Context, target 
 		}
 		seen[stream.OwnerID] = struct{}{}
 
+		if err := r.resetCacheOwnersLocked(target, stream, target.cacheOwnerIDsForLogicalStream(stream.OwnerID)); err != nil {
+			return fmt.Errorf("reset updates-only owner for stream %q: %w", stream.Profile, err)
+		}
+		target.clearPhysicalCacheOwners(stream.OwnerID)
+		r.telemetry.cacheOwnerReset(ctx, target.config.Name, stream.Profile)
+	}
+	r.recordTargetStateUtilization(ctx, target)
+	return nil
+}
+
+// resetCacheOwnersLocked silently removes complete cache-owner scopes. The
+// caller holds deliveryMu so cache state, NX-derived metadata, and optical
+// presence reconciliation cross one serialized publication boundary.
+func (*sharedGNMIReceiver) resetCacheOwnersLocked(
+	target *sharedGNMITargetRuntime,
+	stream sharedGNMIRuntimeStream,
+	ownerIDs []string,
+) error {
+	for _, cacheOwnerID := range sharedGNMICanonicalCacheTopology(ownerIDs) {
 		prepareReset := target.cache.PrepareResetOwner
 		if stream.Optics {
 			prepareReset = target.cache.PrepareResetOwnerForReconciliation
 		}
-		cacheReset, err := prepareReset(stream.OwnerID)
+		cacheReset, err := prepareReset(cacheOwnerID)
 		if err != nil {
-			return fmt.Errorf("reset updates-only owner for stream %q: %w", stream.Profile, err)
+			return err
 		}
 		result := cacheReset.Result()
 		var presence *opticalPresenceTransaction
@@ -1033,7 +1077,7 @@ func (r *sharedGNMIReceiver) resetUpdatesOnlyOwners(ctx context.Context, target 
 			if err != nil {
 				presence.rollback()
 				cacheReset.Rollback()
-				return fmt.Errorf("reset updates-only optical owner for stream %q: %w", stream.Profile, err)
+				return err
 			}
 		}
 		cacheReset.Commit()
@@ -1041,9 +1085,7 @@ func (r *sharedGNMIReceiver) resetUpdatesOnlyOwners(ctx context.Context, target 
 			presence.commit()
 			reservation.commit()
 		}
-		r.telemetry.cacheOwnerReset(ctx, target.config.Name, stream.Profile)
 	}
-	r.recordTargetStateUtilization(ctx, target)
 	return nil
 }
 
@@ -1127,6 +1169,7 @@ func (r *sharedGNMIReceiver) serveTargetStreams(
 	target *sharedGNMITargetRuntime,
 	client gnmipb.GNMIClient,
 ) (bool, error) {
+	target.beginCacheTopologySession()
 	streamCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	results := make(chan sharedGNMIStreamResult, 32)
@@ -1142,6 +1185,7 @@ func (r *sharedGNMIReceiver) serveTargetStreams(
 		if len(stream.Paths) == 0 {
 			return
 		}
+		target.registerPhysicalCacheOwner(stream)
 		responseSelectors, selectorErr := sharedGNMIResponseSelectors(target.config.Name, stream.Paths)
 		if selectorErr != nil {
 			active++
@@ -1252,11 +1296,13 @@ func (r *sharedGNMIReceiver) serveTargetStreams(
 						continue
 					}
 				}
+				if len(validGroups) == 0 {
+					continue
+				}
 				target.replacePendingQualificationStream(result.stream, validGroups)
-				for _, validPaths := range validGroups {
-					validated := result.stream
-					validated.Paths = validPaths
-					launch(validated)
+				validatedStreams := sharedGNMIResolvedRuntimeStreams(result.stream, validGroups)
+				for streamIndex := range validatedStreams {
+					launch(validatedStreams[streamIndex])
 				}
 				continue
 			}
@@ -1583,7 +1629,7 @@ func validateSharedGNMIProbeUpdate(
 	if target == nil || notification == nil {
 		return &sharedGNMIUnsupportedError{err: errors.New("gNMI diagnostic probe returned an empty update")}
 	}
-	decoded, _, err := internalgnmi.DecodeNotification(target.config.Name, notification, time.Now())
+	decoded, _, err := internalgnmi.DecodeNotificationWithRegistry(target.config.Name, notification, time.Now(), stream.registry)
 	if err == nil && target.config.Platform == gnmiPlatformNXOS && stream.Optics {
 		err = normalizeNXNotificationPaths(&decoded)
 	}
@@ -1779,6 +1825,9 @@ func (r *sharedGNMIReceiver) handleSubscribeResponse(
 		if target.streamStopped(stream) {
 			return false, nil
 		}
+		if err := r.reconcileCacheTopology(ctx, target, stream); err != nil {
+			return false, err
+		}
 		target.recordStreamProgress(stream)
 		r.emitTargetAvailable(ctx, target)
 		return false, nil
@@ -1786,6 +1835,9 @@ func (r *sharedGNMIReceiver) handleSubscribeResponse(
 		if !body.SyncResponse {
 			r.markSharedGNMIStreamMalformed(ctx, target, stream)
 			return false, nil
+		}
+		if err := r.reconcileCacheTopology(ctx, target, stream); err != nil {
+			return false, err
 		}
 		target.recordStreamProgress(stream)
 		r.emitTargetAvailable(ctx, target)
@@ -1834,14 +1886,14 @@ func (r *sharedGNMIReceiver) processNotification(
 		return nil
 	}
 	receiptTime := time.Now()
-	decoded, decodeStats, err := internalgnmi.DecodeNotification(target.config.Name, notification, receiptTime)
+	decoded, decodeStats, err := internalgnmi.DecodeNotificationWithRegistry(target.config.Name, notification, receiptTime, stream.registry)
 	if err != nil {
 		r.telemetry.decodeErrors(ctx, target.config.Name, stream.Profile, 1)
 		return errSharedGNMINotificationIgnored
 	}
 	var nxTransaction *nxSensorTransaction
 	if target.config.Platform == gnmiPlatformNXOS && stream.Optics {
-		decoded, nxTransaction, err = target.prepareNXNotificationForOwner(stream.OwnerID, decoded)
+		decoded, nxTransaction, err = target.prepareNXNotificationForOwner(sharedGNMICacheOwnerID(stream), decoded)
 		if err != nil {
 			return &sharedGNMIProfileStopError{err: err}
 		}
@@ -1864,7 +1916,7 @@ func (r *sharedGNMIReceiver) processNotification(
 	r.telemetry.deletes(ctx, target.config.Name, stream.Profile, len(decoded.Deletes))
 
 	cacheNotification := internalgnmi.CacheNotification{
-		OwnerID: stream.OwnerID,
+		OwnerID: sharedGNMICacheOwnerID(stream),
 		Prefix:  decoded.Prefix, Timestamp: decoded.Timestamp, Atomic: decoded.Atomic, Deletes: decoded.Deletes,
 	}
 	for _, touched := range decoded.Touched {
@@ -3337,6 +3389,315 @@ func sharedGNMIRuntimeStreamKey(stream sharedGNMIRuntimeStream) string {
 		return "owner\x00" + stream.OwnerID
 	}
 	return "stream\x00" + sharedGNMIQualificationStreamKey(stream.sharedGNMIStream)
+}
+
+func sharedGNMICacheOwnerID(stream sharedGNMIRuntimeStream) string {
+	if stream.cacheOwnerID != "" {
+		return stream.cacheOwnerID
+	}
+	return stream.OwnerID
+}
+
+func sharedGNMIBisectedRuntimeStream(stream sharedGNMIRuntimeStream, paths []sharedGNMIPath) sharedGNMIRuntimeStream {
+	return sharedGNMIBisectedRuntimeStreams(stream, [][]sharedGNMIPath{paths})[0]
+}
+
+func sharedGNMIResolvedRuntimeStreams(
+	stream sharedGNMIRuntimeStream,
+	groups [][]sharedGNMIPath,
+) []sharedGNMIRuntimeStream {
+	if len(groups) == 0 {
+		return nil
+	}
+	if len(groups) == 1 && sharedGNMIPathSetsEqual(stream.Paths, groups[0]) {
+		stream.Paths = groups[0]
+		return []sharedGNMIRuntimeStream{stream}
+	}
+	return sharedGNMIBisectedRuntimeStreams(stream, groups)
+}
+
+func sharedGNMIBisectedRuntimeStreams(
+	stream sharedGNMIRuntimeStream,
+	groups [][]sharedGNMIPath,
+) []sharedGNMIRuntimeStream {
+	if len(groups) == 0 {
+		return nil
+	}
+	replacedOwnerID := sharedGNMICacheOwnerID(stream)
+	desiredOwners := sharedGNMICacheTopologyOwners(stream)
+	for index := 0; index < len(desiredOwners); {
+		if desiredOwners[index] == replacedOwnerID {
+			desiredOwners = append(desiredOwners[:index], desiredOwners[index+1:]...)
+			continue
+		}
+		index++
+	}
+	out := make([]sharedGNMIRuntimeStream, len(groups))
+	for index, paths := range groups {
+		out[index] = stream
+		out[index].Paths = paths
+		out[index].cacheOwnerID = sharedGNMIPhysicalCacheOwnerID(stream.OwnerID, paths)
+		desiredOwners = append(desiredOwners, out[index].cacheOwnerID)
+	}
+	desiredOwners = sharedGNMICanonicalCacheTopology(desiredOwners)
+	for index := range out {
+		out[index].cacheTopologyOwners = append([]string(nil), desiredOwners...)
+	}
+	return out
+}
+
+func sharedGNMIPhysicalCacheOwnerID(logicalOwnerID string, paths []sharedGNMIPath) string {
+	if logicalOwnerID == "" {
+		return ""
+	}
+	digest := sha256.New()
+	fmt.Fprintf(digest, "%d:%s", len(logicalOwnerID), logicalOwnerID)
+	for _, pathKey := range sharedGNMICanonicalPathSet(paths) {
+		fmt.Fprintf(digest, "%d:%s", len(pathKey), pathKey)
+	}
+	return fmt.Sprintf("gnmi-physical:%x", digest.Sum(nil))
+}
+
+func sharedGNMIPathSetsEqual(left, right []sharedGNMIPath) bool {
+	return slices.Equal(sharedGNMICanonicalPathSet(left), sharedGNMICanonicalPathSet(right))
+}
+
+func sharedGNMICanonicalPathSet(paths []sharedGNMIPath) []string {
+	keys := make([]string, len(paths))
+	for index := range paths {
+		keys[index] = sharedGNMIPathKey(paths[index])
+	}
+	slices.Sort(keys)
+	return keys
+}
+
+func sharedGNMICacheTopologyOwners(stream sharedGNMIRuntimeStream) []string {
+	if len(stream.cacheTopologyOwners) > 0 {
+		owners := append([]string(nil), stream.cacheTopologyOwners...)
+		return sharedGNMICanonicalCacheTopology(append(owners, sharedGNMICacheOwnerID(stream)))
+	}
+	return sharedGNMICanonicalCacheTopology([]string{sharedGNMICacheOwnerID(stream)})
+}
+
+func sharedGNMICanonicalCacheTopology(ownerIDs []string) []string {
+	owners := make([]string, 0, len(ownerIDs))
+	for _, ownerID := range ownerIDs {
+		if ownerID != "" {
+			owners = append(owners, ownerID)
+		}
+	}
+	slices.Sort(owners)
+	return slices.Compact(owners)
+}
+
+func sharedGNMICacheTopologyContains(topology []string, ownerID string) bool {
+	_, found := slices.BinarySearch(topology, ownerID)
+	return found
+}
+
+func (target *sharedGNMITargetRuntime) beginCacheTopologySession() {
+	if target == nil {
+		return
+	}
+	target.deliveryMu.Lock()
+	defer target.deliveryMu.Unlock()
+	for _, topology := range target.cacheTopologies {
+		if topology == nil {
+			continue
+		}
+		if topology.orphaned == nil {
+			topology.orphaned = map[string]struct{}{}
+		}
+		for ownerID := range topology.accepted {
+			if !sharedGNMICacheTopologyContains(topology.current, ownerID) {
+				topology.orphaned[ownerID] = struct{}{}
+			}
+		}
+		topology.candidate = nil
+		topology.accepted = nil
+	}
+}
+
+func (r *sharedGNMIReceiver) reconcileCacheTopology(
+	ctx context.Context,
+	target *sharedGNMITargetRuntime,
+	stream sharedGNMIRuntimeStream,
+) error {
+	if target == nil || stream.OwnerID == "" {
+		return nil
+	}
+	desired := sharedGNMICacheTopologyOwners(stream)
+	member := sharedGNMICacheOwnerID(stream)
+	if len(desired) == 0 || member == "" {
+		return nil
+	}
+
+	target.deliveryMu.Lock()
+	defer target.deliveryMu.Unlock()
+	if target.streamStopped(stream) {
+		return nil
+	}
+	if target.cacheTopologies == nil {
+		target.cacheTopologies = map[string]*sharedGNMICacheTopology{}
+	}
+	topology := target.cacheTopologies[stream.OwnerID]
+	if topology == nil {
+		topology = &sharedGNMICacheTopology{current: []string{stream.OwnerID}}
+		target.cacheTopologies[stream.OwnerID] = topology
+	}
+	if topology.orphaned == nil {
+		topology.orphaned = map[string]struct{}{}
+	}
+
+	transition := !slices.Equal(topology.current, desired)
+	if !transition && len(topology.candidate) > 0 {
+		// A still-running sibling retains the topology attached when it was
+		// launched. If another member is being split further, count this sibling
+		// toward that candidate rather than abandoning the in-flight transition.
+		if !sharedGNMICacheTopologyContains(topology.candidate, member) {
+			return nil
+		}
+		desired = append([]string(nil), topology.candidate...)
+		transition = true
+	}
+	if !transition {
+		for ownerID := range topology.accepted {
+			if !sharedGNMICacheTopologyContains(topology.current, ownerID) {
+				topology.orphaned[ownerID] = struct{}{}
+			}
+		}
+		obsolete := make([]string, 0, len(topology.orphaned))
+		for ownerID := range topology.orphaned {
+			if !sharedGNMICacheTopologyContains(topology.current, ownerID) {
+				obsolete = append(obsolete, ownerID)
+			}
+		}
+		if err := r.resetCacheOwnersLocked(target, stream, obsolete); err != nil {
+			return &sharedGNMIProfileStopError{err: fmt.Errorf("reset abandoned gNMI cache topology: %w", err)}
+		}
+		topology.candidate = nil
+		topology.accepted = nil
+		topology.orphaned = nil
+		target.removePhysicalCacheOwners(stream.OwnerID, obsolete)
+		if len(obsolete) > 0 {
+			r.recordTargetStateUtilization(ctx, target)
+		}
+		return nil
+	}
+
+	if !slices.Equal(topology.candidate, desired) {
+		accepted := make(map[string]struct{}, len(desired))
+		for _, ownerID := range topology.current {
+			if sharedGNMICacheTopologyContains(desired, ownerID) {
+				accepted[ownerID] = struct{}{}
+			}
+		}
+		for ownerID := range topology.accepted {
+			switch {
+			case sharedGNMICacheTopologyContains(desired, ownerID):
+				accepted[ownerID] = struct{}{}
+			case !sharedGNMICacheTopologyContains(topology.current, ownerID):
+				topology.orphaned[ownerID] = struct{}{}
+			}
+		}
+		topology.candidate = append([]string(nil), desired...)
+		topology.accepted = accepted
+		for _, ownerID := range desired {
+			delete(topology.orphaned, ownerID)
+		}
+	}
+	if sharedGNMICacheTopologyContains(desired, member) {
+		topology.accepted[member] = struct{}{}
+	}
+	if len(topology.accepted) < len(desired) {
+		return nil
+	}
+
+	obsolete := make([]string, 0, len(topology.current)+len(topology.orphaned))
+	for _, ownerID := range topology.current {
+		if !sharedGNMICacheTopologyContains(desired, ownerID) {
+			obsolete = append(obsolete, ownerID)
+		}
+	}
+	for ownerID := range topology.orphaned {
+		if !sharedGNMICacheTopologyContains(desired, ownerID) {
+			obsolete = append(obsolete, ownerID)
+		}
+	}
+	obsolete = sharedGNMICanonicalCacheTopology(obsolete)
+	if err := r.resetCacheOwnersLocked(target, stream, obsolete); err != nil {
+		return &sharedGNMIProfileStopError{err: fmt.Errorf("transition gNMI cache topology: %w", err)}
+	}
+	topology.current = append([]string(nil), desired...)
+	topology.candidate = nil
+	topology.accepted = nil
+	topology.orphaned = nil
+	target.removePhysicalCacheOwners(stream.OwnerID, obsolete)
+	if len(obsolete) > 0 {
+		r.recordTargetStateUtilization(ctx, target)
+	}
+	return nil
+}
+
+func (target *sharedGNMITargetRuntime) registerPhysicalCacheOwner(stream sharedGNMIRuntimeStream) {
+	if target == nil || !stream.UpdatesOnly {
+		return
+	}
+	logicalOwnerID := stream.OwnerID
+	cacheOwnerID := sharedGNMICacheOwnerID(stream)
+	if logicalOwnerID == "" || cacheOwnerID == "" || logicalOwnerID == cacheOwnerID {
+		return
+	}
+	target.stateMu.Lock()
+	defer target.stateMu.Unlock()
+	if target.updatesOnlyCacheOwners == nil {
+		target.updatesOnlyCacheOwners = map[string]map[string]struct{}{}
+	}
+	owners := target.updatesOnlyCacheOwners[logicalOwnerID]
+	if owners == nil {
+		owners = map[string]struct{}{}
+		target.updatesOnlyCacheOwners[logicalOwnerID] = owners
+	}
+	owners[cacheOwnerID] = struct{}{}
+}
+
+func (target *sharedGNMITargetRuntime) cacheOwnerIDsForLogicalStream(logicalOwnerID string) []string {
+	owners := []string{logicalOwnerID}
+	if target == nil {
+		return owners
+	}
+	target.stateMu.RLock()
+	defer target.stateMu.RUnlock()
+	for cacheOwnerID := range target.updatesOnlyCacheOwners[logicalOwnerID] {
+		if cacheOwnerID != logicalOwnerID {
+			owners = append(owners, cacheOwnerID)
+		}
+	}
+	return owners
+}
+
+func (target *sharedGNMITargetRuntime) clearPhysicalCacheOwners(logicalOwnerID string) {
+	if target == nil {
+		return
+	}
+	target.stateMu.Lock()
+	delete(target.updatesOnlyCacheOwners, logicalOwnerID)
+	target.stateMu.Unlock()
+}
+
+func (target *sharedGNMITargetRuntime) removePhysicalCacheOwners(logicalOwnerID string, ownerIDs []string) {
+	if target == nil || len(ownerIDs) == 0 {
+		return
+	}
+	target.stateMu.Lock()
+	defer target.stateMu.Unlock()
+	owners := target.updatesOnlyCacheOwners[logicalOwnerID]
+	for _, ownerID := range ownerIDs {
+		delete(owners, ownerID)
+	}
+	if len(owners) == 0 {
+		delete(target.updatesOnlyCacheOwners, logicalOwnerID)
+	}
 }
 
 func (target *sharedGNMITargetRuntime) pathIsolated(path sharedGNMIPath) bool {

@@ -955,6 +955,7 @@ $defs:
         x-optional: true
         type: boolean
       heartbeat_interval:
+        x-pointer: true
         type: string
         format: duration
       mode:

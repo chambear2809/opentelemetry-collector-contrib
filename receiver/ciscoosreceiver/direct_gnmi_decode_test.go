@@ -8,12 +8,88 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	gnmi "github.com/openconfig/gnmi/proto/gnmi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
+
+func TestDirectGNMITimestampNormalizesCiscoMagnitudesAndBounds(t *testing.T) {
+	receipt := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
+	want := time.Date(2025, time.January, 2, 3, 4, 5, 678_901_000, time.UTC)
+
+	for name, raw := range map[string]int64{
+		"seconds":      want.Unix(),
+		"milliseconds": want.UnixMilli(),
+		"microseconds": want.UnixMicro(),
+		"nanoseconds":  want.UnixNano(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := directGNMITimestamp(raw, receipt).AsTime()
+			switch name {
+			case "seconds":
+				assert.Equal(t, want.Truncate(time.Second), got)
+			case "milliseconds":
+				assert.Equal(t, want.Truncate(time.Millisecond), got)
+			case "microseconds":
+				assert.Equal(t, want.Truncate(time.Microsecond), got)
+			default:
+				assert.Equal(t, want, got)
+			}
+		})
+	}
+
+	for name, raw := range map[string]int64{
+		"zero":       0,
+		"pre-2000":   time.Date(1999, time.December, 31, 23, 59, 59, 0, time.UTC).Unix(),
+		"far-future": receipt.Add(25 * time.Hour).UnixNano(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, receipt, directGNMITimestamp(raw, receipt).AsTime())
+		})
+	}
+}
+
+func TestDeprecatedProductGNMIDecodersAcceptLegacyValueAndSecondsTimestamp(t *testing.T) {
+	eventTime := time.Now().Add(-time.Minute).UTC().Truncate(time.Second)
+	notification := &gnmi.Notification{
+		Timestamp: eventTime.Unix(),
+		Prefix:    mustParseIOSXRPath(t, "test:root"),
+		Update: []*gnmi.Update{{
+			Path:  mustParseIOSXRPath(t, "value"),
+			Value: &gnmi.Value{Type: gnmi.Encoding_JSON, Value: []byte("5")}, //nolint:staticcheck // Exercise compatibility with the deprecated wire field.
+		}},
+	}
+
+	decoders := map[string]func() pmetric.Metrics{
+		"ios-xr": func() pmetric.Metrics {
+			decoder := iosXRGNMIUpdateDecoder{target: IOSXRTargetConfig{Name: "xr"}, health: &iosXRHealth{}}
+			return decoder.decodeNotification(notification, iosXRTelemetryTransportDialIn)
+		},
+		"catalyst-9800": func() pmetric.Metrics {
+			decoder := catalyst9800GNMIUpdateDecoder{target: Catalyst9800TargetConfig{Name: "wlc"}, health: &catalyst9800Health{}}
+			return decoder.decodeNotification(notification, catalyst9800TelemetryTransportDialIn)
+		},
+	}
+
+	for name, decode := range decoders {
+		t.Run(name, func(t *testing.T) {
+			md := decode()
+			metricName := "cisco." + strings.ReplaceAll(name, "-", "") + ".yang.test.root.value"
+			if name == "ios-xr" {
+				metricName = "cisco.iosxr.yang.test.root.value"
+			}
+			metric := mustFindIOSXRMetric(t, md, metricName)
+			require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+			dp := metric.Gauge().DataPoints().At(0)
+			assert.Equal(t, int64(5), dp.IntValue())
+			assert.Equal(t, eventTime, dp.Timestamp().AsTime())
+		})
+	}
+}
 
 func TestIndexedMetricBuilderCoalescesStreams(t *testing.T) {
 	md := pmetric.NewMetrics()

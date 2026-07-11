@@ -6,9 +6,13 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 import (
 	"math"
 	"strconv"
+	"time"
 
+	gnmi "github.com/openconfig/gnmi/proto/gnmi"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+
+	internalgnmi "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/gnmi"
 )
 
 const (
@@ -23,6 +27,21 @@ const (
 	directGNMIHardMaxAttributeBytes      = 32 * 1024 * 1024
 	directGNMIHardMaxPayloadBytes        = 4 * 1024 * 1024
 )
+
+func directGNMITimestamp(raw int64, receipt time.Time) pcommon.Timestamp {
+	normalized, _ := internalgnmi.NormalizeTimestamp(raw, receipt)
+	return pcommon.NewTimestampFromTime(normalized)
+}
+
+func resolveDirectGNMIUpdateValue(update *gnmi.Update, budget *directGNMIDecodeBudget) (*gnmi.TypedValue, bool) {
+	value, err := internalgnmi.ResolveUpdateValue(update)
+	if err == nil {
+		return value, true
+	}
+	budget.addDecodeError()
+	budget.drop(false)
+	return nil, false
+}
 
 // directGNMIDecodeLimits are non-configurable production ceilings. Tests may
 // lower an individual value to exercise rejection without constructing a huge

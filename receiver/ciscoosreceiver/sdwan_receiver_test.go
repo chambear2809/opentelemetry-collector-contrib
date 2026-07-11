@@ -4,6 +4,8 @@
 package ciscoosreceiver
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -19,9 +21,31 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/sdwan"
 )
+
+func TestClassifySDWANErrorUsesBoundedValues(t *testing.T) {
+	assert.Equal(t, "auth", classifySDWANError(&sdwan.APIError{StatusCode: http.StatusUnauthorized}))
+	assert.Equal(t, "rate_limited", classifySDWANError(&sdwan.APIError{StatusCode: http.StatusTooManyRequests}))
+	assert.Equal(t, "transport", classifySDWANError(&sdwan.APIError{StatusCode: http.StatusServiceUnavailable}))
+	assert.Equal(t, "transport", classifySDWANError(&httpclient.ResponseBodyReadError{Err: errors.New("truncated response")}))
+	assert.Equal(t, "timeout", classifySDWANError(&httpclient.ResponseBodyReadError{Err: context.DeadlineExceeded}))
+	assert.Equal(t, "timeout", classifySDWANError(context.DeadlineExceeded))
+
+	classified := classifySDWANError(errors.New("request failed for https://manager.example.test/device?deviceId=10.0.0.1"))
+	assert.Equal(t, "other", classified)
+	assert.NotContains(t, classified, "10.0.0.1")
+
+	builder := newSDWANMetricsBuilder(time.Unix(100, 0), "https://sdwan.example.test", newCounterStoreAt(time.Unix(100, 0)))
+	builder.recordServiceUnavailable("interfaces", "interface.statistics", errors.New("request failed for deviceId=10.0.0.1"))
+	metric := requireMetricByName(t, builder.emit(), "sdwan.service.unavailable")
+	require.Equal(t, 1, metric.Gauge().DataPoints().Len())
+	errorKind, found := metric.Gauge().DataPoints().At(0).Attributes().Get("sdwan.error")
+	require.True(t, found)
+	assert.Equal(t, "other", errorKind.Str())
+}
 
 func TestSDWANScrapeEmitsCoreMetrics(t *testing.T) {
 	server := newSDWANFixtureServer(t, map[string]string{
@@ -359,6 +383,19 @@ func TestSDWANPercentRatioDoesNotDoubleScaleRatios(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestSDWANFractionalMegabitsPreserveIntegerSpeedDescriptor(t *testing.T) {
+	builder := newSDWANMetricsBuilder(time.Unix(100, 0), "https://sdwan.example.test", newCounterStoreAt(time.Unix(100, 0)))
+	rb := builder.deviceResource(sdwan.Object{"uuid": "device-1", "speed-mbps": 1.5})
+
+	recordSDWANInterfaceSpeed(rb, sdwan.Object{"speed-mbps": 1.5}, nil)
+	metric := requireMetricByName(t, builder.emit(), "cisco.interface.speed")
+	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+	require.Equal(t, 1, metric.Gauge().DataPoints().Len())
+	point := metric.Gauge().DataPoints().At(0)
+	assert.Equal(t, pmetric.NumberDataPointValueTypeInt, point.ValueType())
+	assert.Equal(t, int64(1_500_000), point.IntValue())
 }
 
 func TestSDWANEventMetricsAndLogsApplyNativeAndSharedFilters(t *testing.T) {

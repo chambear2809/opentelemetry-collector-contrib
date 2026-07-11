@@ -69,8 +69,9 @@ type Mapping struct {
 
 // Registry contains only validated, explicit source mappings.
 type Registry struct {
-	mappings map[string]Mapping
-	metrics  map[string]metricContract
+	mappings     map[string]Mapping
+	metrics      map[string]metricContract
+	jsonListKeys jsonListKeySchema
 }
 
 type metricContract struct {
@@ -83,8 +84,9 @@ type metricContract struct {
 // NewRegistry validates and registers all mappings.
 func NewRegistry(mappings ...Mapping) (*Registry, error) {
 	registry := &Registry{
-		mappings: make(map[string]Mapping, len(mappings)),
-		metrics:  make(map[string]metricContract),
+		mappings:     make(map[string]Mapping, len(mappings)),
+		metrics:      make(map[string]metricContract),
+		jsonListKeys: jsonListKeySchema{},
 	}
 	for i := range mappings {
 		if err := registry.Register(mappings[i]); err != nil {
@@ -108,6 +110,9 @@ func (r *Registry) Register(mapping Mapping) error {
 	if r.metrics == nil {
 		r.metrics = map[string]metricContract{}
 	}
+	if r.jsonListKeys == nil {
+		r.jsonListKeys = jsonListKeySchema{}
+	}
 	key := sourcePathKey(mapping.Source)
 	if _, exists := r.mappings[key]; exists {
 		return fmt.Errorf("duplicate mapping for %s", mapping.Source.String())
@@ -119,11 +124,69 @@ func (r *Registry) Register(mapping Mapping) error {
 	if existing, exists := r.metrics[mapping.Metric.Name]; exists && existing != contract {
 		return fmt.Errorf("conflicting contract for metric %q", mapping.Metric.Name)
 	}
+	listKeyRequirements, err := r.validateJSONListKeyRequirements(mapping)
+	if err != nil {
+		return err
+	}
 	mapping.Source.Elements = append([]string(nil), mapping.Source.Elements...)
 	mapping.KeyAttributes = append([]KeyAttribute(nil), mapping.KeyAttributes...)
 	r.mappings[key] = mapping
 	r.metrics[mapping.Metric.Name] = contract
+	for _, requirement := range listKeyRequirements {
+		keys := r.jsonListKeys[requirement.path]
+		if keys == nil {
+			keys = map[string]string{}
+			r.jsonListKeys[requirement.path] = keys
+		}
+		keys[requirement.normalized] = requirement.canonical
+	}
 	return nil
+}
+
+type jsonListKeyRequirement struct {
+	path       string
+	normalized string
+	canonical  string
+}
+
+func (r *Registry) validateJSONListKeyRequirements(mapping Mapping) ([]jsonListKeyRequirement, error) {
+	requirements := make([]jsonListKeyRequirement, 0, len(mapping.KeyAttributes))
+	staged := map[string]map[string]string{}
+	for _, attribute := range mapping.KeyAttributes {
+		for index, element := range mapping.Source.Elements {
+			if element != attribute.Element {
+				continue
+			}
+			path := jsonListSchemaPathKey(mapping.Source.PathTarget, mapping.Source.Origin, mapping.Source.Elements[:index+1])
+			normalized := normalizeJSONListKeyName(attribute.Key)
+			if existing, ok := r.jsonListKeys[path][normalized]; ok && existing != attribute.Key {
+				return nil, fmt.Errorf(
+					"mapping source %s has JSON list keys %q and %q with the same normalized identity",
+					mapping.Source.String(), existing, attribute.Key,
+				)
+			}
+			keys := staged[path]
+			if keys == nil {
+				keys = map[string]string{}
+				staged[path] = keys
+			}
+			if existing, ok := keys[normalized]; ok {
+				if existing != attribute.Key {
+					return nil, fmt.Errorf(
+						"mapping source %s has JSON list keys %q and %q with the same normalized identity",
+						mapping.Source.String(), existing, attribute.Key,
+					)
+				}
+				continue
+			}
+			if _, exists := r.jsonListKeys[path][normalized]; !exists && len(r.jsonListKeys[path])+len(keys) >= maxPathKeysPerElement {
+				return nil, fmt.Errorf("mapping source %s requires more than %d JSON list keys on one element", mapping.Source.String(), maxPathKeysPerElement)
+			}
+			keys[normalized] = attribute.Key
+			requirements = append(requirements, jsonListKeyRequirement{path: path, normalized: normalized, canonical: attribute.Key})
+		}
+	}
+	return requirements, nil
 }
 
 // Len returns the number of explicit mappings.

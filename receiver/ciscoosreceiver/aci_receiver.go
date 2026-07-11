@@ -864,7 +864,7 @@ func appendACILog(ld plog.Logs, controllerName, controllerEndpoint string, endpo
 	putStr(logAttrs, "aci.group", endpoint.group)
 	putStr(logAttrs, "aci.status", status)
 	putStr(logAttrs, "aci.severity", strings.ToLower(severity))
-	putStr(logAttrs, "user.name", aci.String(obj, "user", "userName", "createdBy", "modTs"))
+	putStr(logAttrs, "user.name", aci.String(obj, "user", "userName", "createdBy", "modifiedBy"))
 }
 
 func aciMetricEndpoints() []aciEndpoint {

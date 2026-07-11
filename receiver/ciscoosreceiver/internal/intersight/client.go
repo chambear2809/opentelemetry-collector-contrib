@@ -124,9 +124,18 @@ func NewClient(cfg Config) (*Client, error) {
 		signer:    requestSigner,
 		endpoint:  parsed,
 		userAgent: userAgent,
-		client:    &http.Client{Timeout: timeout, Transport: transport, CheckRedirect: httpclient.SameOriginRedirectPolicy(parsed)},
-		retries:   retries,
-		pageSize:  pageSize,
+		// The HTTP signature covers (request-target). net/http copies the original
+		// Authorization header across same-origin redirects without re-signing the
+		// changed URI, so expose redirects as ordinary 3xx responses instead.
+		client: &http.Client{
+			Timeout:   timeout,
+			Transport: transport,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
+		retries:  retries,
+		pageSize: pageSize,
 	}, nil
 }
 
@@ -275,8 +284,21 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 		bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 		closeErr := resp.Body.Close()
 		if readErr != nil {
-			c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
-			return nil, readErr
+			c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, RateLimited: resp.StatusCode == http.StatusTooManyRequests, Err: readErr})
+			lastErr = readErr
+			retryable := httpclient.IsResponseBodyReadError(readErr) &&
+				(resp.StatusCode >= 200 && resp.StatusCode < 300 || retryableStatus(resp.StatusCode))
+			delay := time.Duration(-1)
+			if retryableStatus(resp.StatusCode) {
+				delay = retryAfter(resp.Header.Get("Retry-After"))
+			}
+			if !retryable || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, delay) {
+				if ctx.Err() != nil {
+					return nil, ctx.Err()
+				}
+				return nil, readErr
+			}
+			continue
 		}
 		if closeErr != nil {
 			return nil, closeErr

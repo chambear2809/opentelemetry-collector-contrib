@@ -312,9 +312,24 @@ func (c *Client) do(ctx context.Context, organizationID, operation, path string,
 				Outcome:        "error",
 				StatusCode:     resp.StatusCode,
 				Duration:       duration,
+				RateLimited:    resp.StatusCode == http.StatusTooManyRequests,
 				Err:            readErr,
 			})
-			return nil, resp.Header, resp.Request.URL, readErr
+			lastErr = readErr
+			statusRetryable := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 && resp.StatusCode <= 599
+			retryable := httpclient.IsResponseBodyReadError(readErr) &&
+				(resp.StatusCode >= 200 && resp.StatusCode < 300 || statusRetryable)
+			delay := time.Duration(-1)
+			if statusRetryable {
+				delay = retryAfter(resp.Header.Get("Retry-After"))
+			}
+			if !retryable || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, delay) {
+				if ctx.Err() != nil {
+					return nil, resp.Header, resp.Request.URL, ctx.Err()
+				}
+				return nil, resp.Header, resp.Request.URL, readErr
+			}
+			continue
 		}
 		if closeErr != nil {
 			return nil, resp.Header, resp.Request.URL, closeErr

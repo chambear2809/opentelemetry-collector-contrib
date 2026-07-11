@@ -365,6 +365,12 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 		if httpclient.IsCertificateVerificationError(err) {
 			return nil, nil, err
 		}
+		if requestToken.value == "" {
+			// login owns the configured authentication retry budget. A failed
+			// login must not be multiplied by the outer data-request retry loop;
+			// this is especially important for rejected credentials.
+			return nil, nil, err
+		}
 		if status == http.StatusUnauthorized || status == http.StatusForbidden {
 			// Drop the token but do not retry inline — a bad credential would
 			// otherwise loop login → fail → login on every attempt and risk
@@ -377,7 +383,9 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 		if header != nil {
 			retryHeader = header.Get("Retry-After")
 		}
-		if !retryableStatus(status) || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
+		retryable := retryableStatus(status) ||
+			httpclient.IsResponseBodyReadError(err) && status >= 200 && status < 300
+		if !retryable || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
 			if ctx.Err() != nil {
 				return nil, nil, ctx.Err()
 			}
@@ -422,7 +430,7 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 	bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
-		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
+		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, RateLimited: resp.StatusCode == http.StatusTooManyRequests, Err: readErr})
 		return nil, resp.Header, resp.StatusCode, token, readErr
 	}
 	if closeErr != nil {
@@ -522,10 +530,40 @@ func (c *Client) login(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	var lastErr error
+	for attempt := range c.retries + 1 {
+		token, header, status, err := c.loginOnce(ctx, payload)
+		if err == nil {
+			return token, nil
+		}
+		lastErr = err
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		if httpclient.IsCertificateVerificationError(err) {
+			return "", err
+		}
+		retryable := retryableStatus(status) ||
+			httpclient.IsResponseBodyReadError(err) && status >= 200 && status < 300
+		retryDelay := time.Duration(-1)
+		if header != nil {
+			retryDelay = retryAfter(header.Get("Retry-After"))
+		}
+		if !retryable || attempt == c.retries || !sleepBeforeRetry(ctx, attempt, retryDelay) {
+			if ctx.Err() != nil {
+				return "", ctx.Err()
+			}
+			return "", err
+		}
+	}
+	return "", lastErr
+}
+
+func (c *Client) loginOnce(ctx context.Context, payload []byte) (string, http.Header, int, error) {
 	reqURL := c.buildURL("/api/aaaLogin.json", nil)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(payload))
 	if err != nil {
-		return "", err
+		return "", nil, 0, err
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
@@ -536,29 +574,29 @@ func (c *Client) login(ctx context.Context) (string, error) {
 	if err != nil {
 		err = decorateCertificateVerificationError(err)
 		c.record(RequestStat{Controller: c.name, Operation: "aaaLogin", Method: http.MethodPost, Path: "/api/aaaLogin.json", Outcome: "error", Duration: duration, Err: err})
-		return "", err
+		return "", nil, 0, err
 	}
 	bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
-		c.record(RequestStat{Controller: c.name, Operation: "aaaLogin", Method: http.MethodPost, Path: "/api/aaaLogin.json", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
-		return "", readErr
+		c.record(RequestStat{Controller: c.name, Operation: "aaaLogin", Method: http.MethodPost, Path: "/api/aaaLogin.json", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, RateLimited: resp.StatusCode == http.StatusTooManyRequests, Err: readErr})
+		return "", resp.Header, resp.StatusCode, readErr
 	}
 	if closeErr != nil {
-		return "", closeErr
+		return "", resp.Header, resp.StatusCode, closeErr
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		apiErr := &APIError{StatusCode: resp.StatusCode}
 		c.record(RequestStat{Controller: c.name, Operation: "aaaLogin", Method: http.MethodPost, Path: "/api/aaaLogin.json", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: apiErr})
-		return "", apiErr
+		return "", resp.Header, resp.StatusCode, apiErr
 	}
 	token, err := loginToken(bodyBytes)
 	if err != nil {
 		c.record(RequestStat{Controller: c.name, Operation: "aaaLogin", Method: http.MethodPost, Path: "/api/aaaLogin.json", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: err})
-		return "", err
+		return "", resp.Header, resp.StatusCode, err
 	}
 	c.record(RequestStat{Controller: c.name, Operation: "aaaLogin", Method: http.MethodPost, Path: "/api/aaaLogin.json", Outcome: "success", StatusCode: resp.StatusCode, Duration: duration})
-	return token, nil
+	return token, resp.Header, resp.StatusCode, nil
 }
 
 func (c *Client) rejectToken(token tokenSnapshot, authErr error) {
@@ -691,12 +729,7 @@ func cloneValues(values url.Values) url.Values {
 }
 
 func retryableStatus(status int) bool {
-	switch status {
-	case 0, http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
-		return true
-	default:
-		return false
-	}
+	return status == 0 || status == http.StatusTooManyRequests || status >= 500
 }
 
 func retryAfter(value string) time.Duration {

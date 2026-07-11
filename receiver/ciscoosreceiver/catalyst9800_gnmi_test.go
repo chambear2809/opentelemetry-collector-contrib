@@ -610,7 +610,7 @@ func TestCatalyst9800GNMINestedJSONPreservesOuterAndInnerIdentity(t *testing.T) 
 func TestCatalyst9800GNMIDecoderRecreationDoesNotAdvanceCounterEpoch(t *testing.T) {
 	sink := &consumertest.MetricsSink{}
 	tracked := newAbsoluteCounterTrackingConsumer(sink)
-	times := []time.Time{time.Unix(100, 0), time.Unix(200, 0)}
+	times := []time.Time{time.Unix(1_700_000_000, 0), time.Unix(1_700_000_100, 0)}
 	values := []uint64{100, 150}
 
 	for i := range times {

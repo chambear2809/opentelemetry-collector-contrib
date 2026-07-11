@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 
@@ -24,6 +25,36 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
 )
+
+func TestAppendACILogDoesNotUseModificationTimestampAsUsername(t *testing.T) {
+	logs := plog.NewLogs()
+	appendACILog(
+		logs,
+		"apic-1",
+		"https://apic.example.test",
+		aciEndpoint{group: "faults", operation: "fault.instances"},
+		aci.Object{"modTs": "2026-05-25T10:00:00Z"},
+		time.Unix(1_800_000_000, 0),
+	)
+
+	record := logs.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
+	_, found := record.Attributes().Get("user.name")
+	assert.False(t, found)
+
+	logs = plog.NewLogs()
+	appendACILog(
+		logs,
+		"apic-1",
+		"https://apic.example.test",
+		aciEndpoint{group: "audit", operation: "audit.modifications"},
+		aci.Object{"modifiedBy": "operator", "modTs": "2026-05-25T10:00:00Z"},
+		time.Unix(1_800_000_000, 0),
+	)
+	record = logs.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
+	username, found := record.Attributes().Get("user.name")
+	require.True(t, found)
+	assert.Equal(t, "operator", username.Str())
+}
 
 func TestACIScrapeEmitsTroubleshootingMetrics(t *testing.T) {
 	server := newACIFixtureServer(t, map[string]string{

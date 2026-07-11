@@ -43,6 +43,27 @@ func TestClientRetryCountValidation(t *testing.T) {
 	}
 }
 
+func TestClientRetriesIncompleteSuccessfulResponseBody(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if requests.Add(1) == 1 {
+			w.Header().Set("Content-Length", "100")
+			w.Header().Set("Retry-After", "0")
+			_, _ = w.Write([]byte(`{"data":`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, AuthMode: "bearer", BearerToken: "token", MaxRetries: 1})
+	require.NoError(t, err)
+	objects, err := client.List(t.Context(), "test.list", "/test", nil, 10)
+	require.NoError(t, err)
+	assert.Empty(t, objects)
+	assert.Equal(t, int64(2), requests.Load())
+}
+
 func TestClientBearerList(t *testing.T) {
 	var authHeader string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -577,6 +598,19 @@ func TestClientAuthenticationRetryPolicy(t *testing.T) {
 				if attempt == 1 {
 					w.Header().Set("Retry-After", "0")
 					http.Error(w, "unavailable", http.StatusServiceUnavailable)
+					return
+				}
+				_ = json.NewEncoder(w).Encode(map[string]string{"token": "jwt-token"})
+			},
+			wantAuthRequests: 2,
+		},
+		{
+			name: "incomplete successful authentication body",
+			authenticate: func(w http.ResponseWriter, attempt int64) {
+				if attempt == 1 {
+					w.Header().Set("Content-Length", "100")
+					w.Header().Set("Retry-After", "0")
+					_, _ = w.Write([]byte(`{"token":`))
 					return
 				}
 				_ = json.NewEncoder(w).Encode(map[string]string{"token": "jwt-token"})

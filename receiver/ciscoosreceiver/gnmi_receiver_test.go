@@ -787,17 +787,20 @@ func TestSharedGNMIRuntimeCombinationRejectionContinuesGroupsWithinStreamLimit(t
 		if len(paths) > 2 {
 			return status.Error(codes.InvalidArgument, "device accepts at most two paths per stream")
 		}
+		updates := make([]*gnmipb.Update, 0, len(paths))
 		for index, path := range paths {
-			if err := stream.Send(&gnmipb.SubscribeResponse{Response: &gnmipb.SubscribeResponse_Update{Update: &gnmipb.Notification{
-				Timestamp: time.Now().Add(time.Duration(index) * time.Nanosecond).UnixNano(),
-				Prefix:    &gnmipb.Path{Origin: runtimeTestOrigin},
-				Update: []*gnmipb.Update{{
-					Path: runtimeTestProtoPath(t, path),
-					Val:  &gnmipb.TypedValue{Value: &gnmipb.TypedValue_IntVal{IntVal: int64(index + 1)}},
-				}},
-			}}}); err != nil {
-				return err
-			}
+			updates = append(updates, &gnmipb.Update{
+				Path: runtimeTestProtoPath(t, path),
+				Val:  &gnmipb.TypedValue{Value: &gnmipb.TypedValue_IntVal{IntVal: int64(index + 1)}},
+			})
+		}
+		if err := stream.Send(&gnmipb.SubscribeResponse{Response: &gnmipb.SubscribeResponse_Update{Update: &gnmipb.Notification{
+			Timestamp: time.Now().UnixNano(),
+			Prefix:    &gnmipb.Path{Origin: runtimeTestOrigin},
+			Atomic:    true,
+			Update:    updates,
+		}}}); err != nil {
+			return err
 		}
 		if err := stream.Send(&gnmipb.SubscribeResponse{Response: &gnmipb.SubscribeResponse_SyncResponse{SyncResponse: true}}); err != nil {
 			return err
@@ -819,14 +822,80 @@ func TestSharedGNMIRuntimeCombinationRejectionContinuesGroupsWithinStreamLimit(t
 	require.Eventually(t, func() bool {
 		return fake.snapshot().subscribeCalls >= 6 &&
 			runtimeTestMetricPointCountAll(sink.AllMetrics(), "runtime.split.a") > 0 &&
-			runtimeTestMetricPointCountAll(sink.AllMetrics(), "runtime.split.d") > 0
+			runtimeTestMetricPointCountAll(sink.AllMetrics(), "runtime.split.d") > 0 &&
+			len(receiver.targets[0].cache.Snapshot()) == 4
 	}, 5*time.Second, 20*time.Millisecond)
 	assert.False(t, receiver.targets[0].profileStopped("runtime-custom"))
 	assert.Equal(t, int64(1), listener.accepts.Load())
+	assert.Len(t, receiver.targets[0].cache.Snapshot(), 4,
+		"atomic snapshots from separately bisected subscriptions must preserve sibling state")
 
 	shutdownCtx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	require.NoError(t, receiver.Shutdown(shutdownCtx))
+}
+
+func TestSharedGNMIBisectedStreamsSeparateCacheScopeFromLogicalRuntimeKey(t *testing.T) {
+	original := sharedGNMIRuntimeStream{sharedGNMIStream: sharedGNMIStream{
+		OwnerID: "logical-owner",
+		Paths: []sharedGNMIPath{
+			{Origin: "openconfig", Path: "system/first"},
+			{Origin: "openconfig", Path: "system/second"},
+		},
+	}}
+	first := sharedGNMIBisectedRuntimeStream(original, original.Paths[:1])
+	second := sharedGNMIBisectedRuntimeStream(original, original.Paths[1:])
+
+	assert.Equal(t, sharedGNMIRuntimeStreamKey(original), sharedGNMIRuntimeStreamKey(first))
+	assert.Equal(t, sharedGNMIRuntimeStreamKey(first), sharedGNMIRuntimeStreamKey(second))
+	assert.NotEqual(t, sharedGNMICacheOwnerID(first), sharedGNMICacheOwnerID(second))
+	assert.NotEqual(t, original.OwnerID, sharedGNMICacheOwnerID(first))
+	assert.Equal(t, sharedGNMICacheOwnerID(first), sharedGNMICacheOwnerID(sharedGNMIBisectedRuntimeStream(original, original.Paths[:1])))
+	reordered := sharedGNMIBisectedRuntimeStream(original, []sharedGNMIPath{original.Paths[1], original.Paths[0]})
+	assert.Equal(t, sharedGNMICacheOwnerID(reordered), sharedGNMICacheOwnerID(sharedGNMIBisectedRuntimeStream(original, original.Paths)),
+		"physical ownership must depend on the subscription set, not path order")
+	resolvedSubset := sharedGNMIResolvedRuntimeStreams(original, [][]sharedGNMIPath{original.Paths[:1]})
+	require.Len(t, resolvedSubset, 1)
+	assert.NotEqual(t, original.OwnerID, sharedGNMICacheOwnerID(resolvedSubset[0]),
+		"a single strict-subset resolution is still a physical topology change")
+	resolvedReordered := sharedGNMIResolvedRuntimeStreams(original, [][]sharedGNMIPath{{original.Paths[1], original.Paths[0]}})
+	require.Len(t, resolvedReordered, 1)
+	assert.Equal(t, original.OwnerID, sharedGNMICacheOwnerID(resolvedReordered[0]),
+		"an identical selector set does not require a cache-owner transition")
+	target := &sharedGNMITargetRuntime{stopped: map[string]struct{}{}}
+	target.stopStream(first)
+	assert.True(t, target.streamStopped(second), "stopping one physical group must stop its logical siblings")
+}
+
+func TestSharedGNMICacheTopologyKeepsNestedSplitCandidateWhenSiblingProgresses(t *testing.T) {
+	cache, err := internalgnmi.NewCache(20)
+	require.NoError(t, err)
+	receiver := &sharedGNMIReceiver{}
+	original := sharedGNMIRuntimeStream{sharedGNMIStream: sharedGNMIStream{
+		OwnerID: "logical-owner",
+		Paths: []sharedGNMIPath{
+			{Origin: "openconfig", Path: "system/first"},
+			{Origin: "openconfig", Path: "system/second"},
+			{Origin: "openconfig", Path: "system/third"},
+		},
+	}}
+	target := &sharedGNMITargetRuntime{
+		cache:           cache,
+		stopped:         map[string]struct{}{},
+		cacheTopologies: map[string]*sharedGNMICacheTopology{original.OwnerID: {current: []string{original.OwnerID}}},
+	}
+	firstSplit := sharedGNMIBisectedRuntimeStreams(original, [][]sharedGNMIPath{original.Paths[:2], original.Paths[2:]})
+	require.NoError(t, receiver.reconcileCacheTopology(t.Context(), target, firstSplit[0]))
+	require.NoError(t, receiver.reconcileCacheTopology(t.Context(), target, firstSplit[1]))
+	assert.Equal(t, sharedGNMICacheTopologyOwners(firstSplit[0]), target.cacheTopologies[original.OwnerID].current)
+
+	nested := sharedGNMIBisectedRuntimeStreams(firstSplit[0], [][]sharedGNMIPath{firstSplit[0].Paths[:1], firstSplit[0].Paths[1:]})
+	require.NoError(t, receiver.reconcileCacheTopology(t.Context(), target, nested[0]))
+	require.NoError(t, receiver.reconcileCacheTopology(t.Context(), target, firstSplit[1]))
+	assert.NotEmpty(t, target.cacheTopologies[original.OwnerID].candidate,
+		"progress from an unchanged sibling must not abandon the nested split candidate")
+	require.NoError(t, receiver.reconcileCacheTopology(t.Context(), target, nested[1]))
+	assert.Equal(t, sharedGNMICacheTopologyOwners(nested[0]), target.cacheTopologies[original.OwnerID].current)
 }
 
 func TestSharedGNMIRuntimeConsumerRefusalReconnectsAndRedeliversEqualTimestamp(t *testing.T) {

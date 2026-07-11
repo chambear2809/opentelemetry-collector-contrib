@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 	"path"
 	"sort"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/scraper"
+	"go.opentelemetry.io/collector/scraper/scrapererror"
 	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/connection"
@@ -42,6 +44,11 @@ type reconnectInterfacesCommandClient interface {
 	GetReconnectCount() int64
 }
 
+type commandErrorKey struct {
+	family    string
+	errorType string
+}
+
 // interfacesScraper collects interface metrics from Cisco devices
 type interfacesScraper struct {
 	logger             *zap.Logger
@@ -52,6 +59,7 @@ type interfacesScraper struct {
 	lastReconnectCount int64
 	totalReconnects    int64
 	partialSuccess     bool
+	commandErrors      map[commandErrorKey]int64
 }
 
 func (s *interfacesScraper) Start(_ context.Context, _ component.Host) error {
@@ -59,6 +67,7 @@ func (s *interfacesScraper) Start(_ context.Context, _ component.Host) error {
 		ID:                component.MustNewIDWithName(metadata.Type.String(), "interfaces"),
 		TelemetrySettings: component.TelemetrySettings{Logger: s.logger},
 	})
+	s.commandErrors = make(map[commandErrorKey]int64)
 
 	if s.config.Device.Device.Host.IP == "" {
 		return errors.New("no device configured")
@@ -81,13 +90,16 @@ func (s *interfacesScraper) ScrapeMetrics(ctx context.Context) (pmetric.Metrics,
 		timestamp := pcommon.NewTimestampFromTime(time.Now())
 		s.recordScrapeHealth(timestamp)
 		rb := s.newResourceBuilder()
+		metrics := s.emitMetricsWithResource(rb)
 		if s.rpcClient != nil {
 			if closeErr := s.rpcClient.Close(); closeErr != nil {
 				s.logger.Warn("Failed to close SSH connection after interface scrape error", zap.Error(closeErr))
 			}
 			s.rpcClient = nil
 		}
-		return s.mb.Emit(metadata.WithResource(rb.Emit())), err
+		// One target's interface dataset failed, but the scrape-health metrics are
+		// valid and must be forwarded by scraperhelper.
+		return metrics, scrapererror.NewPartialScrapeError(err, 1)
 	}
 
 	timestamp := pcommon.NewTimestampFromTime(time.Now())
@@ -175,7 +187,7 @@ func (s *interfacesScraper) ScrapeMetrics(ctx context.Context) (pmetric.Metrics,
 
 	rb := s.newResourceBuilder()
 
-	return s.mb.Emit(metadata.WithResource(rb.Emit())), nil
+	return s.emitMetricsWithResource(rb), nil
 }
 
 func recordPacketCounts(mb *metadata.MetricsBuilder, timestamp pcommon.Timestamp, intf *Interface, description, macAddress, speedString string) {
@@ -354,7 +366,7 @@ func (s *interfacesScraper) collectL2Topology(ctx context.Context, timestamp pco
 				s.mb.RecordCiscoPortChannelMemberStatusDataPoint(timestamp, boolToInt(member.Up), member.PortChannel, member.Interface, member.State)
 				recordedMembers++
 			}
-			if (len(channels) > 0 || len(members) > 0) && !s.config.L2Topology.Commands.All {
+			if len(channels) > 0 || len(members) > 0 {
 				break
 			}
 		}
@@ -388,7 +400,7 @@ func (s *interfacesScraper) collectL2Topology(ctx context.Context, timestamp pco
 				}
 				s.mb.RecordCiscoLacpErrorsDataPoint(timestamp, lacpError.Value, lacpError.Interface, lacpError.Type)
 			}
-			if (len(packets) > 0 || len(errors) > 0) && !s.config.L2Topology.Commands.All {
+			if len(packets) > 0 || len(errors) > 0 {
 				break
 			}
 		}
@@ -415,7 +427,7 @@ func (s *interfacesScraper) collectL2Topology(ctx context.Context, timestamp pco
 				s.mb.RecordCiscoInterfaceErrdisabledDataPoint(timestamp, 1, intf.Interface, intf.Reason)
 				recorded++
 			}
-			if recorded > 0 && !s.config.L2Topology.Commands.All {
+			if recorded > 0 {
 				break
 			}
 		}
@@ -469,7 +481,7 @@ func (s *interfacesScraper) collectTopologyNeighbors(ctx context.Context, timest
 			s.mb.RecordCiscoTopologyNeighborInfoDataPoint(timestamp, 1, neighbor.Protocol, neighbor.LocalInterface, neighbor.NeighborName, neighbor.NeighborInterface, neighbor.NeighborPlatform, neighbor.NeighborAddress)
 			recorded++
 		}
-		if recorded > 0 && !s.config.L2Topology.Commands.All {
+		if recorded > 0 {
 			break
 		}
 	}
@@ -762,11 +774,15 @@ func (s *interfacesScraper) enrichPlatformQueueStats(ctx context.Context, interf
 			}
 
 			counters := parsePlatformQueueStatsCounters(output, s.logger)
-			if len(counters) > 0 {
-				interfaces = mergeInterfaceCounterTables(interfaces, map[string]map[string]int64{
-					intf.Name: counters,
-				})
+			if len(counters) == 0 {
+				s.logger.Debug("Optional interface platform queue stats command returned no parseable counters",
+					zap.String("command", commandPrefix),
+					zap.String("interface", intf.Name))
+				continue
 			}
+			interfaces = mergeInterfaceCounterTables(interfaces, map[string]map[string]int64{
+				intf.Name: counters,
+			})
 			break
 		}
 	}
@@ -802,7 +818,12 @@ func (s *interfacesScraper) recordCommandResult(family string, duration time.Dur
 	if err != nil {
 		outcome = "error"
 		s.partialSuccess = true
-		s.mb.RecordCiscoScrapeCommandErrorsDataPoint(pcommon.NewTimestampFromTime(time.Now()), 1, family, commandErrorType(err))
+		errorType := commandErrorType(err)
+		key := commandErrorKey{family: family, errorType: errorType}
+		if s.commandErrors == nil {
+			s.commandErrors = make(map[commandErrorKey]int64)
+		}
+		s.commandErrors[key]++
 	}
 	s.mb.RecordCiscoScrapeCommandDurationDataPoint(pcommon.NewTimestampFromTime(time.Now()), duration.Seconds(), family, outcome)
 }
@@ -823,7 +844,9 @@ func interfaceUtilization(rateBits, speedBits int64) float64 {
 
 func (s *interfacesScraper) newResourceBuilder() *metadata.ResourceBuilder {
 	rb := s.mb.NewResourceBuilder()
-	rb.SetHostIP(s.deviceTarget)
+	if hostIP, err := netip.ParseAddr(strings.TrimSpace(s.deviceTarget)); err == nil {
+		rb.SetHostIP(hostIP.Unmap().String())
+	}
 	rb.SetHwType("network")
 
 	configuredHostName := s.config.Device.Device.Host.Name
@@ -834,14 +857,13 @@ func (s *interfacesScraper) newResourceBuilder() *metadata.ResourceBuilder {
 	osVersion := ""
 	if s.rpcClient != nil {
 		osName = s.rpcClient.GetOSType()
-		if client, ok := s.rpcClient.(metadataInterfacesCommandClient); ok {
-			deviceMetadata := client.GetDeviceMetadata()
-			hostName = firstNonEmptyString(deviceMetadata.HostName, configuredHostName, s.deviceTarget)
-			hostID = firstNonEmptyString(deviceMetadata.HostID, deviceMetadata.Serial, s.deviceTarget, configuredHostName)
-			hostType = firstNonEmptyString(deviceMetadata.HostType, deviceMetadata.Model)
-			osName = firstNonEmptyString(deviceMetadata.OSType, osName)
-			osVersion = deviceMetadata.OSVersion
-		}
+	}
+	if deviceMetadata, ok := s.lastVerifiedDeviceMetadata(); ok {
+		hostName = firstNonEmptyString(deviceMetadata.HostName, configuredHostName, s.deviceTarget)
+		hostID = firstNonEmptyString(deviceMetadata.HostID, deviceMetadata.Serial, s.deviceTarget, configuredHostName)
+		hostType = firstNonEmptyString(deviceMetadata.HostType, deviceMetadata.Model)
+		osName = firstNonEmptyString(deviceMetadata.OSType, osName)
+		osVersion = deviceMetadata.OSVersion
 	}
 	hostName = firstNonEmptyString(hostName, s.deviceTarget)
 	hostID = firstNonEmptyString(hostID, s.deviceTarget)
@@ -859,8 +881,26 @@ func (s *interfacesScraper) newResourceBuilder() *metadata.ResourceBuilder {
 	return rb
 }
 
+func (s *interfacesScraper) emitMetricsWithResource(rb *metadata.ResourceBuilder) pmetric.Metrics {
+	resource := rb.Emit()
+	if deviceMetadata, ok := s.lastVerifiedDeviceMetadata(); ok {
+		if serial := strings.TrimSpace(deviceMetadata.Serial); serial != "" {
+			resource.Attributes().PutStr("cisco.switch.serial", serial)
+		}
+	}
+	return s.mb.Emit(metadata.WithResource(resource))
+}
+
+func (s *interfacesScraper) lastVerifiedDeviceMetadata() (connection.DeviceMetadata, bool) {
+	if client, ok := s.rpcClient.(metadataInterfacesCommandClient); ok {
+		return client.GetDeviceMetadata(), true
+	}
+	return s.config.Device.MetadataStore.Load()
+}
+
 func (s *interfacesScraper) recordScrapeHealth(ts pcommon.Timestamp) {
 	s.mb.RecordCiscoScrapePartialSuccessDataPoint(ts, boolToInt(s.partialSuccess))
+	s.recordCommandErrors(ts)
 	if s.rpcClient == nil {
 		s.mb.RecordCiscoSSHReconnectsDataPoint(ts, s.totalReconnects)
 		return
@@ -877,6 +917,22 @@ func (s *interfacesScraper) recordScrapeHealth(ts pcommon.Timestamp) {
 	s.totalReconnects += current - s.lastReconnectCount
 	s.lastReconnectCount = current
 	s.mb.RecordCiscoSSHReconnectsDataPoint(ts, s.totalReconnects)
+}
+
+func (s *interfacesScraper) recordCommandErrors(ts pcommon.Timestamp) {
+	keys := make([]commandErrorKey, 0, len(s.commandErrors))
+	for key := range s.commandErrors {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].family == keys[j].family {
+			return keys[i].errorType < keys[j].errorType
+		}
+		return keys[i].family < keys[j].family
+	})
+	for _, key := range keys {
+		s.mb.RecordCiscoScrapeCommandErrorsDataPoint(ts, s.commandErrors[key], key.family, key.errorType)
+	}
 }
 
 func commandErrorType(err error) string {

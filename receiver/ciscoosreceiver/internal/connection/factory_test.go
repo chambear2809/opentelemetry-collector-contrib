@@ -628,15 +628,19 @@ func TestEstablishDeviceConnection_SkipsStandalonePagingWhenEnablePasswordSet(t 
 
 	deviceConfig := createTestDeviceConfig("test-device", host, port, "testuser", "testpass", "")
 	deviceConfig.Auth.EnablePassword = configopaque.String("enable-secret")
+	deviceConfig.MetadataStore = &DeviceMetadataStore{}
 	client, err := EstablishDeviceConnection(t.Context(), deviceConfig, 30*time.Second, zap.NewNop())
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		assert.NoError(t, client.SSHClient.Close())
 	})
 	assert.Equal(t, "IOS XE", client.OSType)
+	storedMetadata, ok := deviceConfig.MetadataStore.Load()
+	require.True(t, ok)
+	assert.Equal(t, "IOS XE", storedMetadata.OSType)
 
 	var lines []string
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		select {
 		case line := <-transcript:
 			lines = append(lines, line)

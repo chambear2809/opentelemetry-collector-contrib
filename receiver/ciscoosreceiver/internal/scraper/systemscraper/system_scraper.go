@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
+	"sort"
 	"strings"
 	"time"
 
@@ -40,6 +42,13 @@ type reconnectSystemCommandClient interface {
 	GetReconnectCount() int64
 }
 
+var errCoreMetricOutputUnparseable = errors.New("core metric output unparseable")
+
+type commandErrorKey struct {
+	family    string
+	errorType string
+}
+
 // systemScraper collects system-level metrics for the Cisco device
 type systemScraper struct {
 	logger             *zap.Logger
@@ -51,6 +60,7 @@ type systemScraper struct {
 	lastReconnectCount int64
 	totalReconnects    int64
 	partialSuccess     bool
+	commandErrors      map[commandErrorKey]int64
 }
 
 func (s *systemScraper) Start(_ context.Context, _ component.Host) error {
@@ -61,6 +71,7 @@ func (s *systemScraper) Start(_ context.Context, _ component.Host) error {
 		ID:                component.MustNewIDWithName(metadata.Type.String(), "system"),
 		TelemetrySettings: component.TelemetrySettings{Logger: s.logger},
 	})
+	s.commandErrors = make(map[commandErrorKey]int64)
 
 	if s.config.Device.Device.Host.IP == "" {
 		return errors.New("no device configured")
@@ -134,7 +145,7 @@ func (s *systemScraper) ScrapeMetrics(ctx context.Context) (pmetric.Metrics, err
 			s.recordScrapeHealth(now)
 			rb := s.newResourceBuilder()
 
-			return s.mb.Emit(metadata.WithResource(rb.Emit())), nil
+			return s.emitMetricsWithResource(rb), nil
 		}
 
 		s.rpcClient = rpcClient
@@ -146,19 +157,22 @@ func (s *systemScraper) ScrapeMetrics(ctx context.Context) (pmetric.Metrics, err
 	cpuUtil, cpuErr := s.collectCPUUtilization(ctx)
 	memUtil, memErr := s.collectMemoryUtilization(ctx)
 
-	// If both core metrics failed, the connection is likely broken. Clear the
-	// client so the next scrape cycle re-establishes the SSH session, and record
-	// cisco.device.up=0 to reflect the device is unreachable.
-	if cpuErr != nil && memErr != nil {
+	// Only two command-execution failures indicate that the established
+	// connection is likely broken. A command that returned output which the
+	// parser could not understand still proves that the device is reachable.
+	if cpuErr != nil && memErr != nil &&
+		!coreMetricErrorIndicatesCommandResponse(cpuErr) &&
+		!coreMetricErrorIndicatesCommandResponse(memErr) {
 		s.logger.Warn("Both CPU and memory collection failed; assuming connection broken, will reconnect next cycle",
 			zap.String("target", s.deviceTarget),
 			zap.Error(cpuErr))
 		s.mb.RecordCiscoDeviceUpDataPoint(now, 0)
 		s.recordScrapeHealth(now)
 		rb := s.newResourceBuilder()
+		metrics := s.emitMetricsWithResource(rb)
 		s.rpcClient.Close()
 		s.rpcClient = nil
-		return s.mb.Emit(metadata.WithResource(rb.Emit())), nil
+		return metrics, nil
 	}
 
 	s.mb.RecordCiscoDeviceUpDataPoint(now, 1)
@@ -203,7 +217,11 @@ func (s *systemScraper) ScrapeMetrics(ctx context.Context) (pmetric.Metrics, err
 	// Set resource attributes
 	rb := s.newResourceBuilder()
 
-	return s.mb.Emit(metadata.WithResource(rb.Emit())), nil
+	return s.emitMetricsWithResource(rb), nil
+}
+
+func coreMetricErrorIndicatesCommandResponse(err error) bool {
+	return errors.Is(err, errCoreMetricOutputUnparseable) || connection.ErrorIndicatesCommandResponse(err)
 }
 
 func (s *systemScraper) collectControlPlaneTroubleshooting(ctx context.Context, ts pcommon.Timestamp) {
@@ -229,9 +247,7 @@ func (s *systemScraper) collectControlPlaneTroubleshooting(ctx context.Context, 
 			for _, process := range processes {
 				s.mb.RecordCiscoControlPlaneCPUProcessUtilizationDataPoint(ts, process.Utilization, process.Name, process.PID, process.Window)
 			}
-			if !s.config.ControlPlane.Commands.All {
-				break
-			}
+			break
 		}
 	}
 
@@ -260,9 +276,7 @@ func (s *systemScraper) collectControlPlaneTroubleshooting(ctx context.Context, 
 			for _, drop := range drops {
 				s.mb.RecordCiscoControlPlaneDroppedDataPoint(ts, drop.Value, drop.Source, drop.Class, drop.Reason)
 			}
-			if !s.config.ControlPlane.Commands.All {
-				break
-			}
+			break
 		}
 	}
 
@@ -284,9 +298,7 @@ func (s *systemScraper) collectControlPlaneTroubleshooting(ctx context.Context, 
 			for _, rate := range rates {
 				s.mb.RecordCiscoControlPlanePuntRateDataPoint(ts, rate.Value, rate.Queue, rate.Interface)
 			}
-			if !s.config.ControlPlane.Commands.All {
-				break
-			}
+			break
 		}
 	}
 }
@@ -311,7 +323,7 @@ func (s *systemScraper) collectRoutingForwardingTroubleshooting(ctx context.Cont
 				for _, route := range routes {
 					s.mb.RecordCiscoRoutingRoutesDataPoint(ts, route.Value, route.VRF, route.Source, route.AddressFamily)
 				}
-				if len(routes) > 0 && !s.config.RoutingForwarding.Commands.All {
+				if len(routes) > 0 {
 					break
 				}
 			}
@@ -331,7 +343,7 @@ func (s *systemScraper) collectRoutingForwardingTroubleshooting(ctx context.Cont
 				for _, entry := range entries {
 					s.mb.RecordCiscoArpEntriesDataPoint(ts, entry.Value, entry.VRF, entry.AddressFamily)
 				}
-				if len(entries) > 0 && !s.config.RoutingForwarding.Commands.All {
+				if len(entries) > 0 {
 					break
 				}
 			}
@@ -351,7 +363,7 @@ func (s *systemScraper) collectRoutingForwardingTroubleshooting(ctx context.Cont
 				for _, entry := range entries {
 					s.mb.RecordCiscoForwardingFibEntriesDataPoint(ts, entry.Value, entry.VRF, entry.AddressFamily)
 				}
-				if len(entries) > 0 && !s.config.RoutingForwarding.Commands.All {
+				if len(entries) > 0 {
 					break
 				}
 			}
@@ -371,7 +383,7 @@ func (s *systemScraper) collectRoutingForwardingTroubleshooting(ctx context.Cont
 				for _, entry := range entries {
 					s.mb.RecordCiscoAdjacencyEntriesDataPoint(ts, entry.Value, entry.VRF, entry.State)
 				}
-				if len(entries) > 0 && !s.config.RoutingForwarding.Commands.All {
+				if len(entries) > 0 {
 					break
 				}
 			}
@@ -391,7 +403,7 @@ func (s *systemScraper) collectRoutingForwardingTroubleshooting(ctx context.Cont
 				for _, drop := range drops {
 					s.mb.RecordCiscoForwardingDropsDataPoint(ts, drop.Value, drop.VRF, drop.Reason)
 				}
-				if len(drops) > 0 && !s.config.RoutingForwarding.Commands.All {
+				if len(drops) > 0 {
 					break
 				}
 			}
@@ -426,7 +438,7 @@ func (s *systemScraper) collectRouterDataplane(ctx context.Context, ts pcommon.T
 			for _, utilization := range utilizations {
 				s.mb.RecordCiscoQfpDatapathUtilizationDataPoint(ts, utilization.Value, utilization.LoadType, utilization.Window)
 			}
-			if (len(rates) > 0 || len(utilizations) > 0) && !s.config.RouterDataplane.Commands.All {
+			if len(rates) > 0 || len(utilizations) > 0 {
 				break
 			}
 		}
@@ -467,7 +479,7 @@ func (s *systemScraper) collectRouterDropCommands(ctx context.Context, ts pcommo
 			}
 			s.mb.RecordCiscoQfpInterfaceDropsDataPoint(ts, drop.Packets, drop.Interface, direction)
 		}
-		if (len(drops) > 0 || len(interfaceDrops) > 0) && !s.config.RouterDataplane.Commands.All {
+		if len(drops) > 0 || len(interfaceDrops) > 0 {
 			break
 		}
 	}
@@ -478,8 +490,18 @@ func (s *systemScraper) collectHardwareHealth(ctx context.Context, ts pcommon.Ti
 		return
 	}
 
-	recordedStatuses := 0
-	recordedTemperatures := 0
+	admittedComponents := make(map[string]struct{}, s.hardwareMaxComponents())
+	componentAllowed := func(name, slot string) bool {
+		key := normalizeTroubleshootingLabel(name) + "\x00" + normalizeTroubleshootingLabel(slot)
+		if _, admitted := admittedComponents[key]; admitted {
+			return true
+		}
+		if len(admittedComponents) >= s.hardwareMaxComponents() {
+			return false
+		}
+		admittedComponents[key] = struct{}{}
+		return true
+	}
 	for _, feature := range []string{"hardware_environment", "hardware_module", "hardware_inventory"} {
 		if !s.config.HardwareHealth.commandEnabled(feature) {
 			continue
@@ -495,20 +517,18 @@ func (s *systemScraper) collectHardwareHealth(ctx context.Context, ts pcommon.Ti
 			}
 			statuses, temperatures := parseHardwareHealth(output, feature)
 			for _, status := range statuses {
-				if recordedStatuses >= s.hardwareMaxComponents() {
-					break
+				if !componentAllowed(status.Name, status.Slot) {
+					continue
 				}
 				s.mb.RecordCiscoHardwareStatusDataPoint(ts, status.Value, status.Component, status.Name, status.Slot, status.State)
-				recordedStatuses++
 			}
 			for _, temperature := range temperatures {
-				if recordedTemperatures >= s.hardwareMaxComponents() {
-					break
+				if !componentAllowed(temperature.Name, temperature.Slot) {
+					continue
 				}
 				s.mb.RecordCiscoHardwareTemperatureDataPoint(ts, temperature.Value, temperature.Name, temperature.Slot, temperature.State)
-				recordedTemperatures++
 			}
-			if (len(statuses) > 0 || len(temperatures) > 0) && !s.config.HardwareHealth.Commands.All {
+			if len(statuses) > 0 || len(temperatures) > 0 {
 				break
 			}
 		}
@@ -555,7 +575,7 @@ func (s *systemScraper) collectRoutingNeighbors(ctx context.Context, ts pcommon.
 					}
 					recorded++
 				}
-				if len(neighbors) > 0 && !s.config.RoutingNeighbors.Commands.All {
+				if len(neighbors) > 0 {
 					break
 				}
 			}
@@ -586,7 +606,7 @@ func (s *systemScraper) collectFabric(ctx context.Context, ts pcommon.Timestamp)
 				s.mb.RecordCiscoNvePeerStatusDataPoint(ts, boolToInt(peer.Up), peer.Peer, peer.State)
 				recorded++
 			}
-			if recorded > 0 && !s.config.Fabric.Commands.All {
+			if recorded > 0 {
 				break
 			}
 		}
@@ -610,7 +630,7 @@ func (s *systemScraper) collectFabric(ctx context.Context, ts pcommon.Timestamp)
 				s.mb.RecordCiscoNveVniStatusDataPoint(ts, boolToInt(vni.Up), vni.VNI, vni.Type, vni.State)
 				recorded++
 			}
-			if recorded > 0 && !s.config.Fabric.Commands.All {
+			if recorded > 0 {
 				break
 			}
 		}
@@ -630,7 +650,7 @@ func (s *systemScraper) collectFabric(ctx context.Context, ts pcommon.Timestamp)
 			for _, route := range routes {
 				s.mb.RecordCiscoEvpnRoutesDataPoint(ts, route.Value, route.VRF, route.RouteType)
 			}
-			if len(routes) > 0 && !s.config.Fabric.Commands.All {
+			if len(routes) > 0 {
 				break
 			}
 		}
@@ -807,7 +827,12 @@ func (s *systemScraper) recordCommandResult(family string, duration time.Duratio
 	if err != nil {
 		outcome = "error"
 		s.partialSuccess = true
-		s.mb.RecordCiscoScrapeCommandErrorsDataPoint(pcommon.NewTimestampFromTime(time.Now()), 1, family, commandErrorType(err))
+		errorType := commandErrorType(err)
+		key := commandErrorKey{family: family, errorType: errorType}
+		if s.commandErrors == nil {
+			s.commandErrors = make(map[commandErrorKey]int64)
+		}
+		s.commandErrors[key]++
 	}
 	s.mb.RecordCiscoScrapeCommandDurationDataPoint(pcommon.NewTimestampFromTime(time.Now()), duration.Seconds(), family, outcome)
 }
@@ -821,7 +846,9 @@ func (s *systemScraper) optionalCollectionBudget() time.Duration {
 
 func (s *systemScraper) newResourceBuilder() *metadata.ResourceBuilder {
 	rb := s.mb.NewResourceBuilder()
-	rb.SetHostIP(s.deviceTarget)
+	if hostIP, err := netip.ParseAddr(strings.TrimSpace(s.deviceTarget)); err == nil {
+		rb.SetHostIP(hostIP.Unmap().String())
+	}
 	rb.SetHwType("network")
 
 	configuredHostName := s.config.Device.Device.Host.Name
@@ -832,14 +859,13 @@ func (s *systemScraper) newResourceBuilder() *metadata.ResourceBuilder {
 	osVersion := ""
 	if s.rpcClient != nil {
 		osName = s.rpcClient.GetOSType()
-		if client, ok := s.rpcClient.(metadataSystemCommandClient); ok {
-			deviceMetadata := client.GetDeviceMetadata()
-			hostName = firstNonEmptyString(deviceMetadata.HostName, configuredHostName, s.deviceTarget)
-			hostID = firstNonEmptyString(deviceMetadata.HostID, deviceMetadata.Serial, s.deviceTarget, configuredHostName)
-			hostType = firstNonEmptyString(deviceMetadata.HostType, deviceMetadata.Model)
-			osName = firstNonEmptyString(deviceMetadata.OSType, osName)
-			osVersion = deviceMetadata.OSVersion
-		}
+	}
+	if deviceMetadata, ok := s.lastVerifiedDeviceMetadata(); ok {
+		hostName = firstNonEmptyString(deviceMetadata.HostName, configuredHostName, s.deviceTarget)
+		hostID = firstNonEmptyString(deviceMetadata.HostID, deviceMetadata.Serial, s.deviceTarget, configuredHostName)
+		hostType = firstNonEmptyString(deviceMetadata.HostType, deviceMetadata.Model)
+		osName = firstNonEmptyString(deviceMetadata.OSType, osName)
+		osVersion = deviceMetadata.OSVersion
 	}
 	hostName = firstNonEmptyString(hostName, s.deviceTarget)
 	hostID = firstNonEmptyString(hostID, s.deviceTarget)
@@ -855,6 +881,23 @@ func (s *systemScraper) newResourceBuilder() *metadata.ResourceBuilder {
 		rb.SetOsVersion(osVersion)
 	}
 	return rb
+}
+
+func (s *systemScraper) emitMetricsWithResource(rb *metadata.ResourceBuilder) pmetric.Metrics {
+	resource := rb.Emit()
+	if deviceMetadata, ok := s.lastVerifiedDeviceMetadata(); ok {
+		if serial := strings.TrimSpace(deviceMetadata.Serial); serial != "" {
+			resource.Attributes().PutStr("cisco.switch.serial", serial)
+		}
+	}
+	return s.mb.Emit(metadata.WithResource(resource))
+}
+
+func (s *systemScraper) lastVerifiedDeviceMetadata() (connection.DeviceMetadata, bool) {
+	if client, ok := s.rpcClient.(metadataSystemCommandClient); ok {
+		return client.GetDeviceMetadata(), true
+	}
+	return s.config.Device.MetadataStore.Load()
 }
 
 func (s *systemScraper) recordSystemUptime(ts pcommon.Timestamp) {
@@ -873,6 +916,7 @@ func (s *systemScraper) recordSystemUptime(ts pcommon.Timestamp) {
 
 func (s *systemScraper) recordScrapeHealth(ts pcommon.Timestamp) {
 	s.mb.RecordCiscoScrapePartialSuccessDataPoint(ts, boolToInt(s.partialSuccess))
+	s.recordCommandErrors(ts)
 	if s.rpcClient == nil {
 		s.mb.RecordCiscoSSHReconnectsDataPoint(ts, s.totalReconnects)
 		return
@@ -889,6 +933,22 @@ func (s *systemScraper) recordScrapeHealth(ts pcommon.Timestamp) {
 	s.totalReconnects += current - s.lastReconnectCount
 	s.lastReconnectCount = current
 	s.mb.RecordCiscoSSHReconnectsDataPoint(ts, s.totalReconnects)
+}
+
+func (s *systemScraper) recordCommandErrors(ts pcommon.Timestamp) {
+	keys := make([]commandErrorKey, 0, len(s.commandErrors))
+	for key := range s.commandErrors {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].family == keys[j].family {
+			return keys[i].errorType < keys[j].errorType
+		}
+		return keys[i].family < keys[j].family
+	})
+	for _, key := range keys {
+		s.mb.RecordCiscoScrapeCommandErrorsDataPoint(ts, s.commandErrors[key], key.family, key.errorType)
+	}
 }
 
 func commandErrorType(err error) string {
@@ -933,6 +993,7 @@ func (s *systemScraper) collectCPUUtilization(ctx context.Context) (float64, err
 	}
 
 	output, err := s.executeCommand(ctx, "cpu", command)
+	output, osType, err = s.retryCoreMetricCommandAfterOSTypeChange(ctx, "cpu", osType, output, err)
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute CPU command: %w", err)
 	}
@@ -947,7 +1008,7 @@ func (s *systemScraper) collectCPUUtilization(ctx context.Context) (float64, err
 	}
 
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse CPU utilization: %w", err)
+		return 0, fmt.Errorf("%w: failed to parse CPU utilization: %w", errCoreMetricOutputUnparseable, err)
 	}
 
 	return cpuUtil, nil
@@ -966,6 +1027,7 @@ func (s *systemScraper) collectMemoryUtilization(ctx context.Context) (float64, 
 	}
 
 	output, err := s.executeCommand(ctx, "memory", command)
+	output, osType, err = s.retryCoreMetricCommandAfterOSTypeChange(ctx, "memory", osType, output, err)
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute memory command: %w", err)
 	}
@@ -973,10 +1035,58 @@ func (s *systemScraper) collectMemoryUtilization(ctx context.Context) (float64, 
 	// Parse memory utilization
 	memUtil, err := parseMemoryUtilization(output, osType)
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse memory utilization: %w", err)
+		return 0, fmt.Errorf("%w: failed to parse memory utilization: %w", errCoreMetricOutputUnparseable, err)
 	}
 
 	return memUtil, nil
+}
+
+// retryCoreMetricCommandAfterOSTypeChange prevents a transparent reconnect to
+// a different Cisco OS family from pairing the first command's output with the
+// parser selected for the old connection. The new command is attempted once;
+// another identity change during that retry is treated as unstable rather than
+// risking incorrectly parsed telemetry.
+func (s *systemScraper) retryCoreMetricCommandAfterOSTypeChange(
+	ctx context.Context,
+	feature string,
+	initialOSType string,
+	output string,
+	commandErr error,
+) (string, string, error) {
+	currentOSType := s.rpcClient.GetOSType()
+	if currentOSType == initialOSType {
+		return output, initialOSType, commandErr
+	}
+
+	command := s.rpcClient.GetCommand(feature)
+	if command == "" {
+		return "", currentOSType, fmt.Errorf(
+			"no %s command available after OS type changed from %s to %s",
+			feature,
+			initialOSType,
+			currentOSType,
+		)
+	}
+
+	s.logger.Info("Cisco OS type changed during core metric command; retrying with current command",
+		zap.String("feature", feature),
+		zap.String("previous_os_type", initialOSType),
+		zap.String("current_os_type", currentOSType))
+
+	output, err := s.executeCommand(ctx, feature, command)
+	if err != nil {
+		return "", currentOSType, err
+	}
+	finalOSType := s.rpcClient.GetOSType()
+	if finalOSType != currentOSType {
+		return "", finalOSType, fmt.Errorf(
+			"OS type changed again during %s command retry: %s to %s",
+			feature,
+			currentOSType,
+			finalOSType,
+		)
+	}
+	return output, currentOSType, nil
 }
 
 func (s *systemScraper) collectProtocolTraffic(ctx context.Context) (protocolTrafficStats, error) {

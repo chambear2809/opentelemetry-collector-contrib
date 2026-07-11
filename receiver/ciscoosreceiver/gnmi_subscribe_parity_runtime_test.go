@@ -174,11 +174,11 @@ func TestSharedGNMIAggregatedJSONSubtreeUsesExplicitDescendantMapping(t *testing
 		if err := stream.Send(&gnmipb.SubscribeResponse{Response: &gnmipb.SubscribeResponse_Update{Update: &gnmipb.Notification{
 			Timestamp: time.Now().UnixNano(), Prefix: &gnmipb.Path{Origin: runtimeTestOrigin},
 			Update: []*gnmipb.Update{{
-				Path: runtimeTestProtoPath(t, "system/state"),
-				Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`{
-					"value": 17,
-					"ignored": {"leaf": 2}
-				}`)}},
+				Path: runtimeTestProtoPath(t, "neighbors/neighbor"),
+				Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`[
+					{"routing_instance":"red","state":{"value":17}},
+					{"routing_instance":"blue","state":{"value":23}}
+				]`)}},
 			}},
 		}}}); err != nil {
 			return err
@@ -186,16 +186,16 @@ func TestSharedGNMIAggregatedJSONSubtreeUsesExplicitDescendantMapping(t *testing
 		return stream.Send(&gnmipb.SubscribeResponse{Response: &gnmipb.SubscribeResponse_SyncResponse{SyncResponse: true}})
 	}
 	endpoint, _ := runtimeTestStartGNMIServer(t, fake, material.serverTLS(false))
-	target := runtimeTestTarget(endpoint, material.caFile, gnmiModeOnce,
-		runtimeTestMapping("system/state/value", "runtime.aggregate.value"),
-	)
+	mapping := runtimeTestMapping("neighbors/neighbor/state/value", "runtime.aggregate.value")
+	mapping.PathKeys = map[string]string{"neighbor.routing_instance": "network.vrf.name"}
+	target := runtimeTestTarget(endpoint, material.caFile, gnmiModeOnce, mapping)
 	target.CustomSubscriptions[0].AllowAggregation = true
-	target.CustomSubscriptions[0].Paths = []GNMISubscriptionPathConfig{{Path: "system/state"}}
+	target.CustomSubscriptions[0].Paths = []GNMISubscriptionPathConfig{{Path: "neighbors/neighbor"}}
 	sink := &consumertest.MetricsSink{}
 	receiver := runtimeTestStartReceiver(t, receivertest.NewNopSettings(componentmetadata.Type), target, 10, sink)
 	runtimeTestWaitDone(t, receiver)
 
-	assert.Equal(t, 1, runtimeTestMetricPointCountAll(sink.AllMetrics(), "runtime.aggregate.value"))
+	assert.Equal(t, 2, runtimeTestMetricPointCountAll(sink.AllMetrics(), "runtime.aggregate.value"))
 	snapshot := fake.snapshot()
 	assert.Zero(t, snapshot.identitySubscribeCalls)
 	assert.Equal(t, 1, snapshot.getCalls)
@@ -248,7 +248,10 @@ func TestSharedGNMIUpdatesOnlyOwnerResetIsSilentAndStreamScoped(t *testing.T) {
 			}},
 		}
 	}
-	require.NoError(t, receiver.processNotification(t.Context(), target, updatesOnly, notification("updates/value", 1)))
+	splitUpdatesOnly := sharedGNMIBisectedRuntimeStream(updatesOnly, updatesOnly.Paths)
+	target.registerPhysicalCacheOwner(splitUpdatesOnly)
+	require.NotEqual(t, updatesOnly.OwnerID, sharedGNMICacheOwnerID(splitUpdatesOnly))
+	require.NoError(t, receiver.processNotification(t.Context(), target, splitUpdatesOnly, notification("updates/value", 1)))
 	require.NoError(t, receiver.processNotification(t.Context(), target, retained, notification("retained/value", 2)))
 	require.Len(t, target.cache.Snapshot(), 2)
 	batchesBeforeReset := len(sink.AllMetrics())
@@ -257,5 +260,124 @@ func TestSharedGNMIUpdatesOnlyOwnerResetIsSilentAndStreamScoped(t *testing.T) {
 	cacheSnapshot := target.cache.Snapshot()
 	require.Len(t, cacheSnapshot, 1)
 	assert.Equal(t, "runtime.retained.value", cacheSnapshot[0].Metric.Name)
+	assert.Equal(t, []string{updatesOnly.OwnerID}, target.cacheOwnerIDsForLogicalStream(updatesOnly.OwnerID),
+		"a completed reconnect reset must release remembered physical scopes")
 	assert.Len(t, sink.AllMetrics(), batchesBeforeReset, "reconnect owner reset must not emit deletion or presence signals")
+}
+
+func TestSharedGNMICacheTopologyTransitionsRemoveObsoleteOwners(t *testing.T) {
+	targetConfig := runtimeTestTarget(
+		"127.0.0.1:9339",
+		"",
+		gnmiModeStream,
+		runtimeTestMapping("topology/first/value", "runtime.topology.first"),
+		runtimeTestMapping("topology/second/value", "runtime.topology.second"),
+	)
+	config := createDefaultConfig().(*Config)
+	config.GNMI = GNMIConfig{MaxDatapointsPerChunk: 10, MaxCachedSeries: 100, Targets: []GNMITargetConfig{targetConfig}}
+	created, err := newSharedGNMIReceiver(
+		receivertest.NewNopSettings(componentmetadata.Type),
+		config,
+		consumertest.NewNop(),
+	)
+	require.NoError(t, err)
+	receiver := created.(*sharedGNMIReceiver)
+	t.Cleanup(receiver.telemetry.shutdown)
+	require.Len(t, receiver.targets, 1)
+	target := receiver.targets[0]
+	require.Len(t, target.streams, 1)
+	combined := target.streams[0]
+	require.Len(t, combined.Paths, 2)
+
+	timestamp := time.Now().Add(-time.Minute).Truncate(time.Millisecond)
+	notification := func(paths []sharedGNMIPath, offset time.Duration) *gnmipb.Notification {
+		updates := make([]*gnmipb.Update, 0, len(paths))
+		for index, path := range paths {
+			updates = append(updates, &gnmipb.Update{
+				Path: runtimeTestProtoPath(t, path.Path),
+				Val:  &gnmipb.TypedValue{Value: &gnmipb.TypedValue_IntVal{IntVal: int64(index + 1)}},
+			})
+		}
+		return &gnmipb.Notification{
+			Timestamp: timestamp.Add(offset).UnixNano(),
+			Prefix:    &gnmipb.Path{Origin: runtimeTestOrigin},
+			Atomic:    true,
+			Update:    updates,
+		}
+	}
+	metricNames := func() map[string]struct{} {
+		names := map[string]struct{}{}
+		for _, point := range target.cache.Snapshot() {
+			names[point.Metric.Name] = struct{}{}
+		}
+		return names
+	}
+
+	// Session 1 accepts the configured combined subscription.
+	require.NoError(t, receiver.processNotification(t.Context(), target, combined, notification(combined.Paths, 0)))
+	require.NoError(t, receiver.reconcileCacheTopology(t.Context(), target, combined))
+	assert.Equal(t, map[string]struct{}{
+		"runtime.topology.first": {}, "runtime.topology.second": {},
+	}, metricNames())
+
+	// Session 2 rejects the combined request and accepts two physical groups.
+	// The first group replaces its series, but the old logical owner is retained
+	// until the sibling group also proves that the new topology is accepted.
+	target.beginCacheTopologySession()
+	children := sharedGNMIBisectedRuntimeStreams(combined, [][]sharedGNMIPath{{combined.Paths[0]}, {combined.Paths[1]}})
+	for index := range children {
+		children[index].responseSelectors, err = sharedGNMIResponseSelectors(target.config.Name, children[index].Paths)
+		require.NoError(t, err)
+	}
+	require.NoError(t, receiver.processNotification(t.Context(), target, children[0], notification(children[0].Paths, time.Second)))
+	require.NoError(t, receiver.reconcileCacheTopology(t.Context(), target, children[0]))
+	assert.Len(t, target.cache.Snapshot(), 2, "an incomplete candidate topology must preserve the prior cache")
+	require.NoError(t, receiver.reconcileCacheTopology(t.Context(), target, children[1]))
+	assert.Equal(t, map[string]struct{}{metricNameForTopologyPath(children[0].Paths[0].Path): {}}, metricNames(),
+		"combined-to-split transition must remove disappeared logical-owner state")
+	assert.Equal(t, 1, target.cache.Usage().AtomicBaselines)
+	assert.Equal(t, 1, target.cache.Usage().Tombstones)
+
+	// Populate both accepted child owners, then let session 3 accept the original
+	// combined request with only the first series present. Transitioning back must
+	// remove the stale state retained under the other physical child.
+	require.NoError(t, receiver.processNotification(t.Context(), target, children[1], notification(children[1].Paths, 2*time.Second)))
+	require.NoError(t, receiver.reconcileCacheTopology(t.Context(), target, children[1]))
+	require.Len(t, target.cache.Snapshot(), 2)
+	target.beginCacheTopologySession()
+	require.NoError(t, receiver.processNotification(t.Context(), target, combined, notification(children[0].Paths, 3*time.Second)))
+	require.NoError(t, receiver.reconcileCacheTopology(t.Context(), target, combined))
+	assert.Equal(t, map[string]struct{}{metricNameForTopologyPath(children[0].Paths[0].Path): {}}, metricNames(),
+		"split-to-combined transition must remove disappeared physical-owner state")
+	assert.Equal(t, 1, target.cache.Usage().AtomicBaselines)
+	assert.Equal(t, 1, target.cache.Usage().Tombstones)
+
+	// A resolution with one valid strict-subset group is also a topology change:
+	// otherwise state belonging only to its rejected sibling remains under the
+	// logical owner forever.
+	combinedNonAtomic := notification(combined.Paths, 4*time.Second)
+	combinedNonAtomic.Atomic = false
+	require.NoError(t, receiver.processNotification(t.Context(), target, combined, combinedNonAtomic))
+	require.NoError(t, receiver.reconcileCacheTopology(t.Context(), target, combined))
+	require.Len(t, target.cache.Snapshot(), 2)
+	target.beginCacheTopologySession()
+	subset := sharedGNMIResolvedRuntimeStreams(combined, [][]sharedGNMIPath{{combined.Paths[0]}})
+	require.Len(t, subset, 1)
+	subset[0].responseSelectors, err = sharedGNMIResponseSelectors(target.config.Name, subset[0].Paths)
+	require.NoError(t, err)
+	subsetNonAtomic := notification(subset[0].Paths, 5*time.Second)
+	subsetNonAtomic.Atomic = false
+	require.NoError(t, receiver.processNotification(t.Context(), target, subset[0], subsetNonAtomic))
+	require.NoError(t, receiver.reconcileCacheTopology(t.Context(), target, subset[0]))
+	assert.Equal(t, map[string]struct{}{metricNameForTopologyPath(subset[0].Paths[0].Path): {}}, metricNames(),
+		"single-subset transition must remove state from the rejected logical-owner path")
+	assert.Zero(t, target.cache.Usage().AtomicBaselines)
+	assert.Zero(t, target.cache.Usage().Tombstones)
+}
+
+func metricNameForTopologyPath(path string) string {
+	if path == "topology/first/value" {
+		return "runtime.topology.first"
+	}
+	return "runtime.topology.second"
 }

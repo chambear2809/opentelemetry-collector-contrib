@@ -593,8 +593,29 @@ func (c *Client) doRaw(ctx context.Context, method, operation, path string, quer
 		bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 		closeErr := resp.Body.Close()
 		if readErr != nil {
-			c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
-			return nil, readErr
+			var responseErr error
+			responseErr = readErr
+			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+				// Preserve the response status even when the body is truncated. In
+				// particular, callers must still retire a cached token rejected by a
+				// 401 response rather than treating it as an unrelated read failure.
+				responseErr = errors.Join(&APIError{StatusCode: resp.StatusCode}, readErr)
+			}
+			c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, RateLimited: resp.StatusCode == http.StatusTooManyRequests, Err: responseErr})
+			lastErr = responseErr
+			retryable := httpclient.IsResponseBodyReadError(readErr) &&
+				(resp.StatusCode >= 200 && resp.StatusCode < 300 || retryableStatus(resp.StatusCode))
+			delay := time.Duration(-1)
+			if retryableStatus(resp.StatusCode) {
+				delay = retryAfter(resp.Header.Get("Retry-After"))
+			}
+			if !retryable || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, delay) {
+				if ctx.Err() != nil {
+					return nil, ctx.Err()
+				}
+				return nil, responseErr
+			}
+			continue
 		}
 		if closeErr != nil {
 			return nil, closeErr

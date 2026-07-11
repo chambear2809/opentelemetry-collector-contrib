@@ -9,6 +9,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"strings"
@@ -22,7 +23,16 @@ import (
 	cryptossh "golang.org/x/crypto/ssh"
 )
 
+type sshExecTestResponse struct {
+	output string
+	status uint32
+}
+
 func startSSHExecTestServer(t *testing.T, rejectedCommand string) (string, <-chan string) {
+	return startSSHExecTestServerWithResponses(t, rejectedCommand, nil)
+}
+
+func startSSHExecTestServerWithResponses(t *testing.T, rejectedCommand string, responses map[string]sshExecTestResponse) (string, <-chan string) {
 	t.Helper()
 
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
@@ -83,6 +93,13 @@ func startSSHExecTestServer(t *testing.T, rejectedCommand string) (string, <-cha
 				commands <- payload.Command
 				if payload.Command == rejectedCommand {
 					_ = request.Reply(false, nil)
+					_ = channel.Close()
+					break
+				}
+				if response, ok := responses[payload.Command]; ok {
+					_ = request.Reply(true, nil)
+					_, _ = io.WriteString(channel, response.output)
+					_, _ = channel.SendRequest("exit-status", false, cryptossh.Marshal(struct{ Status uint32 }{Status: response.status}))
 					_ = channel.Close()
 					break
 				}
@@ -241,6 +258,298 @@ func TestReconnectDisablesPagingBeforeRequestedCommand(t *testing.T) {
 	assert.Equal(t, "show version", <-commands)
 }
 
+func TestReconnectRefreshesDeviceMetadataAndCommandSelection(t *testing.T) {
+	oldAddress, _ := startSSHExecTestServer(t, "")
+	newAddress, commands := startSSHExecTestServerWithResponses(t, "", map[string]sshExecTestResponse{
+		"show version": {
+			output: strings.Join([]string{
+				"Cisco Nexus9000 C93180YC-FX Chassis",
+				"Device name: new-nexus",
+				"NXOS: version 10.4(3)",
+				"Kernel uptime is 0 day(s), 0 hour(s), 2 minute(s), 0 second(s)",
+				"System serial number: NEW123",
+			}, "\n"),
+		},
+	})
+
+	oldConnection, err := dialSSH(t.Context(), "tcp", oldAddress, &cryptossh.ClientConfig{
+		User:            "collector",
+		HostKeyCallback: cryptossh.InsecureIgnoreHostKey(), // #nosec G106 -- loopback-only test server
+		Timeout:         2 * time.Second,
+	})
+	require.NoError(t, err)
+
+	client := testReconnectClient(newAddress)
+	client.Connection = oldConnection
+	oldMetadata := DeviceMetadata{
+		HostName:   "old-switch",
+		HostID:     "OLD123",
+		HostType:   "C9300-24T",
+		OSType:     "IOS XE",
+		OSVersion:  "17.9.5",
+		Model:      "C9300-24T",
+		Serial:     "OLD123",
+		Uptime:     72 * time.Hour,
+		DetectedAt: time.Now().Add(-time.Hour),
+	}
+	client.storeDeviceMetadata(oldMetadata)
+	t.Cleanup(func() { _ = client.Close() })
+
+	rpcClient := &RPCClient{
+		SSHClient:      client,
+		OSType:         oldMetadata.OSType,
+		DeviceMetadata: oldMetadata,
+		Timeout:        5 * time.Second,
+		Logger:         zap.NewNop(),
+	}
+
+	// Force the next command to take the transparent reconnect path while the
+	// replacement remains reachable at the configured address.
+	require.NoError(t, oldConnection.Close())
+	detectedAfter := time.Now()
+	output, err := rpcClient.ExecuteCommandWithContext(t.Context(), "show interface")
+	require.NoError(t, err)
+	assert.Equal(t, "output for show interface", output)
+	assert.Equal(t, int64(1), client.ReconnectCount())
+
+	// Pagination and metadata initialization both complete before the caller's
+	// command is allowed onto the replacement connection.
+	assert.Equal(t, "terminal length 0", <-commands)
+	assert.Equal(t, "show version", <-commands)
+	assert.Equal(t, "show interface", <-commands)
+
+	metadata := rpcClient.GetDeviceMetadata()
+	assert.Equal(t, "new-nexus", metadata.HostName)
+	assert.Equal(t, "NEW123", metadata.HostID)
+	assert.Equal(t, "Nexus9000 C93180YC-FX", metadata.HostType)
+	assert.Equal(t, "NX-OS", metadata.OSType)
+	assert.Equal(t, "10.4(3)", metadata.OSVersion)
+	assert.Equal(t, "Nexus9000 C93180YC-FX", metadata.Model)
+	assert.Equal(t, "NEW123", metadata.Serial)
+	assert.Equal(t, 2*time.Minute, metadata.Uptime)
+	assert.False(t, metadata.DetectedAt.Before(detectedAfter))
+	assert.InDelta(t, 120, metadata.UptimeSeconds(time.Now()), 2)
+
+	// RPCClient's compatibility fields intentionally retain the initially
+	// detected values, while all live reads and command selection use the SSH
+	// client's current snapshot.
+	assert.Equal(t, "IOS XE", rpcClient.OSType)
+	assert.Equal(t, "old-switch", rpcClient.DeviceMetadata.HostName)
+	assert.Equal(t, "NX-OS", rpcClient.GetOSType())
+	assert.Equal(t, "show system resources", rpcClient.GetCommand("cpu"))
+}
+
+func TestReconnectRejectsReplacementWhenMetadataRefreshFails(t *testing.T) {
+	oldAddress, _ := startSSHExecTestServer(t, "")
+	newAddress, commands := startSSHExecTestServerWithResponses(t, "", map[string]sshExecTestResponse{
+		"show version": {output: "unrecognized replacement device"},
+	})
+
+	oldConnection, err := dialSSH(t.Context(), "tcp", oldAddress, &cryptossh.ClientConfig{
+		User:            "collector",
+		HostKeyCallback: cryptossh.InsecureIgnoreHostKey(), // #nosec G106 -- loopback-only test server
+		Timeout:         2 * time.Second,
+	})
+	require.NoError(t, err)
+
+	client := testReconnectClient(newAddress)
+	client.Connection = oldConnection
+	oldMetadata := DeviceMetadata{
+		HostName:  "old-switch",
+		OSType:    "IOS XE",
+		OSVersion: "17.9.5",
+		Model:     "C9300-24T",
+		Serial:    "OLD123",
+		Uptime:    72 * time.Hour,
+	}
+	client.storeDeviceMetadata(oldMetadata)
+	t.Cleanup(func() { _ = client.Close() })
+	require.NoError(t, oldConnection.Close())
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	err = client.reconnect(ctx, oldConnection)
+	require.ErrorContains(t, err, "failed to refresh device metadata after SSH reconnect")
+	assert.Equal(t, int64(0), client.ReconnectCount())
+	connection, closed := client.currentConnection()
+	assert.False(t, closed)
+	assert.Nil(t, connection)
+	metadata, ok := client.currentDeviceMetadata()
+	require.True(t, ok)
+	assert.Equal(t, oldMetadata, metadata)
+
+	assert.Equal(t, "terminal length 0", <-commands)
+	assert.Equal(t, "show version", <-commands)
+	select {
+	case command := <-commands:
+		t.Fatalf("unexpected command on rejected replacement connection: %s", command)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestReconnectRefreshesMetadataInInteractiveShellWithoutRecursion(t *testing.T) {
+	address, transcript := startSSHShellTestServer(t, map[string]string{
+		"show version": strings.Join([]string{
+			"Cisco IOS XE Software, Version 17.12.02",
+			"new-edge uptime is 5 minutes",
+			"cisco C8300-1N1S-6T (1RU) processor",
+			"Processor board ID NEWEDGE123",
+		}, "\n"),
+	})
+	client := testReconnectClient(address)
+	client.EnablePassword = "enable-secret"
+	client.metadataStore = &DeviceMetadataStore{}
+	client.storeDeviceMetadata(DeviceMetadata{HostName: "old-edge", OSType: "IOS XE", Serial: "OLDEDGE123"})
+	t.Cleanup(func() { _ = client.Close() })
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, client.reconnect(ctx, nil))
+	assert.Equal(t, int64(1), client.ReconnectCount())
+	metadata, ok := client.currentDeviceMetadata()
+	require.True(t, ok)
+	assert.Equal(t, "new-edge", metadata.HostName)
+	assert.Equal(t, "17.12.02", metadata.OSVersion)
+	assert.Equal(t, "C8300-1N1S-6T", metadata.Model)
+	assert.Equal(t, "NEWEDGE123", metadata.Serial)
+	assert.Equal(t, 5*time.Minute, metadata.Uptime)
+	sharedMetadata, ok := client.metadataStore.Load()
+	require.True(t, ok)
+	assert.Equal(t, "NEWEDGE123", sharedMetadata.Serial)
+
+	var lines []string
+	for range 5 {
+		select {
+		case line := <-transcript:
+			lines = append(lines, line)
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for metadata refresh shell transcript")
+		}
+	}
+	assert.Equal(t, []string{
+		"shell:enable",
+		"shell:enable-secret",
+		"shell:terminal length 0",
+		"shell:show version",
+		"shell:exit",
+	}, lines)
+}
+
+func TestExecuteCommandPreservesCiscoCLIRejectionAsError(t *testing.T) {
+	for _, status := range []uint32{0, 1} {
+		t.Run(fmt.Sprintf("status %d", status), func(t *testing.T) {
+			address, commands := startSSHExecTestServerWithResponses(t, "", map[string]sshExecTestResponse{
+				"show invalid": {output: "% Invalid input detected at '^' marker.", status: status},
+			})
+			client := testReconnectClient(address)
+			t.Cleanup(func() { _ = client.Close() })
+
+			output, err := client.ExecuteCommand(t.Context(), "show invalid")
+			require.ErrorContains(t, err, "command execution failed")
+			require.ErrorIs(t, err, ErrCiscoCLICommandRejected)
+			assert.True(t, ErrorIndicatesCommandResponse(err))
+			assert.NotContains(t, err.Error(), "% Invalid input")
+			assert.Empty(t, output)
+			assert.Equal(t, "terminal length 0", <-commands)
+			assert.Equal(t, "show invalid", <-commands)
+		})
+	}
+}
+
+func TestExecuteCommandInteractivePreservesRequestedCLIRejection(t *testing.T) {
+	address, _ := startSSHShellTestServer(t, map[string]string{
+		"show invalid": "% Invalid command at '^' marker.\r\n",
+	})
+	client := testReconnectClient(address)
+	client.EnablePassword = "enable-secret"
+	t.Cleanup(func() { _ = client.Close() })
+
+	output, err := client.ExecuteCommand(t.Context(), "show invalid")
+	require.ErrorIs(t, err, ErrCiscoCLICommandRejected)
+	assert.True(t, ErrorIndicatesCommandResponse(err))
+	assert.NotContains(t, err.Error(), "% Invalid command")
+	assert.Empty(t, output)
+}
+
+func TestExecuteCommandInteractiveToleratesPagingRejectionBeforeValidOutput(t *testing.T) {
+	address, _ := startSSHShellTestServer(t, map[string]string{
+		"terminal length 0": "% Invalid input detected at '^' marker.\r\n",
+		"show version":      "Cisco IOS XE Software, Version 17.12.02\r\n",
+	})
+	client := testReconnectClient(address)
+	client.EnablePassword = "enable-secret"
+	t.Cleanup(func() { _ = client.Close() })
+
+	output, err := client.ExecuteCommand(t.Context(), "show version")
+	require.NoError(t, err)
+	assert.Contains(t, output, "Cisco IOS XE Software")
+	assert.NotContains(t, output, "% Invalid input")
+}
+
+func TestClassifyInteractiveCiscoCLIOutputWithRealisticPromptEcho(t *testing.T) {
+	t.Run("requested command rejection remains an error", func(t *testing.T) {
+		output, rejected := classifyInteractiveCiscoCLIOutput(strings.Join([]string{
+			"router#show invalid",
+			"              ^",
+			"",
+			"% Invalid input detected at '^' marker.",
+			"router#exit",
+			"router#",
+		}, "\r\n"), "")
+		assert.True(t, rejected)
+		assert.Empty(t, output)
+	})
+
+	t.Run("paging rejection before requested output remains tolerated", func(t *testing.T) {
+		output, rejected := classifyInteractiveCiscoCLIOutput(strings.Join([]string{
+			"router#terminal length 0",
+			"                         ^",
+			"% Invalid input detected at '^' marker.",
+			"router#show version",
+			"Cisco IOS XE Software, Version 17.12.02",
+			"router#exit",
+			"router#",
+		}, "\r\n"), "")
+		assert.False(t, rejected)
+		assert.Contains(t, output, "Cisco IOS XE Software")
+		assert.NotContains(t, output, "% Invalid input")
+	})
+}
+
+func TestErrorIndicatesCommandResponse(t *testing.T) {
+	assert.True(t, ErrorIndicatesCommandResponse(fmt.Errorf("wrapped: %w", ErrCiscoCLICommandRejected)))
+	assert.True(t, ErrorIndicatesCommandResponse(fmt.Errorf("wrapped: %w", ErrSSHCommandOutputTooLarge)))
+	assert.False(t, ErrorIndicatesCommandResponse(errors.New("connection reset")))
+}
+
+func TestExecuteCommandAllowsOrdinaryOutputWithNonzeroExit(t *testing.T) {
+	address, commands := startSSHExecTestServerWithResponses(t, "", map[string]sshExecTestResponse{
+		"show version": {output: "Cisco IOS XE Software, Version 17.12.02", status: 1},
+	})
+	client := testReconnectClient(address)
+	t.Cleanup(func() { _ = client.Close() })
+
+	output, err := client.ExecuteCommand(t.Context(), "show version")
+	require.NoError(t, err)
+	assert.Equal(t, "Cisco IOS XE Software, Version 17.12.02", output)
+	assert.Equal(t, "terminal length 0", <-commands)
+	assert.Equal(t, "show version", <-commands)
+}
+
+func TestReconnectIgnoresPagingCLIRejection(t *testing.T) {
+	address, commands := startSSHExecTestServerWithResponses(t, "", map[string]sshExecTestResponse{
+		"terminal length 0": {output: "% Invalid input detected at '^' marker.", status: 1},
+	})
+	client := testReconnectClient(address)
+	t.Cleanup(func() { _ = client.Close() })
+
+	output, err := client.ExecuteCommand(t.Context(), "show version")
+	require.NoError(t, err)
+	assert.Equal(t, "output for show version", output)
+	assert.Equal(t, "terminal length 0", <-commands)
+	assert.Equal(t, "show version", <-commands)
+}
+
 func TestDetectDeviceMetadataRejectsUnidentifiedCiscoOS(t *testing.T) {
 	address, commands := startSSHExecTestServer(t, "")
 	client := testReconnectClient(address)
@@ -290,7 +599,7 @@ func TestReconnectSkipsPagingInitializationWhenInteractiveShellIsRequired(t *tes
 	assert.Equal(t, int64(1), client.ReconnectCount())
 
 	var lines []string
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		select {
 		case line := <-transcript:
 			lines = append(lines, line)
@@ -608,4 +917,23 @@ Hardware
 	assert.Equal(t, "Nexus9000 C9316D-GX", metadata.Model)
 	assert.Equal(t, "FDO12345678", metadata.Serial)
 	assert.Equal(t, int64((104*24*time.Hour + 6*time.Hour + 10*time.Minute + 20*time.Second).Seconds()), metadata.UptimeSeconds(time.Unix(0, 0)))
+}
+
+func TestParseDeviceMetadataFromShowVersionNXOSDoesNotUseUptimeAsHostname(t *testing.T) {
+	for _, uptimeLine := range []string{
+		"Kernel uptime is 104 day(s), 6 hour(s), 10 minute(s), 20 second(s)",
+		"104 uptime is 104 day(s), 6 hour(s), 10 minute(s), 20 second(s)",
+	} {
+		output := `Cisco Nexus Operating System (NX-OS) Software
+Software
+  NXOS: version 10.4(5)
+Hardware
+  cisco Nexus9000 C9316D-GX Chassis
+` + uptimeLine
+
+		metadata := parseDeviceMetadataFromShowVersion(output, time.Unix(0, 0))
+
+		assert.Empty(t, metadata.HostName)
+		assert.Equal(t, int64((104*24*time.Hour + 6*time.Hour + 10*time.Minute + 20*time.Second).Seconds()), metadata.UptimeSeconds(time.Unix(0, 0)))
+	}
 }

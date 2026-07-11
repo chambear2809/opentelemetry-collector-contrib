@@ -146,6 +146,8 @@ receivers:
 
 `exclude` always wins. Empty `include` fields mean "include all that pass provider targets."
 
+For SSH targets, the receiver applies host-name and serial selection after `show version` discovers the device identity; a configured host IP can be rejected before the connection is created. Shared `gnmi.targets` expose their configured target name, endpoint, and endpoint host, but do not currently discover a serial or provider device ID for selection. Scope those targets with `host_names`, `host_ids`, or `host_ips`.
+
 ## Platform Guidance
 
 Use this table when deciding what to enable.

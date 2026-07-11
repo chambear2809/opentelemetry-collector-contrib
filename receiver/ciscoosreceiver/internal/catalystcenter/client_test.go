@@ -31,6 +31,70 @@ func TestClientRetryValidationPreservesExplicitZero(t *testing.T) {
 	}
 }
 
+func TestClientRetriesIncompleteSuccessfulResponseBody(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/dna/system/api/v1/auth/token" {
+			_, _ = w.Write([]byte(`{"Token":"token"}`))
+			return
+		}
+		if requests.Add(1) == 1 {
+			w.Header().Set("Content-Length", "100")
+			_, _ = w.Write([]byte(`{"response":`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"response":{"ok":true}}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", MaxRetries: 1})
+	require.NoError(t, err)
+	response, err := GetResponseJSON[map[string]bool](t.Context(), client, "test.get", "/dna/intent/api/v1/test", nil)
+	require.NoError(t, err)
+	assert.True(t, response["ok"])
+	assert.Equal(t, int64(2), requests.Load())
+}
+
+func TestClientRefreshesTokenAfterIncompleteUnauthorizedResponse(t *testing.T) {
+	var authRequests atomic.Int64
+	var dataRequests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/dna/system/api/v1/auth/token":
+			token := "token-1"
+			if authRequests.Add(1) == 2 {
+				token = "token-2"
+			}
+			_, _ = w.Write([]byte(`{"Token":"` + token + `"}`))
+		case "/dna/intent/api/v1/network-device/count":
+			dataRequests.Add(1)
+			if r.Header.Get("X-Auth-Token") == "token-1" {
+				w.Header().Set("Content-Length", "100")
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte(`expired`))
+				return
+			}
+			assert.Equal(t, "token-2", r.Header.Get("X-Auth-Token"))
+			_, _ = w.Write([]byte(`{"response":4}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	// Ordinary request retries are disabled: the second request is the one
+	// bounded auth refresh that follows rejection of the cached token.
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", MaxRetries: 0})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	count, err := GetCount(t.Context(), client, "devices.count", "/dna/intent/api/v1/network-device/count", nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(4), count)
+	assert.Equal(t, int64(2), authRequests.Load())
+	assert.Equal(t, int64(2), dataRequests.Load())
+}
+
 func TestClientAuthenticationRetryPolicy(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -59,6 +123,18 @@ func TestClientAuthenticationRetryPolicy(t *testing.T) {
 			authenticate: func(w http.ResponseWriter, attempt int64) {
 				if attempt == 1 {
 					http.Error(w, "unavailable", http.StatusServiceUnavailable)
+					return
+				}
+				_, _ = w.Write([]byte(`{"Token":"token-1"}`))
+			},
+			wantAuthRequests: 2,
+		},
+		{
+			name: "incomplete successful authentication body",
+			authenticate: func(w http.ResponseWriter, attempt int64) {
+				if attempt == 1 {
+					w.Header().Set("Content-Length", "100")
+					_, _ = w.Write([]byte(`{"Token":`))
 					return
 				}
 				_, _ = w.Write([]byte(`{"Token":"token-1"}`))

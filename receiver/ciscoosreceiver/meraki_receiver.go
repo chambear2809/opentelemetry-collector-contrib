@@ -1535,7 +1535,10 @@ func metricTimestamp(observedAt time.Time, fallback pcommon.Timestamp) pcommon.T
 	if observedAt.IsZero() {
 		return fallback
 	}
-	return pcommon.NewTimestampFromTime(observedAt)
+	if timestamp, ok := pdataTimestampFromTime(observedAt); ok {
+		return timestamp
+	}
+	return fallback
 }
 
 // recordSum accumulates delta into the receiver-scoped counter store and emits
@@ -1841,6 +1844,9 @@ func latestTimestampedIndex(length, fallback int, timestampAt func(int) string) 
 		if err != nil {
 			continue
 		}
+		if _, ok := pdataTimestampFromTime(parsed); !ok {
+			continue
+		}
 		if latest.IsZero() || parsed.After(latest) {
 			latest = parsed
 			latestIndex = i
@@ -1852,7 +1858,11 @@ func latestTimestampedIndex(length, fallback int, timestampAt func(int) string) 
 func firstValidTimestamp(values ...string) string {
 	for _, value := range values {
 		value = strings.TrimSpace(value)
-		if _, err := time.Parse(time.RFC3339Nano, value); err == nil {
+		parsed, err := time.Parse(time.RFC3339Nano, value)
+		if err == nil {
+			if _, ok := pdataTimestampFromTime(parsed); !ok {
+				continue
+			}
 			return value
 		}
 	}

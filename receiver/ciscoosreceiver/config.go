@@ -6,6 +6,7 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/netip"
 	"net/url"
@@ -811,6 +812,7 @@ func (cfg *Config) Validate() error {
 		}
 	}
 
+	deviceEndpoints := make(map[string]int, len(cfg.Devices))
 	for i := range cfg.Devices {
 		device := &cfg.Devices[i]
 		if device.Host == "" {
@@ -828,6 +830,13 @@ func (cfg *Config) Validate() error {
 		if device.Auth.KnownHostsFile == "" && !device.Auth.InsecureSkipVerify {
 			err = multierr.Append(err, fmt.Errorf("devices[%d].auth.known_hosts_file or devices[%d].auth.insecure_skip_verify must be set", i, i))
 		}
+		if endpoint, ok := canonicalSSHDeviceEndpoint(device.Host, device.Port); ok {
+			if previous, duplicate := deviceEndpoints[endpoint]; duplicate {
+				err = multierr.Append(err, fmt.Errorf("devices[%d] endpoint %q duplicates devices[%d] after host normalization", i, endpoint, previous))
+			} else {
+				deviceEndpoints[endpoint] = i
+			}
+		}
 	}
 
 	err = multierr.Append(err, cfg.validateMeraki())
@@ -843,6 +852,28 @@ func (cfg *Config) Validate() error {
 	err = multierr.Append(err, cfg.validateGNMI())
 
 	return err
+}
+
+func canonicalSSHDeviceEndpoint(host string, port int) (string, bool) {
+	if port < 1 || port > 65535 {
+		return "", false
+	}
+	host = strings.TrimSpace(host)
+	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		unbracketed := host[1 : len(host)-1]
+		if _, err := netip.ParseAddr(unbracketed); err == nil {
+			host = unbracketed
+		}
+	}
+	if address, err := netip.ParseAddr(host); err == nil {
+		host = address.Unmap().String()
+	} else {
+		host = strings.TrimSuffix(strings.ToLower(host), ".")
+	}
+	if host == "" {
+		return "", false
+	}
+	return net.JoinHostPort(host, strconv.Itoa(port)), true
 }
 
 func (cfg *Config) validateMeraki() error {
@@ -1788,6 +1819,7 @@ func (cfg *Config) Unmarshal(componentParser *confmap.Conf) error {
 	// strict pass.
 	staticSettings := componentParser.ToStringMap()
 	delete(staticSettings, "scrapers")
+	applyMetricConfigDefaults(staticSettings)
 	type staticConfig Config
 	if err := confmap.NewFromStringMap(staticSettings).Unmarshal((*staticConfig)(cfg)); err != nil {
 		return err
@@ -1829,4 +1861,34 @@ func (cfg *Config) Unmarshal(componentParser *confmap.Conf) error {
 	}
 
 	return nil
+}
+
+// applyMetricConfigDefaults preserves the documented opt-out behavior for
+// dynamically named metric entries. A map value has no factory-created
+// default for its Enabled field, so an empty object would otherwise decode as
+// false and unexpectedly disable the metric.
+func applyMetricConfigDefaults(settings map[string]any) {
+	rawMetrics, ok := settings["metrics"].(map[string]any)
+	if !ok {
+		return
+	}
+
+	metrics := make(map[string]any, len(rawMetrics))
+	for name, rawConfig := range rawMetrics {
+		metricSettings, ok := rawConfig.(map[string]any)
+		if !ok {
+			metrics[name] = rawConfig
+			continue
+		}
+		if _, configured := metricSettings["enabled"]; configured {
+			metrics[name] = rawConfig
+			continue
+		}
+
+		withDefault := make(map[string]any, len(metricSettings)+1)
+		maps.Copy(withDefault, metricSettings)
+		withDefault["enabled"] = true
+		metrics[name] = withDefault
+	}
+	settings["metrics"] = metrics
 }

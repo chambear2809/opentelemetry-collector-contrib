@@ -4,19 +4,65 @@
 package ise
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
+
+func TestClientRetriesIncompleteSuccessfulResponseBody(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if requests.Add(1) == 1 {
+			w.Header().Set("Content-Length", "100")
+			w.Header().Set("Retry-After", "0")
+			_, _ = w.Write([]byte(`{"ok":`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", MaxRetries: 1})
+	require.NoError(t, err)
+	object, err := client.GetObject(t.Context(), "test.get", "/api/v1/test", nil)
+	require.NoError(t, err)
+	assert.Equal(t, true, object["ok"])
+	assert.Equal(t, int64(2), requests.Load())
+}
+
+func TestClientHonorsRetryAfter(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if requests.Add(1) == 1 {
+			w.Header().Set("Retry-After", "1")
+			http.Error(w, "rate limited", http.StatusTooManyRequests)
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", MaxRetries: 1})
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+	defer cancel()
+	_, err = client.GetObject(ctx, "test.rate_limit", "/api/v1/test", nil)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Equal(t, int64(1), requests.Load())
+	assert.Equal(t, 3*time.Second, retryAfter("3"))
+}
 
 func TestClientRetryCountValidation(t *testing.T) {
 	client, err := NewClient(Config{

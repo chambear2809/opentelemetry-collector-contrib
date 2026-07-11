@@ -357,7 +357,9 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 		if header != nil {
 			retryHeader = header.Get("Retry-After")
 		}
-		if !retryableStatus(status) || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
+		retryable := retryableStatus(status) ||
+			httpclient.IsResponseBodyReadError(err) && status >= 200 && status < 300
+		if !retryable || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
 			if ctx.Err() != nil {
 				return nil, nil, ctx.Err()
 			}
@@ -510,7 +512,9 @@ func (c *Client) performLoginWithRetry(ctx context.Context) (authBundle, error) 
 		if header != nil {
 			retryHeader = header.Get("Retry-After")
 		}
-		if !retryableStatus(status) || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
+		retryable := retryableStatus(status) ||
+			httpclient.IsResponseBodyReadError(err) && status >= 200 && status < 300
+		if !retryable || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
 			if ctx.Err() != nil {
 				return authBundle{}, ctx.Err()
 			}

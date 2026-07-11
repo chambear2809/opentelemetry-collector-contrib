@@ -43,6 +43,52 @@ func TestClientRetryCountValidation(t *testing.T) {
 	}
 }
 
+func TestClientRetriesIncompleteSuccessfulResponseBody(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if requests.Add(1) == 1 {
+			w.Header().Set("Content-Length", "100")
+			_, _ = w.Write([]byte(`{"ok":`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{APIKey: "test-key", BaseURL: server.URL + "/api/v1", MaxRetries: 1})
+	require.NoError(t, err)
+	response, err := GetJSON[map[string]bool](t.Context(), client, "org-1", "test.get", "/test", nil)
+	require.NoError(t, err)
+	assert.True(t, response["ok"])
+	assert.Equal(t, int64(2), requests.Load())
+}
+
+func TestClientRecordsRateLimitWhenResponseBodyIsIncomplete(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if requests.Add(1) == 1 {
+			w.Header().Set("Content-Length", "100")
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"errors":[`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{APIKey: "test-key", BaseURL: server.URL + "/api/v1", MaxRetries: 1})
+	require.NoError(t, err)
+	var stats []RequestStat
+	client.OnRequest = func(stat RequestStat) { stats = append(stats, stat) }
+	response, err := GetJSON[map[string]bool](t.Context(), client, "org-1", "test.get", "/test", nil)
+	require.NoError(t, err)
+	assert.True(t, response["ok"])
+	require.Len(t, stats, 2)
+	assert.True(t, stats[0].RateLimited)
+	assert.Equal(t, http.StatusTooManyRequests, stats[0].StatusCode)
+}
+
 func TestClientAuthHeadersAndQuery(t *testing.T) {
 	var sawRequest atomic.Bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

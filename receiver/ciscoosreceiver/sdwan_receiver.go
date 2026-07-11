@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -26,6 +27,7 @@ import (
 	"go.opentelemetry.io/collector/receiver/receiverhelper"
 	"go.uber.org/zap"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/sdwan"
 )
 
@@ -34,6 +36,50 @@ const (
 	sdwanEventsPath       = "/event"
 	sdwanLegacyEventsPath = "/events"
 )
+
+// classifySDWANError returns a bounded value suitable for a metric attribute.
+// Transport errors can include request URLs and device identifiers, so raw
+// error strings must remain in diagnostic logs rather than metric dimensions.
+func classifySDWANError(err error) string {
+	if err == nil {
+		return "none"
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return "timeout"
+	}
+	if httpclient.IsResponseBodyReadError(err) {
+		return "transport"
+	}
+	var apiErr *sdwan.APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return "auth"
+		case http.StatusNotFound, http.StatusMethodNotAllowed:
+			return "not_found"
+		case http.StatusTooManyRequests:
+			return "rate_limited"
+		case http.StatusRequestTimeout, http.StatusGatewayTimeout:
+			return "timeout"
+		default:
+			if apiErr.StatusCode >= 500 {
+				return "transport"
+			}
+			return "other"
+		}
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		if netErr.Timeout() {
+			return "timeout"
+		}
+		return "transport"
+	}
+	if strings.Contains(strings.ToLower(err.Error()), "decode") {
+		return "decode"
+	}
+	return "other"
+}
 
 type sdwanMetricsReceiver struct {
 	settings receiver.Settings
@@ -1022,7 +1068,7 @@ func (b *sdwanMetricsBuilder) recordServiceUnavailable(group, operation string, 
 	b.managerResource().recordInt("sdwan.service.unavailable", "SD-WAN service or endpoint unavailable, unauthorized, unsupported, or missing.", "1", 1, compactAttrs(map[string]string{
 		"sdwan.collection.group":     group,
 		"sdwan.collection.operation": operation,
-		"sdwan.error":                sanitizeError(err),
+		"sdwan.error":                classifySDWANError(err),
 	}))
 }
 
@@ -1281,7 +1327,7 @@ func sdwanEventIdentity(obj sdwan.Object) deviceIdentity {
 		hostIDs:   []string{serial, uuid, systemIP, siteID},
 		hostIPs:   []string{systemIP, sdwan.String(obj, "managementIp", "mgmt-ip", "local-system-ip")},
 		serials:   []string{serial},
-		deviceIDs: []string{uuid, systemIP, siteID, sdwanDeviceModel(obj), sdwanPersonality(obj)},
+		deviceIDs: []string{uuid, systemIP},
 	}
 }
 
@@ -1525,8 +1571,11 @@ func recordSDWANInterfaceSpeed(rb *resourceMetricsBuilder, obj sdwan.Object, att
 	}
 	if speedMbps, ok := sdwan.Number(obj, "speed-mbps", "speedMbps"); ok && speedMbps >= 0 && !math.IsNaN(speedMbps) && !math.IsInf(speedMbps, 0) {
 		speedBits := speedMbps * float64(bitsPerMegabit)
-		if !math.IsInf(speedBits, 0) {
-			rb.recordDouble("cisco.interface.speed", "SD-WAN interface speed.", "bit/s", speedBits, withAttr(attrs, "sdwan.field", "speed-mbps"))
+		// cisco.interface.speed is declared as an integer gauge. Fractional
+		// megabits are still valid when they resolve to an exact whole bit rate,
+		// but must not change the metric descriptor's datapoint value type.
+		if speedBits < float64(math.MaxInt64) && math.Trunc(speedBits) == speedBits {
+			rb.recordInt("cisco.interface.speed", "SD-WAN interface speed.", "bit/s", int64(speedBits), withAttr(attrs, "sdwan.field", "speed-mbps"))
 			return
 		}
 	}
@@ -1568,17 +1617,6 @@ func sdwanCountDescription(name string) string {
 	default:
 		return "SD-WAN grouped count."
 	}
-}
-
-func sanitizeError(err error) string {
-	if err == nil {
-		return ""
-	}
-	msg := err.Error()
-	if len(msg) > 120 {
-		msg = msg[:120]
-	}
-	return msg
 }
 
 func sdwanLogTimestamp(obj sdwan.Object) pcommon.Timestamp {

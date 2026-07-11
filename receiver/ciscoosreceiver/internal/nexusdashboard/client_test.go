@@ -30,6 +30,27 @@ func TestClientRetryValidationPreservesExplicitZero(t *testing.T) {
 	}
 }
 
+func TestClientRetriesIncompleteSuccessfulResponseBody(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if requests.Add(1) == 1 {
+			w.Header().Set("Content-Length", "100")
+			w.Header().Set("Retry-After", "0")
+			_, _ = w.Write([]byte(`{"items":`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"items":[]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, AuthMode: "api_key", Username: "admin", APIKey: "key", MaxRetries: 1})
+	require.NoError(t, err)
+	objects, err := client.List(t.Context(), "test.list", "/api/v1/test", nil, 10)
+	require.NoError(t, err)
+	assert.Empty(t, objects)
+	assert.Equal(t, int64(2), requests.Load())
+}
+
 func TestClientAuthenticationRetryPolicy(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -58,6 +79,18 @@ func TestClientAuthenticationRetryPolicy(t *testing.T) {
 			authenticate: func(w http.ResponseWriter, attempt int64) {
 				if attempt == 1 {
 					http.Error(w, "unavailable", http.StatusServiceUnavailable)
+					return
+				}
+				_, _ = w.Write([]byte(`{"token":"nd-token"}`))
+			},
+			wantAuthRequests: 2,
+		},
+		{
+			name: "incomplete successful authentication body",
+			authenticate: func(w http.ResponseWriter, attempt int64) {
+				if attempt == 1 {
+					w.Header().Set("Content-Length", "100")
+					_, _ = w.Write([]byte(`{"token":`))
 					return
 				}
 				_, _ = w.Write([]byte(`{"token":"nd-token"}`))
@@ -638,6 +671,42 @@ func TestClientFallsBackToLegacyLoginAndCachesPath(t *testing.T) {
 	assert.Equal(t, "success", loginStats[2].Outcome)
 }
 
+func TestClientFallsBackAfterIncompleteUnsupportedLoginResponse(t *testing.T) {
+	var modernLogins atomic.Int64
+	var legacyLogins atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case modernLoginPath:
+			modernLogins.Add(1)
+			w.Header().Set("Content-Length", "100")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`unsupported`))
+		case legacyLoginPath:
+			legacyLogins.Add(1)
+			_, _ = w.Write([]byte(`{"jwttoken":"legacy-token"}`))
+		default:
+			assert.Equal(t, "Bearer legacy-token", r.Header.Get("Authorization"))
+			_, _ = w.Write([]byte(`{"items":[]}`))
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:   server.URL,
+		AuthMode:   "username_password",
+		Username:   "admin",
+		Password:   "password",
+		MaxRetries: 0,
+	})
+	require.NoError(t, err)
+
+	_, err = client.List(t.Context(), "fabrics", "/api/v1/manage/fabrics", nil, 1)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), modernLogins.Load())
+	assert.Equal(t, int64(1), legacyLogins.Load())
+	assert.Equal(t, legacyLoginPath, client.loginPath)
+}
+
 func TestLoginEndpointUnsupported(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -649,6 +718,9 @@ func TestLoginEndpointUnsupported(t *testing.T) {
 		{name: "not found", status: http.StatusNotFound, err: &APIError{StatusCode: http.StatusNotFound}, want: true},
 		{name: "method not allowed", status: http.StatusMethodNotAllowed, err: &APIError{StatusCode: http.StatusMethodNotAllowed}, want: true},
 		{name: "not implemented", status: http.StatusNotImplemented, err: &APIError{StatusCode: http.StatusNotImplemented}, want: true},
+		{name: "truncated not found", status: http.StatusNotFound, err: &httpclient.ResponseBodyReadError{Err: io.ErrUnexpectedEOF}, want: true},
+		{name: "truncated method not allowed", status: http.StatusMethodNotAllowed, err: &httpclient.ResponseBodyReadError{Err: io.ErrUnexpectedEOF}, want: true},
+		{name: "truncated not implemented", status: http.StatusNotImplemented, err: &httpclient.ResponseBodyReadError{Err: io.ErrUnexpectedEOF}, want: true},
 		{name: "legacy gateway authorization response", status: http.StatusUnauthorized, body: `{"error":"Authorization field missing"}`, err: &APIError{StatusCode: http.StatusUnauthorized}, want: true},
 		{name: "invalid credentials", status: http.StatusUnauthorized, body: `{"error":"Invalid Username/Password"}`, err: &APIError{StatusCode: http.StatusUnauthorized}},
 		{name: "body read failure", status: http.StatusUnauthorized, body: `{"error":"Authorization field missing"}`, err: io.ErrUnexpectedEOF},

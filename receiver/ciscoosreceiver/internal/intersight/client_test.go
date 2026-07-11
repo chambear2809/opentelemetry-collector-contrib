@@ -35,6 +35,50 @@ func TestClientRetryValidationPreservesExplicitZero(t *testing.T) {
 	}
 }
 
+func TestClientRetriesIncompleteSuccessfulResponseBody(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if requests.Add(1) == 1 {
+			w.Header().Set("Content-Length", "100")
+			_, _ = w.Write([]byte(`{"Results":`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"Results":[],"Count":0}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, KeyID: "test-key", KeyPEM: testPrivateKeyPEM(t), MaxRetries: 1})
+	require.NoError(t, err)
+	objects, err := client.List(t.Context(), "test.list", "/api/v1/test", nil, 10)
+	require.NoError(t, err)
+	assert.Empty(t, objects)
+	assert.Equal(t, int64(2), requests.Load())
+}
+
+func TestClientDoesNotFollowRedirectWithStaleRequestTargetSignature(t *testing.T) {
+	var redirectedRequests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/start":
+			http.Redirect(w, r, "/api/v1/redirected", http.StatusTemporaryRedirect)
+		case "/api/v1/redirected":
+			redirectedRequests.Add(1)
+			_, _ = w.Write([]byte(`{"Results":[],"Count":0}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, KeyID: "test-key", KeyPEM: testPrivateKeyPEM(t), MaxRetries: 0})
+	require.NoError(t, err)
+	_, err = client.List(t.Context(), "test.redirect", "/api/v1/start", nil, 10)
+	var apiErr *APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, http.StatusTemporaryRedirect, apiErr.StatusCode)
+	assert.Zero(t, redirectedRequests.Load())
+}
+
 func TestClientSignsRequestsAndEncodesODataQuery(t *testing.T) {
 	var sawRequest atomic.Bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

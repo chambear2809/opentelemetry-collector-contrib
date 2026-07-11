@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/scraper/scrapererror"
 	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/connection"
@@ -77,6 +78,19 @@ func TestInterfacesScraper_Start_EmptyIP(t *testing.T) {
 	assert.Contains(t, err.Error(), "no device configured")
 }
 
+func TestInterfacesScraper_HostIPResourceRequiresIPLiteral(t *testing.T) {
+	scraper := newStartedTestInterfacesScraper(t, createDefaultConfig().(*Config))
+
+	scraper.deviceTarget = "router.example.com"
+	_, ok := scraper.newResourceBuilder().Emit().Attributes().Get("host.ip")
+	assert.False(t, ok)
+
+	scraper.deviceTarget = "2001:0db8:0:0:0:0:0:10"
+	hostIP, ok := scraper.newResourceBuilder().Emit().Attributes().Get("host.ip")
+	require.True(t, ok)
+	assert.Equal(t, "2001:db8::10", hostIP.Str())
+}
+
 func TestInterfacesScraper_Shutdown(t *testing.T) {
 	logger := zap.NewNop()
 
@@ -91,6 +105,7 @@ func TestInterfacesScraper_Shutdown(t *testing.T) {
 func TestInterfacesScraper_TroubleshootingGroupsDisabled(t *testing.T) {
 	scraper := newStartedTestInterfacesScraper(t, createDefaultConfig().(*Config))
 	fakeClient := newFakeInterfacesCommandClient()
+	fakeClient.deviceMetadata = connection.DeviceMetadata{Serial: "FTX1234"}
 	scraper.rpcClient = fakeClient
 
 	metrics, err := scraper.ScrapeMetrics(t.Context())
@@ -104,6 +119,40 @@ func TestInterfacesScraper_TroubleshootingGroupsDisabled(t *testing.T) {
 	assert.NotContains(t, fakeClient.calls, "show interfaces transceiver detail")
 	assert.NotContains(t, fakeClient.calls, "show lldp neighbors detail")
 	assert.NotContains(t, fakeClient.calls, "show cdp neighbors detail")
+	serial, ok := metrics.ResourceMetrics().At(0).Resource().Attributes().Get("cisco.switch.serial")
+	require.True(t, ok)
+	assert.Equal(t, "FTX1234", serial.Str())
+}
+
+func TestInterfacesScraper_UsesLastVerifiedResourceIdentityWhenDisconnected(t *testing.T) {
+	scraper := newStartedTestInterfacesScraper(t, createDefaultConfig().(*Config))
+	store := &connection.DeviceMetadataStore{}
+	store.Store(connection.DeviceMetadata{
+		HostName:  "device-hostname",
+		HostID:    "FTX1234",
+		Serial:    "FTX1234",
+		HostType:  "C9300",
+		OSType:    "IOS XE",
+		OSVersion: "17.9.4",
+	})
+	scraper.config.Device.MetadataStore = store
+	scraper.rpcClient = nil
+	scraper.mb.RecordCiscoScrapePartialSuccessDataPoint(pcommon.NewTimestampFromTime(time.Now()), 1)
+
+	metrics := scraper.emitMetricsWithResource(scraper.newResourceBuilder())
+	attrs := metrics.ResourceMetrics().At(0).Resource().Attributes()
+	for key, expected := range map[string]string{
+		"host.name":           "device-hostname",
+		"host.id":             "FTX1234",
+		"host.type":           "C9300",
+		"os.name":             "IOS XE",
+		"os.version":          "17.9.4",
+		"cisco.switch.serial": "FTX1234",
+	} {
+		value, ok := attrs.Get(key)
+		require.True(t, ok, key)
+		assert.Equal(t, expected, value.Str(), key)
+	}
 }
 
 func TestInterfacesScraper_ParseInterfaceDataFallsBackWhenPrimaryOutputUnparseable(t *testing.T) {
@@ -192,9 +241,7 @@ Gi1/0/2 transceiver is present
 	assert.NotContains(t, names, "cisco.port_channel.status")
 	assert.Equal(t, 1, names["cisco.port_channel.member.status"])
 	assert.Equal(t, 2, names["cisco.transceiver.sensor"])
-	// The generated metrics builder may aggregate failures with identical
-	// attributes and timestamps into one data point. Validate the cumulative
-	// error value below instead of depending on scheduler/clock granularity.
+	// All three failures share one cumulative command-error series.
 	assert.Positive(t, names["cisco.scrape.command.errors"])
 	assert.Equal(t, int64(3), interfaceMetricIntSum(metrics, "cisco.scrape.command.errors"))
 	assert.Equal(t, 1, names["cisco.scrape.partial_success"])
@@ -208,16 +255,39 @@ Gi1/0/2 transceiver is present
 func TestInterfacesScraper_PrimaryFailureRecordsScrapeHealth(t *testing.T) {
 	scraper := newStartedTestInterfacesScraper(t, createDefaultConfig().(*Config))
 	fakeClient := newFakeInterfacesCommandClient()
+	fakeClient.deviceMetadata = connection.DeviceMetadata{HostID: "FTX1234", Serial: "FTX1234"}
 	fakeClient.errors["show interface"] = errors.New("unsupported")
 	fakeClient.errors["show interface brief"] = errors.New("unsupported")
 	scraper.rpcClient = fakeClient
 
 	metrics, err := scraper.ScrapeMetrics(t.Context())
 	require.Error(t, err)
+	assert.True(t, scrapererror.IsPartialScrapeError(err))
 
 	names := interfaceMetricDataPointCounts(metrics)
 	assert.Equal(t, 2, names["cisco.scrape.command.errors"])
 	assert.Equal(t, 1, names["cisco.scrape.partial_success"])
+	serial, ok := metrics.ResourceMetrics().At(0).Resource().Attributes().Get("cisco.switch.serial")
+	require.True(t, ok)
+	assert.Equal(t, "FTX1234", serial.Str())
+}
+
+func TestInterfacesScraper_CommandErrorsAccumulateAcrossScrapes(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	cfg.L2Topology.Commands.ErrDisabled = true
+
+	scraper := newStartedTestInterfacesScraper(t, cfg)
+	fakeClient := newFakeInterfacesCommandClient()
+	fakeClient.errors["show interfaces status err-disabled"] = errors.New("unsupported")
+	scraper.rpcClient = fakeClient
+
+	first, err := scraper.ScrapeMetrics(t.Context())
+	require.NoError(t, err)
+	second, err := scraper.ScrapeMetrics(t.Context())
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(1), interfaceMetricIntSum(first, "cisco.scrape.command.errors"))
+	assert.Equal(t, int64(2), interfaceMetricIntSum(second, "cisco.scrape.command.errors"))
 }
 
 func TestInterfacesScraper_OptionalCountersDoNotSuppressCoreInterfaceMetrics(t *testing.T) {
@@ -239,6 +309,24 @@ func TestInterfacesScraper_OptionalCountersDoNotSuppressCoreInterfaceMetrics(t *
 	assert.Contains(t, names, "system.network.errors")
 	assert.Contains(t, names, "system.network.packet.dropped")
 	assert.Contains(t, fakeClient.calls, "show platform hardware fed active qos queue stats interface GigabitEthernet1/0/1")
+}
+
+func TestEnrichPlatformQueueStatsTriesAliasAfterUnparseableOutput(t *testing.T) {
+	scraper := newStartedTestInterfacesScraper(t, createDefaultConfig().(*Config))
+	fakeClient := newFakeInterfacesCommandClient()
+	activeCommand := "show platform hardware fed active qos queue stats interface GigabitEthernet1/0/1"
+	switchCommand := "show platform hardware fed switch active qos queue stats interface GigabitEthernet1/0/1"
+	fakeClient.outputs[activeCommand] = "% Invalid input detected at '^' marker."
+	fakeClient.outputs[switchCommand] = `DATA Port:16 Enqueue Counters
+Q Buffers Enqueue-TH0 Enqueue-TH1 Enqueue-TH2 Qpolicer
+0 0 10 20 30 40`
+	scraper.rpcClient = fakeClient
+
+	interfaces := scraper.enrichPlatformQueueStats(t.Context(), []*Interface{NewInterface("GigabitEthernet1/0/1")})
+
+	require.Len(t, interfaces, 1)
+	assert.Equal(t, int64(10), interfaces[0].Counters["hardware_queue_0_enqueue_threshold_0_bytes"])
+	assert.Equal(t, []string{activeCommand, switchCommand}, fakeClient.calls)
 }
 
 func TestRecordPacketCounts_InputUnicastUnderflowGuard(t *testing.T) {
@@ -304,6 +392,7 @@ func newStartedTestInterfacesScraper(t *testing.T, cfg *Config) *interfacesScrap
 
 type fakeInterfacesCommandClient struct {
 	osType            string
+	deviceMetadata    connection.DeviceMetadata
 	outputs           map[string]string
 	errors            map[string]error
 	blockUntilContext map[string]bool
@@ -337,6 +426,10 @@ func (f *fakeInterfacesCommandClient) GetCommand(feature string) string {
 
 func (f *fakeInterfacesCommandClient) GetCommands(feature string) []string {
 	return (&connection.RPCClient{OSType: f.osType}).GetCommands(feature)
+}
+
+func (f *fakeInterfacesCommandClient) GetDeviceMetadata() connection.DeviceMetadata {
+	return f.deviceMetadata
 }
 
 func (f *fakeInterfacesCommandClient) ExecuteCommand(command string) (string, error) {

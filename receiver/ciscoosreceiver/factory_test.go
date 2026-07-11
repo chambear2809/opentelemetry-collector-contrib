@@ -297,14 +297,14 @@ func TestCreateMetricsReceiverWithMultipleDevices(t *testing.T) {
 	assert.True(t, isMulti, "expected multiMetricsReceiver for multiple devices")
 }
 
-func TestCreateMetricsReceiverFiltersSSHDevicesBeforeControllerCreation(t *testing.T) {
+func TestCreateMetricsReceiverPrefiltersSSHDevicesByKnownIP(t *testing.T) {
 	factory := NewFactory()
 	config := factory.CreateDefaultConfig().(*Config)
 	config.Devices = []DeviceConfig{
 		newTestDevice("device-1", "192.168.1.1"),
 		newTestDevice("device-2", "192.168.1.2"),
 	}
-	config.DeviceSelection.Include.HostNames = []string{"device-1"}
+	config.DeviceSelection.Include.HostIPs = []string{"192.168.1.1"}
 	config.Scrapers = map[component.Type]component.Config{
 		component.MustNewType("system"): systemscraper.NewFactory().CreateDefaultConfig(),
 	}
@@ -314,6 +314,21 @@ func TestCreateMetricsReceiverFiltersSSHDevicesBeforeControllerCreation(t *testi
 	assert.NotNil(t, receiver)
 	_, isMulti := receiver.(*multiMetricsReceiver)
 	assert.False(t, isMulti, "expected one SSH controller after device selection")
+}
+
+func TestCreateMetricsReceiverDefersSSHSerialSelectionUntilDiscovery(t *testing.T) {
+	factory := NewFactory()
+	config := factory.CreateDefaultConfig().(*Config)
+	config.Devices = []DeviceConfig{newTestDevice("device-1", "192.168.1.1")}
+	config.DeviceSelection.Include.Serials = []string{"SERIAL-1"}
+	config.Scrapers = map[component.Type]component.Config{
+		component.MustNewType("system"): systemscraper.NewFactory().CreateDefaultConfig(),
+	}
+
+	rcvr, err := factory.CreateMetrics(t.Context(), receivertest.NewNopSettings(metadata.Type), config, consumertest.NewNop())
+	require.NoError(t, err)
+	_, isNop := rcvr.(*nopMetricsReceiver)
+	assert.False(t, isNop, "serial selection must wait for SSH identity discovery")
 }
 
 func TestCreateMetricsReceiverReturnsNopWhenSSHDevicesAreExcluded(t *testing.T) {

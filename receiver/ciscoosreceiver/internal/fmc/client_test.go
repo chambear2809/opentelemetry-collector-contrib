@@ -38,6 +38,33 @@ func TestClientRetryValidationPreservesExplicitZero(t *testing.T) {
 	}
 }
 
+func TestClientRetriesIncompleteSuccessfulResponseBody(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/fmc_platform/v1/auth/generatetoken" {
+			w.Header().Set("X-auth-access-token", "access-token")
+			w.Header().Set("DOMAIN_UUID", "domain-1")
+			_, _ = w.Write([]byte(`{}`))
+			return
+		}
+		if requests.Add(1) == 1 {
+			w.Header().Set("Content-Length", "100")
+			w.Header().Set("Retry-After", "0")
+			_, _ = w.Write([]byte(`{"items":`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"items":[],"paging":{"count":0}}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", MaxRetries: 1})
+	require.NoError(t, err)
+	objects, err := client.List(t.Context(), "test.list", "/api/fmc_config/v1/domain/domain-1/test", nil, 10)
+	require.NoError(t, err)
+	assert.Empty(t, objects)
+	assert.Equal(t, int64(2), requests.Load())
+}
+
 func TestClientAuthenticationRetryPolicy(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -66,6 +93,20 @@ func TestClientAuthenticationRetryPolicy(t *testing.T) {
 			authenticate: func(w http.ResponseWriter, attempt int64) {
 				if attempt == 1 {
 					http.Error(w, "unavailable", http.StatusServiceUnavailable)
+					return
+				}
+				w.Header().Set("X-auth-access-token", "access-1")
+				w.WriteHeader(http.StatusNoContent)
+			},
+			wantAuthRequests: 2,
+		},
+		{
+			name: "incomplete successful authentication body",
+			authenticate: func(w http.ResponseWriter, attempt int64) {
+				if attempt == 1 {
+					w.Header().Set("Content-Length", "100")
+					w.Header().Set("Retry-After", "0")
+					_, _ = w.Write([]byte(`{`))
 					return
 				}
 				w.Header().Set("X-auth-access-token", "access-1")

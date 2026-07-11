@@ -26,10 +26,7 @@ type catalyst9800GNMIUpdateDecoder struct {
 }
 
 func (d *catalyst9800GNMIUpdateDecoder) decodeNotification(notification *gnmi.Notification, transport string) pmetric.Metrics { //nolint:unparam // Explicit transport keeps direct and future replay decoders distinguishable.
-	ts := pcommon.NewTimestampFromTime(time.Now())
-	if notification.GetTimestamp() > 0 {
-		ts = pcommon.Timestamp(notification.GetTimestamp())
-	}
+	ts := directGNMITimestamp(notification.GetTimestamp(), time.Now())
 	budget := newDirectGNMIDecodeBudget(d.limits, d.maxDatapoints)
 	prefix := notification.GetPrefix()
 	prefixText, validPrefix := gnmiPathToString(prefix, budget)
@@ -115,7 +112,11 @@ func (d *catalyst9800GNMIUpdateDecoder) decodeNotification(notification *gnmi.No
 		if depth == 0 {
 			depth = 1
 		}
-		d.decodeTypedValue(metrics, updateModule, parts, update.GetVal(), ts, attrs, budget, depth)
+		value, ok := resolveDirectGNMIUpdateValue(update, budget)
+		if !ok {
+			continue
+		}
+		d.decodeTypedValue(metrics, updateModule, parts, value, ts, attrs, budget, depth)
 	}
 	if d.health != nil {
 		if budget.decodeErrors > 0 {

@@ -800,10 +800,15 @@ func (c *Client) doWithRetries(
 		if httpclient.IsCertificateVerificationError(err) {
 			break
 		}
-		if !retryableStatus(status) || attempt >= c.retries {
+		retryable := retryableStatus(status) ||
+			httpclient.IsResponseBodyReadError(err) && status >= 200 && status < 300
+		if !retryable || attempt >= c.retries {
 			break
 		}
-		sleep := time.Duration(1<<attempt)*100*time.Millisecond + time.Duration(rand.Int64N(int64(50*time.Millisecond)))
+		sleep := retryAfter(lastHeader.Get("Retry-After"))
+		if sleep < 0 {
+			sleep = time.Duration(1<<attempt)*100*time.Millisecond + time.Duration(rand.Int64N(int64(50*time.Millisecond)))
+		}
 		timer := time.NewTimer(sleep)
 		select {
 		case <-ctx.Done():
@@ -877,7 +882,7 @@ func (c *Client) doOnce(
 
 	respBody, readErr := httpclient.ReadResponseBody(resp.Body)
 	if readErr != nil {
-		c.record(RequestStat{Operation: operation, Method: method, Path: statPath, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, CSRFProtected: csrfProtected, Err: readErr})
+		c.record(RequestStat{Operation: operation, Method: method, Path: statPath, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, RateLimited: resp.StatusCode == http.StatusTooManyRequests, CSRFProtected: csrfProtected, Err: readErr})
 		return nil, resp.Header, resp.StatusCode, readErr
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -1051,6 +1056,26 @@ func (c *Client) record(stat RequestStat) {
 
 func retryableStatus(status int) bool {
 	return status == 0 || status == http.StatusTooManyRequests || status >= 500
+}
+
+func retryAfter(value string) time.Duration {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return -1
+	}
+	if seconds, err := strconv.Atoi(value); err == nil {
+		if seconds < 0 {
+			return 0
+		}
+		return time.Duration(seconds) * time.Second
+	}
+	if when, err := http.ParseTime(value); err == nil {
+		if delay := time.Until(when); delay > 0 {
+			return delay
+		}
+		return 0
+	}
+	return -1
 }
 
 func cloneValues(values url.Values) url.Values {

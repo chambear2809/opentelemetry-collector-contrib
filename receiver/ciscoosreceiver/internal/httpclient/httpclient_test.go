@@ -35,7 +35,15 @@ func TestReadResponseBody(t *testing.T) {
 		wantErr := errors.New("read failed")
 		got, err := ReadResponseBody(errorReader{err: wantErr})
 		require.ErrorIs(t, err, wantErr)
+		assert.True(t, IsResponseBodyReadError(err))
 		assert.Nil(t, got)
+	})
+
+	t.Run("size error is not a read error", func(t *testing.T) {
+		body := bytes.Repeat([]byte{'a'}, int(MaxResponseBodySize)+1)
+		_, err := ReadResponseBody(bytes.NewReader(body))
+		require.ErrorIs(t, err, ErrResponseBodyTooLarge)
+		assert.False(t, IsResponseBodyReadError(err))
 	})
 }
 

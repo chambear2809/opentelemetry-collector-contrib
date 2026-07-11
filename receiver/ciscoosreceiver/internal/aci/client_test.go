@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -33,6 +34,120 @@ func TestClientRetryValidationPreservesExplicitZero(t *testing.T) {
 		_, err = NewClient(Config{Endpoint: "https://apic.example.test", Username: "admin", Password: "password", MaxRetries: retries})
 		require.ErrorContains(t, err, "invalid apic max retries")
 	}
+}
+
+func TestClientRetriesIncompleteSuccessfulResponseBody(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/aaaLogin.json" {
+			_, _ = w.Write([]byte(`{"imdata":[{"aaaLogin":{"attributes":{"token":"apic-token"}}}]}`))
+			return
+		}
+		if requests.Add(1) == 1 {
+			w.Header().Set("Content-Length", "100")
+			w.Header().Set("Retry-After", "0")
+			_, _ = w.Write([]byte(`{"imdata":`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"totalCount":"0","imdata":[]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", MaxRetries: 1})
+	require.NoError(t, err)
+	objects, err := client.List(t.Context(), "test.list", "/api/test.json", nil, 10)
+	require.NoError(t, err)
+	assert.Empty(t, objects)
+	assert.Equal(t, int64(2), requests.Load())
+}
+
+func TestClientRetriesIncompleteSuccessfulLoginBody(t *testing.T) {
+	var logins atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/aaaLogin.json" {
+			if logins.Add(1) == 1 {
+				w.Header().Set("Content-Length", "100")
+				_, _ = w.Write([]byte(`{"imdata":`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"imdata":[{"aaaLogin":{"attributes":{"token":"apic-token"}}}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"totalCount":"0","imdata":[]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", MaxRetries: 1})
+	require.NoError(t, err)
+	_, err = client.List(t.Context(), "test.list", "/api/test.json", nil, 10)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), logins.Load())
+}
+
+func TestClientRetriesTransientLoginStatuses(t *testing.T) {
+	for _, status := range []int{http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusNotImplemented, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			var logins atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/aaaLogin.json" {
+					if logins.Add(1) == 1 {
+						w.Header().Set("Retry-After", "0")
+						http.Error(w, "temporary login failure", status)
+						return
+					}
+					_, _ = w.Write([]byte(`{"imdata":[{"aaaLogin":{"attributes":{"token":"apic-token"}}}]}`))
+					return
+				}
+				_, _ = w.Write([]byte(`{"totalCount":"0","imdata":[]}`))
+			}))
+			defer server.Close()
+
+			client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", MaxRetries: 1})
+			require.NoError(t, err)
+			_, err = client.List(t.Context(), "test.list", "/api/test.json", nil, 10)
+			require.NoError(t, err)
+			assert.Equal(t, int64(2), logins.Load())
+		})
+	}
+}
+
+func TestClientRetriesLoginTransportFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/aaaLogin.json" {
+			_, _ = w.Write([]byte(`{"imdata":[{"aaaLogin":{"attributes":{"token":"apic-token"}}}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"totalCount":"0","imdata":[]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", MaxRetries: 1})
+	require.NoError(t, err)
+	transport := &failOnceLoginTransport{next: client.client.Transport}
+	client.client.Transport = transport
+
+	_, err = client.List(t.Context(), "test.list", "/api/test.json", nil, 10)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), transport.attempts.Load())
+}
+
+func TestClientDoesNotRetryRejectedLogin(t *testing.T) {
+	var logins atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/aaaLogin.json" {
+			logins.Add(1)
+			http.Error(w, "invalid credentials", http.StatusUnauthorized)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", MaxRetries: 3})
+	require.NoError(t, err)
+	_, err = client.List(t.Context(), "test.list", "/api/test.json", nil, 10)
+	require.ErrorContains(t, err, "HTTP 401")
+	assert.Equal(t, int64(1), logins.Load())
 }
 
 func TestClientLoginCookieAndClassDecode(t *testing.T) {
@@ -245,6 +360,18 @@ func TestClientCertificateVerificationFailureIsTerminal(t *testing.T) {
 
 type certificateFailureTransport struct {
 	attempts atomic.Int64
+}
+
+type failOnceLoginTransport struct {
+	next     http.RoundTripper
+	attempts atomic.Int64
+}
+
+func (t *failOnceLoginTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Path == "/api/aaaLogin.json" && t.attempts.Add(1) == 1 {
+		return nil, errors.New("temporary login transport failure")
+	}
+	return t.next.RoundTrip(req)
 }
 
 func (t *certificateFailureTransport) RoundTrip(*http.Request) (*http.Response, error) {
