@@ -546,6 +546,11 @@ Collection groups default to enabled and can be disabled or capped independently
 | `data_broker` | broker health, switch participation, TAP/SPAN/rule/session state, and events |
 | `performance` | interface stats, telemetry sync, and other high-volume fabric performance details |
 
+Each Nexus Dashboard group shares its `max_results` budget across all endpoint instances in catalog order. The budget
+counts objects returned by the pagination client after exact cross-page overlap removal and before target filters, shared
+device selection, or log deduplication. Objects returned alongside a partial-result error consume the budget; empty
+endpoints do not.
+
 Target filters are optional for the broad controller and inventory endpoints, but four enabled detail operations have
 exact selector requirements:
 

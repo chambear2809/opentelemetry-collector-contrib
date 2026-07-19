@@ -943,6 +943,50 @@ func TestClientOffsetPaginationContinuesFullPagesWithoutMetadata(t *testing.T) {
 	assert.Equal(t, int64(3), requests.Load())
 }
 
+func TestClientOffsetPaginationRejectsMalformedRowsWithMetadata(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch request := requests.Add(1); request {
+		case 1:
+			assert.Equal(t, "0", r.URL.Query().Get("offset"))
+			_, _ = w.Write([]byte(`{"items":[{"id":"a"},{"id":"b"}],"meta":{"counts":{"total":4}}}`))
+		case 2:
+			assert.Equal(t, "2", r.URL.Query().Get("offset"))
+			_, _ = w.Write([]byte(`{"items":[{"id":"c"},null],"meta":{"counts":{"total":4}}}`))
+		default:
+			t.Fatalf("unexpected request %d at offset %q", request, r.URL.Query().Get("offset"))
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, AuthMode: "api_key", Username: "admin", APIKey: "key", PageSize: 2})
+	require.NoError(t, err)
+	got, err := client.List(t.Context(), "fabrics", "/api/v1/manage/fabrics", nil, PaginationOffset, 0)
+	require.ErrorContains(t, err, "decode nexus dashboard fabrics response page 2 from /api/v1/manage/fabrics")
+	require.ErrorContains(t, err, `response field "items" row 1 is null, expected object`)
+	require.Len(t, got, 2)
+	assert.Equal(t, []any{"a", "b"}, []any{got[0]["id"], got[1]["id"]})
+	assert.Equal(t, int64(2), requests.Load())
+}
+
+func TestClientOffsetPaginationRejectsMalformedRowsWithoutMetadata(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		assert.Equal(t, "0", r.URL.Query().Get("offset"))
+		_, _ = w.Write([]byte(`{"items":[{"id":"a"},"malformed"]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, AuthMode: "api_key", Username: "admin", APIKey: "key", PageSize: 2})
+	require.NoError(t, err)
+	got, err := client.List(t.Context(), "fabrics", "/api/v1/manage/fabrics", nil, PaginationOffset, 0)
+	require.ErrorContains(t, err, "decode nexus dashboard fabrics response page 1 from /api/v1/manage/fabrics")
+	require.ErrorContains(t, err, `response field "items" row 1 is a string, expected object`)
+	assert.Empty(t, got)
+	assert.Equal(t, int64(1), requests.Load())
+}
+
 func TestClientOffsetPaginationContinuesShortPagesWhileRemainingClaimsMore(t *testing.T) {
 	var requests atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

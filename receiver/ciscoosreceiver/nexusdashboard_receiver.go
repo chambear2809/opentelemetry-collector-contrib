@@ -110,6 +110,8 @@ type nexusDashboardPaginationContract struct {
 	reference     string
 }
 
+type nexusDashboardGroupResultBudget map[string]int
+
 const (
 	nexusDashboardInfraSpec       = "Cisco Nexus Dashboard Infrastructure v1 1.1.136 (Nexus Dashboard API v1, Release 4.2 and above)"
 	nexusDashboardManageSpec      = "Cisco Nexus Dashboard Manage v1 1.1.411 (Nexus Dashboard API v1, Release 4.2 and above)"
@@ -299,12 +301,17 @@ func (r *nexusDashboardMetricsReceiver) scrape(ctx context.Context) (pmetric.Met
 	now := time.Now()
 	builder := newNexusDashboardMetricsBuilder(now, r.config.NexusDashboard.Endpoint, r.counters)
 	selector := newDeviceSelectionMatcher(r.config.DeviceSelection)
+	groupBudget := newNexusDashboardGroupResultBudget(r.config.NexusDashboard)
 	partial := false
 
 	endpoints := nexusDashboardMetricEndpointInstances(r.config)
 	for i := range endpoints {
 		endpoint := &endpoints[i]
 		if !nexusDashboardGroupEnabled(r.config.NexusDashboard, endpoint.group) {
+			continue
+		}
+		maxResults, collect := groupBudget.requestLimit(endpoint.group)
+		if !collect {
 			continue
 		}
 		if endpoint.skipped {
@@ -318,8 +325,9 @@ func (r *nexusDashboardMetricsReceiver) scrape(ctx context.Context) (pmetric.Met
 			endpoint.path,
 			nexusDashboardEndpointQuery(endpoint.nexusDashboardEndpoint, r.config, now),
 			endpoint.pagination.strategy,
-			nexusDashboardGroupMaxResults(r.config.NexusDashboard, endpoint.group),
+			maxResults,
 		)
+		groupBudget.consume(endpoint.group, len(objects))
 		for _, obj := range filterNexusDashboardEndpointObjects(objects, *endpoint, r.config) {
 			if !selector.allows(nexusDashboardObjectIdentity(obj)) {
 				continue
@@ -464,10 +472,15 @@ func (r *nexusDashboardLogsReceiver) scrape(ctx context.Context) (plog.Logs, err
 	now := time.Now()
 	var endpointErrors []error
 	selector := newDeviceSelectionMatcher(r.config.DeviceSelection)
+	groupBudget := newNexusDashboardGroupResultBudget(r.config.NexusDashboard)
 	endpoints := nexusDashboardLogEndpointInstances(r.config)
 	for i := range endpoints {
 		endpoint := &endpoints[i]
 		if !nexusDashboardGroupEnabled(r.config.NexusDashboard, endpoint.group) || endpoint.skipped {
+			continue
+		}
+		maxResults, collect := groupBudget.requestLimit(endpoint.group)
+		if !collect {
 			continue
 		}
 		objects, err := r.client.List(
@@ -476,8 +489,9 @@ func (r *nexusDashboardLogsReceiver) scrape(ctx context.Context) (plog.Logs, err
 			endpoint.path,
 			nexusDashboardEndpointQuery(endpoint.nexusDashboardEndpoint, r.config, now),
 			endpoint.pagination.strategy,
-			nexusDashboardGroupMaxResults(r.config.NexusDashboard, endpoint.group),
+			maxResults,
 		)
+		groupBudget.consume(endpoint.group, len(objects))
 		for _, obj := range filterNexusDashboardEndpointObjects(objects, *endpoint, r.config) {
 			if !selector.allows(nexusDashboardObjectIdentity(obj)) {
 				continue
@@ -1024,6 +1038,36 @@ func nexusDashboardGroupMaxResults(cfg NexusDashboardConfig, group string) int {
 	default:
 		return 0
 	}
+}
+
+func newNexusDashboardGroupResultBudget(cfg NexusDashboardConfig) nexusDashboardGroupResultBudget {
+	budget := nexusDashboardGroupResultBudget{}
+	for _, group := range []string{"platform", "ndfc", "insights", "orchestrator", "data_broker", "performance"} {
+		if maximum := nexusDashboardGroupMaxResults(cfg, group); maximum > 0 {
+			budget[group] = maximum
+		}
+	}
+	return budget
+}
+
+func (b nexusDashboardGroupResultBudget) requestLimit(group string) (int, bool) {
+	remaining, limited := b[group]
+	if !limited {
+		return 0, true
+	}
+	return remaining, remaining > 0
+}
+
+func (b nexusDashboardGroupResultBudget) consume(group string, count int) {
+	remaining, limited := b[group]
+	if !limited {
+		return
+	}
+	remaining -= count
+	if remaining < 0 {
+		remaining = 0
+	}
+	b[group] = remaining
 }
 
 func filterNexusDashboardObjects(objects []nexusdashboard.Object, filters NexusDashboardTargetFilters) []nexusdashboard.Object {

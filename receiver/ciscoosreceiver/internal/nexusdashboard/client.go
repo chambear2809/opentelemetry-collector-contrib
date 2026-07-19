@@ -316,7 +316,7 @@ func (c *Client) List(
 		pages++
 		page, metadata, err := decodeObjects(body, header)
 		if err != nil {
-			return results, fmt.Errorf("decode nexus dashboard %s response: %w", operation, err)
+			return results, fmt.Errorf("decode nexus dashboard %s response page %d from %s: %w", operation, pages, requestPath, err)
 		}
 		rawPageLength := len(page)
 		page, madeProgress, err := filterObjectProgress(page, completedPageObjects)
@@ -868,7 +868,10 @@ func decodeObjects(body []byte, header http.Header) ([]Object, paginationMetadat
 	if err := httpclient.DecodeJSON(body, &value); err != nil {
 		return nil, paginationMetadata{}, err
 	}
-	objects := objectsFromValue(value)
+	objects, err := objectsFromValue(value)
+	if err != nil {
+		return nil, paginationMetadata{}, err
+	}
 	metadata := paginationMetadata{next: httpclient.NextLink(header.Get("Link"))}
 	if root, ok := value.(map[string]any); ok {
 		metadata.next = firstNonEmpty(
@@ -891,37 +894,54 @@ func decodeObjects(body []byte, header http.Header) ([]Object, paginationMetadat
 	return objects, metadata, nil
 }
 
-func objectsFromValue(value any) []Object {
+func objectsFromValue(value any) ([]Object, error) {
 	switch typed := value.(type) {
 	case []any:
-		out := make([]Object, 0, len(typed))
-		for _, item := range typed {
-			if obj, ok := objectFromValue(item); ok {
-				out = append(out, obj)
-			}
-		}
-		return out
+		return objectsFromRows(typed, "top-level response", "")
 	case map[string]any:
 		if _, ok := typed["isHealthy"]; ok {
-			return []Object{Object(typed)}
+			return []Object{Object(typed)}, nil
 		}
 		for _, key := range []string{"items", "data", "results", "fabrics", "switches", "interfaces", "anomalies", "advisories", "nodes", "services", "sites", "schemas", "rules", "sessions", "flows", "events", "faults", "auditLog", "logs", "records"} {
 			if items, ok := typed[key].([]any); ok {
-				out := make([]Object, 0, len(items))
-				for _, item := range items {
-					if obj, ok := objectFromValue(item); ok {
-						if fabric := String(Object(typed), "fabricName", "siteName"); fabric != "" {
-							obj["_parent"] = fabric
-						}
-						out = append(out, obj)
-					}
-				}
-				return out
+				return objectsFromRows(items, fmt.Sprintf("response field %q", key), String(Object(typed), "fabricName", "siteName"))
 			}
 		}
-		return []Object{Object(typed)}
+		return []Object{Object(typed)}, nil
 	default:
-		return nil
+		return nil, fmt.Errorf("top-level response is %s, expected object or array", jsonValueType(value))
+	}
+}
+
+func objectsFromRows(rows []any, location, parent string) ([]Object, error) {
+	out := make([]Object, 0, len(rows))
+	for index, row := range rows {
+		obj, ok := objectFromValue(row)
+		if !ok {
+			return nil, fmt.Errorf("%s row %d is %s, expected object", location, index, jsonValueType(row))
+		}
+		if parent != "" {
+			obj["_parent"] = parent
+		}
+		out = append(out, obj)
+	}
+	return out, nil
+}
+
+func jsonValueType(value any) string {
+	switch value.(type) {
+	case nil:
+		return "null"
+	case []any:
+		return "an array"
+	case string:
+		return "a string"
+	case json.Number, float64:
+		return "a number"
+	case bool:
+		return "a boolean"
+	default:
+		return fmt.Sprintf("a %T value", value)
 	}
 }
 

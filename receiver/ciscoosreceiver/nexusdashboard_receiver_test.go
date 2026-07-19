@@ -187,6 +187,45 @@ func TestNexusDashboardLogsEmitEvidenceAndDeduplicate(t *testing.T) {
 	assert.Equal(t, 0, ld.LogRecordCount())
 }
 
+func TestNexusDashboardLogsGroupMaxResultsStopsLaterEndpoint(t *testing.T) {
+	var callsMu sync.Mutex
+	calls := map[string]int{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callsMu.Lock()
+		calls[r.URL.Path]++
+		callsMu.Unlock()
+		switch r.URL.Path {
+		case "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/audit":
+			_, _ = w.Write([]byte(`{"items":[
+				{"id":"audit-1","status":"success","fabricName":"fabric-a"},
+				{"id":"audit-2","status":"success","fabricName":"fabric-a"}
+			],"meta":{"counts":{"remaining":0}}}`))
+		case "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/events":
+			_, _ = w.Write([]byte(`{"items":[{"id":"must-not-be-fetched","status":"active"}],"meta":{"counts":{"remaining":0}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	receiver := newTestNexusDashboardLogsReceiver(t, server.URL)
+	receiver.config.NexusDashboard.NDFC.MaxResults = 2
+	receiver.config.NexusDashboard.Insights.Enabled = false
+	receiver.config.NexusDashboard.Orchestrator.Enabled = false
+	receiver.config.NexusDashboard.DataBroker.Enabled = false
+	receiver.config.NexusDashboard.Targets = NexusDashboardTargetFilters{}
+
+	ld, err := receiver.scrape(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, 2, ld.LogRecordCount())
+	assert.True(t, hasLogRecordAttribute(ld, "event.name", "ndfc.audit"))
+
+	callsMu.Lock()
+	assert.Equal(t, 1, calls["/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/audit"])
+	assert.Zero(t, calls["/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/events"], "collection must stop when the shared log group result budget reaches zero")
+	callsMu.Unlock()
+}
+
 func TestNexusDashboardCatalogCoversTroubleshootingDomains(t *testing.T) {
 	groups := map[string]bool{}
 	operations := map[string]bool{}
@@ -486,6 +525,95 @@ func TestNexusDashboardUnifiedScrapeUsesAllVerifiedEndpoints(t *testing.T) {
 	} {
 		assert.True(t, hasMetricDatapointAttribute(md, "nexus_dashboard.api.request.duration", "nexus_dashboard.api.operation", operation), operation)
 	}
+}
+
+func TestNexusDashboardGroupMaxResultsSpansEndpointInstancesBeforeFiltering(t *testing.T) {
+	routes := map[string]string{
+		"/api/v1/infra/clusterhealth/status":           `{"isHealthy":true,"name":"filtered"}`,
+		"/api/v1/infra/cluster/nodes":                  `{"nodes":[]}`,
+		"/api/v1/infra/systemResources/nodes/hardware": `{"nodes":[{"name":"keep-1","id":"keep-1"},{"name":"keep-2","id":"keep-2"}]}`,
+		"/api/v1/infra/systemResources/summary":        `{"nodes":[{"name":"must-not-be-fetched","id":"unexpected"}]}`,
+	}
+
+	var callsMu sync.Mutex
+	calls := map[string]int{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callsMu.Lock()
+		calls[r.URL.Path]++
+		callsMu.Unlock()
+		body, ok := routes[r.URL.Path]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(body))
+	}))
+	defer server.Close()
+
+	receiver := newTestNexusDashboardMetricsReceiver(t, server.URL)
+	receiver.config.NexusDashboard.APIProfile = nexusDashboardAPIProfileUnified
+	receiver.config.NexusDashboard.Platform.MaxResults = 3
+	receiver.config.NexusDashboard.NDFC.Enabled = false
+	receiver.config.NexusDashboard.Insights.Enabled = false
+	receiver.config.NexusDashboard.Orchestrator.Enabled = false
+	receiver.config.NexusDashboard.DataBroker.Enabled = false
+	receiver.config.NexusDashboard.Performance.Enabled = false
+	receiver.config.DeviceSelection = DeviceSelectionConfig{
+		Include: DeviceSelectionMatchConfig{HostNames: []string{"keep-1", "keep-2"}},
+	}
+
+	md, err := receiver.scrape(t.Context())
+	require.NoError(t, err)
+	assert.True(t, hasResourceHostID(md, "keep-1"))
+	assert.True(t, hasResourceHostID(md, "keep-2"))
+	assert.False(t, hasResourceHostID(md, "filtered"))
+	assert.False(t, hasResourceHostID(md, "unexpected"))
+
+	callsMu.Lock()
+	assert.Equal(t, 1, calls["/api/v1/infra/clusterhealth/status"], "filtered returned objects must consume the group result budget")
+	assert.Equal(t, 1, calls["/api/v1/infra/cluster/nodes"], "empty endpoints must not consume the group result budget")
+	assert.Equal(t, 1, calls["/api/v1/infra/systemResources/nodes/hardware"])
+	assert.Zero(t, calls["/api/v1/infra/systemResources/summary"], "collection must stop when the group result budget reaches zero")
+	callsMu.Unlock()
+}
+
+func TestNexusDashboardGroupMaxResultsConsumesPartialErrorResults(t *testing.T) {
+	var callsMu sync.Mutex
+	calls := map[string]int{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callsMu.Lock()
+		calls[r.URL.Path]++
+		callsMu.Unlock()
+		switch r.URL.Path {
+		case "/api/v1/infra/clusterhealth/status":
+			_, _ = w.Write([]byte(`{"isHealthy":true,"name":"partial","meta":{"counts":{"remaining":1}}}`))
+		case "/api/v1/infra/cluster/nodes":
+			_, _ = w.Write([]byte(`{"nodes":[]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	receiver := newTestNexusDashboardMetricsReceiver(t, server.URL)
+	receiver.config.NexusDashboard.APIProfile = nexusDashboardAPIProfileUnified
+	receiver.config.NexusDashboard.Platform.MaxResults = 1
+	receiver.config.NexusDashboard.NDFC.Enabled = false
+	receiver.config.NexusDashboard.Insights.Enabled = false
+	receiver.config.NexusDashboard.Orchestrator.Enabled = false
+	receiver.config.NexusDashboard.DataBroker.Enabled = false
+	receiver.config.NexusDashboard.Performance.Enabled = false
+	receiver.config.DeviceSelection = DeviceSelectionConfig{}
+
+	md, err := receiver.scrape(t.Context())
+	require.NoError(t, err)
+	assert.True(t, hasResourceHostID(md, "partial"))
+	assert.True(t, intMetricValueExists(md, "nexus_dashboard.scrape.partial_success", 1))
+
+	callsMu.Lock()
+	assert.Equal(t, 1, calls["/api/v1/infra/clusterhealth/status"])
+	assert.Zero(t, calls["/api/v1/infra/cluster/nodes"], "partial results must consume the group budget before error handling")
+	callsMu.Unlock()
 }
 
 func TestNexusDashboardUnifiedMissingFabricReportsScopedEndpoints(t *testing.T) {
