@@ -62,6 +62,28 @@ func TestClientRetriesIncompleteSuccessfulResponseBody(t *testing.T) {
 	assert.Equal(t, int64(2), requests.Load())
 }
 
+func TestClientPreservesStatusAndReadErrorForIncompleteNonAuthenticationResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/aaaLogin.json" {
+			_, _ = w.Write([]byte(`{"imdata":[{"aaaLogin":{"attributes":{"token":"apic-token","refreshTimeoutSeconds":"600"}}}]}`))
+			return
+		}
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusTeapot)
+		_, _ = w.Write([]byte(`{"imdata":`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", MaxRetries: 0})
+	require.NoError(t, err)
+	_, err = client.List(t.Context(), "test.list", "/api/test.json", nil, 10)
+	require.Error(t, err)
+	assert.True(t, httpclient.IsResponseBodyReadError(err))
+	var apiErr *APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, http.StatusTeapot, apiErr.StatusCode)
+}
+
 func TestClientRetriesIncompleteSuccessfulLoginBody(t *testing.T) {
 	var logins atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1516,6 +1538,50 @@ func TestClientRecoversEstablishedExpiredSessionOnce(t *testing.T) {
 			client.tokenMu.Unlock()
 		})
 	}
+}
+
+func TestClientRecoversEstablishedSessionFromIncompleteUnauthorizedResponse(t *testing.T) {
+	var logins atomic.Int64
+	var dataRequests atomic.Int64
+	var expireFirst atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/aaaLogin.json" {
+			token := fmt.Sprintf("token-%d", logins.Add(1))
+			_, _ = fmt.Fprintf(w, `{"imdata":[{"aaaLogin":{"attributes":{"token":%q,"refreshTimeoutSeconds":"600"}}}]}`, token)
+			return
+		}
+		dataRequests.Add(1)
+		cookie, err := r.Cookie("APIC-cookie")
+		if !assert.NoError(t, err) {
+			http.Error(w, "missing cookie", http.StatusUnauthorized)
+			return
+		}
+		if cookie.Value == "token-1" && expireFirst.Load() {
+			w.Header().Set("Content-Length", "100")
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"imdata":`))
+			return
+		}
+		assert.Contains(t, []string{"token-1", "token-2"}, cookie.Value)
+		_, _ = w.Write([]byte(`{"totalCount":"0","imdata":[]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", Timeout: time.Second, MaxRetries: 0})
+	require.NoError(t, err)
+	_, err = client.ListClass(t.Context(), "fabric.nodes", "fabricNode", nil, 0)
+	require.NoError(t, err)
+	expireFirst.Store(true)
+
+	_, err = client.ListClass(t.Context(), "fabric.nodes", "fabricNode", nil, 0)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), logins.Load())
+	assert.Equal(t, int64(3), dataRequests.Load())
+	client.tokenMu.Lock()
+	assert.Equal(t, "token-2", client.token)
+	assert.True(t, client.tokenAccepted)
+	assert.Zero(t, client.authFailures)
+	client.tokenMu.Unlock()
 }
 
 func TestClientConcurrentStaleUnauthorizedSharesOneReauthentication(t *testing.T) {

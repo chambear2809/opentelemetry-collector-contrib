@@ -493,8 +493,15 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 	bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
-		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, RateLimited: resp.StatusCode == http.StatusTooManyRequests, Err: readErr})
-		return nil, resp.Header, resp.StatusCode, token, readErr
+		responseErr := readErr
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			// Preserve the response status even when the body is truncated. In
+			// particular, callers must still retire an established session rejected
+			// by a 401 response while retaining the underlying read failure.
+			responseErr = errors.Join(&APIError{StatusCode: resp.StatusCode}, readErr)
+		}
+		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, RateLimited: resp.StatusCode == http.StatusTooManyRequests, Err: responseErr})
+		return nil, resp.Header, resp.StatusCode, token, responseErr
 	}
 	if closeErr != nil {
 		return nil, resp.Header, resp.StatusCode, token, closeErr

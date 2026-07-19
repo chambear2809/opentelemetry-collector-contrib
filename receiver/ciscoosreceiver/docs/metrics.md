@@ -618,7 +618,10 @@ only the signal-specific scalar allowlists in the
 configured controller metadata. Raw APIC aliases, `changeSet`, session identifiers, unknown attributes, and nested
 values are neither consulted nor forwarded. Deduplication hashes the complete sanitized semantic record, excludes
 only replica-local audit `id`/`dn` copies when `txId` is present, and remains scoped to a configured controller.
-Process-local state means a restart can replay records inside the configured lookback.
+Without `storage`, deduplication state is process-local and a restart can replay records inside the configured lookback.
+When `storage` is configured, accepted ACI deduplication state is checkpointed across restarts subject to the bounded
+unflushed and fail-open replay windows documented in the receiver's durable-checkpoint guidance. Live ACI restart
+delivery and replay behavior remains unqualified.
 
 ## Cisco ISE Metrics And Logs
 

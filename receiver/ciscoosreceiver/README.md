@@ -685,9 +685,11 @@ source timestamp, severity, and scope. The scrape-local observed timestamp is de
 not part of replay identity. For `txId`-backed audit records, only APIC replica-local body `id`/`dn` and the resource
 copy of `dn` are excluded from the hash. Dedup is scoped by the configured controller name and endpoint; records from
 different configured controllers are not collapsed because the sanitized schemas do not admit a safe logical-fabric
-identity. Deduplication state remains process-local, so a Collector restart can replay records still
-inside `event_lookback`. Keep each log signal disabled unless that replay behavior and its destination
-retention/privacy policy are acceptable.
+identity. Without `storage`, deduplication state is process-local and a Collector restart can replay records still
+inside `event_lookback`. When `storage` is configured, accepted ACI deduplication state is checkpointed across restarts
+subject to the bounded unflushed and fail-open replay windows described in [Durable Checkpoints](#durable-checkpoints).
+Live ACI restart delivery and replay behavior remains unqualified. Keep each log signal disabled unless that replay
+behavior and its destination retention/privacy policy are acceptable.
 
 For production, keep certificate verification enabled. When the APIC certificate is issued by a private CA, configure
 `ca_file` with that CA chain. If a controller endpoint uses an IP address, set `server_name` to a DNS name listed in

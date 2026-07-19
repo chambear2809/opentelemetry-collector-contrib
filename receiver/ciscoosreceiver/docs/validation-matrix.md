@@ -252,10 +252,11 @@ focused tests but was not present in the streaming-disabled backend binary.
 - **Post-pilot release gate:** The current implementation leaves ACI metric defaults unchanged, disables each ACI log
   signal by default, and derives the complete exported log from fixed scalar `faultInst`, `aaaModLR`, and `eventRecord`
   allowlists plus controlled endpoint metadata. Dedup hashes that complete sanitized content, omits only replica-local
-  audit identity copies, and remains controller-scoped and process-local. Configuration regressions require complete
-  ACI target/auth settings for any log opt-in and reject top-level or per-signal null, string, list, and boolean shapes;
-  YAML nulls are covered separately. This is automated hardening evidence rather than a new live result; explicit log
-  opt-in, destination privacy/readback, cross-controller delivery, and restart-window replay remain unqualified.
+  audit identity copies, and remains controller-scoped. Deduplication is process-local without `storage` and
+  storage-backed when configured. Configuration regressions require complete ACI target/auth settings for any log
+  opt-in and reject top-level or per-signal null, string, list, and boolean shapes; YAML nulls are covered separately.
+  This is automated hardening evidence rather than a new live result; explicit log opt-in, destination
+  privacy/readback, cross-controller delivery, and live restart delivery and replay behavior remain unqualified.
 - **Evidence:** Run `aci20260706T010752Zb2feaeb87626`; sanitized SHA-256
   `0d9e772ee5f47ffd0e4b57555c9a1899e42b813de7a8dfc6a540e2ecddc8d531`.
 

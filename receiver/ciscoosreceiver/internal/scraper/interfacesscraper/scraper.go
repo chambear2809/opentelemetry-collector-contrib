@@ -116,27 +116,6 @@ func (s *interfacesScraper) ScrapeMetrics(ctx context.Context) (pmetric.Metrics,
 			s.logger.Warn("Interface operational status was not present; omitting status metric", zap.String("interface", intf.Name))
 		}
 
-		if validCounter(intf.InputBytes) {
-			s.mb.RecordSystemNetworkIoDataPoint(timestamp, intf.InputBytes, metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
-		}
-		if validCounter(intf.OutputBytes) {
-			s.mb.RecordSystemNetworkIoDataPoint(timestamp, intf.OutputBytes, metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
-		}
-		if validCounter(intf.InputErrors) {
-			s.mb.RecordSystemNetworkErrorsDataPoint(timestamp, intf.InputErrors, metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
-		}
-		if validCounter(intf.OutputErrors) {
-			s.mb.RecordSystemNetworkErrorsDataPoint(timestamp, intf.OutputErrors, metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
-		}
-		if validCounter(intf.InputDrops) {
-			s.mb.RecordSystemNetworkPacketDroppedDataPoint(timestamp, intf.InputDrops, metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
-		}
-		if validCounter(intf.OutputDrops) {
-			s.mb.RecordSystemNetworkPacketDroppedDataPoint(timestamp, intf.OutputDrops, metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
-		}
-
-		recordPacketCounts(s.mb, timestamp, intf, description, macAddress, speedString)
-
 		if intf.Speed > 0 {
 			s.mb.RecordCiscoInterfaceSpeedDataPoint(timestamp, intf.Speed, description, macAddress, intf.Name)
 			if intf.HasInputRate {
@@ -180,6 +159,15 @@ func (s *interfacesScraper) ScrapeMetrics(ctx context.Context) (pmetric.Metrics,
 			s.recordStructuredInterfaceCounters(timestamp, intf)
 		}
 	}
+	for _, intf := range interfaces {
+		macAddress := intf.MACAddress
+		description := intf.Description
+		speedString := intf.SpeedString
+		if speedString == "" && intf.Speed > 0 {
+			speedString = formatSpeed(intf.Speed)
+		}
+		recordStandardInterfaceCounters(s.mb, timestamp, intf, description, macAddress, speedString)
+	}
 
 	s.collectL2Topology(optionalCtx, timestamp)
 	s.collectTransceiver(optionalCtx, timestamp)
@@ -188,6 +176,28 @@ func (s *interfacesScraper) ScrapeMetrics(ctx context.Context) (pmetric.Metrics,
 	rb := s.newResourceBuilder()
 
 	return s.emitMetricsWithResource(rb), nil
+}
+
+func recordStandardInterfaceCounters(mb *metadata.MetricsBuilder, timestamp pcommon.Timestamp, intf *Interface, description, macAddress, speedString string) {
+	if validCounter(intf.InputBytes) {
+		mb.RecordSystemNetworkIoDataPoint(timestamp, intf.InputBytes, metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
+	}
+	if validCounter(intf.OutputBytes) {
+		mb.RecordSystemNetworkIoDataPoint(timestamp, intf.OutputBytes, metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
+	}
+	if validCounter(intf.InputErrors) {
+		mb.RecordSystemNetworkErrorsDataPoint(timestamp, intf.InputErrors, metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
+	}
+	if validCounter(intf.OutputErrors) {
+		mb.RecordSystemNetworkErrorsDataPoint(timestamp, intf.OutputErrors, metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
+	}
+	if validCounter(intf.InputDrops) {
+		mb.RecordSystemNetworkPacketDroppedDataPoint(timestamp, intf.InputDrops, metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
+	}
+	if validCounter(intf.OutputDrops) {
+		mb.RecordSystemNetworkPacketDroppedDataPoint(timestamp, intf.OutputDrops, metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
+	}
+	recordPacketCounts(mb, timestamp, intf, description, macAddress, speedString)
 }
 
 func recordPacketCounts(mb *metadata.MetricsBuilder, timestamp pcommon.Timestamp, intf *Interface, description, macAddress, speedString string) {

@@ -456,6 +456,78 @@ admin state is up, Dedicated Interface
 	}
 }
 
+func TestInterfacesScraper_EmitsStandardCountersFromOptionalTablesOnce(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	cfg.Counters.Commands.InterfaceCounters = true
+	scraper := newStartedTestInterfacesScraper(t, cfg)
+	fakeClient := newFakeInterfacesCommandClient()
+	fakeClient.outputs["show interface"] = `GigabitEthernet1/0/1 is up, line protocol is up`
+	fakeClient.outputs["show interfaces counters"] = `
+Port            InOctets    InUcastPkts    InMcastPkts    InBcastPkts
+Gi1/0/1              520              2              3              4
+
+Port           OutOctets   OutUcastPkts   OutMcastPkts   OutBcastPkts
+Gi1/0/1             1040              5              6              7
+
+Port        Align-Err    FCS-Err   Xmit-Err    Rcv-Err UnderSize OutDiscards
+Gi1/0/1             1          2          3          4         5           6
+
+Port         InDiscards
+Gi1/0/1              19`
+	scraper.rpcClient = fakeClient
+
+	metrics, err := scraper.ScrapeMetrics(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, map[string]int64{"receive": 520, "transmit": 1040}, interfaceDirectionalCounts(metrics, "system.network.io"))
+	assert.Equal(t, map[string]int64{"receive": 4, "transmit": 3}, interfaceDirectionalCounts(metrics, "system.network.errors"))
+	assert.Equal(t, map[string]int64{"receive": 19, "transmit": 6}, interfaceDirectionalCounts(metrics, "system.network.packet.dropped"))
+	assert.Equal(t, map[string]int64{
+		"receive/unicast":    2,
+		"receive/multicast":  3,
+		"receive/broadcast":  4,
+		"transmit/unicast":   5,
+		"transmit/multicast": 6,
+		"transmit/broadcast": 7,
+	}, interfacePacketCounts(metrics))
+	assert.Equal(t, 2, interfaceMetricDataPointCounts(metrics)["system.network.io"])
+	assert.Equal(t, 2, interfaceMetricDataPointCounts(metrics)["system.network.errors"])
+	assert.Equal(t, 2, interfaceMetricDataPointCounts(metrics)["system.network.packet.dropped"])
+	assert.Equal(t, 6, interfaceMetricDataPointCounts(metrics)["system.network.packet.count"])
+	assert.Contains(t, fakeClient.calls, "show interfaces counters")
+}
+
+func TestInterfacesScraper_MergesPrimaryAndOptionalPacketSubtypesWithoutDuplicates(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	cfg.Counters.Commands.InterfaceCounters = true
+	scraper := newStartedTestInterfacesScraper(t, cfg)
+	fakeClient := newFakeInterfacesCommandClient()
+	fakeClient.outputs["show interface"] = `Ethernet1/1 is up
+admin state is up, Dedicated Interface
+  RX
+    20 broadcast packets 200 bytes
+  TX
+    100 output packets 30 multicast packets`
+	fakeClient.outputs["show interfaces counters"] = `
+Port       InUcastPkts    InMcastPkts
+Eth1/1               2              3
+
+Port      OutUcastPkts   OutBcastPkts
+Eth1/1               5              7`
+	scraper.rpcClient = fakeClient
+
+	metrics, err := scraper.ScrapeMetrics(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, map[string]int64{
+		"receive/unicast":    2,
+		"receive/multicast":  3,
+		"receive/broadcast":  20,
+		"transmit/unicast":   5,
+		"transmit/multicast": 30,
+		"transmit/broadcast": 7,
+	}, interfacePacketCounts(metrics))
+	assert.Equal(t, 6, interfaceMetricDataPointCounts(metrics)["system.network.packet.count"])
+}
+
 func TestRecordPacketCounts_InputUnicastUnderflowGuard(t *testing.T) {
 	cfg := createDefaultConfig().(*Config)
 	scraper := newStartedTestInterfacesScraper(t, cfg)
@@ -636,6 +708,31 @@ func interfaceMetricIntSum(metrics pmetric.Metrics, metricName string) int64 {
 		}
 	}
 	return total
+}
+
+func interfaceDirectionalCounts(metrics pmetric.Metrics, metricName string) map[string]int64 {
+	counts := map[string]int64{}
+	for i := 0; i < metrics.ResourceMetrics().Len(); i++ {
+		scopeMetrics := metrics.ResourceMetrics().At(i).ScopeMetrics()
+		for j := 0; j < scopeMetrics.Len(); j++ {
+			metricSlice := scopeMetrics.At(j).Metrics()
+			for k := 0; k < metricSlice.Len(); k++ {
+				metric := metricSlice.At(k)
+				if metric.Name() != metricName || metric.Type() != pmetric.MetricTypeSum {
+					continue
+				}
+				dataPoints := metric.Sum().DataPoints()
+				for l := 0; l < dataPoints.Len(); l++ {
+					dataPoint := dataPoints.At(l)
+					direction, ok := dataPoint.Attributes().Get("network.io.direction")
+					if ok {
+						counts[direction.Str()] = dataPoint.IntValue()
+					}
+				}
+			}
+		}
+	}
+	return counts
 }
 
 func interfacePacketCounts(metrics pmetric.Metrics) map[string]int64 {
