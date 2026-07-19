@@ -991,11 +991,24 @@ func TestIOSXRGNMIJSONPreservesEmptyIdentityInEmittedDatapoints(t *testing.T) {
 	assert.Equal(t, 1, missing)
 }
 
-func TestIOSXRGNMIJSONUsesAFNameAsSingletonListIdentity(t *testing.T) {
+func TestIOSXRGNMIJSONUsesShippedRIBListIdentity(t *testing.T) {
 	const (
 		shippedPath = "Cisco-IOS-XR-ip-rib-ipv4-oper:rib/vrfs/vrf/afs/af/safs/saf/ip-rib-route-table-names/ip-rib-route-table-name/routes/route"
 		prefixPath  = "Cisco-IOS-XR-ip-rib-ipv4-oper:rib/vrfs/vrf[vrf-name=default]/afs"
-		metricName  = "cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.rib.vrfs.vrf.afs.af.af_name_info"
+		metricName  = "cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.rib.vrfs.vrf.afs.af.safs.saf.ip_rib_route_table_names.ip_rib_route_table_name.routes.route.route_version"
+		payload     = `[{
+			"af-name":"IPv4",
+			"safs":{"saf":[{
+				"saf-name":"Unicast",
+				"ip-rib-route-table-names":{"ip-rib-route-table-name":[{
+					"route-table-name":"default",
+					"routes":{"route":[
+						{"network":"10.0.0.0/8","route-version":7},
+						{"network":"192.0.2.0/24","route-version":8}
+					]}
+				}]}
+			}]}
+		}]`
 	)
 
 	var catalogPath string
@@ -1007,36 +1020,128 @@ func TestIOSXRGNMIJSONUsesAFNameAsSingletonListIdentity(t *testing.T) {
 	}
 	require.Equal(t, shippedPath, catalogPath)
 
-	for _, test := range []struct {
-		name  string
-		value *gnmi.TypedValue
+	for _, encoding := range []struct {
+		name string
+		ietf bool
 	}{
-		{
-			name:  "json",
-			value: &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonVal{JsonVal: []byte(`[{"af-name":"IPv4"}]`)}},
-		},
-		{
-			name:  "json_ietf",
-			value: &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`[{"af-name":"IPv4"}]`)}},
-		},
+		{name: "json"},
+		{name: "json_ietf", ietf: true},
 	} {
-		t.Run(test.name, func(t *testing.T) {
+		t.Run(encoding.name, func(t *testing.T) {
 			health := &iosXRHealth{}
 			decoder := iosXRGNMIUpdateDecoder{target: IOSXRTargetConfig{Name: "xr-1"}, health: health}
 			md := decoder.decodeNotification(&gnmi.Notification{
 				Prefix: mustParseIOSXRPath(t, prefixPath),
 				Update: []*gnmi.Update{{
 					Path: mustParseIOSXRPath(t, "af"),
-					Val:  test.value,
+					Val:  iosXRJSONTypedValue([]byte(payload), encoding.ietf),
 				}},
 			}, iosXRTelemetryTransportDialIn)
 
 			metric := mustFindIOSXRMetric(t, md, metricName)
+			require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
 			dps := metric.Gauge().DataPoints()
-			require.Equal(t, 1, dps.Len())
-			assert.Equal(t, "IPv4", attrValue(t, dps.At(0).Attributes(), "cisco.yang.key.af_name"))
-			assertInfoMetricValue(t, md, metricName, "IPv4")
+			require.Equal(t, 2, dps.Len())
+			versions := make(map[string]int64, dps.Len())
+			for index := 0; index < dps.Len(); index++ {
+				dp := dps.At(index)
+				require.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+				attrs := dp.Attributes()
+				assert.Equal(t, "default", attrValue(t, attrs, "cisco.yang.key.vrf_name"))
+				assert.Equal(t, "default", attrValue(t, attrs, "network.vrf.name"))
+				assert.Equal(t, "IPv4", attrValue(t, attrs, "cisco.yang.key.af_name"))
+				assert.Equal(t, "Unicast", attrValue(t, attrs, "cisco.yang.key.saf_name"))
+				assert.Equal(t, "default", attrValue(t, attrs, "cisco.yang.key.route_table_name"))
+				versions[attrValue(t, attrs, "cisco.yang.key.network")] = dp.IntValue()
+			}
+			assert.Equal(t, map[string]int64{"10.0.0.0/8": 7, "192.0.2.0/24": 8}, versions)
 			assert.Zero(t, health.snapshot().droppedDatapoints)
+		})
+	}
+}
+
+func TestIOSXRGNMIJSONRejectsDuplicateShippedRIBListIdentity(t *testing.T) {
+	const (
+		prefixPath = "Cisco-IOS-XR-ip-rib-ipv4-oper:rib/vrfs/vrf[vrf-name=default]/afs"
+		metricName = "cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.rib.vrfs.vrf.afs.af.safs.saf.ip_rib_route_table_names.ip_rib_route_table_name.routes.route.route_version"
+	)
+	tests := []struct {
+		name    string
+		payload string
+	}{
+		{
+			name: "duplicate saf-name",
+			payload: `[{"af-name":"IPv4","safs":{"saf":[
+				{"saf-name":"Unicast","ip-rib-route-table-names":{"ip-rib-route-table-name":[{"route-table-name":"default","routes":{"route":[{"network":"10.0.0.0/8","route-version":1}]}}]}},
+				{"saf-name":"Unicast","ip-rib-route-table-names":{"ip-rib-route-table-name":[{"route-table-name":"alternate","routes":{"route":[{"network":"192.0.2.0/24","route-version":2}]}}]}}
+			]}}]`,
+		},
+		{
+			name: "duplicate route-table-name",
+			payload: `[{"af-name":"IPv4","safs":{"saf":[{"saf-name":"Unicast","ip-rib-route-table-names":{"ip-rib-route-table-name":[
+				{"route-table-name":"default","routes":{"route":[{"network":"10.0.0.0/8","route-version":1}]}},
+				{"route-table-name":"default","routes":{"route":[{"network":"192.0.2.0/24","route-version":2}]}}
+			]}}]}}]`,
+		},
+		{
+			name: "duplicate network",
+			payload: `[{"af-name":"IPv4","safs":{"saf":[{"saf-name":"Unicast","ip-rib-route-table-names":{"ip-rib-route-table-name":[
+				{"route-table-name":"default","routes":{"route":[
+					{"network":"10.0.0.0/8","route-version":1},
+					{"network":"10.0.0.0/8","route-version":2}
+				]}}
+			]}}]}}]`,
+		},
+	}
+
+	for _, test := range tests {
+		for _, encoding := range []struct {
+			name string
+			ietf bool
+		}{
+			{name: "json"},
+			{name: "json_ietf", ietf: true},
+		} {
+			t.Run(test.name+"/"+encoding.name, func(t *testing.T) {
+				health := &iosXRHealth{}
+				decoder := iosXRGNMIUpdateDecoder{target: IOSXRTargetConfig{Name: "xr-1"}, health: health}
+				md := decoder.decodeNotification(&gnmi.Notification{
+					Prefix: mustParseIOSXRPath(t, prefixPath),
+					Update: []*gnmi.Update{{
+						Path: mustParseIOSXRPath(t, "af"),
+						Val:  iosXRJSONTypedValue([]byte(test.payload), encoding.ietf),
+					}},
+				}, iosXRTelemetryTransportDialIn)
+
+				assert.Zero(t, metricCountNamed(md, metricName))
+				assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
+			})
+		}
+	}
+}
+
+func TestIOSXRGNMIRIBNetworkJSONIdentityIsExactPathScoped(t *testing.T) {
+	const metricName = "cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.rib.other.routes.route.route_version"
+	for _, encoding := range []struct {
+		name string
+		ietf bool
+	}{
+		{name: "json"},
+		{name: "json_ietf", ietf: true},
+	} {
+		t.Run(encoding.name, func(t *testing.T) {
+			health := &iosXRHealth{}
+			decoder := iosXRGNMIUpdateDecoder{target: IOSXRTargetConfig{Name: "xr-1"}, health: health}
+			md := decoder.decodeNotification(&gnmi.Notification{
+				Prefix: mustParseIOSXRPath(t, "Cisco-IOS-XR-ip-rib-ipv4-oper:rib/other/routes"),
+				Update: []*gnmi.Update{{
+					Path: mustParseIOSXRPath(t, "route"),
+					Val:  iosXRJSONTypedValue([]byte(`[{"network":"10.0.0.0/8","route-version":1}]`), encoding.ietf),
+				}},
+			}, iosXRTelemetryTransportDialIn)
+
+			assert.Zero(t, metricCountNamed(md, metricName))
+			assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
 		})
 	}
 }
@@ -1242,6 +1347,13 @@ func mustParseIOSXRPath(t *testing.T, raw string) *gnmi.Path {
 	path, err := parseGNMIPath(raw)
 	require.NoError(t, err)
 	return path
+}
+
+func iosXRJSONTypedValue(raw []byte, ietf bool) *gnmi.TypedValue {
+	if ietf {
+		return &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: raw}}
+	}
+	return &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonVal{JsonVal: raw}}
 }
 
 func assertMetricExists(t *testing.T, md pmetric.Metrics, name string) {

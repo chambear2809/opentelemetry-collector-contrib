@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -406,6 +407,30 @@ func directGNMIAttributeProjectionDigest(attrs, inherited map[string]string) ([s
 	return digest, true
 }
 
+const iosXRIPv4RIBModule = "Cisco-IOS-XR-ip-rib-ipv4-oper"
+
+var iosXRIPv4RIBJSONListIdentities = []struct {
+	pathSuffix []string
+	attribute  string
+	key        string
+}{
+	{
+		pathSuffix: []string{"rib", "vrfs", "vrf", "afs", "af", "safs", "saf"},
+		attribute:  directGNMIPathKeyAttributePrefix + "saf_name",
+		key:        "saf-name",
+	},
+	{
+		pathSuffix: []string{"rib", "vrfs", "vrf", "afs", "af", "safs", "saf", "ip-rib-route-table-names", "ip-rib-route-table-name"},
+		attribute:  directGNMIPathKeyAttributePrefix + "route_table_name",
+		key:        "route-table-name",
+	},
+	{
+		pathSuffix: []string{"rib", "vrfs", "vrf", "afs", "af", "safs", "saf", "ip-rib-route-table-names", "ip-rib-route-table-name", "routes", "route"},
+		attribute:  directGNMIPathKeyAttributePrefix + "network",
+		key:        "network",
+	},
+}
+
 func extractJSONIdentityAttrs(value map[string]any, attrs map[string]string, budget *directGNMIDecodeBudget, objectPath []string) bool {
 	if !putPreferredScalarJSONIdentity(attrs, directGNMIPathKeyAttributePrefix+"entry", value, objectPath, budget, "entry") {
 		return false
@@ -418,6 +443,9 @@ func extractJSONIdentityAttrs(value map[string]any, attrs map[string]string, bud
 		return false
 	}
 	if !putPreferredScalarJSONIdentity(attrs, directGNMIPathKeyAttributePrefix+"af_name", value, objectPath, budget, "af-name") {
+		return false
+	}
+	if !putIOSXRIPv4RIBJSONIdentityAttrs(value, attrs, budget, objectPath) {
 		return false
 	}
 
@@ -440,6 +468,19 @@ func extractJSONIdentityAttrs(value map[string]any, attrs map[string]string, bud
 		!putPreferredScalarJSONIdentity(attrs, "cisco.location", value, objectPath, budget, "location") ||
 		!putPreferredScalarJSONIdentity(attrs, "hw.name", value, objectPath, budget, "component") {
 		return false
+	}
+	return true
+}
+
+func putIOSXRIPv4RIBJSONIdentityAttrs(value map[string]any, attrs map[string]string, budget *directGNMIDecodeBudget, objectPath []string) bool {
+	if attrs["cisco.yang.module"] != iosXRIPv4RIBModule {
+		return true
+	}
+	for _, identity := range iosXRIPv4RIBJSONListIdentities {
+		if len(objectPath) < len(identity.pathSuffix) || !slices.Equal(objectPath[len(objectPath)-len(identity.pathSuffix):], identity.pathSuffix) {
+			continue
+		}
+		return putPreferredScalarJSONIdentity(attrs, identity.attribute, value, objectPath, budget, identity.key)
 	}
 	return true
 }
