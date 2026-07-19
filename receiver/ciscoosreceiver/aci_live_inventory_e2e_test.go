@@ -45,6 +45,7 @@ func TestE2EACIFullTelemetryInventory(t *testing.T) {
 	cfg.ACI.Auth.Username = requiredEnvOrSkip(t, aciE2EUsernameEnv)
 	cfg.ACI.Auth.Password = configopaque.String(requiredEnvOrSkip(t, aciE2EPasswordEnv))
 	cfg.ACI.Auth.Domain = strings.TrimSpace(os.Getenv(aciE2EDomainEnv))
+	enableAllACILogs(&cfg.ACI)
 	require.NoError(t, cfg.Validate())
 
 	ctx, cancel := context.WithTimeout(t.Context(), durationEnv(t, nexusControllerE2EWaitTimeoutEnv, 2*time.Minute))

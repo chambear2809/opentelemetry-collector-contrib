@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"net"
 	"net/http"
@@ -113,6 +114,20 @@ type aciEndpoint struct {
 	className  string
 	objectType string
 	query      func(*Config, time.Time, string) url.Values
+}
+
+// aciSanitizedLog is the complete semantic log content produced from an APIC
+// record. ObservedTimestamp is intentionally added only when the record is
+// appended because it describes the local scrape attempt, not controller
+// content, and therefore must not participate in replay deduplication.
+type aciSanitizedLog struct {
+	ScopeName          string
+	Body               map[string]string
+	ResourceAttributes map[string]string
+	RecordAttributes   map[string]string
+	Timestamp          pcommon.Timestamp
+	SeverityText       string
+	SeverityNumber     plog.SeverityNumber
 }
 
 // aciInstanceID returns a stable identifier for the configured ACI deployment so
@@ -449,13 +464,13 @@ func (r *aciLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 	selector := newDeviceSelectionMatcher(r.config.DeviceSelection)
 	for _, client := range r.clients {
 		for _, endpoint := range aciLogEndpoints() {
-			if !aciGroupEnabled(r.config.ACI, endpoint.group) {
+			if !aciLogEnabled(r.config.ACI, endpoint.group) {
 				continue
 			}
 			include := aciEndpointIncludePredicate(endpoint, r.config.ACI.Targets, selector)
 			objects, err := client.ListClassFiltered(ctx, endpoint.operation, endpoint.className, aciEndpointQuery(endpoint, r.config, now), aciGroupMaxResults(r.config.ACI, endpoint.group), include)
 			for _, obj := range objects {
-				if r.seenBefore(client.ControllerName(), endpoint, obj, now) {
+				if r.seenBefore(client.ControllerName(), client.Endpoint(), endpoint, obj, now) {
 					continue
 				}
 				appendACILog(ld, client.ControllerName(), client.Endpoint(), endpoint, obj, now)
@@ -474,9 +489,14 @@ func (r *aciLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 	return ld, errors.Join(endpointErrors...)
 }
 
-func (r *aciLogsReceiver) seenBefore(controller string, endpoint aciEndpoint, obj aci.Object, now time.Time) bool {
-	stableID := aci.String(obj, "id", "uuid", "eventId", "eventID", "recordId", "dn")
-	key := logDedupKey(controller+":"+endpoint.operation, stableID, obj)
+func (r *aciLogsReceiver) seenBefore(controllerName, controllerEndpoint string, endpoint aciEndpoint, obj aci.Object, now time.Time) bool {
+	record := sanitizeACILog(controllerName, controllerEndpoint, endpoint, obj)
+	stableID, content := aciLogDedupIdentity(endpoint, record)
+	// A configured controller name and endpoint deliberately scope replay
+	// identity. APIC transaction IDs are not safe logical-fabric identifiers,
+	// so records from independently configured controllers are never collapsed.
+	namespace := strings.Join([]string{controllerName, controllerEndpoint, endpoint.operation}, "\x00")
+	key := logDedupKey(namespace, stableID, content)
 	return !r.seen.MarkPending(key, now)
 }
 
@@ -823,48 +843,185 @@ func (b *aciMetricsBuilder) flushCounts() {
 }
 
 func appendACILog(ld plog.Logs, controllerName, controllerEndpoint string, endpoint aciEndpoint, obj aci.Object, now time.Time) {
+	recordContent := sanitizeACILog(controllerName, controllerEndpoint, endpoint, obj)
+
 	rl := ld.ResourceLogs().AppendEmpty()
 	attrs := rl.Resource().Attributes()
-	nodeID := firstNonEmpty(aci.String(obj, "nodeId", "id"), nodeIDFromACIDN(aci.String(obj, "dn")))
-	putStr(attrs, "host.id", firstNonEmpty(aci.String(obj, "serial"), nodeID, aci.String(obj, "dn")))
-	putStr(attrs, "host.name", firstNonEmpty(aci.String(obj, "name"), aci.String(obj, "dn")))
-	putStr(attrs, "hw.type", "network")
-	putStr(attrs, "os.name", "Cisco ACI")
-	putStr(attrs, "cisco.controller.type", "apic")
-	putStr(attrs, "cisco.controller.endpoint", controllerEndpoint)
-	putStr(attrs, "aci.controller.name", controllerName)
-	putStr(attrs, "aci.node.id", nodeID)
-	putStr(attrs, "cisco.switch.serial", aci.String(obj, "serial"))
-	putStr(attrs, "cisco.fabric.name", aciFabricName(obj))
-	putStr(attrs, "aci.dn", aci.String(obj, "dn"))
-	putStr(attrs, "aci.class", aci.String(obj, "aci.class"))
+	for key, value := range recordContent.ResourceAttributes {
+		putStr(attrs, key, value)
+	}
 
 	sl := rl.ScopeLogs().AppendEmpty()
-	sl.Scope().SetName(aciScopeName)
+	sl.Scope().SetName(recordContent.ScopeName)
 	record := sl.LogRecords().AppendEmpty()
 	record.SetObservedTimestamp(pcommon.NewTimestampFromTime(now))
-	if ts, ok := aciLogTimestamp(obj); ok {
-		if timestamp, valid := pdataTimestampFromTime(ts); valid {
-			record.SetTimestamp(timestamp)
-		}
+	if recordContent.Timestamp != 0 {
+		record.SetTimestamp(recordContent.Timestamp)
 	}
-	status := aciObjectStatus(obj)
-	severity := firstNonEmpty(aci.String(obj, "severity", "lc", "type"), status)
-	record.SetSeverityText(severity)
-	record.SetSeverityNumber(logSeverityNumber(severity))
+	record.SetSeverityText(recordContent.SeverityText)
+	record.SetSeverityNumber(recordContent.SeverityNumber)
 	record.Body().SetEmptyMap()
 	body := record.Body().Map()
-	for key, value := range obj {
-		setLogValue(body, key, value)
+	for key, value := range recordContent.Body {
+		putStr(body, key, value)
 	}
 	logAttrs := record.Attributes()
-	putStr(logAttrs, "event.domain", "aci")
-	putStr(logAttrs, "event.name", endpoint.operation)
-	putStr(logAttrs, "aci.operation", endpoint.operation)
-	putStr(logAttrs, "aci.group", endpoint.group)
-	putStr(logAttrs, "aci.status", status)
-	putStr(logAttrs, "aci.severity", strings.ToLower(severity))
-	putStr(logAttrs, "user.name", aci.String(obj, "user", "userName", "createdBy", "modifiedBy"))
+	for key, value := range recordContent.RecordAttributes {
+		putStr(logAttrs, key, value)
+	}
+}
+
+// sanitizeACILog is the sole boundary between an untrusted APIC object and an
+// exported log. Every body field and derived attribute comes from aciLogBody;
+// the remaining values are fixed receiver metadata or configured controller
+// identity. No raw APIC attribute is read outside the signal allowlist.
+func sanitizeACILog(controllerName, controllerEndpoint string, endpoint aciEndpoint, obj aci.Object) aciSanitizedLog {
+	body := aciLogBody(endpoint, obj)
+	dn := body["dn"]
+	affected := body["affected"]
+
+	identitySource := firstNonEmpty(dn, affected)
+	hostID := firstNonEmpty(nodeIDFromACIDN(identitySource), body["id"], identitySource)
+	if endpoint.group == "audit" && body["txId"] != "" {
+		// aaaModLR id and dn are replica-local when APIC returns one record per
+		// controller. Prefer the transaction target for stable resource identity.
+		identitySource = firstNonEmpty(affected, body["txId"])
+		hostID = firstNonEmpty(nodeIDFromACIDN(affected), identitySource)
+	}
+	nodeID := nodeIDFromACIDN(identitySource)
+	status := firstNonEmpty(body["status"], body["severity"], body["lc"])
+	severity := firstNonEmpty(body["severity"], body["lc"], body["type"], status)
+
+	result := aciSanitizedLog{
+		ScopeName: aciScopeName,
+		Body:      body,
+		ResourceAttributes: compactAttrs(map[string]string{
+			"host.id":                   hostID,
+			"host.name":                 identitySource,
+			"hw.type":                   "network",
+			"os.name":                   "Cisco ACI",
+			"cisco.controller.type":     "apic",
+			"cisco.controller.endpoint": controllerEndpoint,
+			"aci.controller.name":       controllerName,
+			"aci.node.id":               nodeID,
+			"aci.dn":                    dn,
+			"aci.class":                 aciLogClassName(endpoint),
+		}),
+		RecordAttributes: compactAttrs(map[string]string{
+			"event.domain":  "aci",
+			"event.name":    endpoint.operation,
+			"aci.operation": endpoint.operation,
+			"aci.group":     endpoint.group,
+			"aci.status":    status,
+			"aci.severity":  strings.ToLower(severity),
+			"user.name":     body["user"],
+		}),
+		SeverityText:   severity,
+		SeverityNumber: logSeverityNumber(severity),
+	}
+	if ts, ok := aciLogTimestamp(body); ok {
+		if timestamp, valid := pdataTimestampFromTime(ts); valid {
+			result.Timestamp = timestamp
+		}
+	}
+	return result
+}
+
+func aciLogClassName(endpoint aciEndpoint) string {
+	if endpoint.className != "" {
+		return endpoint.className
+	}
+	switch endpoint.group {
+	case "faults":
+		return "faultInst"
+	case "audit":
+		return "aaaModLR"
+	case "events":
+		return "eventRecord"
+	default:
+		return ""
+	}
+}
+
+// aciLogBody returns the documented, signal-specific APIC record envelope.
+// APIC managed-object attributes are strings; rejecting non-string values
+// prevents a malformed or future nested attribute from bypassing this
+// top-level allowlist.
+func aciLogBody(endpoint aciEndpoint, obj aci.Object) map[string]string {
+	var fields []string
+	switch endpoint.group {
+	case "faults":
+		fields = []string{
+			"ack", "affected", "cause", "code", "created", "descr", "dn", "domain", "highestSeverity",
+			"id", "lastTransition", "lc", "occur", "origSeverity", "prevSeverity", "rule", "severity", "status", "type",
+		}
+	case "audit":
+		fields = []string{
+			"affected", "cause", "code", "created", "descr", "dn", "id", "ind", "severity", "status", "trig", "txId", "user",
+		}
+	case "events":
+		fields = []string{
+			"affected", "cause", "code", "created", "descr", "dn", "id", "ind", "severity", "status", "trig", "txId", "user",
+		}
+	default:
+		return map[string]string{}
+	}
+
+	body := make(map[string]string, len(fields))
+	for _, key := range fields {
+		value, ok := obj[key].(string)
+		if ok && value != "" {
+			body[key] = value
+		}
+	}
+	return body
+}
+
+// aciLogDedupIdentity hashes the complete sanitized semantic record so every
+// visible source-content change remains eligible for emission. APIC 6.0 and
+// later can return replicated aaaModLR records with different id and dn values
+// but identical transaction data; txId-backed audit identities deliberately
+// omit only those replica-local body fields and the resource copy of dn.
+func aciLogDedupIdentity(endpoint aciEndpoint, record aciSanitizedLog) (string, aciSanitizedLog) {
+	body := record.Body
+	switch endpoint.group {
+	case "faults":
+		return firstNonEmpty(body["dn"], body["id"], body["code"]), record
+	case "audit":
+		if body["txId"] == "" {
+			return firstNonEmpty(body["id"], body["dn"]), record
+		}
+		content := cloneACISanitizedLog(record)
+		delete(content.Body, "id")
+		delete(content.Body, "dn")
+		delete(content.ResourceAttributes, "aci.dn")
+		return aciLogCompositeIdentity(body, "txId", "affected", "created", "code"), content
+	case "events":
+		stableID := firstNonEmpty(body["id"], body["dn"])
+		if stableID == "" {
+			stableID = aciLogCompositeIdentity(body, "txId", "affected", "created", "code")
+		}
+		return stableID, record
+	default:
+		return "", record
+	}
+}
+
+func cloneACISanitizedLog(record aciSanitizedLog) aciSanitizedLog {
+	record.Body = maps.Clone(record.Body)
+	record.ResourceAttributes = maps.Clone(record.ResourceAttributes)
+	record.RecordAttributes = maps.Clone(record.RecordAttributes)
+	return record
+}
+
+func aciLogCompositeIdentity(body map[string]string, fields ...string) string {
+	parts := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if value := body[field]; value != "" {
+			parts = append(parts, field+"="+value)
+		}
+	}
+	return strings.Join(parts, "\x00")
 }
 
 func aciMetricEndpoints() []aciEndpoint {
@@ -965,6 +1122,19 @@ func aciGroupEnabled(cfg ACIConfig, group string) bool {
 		return cfg.Topology.Enabled
 	default:
 		return true
+	}
+}
+
+func aciLogEnabled(cfg ACIConfig, group string) bool {
+	switch group {
+	case "faults":
+		return cfg.Logs.Faults.Enabled
+	case "audit":
+		return cfg.Logs.Audit.Enabled
+	case "events":
+		return cfg.Logs.Events.Enabled
+	default:
+		return false
 	}
 }
 
@@ -1277,9 +1447,13 @@ func recordACIFirstPercentRatio(rb *resourceMetricsBuilder, obj aci.Object, keys
 	}
 }
 
-func aciLogTimestamp(obj aci.Object) (time.Time, bool) {
-	for _, key := range []string{"created", "modTs", "lastTransition", "changeSet", "ts"} {
-		if ts, ok := aci.Time(obj, key); ok {
+func aciLogTimestamp(body map[string]string) (time.Time, bool) {
+	for _, key := range []string{"created", "lastTransition"} {
+		value := body[key]
+		if value == "" {
+			continue
+		}
+		if ts, err := time.Parse(time.RFC3339Nano, value); err == nil {
 			return ts, true
 		}
 	}

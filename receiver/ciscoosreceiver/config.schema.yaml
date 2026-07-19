@@ -30,6 +30,8 @@ $defs:
         $ref: nexus_controller_group_config
       insecure_skip_verify:
         type: boolean
+      logs:
+        $ref: aci_logs_config
       max_retries:
         type: integer
       nodes:
@@ -56,6 +58,22 @@ $defs:
         type: string
       name:
         type: string
+  aci_log_signal_config:
+    description: ACILogSignalConfig controls one APIC log signal independently from its metric collection group. A signal defaults to disabled. When present, the signal setting must be a non-null mapping.
+    type: object
+    properties:
+      enabled:
+        type: boolean
+  aci_logs_config:
+    description: ACILogsConfig controls the APIC record classes emitted as logs. When present, the logs setting must be a non-null mapping.
+    type: object
+    properties:
+      audit:
+        $ref: aci_log_signal_config
+      events:
+        $ref: aci_log_signal_config
+      faults:
+        $ref: aci_log_signal_config
   aci_target_filters:
     description: ACITargetFilters limits APIC collection to relevant nodes, tenants, and objects.
     type: object

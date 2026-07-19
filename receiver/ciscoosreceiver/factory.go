@@ -268,7 +268,7 @@ func createLogsReceiver(
 		}
 		receivers = append(receivers, rcvr)
 	}
-	if conf.ACI.hasTarget() {
+	if conf.ACI.hasTarget() && conf.ACI.hasLogs() {
 		rcvr, err := newACILogsReceiver(set, conf, consumer)
 		if err != nil {
 			return nil, err

@@ -26,34 +26,293 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
 )
 
-func TestAppendACILogDoesNotUseModificationTimestampAsUsername(t *testing.T) {
+func TestAppendACILogUsesOnlyAllowlistedUserAndTimestampFields(t *testing.T) {
 	logs := plog.NewLogs()
 	appendACILog(
 		logs,
 		"apic-1",
 		"https://apic.example.test",
-		aciEndpoint{group: "faults", operation: "fault.instances"},
-		aci.Object{"modTs": "2026-05-25T10:00:00Z"},
+		aciEndpoint{group: "audit", operation: "audit.modifications", className: "aaaModLR"},
+		aci.Object{
+			"modifiedBy": "must-not-leak-modified-by",
+			"createdBy":  "must-not-leak-created-by",
+			"userName":   "must-not-leak-user-name",
+			"modTs":      "2026-05-25T10:00:00Z",
+		},
 		time.Unix(1_800_000_000, 0),
 	)
 
 	record := logs.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
 	_, found := record.Attributes().Get("user.name")
 	assert.False(t, found)
+	assert.Zero(t, record.Timestamp(), "excluded modTs must not become the event timestamp")
 
 	logs = plog.NewLogs()
 	appendACILog(
 		logs,
 		"apic-1",
 		"https://apic.example.test",
-		aciEndpoint{group: "audit", operation: "audit.modifications"},
-		aci.Object{"modifiedBy": "operator", "modTs": "2026-05-25T10:00:00Z"},
+		aciEndpoint{group: "audit", operation: "audit.modifications", className: "aaaModLR"},
+		aci.Object{"user": "operator", "created": "2026-05-25T10:00:00Z"},
 		time.Unix(1_800_000_000, 0),
 	)
 	record = logs.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
 	username, found := record.Attributes().Get("user.name")
 	require.True(t, found)
 	assert.Equal(t, "operator", username.Str())
+}
+
+func TestAppendACILogUsesSignalSpecificAllowlistedBodies(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint aciEndpoint
+		object   aci.Object
+		want     map[string]any
+	}{
+		{
+			name:     "fault",
+			endpoint: aciEndpoint{group: "faults", operation: "fault.instances"},
+			object: aci.Object{
+				"aci.class":       "faultInst",
+				"code":            "F123",
+				"descr":           "Interface errors above threshold",
+				"dn":              "topology/pod-1/node-101/sys/ch/fault-F123",
+				"lastTransition":  "2026-05-25T10:00:00Z",
+				"severity":        "critical",
+				"password":        "must-not-leak",
+				"unexpectedToken": "must-not-leak",
+				"changeSet":       "pwd: must-not-leak",
+				"future":          map[string]any{"api_key": "must-not-leak"},
+			},
+			want: map[string]any{
+				"code":           "F123",
+				"descr":          "Interface errors above threshold",
+				"dn":             "topology/pod-1/node-101/sys/ch/fault-F123",
+				"lastTransition": "2026-05-25T10:00:00Z",
+				"severity":       "critical",
+			},
+		},
+		{
+			name:     "audit",
+			endpoint: aciEndpoint{group: "audit", operation: "audit.modifications"},
+			object: aci.Object{
+				"aci.class": "aaaModLR",
+				"affected":  "uni/tn-prod",
+				"cause":     "transition",
+				"code":      "E4205213",
+				"created":   "2026-05-25T10:01:00Z",
+				"descr":     "Tenant prod modified",
+				"dn":        "subj-[uni/tn-prod]/mod-4294967339",
+				"id":        "4294967339",
+				"ind":       "modification",
+				"severity":  "info",
+				"trig":      "config",
+				"txId":      "9799832789158202025",
+				"user":      "operator",
+				"changeSet": "password: must-not-leak",
+				"sessionId": "must-not-leak",
+				"apiSecret": "must-not-leak",
+			},
+			want: map[string]any{
+				"affected": "uni/tn-prod",
+				"cause":    "transition",
+				"code":     "E4205213",
+				"created":  "2026-05-25T10:01:00Z",
+				"descr":    "Tenant prod modified",
+				"dn":       "subj-[uni/tn-prod]/mod-4294967339",
+				"id":       "4294967339",
+				"ind":      "modification",
+				"severity": "info",
+				"trig":     "config",
+				"txId":     "9799832789158202025",
+				"user":     "operator",
+			},
+		},
+		{
+			name:     "event",
+			endpoint: aciEndpoint{group: "events", operation: "events.records"},
+			object: aci.Object{
+				"aci.class":    "eventRecord",
+				"affected":     "topology/pod-1/lnkcnt-1/lnk-101-1-1-to-1-1-3",
+				"cause":        "link-state-change",
+				"code":         "E4208219",
+				"created":      "2026-05-25T10:02:00Z",
+				"descr":        "Link state changed",
+				"dn":           "subj-[topology/pod-1/lnkcnt-1]/rec-4294968577",
+				"id":           "4294968577",
+				"ind":          "state-transition",
+				"severity":     "warning",
+				"trig":         "oper",
+				"txId":         "1729382256910270971",
+				"user":         "internal",
+				"privateKey":   "must-not-leak",
+				"unknownField": "must-not-leak",
+				"status":       []any{"malformed", map[string]any{"token": "must-not-leak"}},
+			},
+			want: map[string]any{
+				"affected": "topology/pod-1/lnkcnt-1/lnk-101-1-1-to-1-1-3",
+				"cause":    "link-state-change",
+				"code":     "E4208219",
+				"created":  "2026-05-25T10:02:00Z",
+				"descr":    "Link state changed",
+				"dn":       "subj-[topology/pod-1/lnkcnt-1]/rec-4294968577",
+				"id":       "4294968577",
+				"ind":      "state-transition",
+				"severity": "warning",
+				"trig":     "oper",
+				"txId":     "1729382256910270971",
+				"user":     "internal",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := plog.NewLogs()
+			appendACILog(logs, "apic-1", "https://apic.example.test", tt.endpoint, tt.object, time.Unix(1_800_000_000, 0))
+
+			record := logs.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
+			assert.Equal(t, tt.want, record.Body().Map().AsRaw())
+		})
+	}
+}
+
+func TestAppendACILogSanitizesCompleteExportedRecord(t *testing.T) {
+	logs := plog.NewLogs()
+	appendACILog(
+		logs,
+		"apic-1",
+		"https://apic.example.test",
+		aciEndpoint{group: "audit", operation: "audit.modifications", className: "aaaModLR"},
+		aci.Object{
+			"affected":   "uni/tn-prod",
+			"dn":         "subj-[uni/tn-prod]/mod-4294967339",
+			"id":         "4294967339",
+			"severity":   "info",
+			"status":     "created",
+			"txId":       "9799832789158202025",
+			"user":       "operator",
+			"aci.class":  "must-not-leak-class",
+			"name":       "must-not-leak-name",
+			"serial":     "must-not-leak-serial",
+			"nodeId":     "must-not-leak-node-id",
+			"fabricName": "must-not-leak-fabric",
+			"userName":   "must-not-leak-user-name",
+			"createdBy":  "must-not-leak-created-by",
+			"modifiedBy": "must-not-leak-modified-by",
+			"operSt":     "must-not-leak-oper-status",
+			"type":       "must-not-leak-type",
+			"modTs":      "2026-05-25T10:00:00Z",
+			"changeSet":  "password: must-not-leak-change-set",
+			"future": map[string]any{
+				"apiSecret": "must-not-leak-nested-secret",
+				"items":     []any{"must-not-leak-nested-item"},
+			},
+		},
+		time.Unix(1_800_000_000, 0),
+	)
+
+	resourceLogs := logs.ResourceLogs().At(0)
+	record := resourceLogs.ScopeLogs().At(0).LogRecords().At(0)
+	exported := map[string]any{
+		"body":                record.Body().AsRaw(),
+		"resource_attributes": resourceLogs.Resource().Attributes().AsRaw(),
+		"record_attributes":   record.Attributes().AsRaw(),
+	}
+	assertACIValueDoesNotContain(t, exported, "must-not-leak")
+
+	className, found := resourceLogs.Resource().Attributes().Get("aci.class")
+	require.True(t, found)
+	assert.Equal(t, "aaaModLR", className.Str())
+	_, found = resourceLogs.Resource().Attributes().Get("cisco.switch.serial")
+	assert.False(t, found)
+	username, found := record.Attributes().Get("user.name")
+	require.True(t, found)
+	assert.Equal(t, "operator", username.Str())
+	assert.Equal(t, "info", record.SeverityText())
+	status, found := record.Attributes().Get("aci.status")
+	require.True(t, found)
+	assert.Equal(t, "created", status.Str())
+	assert.Zero(t, record.Timestamp(), "excluded timestamps must not affect the exported record")
+}
+
+func TestACILogDedupUsesStableAllowlistedIdentityAndControllerScope(t *testing.T) {
+	receiver := &aciLogsReceiver{seen: newLogDeduplicator()}
+	endpoint := aciEndpoint{group: "audit", operation: "audit.modifications", className: "aaaModLR"}
+	controllerEndpoint := "https://apic-1.example.test"
+	base := aci.Object{
+		"affected": "uni/tn-prod",
+		"code":     "E4205213",
+		"created":  "2026-05-25T10:01:00Z",
+		"descr":    "Tenant prod modified",
+		"txId":     "9799832789158202025",
+		"user":     "operator",
+	}
+	now := time.Unix(1_800_000_000, 0)
+	receiver.seen.BeginBatch()
+
+	first := maps.Clone(base)
+	first["id"] = "4294967339"
+	first["dn"] = "subj-[uni/tn-prod]/mod-4294967339"
+	first["password"] = "first-secret"
+	assert.False(t, receiver.seenBefore("apic-1", controllerEndpoint, endpoint, first, now))
+
+	replica := maps.Clone(base)
+	replica["id"] = "8589934635"
+	replica["dn"] = "subj-[uni/tn-prod]/mod-8589934635"
+	replica["password"] = "different-secret"
+	assert.True(t, receiver.seenBefore("apic-1", controllerEndpoint, endpoint, replica, now), "APIC replica-local IDs and excluded fields must not change audit identity")
+
+	transition := maps.Clone(replica)
+	transition["descr"] = "Tenant prod deleted"
+	assert.False(t, receiver.seenBefore("apic-1", controllerEndpoint, endpoint, transition, now), "an exported operational change must remain eligible")
+
+	assert.False(t, receiver.seenBefore("apic-2", "https://apic-2.example.test", endpoint, replica, now), "dedup must remain controller-scoped without a safe logical-fabric identity")
+}
+
+func TestACILogDedupHashesCompleteSanitizedEmittedContent(t *testing.T) {
+	endpoint := aciEndpoint{group: "events", operation: "events.records", className: "eventRecord"}
+	base := sanitizeACILog(
+		"apic-1",
+		"https://apic-1.example.test",
+		endpoint,
+		aci.Object{
+			"affected": "topology/pod-1/node-101",
+			"created":  "2026-05-25T10:02:00Z",
+			"descr":    "Link state changed",
+			"dn":       "subj-[topology/pod-1/node-101]/rec-4294968577",
+			"id":       "4294968577",
+			"severity": "warning",
+			"status":   "created",
+			"user":     "operator",
+		},
+	)
+	keyFor := func(record aciSanitizedLog) string {
+		stableID, content := aciLogDedupIdentity(endpoint, record)
+		return logDedupKey("apic-1\x00https://apic-1.example.test\x00events.records", stableID, content)
+	}
+	baseKey := keyFor(base)
+
+	tests := []struct {
+		name   string
+		mutate func(*aciSanitizedLog)
+	}{
+		{name: "body", mutate: func(record *aciSanitizedLog) { record.Body["descr"] = "Link state cleared" }},
+		{name: "resource attributes", mutate: func(record *aciSanitizedLog) { record.ResourceAttributes["host.name"] = "other-host" }},
+		{name: "record attributes", mutate: func(record *aciSanitizedLog) { record.RecordAttributes["aci.status"] = "deleted" }},
+		{name: "event timestamp", mutate: func(record *aciSanitizedLog) { record.Timestamp++ }},
+		{name: "severity text", mutate: func(record *aciSanitizedLog) { record.SeverityText = "error" }},
+		{name: "severity number", mutate: func(record *aciSanitizedLog) { record.SeverityNumber = plog.SeverityNumberError }},
+		{name: "scope", mutate: func(record *aciSanitizedLog) { record.ScopeName = "other-scope" }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			changed := cloneACISanitizedLog(base)
+			tt.mutate(&changed)
+			assert.NotEqual(t, baseKey, keyFor(changed))
+		})
+	}
 }
 
 func TestACIScrapeEmitsTroubleshootingMetrics(t *testing.T) {
@@ -361,6 +620,37 @@ func TestACIObjectFiltersApplyBeforeResultLimit(t *testing.T) {
 			assert.Equal(t, 2, requests)
 		})
 	}
+}
+
+func TestACILogsAreDisabledByDefaultAndOptInPerSignal(t *testing.T) {
+	server := newACIFixtureServer(t, map[string]string{
+		"/api/class/faultInst.json": `{"totalCount":"1","imdata":[
+			{"faultInst":{"attributes":{"dn":"topology/pod-1/node-101/sys/ch/fault-F123","code":"F123","severity":"critical"}}}
+		]}`,
+		"/api/class/aaaModLR.json": `{"totalCount":"1","imdata":[
+			{"aaaModLR":{"attributes":{"dn":"uni/tn-prod","user":"operator","created":"2026-05-25T10:01:00Z","descr":"tenant changed"}}}
+		]}`,
+		"/api/class/eventRecord.json": `{"totalCount":"1","imdata":[
+			{"eventRecord":{"attributes":{"dn":"topology/pod-1/node-101","severity":"warning","created":"2026-05-25T10:02:00Z"}}}
+		]}`,
+	})
+	defer server.Close()
+
+	cfg := testACIConfig(server.URL)
+	receiver, err := newACILogsReceiver(receivertest.NewNopSettings(metadata.Type), cfg, &consumertest.LogsSink{})
+	require.NoError(t, err)
+
+	ld, err := receiver.scrape(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, 0, ld.LogRecordCount())
+
+	receiver.config.ACI.Logs.Audit.Enabled = true
+	ld, err = receiver.scrape(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, 1, ld.LogRecordCount())
+	assert.True(t, hasLogRecordAttribute(ld, "event.name", "audit.modifications"))
+	assert.False(t, hasLogRecordAttribute(ld, "event.name", "fault.instances"))
+	assert.False(t, hasLogRecordAttribute(ld, "event.name", "events.records"))
 }
 
 func TestACILogsEmitEvidenceAndDeduplicate(t *testing.T) {
@@ -892,6 +1182,23 @@ func TestACIFabricHealthUsesFirstPresentSynonym(t *testing.T) {
 	assert.Equal(t, float64(91), metric.Gauge().DataPoints().At(0).DoubleValue())
 }
 
+func assertACIValueDoesNotContain(t *testing.T, value any, excluded string) {
+	t.Helper()
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, nested := range typed {
+			assert.NotContains(t, key, excluded)
+			assertACIValueDoesNotContain(t, nested, excluded)
+		}
+	case []any:
+		for _, nested := range typed {
+			assertACIValueDoesNotContain(t, nested, excluded)
+		}
+	case string:
+		assert.NotContains(t, typed, excluded)
+	}
+}
+
 func requireMetricByName(t *testing.T, md pmetric.Metrics, name string) pmetric.Metric {
 	t.Helper()
 	for i := 0; i < md.ResourceMetrics().Len(); i++ {
@@ -977,9 +1284,16 @@ func newTestACIMetricsReceiver(t *testing.T, endpoint string) *aciMetricsReceive
 func newTestACILogsReceiver(t *testing.T, endpoint string) *aciLogsReceiver {
 	t.Helper()
 	cfg := testACIConfig(endpoint)
+	enableAllACILogs(&cfg.ACI)
 	receiver, err := newACILogsReceiver(receivertest.NewNopSettings(metadata.Type), cfg, &consumertest.LogsSink{})
 	require.NoError(t, err)
 	return receiver
+}
+
+func enableAllACILogs(cfg *ACIConfig) {
+	cfg.Logs.Faults.Enabled = true
+	cfg.Logs.Audit.Enabled = true
+	cfg.Logs.Events.Enabled = true
 }
 
 func testACIConfig(endpoint string) *Config {

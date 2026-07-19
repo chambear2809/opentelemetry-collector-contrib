@@ -30,7 +30,7 @@ campaigns in [Consolidated Validation Campaigns](#consolidated-validation-campai
 | Cisco Catalyst 9800 WLC | `catalyst_9800`; gNMI/MDT metrics | `Not run` | Automated contracts exist; no retained live qualification. | Run an exact-build campaign with representative AP/client state and backend delivery. |
 | Cisco Catalyst SD-WAN Manager | `sdwan`; HTTPS metrics/logs | `Passed (limited scope)` | Default groups passed local and backend metric gates; the all-opt-in sweep produced scoped feature/role findings. | Use verified TLS, deliver logs to the backend, and qualify intended scale and installed features. |
 | Nexus Dashboard, NDFC, Insights, Orchestrator, and Data Broker | `nexus_dashboard`; HTTPS metrics/logs | `Passed (limited scope)` | Platform and one targeted NDFC switch passed four-interval local and backend metric gates. | Use verified TLS and qualify physical scale, logs, Insights, Orchestrator, Data Broker, and performance. |
-| Cisco ACI/APIC | `aci`; HTTPS metrics/logs | `Run with findings` | A pre-hardening metrics pilot passed locally and in Splunk. | Rebuild and rerun the current patch with verified TLS, least privilege, endpoints, and soak coverage; keep logs disabled until raw-body privacy and restart-safe deduplication are addressed. |
+| Cisco ACI/APIC | `aci`; HTTPS metrics/logs | `Run with findings` | A pre-hardening metrics pilot passed locally and in Splunk. Complete exported logs are privacy-bounded and each log signal is opt-in, but neither has post-fix live evidence. | Rebuild and rerun with verified TLS, least privilege, endpoints, and soak coverage; qualify explicit log opt-ins, destination delivery, and restart-window replay before production log enablement. |
 | Cisco Secure FMC | `fmc`; HTTPS/eStreamer metrics/logs | `Not run` | Automated coverage exists; no retained live qualification. | Run a bounded live campaign with verified TLS and destination delivery. |
 | Cisco Identity Services Engine | `ise`; REST, OpenAPI, ERS, MnT, pxGrid, Data Connect | `Passed (limited scope)` | [ISE 3.4 campaign](#ise-3-4-campaign): REST/MnT/OpenAPI, ERS, pxGrid queries/polling logs/idle stream, all 19 default Data Connect views, and a bounded REST/ERS/pxGrid-polling metric profile delivered to Splunk; polling logs were validated locally. | Unique pxGrid identity, secondary port-443 API Gateway, live pxGrid events/ACKs, searchable backend logs, failover, soak, and scale. |
 | Cisco IOS XR | `ios_xr`; gNMI/MDT metrics | `Passed (limited scope)` | [XRd 25.3.1 campaign](#ios-xr-xrd-25-3-1-campaign): verified-TLS eight-target dial-in, bounded soak and target-isolated recovery, path-compatibility inventory, and backend-confirmed hardened 30-second MDT dial-out. | Qualify shared `gnmi` on exact physical ASR 9000/NCS 5500 builds with least privilege, VDM/coherent/FEC optics, 5,000-port scale, and a production soak. |
@@ -249,6 +249,13 @@ focused tests but was not present in the streaming-disabled backend binary.
   faults, audit, events, statistics, tenants, and topology.
 - **Result:** The pre-hardening pilot passed its scoped gates with all 28 operations, 23 metric families/14,309 local
   points, and 2,840 Splunk MTS, but it predates later correctness fixes and remains `Run with findings`.
+- **Post-pilot release gate:** The current implementation leaves ACI metric defaults unchanged, disables each ACI log
+  signal by default, and derives the complete exported log from fixed scalar `faultInst`, `aaaModLR`, and `eventRecord`
+  allowlists plus controlled endpoint metadata. Dedup hashes that complete sanitized content, omits only replica-local
+  audit identity copies, and remains controller-scoped and process-local. Configuration regressions require complete
+  ACI target/auth settings for any log opt-in and reject top-level or per-signal null, string, list, and boolean shapes;
+  YAML nulls are covered separately. This is automated hardening evidence rather than a new live result; explicit log
+  opt-in, destination privacy/readback, cross-controller delivery, and restart-window replay remain unqualified.
 - **Evidence:** Run `aci20260706T010752Zb2feaeb87626`; sanitized SHA-256
   `0d9e772ee5f47ffd0e4b57555c9a1899e42b813de7a8dfc6a540e2ecddc8d531`.
 

@@ -256,6 +256,13 @@ ciscoos:
     faults:
       enabled: true
       max_results: 300
+    logs:
+      faults:
+        enabled: true
+      audit:
+        enabled: true
+      events:
+        enabled: false
     endpoints:
       enabled: true
       max_results: 400

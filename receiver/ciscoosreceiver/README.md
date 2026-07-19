@@ -521,18 +521,22 @@ pipeline with batching, retry, and secure certificate verification by default.
 | `aci.server_name` | string | No | TLS certificate name and SNI override, useful when an APIC endpoint is configured by IP address. |
 | `aci.insecure_skip_verify` | bool | No | Disables APIC certificate verification for self-signed lab certificates. Prefer `ca_file` and a matching endpoint or `server_name`; use this only in an isolated lab. |
 | `aci.event_lookback` | duration | No | Lookback for faults, audits, and events. Defaults to `24h`. |
+| `aci.logs.faults.enabled` | bool | No | Emits allowlisted `faultInst` records as logs. Defaults to `false`. |
+| `aci.logs.audit.enabled` | bool | No | Emits allowlisted `aaaModLR` records as logs. Defaults to `false`. |
+| `aci.logs.events.enabled` | bool | No | Emits allowlisted `eventRecord` records as logs. Defaults to `false`. |
 | `aci.targets.*` | lists | No | Optional filters for sites, fabrics, node IDs, serials, tenants, VRFs, bridge domains, EPGs, and interfaces. |
 
-Collection groups default to enabled and can be disabled or capped independently:
+ACI metric collection groups default to enabled and can be disabled or capped independently. The metric defaults are
+independent from the opt-in log settings described below.
 
 | Group | Coverage |
 |-------|----------|
 | `controller_health` | APIC controller inventory and firmware status |
 | `fabric` | pods and aggregate health |
 | `nodes` | leaf/spine inventory and fabric membership |
-| `faults` | active APIC faults emitted as metrics and logs |
-| `audit` | APIC audit/config-change records emitted as logs |
-| `events` | APIC event records emitted as logs |
+| `faults` | active APIC fault metrics and optional fault logs |
+| `audit` | APIC audit/config-change rollup metrics and optional audit logs |
+| `events` | APIC event rollup metrics and optional event logs |
 | `stats` | physical, port-channel, and management interface status; five-minute ingress/egress rates and utilization; RMON byte, packet, error, and discard counters; CPU, memory, and fabric health history |
 | `endpoints` | endpoint MAC/IP presence |
 | `tenants` | tenants, VRFs, bridge domains, EPGs, app profiles, contracts, and L3Outs |
@@ -550,6 +554,55 @@ result set is complete. If APIC reports more objects, the receiver emits the ret
 `aci.api.endpoint.error` with `aci.error.kind=pagination_limit`, and sets `aci.scrape.partial_success=1`. Audit and
 event queries are ordered by `created` newest first, ensuring a bounded collection retains the newest records. Size
 `audit.max_results`, `events.max_results`, and `event_lookback` for the deployment's peak event volume.
+
+ACI fault, audit, and event logs are disabled by default even though their metric groups remain enabled. Opt into only
+the record classes required by the logs pipeline:
+
+```yaml
+aci:
+  logs:
+    faults:
+      enabled: true
+    audit:
+      enabled: true
+    events:
+      enabled: false
+```
+
+For configuration compatibility, an explicitly written legacy `aci.faults.enabled: true`,
+`aci.audit.enabled: true`, or `aci.events.enabled: true` also opts into that log signal when its new
+`aci.logs.<signal>` block is absent. Merely inheriting the metric group's default does not enable logs, and an explicit
+new log block—including an empty block with disabled defaults—takes precedence. Configure the new settings directly
+when log collection is intended. Any enabled log signal counts as ACI target intent and therefore requires valid
+`aci.controllers` and `aci.auth`, even when another receiver provider is configured; omitted or explicitly disabled
+signals remain inert. Present YAML `null` values for `aci.logs` or `aci.logs.<signal>` are rejected explicitly. Other
+malformed non-map values are preserved for strict configuration decoding, and compatibility handling never coerces
+malformed input into enabled settings.
+
+Log bodies use fixed APIC-class schemas. Only nonempty string-valued fields in the following table are copied; all
+other APIC attributes are dropped.
+
+| Log signal | APIC class | Allowlisted body fields |
+|------------|------------|-------------------------|
+| `faults` | `faultInst` | `ack`, `affected`, `cause`, `code`, `created`, `descr`, `dn`, `domain`, `highestSeverity`, `id`, `lastTransition`, `lc`, `occur`, `origSeverity`, `prevSeverity`, `rule`, `severity`, `status`, `type` |
+| `audit` | `aaaModLR` | `affected`, `cause`, `code`, `created`, `descr`, `dn`, `id`, `ind`, `severity`, `status`, `trig`, `txId`, `user` |
+| `events` | `eventRecord` | `affected`, `cause`, `code`, `created`, `descr`, `dn`, `id`, `ind`, `severity`, `status`, `trig`, `txId`, `user` |
+
+The complete exported record is derived from that body envelope plus controlled receiver metadata. Resource attributes
+use configured controller identity, the fixed endpoint class, and `host.id`, `host.name`, `aci.dn`, and `aci.node.id`
+values derived only from allowlisted `dn`, `affected`, `id`, or `txId`. Log-record `aci.status`, `aci.severity`, event
+timestamp/severity, and `user.name` likewise use only allowlisted fields; `user.name` is sourced only from `user`.
+Raw `aci.class`, `name`, `serial`, `nodeId`, `fabricName`, `userName`, `createdBy`, `modifiedBy`, `modTs`, APIC
+`changeSet`, session identifiers, controller-added attributes, and nested values are never consulted or forwarded.
+
+Deduplication hashes the complete sanitized semantic record, including its body, resource and record attributes,
+source timestamp, severity, and scope. The scrape-local observed timestamp is delivery metadata and is intentionally
+not part of replay identity. For `txId`-backed audit records, only APIC replica-local body `id`/`dn` and the resource
+copy of `dn` are excluded from the hash. Dedup is scoped by the configured controller name and endpoint; records from
+different configured controllers are not collapsed because the sanitized schemas do not admit a safe logical-fabric
+identity. Deduplication state remains process-local, so a Collector restart can replay records still
+inside `event_lookback`. Keep each log signal disabled unless that replay behavior and its destination
+retention/privacy policy are acceptable.
 
 For production, keep certificate verification enabled. When the APIC certificate is issued by a private CA, configure
 `ca_file` with that CA chain. If a controller endpoint uses an IP address, set `server_name` to a DNS name listed in
@@ -1450,11 +1503,11 @@ state, NX-OS NVE/EVPN fabric metrics, vPC, LACP counters, and detailed QoS queue
 ### Nexus Dashboard And ACI API Metrics And Logs
 - Nexus Dashboard API health: `nexus_dashboard.api.request.duration`, `nexus_dashboard.api.request.errors`, `nexus_dashboard.api.endpoint.error`, `nexus_dashboard.api.rate_limited`, `nexus_dashboard.scrape.partial_success`, `nexus_dashboard.scrape.last_success`, `nexus_dashboard.service.unavailable`, and `nexus_dashboard.service.skipped`.
 - NDFC and Nexus switch state: `nexus_dashboard.resource.info`, `nexus_dashboard.resource.status`, `nexus_dashboard.fabric.health`, `nexus_dashboard.config.compliance`, `nexus_dashboard.deployment.status`, `nexus_dashboard.endpoint.count`, `cisco.device.up`, `system.network.interface.status`, `cisco.interface.io.rate`, and `cisco.interface.utilization`.
-- Change and incident evidence: `nexus_dashboard.audit.record.count`, `nexus_dashboard.event.count`, `aci.audit.record.count`, and `aci.event.count` expose bounded audit/event rollups while logs preserve high-cardinality record bodies and user context.
+- Change and incident evidence: `nexus_dashboard.audit.record.count`, `nexus_dashboard.event.count`, `aci.audit.record.count`, and `aci.event.count` expose bounded audit/event rollups; opt-in ACI logs preserve allowlisted record envelopes and user context without forwarding arbitrary APIC attributes.
 - Insights, Orchestrator, and Data Broker: `nexus_dashboard.insights.anomaly.*`, `nexus_dashboard.insights.score`, `nexus_dashboard.insights.confidence`, `nexus_dashboard.orchestrator.deployment.status`, `nexus_dashboard.orchestrator.policy_delta.count`, `nexus_dashboard.data_broker.status`, `nexus_dashboard.data_broker.rule.count`, and `nexus_dashboard.data_broker.session.count`.
 - APIC API and ACI fabric health: `aci.api.request.duration`, `aci.api.request.errors`, `aci.api.endpoint.error`, `aci.api.rate_limited`, `aci.controller.up`, `aci.scrape.partial_success`, `aci.scrape.last_success`, `aci.resource.info`, `aci.resource.status`, `aci.fabric.health`, `cisco.device.up`, `system.cpu.utilization`, and `system.memory.utilization`.
 - ACI troubleshooting: `aci.fault.active`, `aci.fault.count`, `aci.endpoint.present`, `aci.endpoint.count`, `aci.tenant.status`, `aci.tenant.object.count`, `system.network.interface.status`, `cisco.interface.io.rate`, and `cisco.topology.neighbor.info`.
-- Logs: Nexus Dashboard logs carry NDFC audit/event, Insights anomaly/root-cause, NDO deployment/audit, and Data Broker event evidence. ACI logs carry faults, audits, and events. Both preserve the original API object body and bounded correlation attributes for fabric, site, switch serial, node ID, tenant, endpoint, and user.
+- Logs: Nexus Dashboard logs carry NDFC audit/event, Insights anomaly/root-cause, NDO deployment/audit, and Data Broker event evidence. Opt-in ACI logs carry faults, audits, and events using the signal-specific allowlisted bodies documented above plus correlation attributes derived only from those bodies and configured controller metadata.
 
 ### Secure Firewall Management Center Metrics And Logs
 - FMC API health: `fmc.api.request.duration`, `fmc.api.request.errors`, `fmc.api.endpoint.error`, `fmc.api.rate_limited`, `fmc.manager.up`, `fmc.scrape.partial_success`, and `fmc.scrape.last_success`.
@@ -1690,6 +1743,13 @@ receivers:
         epgs: ["web"]
       faults:
         max_results: 1000
+      logs:
+        faults:
+          enabled: true
+        audit:
+          enabled: true
+        events:
+          enabled: true
 
 exporters:
   debug:

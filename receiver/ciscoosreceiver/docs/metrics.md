@@ -552,7 +552,8 @@ register log endpoints until current audit/event routes are verified.
 
 ACI support polls APIC class endpoints directly. This provides controller-side troubleshooting even when SSH to every
 ACI leaf/spine is not practical. Metrics stay bounded around health, state, counts, endpoint presence, interface
-symptoms, and audit/event rollups; high-cardinality fault, audit, and event evidence is emitted as logs.
+symptoms, and audit/event rollups; high-cardinality fault, audit, and event evidence can be emitted through explicit
+signal-specific log opt-ins.
 
 | Metric | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
@@ -567,7 +568,7 @@ symptoms, and audit/event rollups; high-cardinality fault, audit, and event evid
 | `aci.resource.status` | Gauge, int | `1` | Encoded APIC object status with original state attributes. | Normalize state across fabric, tenant, endpoint, and topology classes. |
 | `aci.resource.count` | Gauge, int | `1` | APIC resources grouped by bounded group, class, type, status, and severity. | Track class-query coverage and unexpected inventory changes. |
 | `aci.audit.record.count` | Gauge, int | `1` | Recent APIC audit records by bounded operation, status, and severity attributes. | Correlate APIC-side changes with incidents without high-cardinality labels. |
-| `aci.event.count` | Gauge, int | `1` | Recent APIC event records by bounded operation, status, and severity attributes. | Surface event evidence in dashboards while keeping full event text in logs. |
+| `aci.event.count` | Gauge, int | `1` | Recent APIC event records by bounded operation, status, and severity attributes. | Surface event evidence in dashboards while keeping allowlisted event detail in opt-in logs. |
 | `aci.fabric.health` | Gauge, double | `1` | Fabric, pod, node, or tenant health score where exposed by APIC. | Detect unhealthy ACI domains quickly. |
 | `aci.fault.active` | Gauge, int | `1` | Active APIC fault instance. | Drive fault triage by code, severity, domain, and type. |
 | `aci.fault.count` | Gauge, int | `1` | Active APIC fault counts by bounded attributes. | Build severity and domain rollups. |
@@ -583,9 +584,15 @@ symptoms, and audit/event rollups; high-cardinality fault, audit, and event evid
 | `system.memory.utilization` | Gauge, double | `1` | APIC-reported memory utilization. | Detect controller or node memory pressure. |
 | `cisco.topology.neighbor.info` | Gauge, int | `1` | LLDP, CDP, and fabric-link neighbor information. | Reconstruct physical and logical topology during incidents. |
 
-ACI logs are emitted for active faults, audit/config changes, and event records. Every record includes
-`event.domain=aci`, `event.name`, `aci.group`, `aci.status`, `aci.severity`, `aci.dn`, `aci.class`, `aci.node.id`,
-`cisco.switch.serial`, and `user.name` when present.
+ACI logs default to disabled independently from the enabled metric groups. `aci.logs.faults.enabled`,
+`aci.logs.audit.enabled`, and `aci.logs.events.enabled` opt into the corresponding APIC record class. Bodies contain
+only the signal-specific scalar allowlists in the
+[ACI configuration guide](../README.md#cisco-aciapic-configuration). Resource attributes, event timestamp/severity,
+`aci.status`, `aci.severity`, and `user.name` are derived only from that sanitized envelope plus fixed endpoint and
+configured controller metadata. Raw APIC aliases, `changeSet`, session identifiers, unknown attributes, and nested
+values are neither consulted nor forwarded. Deduplication hashes the complete sanitized semantic record, excludes
+only replica-local audit `id`/`dn` copies when `txId` is present, and remains scoped to a configured controller.
+Process-local state means a restart can replay records inside the configured lookback.
 
 ## Cisco ISE Metrics And Logs
 

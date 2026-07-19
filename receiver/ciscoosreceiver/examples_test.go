@@ -64,6 +64,9 @@ func TestShippedCiscoOSReceiverExamplesUnmarshalAndValidate(t *testing.T) {
 				assert.Equal(t, "/etc/otelcol/apic-ca.pem", cfg.ACI.CAFile)
 				assert.Equal(t, "apic.example.test", cfg.ACI.ServerName)
 				assert.False(t, cfg.ACI.InsecureSkipVerify)
+				assert.True(t, cfg.ACI.Logs.Faults.Enabled)
+				assert.True(t, cfg.ACI.Logs.Audit.Enabled)
+				assert.True(t, cfg.ACI.Logs.Events.Enabled)
 			},
 		},
 		{

@@ -473,6 +473,27 @@ type NexusControllerGroupConfig struct {
 	MaxResults int  `mapstructure:"max_results"`
 }
 
+// ACILogSignalConfig controls one APIC log signal independently from its
+// metric collection group. A signal defaults to disabled. When present, the
+// signal setting must be a non-null mapping.
+type ACILogSignalConfig struct {
+	// DO NOT USE unkeyed struct initialization
+	_ struct{} `mapstructure:"-"`
+
+	Enabled bool `mapstructure:"enabled"`
+}
+
+// ACILogsConfig controls the APIC record classes emitted as logs. When present,
+// the logs setting must be a non-null mapping.
+type ACILogsConfig struct {
+	// DO NOT USE unkeyed struct initialization
+	_ struct{} `mapstructure:"-"`
+
+	Faults ACILogSignalConfig `mapstructure:"faults"`
+	Audit  ACILogSignalConfig `mapstructure:"audit"`
+	Events ACILogSignalConfig `mapstructure:"events"`
+}
+
 const (
 	nexusDashboardAPIProfileLegacy  = "legacy"
 	nexusDashboardAPIProfileUnified = "unified"
@@ -530,6 +551,7 @@ type ACIConfig struct {
 	Faults             NexusControllerGroupConfig `mapstructure:"faults"`
 	Audit              NexusControllerGroupConfig `mapstructure:"audit"`
 	Events             NexusControllerGroupConfig `mapstructure:"events"`
+	Logs               ACILogsConfig              `mapstructure:"logs"`
 	Stats              NexusControllerGroupConfig `mapstructure:"stats"`
 	Endpoints          NexusControllerGroupConfig `mapstructure:"endpoints"`
 	Tenants            NexusControllerGroupConfig `mapstructure:"tenants"`
@@ -711,7 +733,11 @@ func (cfg NexusDashboardConfig) hasTarget() bool {
 
 func (cfg ACIConfig) hasTarget() bool {
 	return cfg.Enabled || len(cfg.Controllers) > 0 || cfg.Auth.Username != "" || cfg.Auth.Password != "" ||
-		cfg.CAFile != "" || cfg.ServerName != "" || cfg.InsecureSkipVerify
+		cfg.CAFile != "" || cfg.ServerName != "" || cfg.InsecureSkipVerify || cfg.hasLogs()
+}
+
+func (cfg ACIConfig) hasLogs() bool {
+	return cfg.Logs.Faults.Enabled || cfg.Logs.Audit.Enabled || cfg.Logs.Events.Enabled
 }
 
 func (cfg FMCConfig) hasTarget() bool {
@@ -1820,6 +1846,9 @@ func (cfg *Config) Unmarshal(componentParser *confmap.Conf) error {
 	staticSettings := componentParser.ToStringMap()
 	delete(staticSettings, "scrapers")
 	applyMetricConfigDefaults(staticSettings)
+	if err := applyACILogCompatibility(staticSettings); err != nil {
+		return err
+	}
 	type staticConfig Config
 	if err := confmap.NewFromStringMap(staticSettings).Unmarshal((*staticConfig)(cfg)); err != nil {
 		return err
@@ -1891,4 +1920,67 @@ func applyMetricConfigDefaults(settings map[string]any) {
 		metrics[name] = withDefault
 	}
 	settings["metrics"] = metrics
+}
+
+// applyACILogCompatibility retains a safe subset of the original ACI log
+// enablement behavior. An explicitly configured legacy collection-group opt-in
+// enables the corresponding log signal when the new signal-specific block is
+// absent. Factory defaults alone never opt into logs, and an explicit new block
+// always takes precedence. Present nulls are rejected here because mapstructure
+// otherwise decodes them into disabled zero-value structs without an error.
+func applyACILogCompatibility(settings map[string]any) error {
+	rawACI, ok := settings["aci"].(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	rawLogsValue, logsConfigured := rawACI["logs"]
+	if logsConfigured && rawLogsValue == nil {
+		return errors.New("aci.logs must be a map and cannot be null")
+	}
+	rawLogs, logsAreMap := rawLogsValue.(map[string]any)
+	if logsConfigured && !logsAreMap {
+		// Preserve malformed top-level input so strict decoding reports it.
+		return nil
+	}
+	logs := maps.Clone(rawLogs)
+	if logs == nil {
+		logs = map[string]any{}
+	}
+
+	for _, signal := range []string{"faults", "audit", "events"} {
+		if signalSettings, configured := logs[signal]; configured {
+			if signalSettings == nil {
+				return fmt.Errorf("aci.logs.%s must be a map and cannot be null", signal)
+			}
+			// A new signal block, including an empty block with safe defaults,
+			// takes precedence. Malformed input remains intact for strict decode.
+			continue
+		}
+
+		legacySettings, ok := rawACI[signal].(map[string]any)
+		if !ok {
+			continue
+		}
+		legacyEnabled, explicitlyConfigured := legacySettings["enabled"].(bool)
+		if !explicitlyConfigured || !legacyEnabled {
+			continue
+		}
+
+		signalSettings, _ := logs[signal].(map[string]any)
+		signalSettings = maps.Clone(signalSettings)
+		if signalSettings == nil {
+			signalSettings = map[string]any{}
+		}
+		signalSettings["enabled"] = true
+		logs[signal] = signalSettings
+	}
+
+	if len(logs) == 0 {
+		return nil
+	}
+	aciSettings := maps.Clone(rawACI)
+	aciSettings["logs"] = logs
+	settings["aci"] = aciSettings
+	return nil
 }
