@@ -484,6 +484,7 @@ type checkpointRegistry struct {
 
 	restorersMu sync.Mutex
 	restorers   []func(context.Context)
+	flushers    []func(context.Context)
 }
 
 type checkpointManifest struct {
@@ -589,17 +590,40 @@ func (r *checkpointRegistry) bind(provider, target, state string, restore func(c
 func (r *checkpointRegistry) enableCounter(provider, target string, state *counterStore, next consumer.Metrics) consumer.Metrics {
 	binding := r.bind(provider, target, checkpointStateCounters, state.restoreCheckpoint)
 	state.enableCheckpoint(binding)
+	r.addShutdownFlusher(state.flushAcceptedCheckpoint)
 	return &counterCheckpointingConsumer{next: next, state: state}
 }
 
 func (r *checkpointRegistry) enableLogDedup(provider, target string, state *logDeduplicator, retention logCheckpointRetention) {
 	binding := r.bind(provider, target, checkpointStateLogDedup, state.restoreCheckpoint)
-	state.enableCheckpoint(binding, retention)
+	retainAcceptedSnapshot := provider != "ise"
+	state.enableCheckpoint(binding, retention, retainAcceptedSnapshot)
+	if retainAcceptedSnapshot {
+		r.addShutdownFlusher(state.flushAcceptedCheckpoint)
+	}
 }
 
 func (r *checkpointRegistry) enableFMCResume(target string, state *fmcEStreamerResumeState) {
 	binding := r.bind("fmc_estreamer", target, checkpointStateFMCResume, state.restoreCheckpoint)
 	state.enableCheckpoint(binding)
+}
+
+func (r *checkpointRegistry) addShutdownFlusher(flush func(context.Context)) {
+	r.restorersMu.Lock()
+	r.flushers = append(r.flushers, flush)
+	r.restorersMu.Unlock()
+}
+
+func (r *checkpointRegistry) flushAccepted(ctx context.Context) {
+	if r == nil {
+		return
+	}
+	r.restorersMu.Lock()
+	flushers := append([]func(context.Context){}, r.flushers...)
+	r.restorersMu.Unlock()
+	for _, flush := range flushers {
+		flush(ctx)
+	}
 }
 
 // Start preserves normal Collector dependency semantics: when storage was
@@ -1445,6 +1469,7 @@ func (c *counterCheckpointingConsumer) ConsumeMetrics(ctx context.Context, md pm
 type checkpointedMetricsReceiver struct {
 	next        receiver.Metrics
 	checkpoints *checkpointRegistry
+	shutdown    checkpointedReceiverShutdown
 }
 
 func (r *checkpointedMetricsReceiver) Start(ctx context.Context, host component.Host) error {
@@ -1461,14 +1486,13 @@ func (r *checkpointedMetricsReceiver) Start(ctx context.Context, host component.
 }
 
 func (r *checkpointedMetricsReceiver) Shutdown(ctx context.Context) error {
-	err := r.next.Shutdown(ctx)
-	r.checkpoints.Close(ctx)
-	return err
+	return r.shutdown.shutdown(ctx, r.next.Shutdown, r.checkpoints)
 }
 
 type checkpointedLogsReceiver struct {
 	next        receiver.Logs
 	checkpoints *checkpointRegistry
+	shutdown    checkpointedReceiverShutdown
 }
 
 func (r *checkpointedLogsReceiver) Start(ctx context.Context, host component.Host) error {
@@ -1485,7 +1509,42 @@ func (r *checkpointedLogsReceiver) Start(ctx context.Context, host component.Hos
 }
 
 func (r *checkpointedLogsReceiver) Shutdown(ctx context.Context) error {
-	err := r.next.Shutdown(ctx)
-	r.checkpoints.Close(ctx)
-	return err
+	return r.shutdown.shutdown(ctx, r.next.Shutdown, r.checkpoints)
+}
+
+type checkpointedReceiverShutdown struct {
+	once sync.Once
+	done chan struct{}
+	err  error
+}
+
+// shutdown detaches the single child shutdown from caller cancellation so the
+// registry remains usable through the last in-flight delivery. Each caller
+// still bounds only its own wait; accepted-state flush and Close run in order
+// after the child lifecycle has actually terminated.
+func (s *checkpointedReceiverShutdown) shutdown(ctx context.Context, shutdownNext func(context.Context) error, checkpoints *checkpointRegistry) error {
+	s.once.Do(func() {
+		s.done = make(chan struct{})
+		go s.run(context.WithoutCancel(ctx), shutdownNext, checkpoints)
+	})
+	select {
+	case <-s.done:
+		return s.err
+	case <-ctx.Done():
+		select {
+		case <-s.done:
+			return s.err
+		default:
+			return ctx.Err()
+		}
+	}
+}
+
+func (s *checkpointedReceiverShutdown) run(ctx context.Context, shutdownNext func(context.Context) error, checkpoints *checkpointRegistry) {
+	defer close(s.done)
+	s.err = shutdownNext(ctx)
+	flushCtx, flushCancel := checkpointFlushContext(ctx)
+	checkpoints.flushAccepted(flushCtx)
+	flushCancel()
+	checkpoints.Close(ctx)
 }

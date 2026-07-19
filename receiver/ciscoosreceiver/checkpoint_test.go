@@ -59,6 +59,7 @@ type checkpointTestBackend struct {
 	closeEntered          chan struct{}
 	closeRelease          <-chan struct{}
 	closeNeedsLiveContext bool
+	writesNeedLiveContext bool
 
 	writeBatches   int
 	writeOps       int
@@ -248,9 +249,12 @@ func (c *checkpointTestClient) Get(_ context.Context, key string) ([]byte, error
 	return append([]byte(nil), c.backend.values[key]...), nil
 }
 
-func (c *checkpointTestClient) Set(_ context.Context, key string, value []byte) error {
+func (c *checkpointTestClient) Set(ctx context.Context, key string, value []byte) error {
 	c.backend.mu.Lock()
 	defer c.backend.mu.Unlock()
+	if c.backend.writesNeedLiveContext && ctx.Err() != nil {
+		return ctx.Err()
+	}
 	if key == c.backend.deferredSetKey {
 		// Model the latest effect permitted by the checkpoint storage contract:
 		// an errored Set may become visible only in invocation order, before a
@@ -329,6 +333,9 @@ func (c *checkpointTestClient) Batch(ctx context.Context, operations ...*storage
 	}
 	c.backend.mu.Lock()
 	defer c.backend.mu.Unlock()
+	if hasWrite && c.backend.writesNeedLiveContext && ctx.Err() != nil {
+		return ctx.Err()
+	}
 	if hasWrite {
 		c.backend.writeBatches++
 		c.backend.writeOps += writeOperations
@@ -1438,7 +1445,7 @@ func TestCheckpointShutdownDeadlineDoesNotWaitForBlockedBatch(t *testing.T) {
 	wrapper := &checkpointedLogsReceiver{next: &checkpointTestLogsReceiver{}, checkpoints: registry}
 	shutdownCtx, shutdownCancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 	startedAt := time.Now()
-	require.NoError(t, wrapper.Shutdown(shutdownCtx))
+	require.ErrorIs(t, wrapper.Shutdown(shutdownCtx), context.DeadlineExceeded)
 	shutdownCancel()
 	assert.Less(t, time.Since(startedAt), time.Second)
 	available, err := registry.batch(t.Context(), storage.SetOperation("late", []byte("value")))
@@ -1450,7 +1457,7 @@ func TestCheckpointShutdownDeadlineDoesNotWaitForBlockedBatch(t *testing.T) {
 
 	close(batchRelease)
 	require.NoError(t, <-batchDone)
-	registry.Close(t.Context())
+	require.NoError(t, wrapper.Shutdown(t.Context()), "a later caller must join the completed ordered cleanup")
 	backend.mu.Lock()
 	assert.Equal(t, 1, backend.closeCalls)
 	backend.mu.Unlock()
@@ -1477,7 +1484,7 @@ func TestCheckpointCloseEventuallyUsesLiveContextAfterCallerDeadline(t *testing.
 
 	wrapper := &checkpointedLogsReceiver{next: &checkpointTestLogsReceiver{}, checkpoints: registry}
 	shutdownCtx, shutdownCancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
-	require.NoError(t, wrapper.Shutdown(shutdownCtx))
+	require.ErrorIs(t, wrapper.Shutdown(shutdownCtx), context.DeadlineExceeded)
 	shutdownCancel()
 	backend.mu.Lock()
 	assert.Zero(t, backend.closeCalls, "Client.Close must wait for the in-flight batch")
@@ -1485,7 +1492,7 @@ func TestCheckpointCloseEventuallyUsesLiveContextAfterCallerDeadline(t *testing.
 
 	close(batchRelease)
 	require.NoError(t, <-batchDone)
-	registry.Close(t.Context())
+	require.NoError(t, wrapper.Shutdown(t.Context()), "a later caller must join the completed ordered cleanup")
 	backend.mu.Lock()
 	assert.Equal(t, 1, backend.closeCalls)
 	assert.True(t, backend.closeSucceeded, "eventual Client.Close must receive a live context after the caller deadline")
@@ -1573,7 +1580,7 @@ func TestCheckpointShutdownDeadlineDoesNotWaitForBlockedClientClose(t *testing.T
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 	startedAt := time.Now()
-	require.NoError(t, wrapper.Shutdown(shutdownCtx))
+	require.ErrorIs(t, wrapper.Shutdown(shutdownCtx), context.DeadlineExceeded)
 	shutdownCancel()
 	assert.Less(t, time.Since(startedAt), time.Second)
 	select {
@@ -1586,7 +1593,7 @@ func TestCheckpointShutdownDeadlineDoesNotWaitForBlockedClientClose(t *testing.T
 	assert.False(t, available, "checkpoint operations must not start while Client.Close is blocked")
 
 	close(closeRelease)
-	registry.Close(t.Context())
+	require.NoError(t, wrapper.Shutdown(t.Context()), "a later caller must join the completed ordered cleanup")
 	backend.mu.Lock()
 	assert.Equal(t, 1, backend.closeCalls)
 	backend.mu.Unlock()

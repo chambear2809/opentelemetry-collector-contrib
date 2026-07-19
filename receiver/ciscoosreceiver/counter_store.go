@@ -80,6 +80,15 @@ type counterStore struct {
 	generation    map[uint16]uint64
 	persisted     map[uint16]uint64
 	metadataDirty bool
+	accepted      *counterCheckpointSnapshot
+}
+
+type counterCheckpointSnapshot struct {
+	shards      map[uint16][]byte
+	active      map[uint16]bool
+	generations map[uint16]uint64
+	metadata    json.RawMessage
+	clockAnchor time.Time
 }
 
 type counterCheckpointMetadata struct {
@@ -604,15 +613,46 @@ func (s *counterStore) persistCheckpoint(ctx context.Context) {
 		binding.warn("Failed to encode Cisco OS delta counter checkpoint; collection will continue with in-memory state", err)
 		return
 	}
-	if binding.persist(ctx, shards, active, metadata, clockAnchor) {
-		s.mu.Lock()
-		for shard, generation := range generations {
-			if generation > s.persisted[shard] {
-				s.persisted[shard] = generation
-			}
+	s.accepted = &counterCheckpointSnapshot{
+		shards:      shards,
+		active:      active,
+		generations: generations,
+		metadata:    metadata,
+		clockAnchor: clockAnchor,
+	}
+	s.persistAcceptedCheckpointLocked(ctx, binding)
+}
+
+func (s *counterStore) flushAcceptedCheckpoint(ctx context.Context) {
+	if s == nil {
+		return
+	}
+	s.persistMu.Lock()
+	defer s.persistMu.Unlock()
+	s.mu.Lock()
+	binding := s.checkpoint
+	s.mu.Unlock()
+	if binding == nil || s.accepted == nil {
+		return
+	}
+	s.persistAcceptedCheckpointLocked(ctx, binding)
+}
+
+func (s *counterStore) persistAcceptedCheckpointLocked(ctx context.Context, binding *checkpointBinding) {
+	accepted := s.accepted
+	if accepted == nil || !binding.persist(ctx, accepted.shards, accepted.active, accepted.metadata, accepted.clockAnchor) {
+		return
+	}
+	s.mu.Lock()
+	for shard, generation := range accepted.generations {
+		if generation > s.persisted[shard] {
+			s.persisted[shard] = generation
 		}
-		s.metadataDirty = false
-		s.mu.Unlock()
+	}
+	s.metadataDirty = false
+	s.mu.Unlock()
+	if s.accepted == accepted {
+		s.accepted = nil
 	}
 }
 

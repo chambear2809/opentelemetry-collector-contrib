@@ -29,23 +29,35 @@ const (
 // Keys discovered by a scrape are committed only after the resulting batch is
 // accepted by the next consumer.
 type logDeduplicator struct {
-	mu            sync.Mutex
-	persistMu     sync.Mutex
-	seen          map[string]*logDedupEntry
-	pending       map[string]struct{}
-	streamPending map[string]struct{}
-	checkpoint    *checkpointBinding
-	shards        map[uint16]*list.List
-	nextShard     uint16
-	generation    map[uint16]uint64
-	persisted     map[uint16]uint64
+	mu                     sync.Mutex
+	persistMu              sync.Mutex
+	seen                   map[string]*logDedupEntry
+	pending                map[string]struct{}
+	streamPending          map[string]struct{}
+	checkpoint             *checkpointBinding
+	shards                 map[uint16]*list.List
+	nextShard              uint16
+	generation             map[uint16]uint64
+	persisted              map[uint16]uint64
+	accepted               uint64
+	flushed                uint64
+	lastAttempt            time.Time
+	retryAfter             time.Time
+	now                    func() time.Time
+	retention              logCheckpointRetention
+	manifestDirty          bool
+	retainAcceptedSnapshot bool
+	acceptedSnapshot       *logCheckpointSnapshot
+}
+
+type logCheckpointSnapshot struct {
+	now           time.Time
+	shards        map[uint16][]byte
+	active        map[uint16]bool
+	generations   map[uint16]uint64
 	accepted      uint64
-	flushed       uint64
-	lastAttempt   time.Time
-	retryAfter    time.Time
-	now           func() time.Time
-	retention     logCheckpointRetention
 	manifestDirty bool
+	clockAnchor   time.Time
 }
 
 type logDedupEntry struct {
@@ -77,7 +89,7 @@ func consumeDeduplicatedLogs(ctx context.Context, next consumer.Logs, dedup *log
 		return count, err
 	}
 	dedup.CommitBatch()
-	dedup.persistCheckpoint(ctx, true)
+	dedup.persistAcceptedCheckpoint(ctx)
 	return count, nil
 }
 
@@ -237,12 +249,13 @@ func (d *logDeduplicator) removeSeenLocked(key string) {
 	delete(d.seen, key)
 }
 
-func (d *logDeduplicator) enableCheckpoint(binding *checkpointBinding, retention logCheckpointRetention) {
+func (d *logDeduplicator) enableCheckpoint(binding *checkpointBinding, retention logCheckpointRetention, retainAcceptedSnapshot bool) {
 	if d == nil {
 		return
 	}
 	d.mu.Lock()
 	d.checkpoint = binding
+	d.retainAcceptedSnapshot = retainAcceptedSnapshot
 	d.retention = retention
 	if d.retention.maxEntries <= 0 {
 		d.retention.maxEntries = defaultLogDedupMaxEntries
@@ -390,11 +403,59 @@ func (d *logDeduplicator) persistCheckpoint(ctx context.Context, force bool) {
 	}
 	d.persistMu.Lock()
 	defer d.persistMu.Unlock()
+	binding, snapshot, maintain, err := d.checkpointSnapshot(force)
+	if err != nil {
+		binding.warn("Failed to encode Cisco OS log dedup checkpoint; collection will continue with in-memory state", err)
+		return
+	}
+	if snapshot == nil {
+		if maintain {
+			binding.maintain(ctx)
+		}
+		return
+	}
+	d.mu.Lock()
+	retain := d.retainAcceptedSnapshot
+	d.mu.Unlock()
+	if retain {
+		d.acceptedSnapshot = snapshot
+	}
+	if d.persistCheckpointSnapshot(ctx, binding, snapshot) && retain && d.acceptedSnapshot == snapshot {
+		d.acceptedSnapshot = nil
+	}
+}
+
+func (d *logDeduplicator) persistAcceptedCheckpoint(ctx context.Context) {
+	d.persistCheckpoint(ctx, true)
+}
+
+func (d *logDeduplicator) flushAcceptedCheckpoint(ctx context.Context) {
+	if d == nil {
+		return
+	}
+	d.persistMu.Lock()
+	defer d.persistMu.Unlock()
+	snapshot := d.acceptedSnapshot
+	if snapshot == nil {
+		return
+	}
+	d.mu.Lock()
+	binding := d.checkpoint
+	d.mu.Unlock()
+	if binding == nil {
+		return
+	}
+	if d.persistCheckpointSnapshot(ctx, binding, snapshot) && d.acceptedSnapshot == snapshot {
+		d.acceptedSnapshot = nil
+	}
+}
+
+func (d *logDeduplicator) checkpointSnapshot(force bool) (*checkpointBinding, *logCheckpointSnapshot, bool, error) {
 	d.mu.Lock()
 	binding := d.checkpoint
 	if binding == nil {
 		d.mu.Unlock()
-		return
+		return nil, nil, false, nil
 	}
 	now := d.now()
 	pendingAccepted := d.accepted - d.flushed
@@ -410,10 +471,7 @@ func (d *logDeduplicator) persistCheckpoint(ctx context.Context, force bool) {
 	if !force {
 		if (!checkpointDirty && pendingAccepted == 0) || now.Before(d.retryAfter) || (pendingAccepted < logCheckpointFlushEvents && now.Sub(d.lastAttempt) < logCheckpointFlushInterval) {
 			d.mu.Unlock()
-			if !checkpointDirty && pendingAccepted == 0 {
-				binding.maintain(ctx)
-			}
-			return
+			return binding, nil, !checkpointDirty && pendingAccepted == 0, nil
 		}
 	}
 	d.enforceCheckpointBoundsLocked()
@@ -448,8 +506,7 @@ func (d *logDeduplicator) persistCheckpoint(ctx context.Context, force bool) {
 		encoded, err := json.Marshal(checkpoint)
 		if err != nil {
 			d.mu.Unlock()
-			binding.warn("Failed to encode Cisco OS log dedup checkpoint; collection will continue with in-memory state", err)
-			return
+			return binding, nil, false, err
 		}
 		shards[shard] = encoded
 		active[shard] = len(checkpoint.Entries) > 0
@@ -459,27 +516,41 @@ func (d *logDeduplicator) persistCheckpoint(ctx context.Context, force bool) {
 	manifestDirty := d.manifestDirty
 	d.mu.Unlock()
 	if len(dirty) == 0 && !manifestDirty {
-		binding.maintain(ctx)
-		return
+		return binding, nil, true, nil
 	}
-	persisted := binding.persist(ctx, shards, active, nil, clockAnchor)
+	return binding, &logCheckpointSnapshot{
+		now:           now,
+		shards:        shards,
+		active:        active,
+		generations:   generations,
+		accepted:      accepted,
+		manifestDirty: manifestDirty,
+		clockAnchor:   clockAnchor,
+	}, false, nil
+}
+
+func (d *logDeduplicator) persistCheckpointSnapshot(ctx context.Context, binding *checkpointBinding, snapshot *logCheckpointSnapshot) bool {
+	persisted := binding.persist(ctx, snapshot.shards, snapshot.active, nil, snapshot.clockAnchor)
 	d.mu.Lock()
-	d.lastAttempt = now
+	d.lastAttempt = snapshot.now
 	if persisted {
-		for shard, generation := range generations {
+		for shard, generation := range snapshot.generations {
 			if generation > d.persisted[shard] {
 				d.persisted[shard] = generation
 			}
 		}
-		if accepted > d.flushed {
-			d.flushed = accepted
+		if snapshot.accepted > d.flushed {
+			d.flushed = snapshot.accepted
 		}
-		d.manifestDirty = false
+		if snapshot.manifestDirty {
+			d.manifestDirty = false
+		}
 		d.retryAfter = time.Time{}
 	} else {
-		d.retryAfter = now.Add(logCheckpointFlushInterval)
+		d.retryAfter = snapshot.now.Add(logCheckpointFlushInterval)
 	}
 	d.mu.Unlock()
+	return persisted
 }
 
 func (d *logDeduplicator) enforceCheckpointBoundsLocked() {
