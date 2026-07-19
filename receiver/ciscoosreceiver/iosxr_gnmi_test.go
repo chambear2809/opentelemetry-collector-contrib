@@ -84,7 +84,7 @@ func TestIOSXRGNMIDecoderScalarsJSONLeaflistsAndDeletes(t *testing.T) {
 	assertMetricExists(t, md, "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.json.mtu")
 	assertMetricExists(t, md, "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.json.counters.out_octets")
 	assertInfoMetricValue(t, md, "cisco.iosxr.yang.openconfig_if_ip.interfaces.interface.state.json.ipv4.addresses.address.ip_info", "192.0.2.1")
-	assertMetricExists(t, md, "cisco.iosxr.receiver.compact_gpb_payloads")
+	assertSingleIntGaugeMetric(t, md, "cisco.iosxr.receiver.compact_gpb_payloads", 1)
 
 	metric := mustFindIOSXRMetric(t, md, "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets")
 	require.Equal(t, pmetric.MetricTypeSum, metric.Type())
@@ -103,7 +103,6 @@ func TestIOSXRGNMIDecoderScalarsJSONLeaflistsAndDeletes(t *testing.T) {
 	_, hasResourceModule := resourceAttrs.Get("cisco.yang.module")
 	assert.False(t, hasResourceModule)
 	assert.Equal(t, "openconfig-interfaces", attrValue(t, dp.Attributes(), "cisco.yang.module"))
-	assert.Equal(t, int64(1), health.snapshot().compactGPBPayloads)
 }
 
 func TestIOSXRGNMIDecoderPreservesInterfaceCounterSemantics(t *testing.T) {
@@ -646,28 +645,189 @@ func TestIOSXRGNMIPathPreservesRepeatedListKeyIdentity(t *testing.T) {
 }
 
 func TestIOSXRGNMIPathNormalizationPreservesRawSourceIdentity(t *testing.T) {
+	const encodingPath = "openconfig-system:system/state"
 	health := &iosXRHealth{}
-	decoder := iosXRGNMIUpdateDecoder{target: IOSXRTargetConfig{Name: "xr-1"}, health: health}
-	md := decoder.decodeNotification(&gnmi.Notification{
-		Prefix: mustParseIOSXRPath(t, "openconfig-system:system/state"),
-		Update: []*gnmi.Update{
-			{Path: &gnmi.Path{Elem: []*gnmi.PathElem{{Name: "foo-bar"}}}, Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_IntVal{IntVal: 1}}},
-			{Path: &gnmi.Path{Elem: []*gnmi.PathElem{{Name: "foo_bar"}}}, Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_IntVal{IntVal: 2}}},
-		},
+	decoder := iosXRGNMIUpdateDecoder{
+		target: IOSXRTargetConfig{Name: "xr-1"},
+		health: health,
+		limits: directGNMIDecodeLimits{maxAttributes: 3},
+	}
+	decoded := decoder.decodeNotification(&gnmi.Notification{
+		Prefix: mustParseIOSXRPath(t, encodingPath),
+		Update: []*gnmi.Update{{
+			Path: mustParseIOSXRPath(t, "payload"),
+			Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: []byte(
+				`{"foo-bar":1,"foo_bar":2}`,
+			)}},
+		}},
 	}, iosXRTelemetryTransportDialIn)
+	decoded.ResourceMetrics().At(0).Resource().Attributes().PutStr("cisco.encoding_path", encodingPath)
 
-	metric := mustFindIOSXRMetric(t, md, "cisco.iosxr.yang.openconfig_system.system.state.foo_bar")
+	sink := &consumertest.MetricsSink{}
+	normalizer := newIOSXRNormalizingConsumer(
+		sink,
+		defaultIOSXRConfig(),
+		newDeviceSelectionMatcher(DeviceSelectionConfig{}),
+		iosXRTelemetryTransportDialIn,
+		health,
+	).(*iosXRNormalizingConsumer)
+	normalizer.budgetLimits = finalDatapointBudgetLimits{maxAttributes: 4}
+	require.NoError(t, normalizer.ConsumeMetrics(t.Context(), decoded))
+	require.Len(t, sink.AllMetrics(), 1)
+	md := sink.AllMetrics()[0]
+
+	const name = "cisco.iosxr.yang.openconfig_system.system.state.payload.foo_bar"
+	assert.Equal(t, 1, metricCountNamed(md, name), "colliding names must share one descriptor")
+	metric := mustFindIOSXRMetric(t, md, name)
+	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
 	dps := metric.Gauge().DataPoints()
 	require.Equal(t, 2, dps.Len())
 	paths := map[string]struct{}{}
 	for index := 0; index < dps.Len(); index++ {
-		paths[attrValue(t, dps.At(index).Attributes(), "cisco.yang.path")] = struct{}{}
+		dp := dps.At(index)
+		assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+		assert.Equal(t, encodingPath, attrValue(t, dp.Attributes(), "cisco.yang.path"))
+		assert.Equal(t, 4, dp.Attributes().Len(), "the collision identity must fit the exact final attribute budget")
+		paths[attrValue(t, dp.Attributes(), "cisco.yang.source_path")] = struct{}{}
 	}
 	assert.Equal(t, map[string]struct{}{
-		"openconfig-system:system/state/foo-bar": {},
-		"openconfig-system:system/state/foo_bar": {},
+		"openconfig-system:system/state/payload#/foo-bar": {},
+		"openconfig-system:system/state/payload#/foo_bar": {},
 	}, paths)
 	assert.Zero(t, health.snapshot().droppedDatapoints)
+}
+
+func TestIOSXRGNMIStructuredAndJSONPathsHaveDistinctSourceIdentity(t *testing.T) {
+	const (
+		encodingPath = "openconfig-system:system/state"
+		metricName   = "cisco.iosxr.yang.openconfig_system.system.state.foo.bar"
+		scalarSource = encodingPath + "/foo/bar"
+		jsonSource   = encodingPath + "/foo#/bar"
+	)
+	health := &iosXRHealth{}
+	decoder := iosXRGNMIUpdateDecoder{
+		target: IOSXRTargetConfig{Name: "xr-1"},
+		health: health,
+		limits: directGNMIDecodeLimits{
+			maxAttributes:          3,
+			maxAttributeValueBytes: len(jsonSource),
+		},
+	}
+	decoded := decoder.decodeNotification(&gnmi.Notification{
+		Prefix: mustParseIOSXRPath(t, encodingPath),
+		Update: []*gnmi.Update{
+			{
+				Path: mustParseIOSXRPath(t, "foo/bar"),
+				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_IntVal{IntVal: 1}},
+			},
+			{
+				Path: mustParseIOSXRPath(t, "foo"),
+				Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: []byte(
+					`{"bar":2}`,
+				)}},
+			},
+		},
+	}, iosXRTelemetryTransportDialIn)
+	decoded.ResourceMetrics().At(0).Resource().Attributes().PutStr("cisco.encoding_path", encodingPath)
+
+	sink := &consumertest.MetricsSink{}
+	normalizer := newIOSXRNormalizingConsumer(
+		sink,
+		defaultIOSXRConfig(),
+		newDeviceSelectionMatcher(DeviceSelectionConfig{}),
+		iosXRTelemetryTransportDialIn,
+		health,
+	).(*iosXRNormalizingConsumer)
+	normalizer.budgetLimits = finalDatapointBudgetLimits{maxAttributes: 4}
+	require.NoError(t, normalizer.ConsumeMetrics(t.Context(), decoded))
+	require.Len(t, sink.AllMetrics(), 1)
+
+	md := sink.AllMetrics()[0]
+	assert.Equal(t, 1, metricCountNamed(md, metricName))
+	metric := mustFindIOSXRMetric(t, md, metricName)
+	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+	dps := metric.Gauge().DataPoints()
+	require.Equal(t, 2, dps.Len())
+	values := map[string]int64{}
+	for index := 0; index < dps.Len(); index++ {
+		dp := dps.At(index)
+		assert.Equal(t, 4, dp.Attributes().Len(), "both identities must fit the exact final attribute budget")
+		assert.Equal(t, encodingPath, attrValue(t, dp.Attributes(), "cisco.yang.path"))
+		values[attrValue(t, dp.Attributes(), "cisco.yang.source_path")] = dp.IntValue()
+	}
+	assert.Equal(t, map[string]int64{scalarSource: 1, jsonSource: 2}, values)
+	assert.Zero(t, health.snapshot().droppedDatapoints)
+}
+
+func TestDirectGNMIJSONSourcePathFramingIsInjectiveAndBounded(t *testing.T) {
+	const base = "openconfig-system:system/state/foo"
+
+	t.Run("JSON pointer delimiter characters", func(t *testing.T) {
+		expected := map[string]string{
+			"#": base + "#/#",
+			"/": base + "#/~1",
+			"~": base + "#/~0",
+		}
+		seen := map[string]struct{}{}
+		for rawKey, expectedSource := range expected {
+			attrs := map[string]string{
+				"cisco.yang.path":        base,
+				"cisco.yang.source_path": base,
+			}
+			budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{
+				maxAttributeValueBytes: len(expectedSource),
+			}, 10)
+			require.True(t, extendDirectGNMISourcePath(attrs, rawKey, budget))
+			assert.Equal(t, expectedSource, attrs["cisco.yang.source_path"])
+			assert.Equal(t, base+"/"+strings.TrimPrefix(expectedSource, base+"#/"), attrs["cisco.yang.path"])
+			assert.Zero(t, budget.dropped)
+			seen[attrs["cisco.yang.source_path"]] = struct{}{}
+		}
+		assert.Len(t, seen, len(expected))
+	})
+
+	t.Run("nested source fits exact budget", func(t *testing.T) {
+		const (
+			expectedPath   = base + "/#/~1/~0"
+			expectedSource = base + "#/#/~1/~0"
+		)
+		attrs := map[string]string{
+			"cisco.yang.path":        base,
+			"cisco.yang.source_path": base,
+		}
+		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{
+			maxAttributeValueBytes: len(expectedSource),
+		}, 10)
+		for _, rawKey := range []string{"#", "/", "~"} {
+			require.True(t, extendDirectGNMISourcePath(attrs, rawKey, budget))
+		}
+		assert.Equal(t, expectedPath, attrs["cisco.yang.path"])
+		assert.Equal(t, expectedSource, attrs["cisco.yang.source_path"])
+		assert.Zero(t, budget.dropped)
+	})
+
+	t.Run("one byte over budget is rejected atomically", func(t *testing.T) {
+		const before = base + "#/#/~1"
+		attrs := map[string]string{
+			"cisco.yang.path":        base + "/#/~1",
+			"cisco.yang.source_path": before,
+		}
+		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{
+			maxAttributeValueBytes: len(before+"/~0") - 1,
+		}, 10)
+		require.False(t, extendDirectGNMISourcePath(attrs, "~", budget))
+		assert.Equal(t, base+"/#/~1", attrs["cisco.yang.path"])
+		assert.Equal(t, before, attrs["cisco.yang.source_path"])
+		assert.Equal(t, int64(1), budget.dropped)
+	})
+
+	t.Run("structured hashes are percent escaped", func(t *testing.T) {
+		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
+		rendered, ok := gnmiPathToString(&gnmi.Path{Elem: []*gnmi.PathElem{{Name: "foo#bar"}}}, budget)
+		require.True(t, ok)
+		assert.Equal(t, "foo%23bar", rendered)
+		assert.NotContains(t, rendered, "#")
+	})
 }
 
 func TestIOSXRGNMIPathRenderingEscapesStructuralDelimiterCollisions(t *testing.T) {
@@ -1080,6 +1240,32 @@ func mustFindIOSXRMetric(t *testing.T, md pmetric.Metrics, name string) pmetric.
 	}
 	require.FailNowf(t, "metric not found", "missing metric %s", name)
 	return pmetric.Metric{}
+}
+
+func assertSingleIntGaugeMetric(t *testing.T, md pmetric.Metrics, name string, want int64) {
+	t.Helper()
+	metrics := make([]pmetric.Metric, 0, 1)
+	resourceMetrics := md.ResourceMetrics()
+	for i := 0; i < resourceMetrics.Len(); i++ {
+		scopeMetrics := resourceMetrics.At(i).ScopeMetrics()
+		for j := 0; j < scopeMetrics.Len(); j++ {
+			scope := scopeMetrics.At(j).Metrics()
+			for k := 0; k < scope.Len(); k++ {
+				if metric := scope.At(k); metric.Name() == name {
+					metrics = append(metrics, metric)
+				}
+			}
+		}
+	}
+	require.Len(t, metrics, 1, "%s must have one descriptor per export", name)
+	metric := metrics[0]
+	assertMetricMatchesFixedDescriptor(t, metric)
+	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+	require.Equal(t, 1, metric.Gauge().DataPoints().Len(), "%s must have one series in the fixture export", name)
+	dp := metric.Gauge().DataPoints().At(0)
+	require.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+	require.Equal(t, want, dp.IntValue())
+	require.Zero(t, dp.StartTimestamp(), "the stateless compact gauge must not carry a counter epoch")
 }
 
 func metricCountNamed(md pmetric.Metrics, name string) int {

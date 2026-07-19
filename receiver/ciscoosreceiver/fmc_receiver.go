@@ -366,7 +366,7 @@ func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 		domainUUID, err := client.DomainUUID(ctx)
 		if err != nil {
 			partial = true
-			controllerRB.recordSum("fmc.api.endpoint.error", "FMC endpoint scrape error.", "{error}", 1, map[string]string{
+			controllerRB.recordSum("fmc.api.endpoint.error", "FMC endpoint-family scrape failures.", "{error}", 1, map[string]string{
 				"fmc.api.operation": "auth.domain_uuid",
 				"fmc.error.kind":    classifyFMCError(err),
 			})
@@ -651,7 +651,7 @@ func (r *fmcMetricsReceiver) finishScrape(builder *fmcMetricsBuilder, _ time.Tim
 		}
 		outcome := summarizeAPIOutcomes(controllerStats, func(stat fmc.RequestStat) string { return stat.Outcome })
 		if availability, ok := outcome.availability(); ok {
-			builder.controllerResource(client.ControllerName(), client.Endpoint(), "").recordInt("fmc.manager.up", "FMC REST API availability for this scrape.", "1", availability, nil)
+			builder.controllerResource(client.ControllerName(), client.Endpoint(), "").recordInt("fmc.manager.up", "Whether the FMC REST API was reachable for the scrape.", "1", availability, nil)
 		}
 	}
 
@@ -700,7 +700,7 @@ func (r *fmcLogsReceiver) fetchEndpoint(ctx context.Context, client *fmc.Client,
 }
 
 func (r *fmcMetricsReceiver) recordEndpointError(builder *fmcMetricsBuilder, client *fmc.Client, domainUUID, operation string, err error) {
-	builder.controllerResource(client.ControllerName(), client.Endpoint(), domainUUID).recordSum("fmc.api.endpoint.error", "FMC endpoint scrape error.", "{error}", 1, map[string]string{
+	builder.controllerResource(client.ControllerName(), client.Endpoint(), domainUUID).recordSum("fmc.api.endpoint.error", "FMC endpoint-family scrape failures.", "{error}", 1, map[string]string{
 		"fmc.api.operation": operation,
 		"fmc.error.kind":    classifyFMCError(err),
 	})
@@ -739,12 +739,12 @@ func (r *fmcMetricsReceiver) recordAPIRequestMetrics(builder *fmcMetricsBuilder)
 	}
 	for _, aggregate := range aggregateAPIRequestObservations(observations) {
 		rb := builder.controllerResource(aggregate.resource, "", "")
-		rb.recordDouble("fmc.api.request.duration", "Average duration of FMC REST API request attempts in this scrape.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
+		rb.recordDouble("fmc.api.request.duration", "Average duration of FMC REST request attempts within the scrape for each matching request-attribute set.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
 		if aggregate.errors > 0 {
-			rb.recordSum("fmc.api.request.errors", "FMC REST API request errors.", "{error}", aggregate.errors, aggregate.attrs)
+			rb.recordSum("fmc.api.request.errors", "FMC REST request failures.", "{error}", aggregate.errors, aggregate.attrs)
 		}
 		if aggregate.rateLimited > 0 {
-			rb.recordSum("fmc.api.rate_limited", "FMC REST API requests that were rate limited.", "{request}", aggregate.rateLimited, aggregate.attrs)
+			rb.recordSum("fmc.api.rate_limited", "FMC REST requests that were rate limited.", "{request}", aggregate.rateLimited, aggregate.attrs)
 		}
 	}
 }
@@ -1664,16 +1664,16 @@ func (b *fmcMetricsBuilder) recordObject(controllerName, controllerEndpoint, dom
 		"fmc.status":        firstNonEmpty(status, "present"),
 		"fmc.severity":      firstNonEmpty(severity, "unknown"),
 	})
-	rb.recordInt("fmc.resource.info", "FMC managed object metadata.", "1", 1, attrs)
+	rb.recordInt("fmc.resource.info", "Bounded metadata for FMC managed objects.", "1", 1, attrs)
 	if code, ok := statusCode(status); ok {
-		rb.recordInt("fmc.resource.status", "FMC managed object status encoded for troubleshooting.", "1", code, attrs)
+		rb.recordInt("fmc.resource.status", "Encoded FMC object status with original state attributes.", "1", code, attrs)
 	}
 	b.addCount("fmc.resource.count", attrs)
 
 	switch endpoint.group {
 	case "inventory":
 		if up, ok := upStatus(status); ok {
-			rb.recordInt("cisco.device.up", "FMC-managed firewall availability reported by FMC.", "1", up, nil)
+			rb.recordInt("cisco.device.up", "Device availability (1 = up, 0 = down)", "1", up, nil)
 		}
 	case "interfaces":
 		recordControllerStringState(rb, "system.network.interface.status", "FMC-managed firewall interface status.", status, "fmc.interface.status", interfaceAttrs(fmc.String(obj, "name", "ifname", "interfaceName"), fmc.String(obj, "macAddress", "mac"), fmc.String(obj, "description", "descr"), fmc.String(obj, "speed")))

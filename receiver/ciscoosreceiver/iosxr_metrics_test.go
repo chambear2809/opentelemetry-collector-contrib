@@ -47,9 +47,6 @@ func TestIOSXRHealthCountersSaturateAndIgnoreNegativeValues(t *testing.T) {
 	health.addTargetReconnects("xr-1", 1)
 	health.addDroppedDatapoints(math.MaxInt64)
 	health.addDroppedDatapoints(1)
-	health.addCompactGPBPayloads(5)
-	health.addCompactGPBPayloads(-10)
-	health.addCompactGPBPayloads(math.MaxInt64)
 
 	snapshot := health.snapshotForTarget("xr-1")
 	assert.Equal(t, int64(math.MaxInt64), snapshot.updatesReceived)
@@ -59,16 +56,6 @@ func TestIOSXRHealthCountersSaturateAndIgnoreNegativeValues(t *testing.T) {
 	assert.Equal(t, int64(math.MaxInt64), snapshot.reconnects)
 	assert.Equal(t, int64(math.MaxInt64), snapshot.targetReconnects)
 	assert.Equal(t, int64(math.MaxInt64), snapshot.droppedDatapoints)
-	assert.Equal(t, int64(math.MaxInt64), snapshot.compactGPBPayloads)
-}
-
-func TestMetricNumericTotalSaturatesAndIgnoresNegativeValues(t *testing.T) {
-	metric := pmetric.NewMetric()
-	dps := metric.SetEmptyGauge().DataPoints()
-	for _, value := range []int64{-5, math.MaxInt64, 1} {
-		dps.AppendEmpty().SetIntValue(value)
-	}
-	assert.Equal(t, int64(math.MaxInt64), metricNumericTotal(metric))
 }
 
 func TestIOSXRNormalizingConsumerRenamesDialOutMetricsAndAttributes(t *testing.T) {
@@ -190,41 +177,6 @@ func TestIOSXRNormalizingConsumerKeepsCounterContainerStateAsGauge(t *testing.T)
 	assert.Equal(t, 12.0, metric.Gauge().DataPoints().At(0).DoubleValue())
 }
 
-func TestIOSXRNormalizingConsumerPreservesCollidingRawSourcePaths(t *testing.T) {
-	sink := &consumertest.MetricsSink{}
-	normalizer := newIOSXRNormalizingConsumer(
-		sink,
-		defaultIOSXRConfig(),
-		newDeviceSelectionMatcher(DeviceSelectionConfig{}),
-		iosXRTelemetryTransportDialOut,
-		&iosXRHealth{},
-	)
-
-	raw := pmetric.NewMetrics()
-	rm := raw.ResourceMetrics().AppendEmpty()
-	rm.Resource().Attributes().PutStr("cisco.node_id", "xr-1")
-	rm.Resource().Attributes().PutStr("cisco.encoding_path", "openconfig-system:system/state")
-	sm := rm.ScopeMetrics().AppendEmpty()
-	for index, source := range []string{"foo-bar", "foo_bar"} {
-		metric := sm.Metrics().AppendEmpty()
-		metric.SetName("cisco." + source)
-		dp := metric.SetEmptyGauge().DataPoints().AppendEmpty()
-		dp.SetIntValue(int64(index + 1))
-		dp.Attributes().PutStr("cisco.yang.source_path", source)
-	}
-
-	require.NoError(t, normalizer.ConsumeMetrics(t.Context(), raw))
-	require.Len(t, sink.AllMetrics(), 1)
-	metric := mustFindIOSXRMetric(t, sink.AllMetrics()[0], "cisco.iosxr.yang.openconfig_system.foo_bar")
-	dps := metric.Gauge().DataPoints()
-	require.Equal(t, 2, dps.Len())
-	paths := map[string]struct{}{}
-	for index := 0; index < dps.Len(); index++ {
-		paths[attrValue(t, dps.At(index).Attributes(), "cisco.yang.source_path")] = struct{}{}
-	}
-	assert.Equal(t, map[string]struct{}{"foo-bar": {}, "foo_bar": {}}, paths)
-}
-
 func TestIOSXRNormalizingConsumerPreservesEscapedDeviceKeysForOwnedAttributes(t *testing.T) {
 	sink := &consumertest.MetricsSink{}
 	normalizer := newIOSXRNormalizingConsumer(
@@ -287,18 +239,27 @@ func TestIOSXRNormalizingConsumerAllowsRootMetricFilteringAfterRename(t *testing
 	assert.Empty(t, sink.AllMetrics())
 }
 
-func TestIOSXRNormalizingConsumerRenamesCompactGPBDiagnostic(t *testing.T) {
+func TestIOSXRNormalizingConsumerPreservesPerMessageCompactGPBDiagnostic(t *testing.T) {
 	sink := &consumertest.MetricsSink{}
 	health := &iosXRHealth{}
 	normalizer := newIOSXRNormalizingConsumer(sink, defaultIOSXRConfig(), newDeviceSelectionMatcher(DeviceSelectionConfig{}), iosXRTelemetryTransportDialOut, health)
 
-	err := normalizer.ConsumeMetrics(t.Context(), rawIOSXRDialOutMetrics("cisco.yang_grpc.compact_gpb_payloads", 3))
-	require.NoError(t, err)
-	require.Len(t, sink.AllMetrics(), 1)
-
-	metric := mustFindIOSXRMetric(t, sink.AllMetrics()[0], "cisco.iosxr.receiver.compact_gpb_payloads")
-	assert.Equal(t, 3.0, metric.Gauge().DataPoints().At(0).DoubleValue())
-	assert.Equal(t, int64(3), health.snapshot().compactGPBPayloads)
+	for index, observation := range []struct {
+		target string
+		value  float64
+	}{
+		{target: "xr-a", value: 3},
+		{target: "xr-b", value: 2},
+		{target: "xr-a", value: 1},
+	} {
+		raw := rawIOSXRDialOutMetrics("cisco.yang_grpc.compact_gpb_payloads", observation.value)
+		raw.ResourceMetrics().At(0).Resource().Attributes().PutStr("cisco.node_id", observation.target)
+		require.NoError(t, normalizer.ConsumeMetrics(t.Context(), raw))
+		require.Len(t, sink.AllMetrics(), index+1)
+		md := sink.AllMetrics()[index]
+		assert.Equal(t, observation.target, attrValue(t, md.ResourceMetrics().At(0).Resource().Attributes(), "host.name"))
+		assertSingleIntGaugeMetric(t, md, "cisco.iosxr.receiver.compact_gpb_payloads", int64(observation.value))
+	}
 }
 
 func TestIOSXRNormalizingConsumerEnforcesDatapointLimit(t *testing.T) {

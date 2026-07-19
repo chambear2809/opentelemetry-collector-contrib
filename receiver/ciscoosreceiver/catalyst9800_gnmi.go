@@ -216,10 +216,13 @@ func (d catalyst9800GNMIUpdateDecoder) decodeTypedValue(metrics *indexedMetricBu
 		}
 		appendCatalyst9800InfoMetricIndexed(metrics, module, append(parts, "bytes"), fmt.Sprintf("%x", v.BytesVal), ts, attrs)
 	case *gnmi.TypedValue_ProtoBytes:
-		if d.health != nil {
-			d.health.addCompactGPBPayloads(1)
-		}
-		metrics.appendNumber("cisco.catalyst9800.receiver.compact_gpb_payloads", pmetric.MetricTypeGauge, doubleMetricNumber(1), ts, attrs)
+		metrics.appendNumber(
+			"cisco.catalyst9800.receiver.compact_gpb_payloads",
+			pmetric.MetricTypeGauge,
+			intMetricNumber(1),
+			ts,
+			attrs,
+		)
 	case *gnmi.TypedValue_AnyVal:
 		if v.AnyVal == nil {
 			budget.addDecodeError()

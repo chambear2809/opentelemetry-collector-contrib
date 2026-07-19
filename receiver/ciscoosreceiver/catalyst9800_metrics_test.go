@@ -20,6 +20,37 @@ func TestCatalyst9800NormalizingConsumerDeclaresMutation(t *testing.T) {
 	assert.True(t, normalizer.Capabilities().MutatesData)
 }
 
+func TestCatalyst9800NormalizingConsumerPreservesPerMessageCompactGPBDiagnostic(t *testing.T) {
+	sink := &consumertest.MetricsSink{}
+	health := &catalyst9800Health{}
+	normalizer := newCatalyst9800NormalizingConsumer(
+		sink,
+		defaultCatalyst9800Config(),
+		newDeviceSelectionMatcher(DeviceSelectionConfig{}),
+		catalyst9800TelemetryTransportDialOut,
+		health,
+	)
+
+	for index, observation := range []struct {
+		target string
+		value  float64
+	}{
+		{target: "wlc-a", value: 3},
+		{target: "wlc-b", value: 2},
+		{target: "wlc-a", value: 1},
+	} {
+		require.NoError(t, normalizer.ConsumeMetrics(t.Context(), rawCatalyst9800DialOutMetrics(
+			"cisco.yang_grpc.compact_gpb_payloads",
+			observation.value,
+			observation.target,
+		)))
+		require.Len(t, sink.AllMetrics(), index+1)
+		md := sink.AllMetrics()[index]
+		assert.Equal(t, observation.target, attrValue(t, md.ResourceMetrics().At(0).Resource().Attributes(), "host.name"))
+		assertSingleIntGaugeMetric(t, md, "cisco.catalyst9800.receiver.compact_gpb_payloads", int64(observation.value))
+	}
+}
+
 func TestCatalyst9800PercentageRatioIsBounded(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -144,7 +175,8 @@ func TestCatalyst9800NormalizingConsumerCoalescesStreamsAndPreservesIntDatapoint
 	sm := rm.ScopeMetrics().AppendEmpty()
 	for apMAC, value := range map[string]int64{
 		"AA:BB:CC:DD:EE:01": math.MaxInt64,
-		"AA:BB:CC:DD:EE:02": 42,
+		"AA:BB:CC:DD:EE:02": 1<<53 + 1,
+		"AA:BB:CC:DD:EE:03": 42,
 	} {
 		metric := sm.Metrics().AppendEmpty()
 		metric.SetName("cisco.access-point-oper-data.ssid-counters.tx-bytes-data")
@@ -162,50 +194,37 @@ func TestCatalyst9800NormalizingConsumerCoalescesStreamsAndPreservesIntDatapoint
 	canonicalMetric := mustFindIOSXRMetric(t, md, canonical)
 	assertIntGaugeDatapointsByAttr(t, canonicalMetric, "wtp-mac", map[string]int64{
 		"AA:BB:CC:DD:EE:01": math.MaxInt64,
-		"AA:BB:CC:DD:EE:02": 42,
+		"AA:BB:CC:DD:EE:02": 1<<53 + 1,
+		"AA:BB:CC:DD:EE:03": 42,
 	})
 
 	const alias = "cisco.wlc.ssid.network.io"
 	assert.Equal(t, 1, metricCountNamed(md, alias))
 	assertCatalyst9800IntDatapointsByAP(t, mustFindIOSXRMetric(t, md, alias), map[string]int64{
 		"AA:BB:CC:DD:EE:01": math.MaxInt64,
-		"AA:BB:CC:DD:EE:02": 42,
+		"AA:BB:CC:DD:EE:02": 1<<53 + 1,
+		"AA:BB:CC:DD:EE:03": 42,
 	})
 }
 
-func TestCatalyst9800NormalizingConsumerPreservesCollidingRawSourcePaths(t *testing.T) {
+func TestCatalyst9800NormalizingConsumerRejectsFractionalIntegerAlias(t *testing.T) {
 	sink := &consumertest.MetricsSink{}
+	health := &catalyst9800Health{}
 	normalizer := newCatalyst9800NormalizingConsumer(
 		sink,
 		defaultCatalyst9800Config(),
 		newDeviceSelectionMatcher(DeviceSelectionConfig{}),
 		catalyst9800TelemetryTransportDialOut,
-		&catalyst9800Health{},
+		health,
 	)
-
-	raw := pmetric.NewMetrics()
-	rm := raw.ResourceMetrics().AppendEmpty()
-	rm.Resource().Attributes().PutStr("cisco.node_id", "wlc-1")
-	rm.Resource().Attributes().PutStr("cisco.encoding_path", "wireless-rrm-oper:rrm-oper-data/state")
-	sm := rm.ScopeMetrics().AppendEmpty()
-	for index, source := range []string{"foo-bar", "foo_bar"} {
-		metric := sm.Metrics().AppendEmpty()
-		metric.SetName("cisco." + source)
-		dp := metric.SetEmptyGauge().DataPoints().AppendEmpty()
-		dp.SetIntValue(int64(index + 1))
-		dp.Attributes().PutStr("cisco.yang.source_path", source)
-	}
+	raw := rawCatalyst9800DialOutMetrics("cisco.access-point-oper-data.ssid-counters.tx-bytes-data", 1.5, "wlc-1")
 
 	require.NoError(t, normalizer.ConsumeMetrics(t.Context(), raw))
 	require.Len(t, sink.AllMetrics(), 1)
-	metric := mustFindIOSXRMetric(t, sink.AllMetrics()[0], "cisco.catalyst9800.yang.wireless_rrm_oper.foo_bar")
-	dps := metric.Gauge().DataPoints()
-	require.Equal(t, 2, dps.Len())
-	paths := map[string]struct{}{}
-	for index := 0; index < dps.Len(); index++ {
-		paths[attrValue(t, dps.At(index).Attributes(), "cisco.yang.source_path")] = struct{}{}
-	}
-	assert.Equal(t, map[string]struct{}{"foo-bar": {}, "foo_bar": {}}, paths)
+	md := sink.AllMetrics()[0]
+	assertMetricExists(t, md, "cisco.catalyst9800.yang.wireless_rrm_oper.access_point_oper_data.ssid_counters.tx_bytes_data")
+	assert.Zero(t, metricCountNamed(md, "cisco.wlc.ssid.network.io"))
+	assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
 }
 
 func TestCatalyst9800NormalizingConsumerPrioritizesCanonicalPointsBeforeAliases(t *testing.T) {

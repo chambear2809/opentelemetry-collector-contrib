@@ -209,7 +209,7 @@ func (r *catalystCenterMetricsReceiver) finishScrape(builder *catalystCenterMetr
 	r.recordAPIRequestMetrics(builder)
 	outcome := summarizeAPIOutcomes(r.requestStats(), func(stat catalystcenter.RequestStat) string { return stat.Outcome })
 	rb := builder.accountResource()
-	rb.recordInt("catalyst_center.scrape.partial_success", "Whether one or more Catalyst Center endpoint families failed during the scrape.", "1", boolToInt(partial), nil)
+	rb.recordInt("catalyst_center.scrape.partial_success", "Whether one or more Catalyst Center endpoint families failed during a scrape.", "1", boolToInt(partial), nil)
 	if lastSuccess, ok := r.success.observe(time.Now(), !partial && outcome.succeeded); ok {
 		rb.recordInt("catalyst_center.scrape.last_success", "Unix timestamp of the most recent fully successful Catalyst Center scrape.", "s", lastSuccess.Unix(), nil)
 	}
@@ -220,7 +220,7 @@ func (r *catalystCenterMetricsReceiver) finishScrape(builder *catalystCenterMetr
 func (r *catalystCenterMetricsReceiver) scrapeInventory(ctx context.Context, builder *catalystCenterMetricsBuilder, selector deviceSelectionMatcher) (bool, error) {
 	partial := false
 	if count, err := catalystcenter.GetCount(ctx, r.client, "devices.count", "/dna/intent/api/v1/network-device/count", nil); err == nil {
-		builder.accountResource().recordInt("catalyst_center.inventory.device.count", "Catalyst Center network-device inventory count.", "{device}", count, nil)
+		builder.accountResource().recordInt("catalyst_center.inventory.device.count", "Network-device inventory count.", "{device}", count, nil)
 	} else {
 		partial = true
 		r.settings.Logger.Warn("Catalyst Center device count endpoint failed", zap.Error(err))
@@ -233,14 +233,14 @@ func (r *catalystCenterMetricsReceiver) scrapeInventory(ctx context.Context, bui
 		}
 		rb := builder.deviceResource(*device)
 		if reachable, ok := reachableStatus(device.ReachabilityStatus); ok {
-			rb.recordInt("cisco.device.up", "Device availability reported by Catalyst Center.", "1", reachable, nil)
+			rb.recordInt("cisco.device.up", "Device availability (1 = up, 0 = down)", "1", reachable, nil)
 		}
 		recordCatalystStatus(rb, "catalyst_center.device.reachability.status", "Catalyst Center device reachability status.", device.ReachabilityStatus, map[string]string{
 			"catalyst_center.device.collection_status": device.CollectionStatus,
 		})
 		recordCatalystStatus(rb, "catalyst_center.device.collection.status", "Catalyst Center device collection status.", device.CollectionStatus, nil)
 		if value, ok := parseIntString(device.InterfaceCount); ok {
-			rb.recordInt("catalyst_center.device.interface.count", "Interface count reported for a Catalyst Center device.", "{interface}", value, nil)
+			rb.recordInt("catalyst_center.device.interface.count", "Interface count reported for a device.", "{interface}", value, nil)
 		}
 		if device.UptimeSeconds > 0 {
 			rb.recordInt("catalyst_center.device.uptime", "Device uptime reported by Catalyst Center.", "s", device.UptimeSeconds, nil)
@@ -255,7 +255,7 @@ func (r *catalystCenterMetricsReceiver) scrapeInventory(ctx context.Context, bui
 func (r *catalystCenterMetricsReceiver) scrapeInterfaces(ctx context.Context, builder *catalystCenterMetricsBuilder, selector deviceSelectionMatcher) (bool, error) {
 	partial := false
 	if count, err := catalystcenter.GetCount(ctx, r.client, "interfaces.count", "/dna/intent/api/v1/interface/count", nil); err == nil {
-		builder.accountResource().recordInt("catalyst_center.interface.count", "Catalyst Center interface inventory count.", "{interface}", count, nil)
+		builder.accountResource().recordInt("catalyst_center.interface.count", "Interface inventory count.", "{interface}", count, nil)
 	} else {
 		partial = true
 		r.settings.Logger.Warn("Catalyst Center interface count endpoint failed", zap.Error(err))
@@ -270,13 +270,13 @@ func (r *catalystCenterMetricsReceiver) scrapeInterfaces(ctx context.Context, bu
 		rb := builder.interfaceResource(*iface)
 		attrs := catalystInterfaceAttrs(*iface)
 		if connected, ok := connectedStatus(iface.Status); ok {
-			rb.recordInt("system.network.interface.status", "Interface operational status reported by Catalyst Center.", "1", connected, attrs)
+			rb.recordInt("system.network.interface.status", "Interface operational status (1 = up, 0 = down)", "1", connected, attrs)
 		}
 		if connected, ok := connectedStatus(iface.AdminStatus); ok {
-			rb.recordInt("cisco.interface.admin.status", "Interface administrative status reported by Catalyst Center.", "1", connected, attrs)
+			rb.recordInt("cisco.interface.admin.status", "Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)", "1", connected, attrs)
 		}
 		if speed, speedText := parseCatalystSpeed(iface.Speed); speed > 0 {
-			rb.recordInt("cisco.interface.speed", "Interface line speed reported by Catalyst Center.", "bit/s", speed, withAttr(attrs, "network.interface.speed", speedText))
+			rb.recordInt("cisco.interface.speed", "The numeric line speed of a Cisco interface", "bit/s", speed, withAttr(attrs, "network.interface.speed", speedText))
 		}
 	}
 	if err != nil {
@@ -329,7 +329,7 @@ func (r *catalystCenterMetricsReceiver) scrapeIssues(ctx context.Context, builde
 	query := catalystWindowQuery(r.config.CatalystCenter.Lookback, now)
 	if selector.empty() {
 		if count, err := catalystcenter.GetCount(ctx, r.client, "issues.count", "/dna/data/api/v1/assuranceIssues/count", query); err == nil {
-			builder.accountResource().recordInt("catalyst_center.issue.count", "Catalyst Center assurance issue count in the configured lookback window.", "{issue}", count, map[string]string{"catalyst_center.issue.window": "lookback"})
+			builder.accountResource().recordInt("catalyst_center.issue.count", "Assurance issue count in the configured lookback window.", "{issue}", count, map[string]string{"catalyst_center.issue.window": "lookback"})
 		} else {
 			partial = true
 			r.settings.Logger.Warn("Catalyst Center issue count endpoint failed", zap.Error(err))
@@ -362,7 +362,7 @@ func (r *catalystCenterMetricsReceiver) scrapeIssues(ctx context.Context, builde
 		}))
 	}
 	if !selector.empty() && err == nil {
-		builder.accountResource().recordInt("catalyst_center.issue.count", "Catalyst Center assurance issue count in the configured lookback window.", "{issue}", int64(selectedIssues), map[string]string{"catalyst_center.issue.window": "lookback"})
+		builder.accountResource().recordInt("catalyst_center.issue.count", "Assurance issue count in the configured lookback window.", "{issue}", int64(selectedIssues), map[string]string{"catalyst_center.issue.window": "lookback"})
 	}
 	if err != nil {
 		return true, err
@@ -441,12 +441,12 @@ func (r *catalystCenterMetricsReceiver) recordAPIRequestMetrics(builder *catalys
 	}
 	for _, aggregate := range aggregateAPIRequestObservations(observations) {
 		rb := builder.accountResource()
-		rb.recordDouble("catalyst_center.api.request.duration", "Average duration of Catalyst Center API request attempts in this scrape.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
+		rb.recordDouble("catalyst_center.api.request.duration", "Average duration of Catalyst Center API request attempts within the scrape for each matching request-attribute set.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
 		if aggregate.errors > 0 {
-			rb.recordSum("catalyst_center.api.request.errors", "Catalyst Center API request errors.", "{error}", aggregate.errors, aggregate.attrs)
+			rb.recordSum("catalyst_center.api.request.errors", "Catalyst Center API request failures.", "{error}", aggregate.errors, aggregate.attrs)
 		}
 		if aggregate.rateLimited > 0 {
-			rb.recordSum("catalyst_center.api.rate_limited", "Catalyst Center API requests that were rate limited.", "{request}", aggregate.rateLimited, aggregate.attrs)
+			rb.recordSum("catalyst_center.api.rate_limited", "Requests that received HTTP 429.", "{request}", aggregate.rateLimited, aggregate.attrs)
 		}
 	}
 }
@@ -628,7 +628,7 @@ func (b *catalystCenterMetricsBuilder) flushCounts() {
 
 func (b *catalystCenterMetricsBuilder) recordNetworkHealth(health catalystcenter.NetworkHealth) {
 	rb := b.accountResource()
-	rb.recordInt("catalyst_center.network.health.score", "Latest Catalyst Center network health score.", "1", health.LatestHealthScore, map[string]string{"catalyst_center.health.measured_by": health.MeasuredBy})
+	rb.recordInt("catalyst_center.network.health.score", "Latest global Catalyst Center network health score.", "1", health.LatestHealthScore, map[string]string{"catalyst_center.health.measured_by": health.MeasuredBy})
 	for state, value := range map[string]int64{
 		"total":        health.TotalDevices,
 		"monitored":    health.MonitoredDevices,
@@ -640,11 +640,11 @@ func (b *catalystCenterMetricsBuilder) recordNetworkHealth(health catalystcenter
 		"no_health":    health.NoHealthDevices,
 		"contributing": health.HealthContributingDevices,
 	} {
-		rb.recordInt("catalyst_center.network.device.count", "Catalyst Center network device count by health state.", "{device}", value, map[string]string{"catalyst_center.health.state": state})
+		rb.recordInt("catalyst_center.network.device.count", "Network device count by health state.", "{device}", value, map[string]string{"catalyst_center.health.state": state})
 	}
 	for _, entry := range health.Response {
 		attrs := map[string]string{"catalyst_center.health.entity": entry.Entity}
-		rb.recordInt("catalyst_center.network.health.entity.score", "Catalyst Center network health score by entity.", "1", entry.HealthScore, attrs)
+		rb.recordInt("catalyst_center.network.health.entity.score", "Network health score by Assurance entity.", "1", entry.HealthScore, attrs)
 		for state, value := range map[string]int64{
 			"total":       entry.TotalCount,
 			"good":        entry.GoodCount,
@@ -654,7 +654,7 @@ func (b *catalystCenterMetricsBuilder) recordNetworkHealth(health catalystcenter
 			"unmonitored": entry.UnmonCount,
 			"maintenance": entry.MaintenanceModeCount,
 		} {
-			rb.recordInt("catalyst_center.network.health.entity.count", "Catalyst Center network health entity count by state.", "{device}", value, withAttr(attrs, "catalyst_center.health.state", state))
+			rb.recordInt("catalyst_center.network.health.entity.count", "Entity count by health state.", "{device}", value, withAttr(attrs, "catalyst_center.health.state", state))
 		}
 	}
 	distribution := health.HealthDistribution
@@ -664,7 +664,7 @@ func (b *catalystCenterMetricsBuilder) recordNetworkHealth(health catalystcenter
 	for i := range distribution {
 		item := &distribution[i]
 		attrs := map[string]string{"catalyst_center.device.category": item.Category}
-		rb.recordDouble("catalyst_center.network.health.category.score", "Catalyst Center network health score by device category.", "1", item.HealthScore, attrs)
+		rb.recordDouble("catalyst_center.network.health.category.score", "Network health score by device category.", "1", item.HealthScore, attrs)
 	}
 }
 
@@ -687,15 +687,15 @@ func (b *catalystCenterMetricsBuilder) recordClientHealthScore(siteID string, sc
 		"catalyst_center.client.score_category": firstNonEmpty(score.ScoreCategory.Value, score.ScoreCategory.ScoreCategory),
 	})
 	rb := b.accountResource()
-	rb.recordDouble("catalyst_center.client.health.score", "Catalyst Center client health score.", "1", score.ScoreValue, attrs)
-	rb.recordInt("catalyst_center.client.count", "Catalyst Center client count by health category.", "{client}", score.ClientCount, attrs)
-	rb.recordInt("catalyst_center.client.unique.count", "Catalyst Center unique client count by health category.", "{client}", score.ClientUniqueCount, attrs)
+	rb.recordDouble("catalyst_center.client.health.score", "Client health score by site and score category.", "1", score.ScoreValue, attrs)
+	rb.recordInt("catalyst_center.client.count", "Client count by health category.", "{client}", score.ClientCount, attrs)
+	rb.recordInt("catalyst_center.client.unique.count", "Unique client count by health category.", "{client}", score.ClientUniqueCount, attrs)
 }
 
 func (b *catalystCenterMetricsBuilder) recordSiteHealth(site catalystcenter.SiteHealthSummary) {
 	rb := b.siteResource(site)
-	rb.recordDouble("catalyst_center.site.network_device.health.percentage", "Catalyst Center site network-device good health percentage.", "%", site.NetworkDeviceGoodHealthPercentage, nil)
-	rb.recordDouble("catalyst_center.site.client.health.percentage", "Catalyst Center site client good health percentage.", "%", site.ClientGoodHealthPercentage, nil)
+	rb.recordDouble("catalyst_center.site.network_device.health.percentage", "Percent of healthy network devices by site.", "%", site.NetworkDeviceGoodHealthPercentage, nil)
+	rb.recordDouble("catalyst_center.site.client.health.percentage", "Percent of healthy clients by site.", "%", site.ClientGoodHealthPercentage, nil)
 	for priority, value := range map[string]int64{
 		"p1":  site.P1IssueCount,
 		"p2":  site.P2IssueCount,
@@ -703,19 +703,19 @@ func (b *catalystCenterMetricsBuilder) recordSiteHealth(site catalystcenter.Site
 		"p4":  site.P4IssueCount,
 		"all": site.IssueCount,
 	} {
-		rb.recordInt("catalyst_center.site.issue.count", "Catalyst Center site issue count by priority.", "{issue}", value, map[string]string{"catalyst_center.issue.priority": priority})
+		rb.recordInt("catalyst_center.site.issue.count", "Site issue counts by priority.", "{issue}", value, map[string]string{"catalyst_center.issue.priority": priority})
 	}
 	for clientType, value := range map[string]int64{
 		"all":      site.ClientCount,
 		"wired":    site.WiredClientCount,
 		"wireless": site.WirelessClientCount,
 	} {
-		rb.recordInt("catalyst_center.site.client.count", "Catalyst Center site client count by client type and health state.", "{client}", value, map[string]string{
+		rb.recordInt("catalyst_center.site.client.count", "Site client population by client type and health state.", "{client}", value, map[string]string{
 			"catalyst_center.client.type":  clientType,
 			"catalyst_center.health.state": "total",
 		})
 	}
-	rb.recordInt("catalyst_center.site.client.count", "Catalyst Center site client count by client type and health state.", "{client}", site.ClientGoodHealthCount, map[string]string{
+	rb.recordInt("catalyst_center.site.client.count", "Site client population by client type and health state.", "{client}", site.ClientGoodHealthCount, map[string]string{
 		"catalyst_center.client.type":  "all",
 		"catalyst_center.health.state": "good",
 	})
@@ -734,7 +734,7 @@ func (b *catalystCenterMetricsBuilder) recordSiteHealth(site catalystcenter.Site
 		"switch":       {total: site.SwitchDeviceCount, good: site.SwitchDeviceGoodHealthCount},
 	} {
 		for state, value := range map[string]int64{"total": counts.total, "good": counts.good} {
-			rb.recordInt("catalyst_center.site.network_device.count", "Catalyst Center site network device count by role and health state.", "{device}", value, map[string]string{
+			rb.recordInt("catalyst_center.site.network_device.count", "Site network-device population by role and health state.", "{device}", value, map[string]string{
 				"catalyst_center.device.role":  role,
 				"catalyst_center.health.state": state,
 			})
@@ -769,7 +769,7 @@ func (b *catalystCenterMetricsBuilder) recordSiteHealth(site catalystcenter.Site
 		"issues_p4":             site.P4IssueCount,
 		"issues_total":          site.IssueCount,
 	} {
-		rb.recordInt("catalyst_center.site.health.count", "Catalyst Center site health count.", "{item}", value, map[string]string{"catalyst_center.site.health.state": state})
+		rb.recordInt("catalyst_center.site.health.count", "Site health counts for devices, clients, wireless, APs, WLCs, switches, routers, and issues.", "{item}", value, map[string]string{"catalyst_center.site.health.state": state})
 	}
 }
 
@@ -793,8 +793,8 @@ func (b *catalystCenterMetricsBuilder) recordTopology(topology catalystcenter.To
 		}
 	}
 	rb := b.accountResource()
-	rb.recordInt("catalyst_center.topology.node.count", "Catalyst Center physical topology node count.", "{node}", int64(len(nodes)), map[string]string{"catalyst_center.topology.scope": "total"})
-	rb.recordInt("catalyst_center.topology.link.count", "Catalyst Center physical topology link count.", "{link}", int64(len(links)), map[string]string{"catalyst_center.topology.scope": "total"})
+	rb.recordInt("catalyst_center.topology.node.count", "Physical topology node count globally and by node attributes.", "{node}", int64(len(nodes)), map[string]string{"catalyst_center.topology.scope": "total"})
+	rb.recordInt("catalyst_center.topology.link.count", "Physical topology link count globally and by link status.", "{link}", int64(len(links)), map[string]string{"catalyst_center.topology.scope": "total"})
 	for i, node := range nodes {
 		if maxResults > 0 && i >= maxResults {
 			break
@@ -949,7 +949,7 @@ func recordClientDetailHealthScores(rb *resourceMetricsBuilder, detail catalystc
 		scoreAttrs := cloneStringMap(attrs)
 		putNonEmpty(scoreAttrs, "catalyst_center.client.health_type", stringFromAny(scoreObj["healthType"]))
 		putNonEmpty(scoreAttrs, "catalyst_center.client.health_reason", stringFromAny(scoreObj["reason"]))
-		rb.recordDouble("catalyst_center.client.detail.health.score", "Catalyst Center client detail health score.", "1", score, scoreAttrs)
+		rb.recordDouble("catalyst_center.client.detail.health.score", "Targeted client-detail health score by client, health type, and reason.", "1", score, scoreAttrs)
 	}
 	return true
 }

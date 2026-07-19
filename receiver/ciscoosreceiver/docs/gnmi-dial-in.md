@@ -293,7 +293,10 @@ volume, path shape, and sensor descriptions.
 Custom subscriptions are accepted only when each scalar numeric source path has an explicit mapping with a metric name,
 description, UCUM unit, scale, gauge type, and path-key-to-attribute mappings. Selectors may subscribe to a mapped
 ancestor for aggregated JSON, but they never authorize arbitrary JSON-to-metric conversion. Unmapped paths, custom sums,
-and dynamic `_info` metrics are rejected.
+and dynamic `_info` metrics are rejected. Each custom name is therefore an exact configuration-time descriptor rather
+than part of fixed catalog completeness. Validation rejects collisions with the union of receiver, system-scraper, and
+interface-scraper fixed catalogs and reserves the pattern-governed `cisco.catalyst9800.yang.*` and
+`cisco.iosxr.yang.*` namespaces for model-derived telemetry.
 
 ## Metric contract
 

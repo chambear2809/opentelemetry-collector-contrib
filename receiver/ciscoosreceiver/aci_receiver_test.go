@@ -1199,6 +1199,42 @@ func assertACIValueDoesNotContain(t *testing.T, value any, excluded string) {
 	}
 }
 
+func TestACITopologyPreservesLegacyAndGovernedNeighborAttributes(t *testing.T) {
+	builder := newACIMetricsBuilder(time.Now(), "test", nil)
+	builder.recordTopologyObject(builder.globalResource(), aci.Object{
+		"aci.class": "lldpAdjEp",
+		"dn":        "topology/pod-1/node-101/sys/lldp/inst/if-[eth1/17]/adj-1",
+		"portIdV":   "Ethernet1/18",
+		"sysDesc":   "Nexus 9000",
+		"mgmtIp":    "192.0.2.102",
+	})
+
+	metric := requireMetricByName(t, builder.emit(), "cisco.topology.neighbor.info")
+	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+	assert.Equal(t, "LLDP, CDP, and fabric-link neighbor information.", metric.Description())
+	assert.Equal(t, "1", metric.Unit())
+	require.Equal(t, 1, metric.Gauge().DataPoints().Len())
+	point := metric.Gauge().DataPoints().At(0)
+	require.Equal(t, pmetric.NumberDataPointValueTypeInt, point.ValueType())
+	assert.Equal(t, int64(1), point.IntValue())
+
+	actual := map[string]string{}
+	point.Attributes().Range(func(key string, value pcommon.Value) bool {
+		actual[key] = value.AsString()
+		return true
+	})
+	assert.Equal(t, map[string]string{
+		"network.peer.name":                 "Ethernet1/18",
+		"network.peer.address":              "192.0.2.102",
+		"network.protocol.name":             "lldp",
+		"cisco.topology.protocol":           "lldp",
+		"network.interface.name":            "eth1/17",
+		"cisco.topology.neighbor.interface": "Ethernet1/18",
+		"cisco.topology.neighbor.platform":  "Nexus 9000",
+		"cisco.topology.neighbor.address":   "192.0.2.102",
+	}, actual)
+}
+
 func requireMetricByName(t *testing.T, md pmetric.Metrics, name string) pmetric.Metric {
 	t.Helper()
 	for i := 0; i < md.ResourceMetrics().Len(); i++ {

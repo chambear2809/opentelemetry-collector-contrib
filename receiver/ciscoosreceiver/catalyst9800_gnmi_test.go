@@ -143,12 +143,14 @@ func TestCatalyst9800GNMIDecoderWirelessAliasesAndRawMetrics(t *testing.T) {
 	}
 
 	join := mustFindIOSXRMetric(t, md, "cisco.wlc.ap.join.status")
+	assertMetricMatchesFixedDescriptor(t, join)
 	require.Equal(t, pmetric.MetricTypeGauge, join.Type())
 	dp := join.Gauge().DataPoints().At(0)
 	assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
 	assert.Equal(t, int64(1), dp.IntValue())
 	assert.Equal(t, "AA:BB:CC:DD:EE:FF", attrValue(t, dp.Attributes(), "cisco.wlc.ap.mac"))
 	assert.Equal(t, []string{"192.0.2.21"}, stringSliceAttrValue(t, dp.Attributes()))
+	assertMetricMatchesFixedDescriptor(t, mustFindIOSXRMetric(t, md, "cisco.wlc.ssid.client.count"))
 
 	rfUtilization := mustFindIOSXRMetric(t, md, "cisco.wlc.rf.channel.utilization")
 	require.Equal(t, pmetric.MetricTypeGauge, rfUtilization.Type())
@@ -173,6 +175,7 @@ func TestCatalyst9800GNMIDecoderWirelessAliasesAndRawMetrics(t *testing.T) {
 	assert.Equal(t, "By", clientBytes.Unit())
 	require.Equal(t, 1, clientBytes.Sum().DataPoints().Len())
 	bytesDP := clientBytes.Sum().DataPoints().At(0)
+	assert.Equal(t, pmetric.NumberDataPointValueTypeInt, bytesDP.ValueType())
 	assert.Equal(t, int64(1234), bytesDP.IntValue())
 	assert.Equal(t, "rx", attrValue(t, bytesDP.Attributes(), "direction"))
 	_, hasUnitAttr := bytesDP.Attributes().Get("unit")
@@ -183,6 +186,7 @@ func TestCatalyst9800GNMIDecoderWirelessAliasesAndRawMetrics(t *testing.T) {
 	assert.Equal(t, "{packet}", clientPackets.Unit())
 	require.Equal(t, 1, clientPackets.Sum().DataPoints().Len())
 	packetsDP := clientPackets.Sum().DataPoints().At(0)
+	assert.Equal(t, pmetric.NumberDataPointValueTypeInt, packetsDP.ValueType())
 	assert.Equal(t, int64(10), packetsDP.IntValue())
 	assert.Equal(t, "tx", attrValue(t, packetsDP.Attributes(), "direction"))
 	_, hasUnitAttr = packetsDP.Attributes().Get("unit")
@@ -212,10 +216,14 @@ func TestCatalyst9800GNMIDecoderCoalescesMetricStreamsAndPreservesUint64(t *test
 			},
 			{
 				Path: catalyst9800SSIDCounterPath("AA:BB:CC:DD:EE:02", "tx-bytes-data"),
+				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_UintVal{UintVal: 1<<53 + 1}},
+			},
+			{
+				Path: catalyst9800SSIDCounterPath("AA:BB:CC:DD:EE:03", "tx-bytes-data"),
 				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_UintVal{UintVal: 42}},
 			},
 			{
-				Path: catalyst9800SSIDCounterPath("AA:BB:CC:DD:EE:03", "rx-bytes-data"),
+				Path: catalyst9800SSIDCounterPath("AA:BB:CC:DD:EE:04", "rx-bytes-data"),
 				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_UintVal{UintVal: ^uint64(0)}},
 			},
 		},
@@ -225,14 +233,16 @@ func TestCatalyst9800GNMIDecoderCoalescesMetricStreamsAndPreservesUint64(t *test
 	assert.Equal(t, 1, metricCountNamed(md, txBytes))
 	assertCatalyst9800IntDatapointsByAP(t, mustFindIOSXRMetric(t, md, txBytes), map[string]int64{
 		"AA:BB:CC:DD:EE:01": math.MaxInt64,
-		"AA:BB:CC:DD:EE:02": 42,
+		"AA:BB:CC:DD:EE:02": 1<<53 + 1,
+		"AA:BB:CC:DD:EE:03": 42,
 	})
 
 	const networkIO = "cisco.wlc.ssid.network.io"
 	assert.Equal(t, 1, metricCountNamed(md, networkIO))
 	assertCatalyst9800IntDatapointsByAP(t, mustFindIOSXRMetric(t, md, networkIO), map[string]int64{
 		"AA:BB:CC:DD:EE:01": math.MaxInt64,
-		"AA:BB:CC:DD:EE:02": 42,
+		"AA:BB:CC:DD:EE:02": 1<<53 + 1,
+		"AA:BB:CC:DD:EE:03": 42,
 	})
 
 	const rxBytesInfo = "cisco.catalyst9800.yang.wireless_access_point_oper.access_point_oper_data.ssid_counters.rx_bytes_data_info"
@@ -244,7 +254,7 @@ func TestCatalyst9800GNMIDecoderCoalescesMetricStreamsAndPreservesUint64(t *test
 	assert.Equal(t, "18446744073709551615", attrValue(t, overflowDP.Attributes(), "value"))
 	assert.Equal(t, "uint64", attrValue(t, overflowDP.Attributes(), "cisco.value.type"))
 	assert.Equal(t, "true", attrValue(t, overflowDP.Attributes(), "cisco.value.out_of_range"))
-	assert.Equal(t, "AA:BB:CC:DD:EE:03", attrValue(t, overflowDP.Attributes(), "cisco.wlc.ap.mac"))
+	assert.Equal(t, "AA:BB:CC:DD:EE:04", attrValue(t, overflowDP.Attributes(), "cisco.wlc.ap.mac"))
 }
 
 //nolint:staticcheck // Cisco devices still emit deprecated gNMI Decimal64 values, including malformed boundary cases.
@@ -292,8 +302,7 @@ func TestCatalyst9800GNMIDecoderTypedValueBranches(t *testing.T) {
 	envelope := mustFindIOSXRMetric(t, md, prefix+"envelope.any_info")
 	envelopeValue := attrValue(t, envelope.Gauge().DataPoints().At(0).Attributes(), "value")
 	assert.Contains(t, envelopeValue, "type.googleapis.com/example.Telemetry")
-	assertMetricExists(t, md, "cisco.catalyst9800.receiver.compact_gpb_payloads")
-	assert.Equal(t, int64(1), health.snapshot().compactGPBPayloads)
+	assertSingleIntGaugeMetric(t, md, "cisco.catalyst9800.receiver.compact_gpb_payloads", 1)
 	assert.Zero(t, health.snapshot().decodeErrors)
 	assert.Zero(t, health.snapshot().droppedDatapoints)
 }
@@ -480,27 +489,117 @@ func TestCatalyst9800JSONIdentityUsesExplicitDeterministicPrecedence(t *testing.
 }
 
 func TestCatalyst9800GNMIPathNormalizationPreservesRawSourceIdentity(t *testing.T) {
+	const encodingPath = "wireless-rrm-oper:rrm-oper-data/state"
 	health := &catalyst9800Health{}
-	decoder := catalyst9800GNMIUpdateDecoder{target: Catalyst9800TargetConfig{Name: "wlc-1"}, health: health}
-	md := decoder.decodeNotification(&gnmi.Notification{
-		Prefix: mustParseIOSXRPath(t, "wireless-rrm-oper:rrm-oper-data/state"),
-		Update: []*gnmi.Update{
-			{Path: &gnmi.Path{Elem: []*gnmi.PathElem{{Name: "foo-bar"}}}, Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_IntVal{IntVal: 1}}},
-			{Path: &gnmi.Path{Elem: []*gnmi.PathElem{{Name: "foo_bar"}}}, Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_IntVal{IntVal: 2}}},
-		},
+	decoder := catalyst9800GNMIUpdateDecoder{
+		target: Catalyst9800TargetConfig{Name: "wlc-1"},
+		health: health,
+		limits: directGNMIDecodeLimits{maxAttributes: 3},
+	}
+	decoded := decoder.decodeNotification(&gnmi.Notification{
+		Prefix: mustParseIOSXRPath(t, encodingPath),
+		Update: []*gnmi.Update{{
+			Path: mustParseIOSXRPath(t, "payload"),
+			Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: []byte(
+				`{"foo-bar":1,"foo_bar":2}`,
+			)}},
+		}},
 	}, catalyst9800TelemetryTransportDialIn)
+	decoded.ResourceMetrics().At(0).Resource().Attributes().PutStr("cisco.encoding_path", encodingPath)
 
-	metric := mustFindIOSXRMetric(t, md, "cisco.catalyst9800.yang.wireless_rrm_oper.rrm_oper_data.state.foo_bar")
+	sink := &consumertest.MetricsSink{}
+	normalizer := newCatalyst9800NormalizingConsumer(
+		sink,
+		defaultCatalyst9800Config(),
+		newDeviceSelectionMatcher(DeviceSelectionConfig{}),
+		catalyst9800TelemetryTransportDialIn,
+		health,
+	).(*catalyst9800NormalizingConsumer)
+	normalizer.budgetLimits = finalDatapointBudgetLimits{maxAttributes: 4}
+	require.NoError(t, normalizer.ConsumeMetrics(t.Context(), decoded))
+	require.Len(t, sink.AllMetrics(), 1)
+	md := sink.AllMetrics()[0]
+
+	const name = "cisco.catalyst9800.yang.wireless_rrm_oper.rrm_oper_data.state.payload.foo_bar"
+	assert.Equal(t, 1, metricCountNamed(md, name), "colliding names must share one descriptor")
+	metric := mustFindIOSXRMetric(t, md, name)
+	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
 	dps := metric.Gauge().DataPoints()
 	require.Equal(t, 2, dps.Len())
 	paths := map[string]struct{}{}
 	for index := 0; index < dps.Len(); index++ {
-		paths[attrValue(t, dps.At(index).Attributes(), "cisco.yang.path")] = struct{}{}
+		dp := dps.At(index)
+		assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+		assert.Equal(t, encodingPath, attrValue(t, dp.Attributes(), "cisco.yang.path"))
+		assert.Equal(t, 4, dp.Attributes().Len(), "the collision identity must fit the exact final attribute budget")
+		paths[attrValue(t, dp.Attributes(), "cisco.yang.source_path")] = struct{}{}
 	}
 	assert.Equal(t, map[string]struct{}{
-		"wireless-rrm-oper:rrm-oper-data/state/foo-bar": {},
-		"wireless-rrm-oper:rrm-oper-data/state/foo_bar": {},
+		"wireless-rrm-oper:rrm-oper-data/state/payload#/foo-bar": {},
+		"wireless-rrm-oper:rrm-oper-data/state/payload#/foo_bar": {},
 	}, paths)
+	assert.Zero(t, health.snapshot().droppedDatapoints)
+}
+
+func TestCatalyst9800GNMIStructuredAndJSONPathsHaveDistinctSourceIdentity(t *testing.T) {
+	const (
+		encodingPath = "wireless-rrm-oper:rrm-oper-data/state"
+		metricName   = "cisco.catalyst9800.yang.wireless_rrm_oper.rrm_oper_data.state.foo.bar"
+		scalarSource = encodingPath + "/foo/bar"
+		jsonSource   = encodingPath + "/foo#/bar"
+	)
+	health := &catalyst9800Health{}
+	decoder := catalyst9800GNMIUpdateDecoder{
+		target: Catalyst9800TargetConfig{Name: "wlc-1"},
+		health: health,
+		limits: directGNMIDecodeLimits{
+			maxAttributes:          3,
+			maxAttributeValueBytes: len(jsonSource),
+		},
+	}
+	decoded := decoder.decodeNotification(&gnmi.Notification{
+		Prefix: mustParseIOSXRPath(t, encodingPath),
+		Update: []*gnmi.Update{
+			{
+				Path: mustParseIOSXRPath(t, "foo/bar"),
+				Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_IntVal{IntVal: 1}},
+			},
+			{
+				Path: mustParseIOSXRPath(t, "foo"),
+				Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: []byte(
+					`{"bar":2}`,
+				)}},
+			},
+		},
+	}, catalyst9800TelemetryTransportDialIn)
+	decoded.ResourceMetrics().At(0).Resource().Attributes().PutStr("cisco.encoding_path", encodingPath)
+
+	sink := &consumertest.MetricsSink{}
+	normalizer := newCatalyst9800NormalizingConsumer(
+		sink,
+		defaultCatalyst9800Config(),
+		newDeviceSelectionMatcher(DeviceSelectionConfig{}),
+		catalyst9800TelemetryTransportDialIn,
+		health,
+	).(*catalyst9800NormalizingConsumer)
+	normalizer.budgetLimits = finalDatapointBudgetLimits{maxAttributes: 4}
+	require.NoError(t, normalizer.ConsumeMetrics(t.Context(), decoded))
+	require.Len(t, sink.AllMetrics(), 1)
+
+	md := sink.AllMetrics()[0]
+	assert.Equal(t, 1, metricCountNamed(md, metricName))
+	metric := mustFindIOSXRMetric(t, md, metricName)
+	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+	dps := metric.Gauge().DataPoints()
+	require.Equal(t, 2, dps.Len())
+	values := map[string]int64{}
+	for index := 0; index < dps.Len(); index++ {
+		dp := dps.At(index)
+		assert.Equal(t, 4, dp.Attributes().Len(), "both identities must fit the exact final attribute budget")
+		assert.Equal(t, encodingPath, attrValue(t, dp.Attributes(), "cisco.yang.path"))
+		values[attrValue(t, dp.Attributes(), "cisco.yang.source_path")] = dp.IntValue()
+	}
+	assert.Equal(t, map[string]int64{scalarSource: 1, jsonSource: 2}, values)
 	assert.Zero(t, health.snapshot().droppedDatapoints)
 }
 

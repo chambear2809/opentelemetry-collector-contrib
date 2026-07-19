@@ -212,10 +212,6 @@ func TestResourceMetricsBuilderDoesNotSetGaugeStartTime(t *testing.T) {
 func TestResourceMetricsBuilderDropsNonFiniteDoubleValues(t *testing.T) {
 	builder := newMerakiMetricsBuilder(time.Unix(200, 0), newCounterStore()).orgResource("org-a")
 	builder.recordDouble("test.nan", "test", "1", math.NaN(), nil)
-	builder.recordSumDouble("test.inf_sum", "test", "1", math.Inf(1), nil)
-	builder.recordAbsoluteSumDouble("test.inf_absolute", "test", "1", math.Inf(-1), nil)
 
 	assert.NotContains(t, builder.metrics, "test.nan")
-	assert.NotContains(t, builder.metrics, "test.inf_sum")
-	assert.NotContains(t, builder.metrics, "test.inf_absolute")
 }

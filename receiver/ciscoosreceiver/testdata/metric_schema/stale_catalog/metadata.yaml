@@ -1,0 +1,3 @@
+metrics:
+  fixture.live: {}
+  fixture.stale: {}

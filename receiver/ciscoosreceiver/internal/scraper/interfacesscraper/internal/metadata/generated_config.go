@@ -1123,6 +1123,9 @@ const (
 	CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborInterface CiscoTopologyNeighborInfoMetricAttributeKey = "cisco.topology.neighbor.interface"
 	CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborPlatform  CiscoTopologyNeighborInfoMetricAttributeKey = "cisco.topology.neighbor.platform"
 	CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborAddress   CiscoTopologyNeighborInfoMetricAttributeKey = "cisco.topology.neighbor.address"
+	CiscoTopologyNeighborInfoMetricAttributeKeyNetworkPeerName                CiscoTopologyNeighborInfoMetricAttributeKey = "network.peer.name"
+	CiscoTopologyNeighborInfoMetricAttributeKeyNetworkPeerAddress             CiscoTopologyNeighborInfoMetricAttributeKey = "network.peer.address"
+	CiscoTopologyNeighborInfoMetricAttributeKeyNetworkProtocolName            CiscoTopologyNeighborInfoMetricAttributeKey = "network.protocol.name"
 )
 
 // CiscoTopologyNeighborInfoMetricConfig provides config for the cisco.topology.neighbor.info metric.
@@ -1151,9 +1154,9 @@ func (ms *CiscoTopologyNeighborInfoMetricConfig) Unmarshal(parser *confmap.Conf)
 func (ms *CiscoTopologyNeighborInfoMetricConfig) Validate() error {
 	for _, val := range ms.EnabledAttributes {
 		switch val {
-		case CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyProtocol, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkInterfaceName, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborName, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborInterface, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborPlatform, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborAddress:
+		case CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyProtocol, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkInterfaceName, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborName, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborInterface, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborPlatform, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborAddress, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkPeerName, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkPeerAddress, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkProtocolName:
 		default:
-			return fmt.Errorf("metric cisco.topology.neighbor.info doesn't have an attribute %v, valid attributes: [cisco.topology.protocol, network.interface.name, cisco.topology.neighbor.name, cisco.topology.neighbor.interface, cisco.topology.neighbor.platform, cisco.topology.neighbor.address]", val)
+			return fmt.Errorf("metric cisco.topology.neighbor.info doesn't have an attribute %v, valid attributes: [cisco.topology.protocol, network.interface.name, cisco.topology.neighbor.name, cisco.topology.neighbor.interface, cisco.topology.neighbor.platform, cisco.topology.neighbor.address, network.peer.name, network.peer.address, network.protocol.name]", val)
 		}
 	}
 
@@ -1727,7 +1730,7 @@ func DefaultMetricsConfig() MetricsConfig {
 		CiscoTopologyNeighborInfo: CiscoTopologyNeighborInfoMetricConfig{
 			Enabled:             true,
 			AggregationStrategy: AggregationStrategyAvg,
-			EnabledAttributes:   []CiscoTopologyNeighborInfoMetricAttributeKey{CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyProtocol, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkInterfaceName, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborName, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborInterface, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborPlatform, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborAddress},
+			EnabledAttributes:   []CiscoTopologyNeighborInfoMetricAttributeKey{CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyProtocol, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkInterfaceName, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborName, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborInterface, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborPlatform, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborAddress, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkPeerName, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkPeerAddress, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkProtocolName},
 		},
 		CiscoTransceiverSensor: CiscoTransceiverSensorMetricConfig{
 			Enabled:             true,

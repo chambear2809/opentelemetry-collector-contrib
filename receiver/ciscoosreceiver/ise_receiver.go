@@ -454,9 +454,9 @@ func (r *iseMetricsReceiver) finishScrape(builder *iseMetricsBuilder, _ time.Tim
 	outcome.succeeded = outcome.succeeded || pxGridOutcome.succeeded
 	rb := builder.controllerResource()
 	if availability, ok := outcome.availability(); ok {
-		rb.recordInt("ise.controller.up", "Cisco ISE API availability for this scrape.", "1", availability, nil)
+		rb.recordInt("ise.controller.up", "Whether any ISE REST, pxGrid, or Data Connect operation succeeded in the scrape.", "1", availability, nil)
 	}
-	rb.recordInt("ise.scrape.partial_success", "Whether one or more ISE endpoint families failed or were skipped during the scrape.", "1", boolToInt(partial), nil)
+	rb.recordInt("ise.scrape.partial_success", "Whether one or more ISE endpoint families failed or were skipped.", "1", boolToInt(partial), nil)
 	if lastSuccess, ok := r.success.observe(time.Now(), !partial && outcome.succeeded); ok {
 		rb.recordInt("ise.scrape.last_success", "Unix timestamp of the most recent fully successful ISE scrape.", "s", lastSuccess.Unix(), nil)
 	}
@@ -610,7 +610,7 @@ func (r *iseMetricsReceiver) scrapePxGrid(ctx context.Context, builder *iseMetri
 	}
 	if r.iseConfig.PxGrid.Streaming {
 		for _, subscription := range isePxGridSubscriptions(r.iseConfig.PxGrid.Subscriptions) {
-			builder.controllerResource().recordInt("ise.pxgrid.subscription.status", "Configured Cisco ISE pxGrid subscription status.", "1", 1, map[string]string{"ise.pxgrid.topic": isePxGridSubscriptionLabel(subscription)})
+			builder.controllerResource().recordInt("ise.pxgrid.subscription.status", "Configured pxGrid subscription status by topic.", "1", 1, map[string]string{"ise.pxgrid.topic": isePxGridSubscriptionLabel(subscription)})
 		}
 	}
 	return partial, outcome
@@ -675,12 +675,12 @@ func (r *iseMetricsReceiver) recordAPIRequestMetrics(builder *iseMetricsBuilder)
 	}
 	for _, aggregate := range aggregateAPIRequestObservations(observations) {
 		rb := builder.controllerResource()
-		rb.recordDouble("ise.api.request.duration", "Average duration of Cisco ISE API request attempts in this scrape.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
+		rb.recordDouble("ise.api.request.duration", "Average duration of ISE REST/OpenAPI/ERS/MnT and pxGrid REST request attempts within the scrape for each matching request-attribute set.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
 		if aggregate.errors > 0 {
-			rb.recordSum("ise.api.request.errors", "Cisco ISE API request errors.", "{error}", aggregate.errors, aggregate.attrs)
+			rb.recordSum("ise.api.request.errors", "ISE API request failures.", "{error}", aggregate.errors, aggregate.attrs)
 		}
 		if aggregate.rateLimited > 0 {
-			rb.recordSum("ise.api.rate_limited", "Cisco ISE API requests that were rate limited.", "{request}", aggregate.rateLimited, aggregate.attrs)
+			rb.recordSum("ise.api.rate_limited", "ISE API requests that were rate limited.", "{request}", aggregate.rateLimited, aggregate.attrs)
 		}
 	}
 }
@@ -706,10 +706,10 @@ func (r *iseMetricsReceiver) recordDataConnectMetrics(builder *iseMetricsBuilder
 			"ise.dataconnect.view":    query.View,
 			"ise.dataconnect.outcome": query.Outcome,
 		}
-		builder.controllerResource().recordDouble("ise.dataconnect.query.duration", "Duration of Cisco ISE Data Connect queries.", "s", query.Duration.Seconds(), attrs)
-		builder.controllerResource().recordInt("ise.dataconnect.query.rows", "Rows returned by Cisco ISE Data Connect queries.", "{row}", int64(query.Rows), attrs)
+		builder.controllerResource().recordDouble("ise.dataconnect.query.duration", "Duration of each Data Connect query.", "s", query.Duration.Seconds(), attrs)
+		builder.controllerResource().recordInt("ise.dataconnect.query.rows", "Rows returned from each allowlisted Data Connect view.", "{row}", int64(query.Rows), attrs)
 		if query.Outcome != "success" {
-			builder.controllerResource().recordSum("ise.dataconnect.query.errors", "Cisco ISE Data Connect query errors.", "{error}", 1, attrs)
+			builder.controllerResource().recordSum("ise.dataconnect.query.errors", "Data Connect query failures.", "{error}", 1, attrs)
 		}
 	}
 }
@@ -1149,7 +1149,7 @@ func (b *iseMetricsBuilder) recordObject(spec iseEndpointSpec, obj ise.Object) {
 	// inventory. Emitting a generic evidence row for every long-form cause would
 	// create thousands of high-cardinality metric series on every scrape.
 	if spec.operation != "mnt.failure_reasons" {
-		rb.recordInt("ise.resource.info", "Cisco ISE resource inventory and evidence information.", "1", 1, evidenceAttrs)
+		rb.recordInt("ise.resource.info", "Bounded metadata for ISE resources and evidence records.", "1", 1, evidenceAttrs)
 		recordISEStatus(rb, "ise.resource.status", "Cisco ISE resource status encoded as a numeric state.", status, withAttr(evidenceAttrs, "ise.status", status))
 	}
 	switch spec.group {
@@ -1190,7 +1190,7 @@ func (b *iseMetricsBuilder) recordObject(spec iseEndpointSpec, obj ise.Object) {
 	case "certificates":
 		b.addCount("ise.certificate.count", attrs)
 		if expiry, ok := ise.Time(obj, "expirationDate", "expiration_date", "validTo", "notAfter"); ok {
-			rb.recordInt("ise.certificate.expiration", "Cisco ISE certificate expiration time.", "s", expiry.Unix(), attrs)
+			rb.recordInt("ise.certificate.expiration", "Certificate expiration Unix timestamp.", "s", expiry.Unix(), attrs)
 		}
 	case "licensing":
 		b.addCount("ise.license.count", withAttr(attrs, "ise.status", status))
@@ -1211,17 +1211,17 @@ func (b *iseMetricsBuilder) recordSessionObject(rb *resourceMetricsBuilder, spec
 	switch spec.operation {
 	case "mnt.session.active_count":
 		if hasCount {
-			rb.recordDouble("ise.session.active.count", "Cisco ISE active session count.", "{session}", count, evidenceAttrs)
+			rb.recordDouble("ise.session.active.count", "Active session counters from MnT.", "{session}", count, evidenceAttrs)
 		}
 		return
 	case "mnt.session.posture_count":
 		if hasCount {
-			rb.recordInt("ise.endpoint.posture.count", "Cisco ISE active posture session count.", "{item}", int64(count), evidenceAttrs)
+			rb.recordInt("ise.endpoint.posture.count", "Endpoint posture records by bounded posture status.", "{item}", int64(count), evidenceAttrs)
 		}
 		return
 	case "mnt.session.profiler_count":
 		if hasCount {
-			rb.recordInt("ise.endpoint.profile.count", "Cisco ISE active profiler session count.", "{item}", int64(count), evidenceAttrs)
+			rb.recordInt("ise.endpoint.profile.count", "Endpoint profiler records by bounded object type.", "{item}", int64(count), evidenceAttrs)
 		}
 		return
 	}
@@ -1255,7 +1255,7 @@ func recordISEAuthFailureObject(rb *resourceMetricsBuilder, spec iseEndpointSpec
 		"ise.object.type":  spec.objectType,
 		"ise.message.code": code,
 	}
-	rb.recordInt("ise.auth.failure.reason.info", "Cisco ISE authentication failure reason reference.", "1", 1, reasonAttrs)
+	rb.recordInt("ise.auth.failure.reason.info", "Bounded authentication-failure reason evidence.", "1", 1, reasonAttrs)
 }
 
 func (b *iseMetricsBuilder) recordAuthenticationFailure(obj ise.Object, attrs map[string]string) {
@@ -1275,7 +1275,7 @@ func (b *iseMetricsBuilder) recordAuthenticationFailure(obj ise.Object, attrs ma
 func (b *iseMetricsBuilder) recordPxGridObject(rb *resourceMetricsBuilder, spec iseEndpointSpec, obj ise.Object, attrs, evidenceAttrs map[string]string) {
 	switch spec.operation {
 	case "pxgrid.service_lookup":
-		rb.recordInt("ise.pxgrid.service.status", "Cisco ISE pxGrid service lookup status.", "1", 1, evidenceAttrs)
+		rb.recordInt("ise.pxgrid.service.status", "pxGrid service lookup and pxGrid Cloud/Direct status.", "1", 1, evidenceAttrs)
 	case "pxgrid.session.get_sessions":
 		b.addCount("ise.pxgrid.message.count", attrs)
 		b.recordSessionEvidence(rb, obj, attrs, evidenceAttrs)
@@ -1333,7 +1333,7 @@ func (b *iseMetricsBuilder) recordEndpointError(spec iseEndpointSpec, err error)
 		"ise.api.path":      iseMetricAPIPath(spec.operation, spec.path),
 		"ise.error.kind":    classifyISEError(err),
 	}
-	b.controllerResource().recordSum("ise.api.endpoint.error", "Cisco ISE endpoint scrape error.", "{error}", 1, attrs)
+	b.controllerResource().recordSum("ise.api.endpoint.error", "Endpoint-family scrape failures.", "{error}", 1, attrs)
 	if ise.IsUnavailable(err) {
 		b.recordServiceUnavailable(spec.group, spec.operation, err)
 	}
@@ -1353,7 +1353,7 @@ func iseMetricAPIPath(operation, path string) string {
 }
 
 func (b *iseMetricsBuilder) recordServiceUnavailable(group, operation string, err error) {
-	b.controllerResource().recordInt("ise.service.unavailable", "Cisco ISE service endpoint unavailable, disabled, unauthorized, or not installed.", "1", 1, map[string]string{
+	b.controllerResource().recordInt("ise.service.unavailable", "ISE API, pxGrid, or Data Connect service unavailable, disabled, unauthorized, or not installed.", "1", 1, map[string]string{
 		"ise.group":         group,
 		"ise.api.operation": operation,
 		"ise.error.kind":    classifyISEError(err),
@@ -1361,7 +1361,7 @@ func (b *iseMetricsBuilder) recordServiceUnavailable(group, operation string, er
 }
 
 func (b *iseMetricsBuilder) recordServiceSkipped(group, operation, reason string) {
-	b.controllerResource().recordInt("ise.service.skipped", "Cisco ISE endpoint skipped because required service, target, or credentials are absent.", "1", 1, map[string]string{
+	b.controllerResource().recordInt("ise.service.skipped", "ISE service or endpoint family skipped because required target scope was not configured.", "1", 1, map[string]string{
 		"ise.group":         group,
 		"ise.api.operation": operation,
 		"ise.skip.reason":   reason,

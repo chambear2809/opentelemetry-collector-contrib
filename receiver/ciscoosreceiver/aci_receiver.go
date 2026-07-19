@@ -301,7 +301,7 @@ func (r *aciMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 				}
 				partial = true
 				r.settings.Logger.Warn("ACI endpoint failed", zap.String("controller", client.ControllerName()), zap.String("operation", endpoint.operation), zap.Error(err))
-				builder.controllerResource(client.ControllerName(), client.Endpoint()).recordSum("aci.api.endpoint.error", "APIC endpoint scrape error.", "{error}", 1, map[string]string{
+				builder.controllerResource(client.ControllerName(), client.Endpoint()).recordSum("aci.api.endpoint.error", "APIC class or endpoint-family scrape failures.", "{error}", 1, map[string]string{
 					"aci.api.operation": endpoint.operation,
 					"aci.class":         endpoint.className,
 					"aci.error.kind":    classifyACIError(err),
@@ -328,7 +328,7 @@ func (r *aciMetricsReceiver) finishScrape(builder *aciMetricsBuilder, _ time.Tim
 		}
 		outcome := summarizeAPIOutcomes(controllerStats, func(stat aci.RequestStat) string { return stat.Outcome })
 		if availability, ok := outcome.availability(); ok {
-			builder.controllerResource(client.ControllerName(), client.Endpoint()).recordInt("aci.controller.up", "APIC controller API availability for this scrape.", "1", availability, nil)
+			builder.controllerResource(client.ControllerName(), client.Endpoint()).recordInt("aci.controller.up", "Whether an APIC controller API was reachable for the scrape.", "1", availability, nil)
 		}
 	}
 
@@ -336,7 +336,7 @@ func (r *aciMetricsReceiver) finishScrape(builder *aciMetricsBuilder, _ time.Tim
 	rb := builder.globalResource()
 	rb.recordInt("aci.scrape.partial_success", "Whether one or more APIC endpoint families failed during the scrape.", "1", boolToInt(partial), nil)
 	if lastSuccess, ok := r.success.observe(time.Now(), !partial && overall.succeeded); ok {
-		rb.recordInt("aci.scrape.last_success", "Unix timestamp of the most recent fully successful ACI scrape.", "s", lastSuccess.Unix(), nil)
+		rb.recordInt("aci.scrape.last_success", "Unix timestamp of the most recent fully successful APIC scrape.", "s", lastSuccess.Unix(), nil)
 	}
 	builder.flushCounts()
 	return builder.emit()
@@ -374,12 +374,12 @@ func (r *aciMetricsReceiver) recordAPIRequestMetrics(builder *aciMetricsBuilder)
 	}
 	for _, aggregate := range aggregateAPIRequestObservations(observations) {
 		rb := builder.controllerResource(aggregate.resource, "")
-		rb.recordDouble("aci.api.request.duration", "Average duration of APIC API request attempts in this scrape.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
+		rb.recordDouble("aci.api.request.duration", "Average duration of APIC API request attempts within the scrape for each matching request-attribute set.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
 		if aggregate.errors > 0 {
-			rb.recordSum("aci.api.request.errors", "APIC API request errors.", "{error}", aggregate.errors, aggregate.attrs)
+			rb.recordSum("aci.api.request.errors", "APIC API request failures.", "{error}", aggregate.errors, aggregate.attrs)
 		}
 		if aggregate.rateLimited > 0 {
-			rb.recordSum("aci.api.rate_limited", "APIC API requests that were rate limited.", "{request}", aggregate.rateLimited, aggregate.attrs)
+			rb.recordSum("aci.api.rate_limited", "APIC requests that received HTTP 429.", "{request}", aggregate.rateLimited, aggregate.attrs)
 		}
 	}
 }
@@ -648,9 +648,9 @@ func (b *aciMetricsBuilder) recordObject(controllerName, controllerEndpoint stri
 		"aci.status":        status,
 		"aci.severity":      severity,
 	})
-	rb.recordInt("aci.resource.info", "ACI managed object metadata.", "1", 1, attrs)
+	rb.recordInt("aci.resource.info", "Bounded metadata for APIC managed objects.", "1", 1, attrs)
 	if code, ok := statusCode(status); ok {
-		rb.recordInt("aci.resource.status", "ACI managed object status encoded for troubleshooting.", "1", code, attrs)
+		rb.recordInt("aci.resource.status", "Encoded APIC object status with original state attributes.", "1", code, attrs)
 	}
 	b.addCount("aci.resource.count", attrs)
 	evidenceAttrs := compactAttrs(map[string]string{
@@ -686,7 +686,7 @@ func (b *aciMetricsBuilder) recordObject(controllerName, controllerEndpoint stri
 func (*aciMetricsBuilder) recordFabricObject(rb *resourceMetricsBuilder, obj aci.Object, status string) {
 	if aci.String(obj, "serial") != "" || aci.String(obj, "nodeId", "id") != "" {
 		if up, ok := upStatus(status); ok {
-			rb.recordInt("cisco.device.up", "ACI node availability reported by APIC.", "1", up, nil)
+			rb.recordInt("cisco.device.up", "Device availability (1 = up, 0 = down)", "1", up, nil)
 		}
 	}
 	recordACIFirstNumeric(rb, obj, []string{"cur", "health", "healthScore"}, "aci.fabric.health", "ACI fabric, pod, node, or tenant health score.", "1", nil, 1)
@@ -699,7 +699,7 @@ func (b *aciMetricsBuilder) recordFaultObject(rb *resourceMetricsBuilder, obj ac
 		"aci.fault.domain":   aci.String(obj, "domain"),
 		"aci.fault.type":     aci.String(obj, "type"),
 	})
-	rb.recordInt("aci.fault.active", "Active APIC fault.", "1", 1, attrs)
+	rb.recordInt("aci.fault.active", "Active APIC fault instance.", "1", 1, attrs)
 	b.addCount("aci.fault.count", attrs)
 }
 
@@ -708,7 +708,7 @@ func (*aciMetricsBuilder) recordStatsObject(rb *resourceMetricsBuilder, obj aci.
 		attrs := interfaceAttrs(ifName, "", aci.String(obj, "descr"), aci.String(obj, "speed", "ethpmCfgSpeed"))
 		if status := aciObjectStatus(obj); status != "" {
 			if up, ok := upStatus(status); ok {
-				rb.recordInt("system.network.interface.status", "ACI interface operational status.", "1", up, attrs)
+				rb.recordInt("system.network.interface.status", "Interface operational status (1 = up, 0 = down)", "1", up, attrs)
 			}
 		}
 		switch strings.ToLower(aci.String(obj, "aci.class")) {
@@ -757,7 +757,7 @@ func recordACIMemoryUtilization(rb *resourceMetricsBuilder, obj aci.Object) {
 	if math.IsNaN(total) || math.IsInf(total, 0) || total <= 0 || used > total {
 		return
 	}
-	rb.recordDouble("system.memory.utilization", "Memory utilization as a ratio from APIC usedLast and totalLast.", "1", used/total, map[string]string{"system.memory.state": "used"})
+	rb.recordDouble("system.memory.utilization", "Ratio of memory bytes in use, from 0 to 1.", "1", used/total, map[string]string{"system.memory.state": "used"})
 }
 
 func recordACIEquipmentInterfaceStats(rb *resourceMetricsBuilder, obj aci.Object, attrs map[string]string, direction string) {
@@ -781,7 +781,7 @@ func (b *aciMetricsBuilder) recordEndpointObject(rb *resourceMetricsBuilder, obj
 		"aci.endpoint.ip":  aci.String(obj, "ip"),
 		"aci.endpoint.dn":  aci.String(obj, "dn"),
 	})
-	rb.recordInt("aci.endpoint.present", "Endpoint observed by APIC.", "1", 1, attrs)
+	rb.recordInt("aci.endpoint.present", "Endpoint MAC/IP presence.", "1", 1, attrs)
 	b.addCount("aci.endpoint.count", map[string]string{
 		"aci.tenant": tenantFromACIDN(aci.String(obj, "dn")),
 		"aci.epg":    epgFromACIDN(aci.String(obj, "dn")),
@@ -800,13 +800,23 @@ func (b *aciMetricsBuilder) recordTenantObject(rb *resourceMetricsBuilder, obj a
 }
 
 func (*aciMetricsBuilder) recordTopologyObject(rb *resourceMetricsBuilder, obj aci.Object) {
+	protocol := topologyProtocol(aci.String(obj, "aci.class"))
+	legacyPeerName := aci.String(obj, "sysName", "chassisIdV", "portIdV", "name")
+	neighborAddress := aci.String(obj, "mgmtIp", "mgmtPortMac", "mac")
 	attrs := compactAttrs(map[string]string{
-		"network.interface.name": interfaceNameFromACIDN(aci.String(obj, "dn", "id")),
-		"network.peer.name":      aci.String(obj, "sysName", "chassisIdV", "portIdV", "name"),
-		"network.peer.address":   aci.String(obj, "mgmtIp", "mgmtPortMac", "mac"),
-		"network.protocol.name":  topologyProtocol(aci.String(obj, "aci.class")),
+		// Keep the legacy network.* vocabulary for compatibility while exposing
+		// the more specific bounded topology attributes alongside it.
+		"network.peer.name":                 legacyPeerName,
+		"network.peer.address":              neighborAddress,
+		"network.protocol.name":             protocol,
+		"cisco.topology.protocol":           protocol,
+		"network.interface.name":            interfaceNameFromACIDN(aci.String(obj, "dn", "id")),
+		"cisco.topology.neighbor.name":      aci.String(obj, "sysName", "chassisIdV", "name"),
+		"cisco.topology.neighbor.interface": aci.String(obj, "portIdV", "portId", "portDesc"),
+		"cisco.topology.neighbor.platform":  aci.String(obj, "platform", "sysDesc"),
+		"cisco.topology.neighbor.address":   neighborAddress,
 	})
-	rb.recordInt("cisco.topology.neighbor.info", "ACI topology neighbor information.", "1", 1, attrs)
+	rb.recordInt("cisco.topology.neighbor.info", "LLDP, CDP, and fabric-link neighbor information.", "1", 1, attrs)
 }
 
 func (b *aciMetricsBuilder) addCount(name string, attrs map[string]string) {

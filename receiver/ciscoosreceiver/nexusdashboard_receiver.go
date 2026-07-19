@@ -348,7 +348,7 @@ func (r *nexusDashboardMetricsReceiver) finishScrape(builder *nexusDashboardMetr
 	r.statsMu.Unlock()
 	outcome := summarizeAPIOutcomes(stats, func(stat nexusdashboard.RequestStat) string { return stat.Outcome })
 	rb := builder.controllerResource()
-	rb.recordInt("nexus_dashboard.scrape.partial_success", "Whether one or more Nexus Dashboard endpoint families failed or were skipped during the scrape.", "1", boolToInt(partial), nil)
+	rb.recordInt("nexus_dashboard.scrape.partial_success", "Whether one or more endpoint families failed or were skipped.", "1", boolToInt(partial), nil)
 	if lastSuccess, ok := r.success.observe(time.Now(), !partial && outcome.succeeded); ok {
 		rb.recordInt("nexus_dashboard.scrape.last_success", "Unix timestamp of the most recent fully successful Nexus Dashboard scrape.", "s", lastSuccess.Unix(), nil)
 	}
@@ -387,12 +387,12 @@ func (r *nexusDashboardMetricsReceiver) recordAPIRequestMetrics(builder *nexusDa
 	}
 	for _, aggregate := range aggregateAPIRequestObservations(observations) {
 		rb := builder.controllerResource()
-		rb.recordDouble("nexus_dashboard.api.request.duration", "Average duration of Nexus Dashboard API request attempts in this scrape.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
+		rb.recordDouble("nexus_dashboard.api.request.duration", "Average duration of Nexus Dashboard API request attempts within the scrape for each matching request-attribute set.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
 		if aggregate.errors > 0 {
-			rb.recordSum("nexus_dashboard.api.request.errors", "Nexus Dashboard API request errors.", "{error}", aggregate.errors, aggregate.attrs)
+			rb.recordSum("nexus_dashboard.api.request.errors", "Nexus Dashboard API request failures.", "{error}", aggregate.errors, aggregate.attrs)
 		}
 		if aggregate.rateLimited > 0 {
-			rb.recordSum("nexus_dashboard.api.rate_limited", "Nexus Dashboard API requests that were rate limited.", "{request}", aggregate.rateLimited, aggregate.attrs)
+			rb.recordSum("nexus_dashboard.api.rate_limited", "Requests that received HTTP 429.", "{request}", aggregate.rateLimited, aggregate.attrs)
 		}
 	}
 }
@@ -619,9 +619,9 @@ func (b *nexusDashboardMetricsBuilder) recordObject(endpoint nexusDashboardEndpo
 		"nexus_dashboard.status":        status,
 		"nexus_dashboard.severity":      severity,
 	})
-	rb.recordInt("nexus_dashboard.resource.info", "Nexus Dashboard resource metadata.", "1", 1, attrs)
+	rb.recordInt("nexus_dashboard.resource.info", "Bounded metadata for controller resources.", "1", 1, attrs)
 	if code, ok := statusCode(status); ok {
-		rb.recordInt("nexus_dashboard.resource.status", "Nexus Dashboard resource status encoded for troubleshooting.", "1", code, attrs)
+		rb.recordInt("nexus_dashboard.resource.status", "Encoded status with the original status string retained as an attribute.", "1", code, attrs)
 	}
 	b.addCount("nexus_dashboard.resource.count", attrs)
 	evidenceAttrs := compactAttrs(map[string]string{
@@ -657,7 +657,7 @@ func (b *nexusDashboardMetricsBuilder) recordObject(endpoint nexusDashboardEndpo
 
 func (*nexusDashboardMetricsBuilder) recordPlatformObject(rb *resourceMetricsBuilder, obj nexusdashboard.Object, status string) {
 	if code, ok := statusCode(status); ok {
-		rb.recordInt("nexus_dashboard.service.health", "Nexus Dashboard platform, node, service, license, and storage health.", "1", code, map[string]string{
+		rb.recordInt("nexus_dashboard.service.health", "Encoded Nexus Dashboard service health.", "1", code, map[string]string{
 			"nd.service.name": nexusdashboard.String(obj, "serviceName", "appName", "featureName", "name"),
 			"nd.node.name":    nexusdashboard.String(obj, "nodeName", "hostName", "name"),
 			"nd.status":       status,
@@ -671,7 +671,7 @@ func (*nexusDashboardMetricsBuilder) recordPlatformObject(rb *resourceMetricsBui
 func (*nexusDashboardMetricsBuilder) recordNDFCObject(rb *resourceMetricsBuilder, obj nexusdashboard.Object, status string) {
 	if looksLikeSwitch(obj) {
 		if up, ok := upStatus(status); ok {
-			rb.recordInt("cisco.device.up", "Nexus switch availability reported by Nexus Dashboard or NDFC.", "1", up, nil)
+			rb.recordInt("cisco.device.up", "Device availability (1 = up, 0 = down)", "1", up, nil)
 		}
 	}
 	recordNexusDashboardFirstNumeric(rb, obj, []string{"health", "healthScore"}, "nexus_dashboard.fabric.health", "Fabric or switch health score reported by NDFC.", "1", nil, 1)
@@ -686,7 +686,7 @@ func (b *nexusDashboardMetricsBuilder) recordInsightsObject(rb *resourceMetricsB
 		"nexus_dashboard.insights.severity": severity,
 		"nexus_dashboard.insights.category": nexusdashboard.String(obj, "category", "type", "anomalyType"),
 	})
-	rb.recordInt("nexus_dashboard.insights.anomaly.active", "Active Nexus Dashboard Insights anomaly or advisory.", "1", 1, attrs)
+	rb.recordInt("nexus_dashboard.insights.anomaly.active", "Active Insights anomaly or advisory.", "1", 1, attrs)
 	b.addCount("nexus_dashboard.insights.anomaly.count", attrs)
 	recordNexusDashboardNumeric(rb, obj, "score", "nexus_dashboard.insights.score", "Insights site, fabric, anomaly, or advisory score.", "1", attrs, 1)
 	recordNexusDashboardNumeric(rb, obj, "confidence", "nexus_dashboard.insights.confidence", "Insights root-cause confidence.", "1", attrs, 0.01)
@@ -718,7 +718,7 @@ func (*nexusDashboardMetricsBuilder) recordPerformanceObject(rb *resourceMetrics
 		attrs := interfaceAttrs(ifName, nexusdashboard.String(obj, "macAddress"), nexusdashboard.String(obj, "description", "descr"), nexusdashboard.String(obj, "speed"))
 		if status := nexusDashboardObjectStatus(obj); status != "" {
 			if up, ok := upStatus(status); ok {
-				rb.recordInt("system.network.interface.status", "Interface operational status reported by Nexus Dashboard or NDFC.", "1", up, attrs)
+				rb.recordInt("system.network.interface.status", "Interface operational status (1 = up, 0 = down)", "1", up, attrs)
 			}
 		}
 		recordNexusDashboardNumeric(rb, obj, "rxRate", "cisco.interface.io.rate", "Interface traffic rate.", "bit/s", withAttr(attrs, "network.io.direction", "receive"), 1)
@@ -736,7 +736,7 @@ func (b *nexusDashboardMetricsBuilder) recordSkippedEndpoint(endpoint nexusDashb
 		"nexus_dashboard.skip.reason":   "missing_target_filter",
 	})
 	maps.Copy(attrs, endpoint.attrs)
-	b.controllerResource().recordInt("nexus_dashboard.service.skipped", "Nexus Dashboard service or target-specific endpoint skipped because the required app or target filter was unavailable.", "1", 1, attrs)
+	b.controllerResource().recordInt("nexus_dashboard.service.skipped", "ND endpoint family skipped because target scope was not configured.", "1", 1, attrs)
 }
 
 func (b *nexusDashboardMetricsBuilder) recordFailedEndpoint(endpoint nexusDashboardEndpointInstance, err error) {
@@ -751,11 +751,11 @@ func (b *nexusDashboardMetricsBuilder) recordFailedEndpoint(endpoint nexusDashbo
 	if errors.As(err, &apiErr) {
 		attrs["http.response.status_code"] = strconv.Itoa(apiErr.StatusCode)
 		if apiErr.StatusCode == http.StatusNotFound || apiErr.StatusCode == http.StatusForbidden {
-			b.controllerResource().recordInt("nexus_dashboard.service.unavailable", "Nexus Dashboard service endpoint unavailable, disabled, unauthorized, or not installed.", "1", 1, attrs)
+			b.controllerResource().recordInt("nexus_dashboard.service.unavailable", "ND service endpoint unavailable, disabled, unauthorized, or not installed.", "1", 1, attrs)
 			return
 		}
 	}
-	b.controllerResource().recordSum("nexus_dashboard.api.endpoint.error", "Nexus Dashboard endpoint scrape error.", "{error}", 1, attrs)
+	b.controllerResource().recordSum("nexus_dashboard.api.endpoint.error", "Endpoint-family scrape failures.", "{error}", 1, attrs)
 }
 
 func (b *nexusDashboardMetricsBuilder) addCount(name string, attrs map[string]string) {

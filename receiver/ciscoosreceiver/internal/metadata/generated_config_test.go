@@ -26,6 +26,207 @@ func TestMetricsBuilderConfig(t *testing.T) {
 			name: "all_set",
 			want: MetricsBuilderConfig{
 				Metrics: MetricsConfig{
+					AciAPIEndpointError: AciAPIEndpointErrorMetricConfig{
+						Enabled: true,
+					},
+					AciAPIRateLimited: AciAPIRateLimitedMetricConfig{
+						Enabled: true,
+					},
+					AciAPIRequestDuration: AciAPIRequestDurationMetricConfig{
+						Enabled: true,
+					},
+					AciAPIRequestErrors: AciAPIRequestErrorsMetricConfig{
+						Enabled: true,
+					},
+					AciAuditRecordCount: AciAuditRecordCountMetricConfig{
+						Enabled: true,
+					},
+					AciControllerUp: AciControllerUpMetricConfig{
+						Enabled: true,
+					},
+					AciEndpointCount: AciEndpointCountMetricConfig{
+						Enabled: true,
+					},
+					AciEndpointPresent: AciEndpointPresentMetricConfig{
+						Enabled: true,
+					},
+					AciEventCount: AciEventCountMetricConfig{
+						Enabled: true,
+					},
+					AciFabricHealth: AciFabricHealthMetricConfig{
+						Enabled: true,
+					},
+					AciFaultActive: AciFaultActiveMetricConfig{
+						Enabled: true,
+					},
+					AciFaultCount: AciFaultCountMetricConfig{
+						Enabled: true,
+					},
+					AciResourceCount: AciResourceCountMetricConfig{
+						Enabled: true,
+					},
+					AciResourceInfo: AciResourceInfoMetricConfig{
+						Enabled: true,
+					},
+					AciResourceStatus: AciResourceStatusMetricConfig{
+						Enabled: true,
+					},
+					AciScrapeLastSuccess: AciScrapeLastSuccessMetricConfig{
+						Enabled: true,
+					},
+					AciScrapePartialSuccess: AciScrapePartialSuccessMetricConfig{
+						Enabled: true,
+					},
+					AciTenantObjectCount: AciTenantObjectCountMetricConfig{
+						Enabled: true,
+					},
+					AciTenantStatus: AciTenantStatusMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterAPIRateLimited: CatalystCenterAPIRateLimitedMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterAPIRequestDuration: CatalystCenterAPIRequestDurationMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterAPIRequestErrors: CatalystCenterAPIRequestErrorsMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterClientCount: CatalystCenterClientCountMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterClientDetailHealthScore: CatalystCenterClientDetailHealthScoreMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterClientHealthScore: CatalystCenterClientHealthScoreMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterClientIssueCount: CatalystCenterClientIssueCountMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterClientNetworkIo: CatalystCenterClientNetworkIoMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterClientUniqueCount: CatalystCenterClientUniqueCountMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterClientWirelessRssi: CatalystCenterClientWirelessRssiMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterClientWirelessSnr: CatalystCenterClientWirelessSnrMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterDeviceCollectionStatus: CatalystCenterDeviceCollectionStatusMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterDeviceDetailCommunicationStatus: CatalystCenterDeviceDetailCommunicationStatusMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterDeviceDetailHealthScore: CatalystCenterDeviceDetailHealthScoreMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterDeviceInterfaceCount: CatalystCenterDeviceInterfaceCountMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterDeviceReachabilityStatus: CatalystCenterDeviceReachabilityStatusMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterDeviceUptime: CatalystCenterDeviceUptimeMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterInterfaceCount: CatalystCenterInterfaceCountMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterInventoryDeviceCount: CatalystCenterInventoryDeviceCountMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterIssueActiveCount: CatalystCenterIssueActiveCountMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterIssueCount: CatalystCenterIssueCountMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterNetworkDeviceCount: CatalystCenterNetworkDeviceCountMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterNetworkHealthCategoryScore: CatalystCenterNetworkHealthCategoryScoreMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterNetworkHealthEntityCount: CatalystCenterNetworkHealthEntityCountMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterNetworkHealthEntityScore: CatalystCenterNetworkHealthEntityScoreMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterNetworkHealthScore: CatalystCenterNetworkHealthScoreMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterScrapeLastSuccess: CatalystCenterScrapeLastSuccessMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterScrapePartialSuccess: CatalystCenterScrapePartialSuccessMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterSiteClientCount: CatalystCenterSiteClientCountMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterSiteClientHealthPercentage: CatalystCenterSiteClientHealthPercentageMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterSiteHealthCount: CatalystCenterSiteHealthCountMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterSiteIssueCount: CatalystCenterSiteIssueCountMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterSiteNetworkDeviceCount: CatalystCenterSiteNetworkDeviceCountMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterSiteNetworkDeviceHealthPercentage: CatalystCenterSiteNetworkDeviceHealthPercentageMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterTopologyLinkCount: CatalystCenterTopologyLinkCountMetricConfig{
+						Enabled: true,
+					},
+					CatalystCenterTopologyNodeCount: CatalystCenterTopologyNodeCountMetricConfig{
+						Enabled: true,
+					},
+					CiscoCatalyst9800ReceiverActiveSubscriptions: CiscoCatalyst9800ReceiverActiveSubscriptionsMetricConfig{
+						Enabled: true,
+					},
+					CiscoCatalyst9800ReceiverCompactGpbPayloads: CiscoCatalyst9800ReceiverCompactGpbPayloadsMetricConfig{
+						Enabled: true,
+					},
+					CiscoCatalyst9800ReceiverDecodeErrors: CiscoCatalyst9800ReceiverDecodeErrorsMetricConfig{
+						Enabled: true,
+					},
+					CiscoCatalyst9800ReceiverDroppedDatapoints: CiscoCatalyst9800ReceiverDroppedDatapointsMetricConfig{
+						Enabled: true,
+					},
+					CiscoCatalyst9800ReceiverLastSuccessTimestamp: CiscoCatalyst9800ReceiverLastSuccessTimestampMetricConfig{
+						Enabled: true,
+					},
+					CiscoCatalyst9800ReceiverReconnects: CiscoCatalyst9800ReceiverReconnectsMetricConfig{
+						Enabled: true,
+					},
+					CiscoCatalyst9800ReceiverTargetLastSuccessTimestamp: CiscoCatalyst9800ReceiverTargetLastSuccessTimestampMetricConfig{
+						Enabled: true,
+					},
+					CiscoCatalyst9800ReceiverTargetReconnects: CiscoCatalyst9800ReceiverTargetReconnectsMetricConfig{
+						Enabled: true,
+					},
+					CiscoCatalyst9800ReceiverTargetSubscriptionActive: CiscoCatalyst9800ReceiverTargetSubscriptionActiveMetricConfig{
+						Enabled: true,
+					},
+					CiscoCatalyst9800ReceiverTargetUpdates: CiscoCatalyst9800ReceiverTargetUpdatesMetricConfig{
+						Enabled: true,
+					},
+					CiscoCatalyst9800ReceiverUnsupportedPaths: CiscoCatalyst9800ReceiverUnsupportedPathsMetricConfig{
+						Enabled: true,
+					},
+					CiscoCatalyst9800ReceiverUpdates: CiscoCatalyst9800ReceiverUpdatesMetricConfig{
+						Enabled: true,
+					},
 					CiscoDeviceUp: CiscoDeviceUpMetricConfig{
 						Enabled: true,
 					},
@@ -33,6 +234,9 @@ func TestMetricsBuilderConfig(t *testing.T) {
 						Enabled:             true,
 						AggregationStrategy: AggregationStrategyAvg,
 						EnabledAttributes:   []CiscoInterfaceAdminStatusMetricAttributeKey{CiscoInterfaceAdminStatusMetricAttributeKeyNetworkInterfaceName},
+					},
+					CiscoInterfaceDropRate: CiscoInterfaceDropRateMetricConfig{
+						Enabled: true,
 					},
 					CiscoInterfaceIoRate: CiscoInterfaceIoRateMetricConfig{
 						Enabled:             true,
@@ -53,6 +257,42 @@ func TestMetricsBuilderConfig(t *testing.T) {
 						Enabled:             true,
 						AggregationStrategy: AggregationStrategyAvg,
 						EnabledAttributes:   []CiscoInterfaceUtilizationMetricAttributeKey{CiscoInterfaceUtilizationMetricAttributeKeyNetworkIoDirection, CiscoInterfaceUtilizationMetricAttributeKeyNetworkInterfaceName},
+					},
+					CiscoIosxrReceiverActiveSubscriptions: CiscoIosxrReceiverActiveSubscriptionsMetricConfig{
+						Enabled: true,
+					},
+					CiscoIosxrReceiverCompactGpbPayloads: CiscoIosxrReceiverCompactGpbPayloadsMetricConfig{
+						Enabled: true,
+					},
+					CiscoIosxrReceiverDecodeErrors: CiscoIosxrReceiverDecodeErrorsMetricConfig{
+						Enabled: true,
+					},
+					CiscoIosxrReceiverDroppedDatapoints: CiscoIosxrReceiverDroppedDatapointsMetricConfig{
+						Enabled: true,
+					},
+					CiscoIosxrReceiverLastSuccessTimestamp: CiscoIosxrReceiverLastSuccessTimestampMetricConfig{
+						Enabled: true,
+					},
+					CiscoIosxrReceiverReconnects: CiscoIosxrReceiverReconnectsMetricConfig{
+						Enabled: true,
+					},
+					CiscoIosxrReceiverTargetLastSuccessTimestamp: CiscoIosxrReceiverTargetLastSuccessTimestampMetricConfig{
+						Enabled: true,
+					},
+					CiscoIosxrReceiverTargetReconnects: CiscoIosxrReceiverTargetReconnectsMetricConfig{
+						Enabled: true,
+					},
+					CiscoIosxrReceiverTargetSubscriptionActive: CiscoIosxrReceiverTargetSubscriptionActiveMetricConfig{
+						Enabled: true,
+					},
+					CiscoIosxrReceiverTargetUpdates: CiscoIosxrReceiverTargetUpdatesMetricConfig{
+						Enabled: true,
+					},
+					CiscoIosxrReceiverUnsupportedPaths: CiscoIosxrReceiverUnsupportedPathsMetricConfig{
+						Enabled: true,
+					},
+					CiscoIosxrReceiverUpdates: CiscoIosxrReceiverUpdatesMetricConfig{
+						Enabled: true,
 					},
 					CiscoOpticsEsnr: CiscoOpticsEsnrMetricConfig{
 						Enabled:             true,
@@ -108,6 +348,884 @@ func TestMetricsBuilderConfig(t *testing.T) {
 						Enabled:             true,
 						AggregationStrategy: AggregationStrategyAvg,
 						EnabledAttributes:   []CiscoOpticsVoltageMetricAttributeKey{CiscoOpticsVoltageMetricAttributeKeyNetworkInterfaceName, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsLane, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsExperimental},
+					},
+					CiscoScrapePartialSuccess: CiscoScrapePartialSuccessMetricConfig{
+						Enabled: true,
+					},
+					CiscoTopologyNeighborInfo: CiscoTopologyNeighborInfoMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoTopologyNeighborInfoMetricAttributeKey{CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyProtocol, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkInterfaceName, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborName, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborInterface, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborPlatform, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborAddress, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkPeerName, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkPeerAddress, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkProtocolName},
+					},
+					CiscoTransceiverSensor: CiscoTransceiverSensorMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcApCapwapEncryptionEnabled: CiscoWlcApCapwapEncryptionEnabledMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcApCapwapState: CiscoWlcApCapwapStateMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcApDisconnect: CiscoWlcApDisconnectMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcApDisconnectReasonInfo: CiscoWlcApDisconnectReasonInfoMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcApJoinFailureReasonInfo: CiscoWlcApJoinFailureReasonInfoMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcApJoinStatus: CiscoWlcApJoinStatusMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcAuthRadiusAccessAcceptCount: CiscoWlcAuthRadiusAccessAcceptCountMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcAuthRadiusAccessRejectCount: CiscoWlcAuthRadiusAccessRejectCountMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcAuthRadiusBadAuthenticatorCount: CiscoWlcAuthRadiusBadAuthenticatorCountMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcAuthRadiusResponseCount: CiscoWlcAuthRadiusResponseCountMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcAuthRadiusResponseDelayAvg: CiscoWlcAuthRadiusResponseDelayAvgMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcAuthRadiusResponseDelayMax: CiscoWlcAuthRadiusResponseDelayMaxMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcAuthRadiusTimeoutCount: CiscoWlcAuthRadiusTimeoutCountMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcClientAuthFailureReasonInfo: CiscoWlcClientAuthFailureReasonInfoMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcClientConnectionState: CiscoWlcClientConnectionStateMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcClientNetworkIo: CiscoWlcClientNetworkIoMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcClientNetworkPackets: CiscoWlcClientNetworkPacketsMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcClientRoamCount: CiscoWlcClientRoamCountMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcClientRoamFailureCount: CiscoWlcClientRoamFailureCountMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcClientRoamTypeInfo: CiscoWlcClientRoamTypeInfoMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcClientWirelessRssi: CiscoWlcClientWirelessRssiMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcClientWirelessSnr: CiscoWlcClientWirelessSnrMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcControllerCPUUtilization: CiscoWlcControllerCPUUtilizationMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcControllerMemoryBytes: CiscoWlcControllerMemoryBytesMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcControllerReceiverActiveSubscriptions: CiscoWlcControllerReceiverActiveSubscriptionsMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcControllerReceiverDecodeErrors: CiscoWlcControllerReceiverDecodeErrorsMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcControllerReceiverSubscriptionActive: CiscoWlcControllerReceiverSubscriptionActiveMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcControllerReceiverUpdates: CiscoWlcControllerReceiverUpdatesMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcHaEnabled: CiscoWlcHaEnabledMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcHaStandbyFailureCount: CiscoWlcHaStandbyFailureCountMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcHaState: CiscoWlcHaStateMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcHaSwitchoverCount: CiscoWlcHaSwitchoverCountMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcMobilityHandoffCount: CiscoWlcMobilityHandoffCountMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcMobilityHandoffFailureCount: CiscoWlcMobilityHandoffFailureCountMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcMobilityPeerStatus: CiscoWlcMobilityPeerStatusMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcMobilityRoamCount: CiscoWlcMobilityRoamCountMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcRfChannelChangeCount: CiscoWlcRfChannelChangeCountMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcRfChannelRecommended: CiscoWlcRfChannelRecommendedMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcRfChannelUtilization: CiscoWlcRfChannelUtilizationMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcRfClientCount: CiscoWlcRfClientCountMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcRfNoiseFloor: CiscoWlcRfNoiseFloorMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcSsidChannelUtilization: CiscoWlcSsidChannelUtilizationMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcSsidClientCount: CiscoWlcSsidClientCountMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcSsidNetworkIo: CiscoWlcSsidNetworkIoMetricConfig{
+						Enabled: true,
+					},
+					CiscoWlcSsidRetryCount: CiscoWlcSsidRetryCountMetricConfig{
+						Enabled: true,
+					},
+					FmcAPIEndpointError: FmcAPIEndpointErrorMetricConfig{
+						Enabled: true,
+					},
+					FmcAPIRateLimited: FmcAPIRateLimitedMetricConfig{
+						Enabled: true,
+					},
+					FmcAPIRequestDuration: FmcAPIRequestDurationMetricConfig{
+						Enabled: true,
+					},
+					FmcAPIRequestErrors: FmcAPIRequestErrorsMetricConfig{
+						Enabled: true,
+					},
+					FmcAuditRecordCount: FmcAuditRecordCountMetricConfig{
+						Enabled: true,
+					},
+					FmcDeploymentPendingCount: FmcDeploymentPendingCountMetricConfig{
+						Enabled: true,
+					},
+					FmcDeploymentStatus: FmcDeploymentStatusMetricConfig{
+						Enabled: true,
+					},
+					FmcHaStatus: FmcHaStatusMetricConfig{
+						Enabled: true,
+					},
+					FmcHealthEventCount: FmcHealthEventCountMetricConfig{
+						Enabled: true,
+					},
+					FmcHealthStatus: FmcHealthStatusMetricConfig{
+						Enabled: true,
+					},
+					FmcManagerUp: FmcManagerUpMetricConfig{
+						Enabled: true,
+					},
+					FmcPolicyObjectCount: FmcPolicyObjectCountMetricConfig{
+						Enabled: true,
+					},
+					FmcResourceCount: FmcResourceCountMetricConfig{
+						Enabled: true,
+					},
+					FmcResourceInfo: FmcResourceInfoMetricConfig{
+						Enabled: true,
+					},
+					FmcResourceStatus: FmcResourceStatusMetricConfig{
+						Enabled: true,
+					},
+					FmcScrapeLastSuccess: FmcScrapeLastSuccessMetricConfig{
+						Enabled: true,
+					},
+					FmcScrapePartialSuccess: FmcScrapePartialSuccessMetricConfig{
+						Enabled: true,
+					},
+					FmcVpnTunnelStatus: FmcVpnTunnelStatusMetricConfig{
+						Enabled: true,
+					},
+					IntersightAdvisoryActive: IntersightAdvisoryActiveMetricConfig{
+						Enabled: true,
+					},
+					IntersightAdvisoryCount: IntersightAdvisoryCountMetricConfig{
+						Enabled: true,
+					},
+					IntersightAlarmActive: IntersightAlarmActiveMetricConfig{
+						Enabled: true,
+					},
+					IntersightAlarmCount: IntersightAlarmCountMetricConfig{
+						Enabled: true,
+					},
+					IntersightAPIRateLimited: IntersightAPIRateLimitedMetricConfig{
+						Enabled: true,
+					},
+					IntersightAPIRequestDuration: IntersightAPIRequestDurationMetricConfig{
+						Enabled: true,
+					},
+					IntersightAPIRequestErrors: IntersightAPIRequestErrorsMetricConfig{
+						Enabled: true,
+					},
+					IntersightAuditRecordCount: IntersightAuditRecordCountMetricConfig{
+						Enabled: true,
+					},
+					IntersightComputeAvailableMemory: IntersightComputeAvailableMemoryMetricConfig{
+						Enabled: true,
+					},
+					IntersightComputeThreadCount: IntersightComputeThreadCountMetricConfig{
+						Enabled: true,
+					},
+					IntersightFaultCount: IntersightFaultCountMetricConfig{
+						Enabled: true,
+					},
+					IntersightFirmwareBundleInfo: IntersightFirmwareBundleInfoMetricConfig{
+						Enabled: true,
+					},
+					IntersightHclStatus: IntersightHclStatusMetricConfig{
+						Enabled: true,
+					},
+					IntersightHclStatusCount: IntersightHclStatusCountMetricConfig{
+						Enabled: true,
+					},
+					IntersightHyperflexReadIops: IntersightHyperflexReadIopsMetricConfig{
+						Enabled: true,
+					},
+					IntersightHyperflexReadLatency: IntersightHyperflexReadLatencyMetricConfig{
+						Enabled: true,
+					},
+					IntersightHyperflexStatus: IntersightHyperflexStatusMetricConfig{
+						Enabled: true,
+					},
+					IntersightHyperflexWriteIops: IntersightHyperflexWriteIopsMetricConfig{
+						Enabled: true,
+					},
+					IntersightHyperflexWriteLatency: IntersightHyperflexWriteLatencyMetricConfig{
+						Enabled: true,
+					},
+					IntersightKubernetesClusterConnectionStatus: IntersightKubernetesClusterConnectionStatusMetricConfig{
+						Enabled: true,
+					},
+					IntersightResourceCount: IntersightResourceCountMetricConfig{
+						Enabled: true,
+					},
+					IntersightResourceInfo: IntersightResourceInfoMetricConfig{
+						Enabled: true,
+					},
+					IntersightResourceStatus: IntersightResourceStatusMetricConfig{
+						Enabled: true,
+					},
+					IntersightScrapeLastSuccess: IntersightScrapeLastSuccessMetricConfig{
+						Enabled: true,
+					},
+					IntersightScrapePartialSuccess: IntersightScrapePartialSuccessMetricConfig{
+						Enabled: true,
+					},
+					IntersightStorageLifeLeft: IntersightStorageLifeLeftMetricConfig{
+						Enabled: true,
+					},
+					IntersightStorageMediaErrorCount: IntersightStorageMediaErrorCountMetricConfig{
+						Enabled: true,
+					},
+					IntersightStoragePowerOnHours: IntersightStoragePowerOnHoursMetricConfig{
+						Enabled: true,
+					},
+					IntersightStoragePredictiveFailureCount: IntersightStoragePredictiveFailureCountMetricConfig{
+						Enabled: true,
+					},
+					IntersightStorageRebuildRate: IntersightStorageRebuildRateMetricConfig{
+						Enabled: true,
+					},
+					IntersightStorageStatus: IntersightStorageStatusMetricConfig{
+						Enabled: true,
+					},
+					IntersightStorageTemperature: IntersightStorageTemperatureMetricConfig{
+						Enabled: true,
+					},
+					IntersightTargetConnectionStatus: IntersightTargetConnectionStatusMetricConfig{
+						Enabled: true,
+					},
+					IntersightTaskCount: IntersightTaskCountMetricConfig{
+						Enabled: true,
+					},
+					IntersightTaskStatus: IntersightTaskStatusMetricConfig{
+						Enabled: true,
+					},
+					IntersightTechsupportCount: IntersightTechsupportCountMetricConfig{
+						Enabled: true,
+					},
+					IntersightTechsupportStatus: IntersightTechsupportStatusMetricConfig{
+						Enabled: true,
+					},
+					IntersightTelemetryQueryRows: IntersightTelemetryQueryRowsMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsCPUIdleUtilization: IntersightUcsCPUIdleUtilizationMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsCPUSystemUtilization: IntersightUcsCPUSystemUtilizationMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsCurrent: IntersightUcsCurrentMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsFanSpeed: IntersightUcsFanSpeedMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsFanSpeedRatio: IntersightUcsFanSpeedRatioMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsFanStatus: IntersightUcsFanStatusMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsHostEnergy: IntersightUcsHostEnergyMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsHostPower: IntersightUcsHostPowerMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsHostPowerState: IntersightUcsHostPowerStateMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsMemoryCached: IntersightUcsMemoryCachedMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsMemoryEccCorrectable: IntersightUcsMemoryEccCorrectableMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsMemoryEccUncorrectable: IntersightUcsMemoryEccUncorrectableMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsMemoryFree: IntersightUcsMemoryFreeMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsMemoryModuleSize: IntersightUcsMemoryModuleSizeMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsMemoryStatus: IntersightUcsMemoryStatusMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsMemoryUsed: IntersightUcsMemoryUsedMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsNetworkInterfaceResets: IntersightUcsNetworkInterfaceResetsMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsNetworkLinkStatus: IntersightUcsNetworkLinkStatusMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsNetworkLinkFailures: IntersightUcsNetworkLinkFailuresMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsNetworkReceive: IntersightUcsNetworkReceiveMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsNetworkReceiveCrcErrors: IntersightUcsNetworkReceiveCrcErrorsMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsNetworkReceiveDiscards: IntersightUcsNetworkReceiveDiscardsMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsNetworkReceiveDrops: IntersightUcsNetworkReceiveDropsMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsNetworkReceiveErrors: IntersightUcsNetworkReceiveErrorsMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsNetworkReceiveNoBuffer: IntersightUcsNetworkReceiveNoBufferMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsNetworkReceivePackets: IntersightUcsNetworkReceivePacketsMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsNetworkReceivePauseFrames: IntersightUcsNetworkReceivePauseFramesMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsNetworkSignalLosses: IntersightUcsNetworkSignalLossesMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsNetworkSpeed: IntersightUcsNetworkSpeedMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsNetworkTransmit: IntersightUcsNetworkTransmitMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsNetworkTransmitDiscards: IntersightUcsNetworkTransmitDiscardsMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsNetworkTransmitDrops: IntersightUcsNetworkTransmitDropsMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsNetworkTransmitErrors: IntersightUcsNetworkTransmitErrorsMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsNetworkTransmitPackets: IntersightUcsNetworkTransmitPacketsMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsNetworkTransmitPauseFrames: IntersightUcsNetworkTransmitPauseFramesMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsNetworkUtilization: IntersightUcsNetworkUtilizationMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsPowerSupplyOutputPower: IntersightUcsPowerSupplyOutputPowerMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsPowerSupplyStatus: IntersightUcsPowerSupplyStatusMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsPowerSupplyUtilization: IntersightUcsPowerSupplyUtilizationMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsSignalPowerReceive: IntersightUcsSignalPowerReceiveMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsSignalPowerTransmit: IntersightUcsSignalPowerTransmitMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsTemperature: IntersightUcsTemperatureMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsTemperatureLimitHighCritical: IntersightUcsTemperatureLimitHighCriticalMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsTemperatureLimitLowCritical: IntersightUcsTemperatureLimitLowCriticalMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsTemperatureStatus: IntersightUcsTemperatureStatusMetricConfig{
+						Enabled: true,
+					},
+					IntersightUcsVoltage: IntersightUcsVoltageMetricConfig{
+						Enabled: true,
+					},
+					IntersightVirtualMachineCount: IntersightVirtualMachineCountMetricConfig{
+						Enabled: true,
+					},
+					IntersightVirtualMachineCPUCount: IntersightVirtualMachineCPUCountMetricConfig{
+						Enabled: true,
+					},
+					IntersightVirtualMachineMemory: IntersightVirtualMachineMemoryMetricConfig{
+						Enabled: true,
+					},
+					IntersightVirtualMachinePowerState: IntersightVirtualMachinePowerStateMetricConfig{
+						Enabled: true,
+					},
+					IntersightWorkflowCount: IntersightWorkflowCountMetricConfig{
+						Enabled: true,
+					},
+					IntersightWorkflowStatus: IntersightWorkflowStatusMetricConfig{
+						Enabled: true,
+					},
+					IseAccountingSessionCount: IseAccountingSessionCountMetricConfig{
+						Enabled: true,
+					},
+					IseAlarmCount: IseAlarmCountMetricConfig{
+						Enabled: true,
+					},
+					IseAPIEndpointError: IseAPIEndpointErrorMetricConfig{
+						Enabled: true,
+					},
+					IseAPIRateLimited: IseAPIRateLimitedMetricConfig{
+						Enabled: true,
+					},
+					IseAPIRequestDuration: IseAPIRequestDurationMetricConfig{
+						Enabled: true,
+					},
+					IseAPIRequestErrors: IseAPIRequestErrorsMetricConfig{
+						Enabled: true,
+					},
+					IseAuthFailureReasonInfo: IseAuthFailureReasonInfoMetricConfig{
+						Enabled: true,
+					},
+					IseCertificateCount: IseCertificateCountMetricConfig{
+						Enabled: true,
+					},
+					IseCertificateExpiration: IseCertificateExpirationMetricConfig{
+						Enabled: true,
+					},
+					IseControllerUp: IseControllerUpMetricConfig{
+						Enabled: true,
+					},
+					IseDataconnectQueryDuration: IseDataconnectQueryDurationMetricConfig{
+						Enabled: true,
+					},
+					IseDataconnectQueryErrors: IseDataconnectQueryErrorsMetricConfig{
+						Enabled: true,
+					},
+					IseDataconnectQueryRows: IseDataconnectQueryRowsMetricConfig{
+						Enabled: true,
+					},
+					IseDataconnectRowCount: IseDataconnectRowCountMetricConfig{
+						Enabled: true,
+					},
+					IseDeploymentNodeCount: IseDeploymentNodeCountMetricConfig{
+						Enabled: true,
+					},
+					IseDeploymentNodeStatus: IseDeploymentNodeStatusMetricConfig{
+						Enabled: true,
+					},
+					IseEndpointCount: IseEndpointCountMetricConfig{
+						Enabled: true,
+					},
+					IseEndpointPostureCount: IseEndpointPostureCountMetricConfig{
+						Enabled: true,
+					},
+					IseEndpointPostureStatus: IseEndpointPostureStatusMetricConfig{
+						Enabled: true,
+					},
+					IseEndpointProfileCount: IseEndpointProfileCountMetricConfig{
+						Enabled: true,
+					},
+					IseEndpointStatus: IseEndpointStatusMetricConfig{
+						Enabled: true,
+					},
+					IseLicenseCount: IseLicenseCountMetricConfig{
+						Enabled: true,
+					},
+					IseLicenseStatus: IseLicenseStatusMetricConfig{
+						Enabled: true,
+					},
+					IseNetworkDeviceCount: IseNetworkDeviceCountMetricConfig{
+						Enabled: true,
+					},
+					IseNetworkDeviceStatus: IseNetworkDeviceStatusMetricConfig{
+						Enabled: true,
+					},
+					IsePolicyObjectCount: IsePolicyObjectCountMetricConfig{
+						Enabled: true,
+					},
+					IsePolicyStatus: IsePolicyStatusMetricConfig{
+						Enabled: true,
+					},
+					IseProfilerPolicyStatus: IseProfilerPolicyStatusMetricConfig{
+						Enabled: true,
+					},
+					IsePxgridMessageCount: IsePxgridMessageCountMetricConfig{
+						Enabled: true,
+					},
+					IsePxgridServiceStatus: IsePxgridServiceStatusMetricConfig{
+						Enabled: true,
+					},
+					IsePxgridSubscriptionStatus: IsePxgridSubscriptionStatusMetricConfig{
+						Enabled: true,
+					},
+					IseRadiusFailureCount: IseRadiusFailureCountMetricConfig{
+						Enabled: true,
+					},
+					IseResourceInfo: IseResourceInfoMetricConfig{
+						Enabled: true,
+					},
+					IseResourceStatus: IseResourceStatusMetricConfig{
+						Enabled: true,
+					},
+					IseScrapeLastSuccess: IseScrapeLastSuccessMetricConfig{
+						Enabled: true,
+					},
+					IseScrapePartialSuccess: IseScrapePartialSuccessMetricConfig{
+						Enabled: true,
+					},
+					IseServiceSkipped: IseServiceSkippedMetricConfig{
+						Enabled: true,
+					},
+					IseServiceUnavailable: IseServiceUnavailableMetricConfig{
+						Enabled: true,
+					},
+					IseSessionActiveCount: IseSessionActiveCountMetricConfig{
+						Enabled: true,
+					},
+					IseSessionCount: IseSessionCountMetricConfig{
+						Enabled: true,
+					},
+					IseTacacsFailureCount: IseTacacsFailureCountMetricConfig{
+						Enabled: true,
+					},
+					IseTrustsecResourceCount: IseTrustsecResourceCountMetricConfig{
+						Enabled: true,
+					},
+					IseTrustsecResourceStatus: IseTrustsecResourceStatusMetricConfig{
+						Enabled: true,
+					},
+					IseWebhookDeliveryCount: IseWebhookDeliveryCountMetricConfig{
+						Enabled: true,
+					},
+					MerakiAPIRequestDuration: MerakiAPIRequestDurationMetricConfig{
+						Enabled: true,
+					},
+					MerakiAPIRequestErrors: MerakiAPIRequestErrorsMetricConfig{
+						Enabled: true,
+					},
+					MerakiAPIRequestRateLimited: MerakiAPIRequestRateLimitedMetricConfig{
+						Enabled: true,
+					},
+					MerakiAppliancePerformanceScore: MerakiAppliancePerformanceScoreMetricConfig{
+						Enabled: true,
+					},
+					MerakiControllerUp: MerakiControllerUpMetricConfig{
+						Enabled: true,
+					},
+					MerakiDeviceStatus: MerakiDeviceStatusMetricConfig{
+						Enabled: true,
+					},
+					MerakiPowerModuleStatus: MerakiPowerModuleStatusMetricConfig{
+						Enabled: true,
+					},
+					MerakiScrapeLastSuccess: MerakiScrapeLastSuccessMetricConfig{
+						Enabled: true,
+					},
+					MerakiSwitchPortAlertActive: MerakiSwitchPortAlertActiveMetricConfig{
+						Enabled: true,
+					},
+					MerakiSwitchPortPoeAllocated: MerakiSwitchPortPoeAllocatedMetricConfig{
+						Enabled: true,
+					},
+					MerakiSwitchPortUsage: MerakiSwitchPortUsageMetricConfig{
+						Enabled: true,
+					},
+					MerakiUplinkCellularSignalRsrp: MerakiUplinkCellularSignalRsrpMetricConfig{
+						Enabled: true,
+					},
+					MerakiUplinkCellularSignalRsrq: MerakiUplinkCellularSignalRsrqMetricConfig{
+						Enabled: true,
+					},
+					MerakiUplinkLatency: MerakiUplinkLatencyMetricConfig{
+						Enabled: true,
+					},
+					MerakiUplinkLoss: MerakiUplinkLossMetricConfig{
+						Enabled: true,
+					},
+					MerakiUplinkStatus: MerakiUplinkStatusMetricConfig{
+						Enabled: true,
+					},
+					MerakiVpnPeerJitter: MerakiVpnPeerJitterMetricConfig{
+						Enabled: true,
+					},
+					MerakiVpnPeerLatency: MerakiVpnPeerLatencyMetricConfig{
+						Enabled: true,
+					},
+					MerakiVpnPeerLoss: MerakiVpnPeerLossMetricConfig{
+						Enabled: true,
+					},
+					MerakiVpnPeerMos: MerakiVpnPeerMosMetricConfig{
+						Enabled: true,
+					},
+					MerakiVpnPeerStatus: MerakiVpnPeerStatusMetricConfig{
+						Enabled: true,
+					},
+					MerakiVpnPeerUsage: MerakiVpnPeerUsageMetricConfig{
+						Enabled: true,
+					},
+					MerakiWirelessChannelUtilization: MerakiWirelessChannelUtilizationMetricConfig{
+						Enabled: true,
+					},
+					MerakiWirelessClientCount: MerakiWirelessClientCountMetricConfig{
+						Enabled: true,
+					},
+					MerakiWirelessPacketCount: MerakiWirelessPacketCountMetricConfig{
+						Enabled: true,
+					},
+					MerakiWirelessPacketLoss: MerakiWirelessPacketLossMetricConfig{
+						Enabled: true,
+					},
+					MerakiWirelessPacketLossPercentage: MerakiWirelessPacketLossPercentageMetricConfig{
+						Enabled: true,
+					},
+					MerakiWirelessSsidStatus: MerakiWirelessSsidStatusMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardAPIEndpointError: NexusDashboardAPIEndpointErrorMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardAPIRateLimited: NexusDashboardAPIRateLimitedMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardAPIRequestDuration: NexusDashboardAPIRequestDurationMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardAPIRequestErrors: NexusDashboardAPIRequestErrorsMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardAuditRecordCount: NexusDashboardAuditRecordCountMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardConfigCompliance: NexusDashboardConfigComplianceMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardDataBrokerRuleCount: NexusDashboardDataBrokerRuleCountMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardDataBrokerSessionCount: NexusDashboardDataBrokerSessionCountMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardDataBrokerStatus: NexusDashboardDataBrokerStatusMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardDeploymentStatus: NexusDashboardDeploymentStatusMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardEndpointCount: NexusDashboardEndpointCountMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardEventCount: NexusDashboardEventCountMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardFabricHealth: NexusDashboardFabricHealthMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardInsightsAnomalyActive: NexusDashboardInsightsAnomalyActiveMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardInsightsAnomalyCount: NexusDashboardInsightsAnomalyCountMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardInsightsConfidence: NexusDashboardInsightsConfidenceMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardInsightsScore: NexusDashboardInsightsScoreMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardInsightsStatus: NexusDashboardInsightsStatusMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardOrchestratorDeploymentCount: NexusDashboardOrchestratorDeploymentCountMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardOrchestratorDeploymentStatus: NexusDashboardOrchestratorDeploymentStatusMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardOrchestratorPolicyDeltaCount: NexusDashboardOrchestratorPolicyDeltaCountMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardResourceCount: NexusDashboardResourceCountMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardResourceInfo: NexusDashboardResourceInfoMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardResourceStatus: NexusDashboardResourceStatusMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardScrapeLastSuccess: NexusDashboardScrapeLastSuccessMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardScrapePartialSuccess: NexusDashboardScrapePartialSuccessMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardServiceHealth: NexusDashboardServiceHealthMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardServiceSkipped: NexusDashboardServiceSkippedMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardServiceUnavailable: NexusDashboardServiceUnavailableMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardStorageUtilization: NexusDashboardStorageUtilizationMetricConfig{
+						Enabled: true,
+					},
+					NexusDashboardVpcPeerCount: NexusDashboardVpcPeerCountMetricConfig{
+						Enabled: true,
+					},
+					SdwanAPIRateLimited: SdwanAPIRateLimitedMetricConfig{
+						Enabled: true,
+					},
+					SdwanAPIRequestDuration: SdwanAPIRequestDurationMetricConfig{
+						Enabled: true,
+					},
+					SdwanAPIRequestErrors: SdwanAPIRequestErrorsMetricConfig{
+						Enabled: true,
+					},
+					SdwanAppRouteJitter: SdwanAppRouteJitterMetricConfig{
+						Enabled: true,
+					},
+					SdwanAppRouteLatency: SdwanAppRouteLatencyMetricConfig{
+						Enabled: true,
+					},
+					SdwanAppRouteLoss: SdwanAppRouteLossMetricConfig{
+						Enabled: true,
+					},
+					SdwanAppRouteSLAStatus: SdwanAppRouteSLAStatusMetricConfig{
+						Enabled: true,
+					},
+					SdwanBfdSessionCount: SdwanBfdSessionCountMetricConfig{
+						Enabled: true,
+					},
+					SdwanBfdSessionFlapCount: SdwanBfdSessionFlapCountMetricConfig{
+						Enabled: true,
+					},
+					SdwanBfdSessionStatus: SdwanBfdSessionStatusMetricConfig{
+						Enabled: true,
+					},
+					SdwanBfdSessionTransitions: SdwanBfdSessionTransitionsMetricConfig{
+						Enabled: true,
+					},
+					SdwanCollectionObjectCount: SdwanCollectionObjectCountMetricConfig{
+						Enabled: true,
+					},
+					SdwanControlActualConnections: SdwanControlActualConnectionsMetricConfig{
+						Enabled: true,
+					},
+					SdwanControlConnectionCount: SdwanControlConnectionCountMetricConfig{
+						Enabled: true,
+					},
+					SdwanControlConnectionStatus: SdwanControlConnectionStatusMetricConfig{
+						Enabled: true,
+					},
+					SdwanControlExpectedConnections: SdwanControlExpectedConnectionsMetricConfig{
+						Enabled: true,
+					},
+					SdwanDeviceCertificateStatus: SdwanDeviceCertificateStatusMetricConfig{
+						Enabled: true,
+					},
+					SdwanDeviceReachabilityStatus: SdwanDeviceReachabilityStatusMetricConfig{
+						Enabled: true,
+					},
+					SdwanDeviceValidityStatus: SdwanDeviceValidityStatusMetricConfig{
+						Enabled: true,
+					},
+					SdwanEventCount: SdwanEventCountMetricConfig{
+						Enabled: true,
+					},
+					SdwanInventoryDeviceCount: SdwanInventoryDeviceCountMetricConfig{
+						Enabled: true,
+					},
+					SdwanManagerEndpointStatus: SdwanManagerEndpointStatusMetricConfig{
+						Enabled: true,
+					},
+					SdwanManagerHealthScore: SdwanManagerHealthScoreMetricConfig{
+						Enabled: true,
+					},
+					SdwanManagerStatus: SdwanManagerStatusMetricConfig{
+						Enabled: true,
+					},
+					SdwanManagerUp: SdwanManagerUpMetricConfig{
+						Enabled: true,
+					},
+					SdwanResourceInfo: SdwanResourceInfoMetricConfig{
+						Enabled: true,
+					},
+					SdwanResourceStatus: SdwanResourceStatusMetricConfig{
+						Enabled: true,
+					},
+					SdwanScrapeLastSuccess: SdwanScrapeLastSuccessMetricConfig{
+						Enabled: true,
+					},
+					SdwanScrapePartialSuccess: SdwanScrapePartialSuccessMetricConfig{
+						Enabled: true,
+					},
+					SdwanServiceSkipped: SdwanServiceSkippedMetricConfig{
+						Enabled: true,
+					},
+					SdwanServiceUnavailable: SdwanServiceUnavailableMetricConfig{
+						Enabled: true,
+					},
+					SdwanTransportInterfaceStatus: SdwanTransportInterfaceStatusMetricConfig{
+						Enabled: true,
+					},
+					SystemCPULogicalCount: SystemCPULogicalCountMetricConfig{
+						Enabled: true,
 					},
 					SystemCPUUtilization: SystemCPUUtilizationMetricConfig{
 						Enabled:             true,
@@ -168,6 +1286,207 @@ func TestMetricsBuilderConfig(t *testing.T) {
 			name: "none_set",
 			want: MetricsBuilderConfig{
 				Metrics: MetricsConfig{
+					AciAPIEndpointError: AciAPIEndpointErrorMetricConfig{
+						Enabled: false,
+					},
+					AciAPIRateLimited: AciAPIRateLimitedMetricConfig{
+						Enabled: false,
+					},
+					AciAPIRequestDuration: AciAPIRequestDurationMetricConfig{
+						Enabled: false,
+					},
+					AciAPIRequestErrors: AciAPIRequestErrorsMetricConfig{
+						Enabled: false,
+					},
+					AciAuditRecordCount: AciAuditRecordCountMetricConfig{
+						Enabled: false,
+					},
+					AciControllerUp: AciControllerUpMetricConfig{
+						Enabled: false,
+					},
+					AciEndpointCount: AciEndpointCountMetricConfig{
+						Enabled: false,
+					},
+					AciEndpointPresent: AciEndpointPresentMetricConfig{
+						Enabled: false,
+					},
+					AciEventCount: AciEventCountMetricConfig{
+						Enabled: false,
+					},
+					AciFabricHealth: AciFabricHealthMetricConfig{
+						Enabled: false,
+					},
+					AciFaultActive: AciFaultActiveMetricConfig{
+						Enabled: false,
+					},
+					AciFaultCount: AciFaultCountMetricConfig{
+						Enabled: false,
+					},
+					AciResourceCount: AciResourceCountMetricConfig{
+						Enabled: false,
+					},
+					AciResourceInfo: AciResourceInfoMetricConfig{
+						Enabled: false,
+					},
+					AciResourceStatus: AciResourceStatusMetricConfig{
+						Enabled: false,
+					},
+					AciScrapeLastSuccess: AciScrapeLastSuccessMetricConfig{
+						Enabled: false,
+					},
+					AciScrapePartialSuccess: AciScrapePartialSuccessMetricConfig{
+						Enabled: false,
+					},
+					AciTenantObjectCount: AciTenantObjectCountMetricConfig{
+						Enabled: false,
+					},
+					AciTenantStatus: AciTenantStatusMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterAPIRateLimited: CatalystCenterAPIRateLimitedMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterAPIRequestDuration: CatalystCenterAPIRequestDurationMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterAPIRequestErrors: CatalystCenterAPIRequestErrorsMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterClientCount: CatalystCenterClientCountMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterClientDetailHealthScore: CatalystCenterClientDetailHealthScoreMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterClientHealthScore: CatalystCenterClientHealthScoreMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterClientIssueCount: CatalystCenterClientIssueCountMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterClientNetworkIo: CatalystCenterClientNetworkIoMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterClientUniqueCount: CatalystCenterClientUniqueCountMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterClientWirelessRssi: CatalystCenterClientWirelessRssiMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterClientWirelessSnr: CatalystCenterClientWirelessSnrMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterDeviceCollectionStatus: CatalystCenterDeviceCollectionStatusMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterDeviceDetailCommunicationStatus: CatalystCenterDeviceDetailCommunicationStatusMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterDeviceDetailHealthScore: CatalystCenterDeviceDetailHealthScoreMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterDeviceInterfaceCount: CatalystCenterDeviceInterfaceCountMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterDeviceReachabilityStatus: CatalystCenterDeviceReachabilityStatusMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterDeviceUptime: CatalystCenterDeviceUptimeMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterInterfaceCount: CatalystCenterInterfaceCountMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterInventoryDeviceCount: CatalystCenterInventoryDeviceCountMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterIssueActiveCount: CatalystCenterIssueActiveCountMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterIssueCount: CatalystCenterIssueCountMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterNetworkDeviceCount: CatalystCenterNetworkDeviceCountMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterNetworkHealthCategoryScore: CatalystCenterNetworkHealthCategoryScoreMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterNetworkHealthEntityCount: CatalystCenterNetworkHealthEntityCountMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterNetworkHealthEntityScore: CatalystCenterNetworkHealthEntityScoreMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterNetworkHealthScore: CatalystCenterNetworkHealthScoreMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterScrapeLastSuccess: CatalystCenterScrapeLastSuccessMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterScrapePartialSuccess: CatalystCenterScrapePartialSuccessMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterSiteClientCount: CatalystCenterSiteClientCountMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterSiteClientHealthPercentage: CatalystCenterSiteClientHealthPercentageMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterSiteHealthCount: CatalystCenterSiteHealthCountMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterSiteIssueCount: CatalystCenterSiteIssueCountMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterSiteNetworkDeviceCount: CatalystCenterSiteNetworkDeviceCountMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterSiteNetworkDeviceHealthPercentage: CatalystCenterSiteNetworkDeviceHealthPercentageMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterTopologyLinkCount: CatalystCenterTopologyLinkCountMetricConfig{
+						Enabled: false,
+					},
+					CatalystCenterTopologyNodeCount: CatalystCenterTopologyNodeCountMetricConfig{
+						Enabled: false,
+					},
+					CiscoCatalyst9800ReceiverActiveSubscriptions: CiscoCatalyst9800ReceiverActiveSubscriptionsMetricConfig{
+						Enabled: false,
+					},
+					CiscoCatalyst9800ReceiverCompactGpbPayloads: CiscoCatalyst9800ReceiverCompactGpbPayloadsMetricConfig{
+						Enabled: false,
+					},
+					CiscoCatalyst9800ReceiverDecodeErrors: CiscoCatalyst9800ReceiverDecodeErrorsMetricConfig{
+						Enabled: false,
+					},
+					CiscoCatalyst9800ReceiverDroppedDatapoints: CiscoCatalyst9800ReceiverDroppedDatapointsMetricConfig{
+						Enabled: false,
+					},
+					CiscoCatalyst9800ReceiverLastSuccessTimestamp: CiscoCatalyst9800ReceiverLastSuccessTimestampMetricConfig{
+						Enabled: false,
+					},
+					CiscoCatalyst9800ReceiverReconnects: CiscoCatalyst9800ReceiverReconnectsMetricConfig{
+						Enabled: false,
+					},
+					CiscoCatalyst9800ReceiverTargetLastSuccessTimestamp: CiscoCatalyst9800ReceiverTargetLastSuccessTimestampMetricConfig{
+						Enabled: false,
+					},
+					CiscoCatalyst9800ReceiverTargetReconnects: CiscoCatalyst9800ReceiverTargetReconnectsMetricConfig{
+						Enabled: false,
+					},
+					CiscoCatalyst9800ReceiverTargetSubscriptionActive: CiscoCatalyst9800ReceiverTargetSubscriptionActiveMetricConfig{
+						Enabled: false,
+					},
+					CiscoCatalyst9800ReceiverTargetUpdates: CiscoCatalyst9800ReceiverTargetUpdatesMetricConfig{
+						Enabled: false,
+					},
+					CiscoCatalyst9800ReceiverUnsupportedPaths: CiscoCatalyst9800ReceiverUnsupportedPathsMetricConfig{
+						Enabled: false,
+					},
+					CiscoCatalyst9800ReceiverUpdates: CiscoCatalyst9800ReceiverUpdatesMetricConfig{
+						Enabled: false,
+					},
 					CiscoDeviceUp: CiscoDeviceUpMetricConfig{
 						Enabled: false,
 					},
@@ -175,6 +1494,9 @@ func TestMetricsBuilderConfig(t *testing.T) {
 						Enabled:             false,
 						AggregationStrategy: AggregationStrategyAvg,
 						EnabledAttributes:   []CiscoInterfaceAdminStatusMetricAttributeKey{CiscoInterfaceAdminStatusMetricAttributeKeyNetworkInterfaceName},
+					},
+					CiscoInterfaceDropRate: CiscoInterfaceDropRateMetricConfig{
+						Enabled: false,
 					},
 					CiscoInterfaceIoRate: CiscoInterfaceIoRateMetricConfig{
 						Enabled:             false,
@@ -195,6 +1517,42 @@ func TestMetricsBuilderConfig(t *testing.T) {
 						Enabled:             false,
 						AggregationStrategy: AggregationStrategyAvg,
 						EnabledAttributes:   []CiscoInterfaceUtilizationMetricAttributeKey{CiscoInterfaceUtilizationMetricAttributeKeyNetworkIoDirection, CiscoInterfaceUtilizationMetricAttributeKeyNetworkInterfaceName},
+					},
+					CiscoIosxrReceiverActiveSubscriptions: CiscoIosxrReceiverActiveSubscriptionsMetricConfig{
+						Enabled: false,
+					},
+					CiscoIosxrReceiverCompactGpbPayloads: CiscoIosxrReceiverCompactGpbPayloadsMetricConfig{
+						Enabled: false,
+					},
+					CiscoIosxrReceiverDecodeErrors: CiscoIosxrReceiverDecodeErrorsMetricConfig{
+						Enabled: false,
+					},
+					CiscoIosxrReceiverDroppedDatapoints: CiscoIosxrReceiverDroppedDatapointsMetricConfig{
+						Enabled: false,
+					},
+					CiscoIosxrReceiverLastSuccessTimestamp: CiscoIosxrReceiverLastSuccessTimestampMetricConfig{
+						Enabled: false,
+					},
+					CiscoIosxrReceiverReconnects: CiscoIosxrReceiverReconnectsMetricConfig{
+						Enabled: false,
+					},
+					CiscoIosxrReceiverTargetLastSuccessTimestamp: CiscoIosxrReceiverTargetLastSuccessTimestampMetricConfig{
+						Enabled: false,
+					},
+					CiscoIosxrReceiverTargetReconnects: CiscoIosxrReceiverTargetReconnectsMetricConfig{
+						Enabled: false,
+					},
+					CiscoIosxrReceiverTargetSubscriptionActive: CiscoIosxrReceiverTargetSubscriptionActiveMetricConfig{
+						Enabled: false,
+					},
+					CiscoIosxrReceiverTargetUpdates: CiscoIosxrReceiverTargetUpdatesMetricConfig{
+						Enabled: false,
+					},
+					CiscoIosxrReceiverUnsupportedPaths: CiscoIosxrReceiverUnsupportedPathsMetricConfig{
+						Enabled: false,
+					},
+					CiscoIosxrReceiverUpdates: CiscoIosxrReceiverUpdatesMetricConfig{
+						Enabled: false,
 					},
 					CiscoOpticsEsnr: CiscoOpticsEsnrMetricConfig{
 						Enabled:             false,
@@ -250,6 +1608,884 @@ func TestMetricsBuilderConfig(t *testing.T) {
 						Enabled:             false,
 						AggregationStrategy: AggregationStrategyAvg,
 						EnabledAttributes:   []CiscoOpticsVoltageMetricAttributeKey{CiscoOpticsVoltageMetricAttributeKeyNetworkInterfaceName, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsLane, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsExperimental},
+					},
+					CiscoScrapePartialSuccess: CiscoScrapePartialSuccessMetricConfig{
+						Enabled: false,
+					},
+					CiscoTopologyNeighborInfo: CiscoTopologyNeighborInfoMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoTopologyNeighborInfoMetricAttributeKey{CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyProtocol, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkInterfaceName, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborName, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborInterface, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborPlatform, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborAddress, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkPeerName, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkPeerAddress, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkProtocolName},
+					},
+					CiscoTransceiverSensor: CiscoTransceiverSensorMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcApCapwapEncryptionEnabled: CiscoWlcApCapwapEncryptionEnabledMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcApCapwapState: CiscoWlcApCapwapStateMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcApDisconnect: CiscoWlcApDisconnectMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcApDisconnectReasonInfo: CiscoWlcApDisconnectReasonInfoMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcApJoinFailureReasonInfo: CiscoWlcApJoinFailureReasonInfoMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcApJoinStatus: CiscoWlcApJoinStatusMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcAuthRadiusAccessAcceptCount: CiscoWlcAuthRadiusAccessAcceptCountMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcAuthRadiusAccessRejectCount: CiscoWlcAuthRadiusAccessRejectCountMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcAuthRadiusBadAuthenticatorCount: CiscoWlcAuthRadiusBadAuthenticatorCountMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcAuthRadiusResponseCount: CiscoWlcAuthRadiusResponseCountMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcAuthRadiusResponseDelayAvg: CiscoWlcAuthRadiusResponseDelayAvgMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcAuthRadiusResponseDelayMax: CiscoWlcAuthRadiusResponseDelayMaxMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcAuthRadiusTimeoutCount: CiscoWlcAuthRadiusTimeoutCountMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcClientAuthFailureReasonInfo: CiscoWlcClientAuthFailureReasonInfoMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcClientConnectionState: CiscoWlcClientConnectionStateMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcClientNetworkIo: CiscoWlcClientNetworkIoMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcClientNetworkPackets: CiscoWlcClientNetworkPacketsMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcClientRoamCount: CiscoWlcClientRoamCountMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcClientRoamFailureCount: CiscoWlcClientRoamFailureCountMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcClientRoamTypeInfo: CiscoWlcClientRoamTypeInfoMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcClientWirelessRssi: CiscoWlcClientWirelessRssiMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcClientWirelessSnr: CiscoWlcClientWirelessSnrMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcControllerCPUUtilization: CiscoWlcControllerCPUUtilizationMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcControllerMemoryBytes: CiscoWlcControllerMemoryBytesMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcControllerReceiverActiveSubscriptions: CiscoWlcControllerReceiverActiveSubscriptionsMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcControllerReceiverDecodeErrors: CiscoWlcControllerReceiverDecodeErrorsMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcControllerReceiverSubscriptionActive: CiscoWlcControllerReceiverSubscriptionActiveMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcControllerReceiverUpdates: CiscoWlcControllerReceiverUpdatesMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcHaEnabled: CiscoWlcHaEnabledMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcHaStandbyFailureCount: CiscoWlcHaStandbyFailureCountMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcHaState: CiscoWlcHaStateMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcHaSwitchoverCount: CiscoWlcHaSwitchoverCountMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcMobilityHandoffCount: CiscoWlcMobilityHandoffCountMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcMobilityHandoffFailureCount: CiscoWlcMobilityHandoffFailureCountMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcMobilityPeerStatus: CiscoWlcMobilityPeerStatusMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcMobilityRoamCount: CiscoWlcMobilityRoamCountMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcRfChannelChangeCount: CiscoWlcRfChannelChangeCountMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcRfChannelRecommended: CiscoWlcRfChannelRecommendedMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcRfChannelUtilization: CiscoWlcRfChannelUtilizationMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcRfClientCount: CiscoWlcRfClientCountMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcRfNoiseFloor: CiscoWlcRfNoiseFloorMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcSsidChannelUtilization: CiscoWlcSsidChannelUtilizationMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcSsidClientCount: CiscoWlcSsidClientCountMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcSsidNetworkIo: CiscoWlcSsidNetworkIoMetricConfig{
+						Enabled: false,
+					},
+					CiscoWlcSsidRetryCount: CiscoWlcSsidRetryCountMetricConfig{
+						Enabled: false,
+					},
+					FmcAPIEndpointError: FmcAPIEndpointErrorMetricConfig{
+						Enabled: false,
+					},
+					FmcAPIRateLimited: FmcAPIRateLimitedMetricConfig{
+						Enabled: false,
+					},
+					FmcAPIRequestDuration: FmcAPIRequestDurationMetricConfig{
+						Enabled: false,
+					},
+					FmcAPIRequestErrors: FmcAPIRequestErrorsMetricConfig{
+						Enabled: false,
+					},
+					FmcAuditRecordCount: FmcAuditRecordCountMetricConfig{
+						Enabled: false,
+					},
+					FmcDeploymentPendingCount: FmcDeploymentPendingCountMetricConfig{
+						Enabled: false,
+					},
+					FmcDeploymentStatus: FmcDeploymentStatusMetricConfig{
+						Enabled: false,
+					},
+					FmcHaStatus: FmcHaStatusMetricConfig{
+						Enabled: false,
+					},
+					FmcHealthEventCount: FmcHealthEventCountMetricConfig{
+						Enabled: false,
+					},
+					FmcHealthStatus: FmcHealthStatusMetricConfig{
+						Enabled: false,
+					},
+					FmcManagerUp: FmcManagerUpMetricConfig{
+						Enabled: false,
+					},
+					FmcPolicyObjectCount: FmcPolicyObjectCountMetricConfig{
+						Enabled: false,
+					},
+					FmcResourceCount: FmcResourceCountMetricConfig{
+						Enabled: false,
+					},
+					FmcResourceInfo: FmcResourceInfoMetricConfig{
+						Enabled: false,
+					},
+					FmcResourceStatus: FmcResourceStatusMetricConfig{
+						Enabled: false,
+					},
+					FmcScrapeLastSuccess: FmcScrapeLastSuccessMetricConfig{
+						Enabled: false,
+					},
+					FmcScrapePartialSuccess: FmcScrapePartialSuccessMetricConfig{
+						Enabled: false,
+					},
+					FmcVpnTunnelStatus: FmcVpnTunnelStatusMetricConfig{
+						Enabled: false,
+					},
+					IntersightAdvisoryActive: IntersightAdvisoryActiveMetricConfig{
+						Enabled: false,
+					},
+					IntersightAdvisoryCount: IntersightAdvisoryCountMetricConfig{
+						Enabled: false,
+					},
+					IntersightAlarmActive: IntersightAlarmActiveMetricConfig{
+						Enabled: false,
+					},
+					IntersightAlarmCount: IntersightAlarmCountMetricConfig{
+						Enabled: false,
+					},
+					IntersightAPIRateLimited: IntersightAPIRateLimitedMetricConfig{
+						Enabled: false,
+					},
+					IntersightAPIRequestDuration: IntersightAPIRequestDurationMetricConfig{
+						Enabled: false,
+					},
+					IntersightAPIRequestErrors: IntersightAPIRequestErrorsMetricConfig{
+						Enabled: false,
+					},
+					IntersightAuditRecordCount: IntersightAuditRecordCountMetricConfig{
+						Enabled: false,
+					},
+					IntersightComputeAvailableMemory: IntersightComputeAvailableMemoryMetricConfig{
+						Enabled: false,
+					},
+					IntersightComputeThreadCount: IntersightComputeThreadCountMetricConfig{
+						Enabled: false,
+					},
+					IntersightFaultCount: IntersightFaultCountMetricConfig{
+						Enabled: false,
+					},
+					IntersightFirmwareBundleInfo: IntersightFirmwareBundleInfoMetricConfig{
+						Enabled: false,
+					},
+					IntersightHclStatus: IntersightHclStatusMetricConfig{
+						Enabled: false,
+					},
+					IntersightHclStatusCount: IntersightHclStatusCountMetricConfig{
+						Enabled: false,
+					},
+					IntersightHyperflexReadIops: IntersightHyperflexReadIopsMetricConfig{
+						Enabled: false,
+					},
+					IntersightHyperflexReadLatency: IntersightHyperflexReadLatencyMetricConfig{
+						Enabled: false,
+					},
+					IntersightHyperflexStatus: IntersightHyperflexStatusMetricConfig{
+						Enabled: false,
+					},
+					IntersightHyperflexWriteIops: IntersightHyperflexWriteIopsMetricConfig{
+						Enabled: false,
+					},
+					IntersightHyperflexWriteLatency: IntersightHyperflexWriteLatencyMetricConfig{
+						Enabled: false,
+					},
+					IntersightKubernetesClusterConnectionStatus: IntersightKubernetesClusterConnectionStatusMetricConfig{
+						Enabled: false,
+					},
+					IntersightResourceCount: IntersightResourceCountMetricConfig{
+						Enabled: false,
+					},
+					IntersightResourceInfo: IntersightResourceInfoMetricConfig{
+						Enabled: false,
+					},
+					IntersightResourceStatus: IntersightResourceStatusMetricConfig{
+						Enabled: false,
+					},
+					IntersightScrapeLastSuccess: IntersightScrapeLastSuccessMetricConfig{
+						Enabled: false,
+					},
+					IntersightScrapePartialSuccess: IntersightScrapePartialSuccessMetricConfig{
+						Enabled: false,
+					},
+					IntersightStorageLifeLeft: IntersightStorageLifeLeftMetricConfig{
+						Enabled: false,
+					},
+					IntersightStorageMediaErrorCount: IntersightStorageMediaErrorCountMetricConfig{
+						Enabled: false,
+					},
+					IntersightStoragePowerOnHours: IntersightStoragePowerOnHoursMetricConfig{
+						Enabled: false,
+					},
+					IntersightStoragePredictiveFailureCount: IntersightStoragePredictiveFailureCountMetricConfig{
+						Enabled: false,
+					},
+					IntersightStorageRebuildRate: IntersightStorageRebuildRateMetricConfig{
+						Enabled: false,
+					},
+					IntersightStorageStatus: IntersightStorageStatusMetricConfig{
+						Enabled: false,
+					},
+					IntersightStorageTemperature: IntersightStorageTemperatureMetricConfig{
+						Enabled: false,
+					},
+					IntersightTargetConnectionStatus: IntersightTargetConnectionStatusMetricConfig{
+						Enabled: false,
+					},
+					IntersightTaskCount: IntersightTaskCountMetricConfig{
+						Enabled: false,
+					},
+					IntersightTaskStatus: IntersightTaskStatusMetricConfig{
+						Enabled: false,
+					},
+					IntersightTechsupportCount: IntersightTechsupportCountMetricConfig{
+						Enabled: false,
+					},
+					IntersightTechsupportStatus: IntersightTechsupportStatusMetricConfig{
+						Enabled: false,
+					},
+					IntersightTelemetryQueryRows: IntersightTelemetryQueryRowsMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsCPUIdleUtilization: IntersightUcsCPUIdleUtilizationMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsCPUSystemUtilization: IntersightUcsCPUSystemUtilizationMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsCurrent: IntersightUcsCurrentMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsFanSpeed: IntersightUcsFanSpeedMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsFanSpeedRatio: IntersightUcsFanSpeedRatioMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsFanStatus: IntersightUcsFanStatusMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsHostEnergy: IntersightUcsHostEnergyMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsHostPower: IntersightUcsHostPowerMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsHostPowerState: IntersightUcsHostPowerStateMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsMemoryCached: IntersightUcsMemoryCachedMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsMemoryEccCorrectable: IntersightUcsMemoryEccCorrectableMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsMemoryEccUncorrectable: IntersightUcsMemoryEccUncorrectableMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsMemoryFree: IntersightUcsMemoryFreeMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsMemoryModuleSize: IntersightUcsMemoryModuleSizeMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsMemoryStatus: IntersightUcsMemoryStatusMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsMemoryUsed: IntersightUcsMemoryUsedMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsNetworkInterfaceResets: IntersightUcsNetworkInterfaceResetsMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsNetworkLinkStatus: IntersightUcsNetworkLinkStatusMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsNetworkLinkFailures: IntersightUcsNetworkLinkFailuresMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsNetworkReceive: IntersightUcsNetworkReceiveMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsNetworkReceiveCrcErrors: IntersightUcsNetworkReceiveCrcErrorsMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsNetworkReceiveDiscards: IntersightUcsNetworkReceiveDiscardsMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsNetworkReceiveDrops: IntersightUcsNetworkReceiveDropsMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsNetworkReceiveErrors: IntersightUcsNetworkReceiveErrorsMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsNetworkReceiveNoBuffer: IntersightUcsNetworkReceiveNoBufferMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsNetworkReceivePackets: IntersightUcsNetworkReceivePacketsMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsNetworkReceivePauseFrames: IntersightUcsNetworkReceivePauseFramesMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsNetworkSignalLosses: IntersightUcsNetworkSignalLossesMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsNetworkSpeed: IntersightUcsNetworkSpeedMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsNetworkTransmit: IntersightUcsNetworkTransmitMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsNetworkTransmitDiscards: IntersightUcsNetworkTransmitDiscardsMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsNetworkTransmitDrops: IntersightUcsNetworkTransmitDropsMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsNetworkTransmitErrors: IntersightUcsNetworkTransmitErrorsMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsNetworkTransmitPackets: IntersightUcsNetworkTransmitPacketsMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsNetworkTransmitPauseFrames: IntersightUcsNetworkTransmitPauseFramesMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsNetworkUtilization: IntersightUcsNetworkUtilizationMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsPowerSupplyOutputPower: IntersightUcsPowerSupplyOutputPowerMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsPowerSupplyStatus: IntersightUcsPowerSupplyStatusMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsPowerSupplyUtilization: IntersightUcsPowerSupplyUtilizationMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsSignalPowerReceive: IntersightUcsSignalPowerReceiveMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsSignalPowerTransmit: IntersightUcsSignalPowerTransmitMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsTemperature: IntersightUcsTemperatureMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsTemperatureLimitHighCritical: IntersightUcsTemperatureLimitHighCriticalMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsTemperatureLimitLowCritical: IntersightUcsTemperatureLimitLowCriticalMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsTemperatureStatus: IntersightUcsTemperatureStatusMetricConfig{
+						Enabled: false,
+					},
+					IntersightUcsVoltage: IntersightUcsVoltageMetricConfig{
+						Enabled: false,
+					},
+					IntersightVirtualMachineCount: IntersightVirtualMachineCountMetricConfig{
+						Enabled: false,
+					},
+					IntersightVirtualMachineCPUCount: IntersightVirtualMachineCPUCountMetricConfig{
+						Enabled: false,
+					},
+					IntersightVirtualMachineMemory: IntersightVirtualMachineMemoryMetricConfig{
+						Enabled: false,
+					},
+					IntersightVirtualMachinePowerState: IntersightVirtualMachinePowerStateMetricConfig{
+						Enabled: false,
+					},
+					IntersightWorkflowCount: IntersightWorkflowCountMetricConfig{
+						Enabled: false,
+					},
+					IntersightWorkflowStatus: IntersightWorkflowStatusMetricConfig{
+						Enabled: false,
+					},
+					IseAccountingSessionCount: IseAccountingSessionCountMetricConfig{
+						Enabled: false,
+					},
+					IseAlarmCount: IseAlarmCountMetricConfig{
+						Enabled: false,
+					},
+					IseAPIEndpointError: IseAPIEndpointErrorMetricConfig{
+						Enabled: false,
+					},
+					IseAPIRateLimited: IseAPIRateLimitedMetricConfig{
+						Enabled: false,
+					},
+					IseAPIRequestDuration: IseAPIRequestDurationMetricConfig{
+						Enabled: false,
+					},
+					IseAPIRequestErrors: IseAPIRequestErrorsMetricConfig{
+						Enabled: false,
+					},
+					IseAuthFailureReasonInfo: IseAuthFailureReasonInfoMetricConfig{
+						Enabled: false,
+					},
+					IseCertificateCount: IseCertificateCountMetricConfig{
+						Enabled: false,
+					},
+					IseCertificateExpiration: IseCertificateExpirationMetricConfig{
+						Enabled: false,
+					},
+					IseControllerUp: IseControllerUpMetricConfig{
+						Enabled: false,
+					},
+					IseDataconnectQueryDuration: IseDataconnectQueryDurationMetricConfig{
+						Enabled: false,
+					},
+					IseDataconnectQueryErrors: IseDataconnectQueryErrorsMetricConfig{
+						Enabled: false,
+					},
+					IseDataconnectQueryRows: IseDataconnectQueryRowsMetricConfig{
+						Enabled: false,
+					},
+					IseDataconnectRowCount: IseDataconnectRowCountMetricConfig{
+						Enabled: false,
+					},
+					IseDeploymentNodeCount: IseDeploymentNodeCountMetricConfig{
+						Enabled: false,
+					},
+					IseDeploymentNodeStatus: IseDeploymentNodeStatusMetricConfig{
+						Enabled: false,
+					},
+					IseEndpointCount: IseEndpointCountMetricConfig{
+						Enabled: false,
+					},
+					IseEndpointPostureCount: IseEndpointPostureCountMetricConfig{
+						Enabled: false,
+					},
+					IseEndpointPostureStatus: IseEndpointPostureStatusMetricConfig{
+						Enabled: false,
+					},
+					IseEndpointProfileCount: IseEndpointProfileCountMetricConfig{
+						Enabled: false,
+					},
+					IseEndpointStatus: IseEndpointStatusMetricConfig{
+						Enabled: false,
+					},
+					IseLicenseCount: IseLicenseCountMetricConfig{
+						Enabled: false,
+					},
+					IseLicenseStatus: IseLicenseStatusMetricConfig{
+						Enabled: false,
+					},
+					IseNetworkDeviceCount: IseNetworkDeviceCountMetricConfig{
+						Enabled: false,
+					},
+					IseNetworkDeviceStatus: IseNetworkDeviceStatusMetricConfig{
+						Enabled: false,
+					},
+					IsePolicyObjectCount: IsePolicyObjectCountMetricConfig{
+						Enabled: false,
+					},
+					IsePolicyStatus: IsePolicyStatusMetricConfig{
+						Enabled: false,
+					},
+					IseProfilerPolicyStatus: IseProfilerPolicyStatusMetricConfig{
+						Enabled: false,
+					},
+					IsePxgridMessageCount: IsePxgridMessageCountMetricConfig{
+						Enabled: false,
+					},
+					IsePxgridServiceStatus: IsePxgridServiceStatusMetricConfig{
+						Enabled: false,
+					},
+					IsePxgridSubscriptionStatus: IsePxgridSubscriptionStatusMetricConfig{
+						Enabled: false,
+					},
+					IseRadiusFailureCount: IseRadiusFailureCountMetricConfig{
+						Enabled: false,
+					},
+					IseResourceInfo: IseResourceInfoMetricConfig{
+						Enabled: false,
+					},
+					IseResourceStatus: IseResourceStatusMetricConfig{
+						Enabled: false,
+					},
+					IseScrapeLastSuccess: IseScrapeLastSuccessMetricConfig{
+						Enabled: false,
+					},
+					IseScrapePartialSuccess: IseScrapePartialSuccessMetricConfig{
+						Enabled: false,
+					},
+					IseServiceSkipped: IseServiceSkippedMetricConfig{
+						Enabled: false,
+					},
+					IseServiceUnavailable: IseServiceUnavailableMetricConfig{
+						Enabled: false,
+					},
+					IseSessionActiveCount: IseSessionActiveCountMetricConfig{
+						Enabled: false,
+					},
+					IseSessionCount: IseSessionCountMetricConfig{
+						Enabled: false,
+					},
+					IseTacacsFailureCount: IseTacacsFailureCountMetricConfig{
+						Enabled: false,
+					},
+					IseTrustsecResourceCount: IseTrustsecResourceCountMetricConfig{
+						Enabled: false,
+					},
+					IseTrustsecResourceStatus: IseTrustsecResourceStatusMetricConfig{
+						Enabled: false,
+					},
+					IseWebhookDeliveryCount: IseWebhookDeliveryCountMetricConfig{
+						Enabled: false,
+					},
+					MerakiAPIRequestDuration: MerakiAPIRequestDurationMetricConfig{
+						Enabled: false,
+					},
+					MerakiAPIRequestErrors: MerakiAPIRequestErrorsMetricConfig{
+						Enabled: false,
+					},
+					MerakiAPIRequestRateLimited: MerakiAPIRequestRateLimitedMetricConfig{
+						Enabled: false,
+					},
+					MerakiAppliancePerformanceScore: MerakiAppliancePerformanceScoreMetricConfig{
+						Enabled: false,
+					},
+					MerakiControllerUp: MerakiControllerUpMetricConfig{
+						Enabled: false,
+					},
+					MerakiDeviceStatus: MerakiDeviceStatusMetricConfig{
+						Enabled: false,
+					},
+					MerakiPowerModuleStatus: MerakiPowerModuleStatusMetricConfig{
+						Enabled: false,
+					},
+					MerakiScrapeLastSuccess: MerakiScrapeLastSuccessMetricConfig{
+						Enabled: false,
+					},
+					MerakiSwitchPortAlertActive: MerakiSwitchPortAlertActiveMetricConfig{
+						Enabled: false,
+					},
+					MerakiSwitchPortPoeAllocated: MerakiSwitchPortPoeAllocatedMetricConfig{
+						Enabled: false,
+					},
+					MerakiSwitchPortUsage: MerakiSwitchPortUsageMetricConfig{
+						Enabled: false,
+					},
+					MerakiUplinkCellularSignalRsrp: MerakiUplinkCellularSignalRsrpMetricConfig{
+						Enabled: false,
+					},
+					MerakiUplinkCellularSignalRsrq: MerakiUplinkCellularSignalRsrqMetricConfig{
+						Enabled: false,
+					},
+					MerakiUplinkLatency: MerakiUplinkLatencyMetricConfig{
+						Enabled: false,
+					},
+					MerakiUplinkLoss: MerakiUplinkLossMetricConfig{
+						Enabled: false,
+					},
+					MerakiUplinkStatus: MerakiUplinkStatusMetricConfig{
+						Enabled: false,
+					},
+					MerakiVpnPeerJitter: MerakiVpnPeerJitterMetricConfig{
+						Enabled: false,
+					},
+					MerakiVpnPeerLatency: MerakiVpnPeerLatencyMetricConfig{
+						Enabled: false,
+					},
+					MerakiVpnPeerLoss: MerakiVpnPeerLossMetricConfig{
+						Enabled: false,
+					},
+					MerakiVpnPeerMos: MerakiVpnPeerMosMetricConfig{
+						Enabled: false,
+					},
+					MerakiVpnPeerStatus: MerakiVpnPeerStatusMetricConfig{
+						Enabled: false,
+					},
+					MerakiVpnPeerUsage: MerakiVpnPeerUsageMetricConfig{
+						Enabled: false,
+					},
+					MerakiWirelessChannelUtilization: MerakiWirelessChannelUtilizationMetricConfig{
+						Enabled: false,
+					},
+					MerakiWirelessClientCount: MerakiWirelessClientCountMetricConfig{
+						Enabled: false,
+					},
+					MerakiWirelessPacketCount: MerakiWirelessPacketCountMetricConfig{
+						Enabled: false,
+					},
+					MerakiWirelessPacketLoss: MerakiWirelessPacketLossMetricConfig{
+						Enabled: false,
+					},
+					MerakiWirelessPacketLossPercentage: MerakiWirelessPacketLossPercentageMetricConfig{
+						Enabled: false,
+					},
+					MerakiWirelessSsidStatus: MerakiWirelessSsidStatusMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardAPIEndpointError: NexusDashboardAPIEndpointErrorMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardAPIRateLimited: NexusDashboardAPIRateLimitedMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardAPIRequestDuration: NexusDashboardAPIRequestDurationMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardAPIRequestErrors: NexusDashboardAPIRequestErrorsMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardAuditRecordCount: NexusDashboardAuditRecordCountMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardConfigCompliance: NexusDashboardConfigComplianceMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardDataBrokerRuleCount: NexusDashboardDataBrokerRuleCountMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardDataBrokerSessionCount: NexusDashboardDataBrokerSessionCountMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardDataBrokerStatus: NexusDashboardDataBrokerStatusMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardDeploymentStatus: NexusDashboardDeploymentStatusMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardEndpointCount: NexusDashboardEndpointCountMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardEventCount: NexusDashboardEventCountMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardFabricHealth: NexusDashboardFabricHealthMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardInsightsAnomalyActive: NexusDashboardInsightsAnomalyActiveMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardInsightsAnomalyCount: NexusDashboardInsightsAnomalyCountMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardInsightsConfidence: NexusDashboardInsightsConfidenceMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardInsightsScore: NexusDashboardInsightsScoreMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardInsightsStatus: NexusDashboardInsightsStatusMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardOrchestratorDeploymentCount: NexusDashboardOrchestratorDeploymentCountMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardOrchestratorDeploymentStatus: NexusDashboardOrchestratorDeploymentStatusMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardOrchestratorPolicyDeltaCount: NexusDashboardOrchestratorPolicyDeltaCountMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardResourceCount: NexusDashboardResourceCountMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardResourceInfo: NexusDashboardResourceInfoMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardResourceStatus: NexusDashboardResourceStatusMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardScrapeLastSuccess: NexusDashboardScrapeLastSuccessMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardScrapePartialSuccess: NexusDashboardScrapePartialSuccessMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardServiceHealth: NexusDashboardServiceHealthMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardServiceSkipped: NexusDashboardServiceSkippedMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardServiceUnavailable: NexusDashboardServiceUnavailableMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardStorageUtilization: NexusDashboardStorageUtilizationMetricConfig{
+						Enabled: false,
+					},
+					NexusDashboardVpcPeerCount: NexusDashboardVpcPeerCountMetricConfig{
+						Enabled: false,
+					},
+					SdwanAPIRateLimited: SdwanAPIRateLimitedMetricConfig{
+						Enabled: false,
+					},
+					SdwanAPIRequestDuration: SdwanAPIRequestDurationMetricConfig{
+						Enabled: false,
+					},
+					SdwanAPIRequestErrors: SdwanAPIRequestErrorsMetricConfig{
+						Enabled: false,
+					},
+					SdwanAppRouteJitter: SdwanAppRouteJitterMetricConfig{
+						Enabled: false,
+					},
+					SdwanAppRouteLatency: SdwanAppRouteLatencyMetricConfig{
+						Enabled: false,
+					},
+					SdwanAppRouteLoss: SdwanAppRouteLossMetricConfig{
+						Enabled: false,
+					},
+					SdwanAppRouteSLAStatus: SdwanAppRouteSLAStatusMetricConfig{
+						Enabled: false,
+					},
+					SdwanBfdSessionCount: SdwanBfdSessionCountMetricConfig{
+						Enabled: false,
+					},
+					SdwanBfdSessionFlapCount: SdwanBfdSessionFlapCountMetricConfig{
+						Enabled: false,
+					},
+					SdwanBfdSessionStatus: SdwanBfdSessionStatusMetricConfig{
+						Enabled: false,
+					},
+					SdwanBfdSessionTransitions: SdwanBfdSessionTransitionsMetricConfig{
+						Enabled: false,
+					},
+					SdwanCollectionObjectCount: SdwanCollectionObjectCountMetricConfig{
+						Enabled: false,
+					},
+					SdwanControlActualConnections: SdwanControlActualConnectionsMetricConfig{
+						Enabled: false,
+					},
+					SdwanControlConnectionCount: SdwanControlConnectionCountMetricConfig{
+						Enabled: false,
+					},
+					SdwanControlConnectionStatus: SdwanControlConnectionStatusMetricConfig{
+						Enabled: false,
+					},
+					SdwanControlExpectedConnections: SdwanControlExpectedConnectionsMetricConfig{
+						Enabled: false,
+					},
+					SdwanDeviceCertificateStatus: SdwanDeviceCertificateStatusMetricConfig{
+						Enabled: false,
+					},
+					SdwanDeviceReachabilityStatus: SdwanDeviceReachabilityStatusMetricConfig{
+						Enabled: false,
+					},
+					SdwanDeviceValidityStatus: SdwanDeviceValidityStatusMetricConfig{
+						Enabled: false,
+					},
+					SdwanEventCount: SdwanEventCountMetricConfig{
+						Enabled: false,
+					},
+					SdwanInventoryDeviceCount: SdwanInventoryDeviceCountMetricConfig{
+						Enabled: false,
+					},
+					SdwanManagerEndpointStatus: SdwanManagerEndpointStatusMetricConfig{
+						Enabled: false,
+					},
+					SdwanManagerHealthScore: SdwanManagerHealthScoreMetricConfig{
+						Enabled: false,
+					},
+					SdwanManagerStatus: SdwanManagerStatusMetricConfig{
+						Enabled: false,
+					},
+					SdwanManagerUp: SdwanManagerUpMetricConfig{
+						Enabled: false,
+					},
+					SdwanResourceInfo: SdwanResourceInfoMetricConfig{
+						Enabled: false,
+					},
+					SdwanResourceStatus: SdwanResourceStatusMetricConfig{
+						Enabled: false,
+					},
+					SdwanScrapeLastSuccess: SdwanScrapeLastSuccessMetricConfig{
+						Enabled: false,
+					},
+					SdwanScrapePartialSuccess: SdwanScrapePartialSuccessMetricConfig{
+						Enabled: false,
+					},
+					SdwanServiceSkipped: SdwanServiceSkippedMetricConfig{
+						Enabled: false,
+					},
+					SdwanServiceUnavailable: SdwanServiceUnavailableMetricConfig{
+						Enabled: false,
+					},
+					SdwanTransportInterfaceStatus: SdwanTransportInterfaceStatusMetricConfig{
+						Enabled: false,
+					},
+					SystemCPULogicalCount: SystemCPULogicalCountMetricConfig{
+						Enabled: false,
 					},
 					SystemCPUUtilization: SystemCPUUtilizationMetricConfig{
 						Enabled:             false,
@@ -310,7 +2546,7 @@ func TestMetricsBuilderConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := loadMetricsBuilderConfig(t, tt.name)
-			diff := cmp.Diff(tt.want, cfg, cmpopts.IgnoreUnexported(CiscoDeviceUpMetricConfig{}, CiscoInterfaceAdminStatusMetricConfig{}, CiscoInterfaceIoRateMetricConfig{}, CiscoInterfacePacketRateMetricConfig{}, CiscoInterfaceSpeedMetricConfig{}, CiscoInterfaceUtilizationMetricConfig{}, CiscoOpticsEsnrMetricConfig{}, CiscoOpticsLaserBiasCurrentMetricConfig{}, CiscoOpticsPreFecBerMetricConfig{}, CiscoOpticsPresentMetricConfig{}, CiscoOpticsRxPowerMetricConfig{}, CiscoOpticsTdecqMetricConfig{}, CiscoOpticsTecCurrentMetricConfig{}, CiscoOpticsTecUtilizationMetricConfig{}, CiscoOpticsTemperatureMetricConfig{}, CiscoOpticsTxPowerMetricConfig{}, CiscoOpticsVoltageMetricConfig{}, SystemCPUUtilizationMetricConfig{}, SystemMemoryUtilizationMetricConfig{}, SystemNetworkErrorsMetricConfig{}, SystemNetworkInterfaceStatusMetricConfig{}, SystemNetworkIoMetricConfig{}, SystemNetworkPacketCountMetricConfig{}, SystemNetworkPacketDroppedMetricConfig{}, SystemUptimeMetricConfig{}, ResourceAttributeConfig{}))
+			diff := cmp.Diff(tt.want, cfg, cmpopts.IgnoreUnexported(AciAPIEndpointErrorMetricConfig{}, AciAPIRateLimitedMetricConfig{}, AciAPIRequestDurationMetricConfig{}, AciAPIRequestErrorsMetricConfig{}, AciAuditRecordCountMetricConfig{}, AciControllerUpMetricConfig{}, AciEndpointCountMetricConfig{}, AciEndpointPresentMetricConfig{}, AciEventCountMetricConfig{}, AciFabricHealthMetricConfig{}, AciFaultActiveMetricConfig{}, AciFaultCountMetricConfig{}, AciResourceCountMetricConfig{}, AciResourceInfoMetricConfig{}, AciResourceStatusMetricConfig{}, AciScrapeLastSuccessMetricConfig{}, AciScrapePartialSuccessMetricConfig{}, AciTenantObjectCountMetricConfig{}, AciTenantStatusMetricConfig{}, CatalystCenterAPIRateLimitedMetricConfig{}, CatalystCenterAPIRequestDurationMetricConfig{}, CatalystCenterAPIRequestErrorsMetricConfig{}, CatalystCenterClientCountMetricConfig{}, CatalystCenterClientDetailHealthScoreMetricConfig{}, CatalystCenterClientHealthScoreMetricConfig{}, CatalystCenterClientIssueCountMetricConfig{}, CatalystCenterClientNetworkIoMetricConfig{}, CatalystCenterClientUniqueCountMetricConfig{}, CatalystCenterClientWirelessRssiMetricConfig{}, CatalystCenterClientWirelessSnrMetricConfig{}, CatalystCenterDeviceCollectionStatusMetricConfig{}, CatalystCenterDeviceDetailCommunicationStatusMetricConfig{}, CatalystCenterDeviceDetailHealthScoreMetricConfig{}, CatalystCenterDeviceInterfaceCountMetricConfig{}, CatalystCenterDeviceReachabilityStatusMetricConfig{}, CatalystCenterDeviceUptimeMetricConfig{}, CatalystCenterInterfaceCountMetricConfig{}, CatalystCenterInventoryDeviceCountMetricConfig{}, CatalystCenterIssueActiveCountMetricConfig{}, CatalystCenterIssueCountMetricConfig{}, CatalystCenterNetworkDeviceCountMetricConfig{}, CatalystCenterNetworkHealthCategoryScoreMetricConfig{}, CatalystCenterNetworkHealthEntityCountMetricConfig{}, CatalystCenterNetworkHealthEntityScoreMetricConfig{}, CatalystCenterNetworkHealthScoreMetricConfig{}, CatalystCenterScrapeLastSuccessMetricConfig{}, CatalystCenterScrapePartialSuccessMetricConfig{}, CatalystCenterSiteClientCountMetricConfig{}, CatalystCenterSiteClientHealthPercentageMetricConfig{}, CatalystCenterSiteHealthCountMetricConfig{}, CatalystCenterSiteIssueCountMetricConfig{}, CatalystCenterSiteNetworkDeviceCountMetricConfig{}, CatalystCenterSiteNetworkDeviceHealthPercentageMetricConfig{}, CatalystCenterTopologyLinkCountMetricConfig{}, CatalystCenterTopologyNodeCountMetricConfig{}, CiscoCatalyst9800ReceiverActiveSubscriptionsMetricConfig{}, CiscoCatalyst9800ReceiverCompactGpbPayloadsMetricConfig{}, CiscoCatalyst9800ReceiverDecodeErrorsMetricConfig{}, CiscoCatalyst9800ReceiverDroppedDatapointsMetricConfig{}, CiscoCatalyst9800ReceiverLastSuccessTimestampMetricConfig{}, CiscoCatalyst9800ReceiverReconnectsMetricConfig{}, CiscoCatalyst9800ReceiverTargetLastSuccessTimestampMetricConfig{}, CiscoCatalyst9800ReceiverTargetReconnectsMetricConfig{}, CiscoCatalyst9800ReceiverTargetSubscriptionActiveMetricConfig{}, CiscoCatalyst9800ReceiverTargetUpdatesMetricConfig{}, CiscoCatalyst9800ReceiverUnsupportedPathsMetricConfig{}, CiscoCatalyst9800ReceiverUpdatesMetricConfig{}, CiscoDeviceUpMetricConfig{}, CiscoInterfaceAdminStatusMetricConfig{}, CiscoInterfaceDropRateMetricConfig{}, CiscoInterfaceIoRateMetricConfig{}, CiscoInterfacePacketRateMetricConfig{}, CiscoInterfaceSpeedMetricConfig{}, CiscoInterfaceUtilizationMetricConfig{}, CiscoIosxrReceiverActiveSubscriptionsMetricConfig{}, CiscoIosxrReceiverCompactGpbPayloadsMetricConfig{}, CiscoIosxrReceiverDecodeErrorsMetricConfig{}, CiscoIosxrReceiverDroppedDatapointsMetricConfig{}, CiscoIosxrReceiverLastSuccessTimestampMetricConfig{}, CiscoIosxrReceiverReconnectsMetricConfig{}, CiscoIosxrReceiverTargetLastSuccessTimestampMetricConfig{}, CiscoIosxrReceiverTargetReconnectsMetricConfig{}, CiscoIosxrReceiverTargetSubscriptionActiveMetricConfig{}, CiscoIosxrReceiverTargetUpdatesMetricConfig{}, CiscoIosxrReceiverUnsupportedPathsMetricConfig{}, CiscoIosxrReceiverUpdatesMetricConfig{}, CiscoOpticsEsnrMetricConfig{}, CiscoOpticsLaserBiasCurrentMetricConfig{}, CiscoOpticsPreFecBerMetricConfig{}, CiscoOpticsPresentMetricConfig{}, CiscoOpticsRxPowerMetricConfig{}, CiscoOpticsTdecqMetricConfig{}, CiscoOpticsTecCurrentMetricConfig{}, CiscoOpticsTecUtilizationMetricConfig{}, CiscoOpticsTemperatureMetricConfig{}, CiscoOpticsTxPowerMetricConfig{}, CiscoOpticsVoltageMetricConfig{}, CiscoScrapePartialSuccessMetricConfig{}, CiscoTopologyNeighborInfoMetricConfig{}, CiscoTransceiverSensorMetricConfig{}, CiscoWlcApCapwapEncryptionEnabledMetricConfig{}, CiscoWlcApCapwapStateMetricConfig{}, CiscoWlcApDisconnectMetricConfig{}, CiscoWlcApDisconnectReasonInfoMetricConfig{}, CiscoWlcApJoinFailureReasonInfoMetricConfig{}, CiscoWlcApJoinStatusMetricConfig{}, CiscoWlcAuthRadiusAccessAcceptCountMetricConfig{}, CiscoWlcAuthRadiusAccessRejectCountMetricConfig{}, CiscoWlcAuthRadiusBadAuthenticatorCountMetricConfig{}, CiscoWlcAuthRadiusResponseCountMetricConfig{}, CiscoWlcAuthRadiusResponseDelayAvgMetricConfig{}, CiscoWlcAuthRadiusResponseDelayMaxMetricConfig{}, CiscoWlcAuthRadiusTimeoutCountMetricConfig{}, CiscoWlcClientAuthFailureReasonInfoMetricConfig{}, CiscoWlcClientConnectionStateMetricConfig{}, CiscoWlcClientNetworkIoMetricConfig{}, CiscoWlcClientNetworkPacketsMetricConfig{}, CiscoWlcClientRoamCountMetricConfig{}, CiscoWlcClientRoamFailureCountMetricConfig{}, CiscoWlcClientRoamTypeInfoMetricConfig{}, CiscoWlcClientWirelessRssiMetricConfig{}, CiscoWlcClientWirelessSnrMetricConfig{}, CiscoWlcControllerCPUUtilizationMetricConfig{}, CiscoWlcControllerMemoryBytesMetricConfig{}, CiscoWlcControllerReceiverActiveSubscriptionsMetricConfig{}, CiscoWlcControllerReceiverDecodeErrorsMetricConfig{}, CiscoWlcControllerReceiverSubscriptionActiveMetricConfig{}, CiscoWlcControllerReceiverUpdatesMetricConfig{}, CiscoWlcHaEnabledMetricConfig{}, CiscoWlcHaStandbyFailureCountMetricConfig{}, CiscoWlcHaStateMetricConfig{}, CiscoWlcHaSwitchoverCountMetricConfig{}, CiscoWlcMobilityHandoffCountMetricConfig{}, CiscoWlcMobilityHandoffFailureCountMetricConfig{}, CiscoWlcMobilityPeerStatusMetricConfig{}, CiscoWlcMobilityRoamCountMetricConfig{}, CiscoWlcRfChannelChangeCountMetricConfig{}, CiscoWlcRfChannelRecommendedMetricConfig{}, CiscoWlcRfChannelUtilizationMetricConfig{}, CiscoWlcRfClientCountMetricConfig{}, CiscoWlcRfNoiseFloorMetricConfig{}, CiscoWlcSsidChannelUtilizationMetricConfig{}, CiscoWlcSsidClientCountMetricConfig{}, CiscoWlcSsidNetworkIoMetricConfig{}, CiscoWlcSsidRetryCountMetricConfig{}, FmcAPIEndpointErrorMetricConfig{}, FmcAPIRateLimitedMetricConfig{}, FmcAPIRequestDurationMetricConfig{}, FmcAPIRequestErrorsMetricConfig{}, FmcAuditRecordCountMetricConfig{}, FmcDeploymentPendingCountMetricConfig{}, FmcDeploymentStatusMetricConfig{}, FmcHaStatusMetricConfig{}, FmcHealthEventCountMetricConfig{}, FmcHealthStatusMetricConfig{}, FmcManagerUpMetricConfig{}, FmcPolicyObjectCountMetricConfig{}, FmcResourceCountMetricConfig{}, FmcResourceInfoMetricConfig{}, FmcResourceStatusMetricConfig{}, FmcScrapeLastSuccessMetricConfig{}, FmcScrapePartialSuccessMetricConfig{}, FmcVpnTunnelStatusMetricConfig{}, IntersightAdvisoryActiveMetricConfig{}, IntersightAdvisoryCountMetricConfig{}, IntersightAlarmActiveMetricConfig{}, IntersightAlarmCountMetricConfig{}, IntersightAPIRateLimitedMetricConfig{}, IntersightAPIRequestDurationMetricConfig{}, IntersightAPIRequestErrorsMetricConfig{}, IntersightAuditRecordCountMetricConfig{}, IntersightComputeAvailableMemoryMetricConfig{}, IntersightComputeThreadCountMetricConfig{}, IntersightFaultCountMetricConfig{}, IntersightFirmwareBundleInfoMetricConfig{}, IntersightHclStatusMetricConfig{}, IntersightHclStatusCountMetricConfig{}, IntersightHyperflexReadIopsMetricConfig{}, IntersightHyperflexReadLatencyMetricConfig{}, IntersightHyperflexStatusMetricConfig{}, IntersightHyperflexWriteIopsMetricConfig{}, IntersightHyperflexWriteLatencyMetricConfig{}, IntersightKubernetesClusterConnectionStatusMetricConfig{}, IntersightResourceCountMetricConfig{}, IntersightResourceInfoMetricConfig{}, IntersightResourceStatusMetricConfig{}, IntersightScrapeLastSuccessMetricConfig{}, IntersightScrapePartialSuccessMetricConfig{}, IntersightStorageLifeLeftMetricConfig{}, IntersightStorageMediaErrorCountMetricConfig{}, IntersightStoragePowerOnHoursMetricConfig{}, IntersightStoragePredictiveFailureCountMetricConfig{}, IntersightStorageRebuildRateMetricConfig{}, IntersightStorageStatusMetricConfig{}, IntersightStorageTemperatureMetricConfig{}, IntersightTargetConnectionStatusMetricConfig{}, IntersightTaskCountMetricConfig{}, IntersightTaskStatusMetricConfig{}, IntersightTechsupportCountMetricConfig{}, IntersightTechsupportStatusMetricConfig{}, IntersightTelemetryQueryRowsMetricConfig{}, IntersightUcsCPUIdleUtilizationMetricConfig{}, IntersightUcsCPUSystemUtilizationMetricConfig{}, IntersightUcsCurrentMetricConfig{}, IntersightUcsFanSpeedMetricConfig{}, IntersightUcsFanSpeedRatioMetricConfig{}, IntersightUcsFanStatusMetricConfig{}, IntersightUcsHostEnergyMetricConfig{}, IntersightUcsHostPowerMetricConfig{}, IntersightUcsHostPowerStateMetricConfig{}, IntersightUcsMemoryCachedMetricConfig{}, IntersightUcsMemoryEccCorrectableMetricConfig{}, IntersightUcsMemoryEccUncorrectableMetricConfig{}, IntersightUcsMemoryFreeMetricConfig{}, IntersightUcsMemoryModuleSizeMetricConfig{}, IntersightUcsMemoryStatusMetricConfig{}, IntersightUcsMemoryUsedMetricConfig{}, IntersightUcsNetworkInterfaceResetsMetricConfig{}, IntersightUcsNetworkLinkStatusMetricConfig{}, IntersightUcsNetworkLinkFailuresMetricConfig{}, IntersightUcsNetworkReceiveMetricConfig{}, IntersightUcsNetworkReceiveCrcErrorsMetricConfig{}, IntersightUcsNetworkReceiveDiscardsMetricConfig{}, IntersightUcsNetworkReceiveDropsMetricConfig{}, IntersightUcsNetworkReceiveErrorsMetricConfig{}, IntersightUcsNetworkReceiveNoBufferMetricConfig{}, IntersightUcsNetworkReceivePacketsMetricConfig{}, IntersightUcsNetworkReceivePauseFramesMetricConfig{}, IntersightUcsNetworkSignalLossesMetricConfig{}, IntersightUcsNetworkSpeedMetricConfig{}, IntersightUcsNetworkTransmitMetricConfig{}, IntersightUcsNetworkTransmitDiscardsMetricConfig{}, IntersightUcsNetworkTransmitDropsMetricConfig{}, IntersightUcsNetworkTransmitErrorsMetricConfig{}, IntersightUcsNetworkTransmitPacketsMetricConfig{}, IntersightUcsNetworkTransmitPauseFramesMetricConfig{}, IntersightUcsNetworkUtilizationMetricConfig{}, IntersightUcsPowerSupplyOutputPowerMetricConfig{}, IntersightUcsPowerSupplyStatusMetricConfig{}, IntersightUcsPowerSupplyUtilizationMetricConfig{}, IntersightUcsSignalPowerReceiveMetricConfig{}, IntersightUcsSignalPowerTransmitMetricConfig{}, IntersightUcsTemperatureMetricConfig{}, IntersightUcsTemperatureLimitHighCriticalMetricConfig{}, IntersightUcsTemperatureLimitLowCriticalMetricConfig{}, IntersightUcsTemperatureStatusMetricConfig{}, IntersightUcsVoltageMetricConfig{}, IntersightVirtualMachineCountMetricConfig{}, IntersightVirtualMachineCPUCountMetricConfig{}, IntersightVirtualMachineMemoryMetricConfig{}, IntersightVirtualMachinePowerStateMetricConfig{}, IntersightWorkflowCountMetricConfig{}, IntersightWorkflowStatusMetricConfig{}, IseAccountingSessionCountMetricConfig{}, IseAlarmCountMetricConfig{}, IseAPIEndpointErrorMetricConfig{}, IseAPIRateLimitedMetricConfig{}, IseAPIRequestDurationMetricConfig{}, IseAPIRequestErrorsMetricConfig{}, IseAuthFailureReasonInfoMetricConfig{}, IseCertificateCountMetricConfig{}, IseCertificateExpirationMetricConfig{}, IseControllerUpMetricConfig{}, IseDataconnectQueryDurationMetricConfig{}, IseDataconnectQueryErrorsMetricConfig{}, IseDataconnectQueryRowsMetricConfig{}, IseDataconnectRowCountMetricConfig{}, IseDeploymentNodeCountMetricConfig{}, IseDeploymentNodeStatusMetricConfig{}, IseEndpointCountMetricConfig{}, IseEndpointPostureCountMetricConfig{}, IseEndpointPostureStatusMetricConfig{}, IseEndpointProfileCountMetricConfig{}, IseEndpointStatusMetricConfig{}, IseLicenseCountMetricConfig{}, IseLicenseStatusMetricConfig{}, IseNetworkDeviceCountMetricConfig{}, IseNetworkDeviceStatusMetricConfig{}, IsePolicyObjectCountMetricConfig{}, IsePolicyStatusMetricConfig{}, IseProfilerPolicyStatusMetricConfig{}, IsePxgridMessageCountMetricConfig{}, IsePxgridServiceStatusMetricConfig{}, IsePxgridSubscriptionStatusMetricConfig{}, IseRadiusFailureCountMetricConfig{}, IseResourceInfoMetricConfig{}, IseResourceStatusMetricConfig{}, IseScrapeLastSuccessMetricConfig{}, IseScrapePartialSuccessMetricConfig{}, IseServiceSkippedMetricConfig{}, IseServiceUnavailableMetricConfig{}, IseSessionActiveCountMetricConfig{}, IseSessionCountMetricConfig{}, IseTacacsFailureCountMetricConfig{}, IseTrustsecResourceCountMetricConfig{}, IseTrustsecResourceStatusMetricConfig{}, IseWebhookDeliveryCountMetricConfig{}, MerakiAPIRequestDurationMetricConfig{}, MerakiAPIRequestErrorsMetricConfig{}, MerakiAPIRequestRateLimitedMetricConfig{}, MerakiAppliancePerformanceScoreMetricConfig{}, MerakiControllerUpMetricConfig{}, MerakiDeviceStatusMetricConfig{}, MerakiPowerModuleStatusMetricConfig{}, MerakiScrapeLastSuccessMetricConfig{}, MerakiSwitchPortAlertActiveMetricConfig{}, MerakiSwitchPortPoeAllocatedMetricConfig{}, MerakiSwitchPortUsageMetricConfig{}, MerakiUplinkCellularSignalRsrpMetricConfig{}, MerakiUplinkCellularSignalRsrqMetricConfig{}, MerakiUplinkLatencyMetricConfig{}, MerakiUplinkLossMetricConfig{}, MerakiUplinkStatusMetricConfig{}, MerakiVpnPeerJitterMetricConfig{}, MerakiVpnPeerLatencyMetricConfig{}, MerakiVpnPeerLossMetricConfig{}, MerakiVpnPeerMosMetricConfig{}, MerakiVpnPeerStatusMetricConfig{}, MerakiVpnPeerUsageMetricConfig{}, MerakiWirelessChannelUtilizationMetricConfig{}, MerakiWirelessClientCountMetricConfig{}, MerakiWirelessPacketCountMetricConfig{}, MerakiWirelessPacketLossMetricConfig{}, MerakiWirelessPacketLossPercentageMetricConfig{}, MerakiWirelessSsidStatusMetricConfig{}, NexusDashboardAPIEndpointErrorMetricConfig{}, NexusDashboardAPIRateLimitedMetricConfig{}, NexusDashboardAPIRequestDurationMetricConfig{}, NexusDashboardAPIRequestErrorsMetricConfig{}, NexusDashboardAuditRecordCountMetricConfig{}, NexusDashboardConfigComplianceMetricConfig{}, NexusDashboardDataBrokerRuleCountMetricConfig{}, NexusDashboardDataBrokerSessionCountMetricConfig{}, NexusDashboardDataBrokerStatusMetricConfig{}, NexusDashboardDeploymentStatusMetricConfig{}, NexusDashboardEndpointCountMetricConfig{}, NexusDashboardEventCountMetricConfig{}, NexusDashboardFabricHealthMetricConfig{}, NexusDashboardInsightsAnomalyActiveMetricConfig{}, NexusDashboardInsightsAnomalyCountMetricConfig{}, NexusDashboardInsightsConfidenceMetricConfig{}, NexusDashboardInsightsScoreMetricConfig{}, NexusDashboardInsightsStatusMetricConfig{}, NexusDashboardOrchestratorDeploymentCountMetricConfig{}, NexusDashboardOrchestratorDeploymentStatusMetricConfig{}, NexusDashboardOrchestratorPolicyDeltaCountMetricConfig{}, NexusDashboardResourceCountMetricConfig{}, NexusDashboardResourceInfoMetricConfig{}, NexusDashboardResourceStatusMetricConfig{}, NexusDashboardScrapeLastSuccessMetricConfig{}, NexusDashboardScrapePartialSuccessMetricConfig{}, NexusDashboardServiceHealthMetricConfig{}, NexusDashboardServiceSkippedMetricConfig{}, NexusDashboardServiceUnavailableMetricConfig{}, NexusDashboardStorageUtilizationMetricConfig{}, NexusDashboardVpcPeerCountMetricConfig{}, SdwanAPIRateLimitedMetricConfig{}, SdwanAPIRequestDurationMetricConfig{}, SdwanAPIRequestErrorsMetricConfig{}, SdwanAppRouteJitterMetricConfig{}, SdwanAppRouteLatencyMetricConfig{}, SdwanAppRouteLossMetricConfig{}, SdwanAppRouteSLAStatusMetricConfig{}, SdwanBfdSessionCountMetricConfig{}, SdwanBfdSessionFlapCountMetricConfig{}, SdwanBfdSessionStatusMetricConfig{}, SdwanBfdSessionTransitionsMetricConfig{}, SdwanCollectionObjectCountMetricConfig{}, SdwanControlActualConnectionsMetricConfig{}, SdwanControlConnectionCountMetricConfig{}, SdwanControlConnectionStatusMetricConfig{}, SdwanControlExpectedConnectionsMetricConfig{}, SdwanDeviceCertificateStatusMetricConfig{}, SdwanDeviceReachabilityStatusMetricConfig{}, SdwanDeviceValidityStatusMetricConfig{}, SdwanEventCountMetricConfig{}, SdwanInventoryDeviceCountMetricConfig{}, SdwanManagerEndpointStatusMetricConfig{}, SdwanManagerHealthScoreMetricConfig{}, SdwanManagerStatusMetricConfig{}, SdwanManagerUpMetricConfig{}, SdwanResourceInfoMetricConfig{}, SdwanResourceStatusMetricConfig{}, SdwanScrapeLastSuccessMetricConfig{}, SdwanScrapePartialSuccessMetricConfig{}, SdwanServiceSkippedMetricConfig{}, SdwanServiceUnavailableMetricConfig{}, SdwanTransportInterfaceStatusMetricConfig{}, SystemCPULogicalCountMetricConfig{}, SystemCPUUtilizationMetricConfig{}, SystemMemoryUtilizationMetricConfig{}, SystemNetworkErrorsMetricConfig{}, SystemNetworkInterfaceStatusMetricConfig{}, SystemNetworkIoMetricConfig{}, SystemNetworkPacketCountMetricConfig{}, SystemNetworkPacketDroppedMetricConfig{}, SystemUptimeMetricConfig{}, ResourceAttributeConfig{}))
 			require.Emptyf(t, diff, "Config mismatch (-expected +actual):\n%s", diff)
 		})
 	}
@@ -504,6 +2740,18 @@ func TestCiscoOpticsVoltageMetricsConfig_Validate(t *testing.T) {
 	require.ErrorContains(t, cfg.Validate(), "metric cisco.optics.voltage doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]")
 
 	cfg = DefaultMetricsConfig().CiscoOpticsVoltage
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoTopologyNeighborInfoMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoTopologyNeighborInfo
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoTopologyNeighborInfoMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.topology.neighbor.info doesn't have an attribute invalid, valid attributes: [cisco.topology.protocol, network.interface.name, cisco.topology.neighbor.name, cisco.topology.neighbor.interface, cisco.topology.neighbor.platform, cisco.topology.neighbor.address, network.peer.name, network.peer.address, network.protocol.name]")
+
+	cfg = DefaultMetricsConfig().CiscoTopologyNeighborInfo
 	cfg.AggregationStrategy = "invalid"
 	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
 }

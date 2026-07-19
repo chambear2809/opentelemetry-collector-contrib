@@ -558,7 +558,9 @@ func metricGaugeValueExists(batches []pmetric.Metrics, name string, expected flo
 					}
 					dps := metric.Gauge().DataPoints()
 					for l := 0; l < dps.Len(); l++ {
-						if dps.At(l).DoubleValue() == expected {
+						dp := dps.At(l)
+						if (dp.ValueType() == pmetric.NumberDataPointValueTypeDouble && dp.DoubleValue() == expected) ||
+							(dp.ValueType() == pmetric.NumberDataPointValueTypeInt && float64(dp.IntValue()) == expected) {
 							return true
 						}
 					}

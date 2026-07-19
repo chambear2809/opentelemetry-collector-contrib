@@ -285,13 +285,13 @@ func (r *merakiMetricsReceiver) finishScrape(builder *merakiMetricsBuilder, part
 		target := &r.targets[i]
 		rb := builder.orgResource(target.OrganizationID)
 		partial := partialByOrganization[target.OrganizationID]
-		rb.recordInt("cisco.scrape.partial_success", "Whether one or more Meraki endpoint families failed during the scrape.", "1", boolToInt(partial), nil)
+		rb.recordInt("cisco.scrape.partial_success", "Whether the scrape completed with at least one command-family failure.", "1", boolToInt(partial), nil)
 		outcome := merakiOrganizationOutcome(stats, target.OrganizationID)
 		if availability, ok := outcome.availability(); ok {
-			rb.recordInt("meraki.controller.up", "Meraki Dashboard API availability for this organization and scrape.", "1", availability, nil)
+			rb.recordInt("meraki.controller.up", "Whether at least one Dashboard API request for the organization succeeded in the current scrape.", "1", availability, nil)
 		}
 		if lastSuccess, ok := r.successState(target.OrganizationID).observe(time.Now(), !partial && outcome.succeeded); ok {
-			rb.recordInt("meraki.scrape.last_success", "Unix timestamp of the most recent fully successful Meraki scrape for this organization.", "s", lastSuccess.Unix(), nil)
+			rb.recordInt("meraki.scrape.last_success", "Unix timestamp of the most recent fully successful scrape for the organization.", "s", lastSuccess.Unix(), nil)
 		}
 	}
 	return builder.emit()
@@ -504,10 +504,10 @@ func recordMerakiDeviceStatuses(builder *merakiMetricsBuilder, statuses []meraki
 		resource := deviceResourceFromStatus(*status)
 		rb := builder.deviceResource(resource)
 		if up, ok := merakiDeviceUp(status.Status); ok {
-			rb.recordInt("cisco.device.up", "Device availability (1 = up, 0 = down).", "1", up, nil)
+			rb.recordInt("cisco.device.up", "Device availability (1 = up, 0 = down)", "1", up, nil)
 		}
 		if code, ok := merakiStatusCode(status.Status); ok {
-			rb.recordInt("meraki.device.status", "Meraki Dashboard device status.", "1", code, map[string]string{
+			rb.recordInt("meraki.device.status", "Dashboard device status code with the original status as an attribute.", "1", code, map[string]string{
 				"meraki.device.status":       status.Status,
 				"meraki.device.product_type": status.ProductType,
 			})
@@ -543,7 +543,7 @@ func (r *merakiMetricsReceiver) scrapeMemoryUsage(ctx context.Context, builder *
 			continue
 		}
 		if value, observedAt, ok := memoryUtilization(*usage); ok {
-			rb.recordDoubleAt("system.memory.utilization", "Memory utilization as a ratio from 0 to 1.", "1", value, map[string]string{"system.memory.state": "used"}, observedAt)
+			rb.recordDoubleAt("system.memory.utilization", "Ratio of memory bytes in use, from 0 to 1.", "1", value, map[string]string{"system.memory.state": "used"}, observedAt)
 		}
 	}
 	return err != nil
@@ -574,24 +574,24 @@ func (r *merakiMetricsReceiver) scrapeSwitchPorts(ctx context.Context, builder *
 			speedBits, speedString := parseMerakiSpeed(port.Speed)
 			if speedBits > 0 {
 				builder.setPortSpeed(sw.Serial, port.PortID, speedBits)
-				rb.recordInt("cisco.interface.speed", "Interface line speed.", "bit/s", speedBits, interfaceAttrs(port.PortID, sw.MAC, "", speedString))
+				rb.recordInt("cisco.interface.speed", "The numeric line speed of a Cisco interface", "bit/s", speedBits, interfaceAttrs(port.PortID, sw.MAC, "", speedString))
 			}
 			if connected, ok := connectedStatus(port.Status); ok {
-				rb.recordInt("system.network.interface.status", "Interface operational status (1 = up, 0 = down).", "1", connected, interfaceAttrs(port.PortID, sw.MAC, "", speedString))
+				rb.recordInt("system.network.interface.status", "Interface operational status (1 = up, 0 = down)", "1", connected, interfaceAttrs(port.PortID, sw.MAC, "", speedString))
 			}
-			rb.recordInt("cisco.interface.admin.status", "Interface administrative status (1 = enabled, 0 = disabled).", "1", boolToInt(port.Enabled), interfaceAttrs(port.PortID, sw.MAC, "", speedString))
-			rb.recordInt("meraki.switch.port.poe.allocated", "Whether Meraki reports PoE as allocated on the switch port.", "1", boolToInt(port.PoE.IsAllocated), interfaceAttrs(port.PortID, sw.MAC, "", speedString))
+			rb.recordInt("cisco.interface.admin.status", "Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)", "1", boolToInt(port.Enabled), interfaceAttrs(port.PortID, sw.MAC, "", speedString))
+			rb.recordInt("meraki.switch.port.poe.allocated", "Whether Dashboard reports that PoE is allocated to the switch port.", "1", boolToInt(port.PoE.IsAllocated), interfaceAttrs(port.PortID, sw.MAC, "", speedString))
 			for _, reason := range port.Errors {
 				attrs := interfaceAttrs(port.PortID, sw.MAC, "", speedString)
 				attrs["meraki.switch.port.alert.severity"] = "error"
 				attrs["meraki.switch.port.alert.reason"] = reason
-				rb.recordInt("meraki.switch.port.alert.active", "Current Meraki switch port error or warning.", "1", 1, attrs)
+				rb.recordInt("meraki.switch.port.alert.active", "Current port warning or error state by severity and reason.", "1", 1, attrs)
 			}
 			for _, reason := range port.Warnings {
 				attrs := interfaceAttrs(port.PortID, sw.MAC, "", speedString)
 				attrs["meraki.switch.port.alert.severity"] = "warning"
 				attrs["meraki.switch.port.alert.reason"] = reason
-				rb.recordInt("meraki.switch.port.alert.active", "Current Meraki switch port error or warning.", "1", 1, attrs)
+				rb.recordInt("meraki.switch.port.alert.active", "Current port warning or error state by severity and reason.", "1", 1, attrs)
 			}
 		}
 	}
@@ -635,22 +635,22 @@ func (r *merakiMetricsReceiver) scrapeSwitchPorts(ctx context.Context, builder *
 			rxBits, rxRateOK := merakiKilobitsToBits(interval.Bandwidth.Usage.Downstream)
 			txBits, txRateOK := merakiKilobitsToBits(interval.Bandwidth.Usage.Upstream)
 			if rxRateOK {
-				rb.recordDoubleAt("cisco.interface.io.rate", "Interface traffic rate.", "bit/s", float64(rxBits), attrsRx, observedAt)
+				rb.recordDoubleAt("cisco.interface.io.rate", "The device-reported interface traffic rate", "bit/s", float64(rxBits), attrsRx, observedAt)
 			}
 			if txRateOK {
-				rb.recordDoubleAt("cisco.interface.io.rate", "Interface traffic rate.", "bit/s", float64(txBits), attrsTx, observedAt)
+				rb.recordDoubleAt("cisco.interface.io.rate", "The device-reported interface traffic rate", "bit/s", float64(txBits), attrsTx, observedAt)
 			}
 			if validNonnegativeFloat(interval.Data.Usage.Downstream) {
-				rb.recordDoubleAt("meraki.switch.port.usage", "Windowed switch port usage reported by Meraki.", "kBy", interval.Data.Usage.Downstream, attrsRx, observedAt)
+				rb.recordDoubleAt("meraki.switch.port.usage", "Windowed switch port usage.", "kBy", interval.Data.Usage.Downstream, attrsRx, observedAt)
 			}
 			if validNonnegativeFloat(interval.Data.Usage.Upstream) {
-				rb.recordDoubleAt("meraki.switch.port.usage", "Windowed switch port usage reported by Meraki.", "kBy", interval.Data.Usage.Upstream, attrsTx, observedAt)
+				rb.recordDoubleAt("meraki.switch.port.usage", "Windowed switch port usage.", "kBy", interval.Data.Usage.Upstream, attrsTx, observedAt)
 			}
 			if utilization, ok := merakiInterfaceUtilization(rxBits, speedBits, rxRateOK); ok {
-				rb.recordDoubleAt("cisco.interface.utilization", "Interface traffic utilization as a ratio from 0 to 1.", "1", utilization, attrsRx, observedAt)
+				rb.recordDoubleAt("cisco.interface.utilization", "Cisco interface traffic utilization as a ratio of line speed", "1", utilization, attrsRx, observedAt)
 			}
 			if utilization, ok := merakiInterfaceUtilization(txBits, speedBits, txRateOK); ok {
-				rb.recordDoubleAt("cisco.interface.utilization", "Interface traffic utilization as a ratio from 0 to 1.", "1", utilization, attrsTx, observedAt)
+				rb.recordDoubleAt("cisco.interface.utilization", "Cisco interface traffic utilization as a ratio of line speed", "1", utilization, attrsTx, observedAt)
 			}
 		}
 	}
@@ -678,13 +678,13 @@ func recordMerakiUplinkStatuses(builder *merakiMetricsBuilder, statuses []meraki
 				"meraki.uplink.connection_type": uplink.ConnectionType,
 			}
 			if active, ok := activeStatus(uplink.Status); ok {
-				rb.recordInt("meraki.uplink.status", "Meraki uplink status.", "1", active, attrs)
+				rb.recordInt("meraki.uplink.status", "WAN/uplink active state.", "1", active, attrs)
 			}
 			if rsrp, ok := parseFloatString(uplink.SignalStat.RSRP); ok {
-				rb.recordDouble("meraki.uplink.cellular.signal.rsrp", "Cellular uplink RSRP.", "dBm", rsrp, attrs)
+				rb.recordDouble("meraki.uplink.cellular.signal.rsrp", "Cellular uplink reference-signal received power.", "dBm", rsrp, attrs)
 			}
 			if rsrq, ok := parseFloatString(uplink.SignalStat.RSRQ); ok {
-				rb.recordDouble("meraki.uplink.cellular.signal.rsrq", "Cellular uplink RSRQ.", "dB", rsrq, attrs)
+				rb.recordDouble("meraki.uplink.cellular.signal.rsrq", "Cellular uplink reference-signal received quality.", "dB", rsrq, attrs)
 			}
 		}
 	}
@@ -712,8 +712,8 @@ func (r *merakiMetricsReceiver) scrapeUplinkLossLatency(ctx context.Context, bui
 			continue
 		}
 		attrs := map[string]string{"meraki.uplink.interface": uplink.Uplink}
-		rb.recordDoubleAt("meraki.uplink.loss", "Meraki uplink packet loss percentage.", "%", sample.LossPercent, attrs, observedAt)
-		rb.recordDoubleAt("meraki.uplink.latency", "Meraki uplink latency.", "ms", sample.LatencyMS, attrs, observedAt)
+		rb.recordDoubleAt("meraki.uplink.loss", "Latest Dashboard uplink packet-loss sample.", "%", sample.LossPercent, attrs, observedAt)
+		rb.recordDoubleAt("meraki.uplink.latency", "Latest Dashboard uplink latency sample.", "ms", sample.LatencyMS, attrs, observedAt)
 	}
 	return false
 }
@@ -738,7 +738,7 @@ func (r *merakiMetricsReceiver) scrapeWireless(ctx context.Context, builder *mer
 			continue
 		}
 		for status, count := range device.Counts.ByStatus {
-			rb.recordInt("meraki.wireless.client.count", "Wireless client count by status.", "{client}", count, map[string]string{"meraki.wireless.client.status": status})
+			rb.recordInt("meraki.wireless.client.count", "Wireless client counts by status.", "{client}", count, map[string]string{"meraki.wireless.client.status": status})
 		}
 	}
 
@@ -761,9 +761,9 @@ func (r *merakiMetricsReceiver) scrapeWireless(ctx context.Context, builder *mer
 		}
 		for _, band := range device.ByBand {
 			attrs := map[string]string{"meraki.wireless.band": band.Band}
-			rb.recordDouble("meraki.wireless.channel_utilization", "Wireless channel utilization percentage.", "%", band.Total.Percentage, withAttr(attrs, "meraki.wireless.utilization.type", "total"))
-			rb.recordDouble("meraki.wireless.channel_utilization", "Wireless channel utilization percentage.", "%", band.WiFi.Percentage, withAttr(attrs, "meraki.wireless.utilization.type", "wifi"))
-			rb.recordDouble("meraki.wireless.channel_utilization", "Wireless channel utilization percentage.", "%", band.NonWiFi.Percentage, withAttr(attrs, "meraki.wireless.utilization.type", "non_wifi"))
+			rb.recordDouble("meraki.wireless.channel_utilization", "Wi-Fi, non-Wi-Fi, and total channel utilization by band.", "%", band.Total.Percentage, withAttr(attrs, "meraki.wireless.utilization.type", "total"))
+			rb.recordDouble("meraki.wireless.channel_utilization", "Wi-Fi, non-Wi-Fi, and total channel utilization by band.", "%", band.WiFi.Percentage, withAttr(attrs, "meraki.wireless.utilization.type", "wifi"))
+			rb.recordDouble("meraki.wireless.channel_utilization", "Wi-Fi, non-Wi-Fi, and total channel utilization by band.", "%", band.NonWiFi.Percentage, withAttr(attrs, "meraki.wireless.utilization.type", "non_wifi"))
 		}
 	}
 
@@ -814,7 +814,7 @@ func (r *merakiMetricsReceiver) scrapeWireless(ctx context.Context, builder *mer
 				"meraki.wireless.band":        bss.Radio.Band,
 				"meraki.wireless.radio.index": bss.Radio.Index,
 			}
-			rb.recordInt("meraki.wireless.ssid.status", "Wireless SSID enabled, advertised, and broadcasting status.", "1", boolToInt(bss.SSID.Enabled && bss.SSID.Advertised && bss.Radio.IsBroadcasting), attrs)
+			rb.recordInt("meraki.wireless.ssid.status", "Whether an SSID is enabled, advertised, and broadcasting on a BSS.", "1", boolToInt(bss.SSID.Enabled && bss.SSID.Advertised && bss.Radio.IsBroadcasting), attrs)
 		}
 	}
 
@@ -856,7 +856,7 @@ func (r *merakiMetricsReceiver) scrapeVPN(ctx context.Context, builder *merakiMe
 		for j := range status.MerakiVPNPeers {
 			peer := &status.MerakiVPNPeers[j]
 			if reachable, ok := reachableStatus(peer.Reachability); ok {
-				rb.recordInt("meraki.vpn.peer.status", "Meraki VPN peer reachability.", "1", reachable, map[string]string{
+				rb.recordInt("meraki.vpn.peer.status", "Auto VPN or third-party VPN peer reachability.", "1", reachable, map[string]string{
 					"meraki.vpn.peer.type":         "meraki",
 					"meraki.vpn.peer.network_id":   peer.NetworkID,
 					"meraki.vpn.peer.name":         peer.NetworkName,
@@ -866,7 +866,7 @@ func (r *merakiMetricsReceiver) scrapeVPN(ctx context.Context, builder *merakiMe
 		}
 		for _, peer := range status.ThirdPartyVPNPeers {
 			if reachable, ok := reachableStatus(peer.Reachability); ok {
-				rb.recordInt("meraki.vpn.peer.status", "Meraki VPN peer reachability.", "1", reachable, map[string]string{
+				rb.recordInt("meraki.vpn.peer.status", "Auto VPN or third-party VPN peer reachability.", "1", reachable, map[string]string{
 					"meraki.vpn.peer.type":         "third_party",
 					"meraki.vpn.peer.name":         peer.Name,
 					"meraki.vpn.peer.public_ip":    peer.PublicIP,
@@ -903,19 +903,19 @@ func (r *merakiMetricsReceiver) scrapeVPN(ctx context.Context, builder *merakiMe
 				"meraki.vpn.peer.network_id": peer.NetworkID,
 				"meraki.vpn.peer.name":       peer.NetworkName,
 			}
-			rb.recordInt("meraki.vpn.peer.usage", "Windowed Meraki VPN peer usage.", "kBy", int64(peer.UsageSummary.ReceivedInKilobytes), withAttr(peerAttrs, "network.io.direction", "receive"))
-			rb.recordInt("meraki.vpn.peer.usage", "Windowed Meraki VPN peer usage.", "kBy", int64(peer.UsageSummary.SentInKilobytes), withAttr(peerAttrs, "network.io.direction", "transmit"))
+			rb.recordInt("meraki.vpn.peer.usage", "Windowed VPN peer usage by direction.", "kBy", int64(peer.UsageSummary.ReceivedInKilobytes), withAttr(peerAttrs, "network.io.direction", "receive"))
+			rb.recordInt("meraki.vpn.peer.usage", "Windowed VPN peer usage by direction.", "kBy", int64(peer.UsageSummary.SentInKilobytes), withAttr(peerAttrs, "network.io.direction", "transmit"))
 			for _, latency := range peer.LatencySummaries {
-				rb.recordDouble("meraki.vpn.peer.latency", "Meraki VPN peer latency.", "ms", latency.AvgLatencyMS, withVPNUplinks(peerAttrs, latency.SenderUplink, latency.ReceiverUplink))
+				rb.recordDouble("meraki.vpn.peer.latency", "Windowed VPN peer latency by sender and receiver uplink.", "ms", latency.AvgLatencyMS, withVPNUplinks(peerAttrs, latency.SenderUplink, latency.ReceiverUplink))
 			}
 			for _, loss := range peer.LossPercentageSummaries {
-				rb.recordDouble("meraki.vpn.peer.loss", "Meraki VPN peer packet loss percentage.", "%", loss.AvgLossPercentage, withVPNUplinks(peerAttrs, loss.SenderUplink, loss.ReceiverUplink))
+				rb.recordDouble("meraki.vpn.peer.loss", "Windowed VPN peer loss by sender and receiver uplink.", "%", loss.AvgLossPercentage, withVPNUplinks(peerAttrs, loss.SenderUplink, loss.ReceiverUplink))
 			}
 			for _, jitter := range peer.JitterSummaries {
-				rb.recordDouble("meraki.vpn.peer.jitter", "Meraki VPN peer jitter.", "ms", jitter.AvgJitter, withVPNUplinks(peerAttrs, jitter.SenderUplink, jitter.ReceiverUplink))
+				rb.recordDouble("meraki.vpn.peer.jitter", "Windowed VPN peer jitter by sender and receiver uplink.", "ms", jitter.AvgJitter, withVPNUplinks(peerAttrs, jitter.SenderUplink, jitter.ReceiverUplink))
 			}
 			for _, mos := range peer.MOSSummaries {
-				rb.recordDouble("meraki.vpn.peer.mos", "Meraki VPN peer MOS score.", "1", mos.AvgMOS, withVPNUplinks(peerAttrs, mos.SenderUplink, mos.ReceiverUplink))
+				rb.recordDouble("meraki.vpn.peer.mos", "Windowed VPN peer mean opinion score.", "1", mos.AvgMOS, withVPNUplinks(peerAttrs, mos.SenderUplink, mos.ReceiverUplink))
 			}
 		}
 	}
@@ -942,7 +942,7 @@ func (r *merakiMetricsReceiver) scrapePowerModules(ctx context.Context, builder 
 		}
 		for _, slot := range device.Slots {
 			if code, ok := powerModuleStatus(slot.Status); ok {
-				rb.recordInt("meraki.power.module.status", "Meraki power module status.", "1", code, map[string]string{
+				rb.recordInt("meraki.power.module.status", "Power module connection/powering status.", "1", code, map[string]string{
 					"meraki.power.slot":          strconv.FormatInt(slot.Number, 10),
 					"meraki.power.module.serial": slot.Serial,
 					"meraki.power.module.model":  slot.Model,
@@ -1110,12 +1110,12 @@ func (r *merakiMetricsReceiver) recordAPIRequestMetrics(builder *merakiMetricsBu
 	}
 	for _, aggregate := range aggregateAPIRequestObservations(observations) {
 		rb := builder.orgResource(aggregate.resource)
-		rb.recordDouble("meraki.api.request.duration", "Average Meraki API request duration for attempts in this scrape.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
+		rb.recordDouble("meraki.api.request.duration", "Average duration of Dashboard API request attempts within the scrape for each matching request-attribute set.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
 		if aggregate.errors > 0 {
-			rb.recordSum("meraki.api.request.errors", "Meraki API request errors.", "{error}", aggregate.errors, aggregate.attrs)
+			rb.recordSum("meraki.api.request.errors", "Dashboard API request failures.", "{error}", aggregate.errors, aggregate.attrs)
 		}
 		if aggregate.rateLimited > 0 {
-			rb.recordSum("meraki.api.request.rate_limited", "Meraki API requests that received HTTP 429.", "{request}", aggregate.rateLimited, aggregate.attrs)
+			rb.recordSum("meraki.api.request.rate_limited", "Requests that received HTTP 429.", "{request}", aggregate.rateLimited, aggregate.attrs)
 		}
 	}
 }
@@ -1511,6 +1511,7 @@ func (rb *resourceMetricsBuilder) recordInt(name, description, unit string, valu
 }
 
 func (rb *resourceMetricsBuilder) recordIntAt(name, description, unit string, value int64, attrs map[string]string, observedAt time.Time) {
+	description, unit = governedFixedMetricMetadata(name, pmetric.MetricTypeGauge, fixedMetricValueTypeInt, description, unit)
 	dp := rb.gaugeMetric(name, description, unit).Gauge().DataPoints().AppendEmpty()
 	dp.SetTimestamp(metricTimestamp(observedAt, rb.now))
 	dp.SetIntValue(value)
@@ -1525,6 +1526,7 @@ func (rb *resourceMetricsBuilder) recordDoubleAt(name, description, unit string,
 	if math.IsNaN(value) || math.IsInf(value, 0) {
 		return
 	}
+	description, unit = governedFixedMetricMetadata(name, pmetric.MetricTypeGauge, fixedMetricValueTypeDouble, description, unit)
 	dp := rb.gaugeMetric(name, description, unit).Gauge().DataPoints().AppendEmpty()
 	dp.SetTimestamp(metricTimestamp(observedAt, rb.now))
 	dp.SetDoubleValue(value)
@@ -1546,23 +1548,12 @@ func metricTimestamp(observedAt time.Time, fallback pcommon.Timestamp) pcommon.T
 // counter-style observations (errors, rate-limit hits, packet counts) so
 // SignalFlow rate()/sum_over_time() compute correctly.
 func (rb *resourceMetricsBuilder) recordSum(name, description, unit string, delta int64, attrs map[string]string) {
+	description, unit = governedFixedMetricMetadata(name, pmetric.MetricTypeSum, fixedMetricValueTypeInt, description, unit)
 	total, seriesStart := rb.counters.AddInt(rb.counterNamespace, name, attrs, delta)
 	dp := rb.sumMetric(name, description, unit).Sum().DataPoints().AppendEmpty()
 	dp.SetTimestamp(counterSeriesDatapointTimestamp(seriesStart, rb.now))
 	dp.SetStartTimestamp(counterSeriesStartTimestamp(seriesStart, rb.start))
 	dp.SetIntValue(total)
-	putAttrs(dp.Attributes(), attrs)
-}
-
-func (rb *resourceMetricsBuilder) recordSumDouble(name, description, unit string, delta float64, attrs map[string]string) {
-	if math.IsNaN(delta) || math.IsInf(delta, 0) {
-		return
-	}
-	total, seriesStart := rb.counters.AddDouble(rb.counterNamespace, name, attrs, delta)
-	dp := rb.sumMetric(name, description, unit).Sum().DataPoints().AppendEmpty()
-	dp.SetTimestamp(counterSeriesDatapointTimestamp(seriesStart, rb.now))
-	dp.SetStartTimestamp(counterSeriesStartTimestamp(seriesStart, rb.start))
-	dp.SetDoubleValue(total)
 	putAttrs(dp.Attributes(), attrs)
 }
 
@@ -1578,17 +1569,6 @@ func counterSeriesDatapointTimestamp(seriesStart time.Time, observedAt pcommon.T
 		return pcommon.NewTimestampFromTime(seriesStart)
 	}
 	return observedAt
-}
-
-func (rb *resourceMetricsBuilder) recordAbsoluteSumDouble(name, description, unit string, value float64, attrs map[string]string) {
-	if math.IsNaN(value) || math.IsInf(value, 0) {
-		return
-	}
-	dp := rb.sumMetric(name, description, unit).Sum().DataPoints().AppendEmpty()
-	dp.SetTimestamp(rb.now)
-	dp.SetStartTimestamp(rb.start)
-	dp.SetDoubleValue(value)
-	putAttrs(dp.Attributes(), attrs)
 }
 
 func (rb *resourceMetricsBuilder) gaugeMetric(name, description, unit string) pmetric.Metric {
@@ -1793,9 +1773,9 @@ func recordWirelessPacketLoss(rb *resourceMetricsBuilder, direction string, loss
 	// The Dashboard API returns totals for a rolling query window, not
 	// monotonic device counters. Exporting them as cumulative sums would add
 	// the overlapping window again on every scrape.
-	rb.recordInt("meraki.wireless.packet.count", "Wireless packets observed in the Meraki reporting window.", "{packet}", loss.Total, attrs)
-	rb.recordInt("meraki.wireless.packet.loss", "Wireless packets lost in the Meraki reporting window.", "{packet}", loss.Lost, attrs)
-	rb.recordDouble("meraki.wireless.packet.loss_percentage", "Wireless packet loss percentage.", "%", loss.LossPercentage, attrs)
+	rb.recordInt("meraki.wireless.packet.count", "Windowed wireless packet count by direction.", "{packet}", loss.Total, attrs)
+	rb.recordInt("meraki.wireless.packet.loss", "Windowed wireless lost-packet count by direction.", "{packet}", loss.Lost, attrs)
+	rb.recordDouble("meraki.wireless.packet.loss_percentage", "Wireless packet loss percentage by direction.", "%", loss.LossPercentage, attrs)
 }
 
 func recordTopologyProtocol(rb *resourceMetricsBuilder, protocol, portID string, values []meraki.NameValue) {
@@ -1810,7 +1790,7 @@ func recordTopologyProtocol(rb *resourceMetricsBuilder, protocol, portID string,
 		"cisco.topology.neighbor.platform":  topologyValue(values, "Platform", "System description"),
 		"cisco.topology.neighbor.address":   topologyValue(values, "Management address", "Management Address"),
 	}
-	rb.recordInt("cisco.topology.neighbor.info", "Topology neighbor information.", "1", 1, attrs)
+	rb.recordInt("cisco.topology.neighbor.info", "LLDP, CDP, and fabric-link neighbor information.", "1", 1, attrs)
 }
 
 func recordTransceiverValue(rb *resourceMetricsBuilder, base map[string]string, sensor, unit string, value meraki.SummaryValue) {
@@ -1827,7 +1807,7 @@ func recordTransceiverValueAt(rb *resourceMetricsBuilder, base map[string]string
 	attrs["cisco.transceiver.sensor.unit"] = unit
 	// One OTLP metric descriptor cannot change unit between datapoints. The
 	// physical unit remains explicit on each sensor datapoint.
-	rb.recordDoubleAt("cisco.transceiver.sensor", "Transceiver DOM sensor value; physical unit is in cisco.transceiver.sensor.unit.", "1", median, attrs, observedAt)
+	rb.recordDoubleAt("cisco.transceiver.sensor", "Digital optical monitoring sensor values, such as temperature, voltage, current, or optical receive/transmit power. The actual physical unit is in `cisco.transceiver.sensor.unit`.", "1", median, attrs, observedAt)
 }
 
 func latestTimestampedIndex(length, fallback int, timestampAt func(int) string) (int, time.Time) {

@@ -2827,7 +2827,7 @@ type metricCiscoScrapePartialSuccess struct {
 // init fills cisco.scrape.partial_success metric with initial data.
 func (m *metricCiscoScrapePartialSuccess) init() {
 	m.data.SetName("cisco.scrape.partial_success")
-	m.data.SetDescription("Cisco receiver scrape partial success status (1 = partial success, 0 = complete success)")
+	m.data.SetDescription("Whether the scrape completed with at least one command-family failure.")
 	m.data.SetUnit("1")
 	m.data.SetEmptyGauge()
 }

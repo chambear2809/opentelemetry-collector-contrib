@@ -1700,7 +1700,7 @@ func TestMetricsBuilder(t *testing.T) {
 					validatedMetrics["cisco.scrape.partial_success"] = true
 					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-					assert.Equal(t, "Cisco receiver scrape partial success status (1 = partial success, 0 = complete success)", mi.Description())
+					assert.Equal(t, "Whether the scrape completed with at least one command-family failure.", mi.Description())
 					assert.Equal(t, "1", mi.Unit())
 					dp := mi.Gauge().DataPoints().At(0)
 					assert.Equal(t, start, dp.StartTimestamp())

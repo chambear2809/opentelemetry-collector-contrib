@@ -489,7 +489,19 @@ func (s *interfacesScraper) collectTopologyNeighbors(ctx context.Context, timest
 			if recorded >= s.l2MaxInterfaces() {
 				break
 			}
-			s.mb.RecordCiscoTopologyNeighborInfoDataPoint(timestamp, 1, neighbor.Protocol, neighbor.LocalInterface, neighbor.NeighborName, neighbor.NeighborInterface, neighbor.NeighborPlatform, neighbor.NeighborAddress)
+			s.mb.RecordCiscoTopologyNeighborInfoDataPoint(
+				timestamp,
+				1,
+				neighbor.Protocol,
+				neighbor.LocalInterface,
+				neighbor.NeighborName,
+				neighbor.NeighborInterface,
+				neighbor.NeighborPlatform,
+				neighbor.NeighborAddress,
+				neighbor.NeighborName,
+				neighbor.NeighborAddress,
+				neighbor.Protocol,
+			)
 			recorded++
 		}
 		if recorded > 0 {

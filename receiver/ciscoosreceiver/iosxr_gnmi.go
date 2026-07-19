@@ -220,10 +220,13 @@ func (d iosXRGNMIUpdateDecoder) decodeTypedValue(metrics *indexedMetricBuilder, 
 		}
 		appendIOSXRInfoMetricIndexed(metrics, module, append(parts, "bytes"), fmt.Sprintf("%x", v.BytesVal), ts, attrs)
 	case *gnmi.TypedValue_ProtoBytes:
-		if d.health != nil {
-			d.health.addCompactGPBPayloads(1)
-		}
-		metrics.appendNumber("cisco.iosxr.receiver.compact_gpb_payloads", pmetric.MetricTypeGauge, doubleMetricNumber(1), ts, attrs)
+		metrics.appendNumber(
+			"cisco.iosxr.receiver.compact_gpb_payloads",
+			pmetric.MetricTypeGauge,
+			intMetricNumber(1),
+			ts,
+			attrs,
+		)
 	case *gnmi.TypedValue_AnyVal:
 		if v.AnyVal == nil {
 			budget.addDecodeError()
@@ -546,24 +549,54 @@ func setDirectGNMISourcePath(attrs map[string]string, prefix, relative string, b
 		return false
 	}
 	if joined != "" {
+		// cisco.yang.path remains the user-facing gNMI path. Keep a separate,
+		// injective copy for metric-name collision identity because dial-out
+		// normalization is allowed to replace cisco.yang.path with the
+		// subscription encoding path.
 		attrs["cisco.yang.path"] = joined
+		attrs["cisco.yang.source_path"] = joined
 	}
 	return true
 }
 
 func extendDirectGNMISourcePath(attrs map[string]string, rawElement string, budget *directGNMIDecodeBudget) bool {
-	// JSON Pointer escaping keeps arbitrary JSON object keys injective when
-	// extending the original wire path used as a datapoint identity attribute.
+	// JSON Pointer escaping keeps arbitrary JSON object keys injective. A raw
+	// '#' cannot occur in gnmiPathToString output because it is percent-encoded,
+	// so '#/' unambiguously frames the transition from the structured gNMI path
+	// to its JSON descendant. cisco.yang.path retains its established readable
+	// slash framing; only the collision identity needs the explicit boundary.
 	element := strings.ReplaceAll(strings.ReplaceAll(rawElement, "~", "~0"), "/", "~1")
-	joined := attrs["cisco.yang.path"]
-	if joined != "" {
-		joined += "/"
+	appendBounded := func(base, separator string) (string, bool) {
+		limit := budget.limits.maxAttributeValueBytes
+		if len(base) > limit || len(separator) > limit-len(base) {
+			return "", false
+		}
+		remaining := limit - len(base) - len(separator)
+		if len(element) > remaining {
+			return "", false
+		}
+		return base + separator + element, true
 	}
-	if len(element) > budget.limits.maxAttributeValueBytes-len(joined) {
+
+	pathBase := attrs["cisco.yang.path"]
+	pathSeparator := ""
+	if pathBase != "" {
+		pathSeparator = "/"
+	}
+	path, pathOK := appendBounded(pathBase, pathSeparator)
+
+	sourceBase := attrs["cisco.yang.source_path"]
+	sourceSeparator := "#/"
+	if strings.Contains(sourceBase, "#") {
+		sourceSeparator = "/"
+	}
+	source, sourceOK := appendBounded(sourceBase, sourceSeparator)
+	if !pathOK || !sourceOK {
 		budget.drop(false)
 		return false
 	}
-	attrs["cisco.yang.path"] = joined + element
+	attrs["cisco.yang.path"] = path
+	attrs["cisco.yang.source_path"] = source
 	return true
 }
 
