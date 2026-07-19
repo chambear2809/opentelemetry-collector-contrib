@@ -272,7 +272,7 @@ func (c *Client) List(
 	pages := 0
 	byteBudget := httpclient.NewPaginationByteBudget(c.maxPaginationBytes)
 	seenRequests := make(map[string]struct{})
-	seenObjects := make(map[[sha256.Size]byte]struct{})
+	completedPageObjects := make(map[[sha256.Size]byte]struct{})
 	for {
 		if err := ctx.Err(); err != nil {
 			return results, err
@@ -319,7 +319,7 @@ func (c *Client) List(
 			return results, fmt.Errorf("decode nexus dashboard %s response: %w", operation, err)
 		}
 		rawPageLength := len(page)
-		page, madeProgress, err := filterObjectProgress(page, seenObjects)
+		page, madeProgress, err := filterObjectProgress(page, completedPageObjects)
 		if err != nil {
 			return results, fmt.Errorf("track nexus dashboard %s pagination progress: %w", operation, err)
 		}
@@ -446,8 +446,9 @@ func paginationPageComplete(
 	}
 }
 
-func filterObjectProgress(page []Object, seen map[[sha256.Size]byte]struct{}) ([]Object, bool, error) {
-	unique := make([]Object, 0, len(page))
+func filterObjectProgress(page []Object, completedPages map[[sha256.Size]byte]struct{}) ([]Object, bool, error) {
+	filtered := make([]Object, 0, len(page))
+	pageFingerprints := make(map[[sha256.Size]byte]struct{}, len(page))
 	progress := false
 	for _, object := range page {
 		encoded, err := json.Marshal(object)
@@ -455,14 +456,19 @@ func filterObjectProgress(page []Object, seen map[[sha256.Size]byte]struct{}) ([
 			return nil, false, err
 		}
 		fingerprint := sha256.Sum256(encoded)
-		if _, ok := seen[fingerprint]; ok {
+		pageFingerprints[fingerprint] = struct{}{}
+		if _, ok := completedPages[fingerprint]; ok {
 			continue
 		}
-		seen[fingerprint] = struct{}{}
-		unique = append(unique, object)
+		filtered = append(filtered, object)
 		progress = true
 	}
-	return unique, progress, nil
+	// Merge only after filtering so byte-identical rows first observed together
+	// remain distinct while later pages can still discard exact overlaps.
+	for fingerprint := range pageFingerprints {
+		completedPages[fingerprint] = struct{}{}
+	}
+	return filtered, progress, nil
 }
 
 func (c *Client) do(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, http.Header, error) {

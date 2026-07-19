@@ -567,6 +567,26 @@ func TestClientSinglePaginationRejectsContinuationWithoutFollowing(t *testing.T)
 	assert.Equal(t, int64(1), requests.Load())
 }
 
+func TestClientSinglePaginationPreservesByteIdenticalRowsWithinPage(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		assert.False(t, r.URL.Query().Has("offset"))
+		assert.False(t, r.URL.Query().Has("max"))
+		_, _ = w.Write([]byte(`{"items":[{"state":"up"},{"state":"up"}]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, AuthMode: "api_key", Username: "admin", APIKey: "key", PageSize: 2})
+	require.NoError(t, err)
+	got, err := client.List(t.Context(), "single", "/api/v1/test", nil, PaginationSingle, 2)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, "up", got[0]["state"])
+	assert.Equal(t, "up", got[1]["state"])
+	assert.Equal(t, int64(1), requests.Load())
+}
+
 func TestClientUnknownPaginationDoesNotInferCompletionFromConfiguredPageSize(t *testing.T) {
 	var requests atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1066,6 +1086,32 @@ func TestClientConfiguredResultLimitCountsUniqueObjectsAcrossOverlappingPages(t 
 	require.Len(t, got, 4)
 	assert.Equal(t, []any{"a", "b", "c", "d"}, []any{got[0]["id"], got[1]["id"], got[2]["id"], got[3]["id"]})
 	assert.Equal(t, int64(3), requests.Load())
+}
+
+func TestClientOffsetPaginationPreservesSamePageDuplicatesAndFiltersPriorPageOverlap(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		switch r.URL.Query().Get("offset") {
+		case "0":
+			assert.Equal(t, "2", r.URL.Query().Get("max"))
+			_, _ = w.Write([]byte(`{"items":[{"id":"same"},{"id":"same"}],"meta":{"counts":{"total":4}}}`))
+		case "2":
+			assert.Equal(t, "2", r.URL.Query().Get("max"))
+			_, _ = w.Write([]byte(`{"items":[{"id":"same"},{"id":"new"}],"meta":{"counts":{"total":4}}}`))
+		default:
+			t.Fatalf("unexpected offset %q", r.URL.Query().Get("offset"))
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, AuthMode: "api_key", Username: "admin", APIKey: "key", PageSize: 2})
+	require.NoError(t, err)
+	got, err := client.List(t.Context(), "fabrics", "/api/v1/manage/fabrics", nil, PaginationOffset, 0)
+	require.NoError(t, err)
+	require.Len(t, got, 3)
+	assert.Equal(t, []any{"same", "same", "new"}, []any{got[0]["id"], got[1]["id"], got[2]["id"]})
+	assert.Equal(t, int64(2), requests.Load())
 }
 
 func TestClientOffsetPaginationHonorsExplicitNextAndRemaining(t *testing.T) {
