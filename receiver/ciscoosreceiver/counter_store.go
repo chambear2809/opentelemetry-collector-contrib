@@ -431,9 +431,10 @@ func (s *counterStore) applyCheckpoint(loaded loadedCheckpoint) error {
 	if metadata.StartedAt.After(latestValidTime) {
 		return errors.New("delta counter checkpoint receiver start time exceeds the allowed future skew")
 	}
-	metadataDirty := metadata.StartedAt.After(now)
-	if metadataDirty {
+	metadataDirty := loaded.clockAnchor.IsZero()
+	if metadata.StartedAt.After(now) {
 		metadata.StartedAt = now
+		metadataDirty = true
 	}
 
 	type restoredSeries struct {

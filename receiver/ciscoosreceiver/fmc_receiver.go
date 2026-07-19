@@ -1283,6 +1283,7 @@ func (s *fmcEStreamerResumeState) restoreCheckpoint(ctx context.Context) {
 	normalizedShards := make(map[uint16]struct{})
 	var latestEventTime time.Time
 	var latestSeenAt time.Time
+	var latestNormalizedEvidence time.Time
 	for shard, encoded := range loaded.shards {
 		var checkpoint fmcResumeCheckpointShard
 		if err := json.Unmarshal(encoded, &checkpoint); err != nil {
@@ -1339,6 +1340,13 @@ func (s *fmcEStreamerResumeState) restoreCheckpoint(ctx context.Context) {
 			if !entry.SeenAt.Equal(originalSeenAt) || !entry.EventTime.Equal(originalEventTime) {
 				normalizedShards[shard] = struct{}{}
 			}
+			normalizedEvidence := entry.EventTime
+			if entry.SeenAt.After(normalizedEvidence) {
+				normalizedEvidence = entry.SeenAt
+			}
+			if normalizedEvidence.After(latestNormalizedEvidence) {
+				latestNormalizedEvidence = normalizedEvidence
+			}
 			seen[entry.Key] = struct{}{}
 			restored = append(restored, restoredEntry{fmcResumeCheckpointEntry: entry, shard: shard})
 		}
@@ -1366,9 +1374,14 @@ func (s *fmcEStreamerResumeState) restoreCheckpoint(ctx context.Context) {
 		}
 	}
 	restoredCursor := checkpointCursor.UTC()
-	metadataDirty := restoredCursor.After(now)
-	if metadataDirty {
+	metadataDirty := loaded.clockAnchor.IsZero()
+	if restoredCursor.After(now) {
 		restoredCursor = now.UTC()
+		metadataDirty = true
+	}
+	if restoredCursor.After(latestNormalizedEvidence) {
+		restoredCursor = latestNormalizedEvidence.UTC()
+		metadataDirty = true
 	}
 	sort.Slice(restored, func(i, j int) bool {
 		if restored[i].SeenAt.Equal(restored[j].SeenAt) {
@@ -1417,7 +1430,7 @@ func (s *fmcEStreamerResumeState) persistCheckpoint(ctx context.Context, force b
 	}
 	now := s.now()
 	pending := s.accepted - s.flushed
-	if pending == 0 && !force {
+	if pending == 0 && !s.metadataDirty && !force {
 		s.mu.Unlock()
 		return
 	}

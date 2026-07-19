@@ -45,6 +45,7 @@ type logDeduplicator struct {
 	retryAfter    time.Time
 	now           func() time.Time
 	retention     logCheckpointRetention
+	manifestDirty bool
 }
 
 type logDedupEntry struct {
@@ -358,6 +359,7 @@ func (d *logDeduplicator) restoreCheckpoint(ctx context.Context) {
 	d.flushed = 0
 	d.lastAttempt = now
 	d.retryAfter = time.Time{}
+	d.manifestDirty = loaded.clockAnchor.IsZero()
 	d.mu.Unlock()
 	binding.acceptLoaded(loaded.active, loaded.clockAnchor)
 	binding.markValid()
@@ -379,7 +381,7 @@ func (d *logDeduplicator) persistCheckpoint(ctx context.Context, force bool) {
 	now := d.now()
 	pendingAccepted := d.accepted - d.flushed
 	if !force {
-		if pendingAccepted == 0 || now.Before(d.retryAfter) || (pendingAccepted < logCheckpointFlushEvents && now.Sub(d.lastAttempt) < logCheckpointFlushInterval) {
+		if (!d.manifestDirty && pendingAccepted == 0) || now.Before(d.retryAfter) || (pendingAccepted < logCheckpointFlushEvents && now.Sub(d.lastAttempt) < logCheckpointFlushInterval) {
 			d.mu.Unlock()
 			return
 		}
@@ -424,8 +426,9 @@ func (d *logDeduplicator) persistCheckpoint(ctx context.Context, force bool) {
 		generations[shard] = d.generation[shard]
 	}
 	accepted := d.accepted
+	manifestDirty := d.manifestDirty
 	d.mu.Unlock()
-	if len(dirty) == 0 {
+	if len(dirty) == 0 && !manifestDirty {
 		return
 	}
 	persisted := binding.persist(ctx, shards, active, nil, clockAnchor)
@@ -440,6 +443,7 @@ func (d *logDeduplicator) persistCheckpoint(ctx context.Context, force bool) {
 		if accepted > d.flushed {
 			d.flushed = accepted
 		}
+		d.manifestDirty = false
 		d.retryAfter = time.Time{}
 	} else {
 		d.retryAfter = now.Add(logCheckpointFlushInterval)

@@ -155,6 +155,43 @@ func TestFMCEStreamerCheckpointNormalizesAnyFutureControllerTimeAcrossRestart(t 
 	assert.True(t, restarted.seenBefore(fmcEStreamerEventKey(event)))
 }
 
+func TestFMCEStreamerCheckpointNormalizesParentV1WithinSkewFutureCursor(t *testing.T) {
+	seenAt := time.Date(2090, time.January, 2, 3, 4, 5, 0, time.UTC)
+	legacyCursor := seenAt.Add(fmcCheckpointFutureSkew - time.Minute)
+	for _, tt := range []struct {
+		name      string
+		restartAt time.Time
+	}{
+		{name: "restart inside original cursor", restartAt: seenAt.Add(2 * time.Minute)},
+		{name: "restart after original cursor", restartAt: legacyCursor.Add(time.Minute)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			backend := newCheckpointTestBackend()
+			state := newFMCEStreamerResumeState(seenAt.Add(-time.Hour))
+			state.now = func() time.Time { return tt.restartAt }
+			registry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+			registry.enableFMCResume("parent-v1-future-cursor-"+tt.name, state)
+			putFMCResumeTestCheckpoint(t, backend, state.checkpoint, legacyCursor, fmcResumeCheckpointShard{
+				Version: checkpointFormatVersion,
+				Shard:   0,
+				Entries: []fmcResumeCheckpointEntry{{Key: "legacy-future-event", EventTime: legacyCursor, SeenAt: seenAt}},
+			})
+
+			require.NoError(t, registry.Start(t.Context(), checkpointHost(backend)))
+			assert.False(t, state.checkpoint.corrupt.Load())
+			assert.Equal(t, seenAt, state.cursor, "the cursor must be capped to normalized delivery evidence")
+			assert.Equal(t, seenAt.Add(-fmcEStreamerResumeOverlap), state.requestStart())
+			assert.Equal(t, seenAt, state.seen["legacy-future-event"].eventTime)
+			manifest := checkpointTestManifest(t, backend, state.checkpoint)
+			assert.Equal(t, tt.restartAt, manifest.ClockAnchor)
+			var metadata fmcResumeCheckpointMetadata
+			require.NoError(t, json.Unmarshal(manifest.Metadata, &metadata))
+			assert.Equal(t, seenAt, metadata.Cursor, "the normalized cursor must be durable")
+			registry.Close(t.Context())
+		})
+	}
+}
+
 func TestFMCEStreamerCheckpointSurvivesWallClockRollback(t *testing.T) {
 	backend := newCheckpointTestBackend()
 	firstObservation := time.Date(2090, time.January, 2, 3, 4, 5, 0, time.UTC)
@@ -179,6 +216,52 @@ func TestFMCEStreamerCheckpointSurvivesWallClockRollback(t *testing.T) {
 	assert.Equal(t, restartAt.Add(-fmcEStreamerResumeOverlap), restarted.requestStart(), "rollback normalization must never resume ahead of the current clock")
 	assert.True(t, restarted.seenBefore("event-before-clock-rollback"))
 	restartedRegistry.Close(t.Context())
+}
+
+func TestFMCEStreamerCheckpointMigratesMissingClockAnchorAcrossRepeatedRollback(t *testing.T) {
+	backend := newCheckpointTestBackend()
+	firstObservation := time.Date(2090, time.January, 2, 3, 4, 5, 0, time.UTC)
+	const target = "missing-anchor-fmc-target"
+	first := newFMCEStreamerResumeState(firstObservation.Add(-time.Hour))
+	first.now = func() time.Time { return firstObservation }
+	firstRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+	firstRegistry.enableFMCResume(target, first)
+	require.NoError(t, firstRegistry.Start(t.Context(), checkpointHost(backend)))
+	first.commit("accepted-before-anchor-migration", firstObservation.Add(-time.Second), firstObservation)
+	first.persistCheckpoint(t.Context(), true)
+	binding := first.checkpoint
+	shardKey := binding.shardKey(0)
+	originalShard := backend.value(shardKey)
+	removeCheckpointClockAnchor(t, backend, binding)
+	firstRegistry.Close(t.Context())
+
+	migrationTime := firstObservation.Add(time.Minute)
+	migrated := newFMCEStreamerResumeState(firstObservation.Add(-time.Hour))
+	migrated.now = func() time.Time { return migrationTime }
+	migratedRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+	migratedRegistry.enableFMCResume(target, migrated)
+	batchesBefore, operationsBefore, _, _ := backend.writeStats()
+	require.NoError(t, migratedRegistry.Start(t.Context(), checkpointHost(backend)))
+	batchesAfter, operationsAfter, _, _ := backend.writeStats()
+	assert.Equal(t, batchesBefore+1, batchesAfter)
+	assert.Equal(t, operationsBefore+1, operationsAfter, "anchor migration must rewrite only the manifest")
+	assert.Equal(t, originalShard, backend.value(shardKey))
+	assert.Equal(t, migrationTime, checkpointTestManifest(t, backend, migrated.checkpoint).ClockAnchor)
+	assert.True(t, migrated.seenBefore("accepted-before-anchor-migration"))
+	migratedRegistry.Close(t.Context())
+
+	for index, restartTime := range []time.Time{firstObservation.Add(-10 * time.Minute), firstObservation.Add(-11 * time.Minute)} {
+		restarted := newFMCEStreamerResumeState(firstObservation.Add(-time.Hour))
+		restarted.now = func() time.Time { return restartTime }
+		restartedRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+		restartedRegistry.enableFMCResume(target, restarted)
+		require.NoError(t, restartedRegistry.Start(t.Context(), checkpointHost(backend)))
+		assert.False(t, restarted.checkpoint.corrupt.Load(), "rollback restart %d must retain the migrated checkpoint", index+1)
+		assert.Equal(t, restartTime, restarted.cursor)
+		assert.Equal(t, restartTime.Add(-fmcEStreamerResumeOverlap), restarted.requestStart())
+		assert.True(t, restarted.seenBefore("accepted-before-anchor-migration"))
+		restartedRegistry.Close(t.Context())
+	}
 }
 
 func TestFMCEStreamerRequestStartNeverStaysAheadAfterLiveClockRollback(t *testing.T) {

@@ -77,6 +77,24 @@ func (b *checkpointTestBackend) writeStats() (batches, operations, maxOperations
 	return b.writeBatches, b.writeOps, b.maxWriteOps, b.maxValueSize
 }
 
+func checkpointTestManifest(t *testing.T, backend *checkpointTestBackend, binding *checkpointBinding) checkpointManifest {
+	t.Helper()
+	var manifest checkpointManifest
+	require.NoError(t, json.Unmarshal(backend.value(binding.manifestKey()), &manifest))
+	return manifest
+}
+
+func removeCheckpointClockAnchor(t *testing.T, backend *checkpointTestBackend, binding *checkpointBinding) {
+	t.Helper()
+	manifest := checkpointTestManifest(t, backend, binding)
+	require.False(t, manifest.ClockAnchor.IsZero())
+	manifest.ClockAnchor = time.Time{}
+	encoded, err := json.Marshal(manifest)
+	require.NoError(t, err)
+	require.NotContains(t, string(encoded), "clock_anchor")
+	backend.put(binding.manifestKey(), encoded)
+}
+
 type checkpointTestClient struct {
 	backend *checkpointTestBackend
 }
@@ -633,6 +651,53 @@ func TestCounterCheckpointSurvivesWallClockRollback(t *testing.T) {
 	restartedRegistry.Close(t.Context())
 }
 
+func TestCounterCheckpointMigratesMissingClockAnchorAcrossRepeatedRollback(t *testing.T) {
+	backend := newCheckpointTestBackend()
+	firstObservation := time.Unix(1_900_000_000, 0).UTC()
+	const target = "missing-anchor-counter-target"
+	first := newCounterStoreWithConfig(firstObservation.Add(-time.Hour), counterStoreConfig{now: func() time.Time { return firstObservation }})
+	firstRegistry := newCheckpointTestRegistry(checkpointSignalMetrics, zap.NewNop())
+	consumer := firstRegistry.enableCounter("fmc", target, first, consumertest.NewNop())
+	require.NoError(t, firstRegistry.Start(t.Context(), checkpointHost(backend)))
+	_, _ = first.AddInt("device-a", "packets", nil, 7)
+	require.NoError(t, consumer.ConsumeMetrics(t.Context(), pmetric.NewMetrics()))
+	binding := first.checkpoint
+	shardKey := binding.shardKey(0)
+	originalShard := backend.value(shardKey)
+	removeCheckpointClockAnchor(t, backend, binding)
+	firstRegistry.Close(t.Context())
+
+	migrationTime := firstObservation.Add(time.Minute)
+	migrated := newCounterStoreWithConfig(migrationTime, counterStoreConfig{now: func() time.Time { return migrationTime }})
+	migratedRegistry := newCheckpointTestRegistry(checkpointSignalMetrics, zap.NewNop())
+	migratedRegistry.enableCounter("fmc", target, migrated, consumertest.NewNop())
+	batchesBefore, operationsBefore, _, _ := backend.writeStats()
+	require.NoError(t, migratedRegistry.Start(t.Context(), checkpointHost(backend)))
+	batchesAfter, operationsAfter, _, _ := backend.writeStats()
+	assert.Equal(t, batchesBefore+1, batchesAfter)
+	assert.Equal(t, operationsBefore+1, operationsAfter, "anchor migration must rewrite only the manifest")
+	assert.Equal(t, originalShard, backend.value(shardKey))
+	assert.Equal(t, migrationTime, checkpointTestManifest(t, backend, migrated.checkpoint).ClockAnchor)
+	migratedSeries := migrated.intValues[counterKey("device-a", "packets", nil)]
+	require.NotNil(t, migratedSeries)
+	assert.Equal(t, int64(7), migratedSeries.value)
+	migratedRegistry.Close(t.Context())
+
+	for index, restartTime := range []time.Time{firstObservation.Add(-10 * time.Minute), firstObservation.Add(-11 * time.Minute)} {
+		restarted := newCounterStoreWithConfig(restartTime, counterStoreConfig{now: func() time.Time { return restartTime }})
+		restartedRegistry := newCheckpointTestRegistry(checkpointSignalMetrics, zap.NewNop())
+		restartedRegistry.enableCounter("fmc", target, restarted, consumertest.NewNop())
+		require.NoError(t, restartedRegistry.Start(t.Context(), checkpointHost(backend)))
+		assert.False(t, restarted.checkpoint.corrupt.Load(), "rollback restart %d must retain the migrated checkpoint", index+1)
+		series := restarted.intValues[counterKey("device-a", "packets", nil)]
+		require.NotNil(t, series)
+		assert.Equal(t, int64(7), series.value)
+		assert.Equal(t, restartTime, series.startedAt)
+		assert.Equal(t, restartTime, series.lastSeen)
+		restartedRegistry.Close(t.Context())
+	}
+}
+
 func TestLogDedupCheckpointSurvivesWallClockRollback(t *testing.T) {
 	backend := newCheckpointTestBackend()
 	firstObservation := time.Unix(1_900_000_000, 0).UTC()
@@ -659,6 +724,131 @@ func TestLogDedupCheckpointSurvivesWallClockRollback(t *testing.T) {
 	assert.False(t, restarted.MarkPending(eventKey, restartAt), "clock rollback must not replay an already delivered event")
 	restarted.RollbackBatch()
 	restartedRegistry.Close(t.Context())
+}
+
+func TestLogDedupCheckpointMigratesMissingClockAnchorAcrossRepeatedRollback(t *testing.T) {
+	backend := newCheckpointTestBackend()
+	firstObservation := time.Unix(1_900_000_000, 0).UTC()
+	const (
+		target   = "missing-anchor-log-target"
+		eventKey = "accepted-before-anchor-migration"
+	)
+	first := newLogDeduplicator()
+	first.now = func() time.Time { return firstObservation }
+	firstRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+	firstRegistry.enableLogDedup("ise", target, first, logCheckpointRetention{})
+	require.NoError(t, firstRegistry.Start(t.Context(), checkpointHost(backend)))
+	first.BeginBatch()
+	require.True(t, first.MarkPending(eventKey, firstObservation))
+	_, err := consumeDeduplicatedLogs(t.Context(), consumertest.NewNop(), first, oneLogRecord())
+	require.NoError(t, err)
+	binding := first.checkpoint
+	shardKey := binding.shardKey(0)
+	originalShard := backend.value(shardKey)
+	removeCheckpointClockAnchor(t, backend, binding)
+	firstRegistry.Close(t.Context())
+
+	migrationTime := firstObservation.Add(time.Minute)
+	migrated := newLogDeduplicator()
+	migrated.now = func() time.Time { return migrationTime }
+	migratedRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+	migratedRegistry.enableLogDedup("ise", target, migrated, logCheckpointRetention{})
+	batchesBefore, operationsBefore, _, _ := backend.writeStats()
+	require.NoError(t, migratedRegistry.Start(t.Context(), checkpointHost(backend)))
+	batchesAfter, operationsAfter, _, _ := backend.writeStats()
+	assert.Equal(t, batchesBefore+1, batchesAfter)
+	assert.Equal(t, operationsBefore+1, operationsAfter, "anchor migration must rewrite only the manifest")
+	assert.Equal(t, originalShard, backend.value(shardKey))
+	assert.Equal(t, migrationTime, checkpointTestManifest(t, backend, migrated.checkpoint).ClockAnchor)
+	migrated.BeginBatch()
+	assert.False(t, migrated.MarkPending(eventKey, migrationTime))
+	migrated.RollbackBatch()
+	migratedRegistry.Close(t.Context())
+
+	for index, restartTime := range []time.Time{firstObservation.Add(-10 * time.Minute), firstObservation.Add(-11 * time.Minute)} {
+		restarted := newLogDeduplicator()
+		restarted.now = func() time.Time { return restartTime }
+		restartedRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+		restartedRegistry.enableLogDedup("ise", target, restarted, logCheckpointRetention{})
+		require.NoError(t, restartedRegistry.Start(t.Context(), checkpointHost(backend)))
+		assert.False(t, restarted.checkpoint.corrupt.Load(), "rollback restart %d must retain the migrated checkpoint", index+1)
+		restarted.BeginBatch()
+		assert.False(t, restarted.MarkPending(eventKey, restartTime))
+		restarted.RollbackBatch()
+		restartedRegistry.Close(t.Context())
+	}
+}
+
+func TestCheckpointMissingClockAnchorManifestMigrationRetriesAfterFailure(t *testing.T) {
+	migrationErr := errors.New("temporary manifest migration failure")
+	writeManifest := func(t *testing.T, backend *checkpointTestBackend, binding *checkpointBinding, metadata json.RawMessage) {
+		t.Helper()
+		manifest, err := json.Marshal(checkpointManifest{Version: checkpointFormatVersion, Metadata: metadata})
+		require.NoError(t, err)
+		require.NotContains(t, string(manifest), "clock_anchor")
+		backend.put(binding.manifestKey(), manifest)
+		backend.batchWriteErr = migrationErr
+	}
+
+	t.Run("counter", func(t *testing.T) {
+		backend := newCheckpointTestBackend()
+		now := time.Unix(1_900_000_000, 0).UTC()
+		state := newCounterStoreWithConfig(now, counterStoreConfig{now: func() time.Time { return now }})
+		registry := newCheckpointTestRegistry(checkpointSignalMetrics, zap.NewNop())
+		registry.enableCounter("fmc", "retry-counter-target", state, consumertest.NewNop())
+		metadata, err := json.Marshal(counterCheckpointMetadata{StartedAt: now.Add(-time.Hour)})
+		require.NoError(t, err)
+		writeManifest(t, backend, state.checkpoint, metadata)
+
+		require.NoError(t, registry.Start(t.Context(), checkpointHost(backend)))
+		assert.True(t, state.metadataDirty)
+		assert.True(t, checkpointTestManifest(t, backend, state.checkpoint).ClockAnchor.IsZero())
+		backend.batchWriteErr = nil
+		state.persistCheckpoint(t.Context())
+		assert.False(t, state.metadataDirty)
+		assert.Equal(t, now, checkpointTestManifest(t, backend, state.checkpoint).ClockAnchor)
+		registry.Close(t.Context())
+	})
+
+	t.Run("log dedup", func(t *testing.T) {
+		backend := newCheckpointTestBackend()
+		current := time.Unix(1_900_000_000, 0).UTC()
+		state := newLogDeduplicator()
+		state.now = func() time.Time { return current }
+		registry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+		registry.enableLogDedup("ise", "retry-log-target", state, logCheckpointRetention{})
+		writeManifest(t, backend, state.checkpoint, nil)
+
+		require.NoError(t, registry.Start(t.Context(), checkpointHost(backend)))
+		assert.True(t, state.manifestDirty)
+		assert.True(t, checkpointTestManifest(t, backend, state.checkpoint).ClockAnchor.IsZero())
+		backend.batchWriteErr = nil
+		current = current.Add(logCheckpointFlushInterval)
+		state.persistCheckpoint(t.Context(), false)
+		assert.False(t, state.manifestDirty)
+		assert.Equal(t, current, checkpointTestManifest(t, backend, state.checkpoint).ClockAnchor)
+		registry.Close(t.Context())
+	})
+
+	t.Run("FMC", func(t *testing.T) {
+		backend := newCheckpointTestBackend()
+		current := time.Unix(1_900_000_000, 0).UTC()
+		state := newFMCEStreamerResumeState(current.Add(-time.Hour))
+		state.now = func() time.Time { return current }
+		registry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+		registry.enableFMCResume("retry-fmc-target", state)
+		writeManifest(t, backend, state.checkpoint, nil)
+
+		require.NoError(t, registry.Start(t.Context(), checkpointHost(backend)))
+		assert.True(t, state.metadataDirty)
+		assert.True(t, checkpointTestManifest(t, backend, state.checkpoint).ClockAnchor.IsZero())
+		backend.batchWriteErr = nil
+		current = current.Add(fmcCheckpointFlushInterval)
+		state.persistCheckpoint(t.Context(), false)
+		assert.False(t, state.metadataDirty)
+		assert.Equal(t, current, checkpointTestManifest(t, backend, state.checkpoint).ClockAnchor)
+		registry.Close(t.Context())
+	})
 }
 
 func TestCounterCheckpointDoesNotPersistRejectedDelivery(t *testing.T) {
