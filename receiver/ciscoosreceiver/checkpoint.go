@@ -39,6 +39,7 @@ const (
 	maxCheckpointShardBytes = 64 * 1024
 	maxCheckpointMetaBytes  = 64 * 1024
 	checkpointFlushTimeout  = 5 * time.Second
+	checkpointFutureSkew    = 5 * time.Minute
 
 	checkpointSignalMetrics = "metrics"
 	checkpointSignalLogs    = "logs"
@@ -228,6 +229,10 @@ func canonicalCheckpointHTTPControllerName(name, endpoint string) string {
 	return name
 }
 
+func canonicalCheckpointHTTPControllerIdentity(name, endpoint string) (string, string) {
+	return canonicalCheckpointHTTPControllerName(name, endpoint), canonicalCheckpointHTTPEndpoint(endpoint)
+}
+
 type checkpointDeviceSelection struct {
 	Include checkpointDeviceSelectionMatch
 	Exclude checkpointDeviceSelectionMatch
@@ -380,8 +385,9 @@ func checkpointProviderTarget(conf *Config, provider string) string {
 	case "aci":
 		controllers := make([]map[string]string, 0, len(conf.ACI.Controllers))
 		for _, controller := range conf.ACI.Controllers {
+			name, endpoint := canonicalCheckpointHTTPControllerIdentity(controller.Name, controller.Endpoint)
 			controllers = append(controllers, map[string]string{
-				"name": canonicalCheckpointHTTPControllerName(controller.Name, controller.Endpoint), "endpoint": canonicalCheckpointHTTPEndpoint(controller.Endpoint),
+				"name": name, "endpoint": endpoint,
 			})
 		}
 		targets := map[string][]string{
@@ -399,9 +405,10 @@ func checkpointProviderTarget(conf *Config, provider string) string {
 	case "fmc":
 		controllers := make([]map[string]string, 0, len(conf.FMC.Controllers))
 		for _, controller := range conf.FMC.Controllers {
+			name, endpoint := canonicalCheckpointHTTPControllerIdentity(controller.Name, controller.Endpoint)
 			controllers = append(controllers, map[string]string{
-				"name":        canonicalCheckpointHTTPControllerName(controller.Name, controller.Endpoint),
-				"endpoint":    canonicalCheckpointHTTPEndpoint(controller.Endpoint),
+				"name":        name,
+				"endpoint":    endpoint,
 				"domain_uuid": normalizeSelectorText(controller.DomainUUID),
 			})
 		}

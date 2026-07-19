@@ -837,7 +837,7 @@ func (r *fmcLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 				if !selector.allows(fmcObjectIdentity(obj)) {
 					continue
 				}
-				if r.seenBefore(client.ControllerName(), endpoint, obj, now) {
+				if r.seenBefore(client.ControllerName(), client.Endpoint(), endpoint, obj, now) {
 					continue
 				}
 				appendFMCLog(ld, client.ControllerName(), client.Endpoint(), domainUUID, endpoint, obj, now)
@@ -856,8 +856,10 @@ func (r *fmcLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 	return ld, errors.Join(endpointErrors...)
 }
 
-func (r *fmcLogsReceiver) seenBefore(controller string, endpoint fmcEndpoint, obj fmc.Object, now time.Time) bool {
-	key := logDedupKey(controller+":"+endpoint.operation, fmc.StableID(obj), obj)
+func (r *fmcLogsReceiver) seenBefore(controllerName, controllerEndpoint string, endpoint fmcEndpoint, obj fmc.Object, now time.Time) bool {
+	controllerName, controllerEndpoint = canonicalCheckpointHTTPControllerIdentity(controllerName, controllerEndpoint)
+	namespace := strings.Join([]string{controllerName, controllerEndpoint, endpoint.operation}, "\x00")
+	key := logDedupKey(namespace, fmc.StableID(obj), obj)
 	return !r.seen.MarkPending(key, now)
 }
 
@@ -981,7 +983,7 @@ const (
 	fmcEStreamerSeenPruneThreshold = 110_000
 	fmcCheckpointFlushEvents       = 256
 	fmcCheckpointFlushInterval     = 5 * time.Second
-	fmcCheckpointFutureSkew        = 5 * time.Minute
+	fmcCheckpointFutureSkew        = checkpointFutureSkew
 )
 
 type fmcEStreamerSeenEvent struct {
@@ -1045,11 +1047,7 @@ func (s *fmcEStreamerResumeState) requestStartLocked() time.Time {
 	if s.cursor.IsZero() {
 		return s.initialTime
 	}
-	resume := fmcEStreamerRetentionStart(s.cursor)
-	if s.initialTime.IsZero() || resume.After(s.initialTime) {
-		return resume
-	}
-	return s.initialTime
+	return fmcEStreamerRetentionStart(s.cursor)
 }
 
 func fmcEStreamerRetentionStart(cursor time.Time) time.Time {
@@ -1075,6 +1073,17 @@ func (s *fmcEStreamerResumeState) observationTime() time.Time {
 func (s *fmcEStreamerResumeState) commit(key string, eventTime, seenAt time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if seenAt.IsZero() {
+		if s.now == nil {
+			return
+		}
+		seenAt = s.now()
+		if seenAt.IsZero() {
+			return
+		}
+	}
+	seenAt = seenAt.UTC()
+	eventTime = fmcEStreamerResumeEventTime(eventTime, seenAt)
 	s.addSeenLocked(key, eventTime, seenAt)
 	if eventTime.After(s.cursor) {
 		s.cursor = eventTime.UTC()
@@ -1085,6 +1094,20 @@ func (s *fmcEStreamerResumeState) commit(key string, eventTime, seenAt time.Time
 	if s.checkpoint != nil {
 		s.accepted++
 	}
+}
+
+func fmcEStreamerResumeEventTime(eventTime, seenAt time.Time) time.Time {
+	if eventTime.IsZero() {
+		return time.Time{}
+	}
+	eventTime = eventTime.UTC()
+	// Keep the delivered controller timestamp unchanged in OTLP, but do not let
+	// a controller clock more than the accepted skew ahead advance the resume
+	// cursor past the collector's observation time and skip normally timed events.
+	if !seenAt.IsZero() && eventTime.After(seenAt.Add(fmcCheckpointFutureSkew)) {
+		return seenAt
+	}
+	return eventTime
 }
 
 func (s *fmcEStreamerResumeState) pruneLocked() {

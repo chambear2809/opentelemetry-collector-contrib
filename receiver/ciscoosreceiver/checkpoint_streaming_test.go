@@ -80,6 +80,107 @@ func TestFMCEStreamerCheckpointResumesAndPrunesAcrossRestarts(t *testing.T) {
 	assert.False(t, third.seenBefore("old-event"), "restore pruning must be persisted instead of repeated forever")
 }
 
+func TestFMCEStreamerCheckpointRestoredCursorPrecedesAdvancedColdStartLookback(t *testing.T) {
+	backend := newCheckpointTestBackend()
+	firstNow := time.Date(2090, time.January, 2, 3, 4, 5, 0, time.UTC)
+	firstInitial := firstNow.Add(-10 * time.Minute)
+	cursor := firstNow.Add(-time.Minute)
+	first := newFMCEStreamerResumeState(firstInitial)
+	first.now = func() time.Time { return firstNow }
+	firstRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+	firstRegistry.enableFMCResume("advanced-lookback-target", first)
+	require.NoError(t, firstRegistry.Start(t.Context(), checkpointHost(backend)))
+	first.commit("persisted-event", cursor, cursor)
+	first.persistCheckpoint(t.Context(), true)
+	firstRegistry.Close(t.Context())
+
+	restartNow := firstNow.Add(2 * time.Hour)
+	restartInitial := restartNow.Add(-10 * time.Minute)
+	require.True(t, restartInitial.After(cursor), "the new cold-start lookback must advance beyond the persisted cursor")
+	restarted := newFMCEStreamerResumeState(restartInitial)
+	restarted.now = func() time.Time { return restartNow }
+	restartedRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+	restartedRegistry.enableFMCResume("advanced-lookback-target", restarted)
+	require.NoError(t, restartedRegistry.Start(t.Context(), checkpointHost(backend)))
+
+	assert.Equal(t, cursor, restarted.cursor)
+	assert.Equal(t, fmcEStreamerRetentionStart(cursor), restarted.requestStart(), "a valid durable cursor must take precedence over the newly computed cold-start lookback")
+	assert.True(t, restarted.seenBefore("persisted-event"))
+}
+
+func TestFMCEStreamerCheckpointNormalizesOutOfEnvelopeControllerTimeAcrossRestart(t *testing.T) {
+	backend := newCheckpointTestBackend()
+	observedAt := time.Date(2090, time.January, 2, 3, 4, 5, 0, time.UTC)
+	controllerTime := observedAt.Add(fmcCheckpointFutureSkew + 10*time.Minute)
+	initial := observedAt.Add(-time.Hour)
+	client, err := fmc.NewEStreamerClient(fmc.EStreamerConfig{
+		Address: "fmc.example.test:8302", Name: "fmc", InitialTime: initial,
+	})
+	require.NoError(t, err)
+	state := newFMCEStreamerResumeState(initial)
+	state.now = func() time.Time { return observedAt }
+	registry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+	registry.enableFMCResume("future-controller-target", state)
+	require.NoError(t, registry.Start(t.Context(), checkpointHost(backend)))
+	sink := &consumertest.LogsSink{}
+	receiver := &fmcEStreamerLogsReceiver{
+		settings: receivertest.NewNopSettings(metadata.Type),
+		config:   &Config{FMC: FMCConfig{}},
+		consumer: sink,
+	}
+	event := fmc.EStreamerEvent{
+		EventType: "connection", RecordType: 1, Timestamp: controllerTime, Body: fmc.Object{"eventId": "future-controller-event"},
+	}
+
+	require.NoError(t, receiver.consumeEStreamerEvent(t.Context(), client, state, event))
+	require.Len(t, sink.AllLogs(), 1)
+	record := sink.AllLogs()[0].ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
+	assert.Equal(t, controllerTime, record.Timestamp().AsTime(), "the accepted log must retain its raw controller timestamp")
+	assert.Equal(t, observedAt, state.cursor, "only resume state should be clamped to the local observation time")
+	assert.Equal(t, observedAt, state.seen[fmcEStreamerEventKey(event)].eventTime)
+	state.persistCheckpoint(t.Context(), true)
+	registry.Close(t.Context())
+
+	restartAt := observedAt.Add(time.Second)
+	restartInitial := restartAt.Add(-500 * time.Millisecond)
+	restarted := newFMCEStreamerResumeState(restartInitial)
+	restarted.now = func() time.Time { return restartAt }
+	restartedRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+	restartedRegistry.enableFMCResume("future-controller-target", restarted)
+	require.NoError(t, restartedRegistry.Start(t.Context(), checkpointHost(backend)))
+
+	assert.False(t, restarted.checkpoint.corrupt.Load(), "live-persisted resume state must pass its own restore validation")
+	assert.Equal(t, observedAt, restarted.cursor)
+	assert.Equal(t, observedAt.Add(-fmcEStreamerResumeOverlap), restarted.requestStart(), "restart must resume behind the observation time instead of the bad future controller clock")
+	assert.True(t, restarted.seenBefore(fmcEStreamerEventKey(event)))
+}
+
+func TestFMCEStreamerCheckpointCommitSubstitutesZeroObservationTime(t *testing.T) {
+	backend := newCheckpointTestBackend()
+	now := time.Date(2090, time.January, 2, 3, 4, 5, 0, time.UTC)
+	eventTime := now.Add(-time.Second)
+	state := newFMCEStreamerResumeState(now.Add(-time.Hour))
+	state.now = func() time.Time { return now }
+	registry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+	registry.enableFMCResume("zero-observation-target", state)
+	require.NoError(t, registry.Start(t.Context(), checkpointHost(backend)))
+
+	state.commit("zero-observation-event", eventTime, time.Time{})
+	assert.Equal(t, now, state.seen["zero-observation-event"].seenAt)
+	state.persistCheckpoint(t.Context(), true)
+	registry.Close(t.Context())
+
+	restarted := newFMCEStreamerResumeState(now.Add(-time.Hour))
+	restarted.now = func() time.Time { return now.Add(time.Second) }
+	restartedRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+	restartedRegistry.enableFMCResume("zero-observation-target", restarted)
+	require.NoError(t, restartedRegistry.Start(t.Context(), checkpointHost(backend)))
+
+	assert.False(t, restarted.checkpoint.corrupt.Load())
+	assert.Equal(t, eventTime, restarted.cursor)
+	assert.True(t, restarted.seenBefore("zero-observation-event"))
+}
+
 func TestFMCEStreamerCheckpointAcceptsInjectedYear2090Envelope(t *testing.T) {
 	backend := newCheckpointTestBackend()
 	now := time.Date(2090, time.January, 2, 3, 4, 5, 0, time.UTC)
@@ -227,7 +328,7 @@ func TestFMCEStreamerCheckpointRetainsOldCursorEvidenceAndDefinesEmptyState(t *t
 	})
 	require.NoError(t, oldRegistry.Start(t.Context(), checkpointHost(backend)))
 	assert.False(t, old.checkpoint.corrupt.Load())
-	assert.Equal(t, initial, old.requestStart(), "the newer configured lookback still controls the request")
+	assert.Equal(t, fmcEStreamerRetentionStart(oldCursor), old.requestStart(), "the valid restored cursor must control the request even when the cold-start lookback is newer")
 	assert.True(t, old.seenBefore("old-cursor-anchor"), "persistence must retain evidence for every nonzero cursor")
 	var retainedManifest checkpointManifest
 	require.NoError(t, json.Unmarshal(backend.value(old.checkpoint.manifestKey()), &retainedManifest))

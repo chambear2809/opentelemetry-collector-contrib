@@ -194,6 +194,7 @@ func TestFMCEStreamerReconnectAdvancesCursorAndSuppressesDeliveredDuplicate(t *t
 	}
 	resume := newFMCEStreamerResumeState(client.InitialTime())
 	eventTime := time.Unix(1_800_000_123, 750_000_000).UTC()
+	resume.now = func() time.Time { return eventTime }
 	event := fmcinternal.EStreamerEvent{
 		EventType:  "connection",
 		RecordType: 3,

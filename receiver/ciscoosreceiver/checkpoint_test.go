@@ -24,6 +24,8 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 
+	aciinternal "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/aci"
+	fmcinternal "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/fmc"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
 )
 
@@ -545,6 +547,7 @@ func TestLogDedupCheckpointSuppressesReplayAfterRestartAndIsolatesTargets(t *tes
 
 	firstRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
 	first := newLogDeduplicator()
+	first.now = func() time.Time { return now }
 	firstRegistry.enableLogDedup("ise", "target-a", first, logCheckpointRetention{})
 	require.NoError(t, firstRegistry.Start(t.Context(), checkpointHost(backend)))
 	first.BeginBatch()
@@ -555,6 +558,7 @@ func TestLogDedupCheckpointSuppressesReplayAfterRestartAndIsolatesTargets(t *tes
 
 	restartedRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
 	restarted := newLogDeduplicator()
+	restarted.now = func() time.Time { return now.Add(time.Second) }
 	restartedRegistry.enableLogDedup("ise", "target-a", restarted, logCheckpointRetention{})
 	require.NoError(t, restartedRegistry.Start(t.Context(), checkpointHost(backend)))
 	restarted.BeginBatch()
@@ -563,6 +567,7 @@ func TestLogDedupCheckpointSuppressesReplayAfterRestartAndIsolatesTargets(t *tes
 
 	isolatedRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
 	isolated := newLogDeduplicator()
+	isolated.now = func() time.Time { return now.Add(time.Second) }
 	isolatedRegistry.enableLogDedup("ise", "target-b", isolated, logCheckpointRetention{})
 	require.NoError(t, isolatedRegistry.Start(t.Context(), checkpointHost(backend)))
 	isolated.BeginBatch()
@@ -812,6 +817,84 @@ func TestCheckpointCorruptAndTransientStorageFailuresFailOpenWithWarnings(t *tes
 	})
 }
 
+func TestPollingLogDedupCanonicalControllerNamespaceSurvivesRestart(t *testing.T) {
+	now := time.Date(2090, time.January, 2, 3, 4, 5, 0, time.UTC)
+	const (
+		firstEndpoint  = "HTTPS://HOST:443/"
+		secondEndpoint = "https://host"
+	)
+
+	t.Run("ACI", func(t *testing.T) {
+		backend := newCheckpointTestBackend()
+		firstConfig := createDefaultConfig().(*Config)
+		firstConfig.ACI.Controllers = []ACIControllerConfig{{Endpoint: firstEndpoint}}
+		secondConfig := createDefaultConfig().(*Config)
+		secondConfig.ACI.Controllers = []ACIControllerConfig{{Endpoint: secondEndpoint}}
+		firstTarget := checkpointProviderTarget(firstConfig, "aci")
+		secondTarget := checkpointProviderTarget(secondConfig, "aci")
+		require.Equal(t, firstTarget, secondTarget, "equivalent URL spellings must bind the same ACI checkpoint")
+		endpoint := aciEndpoint{group: "faults", operation: "faults.active", className: "faultInst"}
+		object := aciinternal.Object{
+			"dn": "topology/pod-1/node-101/sys/fault-F1234", "id": "1234", "severity": "major", "descr": "test fault",
+		}
+
+		first := &aciLogsReceiver{seen: newLogDeduplicator()}
+		first.seen.now = func() time.Time { return now }
+		firstRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+		firstRegistry.enableLogDedup("aci", firstTarget, first.seen, logCheckpointRetention{})
+		require.NoError(t, firstRegistry.Start(t.Context(), checkpointHost(backend)))
+		first.seen.BeginBatch()
+		assert.False(t, first.seenBefore("HOST:443", firstEndpoint, endpoint, object, now))
+		_, err := consumeDeduplicatedLogs(t.Context(), consumertest.NewNop(), first.seen, oneLogRecord())
+		require.NoError(t, err)
+		firstRegistry.Close(t.Context())
+
+		restarted := &aciLogsReceiver{seen: newLogDeduplicator()}
+		restarted.seen.now = func() time.Time { return now.Add(time.Second) }
+		restartedRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+		restartedRegistry.enableLogDedup("aci", secondTarget, restarted.seen, logCheckpointRetention{})
+		require.NoError(t, restartedRegistry.Start(t.Context(), checkpointHost(backend)))
+		restarted.seen.BeginBatch()
+		assert.True(t, restarted.seenBefore("host", secondEndpoint, endpoint, object, now.Add(time.Second)), "the restored ACI replay key must match the canonical runtime namespace")
+		restarted.seen.RollbackBatch()
+		restartedRegistry.Close(t.Context())
+	})
+
+	t.Run("FMC", func(t *testing.T) {
+		backend := newCheckpointTestBackend()
+		firstConfig := createDefaultConfig().(*Config)
+		firstConfig.FMC.Controllers = []FMCControllerConfig{{Endpoint: firstEndpoint, DomainUUID: "domain-1"}}
+		secondConfig := createDefaultConfig().(*Config)
+		secondConfig.FMC.Controllers = []FMCControllerConfig{{Endpoint: secondEndpoint, DomainUUID: "domain-1"}}
+		firstTarget := checkpointProviderTarget(firstConfig, "fmc")
+		secondTarget := checkpointProviderTarget(secondConfig, "fmc")
+		require.Equal(t, firstTarget, secondTarget, "equivalent URL spellings must bind the same FMC checkpoint")
+		endpoint := fmcEndpoint{group: "audit", operation: "audit.records", objectType: "fmc.audit"}
+		object := fmcinternal.Object{"id": "event-1", "status": "success", "message": "test event"}
+
+		first := &fmcLogsReceiver{seen: newLogDeduplicator()}
+		first.seen.now = func() time.Time { return now }
+		firstRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+		firstRegistry.enableLogDedup("fmc", firstTarget, first.seen, logCheckpointRetention{})
+		require.NoError(t, firstRegistry.Start(t.Context(), checkpointHost(backend)))
+		first.seen.BeginBatch()
+		assert.False(t, first.seenBefore("HOST:443", firstEndpoint, endpoint, object, now))
+		_, err := consumeDeduplicatedLogs(t.Context(), consumertest.NewNop(), first.seen, oneLogRecord())
+		require.NoError(t, err)
+		firstRegistry.Close(t.Context())
+
+		restarted := &fmcLogsReceiver{seen: newLogDeduplicator()}
+		restarted.seen.now = func() time.Time { return now.Add(time.Second) }
+		restartedRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+		restartedRegistry.enableLogDedup("fmc", secondTarget, restarted.seen, logCheckpointRetention{})
+		require.NoError(t, restartedRegistry.Start(t.Context(), checkpointHost(backend)))
+		restarted.seen.BeginBatch()
+		assert.True(t, restarted.seenBefore("host", secondEndpoint, endpoint, object, now.Add(time.Second)), "the restored FMC replay key must match the canonical runtime namespace")
+		restarted.seen.RollbackBatch()
+		restartedRegistry.Close(t.Context())
+	})
+}
+
 func TestCheckpointIdentityIsCollisionSafeAndCredentialStable(t *testing.T) {
 	base := checkpointIdentity{
 		Receiver: "cisco_os/primary",
@@ -1001,6 +1084,261 @@ func TestCheckpointShardsRetainFullDedupCeilingWithoutBucketOverflow(t *testing.
 	for _, entry := range state.seen {
 		assert.NotEqual(t, unassignedCheckpointShard, entry.shard)
 	}
+}
+
+func TestLogDedupCheckpointFutureSkewValidation(t *testing.T) {
+	now := time.Date(2090, time.January, 2, 3, 4, 5, 0, time.UTC)
+	tests := []struct {
+		name        string
+		seenAt      time.Time
+		wantCorrupt bool
+	}{
+		{name: "at skew boundary", seenAt: now.Add(checkpointFutureSkew)},
+		{name: "beyond skew boundary", seenAt: now.Add(checkpointFutureSkew + time.Second), wantCorrupt: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			backend := newCheckpointTestBackend()
+			current := now
+			state := newLogDeduplicator()
+			state.now = func() time.Time { return current }
+			registry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+			registry.enableLogDedup("fmc", "future-log-target", state, logCheckpointRetention{})
+			binding := state.checkpoint
+			const eventKey = "future-log-event"
+			page, err := json.Marshal(logDedupCheckpointShard{
+				Version: checkpointFormatVersion,
+				Shard:   0,
+				Entries: []logDedupCheckpointEntry{{Key: logDedupStateKey(eventKey), SeenAt: tt.seenAt}},
+			})
+			require.NoError(t, err)
+			manifest, err := json.Marshal(checkpointManifest{Version: checkpointFormatVersion, Active: []uint16{0}})
+			require.NoError(t, err)
+			backend.put(binding.shardKey(0), page)
+			backend.put(binding.manifestKey(), manifest)
+
+			require.NoError(t, registry.Start(t.Context(), checkpointHost(backend)), "future checkpoint state must fail open without failing receiver startup")
+			assert.Equal(t, tt.wantCorrupt, binding.corrupt.Load())
+			state.BeginBatch()
+			if tt.wantCorrupt {
+				assert.True(t, state.MarkPending(eventKey, now), "an ignored future checkpoint must leave the event eligible")
+				state.RollbackBatch()
+				assert.Equal(t, page, backend.value(binding.shardKey(0)), "invalid state must not be rewritten")
+				assert.Equal(t, manifest, backend.value(binding.manifestKey()))
+				batches, _, _, _ := backend.writeStats()
+				assert.Zero(t, batches)
+				registry.Close(t.Context())
+			} else {
+				assert.False(t, state.MarkPending(eventKey, now), "the exact skew boundary must remain valid")
+				assert.Equal(t, now, state.seen[logDedupStateKey(eventKey)].seenAt, "accepted future observations must be normalized before entering TTL/LRU state")
+				batches, _, _, _ := backend.writeStats()
+				assert.Equal(t, 1, batches, "restore must durably rewrite the normalized observation")
+
+				const normalEventKey = "normal-log-event"
+				current = now.Add(time.Second)
+				require.True(t, state.MarkPending(normalEventKey, current))
+				_, err = consumeDeduplicatedLogs(t.Context(), consumertest.NewNop(), state, oneLogRecord())
+				require.NoError(t, err)
+				registry.Close(t.Context())
+
+				restarted := newLogDeduplicator()
+				restarted.now = func() time.Time { return current.Add(time.Second) }
+				restartedRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+				restartedRegistry.enableLogDedup("fmc", "future-log-target", restarted, logCheckpointRetention{})
+				require.NoError(t, restartedRegistry.Start(t.Context(), checkpointHost(backend)))
+				assert.False(t, restarted.checkpoint.corrupt.Load(), "normalized state plus a normal update must remain restart-valid")
+				restarted.BeginBatch()
+				assert.False(t, restarted.MarkPending(eventKey, current.Add(time.Second)))
+				assert.False(t, restarted.MarkPending(normalEventKey, current.Add(time.Second)))
+				restarted.RollbackBatch()
+				batches, _, _, _ = backend.writeStats()
+				assert.Equal(t, 2, batches, "the second restart must not need another normalization write")
+				restartedRegistry.Close(t.Context())
+			}
+		})
+	}
+}
+
+func TestCounterCheckpointFutureSkewValidation(t *testing.T) {
+	now := time.Date(2090, time.January, 2, 3, 4, 5, 0, time.UTC)
+	latestValidTime := now.Add(checkpointFutureSkew)
+	future := latestValidTime.Add(time.Second)
+	tests := []struct {
+		name        string
+		configure   func(*counterCheckpointMetadata, *counterCheckpointShard)
+		wantCorrupt bool
+	}{
+		{
+			name: "at skew boundary",
+			configure: func(metadata *counterCheckpointMetadata, shard *counterCheckpointShard) {
+				metadata.StartedAt = latestValidTime
+				shard.Integers[0].StartedAt, shard.Integers[0].LastSeen = latestValidTime, latestValidTime
+				shard.Doubles[0].StartedAt, shard.Doubles[0].LastSeen = latestValidTime, latestValidTime
+			},
+		},
+		{
+			name: "future receiver metadata",
+			configure: func(metadata *counterCheckpointMetadata, _ *counterCheckpointShard) {
+				metadata.StartedAt = future
+			},
+			wantCorrupt: true,
+		},
+		{
+			name: "future integer start",
+			configure: func(_ *counterCheckpointMetadata, shard *counterCheckpointShard) {
+				shard.Integers[0].StartedAt, shard.Integers[0].LastSeen = future, future
+			},
+			wantCorrupt: true,
+		},
+		{
+			name: "future integer last seen",
+			configure: func(_ *counterCheckpointMetadata, shard *counterCheckpointShard) {
+				shard.Integers[0].LastSeen = future
+			},
+			wantCorrupt: true,
+		},
+		{
+			name: "future double start",
+			configure: func(_ *counterCheckpointMetadata, shard *counterCheckpointShard) {
+				shard.Doubles[0].StartedAt, shard.Doubles[0].LastSeen = future, future
+			},
+			wantCorrupt: true,
+		},
+		{
+			name: "future double last seen",
+			configure: func(_ *counterCheckpointMetadata, shard *counterCheckpointShard) {
+				shard.Doubles[0].LastSeen = future
+			},
+			wantCorrupt: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			backend := newCheckpointTestBackend()
+			current := now
+			processStartedAt := now.Add(-2 * time.Hour)
+			state := newCounterStoreWithConfig(processStartedAt, counterStoreConfig{now: func() time.Time { return current }})
+			registry := newCheckpointTestRegistry(checkpointSignalMetrics, zap.NewNop())
+			consumer := registry.enableCounter("fmc", "future-counter-target", state, consumertest.NewNop())
+			binding := state.checkpoint
+			metadata := counterCheckpointMetadata{StartedAt: now.Add(-time.Hour)}
+			shard := counterCheckpointShard{
+				Version: checkpointFormatVersion,
+				Shard:   0,
+				Integers: []intCounterCheckpoint{{
+					Key:       base64.RawURLEncoding.EncodeToString([]byte(counterKey("resource", "integer", nil))),
+					Value:     7,
+					StartedAt: now.Add(-time.Minute),
+					LastSeen:  now,
+				}},
+				Doubles: []doubleCounterCheckpoint{{
+					Key:       base64.RawURLEncoding.EncodeToString([]byte(counterKey("resource", "double", nil))),
+					Value:     1.5,
+					StartedAt: now.Add(-time.Minute),
+					LastSeen:  now,
+				}},
+			}
+			tt.configure(&metadata, &shard)
+			page, err := json.Marshal(shard)
+			require.NoError(t, err)
+			metadataBytes, err := json.Marshal(metadata)
+			require.NoError(t, err)
+			manifest, err := json.Marshal(checkpointManifest{Version: checkpointFormatVersion, Active: []uint16{0}, Metadata: metadataBytes})
+			require.NoError(t, err)
+			backend.put(binding.shardKey(0), page)
+			backend.put(binding.manifestKey(), manifest)
+
+			require.NoError(t, registry.Start(t.Context(), checkpointHost(backend)), "future checkpoint state must fail open without failing receiver startup")
+			assert.Equal(t, tt.wantCorrupt, binding.corrupt.Load())
+			if tt.wantCorrupt {
+				assert.Equal(t, processStartedAt, state.StartTime(), "ignored metadata must not replace the current process epoch")
+				assert.Empty(t, state.intValues)
+				assert.Empty(t, state.doubleValues)
+				value, epoch := state.AddInt("fail-open", "requests", nil, 1)
+				assert.Equal(t, int64(1), value)
+				assert.Equal(t, now, epoch, "collection must continue with fresh in-memory state")
+				assert.Equal(t, page, backend.value(binding.shardKey(0)), "invalid state must not be rewritten")
+				assert.Equal(t, manifest, backend.value(binding.manifestKey()))
+				batches, _, _, _ := backend.writeStats()
+				assert.Zero(t, batches)
+				registry.Close(t.Context())
+			} else {
+				assert.Equal(t, now, state.StartTime(), "accepted future receiver metadata must be normalized")
+				assert.Len(t, state.intValues, 1)
+				assert.Len(t, state.doubleValues, 1)
+				integerKey := counterKey("resource", "integer", nil)
+				doubleKey := counterKey("resource", "double", nil)
+				assert.Equal(t, now, state.intValues[integerKey].startedAt)
+				assert.Equal(t, now, state.intValues[integerKey].lastSeen)
+				assert.Equal(t, now, state.doubleValues[doubleKey].startedAt)
+				assert.Equal(t, now, state.doubleValues[doubleKey].lastSeen)
+				batches, _, _, _ := backend.writeStats()
+				assert.Equal(t, 1, batches, "restore must durably rewrite normalized metadata and series")
+
+				current = now.Add(time.Second)
+				intValue, intEpoch := state.AddInt("resource", "integer", nil, 1)
+				doubleValue, doubleEpoch := state.AddDouble("resource", "double", nil, 0.5)
+				assert.Equal(t, int64(8), intValue)
+				assert.Equal(t, 2.0, doubleValue)
+				assert.Equal(t, now, intEpoch)
+				assert.Equal(t, now, doubleEpoch)
+				require.NoError(t, consumer.ConsumeMetrics(t.Context(), pmetric.NewMetrics()))
+				registry.Close(t.Context())
+
+				restartAt := current.Add(time.Second)
+				restarted := newCounterStoreWithConfig(restartAt, counterStoreConfig{now: func() time.Time { return restartAt }})
+				restartedRegistry := newCheckpointTestRegistry(checkpointSignalMetrics, zap.NewNop())
+				restartedRegistry.enableCounter("fmc", "future-counter-target", restarted, consumertest.NewNop())
+				require.NoError(t, restartedRegistry.Start(t.Context(), checkpointHost(backend)))
+				assert.False(t, restarted.checkpoint.corrupt.Load(), "normalized state plus a normal update must remain restart-valid")
+				assert.Equal(t, now, restarted.StartTime())
+				restartedIntValue, restartedIntEpoch := restarted.AddInt("resource", "integer", nil, 1)
+				restartedDoubleValue, restartedDoubleEpoch := restarted.AddDouble("resource", "double", nil, 0.5)
+				assert.Equal(t, int64(9), restartedIntValue)
+				assert.Equal(t, 2.5, restartedDoubleValue)
+				assert.Equal(t, now, restartedIntEpoch)
+				assert.Equal(t, now, restartedDoubleEpoch)
+				batches, _, _, _ = backend.writeStats()
+				assert.Equal(t, 2, batches, "the second restart must not need another normalization write")
+				restartedRegistry.Close(t.Context())
+			}
+		})
+	}
+}
+
+func TestCounterCheckpointNormalizesFutureMetadataWithoutSeries(t *testing.T) {
+	backend := newCheckpointTestBackend()
+	now := time.Date(2090, time.January, 2, 3, 4, 5, 0, time.UTC)
+	state := newCounterStoreWithConfig(now.Add(-time.Hour), counterStoreConfig{now: func() time.Time { return now }})
+	registry := newCheckpointTestRegistry(checkpointSignalMetrics, zap.NewNop())
+	registry.enableCounter("fmc", "future-metadata-only-target", state, consumertest.NewNop())
+	metadataBytes, err := json.Marshal(counterCheckpointMetadata{StartedAt: now.Add(checkpointFutureSkew)})
+	require.NoError(t, err)
+	manifest, err := json.Marshal(checkpointManifest{Version: checkpointFormatVersion, Metadata: metadataBytes})
+	require.NoError(t, err)
+	backend.put(state.checkpoint.manifestKey(), manifest)
+
+	require.NoError(t, registry.Start(t.Context(), checkpointHost(backend)))
+	assert.False(t, state.checkpoint.corrupt.Load())
+	assert.Equal(t, now, state.StartTime())
+	batches, _, _, _ := backend.writeStats()
+	assert.Equal(t, 1, batches, "metadata normalization must persist even without a dirty series shard")
+	var normalizedManifest checkpointManifest
+	require.NoError(t, json.Unmarshal(backend.value(state.checkpoint.manifestKey()), &normalizedManifest))
+	var normalizedMetadata counterCheckpointMetadata
+	require.NoError(t, json.Unmarshal(normalizedManifest.Metadata, &normalizedMetadata))
+	assert.Equal(t, now, normalizedMetadata.StartedAt)
+	registry.Close(t.Context())
+
+	restarted := newCounterStoreWithConfig(now.Add(time.Second), counterStoreConfig{now: func() time.Time { return now.Add(time.Second) }})
+	restartedRegistry := newCheckpointTestRegistry(checkpointSignalMetrics, zap.NewNop())
+	restartedRegistry.enableCounter("fmc", "future-metadata-only-target", restarted, consumertest.NewNop())
+	require.NoError(t, restartedRegistry.Start(t.Context(), checkpointHost(backend)))
+	assert.False(t, restarted.checkpoint.corrupt.Load())
+	assert.Equal(t, now, restarted.StartTime())
+	batches, _, _, _ = backend.writeStats()
+	assert.Equal(t, 1, batches, "normalized metadata must not be rewritten again on restart")
+	restartedRegistry.Close(t.Context())
 }
 
 func TestCheckpointDedupPruningPreservesInFlightStreamingDelivery(t *testing.T) {

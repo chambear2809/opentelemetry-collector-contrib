@@ -490,6 +490,7 @@ func (r *aciLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 }
 
 func (r *aciLogsReceiver) seenBefore(controllerName, controllerEndpoint string, endpoint aciEndpoint, obj aci.Object, now time.Time) bool {
+	controllerName, controllerEndpoint = canonicalCheckpointHTTPControllerIdentity(controllerName, controllerEndpoint)
 	record := sanitizeACILog(controllerName, controllerEndpoint, endpoint, obj)
 	stableID, content := aciLogDedupIdentity(endpoint, record)
 	// A configured controller name and endpoint deliberately scope replay

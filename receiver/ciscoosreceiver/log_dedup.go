@@ -273,6 +273,7 @@ func (d *logDeduplicator) restoreCheckpoint(ctx context.Context) {
 	}
 	d.mu.Lock()
 	binding := d.checkpoint
+	now := d.now()
 	d.mu.Unlock()
 	loaded, ok := binding.load(ctx)
 	if !ok {
@@ -285,6 +286,8 @@ func (d *logDeduplicator) restoreCheckpoint(ctx context.Context) {
 	}
 	restored := make([]restoredEntry, 0, len(loaded.shards)*checkpointShardEntries)
 	seen := map[string]struct{}{}
+	normalizedShards := map[uint16]struct{}{}
+	latestValidTime := now.Add(checkpointFutureSkew)
 	for shard, encoded := range loaded.shards {
 		var checkpoint logDedupCheckpointShard
 		if err := json.Unmarshal(encoded, &checkpoint); err != nil {
@@ -304,9 +307,17 @@ func (d *logDeduplicator) restoreCheckpoint(ctx context.Context) {
 				binding.warnCorrupt(fmt.Errorf("log dedup checkpoint shard %d contains an invalid entry", shard))
 				return
 			}
+			if entry.SeenAt.After(latestValidTime) {
+				binding.warnCorrupt(fmt.Errorf("log dedup checkpoint shard %d contains an observation time beyond the allowed future skew", shard))
+				return
+			}
 			if _, duplicate := seen[entry.Key]; duplicate {
 				binding.warnCorrupt(errors.New("log dedup checkpoint contains a duplicate entry"))
 				return
+			}
+			if entry.SeenAt.After(now) {
+				entry.SeenAt = now
+				normalizedShards[shard] = struct{}{}
 			}
 			seen[entry.Key] = struct{}{}
 			restored = append(restored, restoredEntry{key: entry.Key, seenAt: entry.SeenAt, shard: shard})
@@ -335,14 +346,17 @@ func (d *logDeduplicator) restoreCheckpoint(ctx context.Context) {
 	}
 	d.generation = map[uint16]uint64{}
 	d.persisted = map[uint16]uint64{}
+	for shard := range normalizedShards {
+		d.generation[shard] = 1
+	}
 	cutoff := time.Time{}
 	if d.retention.ttl > 0 {
-		cutoff = d.now().Add(-d.retention.ttl)
+		cutoff = now.Add(-d.retention.ttl)
 	}
 	d.expireLocked(cutoff, d.retention.maxEntries)
 	d.accepted = 0
 	d.flushed = 0
-	d.lastAttempt = d.now()
+	d.lastAttempt = now
 	d.retryAfter = time.Time{}
 	d.mu.Unlock()
 	binding.acceptLoaded(loaded.active)

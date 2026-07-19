@@ -65,20 +65,21 @@ type doubleCounterSeries struct {
 // cumulative counters, so per-scrape delta observations are accumulated here
 // and emitted as a running total.
 type counterStore struct {
-	mu           sync.Mutex
-	persistMu    sync.Mutex
-	intValues    map[string]*intCounterSeries
-	doubleValues map[string]*doubleCounterSeries
-	lru          *list.List
-	startedAt    time.Time
-	maxEntries   int
-	idleTTL      time.Duration
-	now          func() time.Time
-	checkpoint   *checkpointBinding
-	shards       map[uint16]*list.List
-	nextShard    uint16
-	generation   map[uint16]uint64
-	persisted    map[uint16]uint64
+	mu            sync.Mutex
+	persistMu     sync.Mutex
+	intValues     map[string]*intCounterSeries
+	doubleValues  map[string]*doubleCounterSeries
+	lru           *list.List
+	startedAt     time.Time
+	maxEntries    int
+	idleTTL       time.Duration
+	now           func() time.Time
+	checkpoint    *checkpointBinding
+	shards        map[uint16]*list.List
+	nextShard     uint16
+	generation    map[uint16]uint64
+	persisted     map[uint16]uint64
+	metadataDirty bool
 }
 
 type counterCheckpointMetadata struct {
@@ -412,12 +413,21 @@ func (s *counterStore) restoreCheckpoint(ctx context.Context) {
 }
 
 func (s *counterStore) applyCheckpoint(loaded loadedCheckpoint) error {
+	now := s.now()
+	latestValidTime := now.Add(checkpointFutureSkew)
 	var metadata counterCheckpointMetadata
 	if err := json.Unmarshal(loaded.metadata, &metadata); err != nil {
 		return fmt.Errorf("decode delta counter checkpoint metadata: %w", err)
 	}
 	if metadata.StartedAt.IsZero() {
 		return errors.New("delta counter checkpoint has an empty receiver start time")
+	}
+	if metadata.StartedAt.After(latestValidTime) {
+		return errors.New("delta counter checkpoint receiver start time exceeds the allowed future skew")
+	}
+	metadataDirty := metadata.StartedAt.After(now)
+	if metadataDirty {
+		metadata.StartedAt = now
 	}
 
 	type restoredSeries struct {
@@ -431,6 +441,7 @@ func (s *counterStore) applyCheckpoint(loaded loadedCheckpoint) error {
 	}
 	restored := make([]restoredSeries, 0, len(loaded.shards)*checkpointShardEntries)
 	logicalKeys := map[string]struct{}{}
+	normalizedShards := map[uint16]struct{}{}
 	for shard, encoded := range loaded.shards {
 		var checkpoint counterCheckpointShard
 		if err := json.Unmarshal(encoded, &checkpoint); err != nil {
@@ -453,6 +464,19 @@ func (s *counterStore) applyCheckpoint(loaded loadedCheckpoint) error {
 			if entry.StartedAt.IsZero() || entry.LastSeen.IsZero() || entry.LastSeen.Before(entry.StartedAt) {
 				return errors.New("delta counter checkpoint contains invalid integer timestamps")
 			}
+			if entry.StartedAt.After(latestValidTime) || entry.LastSeen.After(latestValidTime) {
+				return errors.New("delta counter checkpoint contains integer timestamps beyond the allowed future skew")
+			}
+			// The raw pair is ordered above. Capping both values to the same
+			// restore time preserves LastSeen >= StartedAt.
+			if entry.StartedAt.After(now) {
+				entry.StartedAt = now
+				normalizedShards[shard] = struct{}{}
+			}
+			if entry.LastSeen.After(now) {
+				entry.LastSeen = now
+				normalizedShards[shard] = struct{}{}
+			}
 			logicalKeys[key] = struct{}{}
 			restored = append(restored, restoredSeries{key: key, valueType: counterValueTypeInt, intValue: entry.Value, startedAt: entry.StartedAt, lastSeen: entry.LastSeen, shard: shard})
 		}
@@ -469,6 +493,18 @@ func (s *counterStore) applyCheckpoint(loaded loadedCheckpoint) error {
 			}
 			if entry.StartedAt.IsZero() || entry.LastSeen.IsZero() || entry.LastSeen.Before(entry.StartedAt) {
 				return errors.New("delta counter checkpoint contains invalid double timestamps")
+			}
+			if entry.StartedAt.After(latestValidTime) || entry.LastSeen.After(latestValidTime) {
+				return errors.New("delta counter checkpoint contains double timestamps beyond the allowed future skew")
+			}
+			// Use the same cap for both fields to preserve their validated order.
+			if entry.StartedAt.After(now) {
+				entry.StartedAt = now
+				normalizedShards[shard] = struct{}{}
+			}
+			if entry.LastSeen.After(now) {
+				entry.LastSeen = now
+				normalizedShards[shard] = struct{}{}
 			}
 			logicalKeys[key] = struct{}{}
 			restored = append(restored, restoredSeries{key: key, valueType: counterValueTypeDouble, double: entry.Value, startedAt: entry.StartedAt, lastSeen: entry.LastSeen, shard: shard})
@@ -495,7 +531,8 @@ func (s *counterStore) applyCheckpoint(loaded loadedCheckpoint) error {
 	s.shards = map[uint16]*list.List{}
 	s.nextShard = 0
 	s.startedAt = metadata.StartedAt
-	cutoff := s.now().Add(-s.idleTTL)
+	s.metadataDirty = metadataDirty
+	cutoff := now.Add(-s.idleTTL)
 	prunedShards := map[uint16]struct{}{}
 	for _, entry := range restored {
 		if !entry.lastSeen.After(cutoff) {
@@ -513,8 +550,11 @@ func (s *counterStore) applyCheckpoint(loaded loadedCheckpoint) error {
 	}
 	s.generation = map[uint16]uint64{}
 	s.persisted = map[uint16]uint64{}
-	for shard := range prunedShards {
+	for shard := range normalizedShards {
 		s.generation[shard] = 1
+	}
+	for shard := range prunedShards {
+		s.generation[shard]++
 	}
 	return nil
 }
@@ -546,6 +586,7 @@ func (s *counterStore) persistCheckpoint(ctx context.Context) {
 				s.persisted[shard] = generation
 			}
 		}
+		s.metadataDirty = false
 		s.mu.Unlock()
 	}
 }
@@ -559,7 +600,7 @@ func (s *counterStore) checkpointSnapshot() (map[uint16][]byte, map[uint16]bool,
 			dirtyShards = append(dirtyShards, int(shard))
 		}
 	}
-	if len(dirtyShards) == 0 {
+	if len(dirtyShards) == 0 && !s.metadataDirty {
 		return nil, nil, nil, nil, false, nil
 	}
 	sort.Ints(dirtyShards)
