@@ -132,7 +132,7 @@ Controller/API paths add these correlation attributes when available:
 | `cisco.platform.family` | Legacy shared-gNMI OS-family alias. Older direct Catalyst 9800 and IOS XR telemetry retains its existing platform-family values for compatibility. |
 | `cisco.product.family` | Canonical product family for a live-verified shared-gNMI target. |
 | `cisco.yang.path` | Original gNMI/MDT YANG path or encoding path. Direct gNMI decoding percent-encodes structural bytes such as `/`, `%`, `[`, `]`, and `=` inside individual path components so different wire paths remain distinct. |
-| `cisco.yang.source_path` | Injective raw direct-gNMI or GPB-KV field path retained when a normalized metric name could otherwise conflate distinct YANG identifiers. Direct-gNMI JSON descendants use an unambiguous `rawGNMIPath#/JSON-pointer` boundary; structured scalar paths retain their original form. |
+| `cisco.yang.source_path` | Injective raw direct-gNMI or GPB-KV field path retained when a normalized metric name could otherwise conflate distinct YANG identifiers. Direct-gNMI JSON descendants use an unambiguous `rawGNMIPath#/JSON-pointer` boundary. Structured scalar paths retain their original form unless gNMI `Path.Target` is set; targeted paths use the injective `@target=<percent-encoded-target>@/rawGNMIPath` frame so identical paths from different targets remain distinct. |
 | `cisco.yang.module` | YANG module inferred from the path, such as `wireless-access-point-oper`, `openconfig-interfaces`, or a Cisco native module. |
 | `cisco.telemetry.transport` | Direct telemetry direction, such as `gnmi_dial_in` or `mdt_grpc_dial_out`. |
 | `cisco.wlc.ap.mac` | Catalyst 9800 AP radio/base MAC when present in the YANG key or JSON payload. |
