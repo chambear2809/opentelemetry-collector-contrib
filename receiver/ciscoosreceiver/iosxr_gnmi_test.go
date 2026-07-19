@@ -991,6 +991,56 @@ func TestIOSXRGNMIJSONPreservesEmptyIdentityInEmittedDatapoints(t *testing.T) {
 	assert.Equal(t, 1, missing)
 }
 
+func TestIOSXRGNMIJSONUsesAFNameAsSingletonListIdentity(t *testing.T) {
+	const (
+		shippedPath = "Cisco-IOS-XR-ip-rib-ipv4-oper:rib/vrfs/vrf/afs/af/safs/saf/ip-rib-route-table-names/ip-rib-route-table-name/routes/route"
+		prefixPath  = "Cisco-IOS-XR-ip-rib-ipv4-oper:rib/vrfs/vrf[vrf-name=default]/afs"
+		metricName  = "cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.rib.vrfs.vrf.afs.af.af_name_info"
+	)
+
+	var catalogPath string
+	for _, definition := range iosXRPathCatalog {
+		if definition.ID == "routing.rib.ipv4.routes" {
+			catalogPath = definition.Path
+			break
+		}
+	}
+	require.Equal(t, shippedPath, catalogPath)
+
+	for _, test := range []struct {
+		name  string
+		value *gnmi.TypedValue
+	}{
+		{
+			name:  "json",
+			value: &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonVal{JsonVal: []byte(`[{"af-name":"IPv4"}]`)}},
+		},
+		{
+			name:  "json_ietf",
+			value: &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`[{"af-name":"IPv4"}]`)}},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			health := &iosXRHealth{}
+			decoder := iosXRGNMIUpdateDecoder{target: IOSXRTargetConfig{Name: "xr-1"}, health: health}
+			md := decoder.decodeNotification(&gnmi.Notification{
+				Prefix: mustParseIOSXRPath(t, prefixPath),
+				Update: []*gnmi.Update{{
+					Path: mustParseIOSXRPath(t, "af"),
+					Val:  test.value,
+				}},
+			}, iosXRTelemetryTransportDialIn)
+
+			metric := mustFindIOSXRMetric(t, md, metricName)
+			dps := metric.Gauge().DataPoints()
+			require.Equal(t, 1, dps.Len())
+			assert.Equal(t, "IPv4", attrValue(t, dps.At(0).Attributes(), "cisco.yang.key.af_name"))
+			assertInfoMetricValue(t, md, metricName, "IPv4")
+			assert.Zero(t, health.snapshot().droppedDatapoints)
+		})
+	}
+}
+
 func TestIOSXRGNMIJSONRejectsAmbiguousUnrecognizedListIdentity(t *testing.T) {
 	for _, test := range []struct {
 		name string

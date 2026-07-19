@@ -417,6 +417,9 @@ func extractJSONIdentityAttrs(value map[string]any, attrs map[string]string, bud
 	if !putPreferredScalarJSONIdentity(attrs, "id", value, objectPath, budget, "id") {
 		return false
 	}
+	if !putPreferredScalarJSONIdentity(attrs, directGNMIPathKeyAttributePrefix+"af_name", value, objectPath, budget, "af-name") {
+		return false
+	}
 
 	// The first key in each group is the explicit, canonical spelling. It must
 	// win when a device sends multiple synonyms in the same object; map
