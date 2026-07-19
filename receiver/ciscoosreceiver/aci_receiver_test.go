@@ -1235,6 +1235,38 @@ func TestACITopologyPreservesLegacyAndGovernedNeighborAttributes(t *testing.T) {
 	}, actual)
 }
 
+func TestACITopologyMapsWireCDPNeighborAttributes(t *testing.T) {
+	builder := newACIMetricsBuilder(time.Now(), "test", nil)
+	builder.recordTopologyObject(builder.globalResource(), aci.Object{
+		"aci.class": "cdpAdjEp",
+		"dn":        "topology/pod-1/node-101/sys/cdp/inst/if-[eth1/1]/adj-1",
+		"devId":     "FE-TOR-S1A.cisco.com",
+		"platId":    "cisco WS-C3750G-24TS",
+		"portId":    "GigabitEthernet1/0/5",
+	})
+
+	metric := requireMetricByName(t, builder.emit(), "cisco.topology.neighbor.info")
+	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+	require.Equal(t, 1, metric.Gauge().DataPoints().Len())
+	point := metric.Gauge().DataPoints().At(0)
+	assert.Equal(t, int64(1), point.IntValue())
+
+	actual := map[string]string{}
+	point.Attributes().Range(func(key string, value pcommon.Value) bool {
+		actual[key] = value.AsString()
+		return true
+	})
+	assert.Equal(t, map[string]string{
+		"network.peer.name":                 "FE-TOR-S1A.cisco.com",
+		"network.protocol.name":             "cdp",
+		"cisco.topology.protocol":           "cdp",
+		"network.interface.name":            "eth1/1",
+		"cisco.topology.neighbor.name":      "FE-TOR-S1A.cisco.com",
+		"cisco.topology.neighbor.interface": "GigabitEthernet1/0/5",
+		"cisco.topology.neighbor.platform":  "cisco WS-C3750G-24TS",
+	}, actual)
+}
+
 func requireMetricByName(t *testing.T, md pmetric.Metrics, name string) pmetric.Metric {
 	t.Helper()
 	for i := 0; i < md.ResourceMetrics().Len(); i++ {

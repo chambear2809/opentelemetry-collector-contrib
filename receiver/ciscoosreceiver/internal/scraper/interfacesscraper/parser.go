@@ -40,6 +40,8 @@ type Interface struct {
 	OutputUnicast        int64
 	InputBroadcast       int64
 	InputMulticast       int64
+	InputIPMulticast     int64
+	InputTotalMulticast  int64
 	OutputBroadcast      int64
 	OutputMulticast      int64
 	HasInputPacketTypes  bool
@@ -67,24 +69,26 @@ const (
 
 func NewInterface(name string) *Interface {
 	return &Interface{
-		Name:            name,
-		AdminStatus:     StatusDown,
-		OperStatus:      StatusDown,
-		InputErrors:     invalidCounterValue,
-		OutputErrors:    invalidCounterValue,
-		InputDrops:      invalidCounterValue,
-		OutputDrops:     invalidCounterValue,
-		InputBytes:      invalidCounterValue,
-		OutputBytes:     invalidCounterValue,
-		InputPackets:    invalidCounterValue,
-		OutputPackets:   invalidCounterValue,
-		InputUnicast:    invalidCounterValue,
-		OutputUnicast:   invalidCounterValue,
-		InputBroadcast:  invalidCounterValue,
-		InputMulticast:  invalidCounterValue,
-		OutputBroadcast: invalidCounterValue,
-		OutputMulticast: invalidCounterValue,
-		Counters:        map[string]int64{},
+		Name:                name,
+		AdminStatus:         StatusDown,
+		OperStatus:          StatusDown,
+		InputErrors:         invalidCounterValue,
+		OutputErrors:        invalidCounterValue,
+		InputDrops:          invalidCounterValue,
+		OutputDrops:         invalidCounterValue,
+		InputBytes:          invalidCounterValue,
+		OutputBytes:         invalidCounterValue,
+		InputPackets:        invalidCounterValue,
+		OutputPackets:       invalidCounterValue,
+		InputUnicast:        invalidCounterValue,
+		OutputUnicast:       invalidCounterValue,
+		InputBroadcast:      invalidCounterValue,
+		InputMulticast:      invalidCounterValue,
+		InputIPMulticast:    invalidCounterValue,
+		InputTotalMulticast: invalidCounterValue,
+		OutputBroadcast:     invalidCounterValue,
+		OutputMulticast:     invalidCounterValue,
+		Counters:            map[string]int64{},
 	}
 }
 
@@ -313,8 +317,11 @@ func parseInterfaces(output string, logger *zap.Logger) []*Interface {
 		}
 
 		if !newIfRegexp.MatchString(line) {
-			if current != nil && current.Validate() {
-				interfaces = append(interfaces, current)
+			if current != nil {
+				finalizeInterfacePacketTypes(current)
+				if current.Validate() {
+					interfaces = append(interfaces, current)
+				}
 			}
 			matches := deviceNameRegexp.FindStringSubmatch(line)
 			if matches == nil {
@@ -389,9 +396,8 @@ func parseInterfaces(output string, logger *zap.Logger) []*Interface {
 		case inputMiscRegexp.MatchString(line):
 			matches := inputMiscRegexp.FindStringSubmatch(line)
 			recordCounter(current, "watchdog", str2int64(matches[1]))
-			if !validCounter(current.InputMulticast) {
-				current.InputMulticast = str2int64(matches[2])
-			}
+			current.InputTotalMulticast = str2int64(matches[2])
+			current.HasInputPacketTypes = true
 			recordCounter(current, "pause_input", str2int64(matches[3]))
 		case outputMiscRegexp.MatchString(line):
 			matches := outputMiscRegexp.FindStringSubmatch(line)
@@ -470,7 +476,7 @@ func parseInterfaces(output string, logger *zap.Logger) []*Interface {
 		case multiBroadIOSXE.MatchString(line):
 			matches := multiBroadIOSXE.FindStringSubmatch(line)
 			current.InputBroadcast = str2int64(matches[1])
-			current.InputMulticast = str2int64(matches[2])
+			current.InputIPMulticast = str2int64(matches[2])
 			current.HasInputPacketTypes = true
 		case multiBroadIOS.MatchString(line):
 			matches := multiBroadIOS.FindStringSubmatch(line)
@@ -645,6 +651,7 @@ func parseInterfaces(output string, logger *zap.Logger) []*Interface {
 	}
 
 	if current != nil {
+		finalizeInterfacePacketTypes(current)
 		if current.Validate() {
 			interfaces = append(interfaces, current)
 		} else {
@@ -655,6 +662,17 @@ func parseInterfaces(output string, logger *zap.Logger) []*Interface {
 	logger.Info("Parsed interfaces", zap.Int("count", len(interfaces)))
 
 	return interfaces
+}
+
+func finalizeInterfacePacketTypes(intf *Interface) {
+	// IOS and IOS-XE report IP multicast and total multicast on separate
+	// lines. Resolve them after parsing the full interface so line order cannot
+	// change the precedence, while retaining IP multicast as the fallback.
+	if validCounter(intf.InputTotalMulticast) {
+		intf.InputMulticast = intf.InputTotalMulticast
+	} else if validCounter(intf.InputIPMulticast) {
+		intf.InputMulticast = intf.InputIPMulticast
+	}
 }
 
 func parseInterfaceCounterTables(output string, logger *zap.Logger) map[string]map[string]int64 {

@@ -801,7 +801,7 @@ func (b *aciMetricsBuilder) recordTenantObject(rb *resourceMetricsBuilder, obj a
 
 func (*aciMetricsBuilder) recordTopologyObject(rb *resourceMetricsBuilder, obj aci.Object) {
 	protocol := topologyProtocol(aci.String(obj, "aci.class"))
-	legacyPeerName := aci.String(obj, "sysName", "chassisIdV", "portIdV", "name")
+	legacyPeerName := aci.String(obj, "sysName", "chassisIdV", "devId", "portIdV", "name")
 	neighborAddress := aci.String(obj, "mgmtIp", "mgmtPortMac", "mac")
 	attrs := compactAttrs(map[string]string{
 		// Keep the legacy network.* vocabulary for compatibility while exposing
@@ -811,9 +811,9 @@ func (*aciMetricsBuilder) recordTopologyObject(rb *resourceMetricsBuilder, obj a
 		"network.protocol.name":             protocol,
 		"cisco.topology.protocol":           protocol,
 		"network.interface.name":            interfaceNameFromACIDN(aci.String(obj, "dn", "id")),
-		"cisco.topology.neighbor.name":      aci.String(obj, "sysName", "chassisIdV", "name"),
+		"cisco.topology.neighbor.name":      aci.String(obj, "sysName", "chassisIdV", "devId", "name"),
 		"cisco.topology.neighbor.interface": aci.String(obj, "portIdV", "portId", "portDesc"),
-		"cisco.topology.neighbor.platform":  aci.String(obj, "platform", "sysDesc"),
+		"cisco.topology.neighbor.platform":  aci.String(obj, "platform", "sysDesc", "platId"),
 		"cisco.topology.neighbor.address":   neighborAddress,
 	})
 	rb.recordInt("cisco.topology.neighbor.info", "LLDP, CDP, and fabric-link neighbor information.", "1", 1, attrs)

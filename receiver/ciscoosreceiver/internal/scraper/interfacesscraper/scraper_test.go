@@ -358,6 +358,30 @@ admin state is up, Dedicated Interface
 			},
 		},
 		{
+			name: "IOS XE zero IP multicast uses total multicast",
+			output: `GigabitEthernet1/0/1 is up, line protocol is up
+  100 packets input, 1000 bytes
+  Received 20 broadcasts (0 IP multicasts)
+  0 watchdog, 30 multicast, 0 pause input`,
+			expected: map[string]int64{
+				"receive/unicast":   50,
+				"receive/multicast": 30,
+				"receive/broadcast": 20,
+			},
+		},
+		{
+			name: "IOS XE divergent multicast counters in reverse order",
+			output: `GigabitEthernet1/0/1 is up, line protocol is up
+  100 packets input, 1000 bytes
+  0 watchdog, 30 multicast, 0 pause input
+  Received 20 broadcasts (40 IP multicasts)`,
+			expected: map[string]int64{
+				"receive/unicast":   50,
+				"receive/multicast": 30,
+				"receive/broadcast": 20,
+			},
+		},
+		{
 			name: "explicit zero unicast",
 			output: `Ethernet1/1 is up
 admin state is up, Dedicated Interface
@@ -370,7 +394,7 @@ admin state is up, Dedicated Interface
     30 output packets 300 bytes`,
 			expected: map[string]int64{
 				"receive/unicast":    0,
-				"receive/multicast":  0,
+				"receive/multicast":  25,
 				"receive/broadcast":  7,
 				"transmit/unicast":   0,
 				"transmit/multicast": 4,

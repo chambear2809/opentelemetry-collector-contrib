@@ -73,7 +73,9 @@ TenGigabitEthernet1/0/1 is down, line protocol is down (notconnect)
 	assert.Equal(t, int64(0), gig0.InputDrops)
 	assert.Equal(t, int64(5), gig0.OutputDrops)
 	assert.Equal(t, int64(150), gig0.InputBroadcast)
-	assert.Equal(t, int64(75), gig0.InputMulticast)
+	assert.Equal(t, int64(75), gig0.InputIPMulticast)
+	assert.Equal(t, int64(25), gig0.InputTotalMulticast)
+	assert.Equal(t, int64(25), gig0.InputMulticast)
 	assert.Equal(t, int64(12345), gig0.InputPackets)
 	assert.Equal(t, int64(20), gig0.OutputPackets)
 	assert.Equal(t, int64(1000), gig0.InputRateBits)
@@ -96,6 +98,48 @@ TenGigabitEthernet1/0/1 is down, line protocol is down (notconnect)
 	assert.Equal(t, int64(3), ten1.OutputErrors)
 	assert.Equal(t, int64(2), ten1.InputDrops)
 	assert.Equal(t, int64(10), ten1.OutputDrops)
+}
+
+func TestParseInterfaces_IOSXEReceiveMulticastPrecedence(t *testing.T) {
+	tests := []struct {
+		name               string
+		output             string
+		wantIPMulticast    int64
+		wantTotalMulticast int64
+	}{
+		{
+			name: "explicit zero IP multicast",
+			output: `GigabitEthernet1/0/1 is up, line protocol is up
+  100 packets input, 10000 bytes
+  Received 20 broadcasts (0 IP multicasts)
+  0 watchdog, 30 multicast, 0 pause input`,
+			wantIPMulticast:    0,
+			wantTotalMulticast: 30,
+		},
+		{
+			name: "divergent counters in reverse order",
+			output: `GigabitEthernet1/0/1 is up, line protocol is up
+  100 packets input, 10000 bytes
+  0 watchdog, 30 multicast, 0 pause input
+  Received 20 broadcasts (40 IP multicasts)`,
+			wantIPMulticast:    40,
+			wantTotalMulticast: 30,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			interfaces := parseInterfaces(tt.output, zaptest.NewLogger(t))
+
+			require.Len(t, interfaces, 1)
+			intf := interfaces[0]
+			assert.Equal(t, int64(20), intf.InputBroadcast)
+			assert.Equal(t, tt.wantIPMulticast, intf.InputIPMulticast)
+			assert.Equal(t, tt.wantTotalMulticast, intf.InputTotalMulticast)
+			assert.Equal(t, tt.wantTotalMulticast, intf.InputMulticast)
+			assert.Equal(t, invalidCounterValue, intf.InputUnicast)
+		})
+	}
 }
 
 func TestParseInterfaces_NXOS(t *testing.T) {
@@ -408,6 +452,8 @@ Vlan100 is up, line protocol is up
 	assert.Equal(t, int64(1), vlan.InputDrops)
 	assert.Equal(t, int64(2), vlan.OutputDrops)
 	assert.Equal(t, int64(30), vlan.InputBroadcast)
+	assert.Equal(t, int64(15), vlan.InputIPMulticast)
+	assert.Equal(t, invalidCounterValue, vlan.InputTotalMulticast)
 	assert.Equal(t, int64(15), vlan.InputMulticast)
 }
 
