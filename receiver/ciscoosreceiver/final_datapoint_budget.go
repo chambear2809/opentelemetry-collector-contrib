@@ -16,6 +16,7 @@ const finalDatapointHardMaxAttributeNodes = 2_000_000
 // encoding path cannot be multiplied across an otherwise valid batch.
 type finalDatapointBudgetLimits struct {
 	maxDatapoints          int
+	maxMetricNameBytes     int
 	maxAttributes          int
 	maxAttributeKeyBytes   int
 	maxAttributeValueBytes int
@@ -33,6 +34,9 @@ func (l finalDatapointBudgetLimits) withDefaults(configuredMaxDatapoints int) fi
 	}
 	if l.maxDatapoints <= 0 || l.maxDatapoints > configuredMaxDatapoints {
 		l.maxDatapoints = configuredMaxDatapoints
+	}
+	if l.maxMetricNameBytes <= 0 || l.maxMetricNameBytes > directGNMIHardMaxMetricNameBytes {
+		l.maxMetricNameBytes = directGNMIHardMaxMetricNameBytes
 	}
 	if l.maxAttributes <= 0 || l.maxAttributes > directGNMIHardMaxAttributesPerPoint {
 		l.maxAttributes = directGNMIHardMaxAttributesPerPoint

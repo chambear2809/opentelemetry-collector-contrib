@@ -67,23 +67,23 @@ func (d *iosXRGNMIUpdateDecoder) decodeNotification(notification *gnmi.Notificat
 			}
 			continue
 		}
-		parts, attrs, ok := pathPartsAndAttrs(prefix, deleted, budget)
+		path, attrs, ok := dynamicYANGPathAndAttrs(prefix, deleted, budget)
 		if !ok {
 			if budget.exhausted {
 				break
 			}
 			continue
 		}
-		if len(parts) == 0 {
+		if len(path.identity) == 0 {
 			continue
 		}
 		attrs["deleted"] = "true"
-		deleteModule := moduleFromParts(module, parts)
+		deleteModule := dynamicYANGModule(prefix, deleted, module, path.identity)
 		if !setDirectGNMISourcePath(attrs, prefix, deleted, prefixText, deletedText, budget) {
 			continue
 		}
 		putNonEmpty(attrs, "cisco.yang.module", deleteModule)
-		appendIOSXRInfoMetricIndexed(metrics, deleteModule, parts, "deleted", ts, attrs)
+		appendIOSXRInfoMetricIndexed(metrics, deleteModule, path, "deleted", ts, attrs)
 	}
 
 	for _, update := range updates {
@@ -97,27 +97,24 @@ func (d *iosXRGNMIUpdateDecoder) decodeNotification(notification *gnmi.Notificat
 			}
 			continue
 		}
-		parts, attrs, ok := pathPartsAndAttrs(prefix, update.GetPath(), budget)
+		path, attrs, ok := dynamicYANGPathAndAttrs(prefix, update.GetPath(), budget)
 		if !ok {
 			if budget.exhausted {
 				break
 			}
 			continue
 		}
-		if len(parts) == 0 {
+		if len(path.identity) == 0 {
 			budget.addDecodeError()
 			budget.drop(false)
 			continue
 		}
-		updateModule := moduleFromParts(module, parts)
-		if updateModule == "" {
-			updateModule = moduleFromGNMIPath(update.GetPath())
-		}
+		updateModule := dynamicYANGModule(prefix, update.GetPath(), module, path.identity)
 		if !setDirectGNMISourcePath(attrs, prefix, update.GetPath(), prefixText, updateText, budget) {
 			continue
 		}
 		putNonEmpty(attrs, "cisco.yang.module", updateModule)
-		depth := len(parts)
+		depth := len(path.identity)
 		if depth == 0 {
 			depth = 1
 		}
@@ -125,7 +122,7 @@ func (d *iosXRGNMIUpdateDecoder) decodeNotification(notification *gnmi.Notificat
 		if !ok {
 			continue
 		}
-		d.decodeTypedValue(metrics, updateModule, parts, value, ts, attrs, budget, depth)
+		d.decodeTypedValue(metrics, updateModule, path, value, ts, attrs, budget, depth)
 	}
 	if d.health != nil {
 		if budget.decodeErrors > 0 {
@@ -145,7 +142,7 @@ func (d *iosXRGNMIUpdateDecoder) decodeNotification(notification *gnmi.Notificat
 	return md
 }
 
-func (d iosXRGNMIUpdateDecoder) decodeTypedValue(metrics *indexedMetricBuilder, module string, parts []string, value *gnmi.TypedValue, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth int) {
+func (d iosXRGNMIUpdateDecoder) decodeTypedValue(metrics *indexedMetricBuilder, module string, path dynamicYANGPath, value *gnmi.TypedValue, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth int) {
 	if value == nil || value.GetValue() == nil {
 		budget.addDecodeError()
 		budget.drop(false)
@@ -153,33 +150,33 @@ func (d iosXRGNMIUpdateDecoder) decodeTypedValue(metrics *indexedMetricBuilder, 
 	}
 	switch v := value.GetValue().(type) {
 	case *gnmi.TypedValue_StringVal:
-		appendIOSXRInfoMetricIndexed(metrics, module, parts, v.StringVal, ts, attrs)
+		appendIOSXRInfoMetricIndexed(metrics, module, path, v.StringVal, ts, attrs)
 	case *gnmi.TypedValue_AsciiVal:
-		appendIOSXRInfoMetricIndexed(metrics, module, parts, v.AsciiVal, ts, attrs)
+		appendIOSXRInfoMetricIndexed(metrics, module, path, v.AsciiVal, ts, attrs)
 	case *gnmi.TypedValue_IntVal:
-		appendIOSXRMetricNumberIndexed(metrics, module, parts, intMetricNumber(v.IntVal), ts, attrs)
+		appendIOSXRMetricNumberIndexed(metrics, module, path, intMetricNumber(v.IntVal), ts, attrs)
 	case *gnmi.TypedValue_UintVal:
 		if v.UintVal <= math.MaxInt64 {
-			appendIOSXRMetricNumberIndexed(metrics, module, parts, intMetricNumber(int64(v.UintVal)), ts, attrs)
+			appendIOSXRMetricNumberIndexed(metrics, module, path, intMetricNumber(int64(v.UintVal)), ts, attrs)
 		} else {
 			overflowAttrs := cloneAttrs(attrs)
 			overflowAttrs["cisco.value.type"] = "uint64"
 			overflowAttrs["cisco.value.out_of_range"] = "true"
-			appendIOSXRInfoMetricIndexed(metrics, module, parts, strconv.FormatUint(v.UintVal, 10), ts, overflowAttrs)
+			appendIOSXRInfoMetricIndexed(metrics, module, path, strconv.FormatUint(v.UintVal, 10), ts, overflowAttrs)
 		}
 	case *gnmi.TypedValue_BoolVal:
 		if v.BoolVal {
-			appendIOSXRMetricNumberIndexed(metrics, module, parts, intMetricNumber(1), ts, attrs)
+			appendIOSXRMetricNumberIndexed(metrics, module, path, intMetricNumber(1), ts, attrs)
 		} else {
-			appendIOSXRMetricNumberIndexed(metrics, module, parts, intMetricNumber(0), ts, attrs)
+			appendIOSXRMetricNumberIndexed(metrics, module, path, intMetricNumber(0), ts, attrs)
 		}
 	case *gnmi.TypedValue_FloatVal:
-		appendIOSXRMetricNumberIndexed(metrics, module, parts, doubleMetricNumber(float64(v.FloatVal)), ts, attrs) //nolint:staticcheck // Legacy Cisco devices still emit the deprecated gNMI float field.
+		appendIOSXRMetricNumberIndexed(metrics, module, path, doubleMetricNumber(float64(v.FloatVal)), ts, attrs) //nolint:staticcheck // Legacy Cisco devices still emit the deprecated gNMI float field.
 	case *gnmi.TypedValue_DoubleVal:
-		appendIOSXRMetricNumberIndexed(metrics, module, parts, doubleMetricNumber(v.DoubleVal), ts, attrs)
+		appendIOSXRMetricNumberIndexed(metrics, module, path, doubleMetricNumber(v.DoubleVal), ts, attrs)
 	case *gnmi.TypedValue_DecimalVal:
 		if v.DecimalVal != nil && v.DecimalVal.Precision <= 308 { //nolint:staticcheck // Legacy Cisco devices still emit the deprecated gNMI decimal field.
-			appendIOSXRMetricNumberIndexed(metrics, module, parts, doubleMetricNumber(float64(v.DecimalVal.Digits)/pow10(v.DecimalVal.Precision)), ts, attrs) //nolint:staticcheck // Preserve compatibility with legacy gNMI decimal payloads.
+			appendIOSXRMetricNumberIndexed(metrics, module, path, doubleMetricNumber(float64(v.DecimalVal.Digits)/pow10(v.DecimalVal.Precision)), ts, attrs) //nolint:staticcheck // Preserve compatibility with legacy gNMI decimal payloads.
 		} else {
 			budget.addDecodeError()
 			budget.drop(false)
@@ -214,17 +211,17 @@ func (d iosXRGNMIUpdateDecoder) decodeTypedValue(metrics *indexedMetricBuilder, 
 			values = append(values, value)
 		}
 		joined := strings.Join(values, ",")
-		appendIOSXRInfoMetricIndexed(metrics, module, parts, joined, ts, attrs)
+		appendIOSXRInfoMetricIndexed(metrics, module, path, joined, ts, attrs)
 	case *gnmi.TypedValue_JsonIetfVal:
-		d.decodeJSONValue(metrics, module, parts, v.JsonIetfVal, ts, attrs, budget, depth+1)
+		d.decodeJSONValue(metrics, module, path, v.JsonIetfVal, ts, attrs, budget, depth+1)
 	case *gnmi.TypedValue_JsonVal:
-		d.decodeJSONValue(metrics, module, parts, v.JsonVal, ts, attrs, budget, depth+1)
+		d.decodeJSONValue(metrics, module, path, v.JsonVal, ts, attrs, budget, depth+1)
 	case *gnmi.TypedValue_BytesVal:
 		if len(v.BytesVal) > budget.limits.maxAttributeValueBytes/2 {
 			budget.drop(false)
 			return
 		}
-		appendIOSXRInfoMetricIndexed(metrics, module, append(parts, "bytes"), fmt.Sprintf("%x", v.BytesVal), ts, attrs)
+		appendIOSXRInfoMetricIndexed(metrics, module, path.child("bytes", "bytes"), fmt.Sprintf("%x", v.BytesVal), ts, attrs)
 	case *gnmi.TypedValue_ProtoBytes:
 		metrics.appendNumber(
 			"cisco.iosxr.receiver.compact_gpb_payloads",
@@ -243,13 +240,13 @@ func (d iosXRGNMIUpdateDecoder) decodeTypedValue(metrics *indexedMetricBuilder, 
 			budget.drop(false)
 			return
 		}
-		appendIOSXRInfoMetricIndexed(metrics, module, append(parts, "any"), v.AnyVal.String(), ts, attrs)
+		appendIOSXRInfoMetricIndexed(metrics, module, path.child("any", "any"), v.AnyVal.String(), ts, attrs)
 	default:
-		appendIOSXRInfoMetricIndexed(metrics, module, parts, value.String(), ts, attrs)
+		appendIOSXRInfoMetricIndexed(metrics, module, path, value.String(), ts, attrs)
 	}
 }
 
-func (iosXRGNMIUpdateDecoder) decodeJSONValue(metrics *indexedMetricBuilder, module string, parts []string, raw []byte, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth int) {
+func (iosXRGNMIUpdateDecoder) decodeJSONValue(metrics *indexedMetricBuilder, module string, path dynamicYANGPath, raw []byte, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth int) {
 	if len(raw) > directGNMIHardMaxPayloadBytes {
 		budget.drop(true)
 		return
@@ -260,15 +257,15 @@ func (iosXRGNMIUpdateDecoder) decodeJSONValue(metrics *indexedMetricBuilder, mod
 		budget.drop(false)
 		return
 	}
-	pathNameBytes, ok := directGNMIPathNameBytes(parts, budget.limits.maxMetricNameBytes)
+	pathNameBytes, ok := directGNMIPathNameBytes(path.identity, budget.limits.maxMetricNameBytes)
 	if !ok {
 		budget.drop(false)
 		return
 	}
-	walkIOSXRJSON(metrics, module, parts, value, ts, attrs, budget, depth, pathNameBytes)
+	walkIOSXRJSON(metrics, module, path, value, ts, attrs, budget, depth, pathNameBytes)
 }
 
-func walkIOSXRJSON(metrics *indexedMetricBuilder, module string, parts []string, value any, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth, pathNameBytes int) bool {
+func walkIOSXRJSON(metrics *indexedMetricBuilder, module string, path dynamicYANGPath, value any, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth, pathNameBytes int) bool {
 	if !budget.visitField(depth) {
 		return false
 	}
@@ -278,7 +275,7 @@ func walkIOSXRJSON(metrics *indexedMetricBuilder, module string, parts []string,
 			return false
 		}
 		nextAttrs := cloneAttrs(attrs)
-		if !extractJSONIdentityAttrs(v, nextAttrs, budget, parts) {
+		if !extractJSONIdentityAttrs(v, nextAttrs, budget, path.normalized) {
 			return !budget.exhausted
 		}
 		keys := make([]string, 0, len(v))
@@ -288,20 +285,25 @@ func walkIOSXRJSON(metrics *indexedMetricBuilder, module string, parts []string,
 		sort.Strings(keys)
 		for _, key := range keys {
 			nextModule, part := splitYANGQualifiedName(module, key)
-			if sanitizeMetricSegment(part) == "" {
+			if key == "" || part == "" {
 				budget.drop(false)
 				continue
 			}
-			nextPathNameBytes, ok := extendDirectGNMIPathNameBytes(pathNameBytes, part, budget.limits.maxMetricNameBytes)
+			nextPathNameBytes, ok := extendDirectGNMIPathNameBytes(pathNameBytes, key, budget.limits.maxMetricNameBytes)
 			if !ok {
 				budget.drop(false)
 				continue
 			}
 			childAttrs := cloneAttrs(nextAttrs)
+			if nextModule == "" {
+				delete(childAttrs, "cisco.yang.module")
+			} else {
+				childAttrs["cisco.yang.module"] = nextModule
+			}
 			if !extendDirectGNMISourcePath(childAttrs, key, budget) {
 				continue
 			}
-			if !walkIOSXRJSON(metrics, nextModule, append(parts, part), v[key], ts, childAttrs, budget, depth+1, nextPathNameBytes) && budget.exhausted {
+			if !walkIOSXRJSON(metrics, nextModule, path.child(key, part), v[key], ts, childAttrs, budget, depth+1, nextPathNameBytes) && budget.exhausted {
 				return false
 			}
 		}
@@ -313,24 +315,33 @@ func walkIOSXRJSON(metrics *indexedMetricBuilder, module string, parts []string,
 			if !budget.consumeChildFields(len(v), depth+1) {
 				return false
 			}
-			appendIOSXRInfoMetricIndexed(metrics, module, parts, valueToInfoString(v), ts, attrs)
+			appendIOSXRInfoMetricIndexed(metrics, module, path, valueToInfoString(v), ts, attrs)
 			return !budget.exhausted
 		}
-		if !validateIOSXRJSONArrayIdentity(v, attrs, budget, parts) {
+		if !validateIOSXRJSONArrayIdentity(v, attrs, budget, path.normalized) {
 			return !budget.exhausted
 		}
 		for _, elem := range v {
-			if !walkIOSXRJSON(metrics, module, parts, elem, ts, attrs, budget, depth+1, pathNameBytes) && budget.exhausted {
+			if !walkIOSXRJSON(metrics, module, path, elem, ts, attrs, budget, depth+1, pathNameBytes) && budget.exhausted {
 				return false
 			}
 		}
 	default:
 		if n, ok := typedNumericValue(v); ok {
-			appendIOSXRMetricNumberIndexed(metrics, module, parts, n, ts, attrs)
+			appendIOSXRMetricNumberIndexed(metrics, module, path, n, ts, attrs)
 			return !budget.exhausted
 		}
-		if value := valueToInfoString(v); value != "" {
-			appendIOSXRInfoMetricIndexed(metrics, module, parts, value, ts, attrs)
+		switch v := v.(type) {
+		case nil:
+			// JSON null represents no leaf value.
+		case string:
+			appendIOSXRInfoMetricIndexed(metrics, module, path, v, ts, attrs)
+		default:
+			value := valueToInfoString(v)
+			if value == "" {
+				break
+			}
+			appendIOSXRInfoMetricIndexed(metrics, module, path, value, ts, attrs)
 		}
 	}
 	return !budget.exhausted
@@ -1069,20 +1080,32 @@ func directGNMIPathNameBytes(parts []string, maximum int) (int, bool) {
 	return total, true
 }
 
-func pathPartsAndAttrs(prefix, update *gnmi.Path, budget *directGNMIDecodeBudget) ([]string, map[string]string, bool) {
-	parts := make([]string, 0, len(prefix.GetElem())+len(update.GetElem()))
+func dynamicYANGPathAndAttrs(prefix, update *gnmi.Path, budget *directGNMIDecodeBudget) (dynamicYANGPath, map[string]string, bool) {
+	if _, ok := dynamicYANGEffectiveOrigin(prefix, update); !ok {
+		// A relative path cannot override a nonempty prefix origin without
+		// changing its schema identity. Reject the ambiguous notification
+		// instead of selecting one origin and silently discarding the other.
+		budget.addDecodeError()
+		budget.drop(false)
+		return dynamicYANGPath{}, nil, false
+	}
+	path := dynamicYANGPath{
+		identity:   make([]string, 0, len(prefix.GetElem())+len(update.GetElem())),
+		normalized: make([]string, 0, len(prefix.GetElem())+len(update.GetElem())),
+	}
 	attrs := map[string]string{}
 	pathKeys := directGNMIPathKeyAttributes{}
 	var keyScratch [directGNMIHardMaxAttributesPerPoint]string
 	pathNameBytes := 0
-	appendPart := func(value string) bool {
-		next, ok := extendDirectGNMIPathNameBytes(pathNameBytes, value, budget.limits.maxMetricNameBytes)
+	appendPart := func(identity, normalized string) bool {
+		next, ok := extendDirectGNMIPathNameBytes(pathNameBytes, identity, budget.limits.maxMetricNameBytes)
 		if !ok {
 			budget.drop(false)
 			return false
 		}
 		pathNameBytes = next
-		parts = append(parts, value)
+		path.identity = append(path.identity, identity)
+		path.normalized = append(path.normalized, normalized)
 		return true
 	}
 	add := func(p *gnmi.Path) bool {
@@ -1090,18 +1113,19 @@ func pathPartsAndAttrs(prefix, update *gnmi.Path, budget *directGNMIDecodeBudget
 			return true
 		}
 		for _, elem := range p.GetElem() {
-			if !budget.visitField(len(parts) + 1) {
+			if !budget.visitField(len(path.identity) + 1) {
 				return false
 			}
-			_, name := splitYANGQualifiedName("", elem.GetName())
-			if sanitizeMetricSegment(name) == "" {
+			rawName := elem.GetName()
+			_, name := splitYANGQualifiedName("", rawName)
+			if rawName == "" || name == "" {
 				budget.drop(false)
 				return false
 			}
-			if !appendPart(name) {
+			if !appendPart(rawName, name) {
 				return false
 			}
-			scope := len(parts)
+			scope := len(path.normalized)
 			keys := elem.GetKey()
 			if len(keys) > budget.limits.maxAttributes-len(attrs) {
 				budget.drop(false)
@@ -1118,7 +1142,7 @@ func pathPartsAndAttrs(prefix, update *gnmi.Path, budget *directGNMIDecodeBudget
 			}
 			sort.Strings(orderedKeys)
 			for _, key := range orderedKeys {
-				if !pathKeys.put(attrs, key, keys[key], scope, parts, budget) {
+				if !pathKeys.put(attrs, key, keys[key], scope, path.normalized, budget) {
 					return false
 				}
 			}
@@ -1126,23 +1150,28 @@ func pathPartsAndAttrs(prefix, update *gnmi.Path, budget *directGNMIDecodeBudget
 			if interfaceName == "" {
 				interfaceName = preferredGNMIPathKeyValue(keys, orderedKeys, looksLikeInterfaceName, "name")
 			}
-			if !putDirectGNMIPathSemanticAttribute(attrs, "network.interface.name", interfaceName, parts, budget) {
+			if !putDirectGNMIPathSemanticAttribute(attrs, "network.interface.name", interfaceName, path.normalized, budget) {
 				return false
 			}
-			if !putDirectGNMIPathSemanticAttribute(attrs, "network.vrf.name", preferredGNMIPathKeyValue(keys, orderedKeys, nil, "vrf-name", "vrf"), parts, budget) {
+			if !putDirectGNMIPathSemanticAttribute(attrs, "network.vrf.name", preferredGNMIPathKeyValue(keys, orderedKeys, nil, "vrf-name", "vrf"), path.normalized, budget) {
 				return false
 			}
-			if !putDirectGNMIPathSemanticAttribute(attrs, "network.peer.address", preferredGNMIPathKeyValue(keys, orderedKeys, nil, "neighbor-address", "neighbor"), parts, budget) {
+			if !putDirectGNMIPathSemanticAttribute(attrs, "network.peer.address", preferredGNMIPathKeyValue(keys, orderedKeys, nil, "neighbor-address", "neighbor"), path.normalized, budget) {
 				return false
 			}
 		}
 		if len(p.GetElem()) == 0 {
 			for _, elem := range p.GetElement() { //nolint:staticcheck // Legacy gNMI paths can still use the deprecated Element representation.
-				if !budget.visitField(len(parts) + 1) {
+				if !budget.visitField(len(path.identity) + 1) {
 					return false
 				}
-				if sanitizeMetricSegment(elem) == "" || !appendPart(elem) {
-					if sanitizeMetricSegment(elem) == "" {
+				// Deprecated Element entries have no PathElem structure. Treat each
+				// nonempty string as exactly one raw identity segment. Its semantic
+				// projection follows the modern local-name rule while established
+				// embedded predicate text otherwise remains untouched.
+				_, local := splitYANGQualifiedName("", elem)
+				if elem == "" || local == "" || !appendPart(elem, local) {
+					if elem == "" || local == "" {
 						budget.drop(false)
 					}
 					return false
@@ -1152,28 +1181,87 @@ func pathPartsAndAttrs(prefix, update *gnmi.Path, budget *directGNMIDecodeBudget
 		return true
 	}
 	if !add(prefix) || !add(update) {
-		return nil, nil, false
+		return dynamicYANGPath{}, nil, false
 	}
-	return parts, attrs, true
+	return path, attrs, true
+}
+
+func dynamicYANGEffectiveOrigin(prefix, relative *gnmi.Path) (string, bool) {
+	prefixOrigin := prefix.GetOrigin()
+	relativeOrigin := relative.GetOrigin()
+	if prefixOrigin != "" && relativeOrigin != "" && prefixOrigin != relativeOrigin {
+		return "", false
+	}
+	if prefixOrigin != "" {
+		return prefixOrigin, true
+	}
+	return relativeOrigin, true
+}
+
+func dynamicYANGModule(prefix, relative *gnmi.Path, prefixModule string, identity []string) string {
+	if origin, ok := dynamicYANGEffectiveOrigin(prefix, relative); ok && origin != "" {
+		return origin
+	}
+	module := moduleFromParts(prefixModule, identity)
+	if module == "" {
+		module = moduleFromGNMIPath(relative)
+	}
+	return module
 }
 
 func moduleFromParts(current string, parts []string) string {
-	if current != "" {
-		return current
-	}
+	module := current
 	for _, part := range parts {
-		if idx := strings.Index(part, ":"); idx > 0 {
-			return part[:idx]
+		if qualifier, _, ok := parseYANGQualifiedName(part); ok {
+			module = qualifier
 		}
 	}
-	return ""
+	return module
 }
 
 func splitYANGQualifiedName(currentModule, value string) (string, string) {
-	if idx := strings.Index(value, ":"); idx > 0 {
-		return value[:idx], value[idx+1:]
+	if module, local, ok := parseYANGQualifiedName(value); ok {
+		return module, local
 	}
 	return currentModule, value
+}
+
+// parseYANGQualifiedName recognizes only an actual YANG prefix:name at the
+// start of one path segment. Colons inside deprecated Element predicates are
+// identity data (for example a MAC or IPv6 value), not module delimiters.
+func parseYANGQualifiedName(value string) (string, string, bool) {
+	nameEnd := len(value)
+	if predicate := strings.IndexByte(value, '['); predicate >= 0 {
+		nameEnd = predicate
+	}
+	qualified := value[:nameEnd]
+	separator := strings.IndexByte(qualified, ':')
+	if separator <= 0 || separator == len(qualified)-1 || strings.IndexByte(qualified[separator+1:], ':') >= 0 {
+		return "", "", false
+	}
+	module := qualified[:separator]
+	localName := qualified[separator+1:]
+	if !validYANGIdentifier(module) || !validYANGIdentifier(localName) {
+		return "", "", false
+	}
+	return module, value[separator+1:], true
+}
+
+func validYANGIdentifier(value string) bool {
+	if value == "" || !isYANGIdentifierFirstByte(value[0]) {
+		return false
+	}
+	for index := 1; index < len(value); index++ {
+		current := value[index]
+		if !isYANGIdentifierFirstByte(current) && (current < '0' || current > '9') && current != '-' && current != '.' {
+			return false
+		}
+	}
+	return true
+}
+
+func isYANGIdentifierFirstByte(value byte) bool {
+	return value >= 'A' && value <= 'Z' || value >= 'a' && value <= 'z' || value == '_'
 }
 
 func moduleFromGNMIPath(p *gnmi.Path) string {
@@ -1183,12 +1271,20 @@ func moduleFromGNMIPath(p *gnmi.Path) string {
 	if p.GetOrigin() != "" {
 		return p.GetOrigin()
 	}
+	module := ""
 	for _, elem := range p.GetElem() {
-		if idx := strings.Index(elem.GetName(), ":"); idx > 0 {
-			return elem.GetName()[:idx]
+		if qualifier, _, ok := parseYANGQualifiedName(elem.GetName()); ok {
+			module = qualifier
 		}
 	}
-	return ""
+	if len(p.GetElem()) == 0 {
+		for _, element := range p.GetElement() { //nolint:staticcheck // Deprecated Element remains an accepted wire representation.
+			if qualifier, _, ok := parseYANGQualifiedName(element); ok {
+				module = qualifier
+			}
+		}
+	}
+	return module
 }
 
 func gnmiPathToString(p *gnmi.Path, budget *directGNMIDecodeBudget) (string, bool) {
@@ -1240,13 +1336,13 @@ func gnmiPathToString(p *gnmi.Path, budget *directGNMIDecodeBudget) (string, boo
 			}
 			name := elem.GetName()
 			_, metricName := splitYANGQualifiedName("", name)
-			if sanitizeMetricSegment(metricName) == "" {
+			if name == "" || metricName == "" {
 				return reject()
 			}
 			if !addRenderedBytes(len(escapeDirectGNMIPathComponent(name, encodedOrigin != "" || index > 0))) {
 				return reject()
 			}
-			if !addPathName(metricName) {
+			if !addPathName(name) {
 				return reject()
 			}
 			keys := elem.GetKey()
@@ -1267,7 +1363,8 @@ func gnmiPathToString(p *gnmi.Path, budget *directGNMIDecodeBudget) (string, boo
 			return reject()
 		}
 		for index, element := range legacyElements {
-			if sanitizeMetricSegment(element) == "" {
+			_, local := splitYANGQualifiedName("", element)
+			if element == "" || local == "" {
 				return reject()
 			}
 			if index > 0 && !addRenderedBytes(1) { // Path separator.

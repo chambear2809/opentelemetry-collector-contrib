@@ -262,7 +262,7 @@ receivers:
         enabled: false
       cisco.wlc.client.*:
         enabled: false
-      cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.*:
+      cisco.iosxr.yang.__v1.*:
         enabled: false
     sdwan:
       enabled: true
@@ -1287,7 +1287,7 @@ See the [complete security, operations, metric, and qualification guide](docs/gn
 Catalyst 9800 support collects direct WLC/AP telemetry from IOS XE wireless controllers through two Cisco-supported
 model-driven telemetry modes: collector-managed gNMI dial-in and WLC-pushed MDT gRPC dial-out. gNMI subscriptions use
 JSON or JSON_IETF; gRPC dial-out reuses the `yang_grpc` receiver path for self-describing KV-GPB, then normalizes the
-same YANG leaves into raw `cisco.catalyst9800.yang.*` metrics and stable `cisco.wlc.*` aliases.
+same YANG leaves into raw `cisco.catalyst9800.yang.__v1.*` metrics and stable `cisco.wlc.*` aliases.
 
 Collector distributions that embed either Cisco dial-out mode must resolve a `yang_grpc` receiver from the same or a
 newer contrib release with runtime-hardening contract version 3. Startup fails closed when an older dependency is
@@ -1661,13 +1661,13 @@ state, NX-OS NVE/EVPN fabric metrics, vPC, LACP counters, and detailed QoS queue
 - Logs: ISE logs preserve recursively redacted REST/OpenAPI/ERS/MnT, pxGrid, and Data Connect records with `event.domain=ise`, `event.name`, node, protocol, outcome, failure reason, policy, network device, endpoint MAC, user, session/audit ID, and HTTP status attributes where present. MnT `ActiveList` and `AuthList` records require the opt-in `session_details` group.
 
 ### Catalyst 9800 Metrics
-- Pattern-governed YANG telemetry (outside exact fixed-name completeness): numeric leaves are emitted as `cisco.catalyst9800.yang.<module>.<path>.<leaf>`; integral values are preserved as int64 datapoints when representable, while other numeric values use double datapoints. String and enum leaves use an `_info` metric with the original value on the `value` attribute, known counters are cumulative sums, and other numeric leaves are gauges. Sanitizer collisions retain distinct `cisco.yang.source_path` attributes when their descriptors match. The `_info` suffix is reserved for text variants, so a numeric leaf whose sanitized base name ends in `_info` is dropped and counted.
+- Pattern-governed YANG telemetry (outside exact fixed-name completeness): names start with `cisco.catalyst9800.yang.__v1.` and reversibly length-frame module presence/value plus raw, ordered path bytes. Direct gNMI uses one counted path tuple; dial-out separately counts canonical nonempty `encoding_path` containers and raw GPB-KV `cisco.yang.source_path` segments, with `e0` for the deliberate absent/empty encoding-path class. A nonempty `encoding_path` must be slash-delimited with no surrounding whitespace or slash and no empty segment; noncanonical input is dropped rather than normalized. Numeric names end in `.n`; info names end in `.i`. Gauge streams always use finite double datapoints, cumulative monotonic counter streams always use int64 datapoints, and info streams are double gauges with the original text, including an empty string, on `value`. Exact cross-representation values are accepted; unset or nonnumeric points, inexact gauge integers, fractional/out-of-range counters, conflicting sums, and names exceeding the active final-name limit (at most 1024 bytes) are dropped and counted. This versioned naming is a breaking replacement for the former sanitized dynamic names; fixed metrics, `cisco.wlc.*` aliases, and shared-gNMI normalized profiles are unchanged.
 - Wireless aliases: stable `cisco.wlc.*` metrics cover AP join/failure/disconnect/CAPWAP state, RF utilization/noise/client count/channel changes, SSID client/utilization/traffic/retry counters, client connection/auth/roam/RSSI/SNR, mobility peer/roam/handoff, HA state, RADIUS summary health, and controller CPU/receiver health. Discrete status, count, counter, and byte aliases preserve exact int64 values; continuous measurements remain double gauges with cataloged units.
 - Correlation attributes: Catalyst 9800 metrics include `host.name`, `host.id`, `host.ip`, `hw.type=network`, `cisco.os.name=ios_xe`, `cisco.platform.family=catalyst_9800`, the full `cisco.yang.path`, collision-safe `cisco.yang.source_path` for direct gNMI and GPB-KV fields, `cisco.yang.module`, `cisco.telemetry.transport`, AP MAC/name, radio slot, WLAN ID, SSID, client MAC, and mobility peer IP when present. Direct-gNMI JSON descendants use a `rawGNMIPath#/JSON-pointer` source identity while structured scalar paths remain unchanged. Complex-array entries, including singletons, require a recognized stable identity. Present empty YANG list keys remain explicit attributes rather than collapsing into missing keys.
 - Receiver health: `cisco.catalyst9800.receiver.active_subscriptions`, `cisco.catalyst9800.receiver.updates`, `cisco.catalyst9800.receiver.decode_errors`, `cisco.catalyst9800.receiver.unsupported_paths`, `cisco.catalyst9800.receiver.reconnects`, `cisco.catalyst9800.receiver.dropped_datapoints`, `cisco.catalyst9800.receiver.compact_gpb_payloads`, and `cisco.catalyst9800.receiver.last_success_timestamp` help detect stale or lossy WLC telemetry. Receiver-health values use governed integer datapoints; compact-GPB rows are a single per-message integer gauge.
 
 ### IOS XR Metrics
-- Pattern-governed YANG telemetry (outside exact fixed-name completeness): numeric leaves are emitted as `cisco.iosxr.yang.<module>.<path>.<leaf>`; integral values are preserved as int64 datapoints when representable, while other numeric values use double datapoints. String and enum leaves use an `_info` metric with the original value on the `value` attribute, known counters are cumulative sums, and other numeric leaves are gauges. Sanitizer collisions retain distinct `cisco.yang.source_path` attributes when their descriptors match. The `_info` suffix is reserved for text variants, so a numeric leaf whose sanitized base name ends in `_info` is dropped and counted.
+- Pattern-governed YANG telemetry (outside exact fixed-name completeness): names start with `cisco.iosxr.yang.__v1.` and reversibly length-frame module presence/value plus raw, ordered path bytes. Direct gNMI uses one counted path tuple; dial-out separately counts canonical nonempty `encoding_path` containers and raw GPB-KV `cisco.yang.source_path` segments, with `e0` for the deliberate absent/empty encoding-path class. A nonempty `encoding_path` must be slash-delimited with no surrounding whitespace or slash and no empty segment; noncanonical input is dropped rather than normalized. Numeric names end in `.n`; info names end in `.i`. Gauge streams always use finite double datapoints, cumulative monotonic counter streams always use int64 datapoints, and info streams are double gauges with the original text, including an empty string, on `value`. Parser-less dial-out gauges are promoted only when deterministic path classification requires a counter; conflicting or malformed sums are rejected. Exact cross-representation values are accepted; unset or nonnumeric points, inexact gauge integers, fractional/out-of-range counters, and names exceeding the active final-name limit (at most 1024 bytes) are dropped and counted. This versioned naming is a breaking replacement for the former sanitized dynamic names; fixed metrics and shared-gNMI normalized profiles are unchanged.
 - Core WAN evidence: curated path groups cover system, platform, environment, high-speed interfaces, optics, routing, FIB/CEF, BGP, ISIS, MPLS, SR/SRv6, QoS, security policy, BFD, topology, time sync, ASIC, and telemetry self-health.
 - Correlation attributes: IOS XR metrics include `host.name`, `host.id`, `host.ip`, `hw.type=network`, `cisco.os.name=ios_xr`, `cisco.platform.family`, the full `cisco.yang.path`, collision-safe `cisco.yang.source_path` for direct gNMI and GPB-KV fields, `cisco.yang.module`, `cisco.telemetry.transport`, and normalized interface, VRF, neighbor, node, and location keys where available. Direct-gNMI JSON descendants use a `rawGNMIPath#/JSON-pointer` source identity while structured scalar paths remain unchanged. Complex-array entries, including singletons, require a recognized stable identity. Present empty YANG list keys remain explicit attributes rather than collapsing into missing keys.
 - Receiver health: `cisco.iosxr.receiver.active_subscriptions`, `cisco.iosxr.receiver.updates`, `cisco.iosxr.receiver.decode_errors`, `cisco.iosxr.receiver.unsupported_paths`, `cisco.iosxr.receiver.reconnects`, `cisco.iosxr.receiver.dropped_datapoints`, `cisco.iosxr.receiver.compact_gpb_payloads`, and `cisco.iosxr.receiver.last_success_timestamp` help detect stale or lossy telemetry. Receiver-health values use governed integer datapoints; compact-GPB rows are a single per-message integer gauge.
@@ -2033,13 +2033,15 @@ export CISCOOS_E2E_IOSXR_CA_FILE=/etc/otelcol/certs/ios-xr-ca.pem
 export CISCOOS_E2E_IOSXR_SERVER_NAME=router.example.net
 export CISCOOS_E2E_IOSXR_INSECURE_SKIP_VERIFY=false
 export CISCOOS_E2E_IOSXR_PATH_GROUPS=interfaces,optics,bgp
-export CISCOOS_E2E_IOSXR_EXPECT_METRICS=cisco.iosxr.yang.cisco_ios_xr_infra_statsd_oper.infra_statistics.interfaces.interface.generic_counters.bytes_received
+export CISCOOS_E2E_IOSXR_EXPECT_METRICS=cisco.iosxr.yang.__v1.m1.s30_Cisco_2DIOS_2DXR_2Dinfra_2Dstatsd_2Doper.p5.s16_infra_2Dstatistics.s10_interfaces.s9_interface.s16_generic_2Dcounters.s14_bytes_2Dreceived.n
 
 (cd receiver/ciscoosreceiver && go test -tags=e2e -run TestE2EIOSXRGNMIDialIn -count=1 -timeout=3m .)
 ```
 
-The dial-in test always requires at least one decoded `cisco.iosxr.yang.*` metric, so receiver-health metrics alone cannot
+The dial-in test always requires at least one decoded `cisco.iosxr.yang.__v1.*` metric, so receiver-health metrics alone cannot
 satisfy the live gate. `CISCOOS_E2E_IOSXR_EXPECT_METRICS` optionally adds exact comma-separated metric assertions.
+The exact example above is derived from module `Cisco-IOS-XR-infra-statsd-oper` and the ordered direct path tuple
+`infra-statistics/interfaces/interface/generic-counters/bytes-received`; it is not a sanitized display name.
 
 For MDT gRPC dial-out, configure the IOS XR router subscription to stream to the collector endpoint, then run:
 

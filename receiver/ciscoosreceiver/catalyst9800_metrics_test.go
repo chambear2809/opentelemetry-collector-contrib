@@ -38,15 +38,22 @@ func TestCatalyst9800NormalizingConsumerPreservesPerMessageCompactGPBDiagnostic(
 		{target: "wlc-a", value: 3},
 		{target: "wlc-b", value: 2},
 		{target: "wlc-a", value: 1},
+		{target: "", value: 4},
 	} {
-		require.NoError(t, normalizer.ConsumeMetrics(t.Context(), rawCatalyst9800DialOutMetrics(
-			"cisco.yang_grpc.compact_gpb_payloads",
-			observation.value,
+		require.NoError(t, normalizer.ConsumeMetrics(t.Context(), rawCompactGPBDiagnostic(
 			observation.target,
+			"test-module:state",
+			int64(observation.value),
 		)))
 		require.Len(t, sink.AllMetrics(), index+1)
 		md := sink.AllMetrics()[index]
-		assert.Equal(t, observation.target, attrValue(t, md.ResourceMetrics().At(0).Resource().Attributes(), "host.name"))
+		resourceAttrs := md.ResourceMetrics().At(0).Resource().Attributes()
+		if observation.target == "" {
+			_, present := resourceAttrs.Get("host.name")
+			assert.False(t, present)
+		} else {
+			assert.Equal(t, observation.target, attrValue(t, resourceAttrs, "host.name"))
+		}
 		assertSingleIntGaugeMetric(t, md, "cisco.catalyst9800.receiver.compact_gpb_payloads", int64(observation.value))
 	}
 }
@@ -94,6 +101,7 @@ func TestCatalyst9800AliasPreservesPresentEmptyIdentity(t *testing.T) {
 		sourceMetric,
 		"wireless-rrm-oper",
 		[]string{"noise"},
+		false,
 		"wireless-rrm-oper:rrm-oper-data/noise",
 		catalyst9800TelemetryTransportDialOut,
 	)
@@ -136,7 +144,10 @@ func TestCatalyst9800NormalizerAliasPreservesArbitraryPresentEmptyYANGKey(t *tes
 	withEmptyKey := dps.AppendEmpty()
 	withEmptyKey.SetIntValue(-90)
 	withEmptyKey.Attributes().PutStr("tenant-code", "")
-	dps.AppendEmpty().SetIntValue(-91)
+	withEmptyKey.Attributes().PutStr("cisco.yang.source_path", "noise")
+	withoutKey := dps.AppendEmpty()
+	withoutKey.SetIntValue(-91)
+	withoutKey.Attributes().PutStr("cisco.yang.source_path", "noise")
 
 	require.NoError(t, normalizer.ConsumeMetrics(t.Context(), raw))
 	require.Len(t, sink.AllMetrics(), 1)
@@ -183,16 +194,18 @@ func TestCatalyst9800NormalizingConsumerCoalescesStreamsAndPreservesIntDatapoint
 		dp := metric.SetEmptyGauge().DataPoints().AppendEmpty()
 		dp.SetIntValue(value)
 		dp.Attributes().PutStr("wtp-mac", apMAC)
+		dp.Attributes().PutStr("cisco.yang.source_path", "access-point-oper-data/ssid-counters/tx-bytes-data")
 	}
 
 	require.NoError(t, normalizer.ConsumeMetrics(t.Context(), raw))
 	require.Len(t, sink.AllMetrics(), 1)
 	md := sink.AllMetrics()[0]
 
-	const canonical = "cisco.catalyst9800.yang.wireless_access_point_oper.access_point_oper_data.ssid_counters.tx_bytes_data"
+	canonical := mustDialOutDynamicYANGName(t, "cisco.catalyst9800.yang", "wireless-access-point-oper",
+		"wireless-access-point-oper:access-point-oper-data/ssid-counters", "access-point-oper-data/ssid-counters/tx-bytes-data", dynamicYANGMetricVariantNumber)
 	assert.Equal(t, 1, metricCountNamed(md, canonical))
 	canonicalMetric := mustFindIOSXRMetric(t, md, canonical)
-	assertIntGaugeDatapointsByAttr(t, canonicalMetric, "wtp-mac", map[string]int64{
+	assertIntSumDatapointsByAttr(t, canonicalMetric, "wtp-mac", map[string]int64{
 		"AA:BB:CC:DD:EE:01": math.MaxInt64,
 		"AA:BB:CC:DD:EE:02": 1<<53 + 1,
 		"AA:BB:CC:DD:EE:03": 42,
@@ -220,10 +233,7 @@ func TestCatalyst9800NormalizingConsumerRejectsFractionalIntegerAlias(t *testing
 	raw := rawCatalyst9800DialOutMetrics("cisco.access-point-oper-data.ssid-counters.tx-bytes-data", 1.5, "wlc-1")
 
 	require.NoError(t, normalizer.ConsumeMetrics(t.Context(), raw))
-	require.Len(t, sink.AllMetrics(), 1)
-	md := sink.AllMetrics()[0]
-	assertMetricExists(t, md, "cisco.catalyst9800.yang.wireless_rrm_oper.access_point_oper_data.ssid_counters.tx_bytes_data")
-	assert.Zero(t, metricCountNamed(md, "cisco.wlc.ssid.network.io"))
+	assert.Empty(t, sink.AllMetrics(), "fractional values for path-classified counters must be dropped, not rounded")
 	assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
 }
 
@@ -251,14 +261,16 @@ func TestCatalyst9800NormalizingConsumerPrioritizesCanonicalPointsBeforeAliases(
 		dp := metric.SetEmptyGauge().DataPoints().AppendEmpty()
 		dp.SetIntValue(int64(i + 1))
 		dp.Attributes().PutStr("wtp-mac", apMAC)
+		dp.Attributes().PutStr("cisco.yang.source_path", "access-point-oper-data/ssid-counters/tx-bytes-data")
 	}
 
 	require.NoError(t, normalizer.ConsumeMetrics(t.Context(), raw))
 	require.Len(t, sink.AllMetrics(), 1)
 	md := sink.AllMetrics()[0]
-	const canonical = "cisco.catalyst9800.yang.wireless_access_point_oper.access_point_oper_data.ssid_counters.tx_bytes_data"
+	canonical := mustDialOutDynamicYANGName(t, "cisco.catalyst9800.yang", "wireless-access-point-oper",
+		"wireless-access-point-oper:access-point-oper-data/ssid-counters", "access-point-oper-data/ssid-counters/tx-bytes-data", dynamicYANGMetricVariantNumber)
 	canonicalMetric := mustFindIOSXRMetric(t, md, canonical)
-	require.Equal(t, 2, canonicalMetric.Gauge().DataPoints().Len(), "canonical datapoints must consume the budget first")
+	require.Equal(t, 2, canonicalMetric.Sum().DataPoints().Len(), "canonical datapoints must consume the budget first")
 	aliasMetric := mustFindIOSXRMetric(t, md, "cisco.wlc.ssid.network.io")
 	require.Equal(t, 1, aliasMetric.Sum().DataPoints().Len(), "only the remaining budget may be used for aliases")
 	assert.Equal(t, 3, md.DataPointCount())
@@ -275,6 +287,7 @@ func TestCatalyst9800NormalizingConsumerAccountsAliasAttributeBytes(t *testing.T
 	transport := catalyst9800TelemetryTransportDialOut
 	apMAC := "AA:BB:CC:DD:EE:01"
 	canonicalAttributeBytes := len("wtp-mac") + len(apMAC) +
+		len("cisco.yang.source_path") + len("access-point-oper-data/ssid-counters/tx-bytes-data") +
 		len("cisco.yang.module") + len(module) +
 		len("cisco.yang.path") + len(path) +
 		len("cisco.telemetry.transport") + len(transport)
@@ -299,12 +312,13 @@ func TestCatalyst9800NormalizingConsumerAccountsAliasAttributeBytes(t *testing.T
 	dp := metric.SetEmptyGauge().DataPoints().AppendEmpty()
 	dp.SetIntValue(1)
 	dp.Attributes().PutStr("wtp-mac", apMAC)
+	dp.Attributes().PutStr("cisco.yang.source_path", "access-point-oper-data/ssid-counters/tx-bytes-data")
 
 	require.NoError(t, normalizer.ConsumeMetrics(t.Context(), raw))
 	require.Len(t, sink.AllMetrics(), 1)
 	md := sink.AllMetrics()[0]
-	const canonical = "cisco.catalyst9800.yang.wireless_access_point_oper.access_point_oper_data.ssid_counters.tx_bytes_data"
-	require.Equal(t, 1, mustFindIOSXRMetric(t, md, canonical).Gauge().DataPoints().Len())
+	canonical := mustDialOutDynamicYANGName(t, "cisco.catalyst9800.yang", module, path, "access-point-oper-data/ssid-counters/tx-bytes-data", dynamicYANGMetricVariantNumber)
+	require.Equal(t, 1, mustFindIOSXRMetric(t, md, canonical).Sum().DataPoints().Len())
 	assert.Zero(t, metricCountNamed(md, "cisco.wlc.ssid.network.io"), "an alias must not be created after its attributes exceed the shared budget")
 	assert.Equal(t, 1, md.DataPointCount())
 	assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
@@ -318,8 +332,8 @@ func TestCatalyst9800NormalizingConsumerEnforcesFinalAliasAttributeCount(t *test
 		wantDropped   int64
 		wantAliasAttr int
 	}{
-		{name: "alias exactly 64 attributes", sourceAttrs: 60, wantAlias: true, wantAliasAttr: 64},
-		{name: "alias exceeds 64 attributes", sourceAttrs: 61, wantDropped: 1},
+		{name: "alias exactly 64 attributes", sourceAttrs: 59, wantAlias: true, wantAliasAttr: 64},
+		{name: "alias exceeds 64 attributes", sourceAttrs: 60, wantDropped: 1},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			sink := &consumertest.MetricsSink{}
@@ -343,12 +357,14 @@ func TestCatalyst9800NormalizingConsumerEnforcesFinalAliasAttributeCount(t *test
 			dp := metric.SetEmptyGauge().DataPoints().AppendEmpty()
 			dp.SetIntValue(1)
 			applyStringAttrs(dp.Attributes(), numberedStringAttrs(test.sourceAttrs))
+			dp.Attributes().PutStr("cisco.yang.source_path", "access-point-oper-data/ssid-counters/tx-bytes-data")
 
 			require.NoError(t, normalizer.ConsumeMetrics(t.Context(), raw))
 			require.Len(t, sink.AllMetrics(), 1)
 			md := sink.AllMetrics()[0]
-			const canonical = "cisco.catalyst9800.yang.wireless_access_point_oper.access_point_oper_data.ssid_counters.tx_bytes_data"
-			assert.Equal(t, test.sourceAttrs+3, mustFindIOSXRMetric(t, md, canonical).Gauge().DataPoints().At(0).Attributes().Len())
+			canonical := mustDialOutDynamicYANGName(t, "cisco.catalyst9800.yang", "wireless-access-point-oper",
+				"wireless-access-point-oper:access-point-oper-data/ssid-counters", "access-point-oper-data/ssid-counters/tx-bytes-data", dynamicYANGMetricVariantNumber)
+			assert.Equal(t, test.sourceAttrs+4, mustFindIOSXRMetric(t, md, canonical).Sum().DataPoints().At(0).Attributes().Len())
 			if test.wantAlias {
 				alias := mustFindIOSXRMetric(t, md, "cisco.wlc.ssid.network.io")
 				assert.Equal(t, test.wantAliasAttr, alias.Sum().DataPoints().At(0).Attributes().Len())
@@ -360,7 +376,7 @@ func TestCatalyst9800NormalizingConsumerEnforcesFinalAliasAttributeCount(t *test
 	}
 }
 
-func TestCatalyst9800NormalizingConsumerPreservesAndBudgetsNonNumberDatapoints(t *testing.T) {
+func TestCatalyst9800NormalizingConsumerRejectsNonNumberDynamicDatapoints(t *testing.T) {
 	sink := &consumertest.MetricsSink{}
 	health := &catalyst9800Health{}
 	cfg := defaultCatalyst9800Config()
@@ -374,18 +390,8 @@ func TestCatalyst9800NormalizingConsumerPreservesAndBudgetsNonNumberDatapoints(t
 	)
 
 	require.NoError(t, normalizer.ConsumeMetrics(t.Context(), rawDialOutNonNumberMetrics("wlc-1")))
-	require.Len(t, sink.AllMetrics(), 1)
-	md := sink.AllMetrics()[0]
-	for _, name := range []string{
-		"cisco.catalyst9800.yang.test_module.histogram",
-		"cisco.catalyst9800.yang.test_module.exponential_histogram",
-		"cisco.catalyst9800.yang.test_module.summary",
-	} {
-		metric := mustFindIOSXRMetric(t, md, name)
-		assert.Equal(t, "test-module", attrValue(t, firstMetricDatapointAttrs(t, metric), "cisco.yang.module"))
-	}
-	assert.Equal(t, 3, md.DataPointCount())
-	assert.Zero(t, health.snapshot().droppedDatapoints)
+	assert.Empty(t, sink.AllMetrics())
+	assert.Equal(t, int64(3), health.snapshot().droppedDatapoints)
 
 	limitedSink := &consumertest.MetricsSink{}
 	limitedHealth := &catalyst9800Health{}
@@ -398,9 +404,8 @@ func TestCatalyst9800NormalizingConsumerPreservesAndBudgetsNonNumberDatapoints(t
 		limitedHealth,
 	)
 	require.NoError(t, limited.ConsumeMetrics(t.Context(), rawDialOutNonNumberMetrics("wlc-1")))
-	require.Len(t, limitedSink.AllMetrics(), 1)
-	assert.Equal(t, 2, limitedSink.AllMetrics()[0].DataPointCount())
-	assert.Equal(t, int64(1), limitedHealth.snapshot().droppedDatapoints)
+	assert.Empty(t, limitedSink.AllMetrics())
+	assert.Equal(t, int64(3), limitedHealth.snapshot().droppedDatapoints)
 }
 
 func TestCatalyst9800ReasonAliasesRemainGaugeInfoForNumericEnums(t *testing.T) {
@@ -456,10 +461,10 @@ func TestCatalyst9800AliasAttrsPreserveCanonicalIdentity(t *testing.T) {
 	assert.Empty(t, value)
 }
 
-func assertIntGaugeDatapointsByAttr(t *testing.T, metric pmetric.Metric, attr string, expected map[string]int64) {
+func assertIntSumDatapointsByAttr(t *testing.T, metric pmetric.Metric, attr string, expected map[string]int64) {
 	t.Helper()
-	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
-	dps := metric.Gauge().DataPoints()
+	require.Equal(t, pmetric.MetricTypeSum, metric.Type())
+	dps := metric.Sum().DataPoints()
 	require.Equal(t, len(expected), dps.Len())
 	actual := make(map[string]int64, dps.Len())
 	for i := 0; i < dps.Len(); i++ {

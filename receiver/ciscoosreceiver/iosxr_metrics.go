@@ -260,27 +260,28 @@ func appendIOSXRHealthMetrics(md pmetric.Metrics, health *iosXRHealth, ctx iosXR
 	}
 }
 
-func appendIOSXRMetricNumberIndexed(builder *indexedMetricBuilder, module string, pathParts []string, value metricNumber, ts pcommon.Timestamp, attrs map[string]string) {
-	if builder.budget != nil && !builder.budget.allowMetricName("cisco.iosxr.yang", module, pathParts, "") {
-		return
+func appendIOSXRMetricNumberIndexed(builder *indexedMetricBuilder, module string, path dynamicYANGPath, value metricNumber, ts pcommon.Timestamp, attrs map[string]string) {
+	metricType := pmetric.MetricTypeGauge
+	if isIOSXRCounterMetric(path.normalized) {
+		metricType = pmetric.MetricTypeSum
 	}
-	if dynamicYANGNumericNameUsesReservedInfoSuffix(pathParts) {
+	value, ok := canonicalDynamicYANGNumber(metricType, value)
+	if !ok {
 		builder.rejectDatapoint()
 		return
 	}
-	name := iosXRMetricName(module, pathParts)
-	if isIOSXRCounterMetric(pathParts) {
-		builder.appendNumber(name, pmetric.MetricTypeSum, value, ts, attrs)
+	name, ok := dynamicYANGMetricName(
+		"cisco.iosxr.yang",
+		module,
+		path.identity,
+		dynamicYANGMetricVariantNumber,
+		builder.dynamicYANGMetricNameLimit(),
+	)
+	if !ok {
+		builder.rejectDatapoint()
 		return
 	}
-	builder.appendNumber(name, pmetric.MetricTypeGauge, value, ts, attrs)
-}
-
-func dynamicYANGNumericNameUsesReservedInfoSuffix(pathParts []string) bool {
-	if len(pathParts) == 0 {
-		return false
-	}
-	return strings.HasSuffix(sanitizeMetricSegment(pathParts[len(pathParts)-1]), "_info")
+	builder.appendNumber(name, metricType, value, ts, attrs)
 }
 
 func dynamicYANGMetricIsInfoVariant(metric pmetric.Metric) bool {
@@ -299,23 +300,18 @@ func dynamicYANGMetricIsInfoVariant(metric pmetric.Metric) bool {
 	return true
 }
 
-func rejectDialOutDynamicInfoSuffixCollision(metric pmetric.Metric, pathParts []string, health *iosXRHealth) bool {
-	if !dynamicYANGNumericNameUsesReservedInfoSuffix(pathParts) || dynamicYANGMetricIsInfoVariant(metric) {
-		return false
-	}
-	dropped := metricDatapointCount(metric)
-	metric.SetEmptyGauge()
-	if dropped > 0 && health != nil {
-		health.addDroppedDatapoints(int64(dropped))
-	}
-	return true
-}
-
-func appendIOSXRInfoMetricIndexed(builder *indexedMetricBuilder, module string, pathParts []string, value string, ts pcommon.Timestamp, attrs map[string]string) {
-	if builder.budget != nil && !builder.budget.allowMetricName("cisco.iosxr.yang", module, pathParts, "_info") {
+func appendIOSXRInfoMetricIndexed(builder *indexedMetricBuilder, module string, path dynamicYANGPath, value string, ts pcommon.Timestamp, attrs map[string]string) {
+	name, ok := dynamicYANGMetricName(
+		"cisco.iosxr.yang",
+		module,
+		path.identity,
+		dynamicYANGMetricVariantInfo,
+		builder.dynamicYANGMetricNameLimit(),
+	)
+	if !ok {
+		builder.rejectDatapoint()
 		return
 	}
-	name := iosXRMetricName(module, pathParts) + "_info"
 	builder.appendInfo(name, value, ts, attrs)
 }
 
@@ -375,19 +371,6 @@ func getOrCreateMetric(sm pmetric.ScopeMetrics, name string, metricType pmetric.
 		sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
 	}
 	return metric
-}
-
-func iosXRMetricName(module string, pathParts []string) string {
-	parts := []string{"cisco", "iosxr", "yang"}
-	if module != "" {
-		parts = append(parts, sanitizeMetricSegment(module))
-	}
-	for _, part := range pathParts {
-		if cleaned := sanitizeMetricSegment(part); cleaned != "" {
-			parts = append(parts, cleaned)
-		}
-	}
-	return strings.Join(parts, ".")
 }
 
 func sanitizeMetricSegment(value string) string {
@@ -650,23 +633,67 @@ func (c *iosXRNormalizingConsumer) normalize(md pmetric.Metrics, budget *finalDa
 			metrics := sm.Metrics()
 			for k := 0; k < metrics.Len(); k++ {
 				metric := metrics.At(k)
-				switch metric.Name() {
-				case "cisco.yang_grpc.compact_gpb_payloads":
+				originalName := metric.Name()
+				if c.transport == iosXRTelemetryTransportDialIn {
+					dynamic := strings.HasPrefix(originalName, "cisco.iosxr.yang.__v1.")
+					_, fixed := governedFixedMetricNames[originalName]
+					trustedFixed := fixed && strings.HasPrefix(originalName, "cisco.iosxr.")
+					if !dynamic && !trustedFixed {
+						dropDynamicYANGMetric(metric, budget)
+						continue
+					}
+					if dynamic && !enforceDialInDynamicYANGContract(metric, budget) {
+						continue
+					}
+					annotateMetricDatapoints(metric, module, encodingPath, c.transport, budget)
+					continue
+				}
+				switch {
+				case originalName == "cisco.yang_grpc.compact_gpb_payloads" && isTrustedCompactGPBDiagnostic(metric):
 					normalizeCompactGPBDiagnostic(
 						metric,
 						"cisco.iosxr.receiver.compact_gpb_payloads",
 						"Compact GPB payload rows in the current MDT message; the rows are not generically decoded.",
 					)
 				default:
-					if strings.HasPrefix(metric.Name(), "cisco.") && !strings.HasPrefix(metric.Name(), "cisco.iosxr.") {
-						name := strings.TrimPrefix(metric.Name(), "cisco.")
-						pathParts := strings.Split(name, ".")
-						if rejectDialOutDynamicInfoSuffixCollision(metric, pathParts, c.health) {
+					if !strings.HasPrefix(metric.Name(), "cisco.") {
+						dropDynamicYANGMetric(metric, budget)
+						continue
+					}
+					info := dynamicYANGMetricIsInfoVariant(metric)
+					path, ok := dialOutDynamicYANGPathParts(metric, originalName, encodingPath, info)
+					if !ok {
+						dropDynamicYANGMetric(metric, budget)
+						continue
+					}
+					variant := dynamicYANGMetricVariantNumber
+					if info {
+						variant = dynamicYANGMetricVariantInfo
+						if !enforceDynamicYANGInfoContract(metric, budget) {
 							continue
 						}
-						metric.SetName(iosXRMetricName(module, pathParts))
-						normalizeIOSXRDialOutMetricSemantics(metric, encodingPath, pathParts)
+					} else {
+						metricType := pmetric.MetricTypeGauge
+						if isIOSXRCounterMetric(path.normalized) {
+							metricType = pmetric.MetricTypeSum
+						}
+						if !enforceDynamicYANGNumberContract(metric, metricType, budget) {
+							continue
+						}
 					}
+					name, ok := dynamicYANGDialOutMetricName(
+						"cisco.iosxr.yang",
+						module,
+						path.encodingIdentity,
+						path.sourceIdentity,
+						variant,
+						budget.limits.maxMetricNameBytes,
+					)
+					if !ok {
+						dropDynamicYANGMetric(metric, budget)
+						continue
+					}
+					metric.SetName(name)
 				}
 				annotateMetricDatapoints(metric, module, encodingPath, c.transport, budget)
 			}
@@ -676,34 +703,6 @@ func (c *iosXRNormalizingConsumer) normalize(md pmetric.Metrics, budget *finalDa
 		})
 		return rm.ScopeMetrics().Len() == 0
 	})
-}
-
-func normalizeIOSXRDialOutMetricSemantics(metric pmetric.Metric, encodingPath string, relativePath []string) {
-	if metric.Type() != pmetric.MetricTypeGauge || strings.HasSuffix(metric.Name(), "_info") {
-		return
-	}
-	pathParts := append(iosXREncodingPathParts(encodingPath), relativePath...)
-	if !isIOSXRCounterMetric(pathParts) {
-		return
-	}
-
-	datapoints := pmetric.NewNumberDataPointSlice()
-	metric.Gauge().DataPoints().CopyTo(datapoints)
-	sum := metric.SetEmptySum()
-	sum.SetIsMonotonic(true)
-	sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
-	datapoints.MoveAndAppendTo(sum.DataPoints())
-}
-
-func iosXREncodingPathParts(value string) []string {
-	value = strings.Trim(strings.TrimSpace(value), "/")
-	if index := strings.IndexByte(value, ':'); index >= 0 {
-		value = value[index+1:]
-	}
-	if value == "" {
-		return nil
-	}
-	return strings.Split(value, "/")
 }
 
 func normalizeCompactGPBDiagnostic(metric pmetric.Metric, name, description string) {
@@ -730,6 +729,25 @@ func normalizeCompactGPBDiagnostic(metric pmetric.Metric, name, description stri
 		dp.SetTimestamp(source.Timestamp())
 		source.Attributes().CopyTo(dp.Attributes())
 	}
+}
+
+func isTrustedCompactGPBDiagnostic(metric pmetric.Metric) bool {
+	if metric.Type() != pmetric.MetricTypeGauge || metric.Description() != "" || metric.Unit() != "" {
+		return false
+	}
+	points := metric.Gauge().DataPoints()
+	if points.Len() != 1 {
+		return false
+	}
+	point := points.At(0)
+	if point.ValueType() != pmetric.NumberDataPointValueTypeInt || point.IntValue() <= 0 || point.Attributes().Len() != 2 {
+		return false
+	}
+	nodeID, hasNodeID := point.Attributes().Get("node_id")
+	encodingPath, hasEncodingPath := point.Attributes().Get("encoding_path")
+	_, hasSourcePath := point.Attributes().Get("cisco.yang.source_path")
+	return hasNodeID && nodeID.Type() == pcommon.ValueTypeStr &&
+		hasEncodingPath && encodingPath.Type() == pcommon.ValueTypeStr && !hasSourcePath
 }
 
 func numberDatapointInt64(dp pmetric.NumberDataPoint) (int64, bool) {
@@ -827,10 +845,31 @@ func annotateMetricDatapoints(metric pmetric.Metric, module, yangPath, transport
 func moduleFromYANGPath(value string) string {
 	value = strings.TrimSpace(value)
 	value = strings.Trim(value, "/")
-	if idx := strings.Index(value, ":"); idx > 0 {
-		return value[:idx]
+	module := ""
+	segmentStart := 0
+	predicateDepth := 0
+	visit := func(segment string) {
+		if qualifier, _, ok := parseYANGQualifiedName(segment); ok {
+			module = qualifier
+		}
 	}
-	return ""
+	for index := 0; index < len(value); index++ {
+		switch value[index] {
+		case '[':
+			predicateDepth++
+		case ']':
+			if predicateDepth > 0 {
+				predicateDepth--
+			}
+		case '/':
+			if predicateDepth == 0 {
+				visit(value[segmentStart:index])
+				segmentStart = index + 1
+			}
+		}
+	}
+	visit(value[segmentStart:])
+	return module
 }
 
 func putIPAttr(attrs pcommon.Map, key, value string) {

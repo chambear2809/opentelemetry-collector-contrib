@@ -87,7 +87,6 @@ const (
 	dynamicMetricInstrumentUnknown dynamicMetricInstrument = iota
 	dynamicMetricInstrumentGauge
 	dynamicMetricInstrumentSum
-	dynamicMetricInstrumentGaugeOrSum
 	dynamicMetricInstrumentTypedRegistry
 )
 
@@ -97,9 +96,7 @@ const (
 	dynamicMetricValueTypeUnknown dynamicMetricValueType = iota
 	dynamicMetricValueTypeInt
 	dynamicMetricValueTypeDouble
-	// SourceNumber means one number type selected by the model-defined YANG
-	// leaf; ConfiguredNumber means one type selected by an exact custom mapping.
-	dynamicMetricValueTypeSourceNumber
+	// ConfiguredNumber means one type selected by an exact custom mapping.
 	dynamicMetricValueTypeConfiguredNumber
 	dynamicMetricValueTypeRegistryNumber
 )
@@ -153,8 +150,14 @@ var (
 	}}
 	dynamicYANGNumber = []dynamicMetricSchema{
 		{
-			instrument:   dynamicMetricInstrumentGaugeOrSum,
-			valueType:    dynamicMetricValueTypeSourceNumber,
+			instrument:   dynamicMetricInstrumentGauge,
+			valueType:    dynamicMetricValueTypeDouble,
+			unitSource:   dynamicMetricUnitSourceEmpty,
+			monotonicity: dynamicMetricMonotonicityNotApplicable,
+		},
+		{
+			instrument:   dynamicMetricInstrumentSum,
+			valueType:    dynamicMetricValueTypeInt,
 			unitSource:   dynamicMetricUnitSourceEmpty,
 			monotonicity: dynamicMetricMonotonicityCumulative,
 		},
@@ -165,6 +168,11 @@ var (
 		unitSource:   dynamicMetricUnitSourceEmpty,
 		monotonicity: dynamicMetricMonotonicityNotApplicable,
 	}}
+	dynamicYANGNumberOrInfo = []dynamicMetricSchema{
+		dynamicYANGNumber[0],
+		dynamicYANGNumber[1],
+		dynamicYANGInfo[0],
+	}
 )
 
 var typedDynamicMetricSites = map[string]typedDynamicMetricSite{
@@ -188,23 +196,23 @@ var typedDynamicMetricSites = map[string]typedDynamicMetricSite{
 	"catalyst9800_metrics.go:appendCatalyst9800InfoMetricIndexed: name": {
 		count:             1,
 		registrySource:    dynamicMetricRegistryYANGPath,
-		namePattern:       "cisco.catalyst9800.yang.<sanitized-module>.<sanitized-path>_info",
+		namePattern:       "cisco.catalyst9800.yang.__v1.<framed-module>.<framed-direct-path>.i",
 		descriptionSource: "governedDynamicMetricNamePatterns Catalyst 9800 info variant",
 		schemas:           dynamicYANGInfo,
 	},
 	"catalyst9800_metrics.go:appendCatalyst9800MetricNumberIndexed: name": {
-		count:             2,
+		count:             1,
 		registrySource:    dynamicMetricRegistryYANGPath,
-		namePattern:       "cisco.catalyst9800.yang.<sanitized-module>.<sanitized-path>",
+		namePattern:       "cisco.catalyst9800.yang.__v1.<framed-module>.<framed-direct-path>.n",
 		descriptionSource: "governedDynamicMetricNamePatterns Catalyst 9800 numeric variant",
 		schemas:           dynamicYANGNumber,
 	},
-	"catalyst9800_metrics.go:normalize$literal: catalyst9800MetricName(module, parts)": {
+	"catalyst9800_metrics.go:normalize$literal: name": {
 		count:             1,
 		registrySource:    dynamicMetricRegistryYANGPath,
-		namePattern:       "cisco.catalyst9800.yang.<sanitized-module>.<sanitized-path>",
-		descriptionSource: "governedDynamicMetricNamePatterns Catalyst 9800 numeric variant",
-		schemas:           dynamicYANGNumber,
+		namePattern:       "cisco.catalyst9800.yang.__v1.<framed-module>.<framed-encoding-path>.<framed-source-path>.<variant>",
+		descriptionSource: "governedDynamicMetricNamePatterns Catalyst 9800 numeric and info variants",
+		schemas:           dynamicYANGNumberOrInfo,
 	},
 	"catalyst_center_receiver.go:flushCounts: metricName": {
 		count:             1,
@@ -237,23 +245,23 @@ var typedDynamicMetricSites = map[string]typedDynamicMetricSite{
 	"iosxr_metrics.go:appendIOSXRInfoMetricIndexed: name": {
 		count:             1,
 		registrySource:    dynamicMetricRegistryYANGPath,
-		namePattern:       "cisco.iosxr.yang.<sanitized-module>.<sanitized-path>_info",
+		namePattern:       "cisco.iosxr.yang.__v1.<framed-module>.<framed-direct-path>.i",
 		descriptionSource: "governedDynamicMetricNamePatterns IOS XR info variant",
 		schemas:           dynamicYANGInfo,
 	},
 	"iosxr_metrics.go:appendIOSXRMetricNumberIndexed: name": {
-		count:             2,
+		count:             1,
 		registrySource:    dynamicMetricRegistryYANGPath,
-		namePattern:       "cisco.iosxr.yang.<sanitized-module>.<sanitized-path>",
+		namePattern:       "cisco.iosxr.yang.__v1.<framed-module>.<framed-direct-path>.n",
 		descriptionSource: "governedDynamicMetricNamePatterns IOS XR numeric variant",
 		schemas:           dynamicYANGNumber,
 	},
-	"iosxr_metrics.go:normalize$literal: iosXRMetricName(module, pathParts)": {
+	"iosxr_metrics.go:normalize$literal: name": {
 		count:             1,
 		registrySource:    dynamicMetricRegistryYANGPath,
-		namePattern:       "cisco.iosxr.yang.<sanitized-module>.<sanitized-path>",
-		descriptionSource: "governedDynamicMetricNamePatterns IOS XR numeric variant",
-		schemas:           dynamicYANGNumber,
+		namePattern:       "cisco.iosxr.yang.__v1.<framed-module>.<framed-encoding-path>.<framed-source-path>.<variant>",
+		descriptionSource: "governedDynamicMetricNamePatterns IOS XR numeric and info variants",
+		schemas:           dynamicYANGNumberOrInfo,
 	},
 	"ise_receiver.go:flushCounts: name": {
 		count:             1,
@@ -426,30 +434,108 @@ func TestMetricGovernanceDocumentationDeclaresNarrowAttributeAndDynamicNameScope
 	require.Contains(t, documentation, "Attribute governance is deliberately narrower")
 	require.Contains(t, documentation, "does not claim an exhaustive attribute union")
 	require.Contains(t, documentation, "exact fixed-name completeness")
-	require.Contains(t, documentation, "injective `cisco.yang.source_path` attribute")
+	require.Contains(t, documentation, "separate tuples")
+	require.Contains(t, documentation, "Every dynamic datapoint retains")
 }
 
 func TestGovernedDynamicYANGPatternsHaveTypedCollisionContracts(t *testing.T) {
 	require.Len(t, governedDynamicMetricNamePatterns, 2)
+	require.Equal(t, []string{"cisco.catalyst9800.yang.", "cisco.iosxr.yang."}, []string{
+		governedDynamicMetricNamePatterns[0].prefix,
+		governedDynamicMetricNamePatterns[1].prefix,
+	})
 	for _, pattern := range governedDynamicMetricNamePatterns {
 		require.NotEmpty(t, pattern.prefix)
 		require.NotEmpty(t, pattern.contract)
-		require.Equal(t, "sanitized YANG module and leaf path", pattern.nameSource)
+		require.Equal(t, "raw module-presence/value plus ordered direct path or separately counted dial-out encoding/source tuples", pattern.nameSource)
+		require.Equal(t, "__v1 reversible length-framed tuple encoding", pattern.nameEncoding)
 		require.Equal(t, "cisco.yang.source_path", pattern.collisionAttribute)
-		require.Equal(t, "_info", pattern.reservedNumericSuffix)
+		root := strings.TrimSuffix(pattern.prefix, ".")
+		contract, reserved := governedMetricNameCollision(root)
+		require.True(t, reserved, "the exact dynamic namespace root must remain reserved")
+		require.Equal(t, pattern.contract, contract)
+		generated, ok := dynamicYANGMetricName(strings.TrimSuffix(pattern.prefix, "."), "test", []string{"leaf"}, dynamicYANGMetricVariantNumber, directGNMIHardMaxMetricNameBytes)
+		require.True(t, ok)
+		require.True(t, strings.HasPrefix(generated, pattern.prefix+"__v1."), "receiver-generated dynamic names must use the current version inside the broad reserved namespace")
 		require.Equal(t, []governedDynamicMetricVariant{
 			{
-				instrument:  governedDynamicMetricInstrumentGaugeOrCumulativeSum,
-				valueType:   governedDynamicMetricValueTypeSourceNumber,
+				marker:     "n",
+				instrument: governedDynamicMetricInstrumentGauge,
+				valueType:  governedDynamicMetricValueTypeDouble,
+			},
+			{
+				marker:      "n",
+				instrument:  governedDynamicMetricInstrumentCumulativeSum,
+				valueType:   governedDynamicMetricValueTypeInt,
 				temporality: fixedMetricTemporalityCumulative,
 				monotonic:   true,
 			},
 			{
-				suffix:     "_info",
+				marker:     "i",
 				instrument: governedDynamicMetricInstrumentGauge,
 				valueType:  governedDynamicMetricValueTypeDouble,
 			},
 		}, pattern.variants)
+	}
+}
+
+func TestDialOutDynamicYANGRegistryIncludesInfoVariant(t *testing.T) {
+	for _, key := range []string{
+		"catalyst9800_metrics.go:normalize$literal: name",
+		"iosxr_metrics.go:normalize$literal: name",
+	} {
+		site, ok := typedDynamicMetricSites[key]
+		require.True(t, ok)
+		require.Equal(t, dynamicYANGNumberOrInfo, site.schemas)
+		require.Contains(t, site.descriptionSource, "numeric and info variants")
+		require.Contains(t, site.schemas, dynamicYANGInfo[0], "the shared dial-out SetName site must govern the .i stream")
+	}
+}
+
+func TestGovernedDynamicYANGPatternRequiresExactVariantMultiset(t *testing.T) {
+	base := governedDynamicMetricNamePatterns[0]
+	valid := base
+	valid.variants = []governedDynamicMetricVariant{
+		governedYANGMetricVariants[2],
+		governedYANGMetricVariants[0],
+		governedYANGMetricVariants[1],
+	}
+	require.NoError(t, validateGovernedDynamicMetricNamePattern(valid))
+	badEncoding := base
+	badEncoding.nameEncoding = governedDynamicYANGNameEncoding + " with an ungoverned suffix"
+	require.Error(t, validateGovernedDynamicMetricNamePattern(badEncoding))
+
+	for _, test := range []struct {
+		name     string
+		variants []governedDynamicMetricVariant
+	}{
+		{
+			name: "three numeric gauges",
+			variants: []governedDynamicMetricVariant{
+				governedYANGMetricVariants[0], governedYANGMetricVariants[0], governedYANGMetricVariants[0],
+			},
+		},
+		{
+			name: "duplicate info replaces numeric gauge",
+			variants: []governedDynamicMetricVariant{
+				governedYANGMetricVariants[2], governedYANGMetricVariants[2], governedYANGMetricVariants[1],
+			},
+		},
+		{
+			name: "almost valid variant",
+			variants: []governedDynamicMetricVariant{
+				governedYANGMetricVariants[0], governedYANGMetricVariants[1], {
+					marker: "i", instrument: governedDynamicMetricInstrumentGauge,
+					valueType: governedDynamicMetricValueTypeDouble, unit: "1",
+				},
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			pattern := base
+			pattern.variants = test.variants
+			require.Error(t, validateGovernedDynamicMetricNamePattern(pattern))
+		})
 	}
 }
 

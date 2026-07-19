@@ -295,8 +295,8 @@ description, UCUM unit, scale, gauge type, and path-key-to-attribute mappings. S
 ancestor for aggregated JSON, but they never authorize arbitrary JSON-to-metric conversion. Unmapped paths, custom sums,
 and dynamic `_info` metrics are rejected. Each custom name is therefore an exact configuration-time descriptor rather
 than part of fixed catalog completeness. Validation rejects collisions with the union of receiver, system-scraper, and
-interface-scraper fixed catalogs and reserves the pattern-governed `cisco.catalyst9800.yang.*` and
-`cisco.iosxr.yang.*` namespaces for model-derived telemetry.
+interface-scraper fixed catalogs and reserves the pattern-governed `cisco.catalyst9800.yang.__v1.*` and
+`cisco.iosxr.yang.__v1.*` generated namespaces (and their broader product YANG namespaces) for model-derived telemetry.
 
 ## Metric contract
 

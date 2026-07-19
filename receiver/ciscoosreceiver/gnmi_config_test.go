@@ -587,10 +587,16 @@ func TestGNMICustomSubscriptionValidation(t *testing.T) {
 			mapping.MetricName = "cisco.lacp.errors"
 		}, errContains: "reserved by a fixed Cisco OS receiver metric catalog"},
 		{name: "model-defined YANG collision", mutate: func(mapping *GNMIMetricMappingConfig) {
-			mapping.MetricName = "cisco.iosxr.yang.openconfig_interfaces.state.value"
+			mapping.MetricName = "cisco.iosxr.yang" + ".reserved"
+		}, errContains: "reserved by IOS XR model-defined YANG metrics"},
+		{name: "IOS XR model-defined YANG root collision", mutate: func(mapping *GNMIMetricMappingConfig) {
+			mapping.MetricName = "cisco.iosxr.yang"
 		}, errContains: "reserved by IOS XR model-defined YANG metrics"},
 		{name: "Catalyst model-defined YANG collision", mutate: func(mapping *GNMIMetricMappingConfig) {
-			mapping.MetricName = "cisco.catalyst9800.yang.wireless_access_point_oper.state.value"
+			mapping.MetricName = "cisco.catalyst9800.yang" + ".reserved"
+		}, errContains: "reserved by Catalyst 9800 model-defined YANG metrics"},
+		{name: "Catalyst model-defined YANG root collision", mutate: func(mapping *GNMIMetricMappingConfig) {
+			mapping.MetricName = "cisco.catalyst9800.yang"
 		}, errContains: "reserved by Catalyst 9800 model-defined YANG metrics"},
 		{name: "description", mutate: func(mapping *GNMIMetricMappingConfig) { mapping.Description = "" }, errContains: "description and UCUM"},
 		{name: "unit", mutate: func(mapping *GNMIMetricMappingConfig) { mapping.Unit = "degrees Celsius" }, errContains: "description and UCUM"},

@@ -168,7 +168,7 @@ func TestE2EIOSXRGNMIDialIn(t *testing.T) {
 	require.EventuallyWithT(t, func(tt *assert.CollectT) {
 		summary := summarizeCiscoOSE2EMetrics(sink.AllMetrics())
 		assert.Positive(tt, sink.DataPointCount())
-		assert.True(tt, summaryHasMetricPrefix(summary, "cisco.iosxr.yang."), "expected decoded IOS XR YANG metrics")
+		assert.True(tt, summaryHasMetricPrefix(summary, "cisco.iosxr.yang.__v1."), "expected decoded IOS XR YANG metrics")
 		for _, metricName := range expectedMetrics {
 			assert.Contains(tt, summary.metricNames, metricName)
 		}
@@ -219,7 +219,7 @@ func TestE2EIOSXRMDTDialOut(t *testing.T) {
 	require.EventuallyWithT(t, func(tt *assert.CollectT) {
 		summary := summarizeCiscoOSE2EMetrics(sink.AllMetrics())
 		assert.Positive(tt, sink.DataPointCount())
-		assert.True(tt, summaryHasMetricPrefix(summary, "cisco.iosxr.yang."), "expected decoded IOS XR dial-out YANG metrics")
+		assert.True(tt, summaryHasMetricPrefix(summary, "cisco.iosxr.yang.__v1."), "expected decoded IOS XR dial-out YANG metrics")
 	}, waitTimeout, time.Second)
 }
 

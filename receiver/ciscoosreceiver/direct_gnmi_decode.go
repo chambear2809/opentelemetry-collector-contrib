@@ -203,38 +203,6 @@ func (b *directGNMIDecodeBudget) reserveDatapoint(name string, attrs map[string]
 	return true
 }
 
-func (b *directGNMIDecodeBudget) allowMetricName(base, module string, parts []string, suffix string) bool {
-	if b.exhausted {
-		return false
-	}
-	remaining := b.limits.maxMetricNameBytes - len(base) - len(suffix)
-	consume := func(value string) bool {
-		if value == "" {
-			return true
-		}
-		needed := len(value) + 1 // separator
-		if needed > remaining {
-			b.drop(false)
-			return false
-		}
-		remaining -= needed
-		return true
-	}
-	if remaining < 0 {
-		b.drop(false)
-		return false
-	}
-	if !consume(module) {
-		return false
-	}
-	for _, part := range parts {
-		if !consume(part) {
-			return false
-		}
-	}
-	return true
-}
-
 func (b *directGNMIDecodeBudget) validAttribute(key, value string) bool {
 	return key != "" && len(key) <= b.limits.maxAttributeKeyBytes && len(value) <= b.limits.maxAttributeValueBytes
 }

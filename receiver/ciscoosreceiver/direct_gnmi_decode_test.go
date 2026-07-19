@@ -78,14 +78,16 @@ func TestDeprecatedProductGNMIDecodersAcceptLegacyValueAndSecondsTimestamp(t *te
 	for name, decode := range decoders {
 		t.Run(name, func(t *testing.T) {
 			md := decode()
-			metricName := "cisco." + strings.ReplaceAll(name, "-", "") + ".yang.test.root.value"
+			prefix := "cisco.catalyst9800.yang"
 			if name == "ios-xr" {
-				metricName = "cisco.iosxr.yang.test.root.value"
+				prefix = "cisco.iosxr.yang"
 			}
+			metricName := mustDynamicYANGName(t, prefix, "test", []string{"root", "value"}, dynamicYANGMetricVariantNumber)
 			metric := mustFindIOSXRMetric(t, md, metricName)
 			require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
 			dp := metric.Gauge().DataPoints().At(0)
-			assert.Equal(t, int64(5), dp.IntValue())
+			assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+			assert.Equal(t, float64(5), dp.DoubleValue())
 			assert.Equal(t, eventTime, dp.Timestamp().AsTime())
 		})
 	}
@@ -136,22 +138,24 @@ func TestDirectGNMIPathTargetsSeparateDynamicSourceIdentity(t *testing.T) {
 				},
 			}, health)
 
-			metric := mustFindIOSXRMetric(t, md, product.metricBase+".test.root.value")
+			metricName := mustDynamicYANGName(t, product.metricBase, "test", []string{"root", "value"}, dynamicYANGMetricVariantNumber)
+			metric := mustFindIOSXRMetric(t, md, metricName)
 			require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
 			points := metric.Gauge().DataPoints()
 			require.Equal(t, 2, points.Len(), "otherwise identical path targets must remain separate datapoints")
-			valuesBySource := make(map[string]int64, points.Len())
+			valuesBySource := make(map[string]float64, points.Len())
 			for index := 0; index < points.Len(); index++ {
 				point := points.At(index)
 				assert.Equal(t, "test:root/value", attrValue(t, point.Attributes(), "cisco.yang.path"))
-				valuesBySource[attrValue(t, point.Attributes(), "cisco.yang.source_path")] = point.IntValue()
+				valuesBySource[attrValue(t, point.Attributes(), "cisco.yang.source_path")] = point.DoubleValue()
 			}
-			assert.Equal(t, map[string]int64{
+			assert.Equal(t, map[string]float64{
 				"@target=tenant-a@/test:root/value": 1,
 				"@target=tenant-b@/test:root/value": 2,
 			}, valuesBySource)
 
-			deleted := mustFindIOSXRMetric(t, md, product.metricBase+".test.root.stale_info").Gauge().DataPoints()
+			deleteName := mustDynamicYANGName(t, product.metricBase, "test", []string{"root", "stale"}, dynamicYANGMetricVariantInfo)
+			deleted := mustFindIOSXRMetric(t, md, deleteName).Gauge().DataPoints()
 			require.Equal(t, 2, deleted.Len(), "relative delete targets must participate in source identity")
 			deleteSources := make(map[string]struct{}, deleted.Len())
 			for index := 0; index < deleted.Len(); index++ {
@@ -175,9 +179,9 @@ func TestDirectGNMIPathTargetsSeparateDynamicSourceIdentity(t *testing.T) {
 				}},
 				Delete: []*gnmi.Path{mustParseIOSXRPath(t, "stale")},
 			}, health)
-			prefixPoint := mustFindIOSXRMetric(t, prefixMD, product.metricBase+".test.root.value").Gauge().DataPoints().At(0)
+			prefixPoint := mustFindIOSXRMetric(t, prefixMD, metricName).Gauge().DataPoints().At(0)
 			assert.Equal(t, "@target=tenant-prefix@/test:root/value", attrValue(t, prefixPoint.Attributes(), "cisco.yang.source_path"))
-			prefixDelete := mustFindIOSXRMetric(t, prefixMD, product.metricBase+".test.root.stale_info").Gauge().DataPoints().At(0)
+			prefixDelete := mustFindIOSXRMetric(t, prefixMD, deleteName).Gauge().DataPoints().At(0)
 			assert.Equal(t, "@target=tenant-prefix@/test:root/stale", attrValue(t, prefixDelete.Attributes(), "cisco.yang.source_path"))
 			assert.Zero(t, health.snapshot().decodeErrors)
 			assert.Zero(t, health.snapshot().droppedDatapoints)
@@ -347,9 +351,6 @@ func TestDirectGNMIDecodeBudgetRejectsOversizedFieldsBeforeAppend(t *testing.T) 
 	assert.True(t, fieldBudget.visitField(1))
 	assert.False(t, fieldBudget.visitField(1))
 	assert.True(t, fieldBudget.exhausted)
-
-	nameBudget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{maxMetricNameBytes: 16}, 10)
-	assert.False(t, nameBudget.allowMetricName("base", "module", []string{"oversized-path"}, ""))
 }
 
 func TestDirectGNMIDecodeBudgetCapsAggregateAttributeBytes(t *testing.T) {

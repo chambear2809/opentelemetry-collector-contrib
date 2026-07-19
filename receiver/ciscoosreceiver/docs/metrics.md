@@ -21,14 +21,39 @@ an anonymous occupant cannot silently inherit a prior series identity. The norma
 `cisco.topology.*` attributes are additive: ACI continues to emit its legacy `network.peer.name`,
 `network.peer.address`, and `network.protocol.name` attributes.
 
-The `cisco.catalyst9800.yang.*` and `cisco.iosxr.yang.*` namespaces are pattern-governed model output and are outside
-exact fixed-name completeness. Their names come from sanitized YANG module and leaf paths; numeric leaves retain the
-source int or double type and are gauges or cumulative monotonic sums according to the model, while `_info` leaves are
-double gauges with unit empty. If different raw identifiers sanitize to one metric name, datapoints retain the
-injective `cisco.yang.source_path` attribute so compatible source series do not collapse. The `_info` suffix is
-reserved for text variants; numeric leaves whose sanitized base name already ends in `_info` are dropped and counted
-instead of changing that OTLP stream's descriptor across batches. Custom shared-gNMI mappings are a
-separate, exact configuration-time contract and cannot claim any fixed receiver/scraper name or either YANG namespace.
+The broad `cisco.catalyst9800.yang.` and `cisco.iosxr.yang.` namespaces are reserved for pattern-governed model output
+and are outside exact fixed-name completeness. Receiver-generated names use the current `__v1` encoding. After the
+product prefix, the common grammar is `__v1.(m0|m1.<segment>)`: `m0` means no module and `m1` is followed by its raw
+module value. Direct gNMI then uses `p<count>.<segment>...`; dial-out uses
+`(e0|e1.e<count>.<segment>...).p<count>.<segment>...`, so canonical nonempty encoding-path containers and raw GPB-KV
+source-path segments are separate tuples. `e0` represents the deliberate absent/empty encoding-path class. A nonempty
+`encoding_path` is accepted only in slash-delimited canonical form, with no surrounding whitespace or slash and no
+empty segment; noncanonical input is rejected rather than normalized. Only a valid `module:local-name` before any
+predicate bracket changes the effective module. Colons in retained predicate values such as MAC or IPv6 identities
+remain segment data. Numeric and info variants
+end in `.n` and `.i`. A segment is `s<byte-count>_<bytes>`, where ASCII letters and digits remain readable and every
+other byte is escaped as `_HH`. These length and count frames preserve case, punctuation, module qualifiers, segment
+boundaries, the dial-out encoding/source boundary, and the transparent `content` segment. Target and list-key values
+remain attributes rather than entering metric names.
+
+For direct gNMI, differing nonempty prefix and relative-path origins are rejected and counted. Otherwise the one
+nonempty effective origin is the module frame before any module-qualified path fallback. Dial-out accepts only raw
+yang_grpc `cisco.*` metrics plus its exact compact-GPB diagnostic; apparent fixed, product, or alias prefixes from a
+device are still framed, and non-`cisco.*` input is rejected. Every dynamic datapoint retains
+`cisco.yang.source_path`. The active final-name budget applies to the completed encoded name and is capped at 1024
+bytes; overflow is rejected without truncation.
+
+Numeric `.n` streams have one deterministic contract per encoded leaf: gauges are finite double datapoints and known
+counters are cumulative monotonic sums with int64 datapoints. Parser-less dial-out gauges are raw carriers and are
+promoted to sums only when deterministic path classification identifies a counter. An incoming sum is never demoted
+to a gauge, and a sum classified as a counter must already be cumulative and monotonic. Exact int-to-double and
+integral double-to-int conversions are accepted, including exactly representable int64 values beyond 2^53; inexact
+gauge integers, fractional or out-of-range counters, incompatible instruments, unset points, and nonnumeric dynamic instruments are
+dropped and counted rather than rounded or silently coerced. Info `.i` streams are double gauges with the original
+text, including a present empty string, on `value`. JSON null remains absent. This is a breaking replacement for the former sanitized dynamic names and mixed source numeric
+representations. Fixed catalogs, stable `cisco.wlc.*` aliases, and normal shared-gNMI profiles are unchanged. Custom
+shared-gNMI mappings remain a separate exact configuration-time contract and cannot claim any fixed name or any
+current/future name in either broad YANG namespace.
 
 The receiver has two SSH scrapers plus API polling and telemetry paths for Meraki, Intersight, Catalyst Center,
 Catalyst 9800 WLCs, Catalyst SD-WAN Manager, Nexus Dashboard/NDFC, APIC, Secure Firewall Management Center, Cisco
@@ -133,7 +158,7 @@ Controller/API paths add these correlation attributes when available:
 | `cisco.product.family` | Canonical product family for a live-verified shared-gNMI target. |
 | `cisco.yang.path` | Original gNMI/MDT YANG path or encoding path. Direct gNMI decoding percent-encodes structural bytes such as `/`, `%`, `[`, `]`, and `=` inside individual path components so different wire paths remain distinct. |
 | `cisco.yang.source_path` | Injective raw direct-gNMI or GPB-KV field path retained when a normalized metric name could otherwise conflate distinct YANG identifiers. Direct-gNMI JSON descendants use an unambiguous `rawGNMIPath#/JSON-pointer` boundary. Structured scalar paths retain their original form unless gNMI `Path.Target` is set; targeted paths use the injective `@target=<percent-encoded-target>@/rawGNMIPath` frame so identical paths from different targets remain distinct. |
-| `cisco.yang.module` | YANG module inferred from the path, such as `wireless-access-point-oper`, `openconfig-interfaces`, or a Cisco native module. |
+| `cisco.yang.module` | Effective leaf YANG module encoded in the dynamic metric name, such as `wireless-access-point-oper`, `openconfig-interfaces`, or a Cisco native module. A module-qualified direct-JSON descendant updates this value from its parent module. |
 | `cisco.telemetry.transport` | Direct telemetry direction, such as `gnmi_dial_in` or `mdt_grpc_dial_out`. |
 | `cisco.wlc.ap.mac` | Catalyst 9800 AP radio/base MAC when present in the YANG key or JSON payload. |
 | `cisco.wlc.ssid` | Catalyst 9800 SSID name when present. |
@@ -224,7 +249,7 @@ receivers:
         enabled: false
       cisco.wlc.client.*:
         enabled: false
-      cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.*:
+      cisco.iosxr.yang.__v1.*:
         enabled: false
 ```
 
@@ -734,8 +759,8 @@ These generic YANG rows describe the pattern-governed contract above, not an enu
 
 | Metric Pattern | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
-| `cisco.catalyst9800.yang.<module>.<path>.<leaf>` | Gauge or sum, int or double | empty | Numeric YANG leaves from Cisco IOS XE wireless/controller models. Integral values are preserved as int64 datapoints when representable; other numeric values use double datapoints. Known counters are cumulative sums; other values are gauges. | Keep full C9800 model coverage without waiting for a custom parser per leaf. |
-| `cisco.catalyst9800.yang.<module>.<path>.<leaf>_info` | Gauge, double | empty | String, enum, identity, and list leaves represented by value `1`, with the original value on the `value` attribute. | Preserve AP, client, HA, CAPWAP, and mobility states as bounded info metrics. |
+| `cisco.catalyst9800.yang.__v1.<framed-schema-tuple>.n` | Gauge/double or cumulative monotonic sum/int | empty | Numeric YANG leaves from Cisco IOS XE wireless/controller models under the reversible contract above. | Keep full C9800 model coverage without conflating raw identifiers or changing a stream's descriptor. |
+| `cisco.catalyst9800.yang.__v1.<framed-schema-tuple>.i` | Gauge, double | empty | String, enum, identity, and list leaves represented by value `1`, with the original value on the `value` attribute. | Preserve AP, client, HA, CAPWAP, and mobility states as bounded info metrics. |
 | `cisco.wlc.ap.join.status` | Gauge, int | `1` | Whether an AP is joined. | Alert on APs that leave the controller. |
 | `cisco.wlc.ap.join.failure.reason.info` | Gauge, double | `1` | Current AP join failure reason evidence. | Find certificate, discovery, authorization, or CAPWAP join issues. |
 | `cisco.wlc.ap.disconnect` | Sum, int | `{disconnect}` | AP disconnect counter. | Detect unstable AP/WLC connectivity. |
@@ -800,8 +825,8 @@ These generic YANG rows describe the pattern-governed contract above, not an enu
 
 | Metric Pattern | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
-| `cisco.iosxr.yang.<module>.<path>.<leaf>` | Gauge or sum, int or double | empty | Numeric YANG leaves from OpenConfig or Cisco IOS XR native models. Integral values are preserved as int64 datapoints when representable; other numeric values use double datapoints. Known counters are cumulative sums; other values are gauges. | Build coverage for interfaces, optics, routing, FIB, BGP, ISIS, MPLS, SR/SRv6, QoS, ASIC, and platform health without waiting for a custom parser per leaf. |
-| `cisco.iosxr.yang.<module>.<path>.<leaf>_info` | Gauge, double | empty | String, enum, identity, and list leaves represented by value `1`, with the original value on the `value` attribute. | Preserve states such as admin/oper status, neighbor state, alarm text, and component identity as bounded info metrics. |
+| `cisco.iosxr.yang.__v1.<framed-schema-tuple>.n` | Gauge/double or cumulative monotonic sum/int | empty | Numeric YANG leaves from OpenConfig or Cisco IOS XR native models under the reversible contract above. | Build broad model coverage without conflating raw identifiers or changing a stream's descriptor. |
+| `cisco.iosxr.yang.__v1.<framed-schema-tuple>.i` | Gauge, double | empty | String, enum, identity, and list leaves represented by value `1`, with the original value on the `value` attribute. | Preserve states such as admin/oper status, neighbor state, alarm text, and component identity as bounded info metrics. |
 | `cisco.iosxr.receiver.active_subscriptions` | Gauge, int | empty | Active gNMI dial-in targets. | Detect target selection mistakes or subscriptions that never start. |
 | `cisco.iosxr.receiver.updates` | Sum, int, cumulative | empty | gNMI updates and deletes received. | Confirm that subscriptions are producing telemetry. |
 | `cisco.iosxr.receiver.decode_errors` | Sum, int, cumulative | empty | JSON/YANG decode failures. | Alert when a model or encoding change starts dropping data. |

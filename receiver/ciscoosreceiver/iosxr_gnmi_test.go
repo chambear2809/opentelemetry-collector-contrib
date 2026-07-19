@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -75,18 +76,22 @@ func TestIOSXRGNMIDecoderScalarsJSONLeaflistsAndDeletes(t *testing.T) {
 		},
 	}, iosXRTelemetryTransportDialIn)
 
-	assertMetricExists(t, md, "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets")
-	assertMetricExists(t, md, "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.enabled")
-	assertInfoMetricValue(t, md, "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.admin_status_info", "UP")
-	assertInfoMetricValue(t, md, "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.labels_info", "core,wan")
-	assertInfoMetricValue(t, md, "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.oper_status_info", "deleted")
-	assertInfoMetricValue(t, md, "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.json.description_info", "uplink")
-	assertMetricExists(t, md, "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.json.mtu")
-	assertMetricExists(t, md, "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.json.counters.out_octets")
-	assertInfoMetricValue(t, md, "cisco.iosxr.yang.openconfig_if_ip.interfaces.interface.state.json.ipv4.addresses.address.ip_info", "192.0.2.1")
+	root := []string{"interfaces", "interface", "state"}
+	dynamicName := func(module string, suffix []string, variant dynamicYANGMetricVariant) string {
+		return mustDynamicYANGName(t, "cisco.iosxr.yang", module, append(slices.Clone(root), suffix...), variant)
+	}
+	assertMetricExists(t, md, dynamicName("openconfig-interfaces", []string{"counters", "in-octets"}, dynamicYANGMetricVariantNumber))
+	assertMetricExists(t, md, dynamicName("openconfig-interfaces", []string{"enabled"}, dynamicYANGMetricVariantNumber))
+	assertInfoMetricValue(t, md, dynamicName("openconfig-interfaces", []string{"admin-status"}, dynamicYANGMetricVariantInfo), "UP")
+	assertInfoMetricValue(t, md, dynamicName("openconfig-interfaces", []string{"labels"}, dynamicYANGMetricVariantInfo), "core,wan")
+	assertInfoMetricValue(t, md, dynamicName("openconfig-interfaces", []string{"oper-status"}, dynamicYANGMetricVariantInfo), "deleted")
+	assertInfoMetricValue(t, md, dynamicName("openconfig-interfaces", []string{"json", "openconfig-interfaces:description"}, dynamicYANGMetricVariantInfo), "uplink")
+	assertMetricExists(t, md, dynamicName("openconfig-interfaces", []string{"json", "mtu"}, dynamicYANGMetricVariantNumber))
+	assertMetricExists(t, md, dynamicName("openconfig-interfaces", []string{"json", "counters", "out-octets"}, dynamicYANGMetricVariantNumber))
+	assertInfoMetricValue(t, md, dynamicName("openconfig-if-ip", []string{"json", "openconfig-if-ip:ipv4", "addresses", "address", "ip"}, dynamicYANGMetricVariantInfo), "192.0.2.1")
 	assertSingleIntGaugeMetric(t, md, "cisco.iosxr.receiver.compact_gpb_payloads", 1)
 
-	metric := mustFindIOSXRMetric(t, md, "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets")
+	metric := mustFindIOSXRMetric(t, md, dynamicName("openconfig-interfaces", []string{"counters", "in-octets"}, dynamicYANGMetricVariantNumber))
 	require.Equal(t, pmetric.MetricTypeSum, metric.Type())
 	dp := metric.Sum().DataPoints().At(0)
 	assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
@@ -121,13 +126,12 @@ func TestIOSXRGNMIDecoderPreservesInterfaceCounterSemantics(t *testing.T) {
 		},
 	}, iosXRTelemetryTransportDialIn)
 
-	resets := mustFindIOSXRMetric(t, md,
-		"cisco.iosxr.yang.cisco_ios_xr_infra_statsd_oper.infra_statistics.interfaces.interface.generic_counters.resets")
+	root := []string{"infra-statistics", "interfaces", "interface", "generic-counters"}
+	resets := mustFindIOSXRMetric(t, md, mustDynamicYANGName(t, "cisco.iosxr.yang", "Cisco-IOS-XR-infra-statsd-oper", append(slices.Clone(root), "resets"), dynamicYANGMetricVariantNumber))
 	require.Equal(t, pmetric.MetricTypeSum, resets.Type())
 	assert.Equal(t, "Null0", attrValue(t, resets.Sum().DataPoints().At(0).Attributes(), "network.interface.name"))
 
-	elapsed := mustFindIOSXRMetric(t, md,
-		"cisco.iosxr.yang.cisco_ios_xr_infra_statsd_oper.infra_statistics.interfaces.interface.generic_counters.seconds_since_packet_received")
+	elapsed := mustFindIOSXRMetric(t, md, mustDynamicYANGName(t, "cisco.iosxr.yang", "Cisco-IOS-XR-infra-statsd-oper", append(slices.Clone(root), "seconds-since-packet-received"), dynamicYANGMetricVariantNumber))
 	require.Equal(t, pmetric.MetricTypeGauge, elapsed.Type())
 	assert.Equal(t, "Null0", attrValue(t, elapsed.Gauge().DataPoints().At(0).Attributes(), "network.interface.name"))
 }
@@ -157,7 +161,7 @@ func TestIOSXRGNMIDecoderCoalescesMetricStreamsAndPreservesUint64(t *testing.T) 
 		},
 	}, iosXRTelemetryTransportDialIn)
 
-	const inOctets = "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets"
+	inOctets := mustDynamicYANGName(t, "cisco.iosxr.yang", "openconfig-interfaces", []string{"interfaces", "interface", "state", "counters", "in-octets"}, dynamicYANGMetricVariantNumber)
 	assert.Equal(t, 1, metricCountNamed(md, inOctets))
 	metric := mustFindIOSXRMetric(t, md, inOctets)
 	require.Equal(t, pmetric.MetricTypeSum, metric.Type())
@@ -173,7 +177,7 @@ func TestIOSXRGNMIDecoderCoalescesMetricStreamsAndPreservesUint64(t *testing.T) 
 	assert.Equal(t, int64(math.MaxInt64), values["GigabitEthernet0/0"])
 	assert.Equal(t, int64(42), values["GigabitEthernet0/1"])
 
-	const outOctetsInfo = "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.out_octets_info"
+	outOctetsInfo := mustDynamicYANGName(t, "cisco.iosxr.yang", "openconfig-interfaces", []string{"interfaces", "interface", "state", "counters", "out-octets"}, dynamicYANGMetricVariantInfo)
 	assert.Equal(t, 1, metricCountNamed(md, outOctetsInfo))
 	overflow := mustFindIOSXRMetric(t, md, outOctetsInfo)
 	require.Equal(t, pmetric.MetricTypeGauge, overflow.Type())
@@ -216,17 +220,19 @@ func TestIOSXRGNMIDecoderTypedValueBranches(t *testing.T) {
 		},
 	}, iosXRTelemetryTransportDialIn)
 
-	const prefix = "cisco.iosxr.yang.openconfig_system.system.state."
-	assertInfoMetricValue(t, md, prefix+"ascii_value_info", "legacy")
-	assertGaugeIntMetricValue(t, md, prefix+"signed_value", -7)
-	assertGaugeIntMetricValue(t, md, prefix+"disabled", 0)
-	assertGaugeDoubleMetricValue(t, md, prefix+"float_value", 1.5)
-	assertGaugeDoubleMetricValue(t, md, prefix+"double_value", 2.25)
-	assertGaugeDoubleMetricValue(t, md, prefix+"decimal_value", 123.45)
-	assertInfoMetricValue(t, md, prefix+"mixed_leaf_list_info", "text,ascii,-1,2,false,1.5,2.25")
-	assertMetricExists(t, md, prefix+"legacy_json.count")
-	assertInfoMetricValue(t, md, prefix+"opaque.bytes_info", "dead")
-	envelope := mustFindIOSXRMetric(t, md, prefix+"envelope.any_info")
+	name := func(path []string, variant dynamicYANGMetricVariant) string {
+		return mustDynamicYANGName(t, "cisco.iosxr.yang", "openconfig-system", append([]string{"system", "state"}, path...), variant)
+	}
+	assertInfoMetricValue(t, md, name([]string{"ascii-value"}, dynamicYANGMetricVariantInfo), "legacy")
+	assertGaugeIntMetricValue(t, md, name([]string{"signed-value"}, dynamicYANGMetricVariantNumber), -7)
+	assertGaugeIntMetricValue(t, md, name([]string{"disabled"}, dynamicYANGMetricVariantNumber), 0)
+	assertGaugeDoubleMetricValue(t, md, name([]string{"float-value"}, dynamicYANGMetricVariantNumber), 1.5)
+	assertGaugeDoubleMetricValue(t, md, name([]string{"double-value"}, dynamicYANGMetricVariantNumber), 2.25)
+	assertGaugeDoubleMetricValue(t, md, name([]string{"decimal-value"}, dynamicYANGMetricVariantNumber), 123.45)
+	assertInfoMetricValue(t, md, name([]string{"mixed-leaf-list"}, dynamicYANGMetricVariantInfo), "text,ascii,-1,2,false,1.5,2.25")
+	assertMetricExists(t, md, name([]string{"legacy-json", "count"}, dynamicYANGMetricVariantNumber))
+	assertInfoMetricValue(t, md, name([]string{"opaque", "bytes"}, dynamicYANGMetricVariantInfo), "dead")
+	envelope := mustFindIOSXRMetric(t, md, name([]string{"envelope", "any"}, dynamicYANGMetricVariantInfo))
 	envelopeValue := attrValue(t, envelope.Gauge().DataPoints().At(0).Attributes(), "value")
 	assert.Contains(t, envelopeValue, "type.googleapis.com/example.Telemetry")
 	assert.Zero(t, health.snapshot().decodeErrors)
@@ -259,7 +265,8 @@ func TestIOSXRGNMIDecoderRejectsMalformedTypedValues(t *testing.T) {
 				}},
 			}, iosXRTelemetryTransportDialIn)
 
-			assert.Zero(t, metricCountNamed(md, "cisco.iosxr.yang.openconfig_system.system.state.invalid_value"))
+			invalidName := mustDynamicYANGName(t, "cisco.iosxr.yang", "openconfig-system", []string{"system", "state", "invalid-value"}, dynamicYANGMetricVariantNumber)
+			assert.Zero(t, metricCountNamed(md, invalidName))
 			assert.Equal(t, int64(1), health.snapshot().decodeErrors)
 			assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
 			assertMetricExists(t, md, "cisco.iosxr.receiver.decode_errors")
@@ -404,9 +411,9 @@ func TestDirectGNMIPathIdentityIsDeterministicAndCollisionSafe(t *testing.T) {
 
 	for range 100 {
 		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
-		parts, attrs, ok := pathPartsAndAttrs(prefix, update, budget)
+		path, attrs, ok := dynamicYANGPathAndAttrs(prefix, update, budget)
 		require.True(t, ok)
-		assert.Equal(t, []string{"list", "list", "list"}, parts)
+		assert.Equal(t, []string{"list", "list", "list"}, path.normalized)
 		assert.Equal(t, want, attrs)
 		assert.Zero(t, budget.dropped)
 	}
@@ -416,13 +423,13 @@ func TestDirectGNMIPathExplicitInterfaceNameBypassesFallbackHeuristic(t *testing
 	for _, interfaceName := range []string{"Null0", "srte_c_100_ep_100.100.100.102"} {
 		t.Run(interfaceName, func(t *testing.T) {
 			budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
-			parts, attrs, ok := pathPartsAndAttrs(&gnmi.Path{Elem: []*gnmi.PathElem{{
+			path, attrs, ok := dynamicYANGPathAndAttrs(&gnmi.Path{Elem: []*gnmi.PathElem{{
 				Name: "interface",
 				Key:  map[string]string{"interface-name": interfaceName},
 			}}}, nil, budget)
 
 			require.True(t, ok)
-			assert.Equal(t, []string{"interface"}, parts)
+			assert.Equal(t, []string{"interface"}, path.normalized)
 			assert.Equal(t, interfaceName, attrs["network.interface.name"])
 			assert.Zero(t, budget.dropped)
 		})
@@ -430,7 +437,7 @@ func TestDirectGNMIPathExplicitInterfaceNameBypassesFallbackHeuristic(t *testing
 
 	t.Run("generic name still requires an interface-shaped value", func(t *testing.T) {
 		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
-		_, attrs, ok := pathPartsAndAttrs(&gnmi.Path{Elem: []*gnmi.PathElem{{
+		_, attrs, ok := dynamicYANGPathAndAttrs(&gnmi.Path{Elem: []*gnmi.PathElem{{
 			Name: "interface",
 			Key:  map[string]string{"name": "not-an-interface"},
 		}}}, nil, budget)
@@ -449,12 +456,12 @@ func TestDirectGNMIPathIdentityCollisionBoundaries(t *testing.T) {
 	t.Run("attribute count", func(t *testing.T) {
 		values := map[string]string{"foo-bar": "one", "foo_bar": "two"}
 		atLimit := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{maxAttributes: 2}, 10)
-		_, attrs, ok := pathPartsAndAttrs(path(values), nil, atLimit)
+		_, attrs, ok := dynamicYANGPathAndAttrs(path(values), nil, atLimit)
 		require.True(t, ok)
 		assert.Len(t, attrs, 2)
 
 		overLimit := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{maxAttributes: 1}, 10)
-		_, _, ok = pathPartsAndAttrs(path(values), nil, overLimit)
+		_, _, ok = dynamicYANGPathAndAttrs(path(values), nil, overLimit)
 		assert.False(t, ok)
 		assert.Equal(t, int64(1), overLimit.dropped)
 	})
@@ -462,7 +469,7 @@ func TestDirectGNMIPathIdentityCollisionBoundaries(t *testing.T) {
 	t.Run("escaped key length", func(t *testing.T) {
 		maxKeyBytes := len("cisco.yang.key.foo_bar")
 		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{maxAttributeKeyBytes: maxKeyBytes}, 10)
-		_, attrs, ok := pathPartsAndAttrs(path(map[string]string{"foo-bar": "one", "foo_bar": "two"}), nil, budget)
+		_, attrs, ok := dynamicYANGPathAndAttrs(path(map[string]string{"foo-bar": "one", "foo_bar": "two"}), nil, budget)
 		require.True(t, ok, "a compact numbered fallback must preserve the collision when the full numbered name does not fit")
 		assert.Equal(t, "one", attrs["cisco.yang.key.foo_bar"])
 		assert.Equal(t, "two", attrs["cisco.yang.key.2"])
@@ -471,12 +478,12 @@ func TestDirectGNMIPathIdentityCollisionBoundaries(t *testing.T) {
 
 	t.Run("value length", func(t *testing.T) {
 		atLimit := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{maxAttributeValueBytes: 4}, 10)
-		_, attrs, ok := pathPartsAndAttrs(path(map[string]string{"key": "1234"}), nil, atLimit)
+		_, attrs, ok := dynamicYANGPathAndAttrs(path(map[string]string{"key": "1234"}), nil, atLimit)
 		require.True(t, ok)
 		assert.Equal(t, "1234", attrs["cisco.yang.key.key"])
 
 		overLimit := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{maxAttributeValueBytes: 4}, 10)
-		_, _, ok = pathPartsAndAttrs(path(map[string]string{"key": "12345"}), nil, overLimit)
+		_, _, ok = dynamicYANGPathAndAttrs(path(map[string]string{"key": "12345"}), nil, overLimit)
 		assert.False(t, ok)
 		assert.Equal(t, int64(1), overLimit.dropped)
 	})
@@ -495,7 +502,7 @@ func TestDirectGNMIPathIdentityCollisionBoundaries(t *testing.T) {
 		require.LessOrEqual(t, len(expected), directGNMIHardMaxAttributeKeyBytes)
 
 		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
-		_, attrs, ok := pathPartsAndAttrs(&gnmi.Path{Elem: elements}, nil, budget)
+		_, attrs, ok := dynamicYANGPathAndAttrs(&gnmi.Path{Elem: elements}, nil, budget)
 		require.True(t, ok)
 		assert.Equal(t, "outer", attrs["cisco.yang.key.name"])
 		assert.Equal(t, "inner", attrs[expected])
@@ -515,7 +522,7 @@ func TestDirectGNMIPathIdentityCollisionBoundaries(t *testing.T) {
 		assert.Equal(t, int64(1), formatBudget.dropped)
 
 		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
-		_, _, ok = pathPartsAndAttrs(path, nil, budget)
+		_, _, ok = dynamicYANGPathAndAttrs(path, nil, budget)
 		assert.False(t, ok)
 		assert.Equal(t, 1, budget.fields)
 		assert.Equal(t, int64(1), budget.dropped)
@@ -524,7 +531,7 @@ func TestDirectGNMIPathIdentityCollisionBoundaries(t *testing.T) {
 	t.Run("oversized path name rejects before key scan", func(t *testing.T) {
 		keys := map[string]string{"name": "value"}
 		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
-		_, _, ok := pathPartsAndAttrs(&gnmi.Path{Elem: []*gnmi.PathElem{{
+		_, _, ok := dynamicYANGPathAndAttrs(&gnmi.Path{Elem: []*gnmi.PathElem{{
 			Name: strings.Repeat("x", directGNMIHardMaxMetricNameBytes+1),
 			Key:  keys,
 		}}}, nil, budget)
@@ -544,15 +551,15 @@ func TestDirectGNMIPathIdentityCollisionBoundaries(t *testing.T) {
 		assert.Equal(t, "structured[name=Ethernet1]", formatted)
 
 		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
-		parts, attrs, ok := pathPartsAndAttrs(path, nil, budget)
+		parsed, attrs, ok := dynamicYANGPathAndAttrs(path, nil, budget)
 		require.True(t, ok)
-		assert.Equal(t, []string{"structured"}, parts)
+		assert.Equal(t, []string{"structured"}, parsed.normalized)
 		assert.Equal(t, "Ethernet1", attrs["cisco.yang.key.name"])
 		assert.Equal(t, 1, budget.fields)
 	})
 
-	t.Run("names without a metric identity are rejected", func(t *testing.T) {
-		for _, name := range []string{"", " ", "---", "..."} {
+	t.Run("only truly empty local names are rejected", func(t *testing.T) {
+		for _, name := range []string{" ", "---", "...", "$"} {
 			t.Run(fmt.Sprintf("structured-%q", name), func(t *testing.T) {
 				path := &gnmi.Path{Elem: []*gnmi.PathElem{
 					{Name: "list"},
@@ -561,13 +568,13 @@ func TestDirectGNMIPathIdentityCollisionBoundaries(t *testing.T) {
 				}}
 				formatBudget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
 				_, ok := gnmiPathToString(path, formatBudget)
-				assert.False(t, ok)
-				assert.Equal(t, int64(1), formatBudget.dropped)
+				assert.True(t, ok)
+				assert.Zero(t, formatBudget.dropped)
 
 				budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
-				_, _, ok = pathPartsAndAttrs(path, nil, budget)
-				assert.False(t, ok)
-				assert.Equal(t, int64(1), budget.dropped)
+				_, _, ok = dynamicYANGPathAndAttrs(path, nil, budget)
+				assert.True(t, ok)
+				assert.Zero(t, budget.dropped)
 			})
 		}
 
@@ -576,7 +583,7 @@ func TestDirectGNMIPathIdentityCollisionBoundaries(t *testing.T) {
 		_, ok := gnmiPathToString(legacy, formatBudget)
 		assert.False(t, ok)
 		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
-		_, _, ok = pathPartsAndAttrs(legacy, nil, budget)
+		_, _, ok = dynamicYANGPathAndAttrs(legacy, nil, budget)
 		assert.False(t, ok)
 	})
 
@@ -600,7 +607,7 @@ func TestDirectGNMIPathIdentityCollisionBoundaries(t *testing.T) {
 		elements[len(elements)-1].Key = innerKeys
 
 		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
-		_, attrs, ok := pathPartsAndAttrs(&gnmi.Path{Elem: elements}, nil, budget)
+		_, attrs, ok := dynamicYANGPathAndAttrs(&gnmi.Path{Elem: elements}, nil, budget)
 		require.True(t, ok)
 		assert.Len(t, attrs, collisionCount*2)
 		for index := range collisionCount {
@@ -628,7 +635,10 @@ func TestIOSXRGNMIPathPreservesRepeatedListKeyIdentity(t *testing.T) {
 		},
 	}, iosXRTelemetryTransportDialIn)
 
-	metric := mustFindIOSXRMetric(t, md, "cisco.iosxr.yang.openconfig_network_instance.network_instances.network_instance.protocols.protocol.state.enabled")
+	metricName := mustDynamicYANGName(t, "cisco.iosxr.yang", "openconfig-network-instance", []string{
+		"network-instances", "network-instance", "protocols", "protocol", "state", "enabled",
+	}, dynamicYANGMetricVariantNumber)
+	metric := mustFindIOSXRMetric(t, md, metricName)
 	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
 	dps := metric.Gauge().DataPoints()
 	require.Equal(t, 2, dps.Len())
@@ -676,16 +686,19 @@ func TestIOSXRGNMIPathNormalizationPreservesRawSourceIdentity(t *testing.T) {
 	require.Len(t, sink.AllMetrics(), 1)
 	md := sink.AllMetrics()[0]
 
-	const name = "cisco.iosxr.yang.openconfig_system.system.state.payload.foo_bar"
-	assert.Equal(t, 1, metricCountNamed(md, name), "colliding names must share one descriptor")
-	metric := mustFindIOSXRMetric(t, md, name)
-	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
-	dps := metric.Gauge().DataPoints()
-	require.Equal(t, 2, dps.Len())
+	names := []string{
+		mustDynamicYANGName(t, "cisco.iosxr.yang", "openconfig-system", []string{"system", "state", "payload", "foo-bar"}, dynamicYANGMetricVariantNumber),
+		mustDynamicYANGName(t, "cisco.iosxr.yang", "openconfig-system", []string{"system", "state", "payload", "foo_bar"}, dynamicYANGMetricVariantNumber),
+	}
+	require.NotEqual(t, names[0], names[1])
 	paths := map[string]struct{}{}
-	for index := 0; index < dps.Len(); index++ {
-		dp := dps.At(index)
-		assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+	for _, name := range names {
+		assert.Equal(t, 1, metricCountNamed(md, name))
+		metric := mustFindIOSXRMetric(t, md, name)
+		require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+		require.Equal(t, 1, metric.Gauge().DataPoints().Len())
+		dp := metric.Gauge().DataPoints().At(0)
+		assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
 		assert.Equal(t, encodingPath, attrValue(t, dp.Attributes(), "cisco.yang.path"))
 		assert.Equal(t, 4, dp.Attributes().Len(), "the collision identity must fit the exact final attribute budget")
 		paths[attrValue(t, dp.Attributes(), "cisco.yang.source_path")] = struct{}{}
@@ -700,10 +713,10 @@ func TestIOSXRGNMIPathNormalizationPreservesRawSourceIdentity(t *testing.T) {
 func TestIOSXRGNMIStructuredAndJSONPathsHaveDistinctSourceIdentity(t *testing.T) {
 	const (
 		encodingPath = "openconfig-system:system/state"
-		metricName   = "cisco.iosxr.yang.openconfig_system.system.state.foo.bar"
 		scalarSource = encodingPath + "/foo/bar"
 		jsonSource   = encodingPath + "/foo#/bar"
 	)
+	metricName := mustDynamicYANGName(t, "cisco.iosxr.yang", "openconfig-system", []string{"system", "state", "foo", "bar"}, dynamicYANGMetricVariantNumber)
 	health := &iosXRHealth{}
 	decoder := iosXRGNMIUpdateDecoder{
 		target: IOSXRTargetConfig{Name: "xr-1"},
@@ -748,14 +761,15 @@ func TestIOSXRGNMIStructuredAndJSONPathsHaveDistinctSourceIdentity(t *testing.T)
 	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
 	dps := metric.Gauge().DataPoints()
 	require.Equal(t, 2, dps.Len())
-	values := map[string]int64{}
+	values := map[string]float64{}
 	for index := 0; index < dps.Len(); index++ {
 		dp := dps.At(index)
 		assert.Equal(t, 4, dp.Attributes().Len(), "both identities must fit the exact final attribute budget")
 		assert.Equal(t, encodingPath, attrValue(t, dp.Attributes(), "cisco.yang.path"))
-		values[attrValue(t, dp.Attributes(), "cisco.yang.source_path")] = dp.IntValue()
+		assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+		values[attrValue(t, dp.Attributes(), "cisco.yang.source_path")] = dp.DoubleValue()
 	}
-	assert.Equal(t, map[string]int64{scalarSource: 1, jsonSource: 2}, values)
+	assert.Equal(t, map[string]float64{scalarSource: 1, jsonSource: 2}, values)
 	assert.Zero(t, health.snapshot().droppedDatapoints)
 }
 
@@ -875,8 +889,8 @@ func TestIOSXRGNMIPathRenderingEscapesStructuralDelimiterCollisions(t *testing.T
 	}, iosXRTelemetryTransportDialIn)
 	paths := map[string]struct{}{}
 	for _, name := range []string{
-		"cisco.iosxr.yang.openconfig_system.system.state.a_b",
-		"cisco.iosxr.yang.openconfig_system.system.state.a.b",
+		mustDynamicYANGName(t, "cisco.iosxr.yang", "openconfig-system", []string{"system", "state", "a/b"}, dynamicYANGMetricVariantNumber),
+		mustDynamicYANGName(t, "cisco.iosxr.yang", "openconfig-system", []string{"system", "state", "a", "b"}, dynamicYANGMetricVariantNumber),
 	} {
 		metric := mustFindIOSXRMetric(t, md, name)
 		dps := metric.Gauge().DataPoints()
@@ -890,7 +904,7 @@ func TestIOSXRGNMIPathRenderingEscapesStructuralDelimiterCollisions(t *testing.T
 	assert.Zero(t, health.snapshot().droppedDatapoints)
 }
 
-func TestIOSXRGNMIDecoderRejectsPathElementWithoutMetricIdentity(t *testing.T) {
+func TestIOSXRGNMIDecoderAcceptsPunctuationOnlyPathElementIdentity(t *testing.T) {
 	health := &iosXRHealth{}
 	decoder := iosXRGNMIUpdateDecoder{target: IOSXRTargetConfig{Name: "xr-1"}, health: health}
 	md := decoder.decodeNotification(&gnmi.Notification{
@@ -903,8 +917,11 @@ func TestIOSXRGNMIDecoderRejectsPathElementWithoutMetricIdentity(t *testing.T) {
 			Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_IntVal{IntVal: 1}},
 		}},
 	}, iosXRTelemetryTransportDialIn)
-	assert.Zero(t, directTelemetryDataPointCount(md))
-	assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
+	name := mustDynamicYANGName(t, "cisco.iosxr.yang", "openconfig-system", []string{"system", "state", "---", "value"}, dynamicYANGMetricVariantNumber)
+	metric := mustFindIOSXRMetric(t, md, name)
+	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+	assert.Equal(t, float64(1), metric.Gauge().DataPoints().At(0).DoubleValue())
+	assert.Zero(t, health.snapshot().droppedDatapoints)
 }
 
 func TestDirectGNMIJSONIdentityUsesExplicitDeterministicPrecedence(t *testing.T) {
@@ -973,7 +990,8 @@ func TestIOSXRGNMIJSONPreservesEmptyIdentityInEmittedDatapoints(t *testing.T) {
 		}},
 	}, iosXRTelemetryTransportDialIn)
 
-	metric := mustFindIOSXRMetric(t, md, "cisco.iosxr.yang.openconfig_system.system.state.json.items.value")
+	metricName := mustDynamicYANGName(t, "cisco.iosxr.yang", "openconfig-system", []string{"system", "state", "json", "items", "value"}, dynamicYANGMetricVariantNumber)
+	metric := mustFindIOSXRMetric(t, md, metricName)
 	dps := metric.Gauge().DataPoints()
 	require.Equal(t, 2, dps.Len())
 	presentEmpty := 0
@@ -995,7 +1013,6 @@ func TestIOSXRGNMIJSONUsesShippedRIBListIdentity(t *testing.T) {
 	const (
 		shippedPath = "Cisco-IOS-XR-ip-rib-ipv4-oper:rib/vrfs/vrf/afs/af/safs/saf/ip-rib-route-table-names/ip-rib-route-table-name/routes/route"
 		prefixPath  = "Cisco-IOS-XR-ip-rib-ipv4-oper:rib/vrfs/vrf[vrf-name=default]/afs"
-		metricName  = "cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.rib.vrfs.vrf.afs.af.safs.saf.ip_rib_route_table_names.ip_rib_route_table_name.routes.route.route_version"
 		payload     = `[{
 			"af-name":"IPv4",
 			"safs":{"saf":[{
@@ -1010,6 +1027,9 @@ func TestIOSXRGNMIJSONUsesShippedRIBListIdentity(t *testing.T) {
 			}]}
 		}]`
 	)
+	metricName := mustDynamicYANGName(t, "cisco.iosxr.yang", "Cisco-IOS-XR-ip-rib-ipv4-oper", []string{
+		"rib", "vrfs", "vrf", "afs", "af", "safs", "saf", "ip-rib-route-table-names", "ip-rib-route-table-name", "routes", "route", "route-version",
+	}, dynamicYANGMetricVariantNumber)
 
 	var catalogPath string
 	for _, definition := range iosXRPathCatalog {
@@ -1042,19 +1062,19 @@ func TestIOSXRGNMIJSONUsesShippedRIBListIdentity(t *testing.T) {
 			require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
 			dps := metric.Gauge().DataPoints()
 			require.Equal(t, 2, dps.Len())
-			versions := make(map[string]int64, dps.Len())
+			versions := make(map[string]float64, dps.Len())
 			for index := 0; index < dps.Len(); index++ {
 				dp := dps.At(index)
-				require.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+				require.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
 				attrs := dp.Attributes()
 				assert.Equal(t, "default", attrValue(t, attrs, "cisco.yang.key.vrf_name"))
 				assert.Equal(t, "default", attrValue(t, attrs, "network.vrf.name"))
 				assert.Equal(t, "IPv4", attrValue(t, attrs, "cisco.yang.key.af_name"))
 				assert.Equal(t, "Unicast", attrValue(t, attrs, "cisco.yang.key.saf_name"))
 				assert.Equal(t, "default", attrValue(t, attrs, "cisco.yang.key.route_table_name"))
-				versions[attrValue(t, attrs, "cisco.yang.key.network")] = dp.IntValue()
+				versions[attrValue(t, attrs, "cisco.yang.key.network")] = dp.DoubleValue()
 			}
-			assert.Equal(t, map[string]int64{"10.0.0.0/8": 7, "192.0.2.0/24": 8}, versions)
+			assert.Equal(t, map[string]float64{"10.0.0.0/8": 7, "192.0.2.0/24": 8}, versions)
 			assert.Zero(t, health.snapshot().droppedDatapoints)
 		})
 	}
@@ -1063,8 +1083,10 @@ func TestIOSXRGNMIJSONUsesShippedRIBListIdentity(t *testing.T) {
 func TestIOSXRGNMIJSONRejectsDuplicateShippedRIBListIdentity(t *testing.T) {
 	const (
 		prefixPath = "Cisco-IOS-XR-ip-rib-ipv4-oper:rib/vrfs/vrf[vrf-name=default]/afs"
-		metricName = "cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.rib.vrfs.vrf.afs.af.safs.saf.ip_rib_route_table_names.ip_rib_route_table_name.routes.route.route_version"
 	)
+	metricName := mustDynamicYANGName(t, "cisco.iosxr.yang", "Cisco-IOS-XR-ip-rib-ipv4-oper", []string{
+		"rib", "vrfs", "vrf", "afs", "af", "safs", "saf", "ip-rib-route-table-names", "ip-rib-route-table-name", "routes", "route", "route-version",
+	}, dynamicYANGMetricVariantNumber)
 	tests := []struct {
 		name    string
 		payload string
@@ -1121,7 +1143,9 @@ func TestIOSXRGNMIJSONRejectsDuplicateShippedRIBListIdentity(t *testing.T) {
 }
 
 func TestIOSXRGNMIRIBNetworkJSONIdentityIsExactPathScoped(t *testing.T) {
-	const metricName = "cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.rib.other.routes.route.route_version"
+	metricName := mustDynamicYANGName(t, "cisco.iosxr.yang", "Cisco-IOS-XR-ip-rib-ipv4-oper", []string{
+		"rib", "other", "routes", "route", "route-version",
+	}, dynamicYANGMetricVariantNumber)
 	for _, encoding := range []struct {
 		name string
 		ietf bool
@@ -1201,7 +1225,10 @@ func TestIOSXRGNMIJSONUsesUniqueEntryAsListIdentity(t *testing.T) {
 		}},
 	}, iosXRTelemetryTransportDialIn)
 
-	metric := mustFindIOSXRMetric(t, md, "cisco.iosxr.yang.cisco_ios_xr_clns_isis_oper.isis.instances.instance.neighbors.neighbor.backup_label_stack.entry")
+	metricName := mustDynamicYANGName(t, "cisco.iosxr.yang", "Cisco-IOS-XR-clns-isis-oper", []string{
+		"isis", "instances", "instance", "neighbors", "neighbor", "backup-label-stack", "entry",
+	}, dynamicYANGMetricVariantNumber)
+	metric := mustFindIOSXRMetric(t, md, metricName)
 	dps := metric.Gauge().DataPoints()
 	require.Equal(t, 2, dps.Len())
 	entries := map[string]struct{}{}
@@ -1247,7 +1274,10 @@ func TestIOSXRGNMINestedJSONPreservesOuterAndInnerIdentity(t *testing.T) {
 		}},
 	}, iosXRTelemetryTransportDialIn)
 
-	metric := mustFindIOSXRMetric(t, md, "cisco.iosxr.yang.openconfig_network_instance.network_instances.json.vrfs.protocols.state")
+	metricName := mustDynamicYANGName(t, "cisco.iosxr.yang", "openconfig-network-instance", []string{
+		"network-instances", "json", "vrfs", "protocols", "state",
+	}, dynamicYANGMetricVariantNumber)
+	metric := mustFindIOSXRMetric(t, md, metricName)
 	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
 	dps := metric.Gauge().DataPoints()
 	require.Equal(t, 2, dps.Len())
@@ -1335,7 +1365,9 @@ func TestIOSXRGNMIDecoderRecreationDoesNotAdvanceCounterEpoch(t *testing.T) {
 	}
 
 	require.Len(t, sink.AllMetrics(), 2)
-	const metricName = "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets"
+	metricName := mustDynamicYANGName(t, "cisco.iosxr.yang", "openconfig-interfaces", []string{
+		"interfaces", "interface", "state", "counters", "in-octets",
+	}, dynamicYANGMetricVariantNumber)
 	for _, md := range sink.AllMetrics() {
 		dp := mustFindIOSXRMetric(t, md, metricName).Sum().DataPoints().At(0)
 		assert.True(t, times[0].Equal(dp.StartTimestamp().AsTime()))
@@ -1377,8 +1409,8 @@ func assertGaugeIntMetricValue(t *testing.T, md pmetric.Metrics, name string, va
 	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
 	require.Equal(t, 1, metric.Gauge().DataPoints().Len())
 	dp := metric.Gauge().DataPoints().At(0)
-	require.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
-	assert.Equal(t, value, dp.IntValue())
+	require.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+	assert.Equal(t, float64(value), dp.DoubleValue())
 }
 
 func assertGaugeDoubleMetricValue(t *testing.T, md pmetric.Metrics, name string, value float64) {
@@ -1404,7 +1436,7 @@ func mustFindIOSXRMetric(t *testing.T, md pmetric.Metrics, name string) pmetric.
 			}
 		}
 	}
-	require.FailNowf(t, "metric not found", "missing metric %s", name)
+	require.FailNowf(t, "metric not found", "missing metric %s; got %v", name, metricNames(md))
 	return pmetric.Metric{}
 }
 

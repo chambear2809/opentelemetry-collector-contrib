@@ -106,48 +106,49 @@ func appendCatalyst9800HealthMetrics(md pmetric.Metrics, health *catalyst9800Hea
 	}
 }
 
-func appendCatalyst9800MetricNumberIndexed(builder *indexedMetricBuilder, module string, pathParts []string, value metricNumber, ts pcommon.Timestamp, attrs map[string]string) {
-	if builder.budget != nil && !builder.budget.allowMetricName("cisco.catalyst9800.yang", module, pathParts, "") {
-		return
+func appendCatalyst9800MetricNumberIndexed(builder *indexedMetricBuilder, module string, path dynamicYANGPath, value metricNumber, ts pcommon.Timestamp, attrs map[string]string) {
+	metricType := pmetric.MetricTypeGauge
+	if isCatalyst9800CounterMetric(path.normalized) {
+		metricType = pmetric.MetricTypeSum
 	}
-	if dynamicYANGNumericNameUsesReservedInfoSuffix(pathParts) {
+	value, ok := canonicalDynamicYANGNumber(metricType, value)
+	if !ok {
 		builder.rejectDatapoint()
 		return
 	}
-	name := catalyst9800MetricName(module, pathParts)
-	var appended bool
-	if isCatalyst9800CounterMetric(pathParts) {
-		appended = builder.appendNumber(name, pmetric.MetricTypeSum, value, ts, attrs)
-	} else {
-		appended = builder.appendNumber(name, pmetric.MetricTypeGauge, value, ts, attrs)
+	name, ok := dynamicYANGMetricName(
+		"cisco.catalyst9800.yang",
+		module,
+		path.identity,
+		dynamicYANGMetricVariantNumber,
+		builder.dynamicYANGMetricNameLimit(),
+	)
+	if !ok {
+		builder.rejectDatapoint()
+		return
 	}
+	appended := builder.appendNumber(name, metricType, value, ts, attrs)
 	if appended {
-		appendCatalyst9800AliasesForValueIndexed(builder, module, pathParts, value, ts, attrs)
+		appendCatalyst9800AliasesForValueIndexed(builder, module, path.normalized, value, ts, attrs)
 	}
 }
 
-func appendCatalyst9800InfoMetricIndexed(builder *indexedMetricBuilder, module string, pathParts []string, value string, ts pcommon.Timestamp, attrs map[string]string) {
-	if builder.budget != nil && !builder.budget.allowMetricName("cisco.catalyst9800.yang", module, pathParts, "_info") {
+func appendCatalyst9800InfoMetricIndexed(builder *indexedMetricBuilder, module string, path dynamicYANGPath, value string, ts pcommon.Timestamp, attrs map[string]string) {
+	name, ok := dynamicYANGMetricName(
+		"cisco.catalyst9800.yang",
+		module,
+		path.identity,
+		dynamicYANGMetricVariantInfo,
+		builder.dynamicYANGMetricNameLimit(),
+	)
+	if !ok {
+		builder.rejectDatapoint()
 		return
 	}
-	name := catalyst9800MetricName(module, pathParts) + "_info"
 	if !builder.appendInfo(name, value, ts, attrs) {
 		return
 	}
-	appendCatalyst9800AliasesForValueIndexed(builder, module, pathParts, value, ts, attrs)
-}
-
-func catalyst9800MetricName(module string, pathParts []string) string {
-	parts := []string{"cisco", "catalyst9800", "yang"}
-	if module != "" {
-		parts = append(parts, sanitizeMetricSegment(module))
-	}
-	for _, part := range pathParts {
-		if cleaned := sanitizeMetricSegment(part); cleaned != "" {
-			parts = append(parts, cleaned)
-		}
-	}
-	return strings.Join(parts, ".")
+	appendCatalyst9800AliasesForValueIndexed(builder, module, path.normalized, value, ts, attrs)
 }
 
 func isCatalyst9800CounterMetric(pathParts []string) bool {
@@ -555,6 +556,7 @@ type catalyst9800AliasSource struct {
 	metric    pmetric.Metric
 	module    string
 	parts     []string
+	info      bool
 	yangPath  string
 	transport string
 }
@@ -628,25 +630,69 @@ func (c *catalyst9800NormalizingConsumer) normalize(md pmetric.Metrics, budget *
 			for k := range originalLen {
 				metric := metrics.At(k)
 				originalName := metric.Name()
-				switch originalName {
-				case "cisco.yang_grpc.compact_gpb_payloads":
+				if c.transport == catalyst9800TelemetryTransportDialIn {
+					dynamic := strings.HasPrefix(originalName, "cisco.catalyst9800.yang.__v1.")
+					_, fixed := governedFixedMetricNames[originalName]
+					trustedFixed := fixed && (strings.HasPrefix(originalName, "cisco.catalyst9800.") || strings.HasPrefix(originalName, "cisco.wlc."))
+					if !dynamic && !trustedFixed {
+						dropDynamicYANGMetric(metric, budget)
+						continue
+					}
+					if dynamic && !enforceDialInDynamicYANGContract(metric, budget) {
+						continue
+					}
+					annotateMetricDatapoints(metric, module, encodingPath, c.transport, budget)
+					continue
+				}
+				switch {
+				case originalName == "cisco.yang_grpc.compact_gpb_payloads" && isTrustedCompactGPBDiagnostic(metric):
 					normalizeCompactGPBDiagnostic(
 						metric,
 						"cisco.catalyst9800.receiver.compact_gpb_payloads",
 						"Compact GPB payload rows in the current MDT message; the rows are not generically decoded.",
 					)
 				default:
-					if strings.HasPrefix(originalName, "cisco.") && !strings.HasPrefix(originalName, "cisco.catalyst9800.") && !strings.HasPrefix(originalName, "cisco.wlc.") {
-						name := strings.TrimPrefix(originalName, "cisco.")
-						parts := strings.Split(name, ".")
-						if rejectDialOutDynamicInfoSuffixCollision(metric, parts, c.health) {
+					if !strings.HasPrefix(originalName, "cisco.") {
+						dropDynamicYANGMetric(metric, budget)
+						continue
+					}
+					info := dynamicYANGMetricIsInfoVariant(metric)
+					path, ok := dialOutDynamicYANGPathParts(metric, originalName, encodingPath, info)
+					if !ok {
+						dropDynamicYANGMetric(metric, budget)
+						continue
+					}
+					variant := dynamicYANGMetricVariantNumber
+					if info {
+						variant = dynamicYANGMetricVariantInfo
+						if !enforceDynamicYANGInfoContract(metric, budget) {
 							continue
 						}
-						aliasScope.sources = append(aliasScope.sources, catalyst9800AliasSource{
-							metric: metric, module: module, parts: parts, yangPath: encodingPath, transport: c.transport,
-						})
-						metric.SetName(catalyst9800MetricName(module, parts))
+					} else {
+						metricType := pmetric.MetricTypeGauge
+						if isCatalyst9800CounterMetric(path.normalized) {
+							metricType = pmetric.MetricTypeSum
+						}
+						if !enforceDynamicYANGNumberContract(metric, metricType, budget) {
+							continue
+						}
 					}
+					name, ok := dynamicYANGDialOutMetricName(
+						"cisco.catalyst9800.yang",
+						module,
+						path.encodingIdentity,
+						path.sourceIdentity,
+						variant,
+						budget.limits.maxMetricNameBytes,
+					)
+					if !ok {
+						dropDynamicYANGMetric(metric, budget)
+						continue
+					}
+					aliasScope.sources = append(aliasScope.sources, catalyst9800AliasSource{
+						metric: metric, module: module, parts: path.aliases, info: info, yangPath: encodingPath, transport: c.transport,
+					})
+					metric.SetName(name)
 				}
 				// Reserve and annotate every canonical datapoint before any alias is
 				// attempted anywhere in the batch. Aliases may use only the budget
@@ -666,6 +712,7 @@ func (c *catalyst9800NormalizingConsumer) normalize(md pmetric.Metrics, budget *
 				source.metric,
 				source.module,
 				source.parts,
+				source.info,
 				source.yangPath,
 				source.transport,
 			)
@@ -681,13 +728,9 @@ func (c *catalyst9800NormalizingConsumer) normalize(md pmetric.Metrics, budget *
 	})
 }
 
-func appendCatalyst9800AliasesFromMetric(builder *indexedMetricBuilder, metric pmetric.Metric, module string, parts []string, yangPath, transport string) {
+func appendCatalyst9800AliasesFromMetric(builder *indexedMetricBuilder, metric pmetric.Metric, module string, parts []string, info bool, yangPath, transport string) {
 	ts := pcommon.NewTimestampFromTime(time.Now())
 	aliasParts := parts
-	if len(aliasParts) > 0 && strings.HasSuffix(aliasParts[len(aliasParts)-1], "_info") {
-		aliasParts = append([]string{}, aliasParts...)
-		aliasParts[len(aliasParts)-1] = strings.TrimSuffix(aliasParts[len(aliasParts)-1], "_info")
-	}
 	addCommonAttrs := func(attrs pcommon.Map) map[string]string {
 		out := pcommonMapToStringMap(attrs)
 		if module != "" {
@@ -709,7 +752,7 @@ func appendCatalyst9800AliasesFromMetric(builder *indexedMetricBuilder, metric p
 			if dp.Timestamp() != 0 {
 				ts = dp.Timestamp()
 			}
-			if strings.HasSuffix(metric.Name(), "_info") {
+			if info {
 				if v, ok := dp.Attributes().Get("value"); ok {
 					appendCatalyst9800AliasesForValueIndexed(builder, module, aliasParts, v.AsString(), ts, addCommonAttrs(dp.Attributes()))
 				}

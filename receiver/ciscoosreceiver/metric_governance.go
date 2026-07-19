@@ -67,12 +67,12 @@ type governedMetricDescriptor struct {
 }
 
 type governedMetricNamePattern struct {
-	prefix                string
-	contract              string
-	nameSource            string
-	collisionAttribute    string
-	reservedNumericSuffix string
-	variants              []governedDynamicMetricVariant
+	prefix             string
+	contract           string
+	nameSource         string
+	nameEncoding       string
+	collisionAttribute string
+	variants           []governedDynamicMetricVariant
 }
 
 type governedDynamicMetricInstrument uint8
@@ -80,19 +80,19 @@ type governedDynamicMetricInstrument uint8
 const (
 	governedDynamicMetricInstrumentUnknown governedDynamicMetricInstrument = iota
 	governedDynamicMetricInstrumentGauge
-	governedDynamicMetricInstrumentGaugeOrCumulativeSum
+	governedDynamicMetricInstrumentCumulativeSum
 )
 
 type governedDynamicMetricValueType uint8
 
 const (
 	governedDynamicMetricValueTypeUnknown governedDynamicMetricValueType = iota
+	governedDynamicMetricValueTypeInt
 	governedDynamicMetricValueTypeDouble
-	governedDynamicMetricValueTypeSourceNumber
 )
 
 type governedDynamicMetricVariant struct {
-	suffix      string
+	marker      string
 	instrument  governedDynamicMetricInstrument
 	valueType   governedDynamicMetricValueType
 	unit        string
@@ -100,15 +100,23 @@ type governedDynamicMetricVariant struct {
 	monotonic   bool
 }
 
+const governedDynamicYANGNameEncoding = "__v1 reversible length-framed tuple encoding"
+
 var governedYANGMetricVariants = []governedDynamicMetricVariant{
 	{
-		instrument:  governedDynamicMetricInstrumentGaugeOrCumulativeSum,
-		valueType:   governedDynamicMetricValueTypeSourceNumber,
+		marker:     "n",
+		instrument: governedDynamicMetricInstrumentGauge,
+		valueType:  governedDynamicMetricValueTypeDouble,
+	},
+	{
+		marker:      "n",
+		instrument:  governedDynamicMetricInstrumentCumulativeSum,
+		valueType:   governedDynamicMetricValueTypeInt,
 		temporality: fixedMetricTemporalityCumulative,
 		monotonic:   true,
 	},
 	{
-		suffix:     "_info",
+		marker:     "i",
 		instrument: governedDynamicMetricInstrumentGauge,
 		valueType:  governedDynamicMetricValueTypeDouble,
 	},
@@ -116,20 +124,20 @@ var governedYANGMetricVariants = []governedDynamicMetricVariant{
 
 var governedDynamicMetricNamePatterns = [...]governedMetricNamePattern{
 	{
-		prefix:                "cisco.catalyst9800.yang.",
-		contract:              "Catalyst 9800 model-defined YANG metrics",
-		nameSource:            "sanitized YANG module and leaf path",
-		collisionAttribute:    "cisco.yang.source_path",
-		reservedNumericSuffix: "_info",
-		variants:              governedYANGMetricVariants,
+		prefix:             "cisco.catalyst9800.yang.",
+		contract:           "Catalyst 9800 model-defined YANG metrics",
+		nameSource:         "raw module-presence/value plus ordered direct path or separately counted dial-out encoding/source tuples",
+		nameEncoding:       governedDynamicYANGNameEncoding,
+		collisionAttribute: "cisco.yang.source_path",
+		variants:           governedYANGMetricVariants,
 	},
 	{
-		prefix:                "cisco.iosxr.yang.",
-		contract:              "IOS XR model-defined YANG metrics",
-		nameSource:            "sanitized YANG module and leaf path",
-		collisionAttribute:    "cisco.yang.source_path",
-		reservedNumericSuffix: "_info",
-		variants:              governedYANGMetricVariants,
+		prefix:             "cisco.iosxr.yang.",
+		contract:           "IOS XR model-defined YANG metrics",
+		nameSource:         "raw module-presence/value plus ordered direct path or separately counted dial-out encoding/source tuples",
+		nameEncoding:       governedDynamicYANGNameEncoding,
+		collisionAttribute: "cisco.yang.source_path",
+		variants:           governedYANGMetricVariants,
 	},
 }
 
@@ -207,7 +215,7 @@ func governedMetricNameCollision(name string) (string, bool) {
 		if err := validateGovernedDynamicMetricNamePattern(pattern); err != nil {
 			panic(err)
 		}
-		if strings.HasPrefix(name, pattern.prefix) {
+		if name == strings.TrimSuffix(pattern.prefix, ".") || strings.HasPrefix(name, pattern.prefix) {
 			return pattern.contract, true
 		}
 	}
@@ -215,31 +223,34 @@ func governedMetricNameCollision(name string) (string, bool) {
 }
 
 func validateGovernedDynamicMetricNamePattern(pattern governedMetricNamePattern) error {
-	if pattern.prefix == "" || pattern.contract == "" || pattern.nameSource == "" || pattern.collisionAttribute == "" || pattern.reservedNumericSuffix == "" {
+	if pattern.prefix == "" || pattern.contract == "" || pattern.nameSource == "" || pattern.nameEncoding == "" || pattern.collisionAttribute == "" {
 		return errors.New("dynamic metric pattern has an incomplete name or collision contract")
 	}
-	if len(pattern.variants) != 2 {
-		return fmt.Errorf("dynamic metric pattern %q must define numeric and info variants", pattern.prefix)
+	if len(pattern.variants) != 3 {
+		return fmt.Errorf("dynamic metric pattern %q must define gauge, sum, and info variants", pattern.prefix)
 	}
+	if pattern.nameEncoding != governedDynamicYANGNameEncoding {
+		return fmt.Errorf("dynamic metric pattern %q must declare the current __v1 generated-name encoding while reserving its broad namespace", pattern.prefix)
+	}
+	expected := map[governedDynamicMetricVariant]struct{}{
+		governedYANGMetricVariants[0]: {},
+		governedYANGMetricVariants[1]: {},
+		governedYANGMetricVariants[2]: {},
+	}
+	seen := make(map[governedDynamicMetricVariant]struct{}, len(pattern.variants))
 	for _, variant := range pattern.variants {
-		if variant.unit != "" {
-			return fmt.Errorf("dynamic YANG metric pattern %q must use an empty OTLP unit", pattern.prefix)
+		if _, valid := expected[variant]; !valid {
+			return fmt.Errorf("dynamic metric pattern %q has a variant outside the exact numeric-gauge, numeric-sum, and info-gauge contract", pattern.prefix)
 		}
-		switch variant.instrument {
-		case governedDynamicMetricInstrumentGauge:
-			if variant.suffix != "_info" || variant.valueType != governedDynamicMetricValueTypeDouble || variant.temporality != fixedMetricTemporalityUnspecified || variant.monotonic {
-				return fmt.Errorf("dynamic metric pattern %q has an invalid info variant", pattern.prefix)
-			}
-		case governedDynamicMetricInstrumentGaugeOrCumulativeSum:
-			if variant.suffix != "" || variant.valueType != governedDynamicMetricValueTypeSourceNumber || variant.temporality != fixedMetricTemporalityCumulative || !variant.monotonic {
-				return fmt.Errorf("dynamic metric pattern %q has an invalid numeric variant", pattern.prefix)
-			}
-		default:
-			return fmt.Errorf("dynamic metric pattern %q has an unknown instrument", pattern.prefix)
+		if _, duplicate := seen[variant]; duplicate {
+			return fmt.Errorf("dynamic metric pattern %q has a duplicate governed variant", pattern.prefix)
 		}
+		seen[variant] = struct{}{}
 	}
-	if pattern.reservedNumericSuffix != "_info" {
-		return fmt.Errorf("dynamic metric pattern %q must reserve the info variant suffix from numeric names", pattern.prefix)
+	for variant := range expected {
+		if _, present := seen[variant]; !present {
+			return fmt.Errorf("dynamic metric pattern %q is missing a governed variant", pattern.prefix)
+		}
 	}
 	return nil
 }

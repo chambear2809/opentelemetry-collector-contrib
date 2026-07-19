@@ -99,7 +99,7 @@ ciscoos:
       enabled: false
     cisco.wlc.client.*:
       enabled: false
-    cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.*:
+    cisco.iosxr.yang.__v1.*:
       enabled: false
   meraki:
     auth:

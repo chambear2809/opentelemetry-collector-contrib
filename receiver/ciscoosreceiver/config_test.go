@@ -1318,7 +1318,7 @@ func TestConfigValidate(t *testing.T) {
 					CollectionInterval: 60 * time.Second,
 				},
 				Metrics: map[string]MetricConfig{
-					"cisco.iosxr.yang.[": {Enabled: false},
+					"cisco.iosxr.yang.__v1.[": {Enabled: false},
 				},
 				Meraki: MerakiConfig{
 					Auth:          MerakiAuthConfig{APIKey: configopaque.String("meraki-key")},
@@ -1720,7 +1720,7 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.False(t, cfg.Metrics["sdwan.app_route.loss"].Enabled)
 	assert.False(t, cfg.Metrics["system.network.errors"].Enabled)
 	assert.False(t, cfg.Metrics["cisco.wlc.client.*"].Enabled)
-	assert.False(t, cfg.Metrics["cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.*"].Enabled)
+	assert.False(t, cfg.Metrics["cisco.iosxr.yang.__v1.*"].Enabled)
 	assert.Equal(t, "https://api.meraki.com/api/v1", cfg.Meraki.BaseURL)
 	assert.Equal(t, 3, cfg.Meraki.MaxRetries)
 	assert.True(t, cfg.Meraki.InsecureSkipVerify)

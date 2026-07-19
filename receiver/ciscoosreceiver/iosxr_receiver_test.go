@@ -64,8 +64,10 @@ func TestIOSXRDialInReceiverSubscribesAndConsumesGNMI(t *testing.T) {
 	target = target.withDefaults(cfg)
 
 	require.NoError(t, receiver.subscribeTarget(t.Context(), target))
-	data := metricsBatchWithName(t, sink.AllMetrics(), "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets")
-	assertMetricExists(t, data, "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets")
+	metricName := mustDynamicYANGName(t, "cisco.iosxr.yang", "openconfig-interfaces",
+		[]string{"interfaces", "interface", "state", "counters", "in-octets"}, dynamicYANGMetricVariantNumber)
+	data := metricsBatchWithName(t, sink.AllMetrics(), metricName)
+	assertMetricExists(t, data, metricName)
 	snapshot := receiver.health.snapshotForTarget("xr-1")
 	assert.Equal(t, int64(0), snapshot.activeSubscriptions)
 	assert.False(t, snapshot.targetActive)
@@ -129,7 +131,9 @@ func TestIOSXRDialInReceiverPollWaitsForInitialSync(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	require.NoError(t, receiver.subscribeTarget(ctx, target))
-	_ = metricsBatchWithName(t, sink.AllMetrics(), "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets")
+	metricName := mustDynamicYANGName(t, "cisco.iosxr.yang", "openconfig-interfaces",
+		[]string{"interfaces", "interface", "state", "counters", "in-octets"}, dynamicYANGMetricVariantNumber)
+	_ = metricsBatchWithName(t, sink.AllMetrics(), metricName)
 	assert.Equal(t, int64(0), receiver.health.snapshot().activeSubscriptions)
 
 	fake.mu.Lock()
@@ -243,9 +247,10 @@ func TestIOSXRDialInReceiverShutdownJoinsLegacySessionReader(t *testing.T) {
 		Subscription: IOSXRSubscriptionConfig{Mode: iosXRSubscribeModeStream},
 	}.withDefaults(cfg)
 	next := &releaseBlockingMetricsConsumer{
-		metricName: "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets",
-		started:    make(chan struct{}),
-		release:    make(chan struct{}),
+		metricName: mustDynamicYANGName(t, "cisco.iosxr.yang", "openconfig-interfaces",
+			[]string{"interfaces", "interface", "state", "counters", "in-octets"}, dynamicYANGMetricVariantNumber),
+		started: make(chan struct{}),
+		release: make(chan struct{}),
 	}
 	t.Cleanup(next.Release)
 	receiver := &iosXRDialInReceiver{
