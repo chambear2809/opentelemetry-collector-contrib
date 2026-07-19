@@ -310,13 +310,13 @@ func (r *nexusDashboardMetricsReceiver) scrape(ctx context.Context) (pmetric.Met
 		if !nexusDashboardGroupEnabled(r.config.NexusDashboard, endpoint.group) {
 			continue
 		}
-		maxResults, collect := groupBudget.requestLimit(endpoint.group)
-		if !collect {
-			continue
-		}
 		if endpoint.skipped {
 			partial = true
 			builder.recordSkippedEndpoint(*endpoint)
+			continue
+		}
+		maxResults, collect := groupBudget.requestLimit(endpoint.group)
+		if !collect {
 			continue
 		}
 		objects, err := r.client.List(

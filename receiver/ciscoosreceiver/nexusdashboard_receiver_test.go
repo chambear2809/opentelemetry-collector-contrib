@@ -568,12 +568,15 @@ func TestNexusDashboardGroupMaxResultsSpansEndpointInstancesBeforeFiltering(t *t
 	assert.True(t, hasResourceHostID(md, "keep-2"))
 	assert.False(t, hasResourceHostID(md, "filtered"))
 	assert.False(t, hasResourceHostID(md, "unexpected"))
+	assert.True(t, intMetricValueExists(md, "nexus_dashboard.scrape.partial_success", 0))
+	assert.NotContains(t, metricNames(md), "nexus_dashboard.service.skipped")
 
 	callsMu.Lock()
-	assert.Equal(t, 1, calls["/api/v1/infra/clusterhealth/status"], "filtered returned objects must consume the group result budget")
-	assert.Equal(t, 1, calls["/api/v1/infra/cluster/nodes"], "empty endpoints must not consume the group result budget")
-	assert.Equal(t, 1, calls["/api/v1/infra/systemResources/nodes/hardware"])
-	assert.Zero(t, calls["/api/v1/infra/systemResources/summary"], "collection must stop when the group result budget reaches zero")
+	assert.Equal(t, map[string]int{
+		"/api/v1/infra/clusterhealth/status":           1,
+		"/api/v1/infra/cluster/nodes":                  1,
+		"/api/v1/infra/systemResources/nodes/hardware": 1,
+	}, calls, "all-real endpoint collection must stop without an extra request when the group budget reaches zero")
 	callsMu.Unlock()
 }
 
@@ -616,24 +619,49 @@ func TestNexusDashboardGroupMaxResultsConsumesPartialErrorResults(t *testing.T) 
 	callsMu.Unlock()
 }
 
-func TestNexusDashboardUnifiedMissingFabricReportsScopedEndpoints(t *testing.T) {
-	server := newNexusDashboardFixtureServer(t, map[string]string{
-		"/api/v1/manage/fabrics": `{"fabrics":[]}`,
-	})
-	defer server.Close()
+func TestNexusDashboardUnifiedMissingFabricReportsScopedEndpointsAcrossGroupBudget(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		response string
+	}{
+		{name: "budget available", response: `{"fabrics":[],"meta":{"counts":{"total":0}}}`},
+		{name: "budget exhausted", response: `{"fabrics":[{"name":"fabric-a"}],"meta":{"counts":{"total":1}}}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var callsMu sync.Mutex
+			calls := map[string]int{}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				callsMu.Lock()
+				calls[r.URL.Path]++
+				callsMu.Unlock()
+				if r.URL.Path != "/api/v1/manage/fabrics" {
+					http.NotFound(w, r)
+					return
+				}
+				_, _ = w.Write([]byte(test.response))
+			}))
+			defer server.Close()
 
-	receiver := newTestNexusDashboardMetricsReceiver(t, server.URL)
-	receiver.config.NexusDashboard.APIProfile = nexusDashboardAPIProfileUnified
-	receiver.config.NexusDashboard.Targets = NexusDashboardTargetFilters{}
-	receiver.config.NexusDashboard.Platform.Enabled = false
-	md, err := receiver.scrape(t.Context())
-	require.NoError(t, err)
+			receiver := newTestNexusDashboardMetricsReceiver(t, server.URL)
+			receiver.config.NexusDashboard.APIProfile = nexusDashboardAPIProfileUnified
+			receiver.config.NexusDashboard.NDFC.MaxResults = 1
+			receiver.config.NexusDashboard.Targets = NexusDashboardTargetFilters{}
+			receiver.config.NexusDashboard.Platform.Enabled = false
+			md, err := receiver.scrape(t.Context())
+			require.NoError(t, err)
 
-	assert.True(t, intMetricValueExists(md, "nexus_dashboard.scrape.partial_success", 1))
-	skipped := requireMetricByName(t, md, "nexus_dashboard.service.skipped")
-	require.Equal(t, 2, skipped.Gauge().DataPoints().Len())
-	for _, operation := range []string{"ndfc.manage.fabric_switches", "ndfc.manage.fabric_switches_summary"} {
-		assert.True(t, hasMetricDatapointAttribute(md, "nexus_dashboard.service.skipped", "nexus_dashboard.api.operation", operation))
+			assert.True(t, intMetricValueExists(md, "nexus_dashboard.scrape.partial_success", 1))
+			assert.NotContains(t, metricNames(md), "nexus_dashboard.scrape.last_success")
+			skipped := requireMetricByName(t, md, "nexus_dashboard.service.skipped")
+			require.Equal(t, 2, skipped.Gauge().DataPoints().Len())
+			for _, operation := range []string{"ndfc.manage.fabric_switches", "ndfc.manage.fabric_switches_summary"} {
+				assert.True(t, hasMetricDatapointAttribute(md, "nexus_dashboard.service.skipped", "nexus_dashboard.api.operation", operation))
+			}
+
+			callsMu.Lock()
+			assert.Equal(t, map[string]int{"/api/v1/manage/fabrics": 1}, calls, "synthetic skipped endpoints must not issue requests")
+			callsMu.Unlock()
+		})
 	}
 }
 
