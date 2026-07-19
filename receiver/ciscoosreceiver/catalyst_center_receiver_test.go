@@ -84,6 +84,34 @@ func TestCatalystCenterScrapeEmitsAssuranceMetrics(t *testing.T) {
 	assert.True(t, catalystCenterRequestExists(*requests, "/dna/intent/api/v1/device-detail", "identifier=uuid"), "device detail identifier should be canonicalized")
 }
 
+func TestCatalystCenterIssuesDefaultRequestBodyUsesAPIMaximumPageLimit(t *testing.T) {
+	server, requests := newCatalystCenterFixtureServer(t, map[string]string{
+		"/dna/data/api/v1/assuranceIssues/query": `{"response":[],"page":{"limit":25,"offset":1,"count":0}}`,
+	}, nil)
+	defer server.Close()
+
+	receiver := newTestCatalystCenterReceiver(t, server.URL, nil)
+	require.Equal(t, 500, receiver.config.CatalystCenter.PageSize)
+	now := time.UnixMilli(1_700_000_000_000)
+	partial, err := receiver.scrapeIssues(
+		t.Context(),
+		newCatalystCenterMetricsBuilder(now, server.URL, nil),
+		now,
+		newDeviceSelectionMatcher(DeviceSelectionConfig{}),
+	)
+	require.NoError(t, err)
+	assert.False(t, partial)
+
+	var requestBody string
+	for _, request := range *requests {
+		if request.path == "/dna/data/api/v1/assuranceIssues/query" {
+			requestBody = request.body
+			break
+		}
+	}
+	require.Equal(t, `{"endTime":1700000000000,"filters":[],"page":{"limit":25,"offset":1},"startTime":1699913600000}`, requestBody)
+}
+
 func TestCatalystCenterScrapeAppliesSharedDeviceSelection(t *testing.T) {
 	server, _ := newCatalystCenterFixtureServer(t, map[string]string{
 		"/dna/intent/api/v1/network-device": `{"response":[

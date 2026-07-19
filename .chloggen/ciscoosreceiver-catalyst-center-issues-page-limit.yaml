@@ -1,0 +1,6 @@
+change_type: bug_fix
+component: receiver/cisco_os
+note: Cap Catalyst Center assurance Issues API requests at Cisco's maximum page size of 25.
+issues: [0]
+subtext:
+change_logs: [user]

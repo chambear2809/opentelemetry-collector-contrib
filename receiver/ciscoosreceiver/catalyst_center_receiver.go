@@ -27,6 +27,7 @@ import (
 const (
 	catalystCenterScopeName           = "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/catalystcenter"
 	catalystCenterSiteHealthPageLimit = 20
+	catalystCenterIssuesPageLimit     = 25
 )
 
 type catalystCenterMetricsReceiver struct {
@@ -341,7 +342,7 @@ func (r *catalystCenterMetricsReceiver) scrapeIssues(ctx context.Context, builde
 		"endTime":   endTime,
 		"filters":   []any{},
 	}
-	issues, err := catalystcenter.PostPaginatedJSON[catalystcenter.Issue](ctx, r.client, "issues.query", "/dna/data/api/v1/assuranceIssues/query", body, r.config.CatalystCenter.Issues.MaxResults)
+	issues, err := catalystcenter.PostPaginatedJSONWithPageLimit[catalystcenter.Issue](ctx, r.client, "issues.query", "/dna/data/api/v1/assuranceIssues/query", body, r.config.CatalystCenter.Issues.MaxResults, catalystCenterIssuesPageLimit)
 	selectedIssues := 0
 	for i := range issues {
 		issue := &issues[i]

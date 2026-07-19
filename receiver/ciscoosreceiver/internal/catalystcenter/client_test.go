@@ -10,6 +10,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -842,6 +843,53 @@ func TestClientPostPaginationContinuesAfterShortPageWhenCountHasMore(t *testing.
 	require.Len(t, got, 2)
 	assert.Equal(t, "one", got[0].IssueID)
 	assert.Equal(t, "two", got[1].IssueID)
+	assert.Equal(t, int64(2), dataCalls.Load())
+}
+
+func TestClientPostPaginationAppliesEndpointPageLimitAndAdvancesOffsets(t *testing.T) {
+	firstPage := make([]Issue, 25)
+	for i := range firstPage {
+		firstPage[i].IssueID = strconv.Itoa(i + 1)
+	}
+	var dataCalls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/dna/system/api/v1/auth/token":
+			_, _ = w.Write([]byte(`{"Token":"token-1"}`))
+		case "/dna/data/api/v1/assuranceIssues/query":
+			dataCalls.Add(1)
+			var body map[string]any
+			if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
+				http.Error(w, "invalid request body", http.StatusBadRequest)
+				return
+			}
+			page := body["page"].(map[string]any)
+			assert.Equal(t, float64(25), page["limit"])
+			switch page["offset"] {
+			case float64(1):
+				assert.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+					"response": firstPage,
+					"page":     map[string]any{"limit": 25, "offset": 1, "count": 26},
+				}))
+			case float64(26):
+				_, _ = w.Write([]byte(`{"response":[{"issueId":"26"}],"page":{"limit":25,"offset":26,"count":26}}`))
+			default:
+				t.Fatalf("unexpected offset %v", page["offset"])
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", PageSize: 100, Timeout: time.Second, MaxRetries: 1})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	got, err := PostPaginatedJSONWithPageLimit[Issue](t.Context(), client, "issues.query", "/dna/data/api/v1/assuranceIssues/query", map[string]any{"filters": []any{}}, 0, 25)
+	require.NoError(t, err)
+	require.Len(t, got, 26)
+	assert.Equal(t, "26", got[25].IssueID)
 	assert.Equal(t, int64(2), dataCalls.Load())
 }
 

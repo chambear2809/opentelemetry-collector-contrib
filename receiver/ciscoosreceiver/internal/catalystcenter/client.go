@@ -309,6 +309,11 @@ func GetPaginatedJSONWithPageLimit[T any](ctx context.Context, c *Client, operat
 
 // PostPaginatedJSON fetches all pages for a POST endpoint with response and page envelope fields.
 func PostPaginatedJSON[T any](ctx context.Context, c *Client, operation, path string, body map[string]any, maxResults int) ([]T, error) {
+	return PostPaginatedJSONWithPageLimit[T](ctx, c, operation, path, body, maxResults, 0)
+}
+
+// PostPaginatedJSONWithPageLimit fetches POST pages while applying an endpoint-specific page-size cap.
+func PostPaginatedJSONWithPageLimit[T any](ctx context.Context, c *Client, operation, path string, body map[string]any, maxResults, pageLimit int) ([]T, error) {
 	var results []T
 	resultLimit, hardResultLimit := httpclient.EffectivePaginationResultLimit(maxResults)
 	offset := 1
@@ -329,7 +334,7 @@ func PostPaginatedJSON[T any](ctx context.Context, c *Client, operation, path st
 			return results, fmt.Errorf("paginate catalyst center %s response: detected continuation cycle after %d partial results", operation, len(results))
 		}
 		seenOffsets[offset] = struct{}{}
-		pageSize := c.pageSize
+		pageSize := c.pageSizeFor(pageLimit)
 		if remaining := resultLimit - len(results); remaining < pageSize {
 			pageSize = remaining
 		}
