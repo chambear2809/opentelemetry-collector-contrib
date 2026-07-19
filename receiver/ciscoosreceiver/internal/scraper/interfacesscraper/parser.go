@@ -67,18 +67,24 @@ const (
 
 func NewInterface(name string) *Interface {
 	return &Interface{
-		Name:          name,
-		AdminStatus:   StatusDown,
-		OperStatus:    StatusDown,
-		InputErrors:   invalidCounterValue,
-		OutputErrors:  invalidCounterValue,
-		InputDrops:    invalidCounterValue,
-		OutputDrops:   invalidCounterValue,
-		InputBytes:    invalidCounterValue,
-		OutputBytes:   invalidCounterValue,
-		InputPackets:  invalidCounterValue,
-		OutputPackets: invalidCounterValue,
-		Counters:      map[string]int64{},
+		Name:            name,
+		AdminStatus:     StatusDown,
+		OperStatus:      StatusDown,
+		InputErrors:     invalidCounterValue,
+		OutputErrors:    invalidCounterValue,
+		InputDrops:      invalidCounterValue,
+		OutputDrops:     invalidCounterValue,
+		InputBytes:      invalidCounterValue,
+		OutputBytes:     invalidCounterValue,
+		InputPackets:    invalidCounterValue,
+		OutputPackets:   invalidCounterValue,
+		InputUnicast:    invalidCounterValue,
+		OutputUnicast:   invalidCounterValue,
+		InputBroadcast:  invalidCounterValue,
+		InputMulticast:  invalidCounterValue,
+		OutputBroadcast: invalidCounterValue,
+		OutputMulticast: invalidCounterValue,
+		Counters:        map[string]int64{},
 	}
 }
 
@@ -383,7 +389,7 @@ func parseInterfaces(output string, logger *zap.Logger) []*Interface {
 		case inputMiscRegexp.MatchString(line):
 			matches := inputMiscRegexp.FindStringSubmatch(line)
 			recordCounter(current, "watchdog", str2int64(matches[1]))
-			if current.InputMulticast == 0 {
+			if !validCounter(current.InputMulticast) {
 				current.InputMulticast = str2int64(matches[2])
 			}
 			recordCounter(current, "pause_input", str2int64(matches[3]))

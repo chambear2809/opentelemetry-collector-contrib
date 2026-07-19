@@ -1,0 +1,6 @@
+change_type: bug_fix
+component: receiver/cisco_os
+note: Omit unavailable interface packet subtypes instead of emitting zero counters.
+issues: [0]
+subtext: Preserve explicit zero values and infer unicast only from complete packet totals.
+change_logs: [user]

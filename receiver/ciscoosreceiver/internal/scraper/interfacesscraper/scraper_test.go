@@ -329,36 +329,127 @@ Q Buffers Enqueue-TH0 Enqueue-TH1 Enqueue-TH2 Qpolicer
 	assert.Equal(t, []string{activeCommand, switchCommand}, fakeClient.calls)
 }
 
+func TestInterfacesScraper_PacketSubtypeValidity(t *testing.T) {
+	tests := []struct {
+		name     string
+		output   string
+		expected map[string]int64
+	}{
+		{
+			name: "broadcast only",
+			output: `Ethernet1/1 is up
+admin state is up, Dedicated Interface
+  RX
+    7 broadcast packets 700 bytes
+  TX
+    9 broadcast packets 900 bytes`,
+			expected: map[string]int64{
+				"receive/broadcast":  7,
+				"transmit/broadcast": 9,
+			},
+		},
+		{
+			name: "multicast plus broadcast",
+			output: `GigabitEthernet1/0/1 is up, line protocol is up
+  Received 7 broadcasts (3 IP multicasts)`,
+			expected: map[string]int64{
+				"receive/multicast": 3,
+				"receive/broadcast": 7,
+			},
+		},
+		{
+			name: "explicit zero unicast",
+			output: `Ethernet1/1 is up
+admin state is up, Dedicated Interface
+  RX
+    0 unicast packets 0 multicast packets 7 broadcast packets
+    20 input packets 200 bytes
+    0 watchdog, 25 multicast, 0 pause input
+  TX
+    0 unicast packets 4 multicast packets 6 broadcast packets
+    30 output packets 300 bytes`,
+			expected: map[string]int64{
+				"receive/unicast":    0,
+				"receive/multicast":  0,
+				"receive/broadcast":  7,
+				"transmit/unicast":   0,
+				"transmit/multicast": 4,
+				"transmit/broadcast": 6,
+			},
+		},
+		{
+			name: "complete data infers unicast",
+			output: `Ethernet1/1 is up
+admin state is up, Dedicated Interface
+  RX
+    30 multicast packets 20 broadcast packets
+    100 input packets 1000 bytes
+  TX
+    100 output packets 30 multicast packets
+    20 broadcast packets 1000 bytes`,
+			expected: map[string]int64{
+				"receive/unicast":    50,
+				"receive/multicast":  30,
+				"receive/broadcast":  20,
+				"transmit/unicast":   50,
+				"transmit/multicast": 30,
+				"transmit/broadcast": 20,
+			},
+		},
+		{
+			name: "partial data does not infer unicast",
+			output: `Ethernet1/1 is up
+admin state is up, Dedicated Interface
+  RX
+    100 input packets 1000 bytes
+    20 broadcast packets 200 bytes
+  TX
+    100 output packets 30 multicast packets`,
+			expected: map[string]int64{
+				"receive/broadcast":  20,
+				"transmit/multicast": 30,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scraper := newStartedTestInterfacesScraper(t, createDefaultConfig().(*Config))
+			fakeClient := newFakeInterfacesCommandClient()
+			fakeClient.outputs["show interface"] = tt.output
+			scraper.rpcClient = fakeClient
+
+			metrics, err := scraper.ScrapeMetrics(t.Context())
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, interfacePacketCounts(metrics))
+		})
+	}
+}
+
 func TestRecordPacketCounts_InputUnicastUnderflowGuard(t *testing.T) {
 	cfg := createDefaultConfig().(*Config)
 	scraper := newStartedTestInterfacesScraper(t, cfg)
 	ts := pcommon.NewTimestampFromTime(time.Now())
 
 	// Case 1: multicast + broadcast exceeds total packets — InputUnicast must not go negative
-	overflow := &Interface{
-		Name:                "Gi1/0/1",
-		HasInputPacketTypes: true,
-		InputPackets:        100,
-		InputMulticast:      60,
-		InputBroadcast:      50, // sum 110 > 100
-		InputUnicast:        0,
-	}
+	overflow := NewInterface("Gi1/0/1")
+	overflow.HasInputPacketTypes = true
+	overflow.InputPackets = 100
+	overflow.InputMulticast = 60
+	overflow.InputBroadcast = 50 // sum 110 > 100
 	recordPacketCounts(scraper.mb, ts, overflow, "", "", "")
 	// Emit to flush the builder state for the next sub-test
 	scraper.mb.Emit()
 
-	assert.Equal(t, int64(0), overflow.InputUnicast,
-		"InputUnicast should remain 0 when multicast+broadcast exceeds total (underflow guard)")
+	assert.Equal(t, invalidCounterValue, overflow.InputUnicast,
+		"InputUnicast should remain absent when multicast+broadcast exceeds total (underflow guard)")
 
 	// Case 2: multicast + broadcast is within total — InputUnicast should be computed correctly
-	valid := &Interface{
-		Name:                "Gi1/0/2",
-		HasInputPacketTypes: true,
-		InputPackets:        100,
-		InputMulticast:      30,
-		InputBroadcast:      20, // sum 50, leaves 50 unicast
-		InputUnicast:        0,
-	}
+	valid := NewInterface("Gi1/0/2")
+	valid.HasInputPacketTypes = true
+	valid.InputPackets = 100
+	valid.InputMulticast = 30
+	valid.InputBroadcast = 20 // sum 50, leaves 50 unicast
 	recordPacketCounts(scraper.mb, ts, valid, "", "", "")
 	scraper.mb.Emit()
 
@@ -502,4 +593,30 @@ func interfaceMetricIntSum(metrics pmetric.Metrics, metricName string) int64 {
 		}
 	}
 	return total
+}
+
+func interfacePacketCounts(metrics pmetric.Metrics) map[string]int64 {
+	counts := map[string]int64{}
+	for i := 0; i < metrics.ResourceMetrics().Len(); i++ {
+		scopeMetrics := metrics.ResourceMetrics().At(i).ScopeMetrics()
+		for j := 0; j < scopeMetrics.Len(); j++ {
+			metricSlice := scopeMetrics.At(j).Metrics()
+			for k := 0; k < metricSlice.Len(); k++ {
+				metric := metricSlice.At(k)
+				if metric.Name() != "system.network.packet.count" || metric.Type() != pmetric.MetricTypeSum {
+					continue
+				}
+				dataPoints := metric.Sum().DataPoints()
+				for l := 0; l < dataPoints.Len(); l++ {
+					dataPoint := dataPoints.At(l)
+					direction, directionOK := dataPoint.Attributes().Get("network.io.direction")
+					packetType, packetTypeOK := dataPoint.Attributes().Get("network.packet.type")
+					if directionOK && packetTypeOK {
+						counts[direction.Str()+"/"+packetType.Str()] = dataPoint.IntValue()
+					}
+				}
+			}
+		}
+	}
+	return counts
 }

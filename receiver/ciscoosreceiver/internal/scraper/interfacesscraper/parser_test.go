@@ -339,7 +339,7 @@ admin state is up, Dedicated Interface
 	assert.Equal(t, int64(2), intf.OutputRatePackets)
 	assert.Equal(t, int64(7), intf.Counters["input_jumbo_packets"])
 	assert.Equal(t, int64(8), intf.Counters["input_storm_suppression_packets"])
-	assert.Zero(t, intf.OutputUnicast)
+	assert.Equal(t, invalidCounterValue, intf.OutputUnicast)
 	assert.Equal(t, int64(2), intf.InputErrors)
 	assert.Equal(t, int64(16), intf.InputDrops)
 	assert.Equal(t, int64(17), intf.OutputErrors)

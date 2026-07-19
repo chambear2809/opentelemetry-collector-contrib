@@ -191,15 +191,11 @@ func (s *interfacesScraper) ScrapeMetrics(ctx context.Context) (pmetric.Metrics,
 }
 
 func recordPacketCounts(mb *metadata.MetricsBuilder, timestamp pcommon.Timestamp, intf *Interface, description, macAddress, speedString string) {
-	if intf.HasInputPacketTypes && validCounter(intf.InputPackets) && validCounter(intf.InputUnicast) && validCounter(intf.InputMulticast) && validCounter(intf.InputBroadcast) && intf.InputUnicast == 0 {
-		if sum := intf.InputMulticast + intf.InputBroadcast; intf.InputPackets >= sum {
-			intf.InputUnicast = intf.InputPackets - sum
-		}
+	if intf.HasInputPacketTypes {
+		intf.InputUnicast = inferUnicastIfAbsent(intf.InputPackets, intf.InputUnicast, intf.InputMulticast, intf.InputBroadcast)
 	}
-	if intf.HasOutputPacketTypes && validCounter(intf.OutputPackets) && validCounter(intf.OutputUnicast) && validCounter(intf.OutputMulticast) && validCounter(intf.OutputBroadcast) && intf.OutputUnicast == 0 {
-		if sum := intf.OutputMulticast + intf.OutputBroadcast; intf.OutputPackets >= sum {
-			intf.OutputUnicast = intf.OutputPackets - sum
-		}
+	if intf.HasOutputPacketTypes {
+		intf.OutputUnicast = inferUnicastIfAbsent(intf.OutputPackets, intf.OutputUnicast, intf.OutputMulticast, intf.OutputBroadcast)
 	}
 
 	if intf.HasInputPacketTypes {
@@ -212,6 +208,21 @@ func recordPacketCounts(mb *metadata.MetricsBuilder, timestamp pcommon.Timestamp
 		recordPacketCountIfValid(mb, timestamp, intf.OutputMulticast, metadata.AttributeNetworkIoDirectionTransmit, metadata.AttributeNetworkPacketTypeMulticast, description, macAddress, intf.Name, speedString)
 		recordPacketCountIfValid(mb, timestamp, intf.OutputBroadcast, metadata.AttributeNetworkIoDirectionTransmit, metadata.AttributeNetworkPacketTypeBroadcast, description, macAddress, intf.Name, speedString)
 	}
+}
+
+func inferUnicastIfAbsent(total, unicast, multicast, broadcast int64) int64 {
+	if validCounter(unicast) {
+		return unicast
+	}
+	if !validCounter(total) || !validCounter(multicast) || !validCounter(broadcast) ||
+		total < 0 || multicast < 0 || broadcast < 0 || multicast > total {
+		return invalidCounterValue
+	}
+	remaining := total - multicast
+	if broadcast > remaining {
+		return invalidCounterValue
+	}
+	return remaining - broadcast
 }
 
 func recordPacketCountIfValid(mb *metadata.MetricsBuilder, timestamp pcommon.Timestamp, value int64, direction metadata.AttributeNetworkIoDirection, packetType metadata.AttributeNetworkPacketType, description, macAddress, name, speedString string) {
