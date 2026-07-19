@@ -69,6 +69,7 @@ func consumeDeduplicatedLogs(ctx context.Context, next consumer.Logs, dedup *log
 	count := logs.LogRecordCount()
 	if count == 0 {
 		dedup.RollbackBatch()
+		dedup.persistCheckpoint(ctx, false)
 		return count, nil
 	}
 	if err := next.ConsumeLogs(ctx, logs); err != nil {
@@ -289,6 +290,7 @@ func (d *logDeduplicator) restoreCheckpoint(ctx context.Context) {
 	seen := map[string]struct{}{}
 	normalizedShards := map[uint16]struct{}{}
 	latestValidTime := checkpointLatestValidTime(now, loaded.clockAnchor)
+	hasClockAnchor := !loaded.clockAnchor.IsZero()
 	for shard, encoded := range loaded.shards {
 		var checkpoint logDedupCheckpointShard
 		if err := json.Unmarshal(encoded, &checkpoint); err != nil {
@@ -308,7 +310,7 @@ func (d *logDeduplicator) restoreCheckpoint(ctx context.Context) {
 				binding.warnCorrupt(fmt.Errorf("log dedup checkpoint shard %d contains an invalid entry", shard))
 				return
 			}
-			if entry.SeenAt.After(latestValidTime) {
+			if hasClockAnchor && entry.SeenAt.After(latestValidTime) {
 				binding.warnCorrupt(fmt.Errorf("log dedup checkpoint shard %d contains an observation time beyond the allowed future skew", shard))
 				return
 			}
@@ -380,8 +382,17 @@ func (d *logDeduplicator) persistCheckpoint(ctx context.Context, force bool) {
 	}
 	now := d.now()
 	pendingAccepted := d.accepted - d.flushed
+	checkpointDirty := d.manifestDirty
+	if !checkpointDirty {
+		for shard, generation := range d.generation {
+			if generation != d.persisted[shard] {
+				checkpointDirty = true
+				break
+			}
+		}
+	}
 	if !force {
-		if (!d.manifestDirty && pendingAccepted == 0) || now.Before(d.retryAfter) || (pendingAccepted < logCheckpointFlushEvents && now.Sub(d.lastAttempt) < logCheckpointFlushInterval) {
+		if (!checkpointDirty && pendingAccepted == 0) || now.Before(d.retryAfter) || (pendingAccepted < logCheckpointFlushEvents && now.Sub(d.lastAttempt) < logCheckpointFlushInterval) {
 			d.mu.Unlock()
 			return
 		}

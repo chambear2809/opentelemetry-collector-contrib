@@ -421,6 +421,7 @@ func (s *counterStore) restoreCheckpoint(ctx context.Context) {
 func (s *counterStore) applyCheckpoint(loaded loadedCheckpoint) error {
 	now := s.now()
 	latestValidTime := checkpointLatestValidTime(now, loaded.clockAnchor)
+	hasClockAnchor := !loaded.clockAnchor.IsZero()
 	var metadata counterCheckpointMetadata
 	if err := json.Unmarshal(loaded.metadata, &metadata); err != nil {
 		return fmt.Errorf("decode delta counter checkpoint metadata: %w", err)
@@ -428,7 +429,7 @@ func (s *counterStore) applyCheckpoint(loaded loadedCheckpoint) error {
 	if metadata.StartedAt.IsZero() {
 		return errors.New("delta counter checkpoint has an empty receiver start time")
 	}
-	if metadata.StartedAt.After(latestValidTime) {
+	if hasClockAnchor && metadata.StartedAt.After(latestValidTime) {
 		return errors.New("delta counter checkpoint receiver start time exceeds the allowed future skew")
 	}
 	metadataDirty := loaded.clockAnchor.IsZero()
@@ -471,7 +472,7 @@ func (s *counterStore) applyCheckpoint(loaded loadedCheckpoint) error {
 			if entry.StartedAt.IsZero() || entry.LastSeen.IsZero() || entry.LastSeen.Before(entry.StartedAt) {
 				return errors.New("delta counter checkpoint contains invalid integer timestamps")
 			}
-			if entry.StartedAt.After(latestValidTime) || entry.LastSeen.After(latestValidTime) {
+			if hasClockAnchor && (entry.StartedAt.After(latestValidTime) || entry.LastSeen.After(latestValidTime)) {
 				return errors.New("delta counter checkpoint contains integer timestamps beyond the allowed future skew")
 			}
 			// The raw pair is ordered above. Capping both values to the same
@@ -501,7 +502,7 @@ func (s *counterStore) applyCheckpoint(loaded loadedCheckpoint) error {
 			if entry.StartedAt.IsZero() || entry.LastSeen.IsZero() || entry.LastSeen.Before(entry.StartedAt) {
 				return errors.New("delta counter checkpoint contains invalid double timestamps")
 			}
-			if entry.StartedAt.After(latestValidTime) || entry.LastSeen.After(latestValidTime) {
+			if hasClockAnchor && (entry.StartedAt.After(latestValidTime) || entry.LastSeen.After(latestValidTime)) {
 				return errors.New("delta counter checkpoint contains double timestamps beyond the allowed future skew")
 			}
 			// Use the same cap for both fields to preserve their validated order.

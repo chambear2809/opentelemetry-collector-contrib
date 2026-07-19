@@ -1270,7 +1270,8 @@ func (s *fmcEStreamerResumeState) restoreCheckpoint(ctx context.Context) {
 	}
 	checkpointCursor := metadata.Cursor
 	latestValidTime := checkpointLatestValidTime(now, loaded.clockAnchor)
-	if checkpointCursor.After(latestValidTime) {
+	hasClockAnchor := !loaded.clockAnchor.IsZero()
+	if hasClockAnchor && checkpointCursor.After(latestValidTime) {
 		binding.warnCorrupt(fmt.Errorf("FMC resume checkpoint cursor %s exceeds the allowed future skew from %s", metadata.Cursor, now))
 		return
 	}
@@ -1303,7 +1304,7 @@ func (s *fmcEStreamerResumeState) restoreCheckpoint(ctx context.Context) {
 				binding.warnCorrupt(fmt.Errorf("FMC resume checkpoint shard %d contains an invalid entry", shard))
 				return
 			}
-			if entry.SeenAt.After(latestValidTime) {
+			if hasClockAnchor && entry.SeenAt.After(latestValidTime) {
 				binding.warnCorrupt(fmt.Errorf("FMC resume checkpoint shard %d contains a future observation time", shard))
 				return
 			}
@@ -1311,7 +1312,7 @@ func (s *fmcEStreamerResumeState) restoreCheckpoint(ctx context.Context) {
 				latestSeenAt = entry.SeenAt
 			}
 			if !entry.EventTime.IsZero() {
-				if entry.EventTime.After(latestValidTime) {
+				if hasClockAnchor && entry.EventTime.After(latestValidTime) {
 					binding.warnCorrupt(fmt.Errorf("FMC resume checkpoint shard %d contains a future event time", shard))
 					return
 				}

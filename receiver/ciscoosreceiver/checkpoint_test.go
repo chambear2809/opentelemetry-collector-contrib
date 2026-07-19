@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/extension/xextension/storage"
+	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 	"go.uber.org/zap"
@@ -655,7 +656,7 @@ func TestCounterCheckpointMigratesMissingClockAnchorAcrossRepeatedRollback(t *te
 	backend := newCheckpointTestBackend()
 	firstObservation := time.Unix(1_900_000_000, 0).UTC()
 	const target = "missing-anchor-counter-target"
-	first := newCounterStoreWithConfig(firstObservation.Add(-time.Hour), counterStoreConfig{now: func() time.Time { return firstObservation }})
+	first := newCounterStoreWithConfig(firstObservation.Add(-time.Minute), counterStoreConfig{now: func() time.Time { return firstObservation }})
 	firstRegistry := newCheckpointTestRegistry(checkpointSignalMetrics, zap.NewNop())
 	consumer := firstRegistry.enableCounter("fmc", target, first, consumertest.NewNop())
 	require.NoError(t, firstRegistry.Start(t.Context(), checkpointHost(backend)))
@@ -667,7 +668,7 @@ func TestCounterCheckpointMigratesMissingClockAnchorAcrossRepeatedRollback(t *te
 	removeCheckpointClockAnchor(t, backend, binding)
 	firstRegistry.Close(t.Context())
 
-	migrationTime := firstObservation.Add(time.Minute)
+	migrationTime := firstObservation.Add(-10 * time.Minute)
 	migrated := newCounterStoreWithConfig(migrationTime, counterStoreConfig{now: func() time.Time { return migrationTime }})
 	migratedRegistry := newCheckpointTestRegistry(checkpointSignalMetrics, zap.NewNop())
 	migratedRegistry.enableCounter("fmc", target, migrated, consumertest.NewNop())
@@ -675,27 +676,31 @@ func TestCounterCheckpointMigratesMissingClockAnchorAcrossRepeatedRollback(t *te
 	require.NoError(t, migratedRegistry.Start(t.Context(), checkpointHost(backend)))
 	batchesAfter, operationsAfter, _, _ := backend.writeStats()
 	assert.Equal(t, batchesBefore+1, batchesAfter)
-	assert.Equal(t, operationsBefore+1, operationsAfter, "anchor migration must rewrite only the manifest")
-	assert.Equal(t, originalShard, backend.value(shardKey))
+	assert.Equal(t, operationsBefore+2, operationsAfter, "rollback migration must rewrite the normalized shard and manifest")
+	assert.NotEqual(t, originalShard, backend.value(shardKey))
 	assert.Equal(t, migrationTime, checkpointTestManifest(t, backend, migrated.checkpoint).ClockAnchor)
 	migratedSeries := migrated.intValues[counterKey("device-a", "packets", nil)]
 	require.NotNil(t, migratedSeries)
 	assert.Equal(t, int64(7), migratedSeries.value)
+	assert.Equal(t, migrationTime, migrated.StartTime())
+	assert.Equal(t, migrationTime, migratedSeries.startedAt)
+	assert.Equal(t, migrationTime, migratedSeries.lastSeen)
 	migratedRegistry.Close(t.Context())
 
-	for index, restartTime := range []time.Time{firstObservation.Add(-10 * time.Minute), firstObservation.Add(-11 * time.Minute)} {
-		restarted := newCounterStoreWithConfig(restartTime, counterStoreConfig{now: func() time.Time { return restartTime }})
-		restartedRegistry := newCheckpointTestRegistry(checkpointSignalMetrics, zap.NewNop())
-		restartedRegistry.enableCounter("fmc", target, restarted, consumertest.NewNop())
-		require.NoError(t, restartedRegistry.Start(t.Context(), checkpointHost(backend)))
-		assert.False(t, restarted.checkpoint.corrupt.Load(), "rollback restart %d must retain the migrated checkpoint", index+1)
-		series := restarted.intValues[counterKey("device-a", "packets", nil)]
-		require.NotNil(t, series)
-		assert.Equal(t, int64(7), series.value)
-		assert.Equal(t, restartTime, series.startedAt)
-		assert.Equal(t, restartTime, series.lastSeen)
-		restartedRegistry.Close(t.Context())
-	}
+	restartTime := migrationTime.Add(-10 * time.Minute)
+	restarted := newCounterStoreWithConfig(restartTime, counterStoreConfig{now: func() time.Time { return restartTime }})
+	restartedRegistry := newCheckpointTestRegistry(checkpointSignalMetrics, zap.NewNop())
+	restartedRegistry.enableCounter("fmc", target, restarted, consumertest.NewNop())
+	require.NoError(t, restartedRegistry.Start(t.Context(), checkpointHost(backend)))
+	assert.False(t, restarted.checkpoint.corrupt.Load(), "the migrated anchor must preserve a second rollback restart")
+	series := restarted.intValues[counterKey("device-a", "packets", nil)]
+	require.NotNil(t, series)
+	assert.Equal(t, int64(7), series.value)
+	assert.Equal(t, restartTime, restarted.StartTime())
+	assert.Equal(t, restartTime, series.startedAt)
+	assert.Equal(t, restartTime, series.lastSeen)
+	assert.Equal(t, migrationTime, checkpointTestManifest(t, backend, restarted.checkpoint).ClockAnchor)
+	restartedRegistry.Close(t.Context())
 }
 
 func TestLogDedupCheckpointSurvivesWallClockRollback(t *testing.T) {
@@ -748,7 +753,7 @@ func TestLogDedupCheckpointMigratesMissingClockAnchorAcrossRepeatedRollback(t *t
 	removeCheckpointClockAnchor(t, backend, binding)
 	firstRegistry.Close(t.Context())
 
-	migrationTime := firstObservation.Add(time.Minute)
+	migrationTime := firstObservation.Add(-10 * time.Minute)
 	migrated := newLogDeduplicator()
 	migrated.now = func() time.Time { return migrationTime }
 	migratedRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
@@ -757,26 +762,28 @@ func TestLogDedupCheckpointMigratesMissingClockAnchorAcrossRepeatedRollback(t *t
 	require.NoError(t, migratedRegistry.Start(t.Context(), checkpointHost(backend)))
 	batchesAfter, operationsAfter, _, _ := backend.writeStats()
 	assert.Equal(t, batchesBefore+1, batchesAfter)
-	assert.Equal(t, operationsBefore+1, operationsAfter, "anchor migration must rewrite only the manifest")
-	assert.Equal(t, originalShard, backend.value(shardKey))
+	assert.Equal(t, operationsBefore+2, operationsAfter, "rollback migration must rewrite the normalized shard and manifest")
+	assert.NotEqual(t, originalShard, backend.value(shardKey))
 	assert.Equal(t, migrationTime, checkpointTestManifest(t, backend, migrated.checkpoint).ClockAnchor)
+	assert.Equal(t, migrationTime, migrated.seen[logDedupStateKey(eventKey)].seenAt)
 	migrated.BeginBatch()
 	assert.False(t, migrated.MarkPending(eventKey, migrationTime))
 	migrated.RollbackBatch()
 	migratedRegistry.Close(t.Context())
 
-	for index, restartTime := range []time.Time{firstObservation.Add(-10 * time.Minute), firstObservation.Add(-11 * time.Minute)} {
-		restarted := newLogDeduplicator()
-		restarted.now = func() time.Time { return restartTime }
-		restartedRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
-		restartedRegistry.enableLogDedup("ise", target, restarted, logCheckpointRetention{})
-		require.NoError(t, restartedRegistry.Start(t.Context(), checkpointHost(backend)))
-		assert.False(t, restarted.checkpoint.corrupt.Load(), "rollback restart %d must retain the migrated checkpoint", index+1)
-		restarted.BeginBatch()
-		assert.False(t, restarted.MarkPending(eventKey, restartTime))
-		restarted.RollbackBatch()
-		restartedRegistry.Close(t.Context())
-	}
+	restartTime := migrationTime.Add(-10 * time.Minute)
+	restarted := newLogDeduplicator()
+	restarted.now = func() time.Time { return restartTime }
+	restartedRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+	restartedRegistry.enableLogDedup("ise", target, restarted, logCheckpointRetention{})
+	require.NoError(t, restartedRegistry.Start(t.Context(), checkpointHost(backend)))
+	assert.False(t, restarted.checkpoint.corrupt.Load(), "the migrated anchor must preserve a second rollback restart")
+	restarted.BeginBatch()
+	assert.False(t, restarted.MarkPending(eventKey, restartTime))
+	restarted.RollbackBatch()
+	assert.Equal(t, restartTime, restarted.seen[logDedupStateKey(eventKey)].seenAt)
+	assert.Equal(t, migrationTime, checkpointTestManifest(t, backend, restarted.checkpoint).ClockAnchor)
+	restartedRegistry.Close(t.Context())
 }
 
 func TestCheckpointMissingClockAnchorManifestMigrationRetriesAfterFailure(t *testing.T) {
@@ -822,9 +829,17 @@ func TestCheckpointMissingClockAnchorManifestMigrationRetriesAfterFailure(t *tes
 		require.NoError(t, registry.Start(t.Context(), checkpointHost(backend)))
 		assert.True(t, state.manifestDirty)
 		assert.True(t, checkpointTestManifest(t, backend, state.checkpoint).ClockAnchor.IsZero())
+		state.BeginBatch()
+		count, err := consumeDeduplicatedLogs(t.Context(), consumertest.NewErr(errors.New("empty poll must not call the consumer")), state, plog.NewLogs())
+		require.NoError(t, err)
+		assert.Zero(t, count)
+		assert.True(t, state.manifestDirty, "the retry backoff must retain pending manifest work")
 		backend.batchWriteErr = nil
 		current = current.Add(logCheckpointFlushInterval)
-		state.persistCheckpoint(t.Context(), false)
+		state.BeginBatch()
+		count, err = consumeDeduplicatedLogs(t.Context(), consumertest.NewErr(errors.New("empty poll must not call the consumer")), state, plog.NewLogs())
+		require.NoError(t, err)
+		assert.Zero(t, count)
 		assert.False(t, state.manifestDirty)
 		assert.Equal(t, current, checkpointTestManifest(t, backend, state.checkpoint).ClockAnchor)
 		registry.Close(t.Context())
@@ -849,6 +864,68 @@ func TestCheckpointMissingClockAnchorManifestMigrationRetriesAfterFailure(t *tes
 		assert.Equal(t, current, checkpointTestManifest(t, backend, state.checkpoint).ClockAnchor)
 		registry.Close(t.Context())
 	})
+}
+
+func TestEmptyPollingLogBatchRetriesFailedCheckpointNormalization(t *testing.T) {
+	backend := newCheckpointTestBackend()
+	current := time.Unix(1_900_000_000, 0).UTC()
+	normalizedAt := current
+	state := newLogDeduplicator()
+	state.now = func() time.Time { return current }
+	registry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+	registry.enableLogDedup("fmc", "retry-normalized-log-target", state, logCheckpointRetention{})
+	binding := state.checkpoint
+	const eventKey = "future-log-event"
+	page, err := json.Marshal(logDedupCheckpointShard{
+		Version: checkpointFormatVersion,
+		Shard:   0,
+		Entries: []logDedupCheckpointEntry{{Key: logDedupStateKey(eventKey), SeenAt: current.Add(time.Minute)}},
+	})
+	require.NoError(t, err)
+	manifest, err := json.Marshal(checkpointManifest{Version: checkpointFormatVersion, Active: []uint16{0}, ClockAnchor: current})
+	require.NoError(t, err)
+	backend.put(binding.shardKey(0), page)
+	backend.put(binding.manifestKey(), manifest)
+	backend.batchWriteErr = errors.New("temporary normalization failure")
+
+	require.NoError(t, registry.Start(t.Context(), checkpointHost(backend)))
+	assert.False(t, binding.corrupt.Load())
+	assert.False(t, state.manifestDirty, "an anchored checkpoint needs only a shard normalization retry")
+	assert.NotEqual(t, state.generation[0], state.persisted[0])
+	assert.Equal(t, page, backend.value(binding.shardKey(0)))
+
+	backend.batchWriteErr = nil
+	current = current.Add(logCheckpointFlushInterval)
+	state.BeginBatch()
+	count, err := consumeDeduplicatedLogs(t.Context(), consumertest.NewErr(errors.New("empty poll must not call the consumer")), state, plog.NewLogs())
+	require.NoError(t, err)
+	assert.Zero(t, count)
+	assert.Equal(t, state.generation[0], state.persisted[0])
+	var normalized logDedupCheckpointShard
+	require.NoError(t, json.Unmarshal(backend.value(binding.shardKey(0)), &normalized))
+	require.Len(t, normalized.Entries, 1)
+	assert.Equal(t, normalizedAt, normalized.Entries[0].SeenAt)
+	registry.Close(t.Context())
+}
+
+func TestEmptyPollingLogBatchDoesNotWriteCleanCheckpoint(t *testing.T) {
+	backend := newCheckpointTestBackend()
+	current := time.Unix(1_900_000_000, 0).UTC()
+	state := newLogDeduplicator()
+	state.now = func() time.Time { return current }
+	registry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+	registry.enableLogDedup("fmc", "clean-empty-log-target", state, logCheckpointRetention{})
+	require.NoError(t, registry.Start(t.Context(), checkpointHost(backend)))
+
+	current = current.Add(logCheckpointFlushInterval)
+	state.BeginBatch()
+	count, err := consumeDeduplicatedLogs(t.Context(), consumertest.NewErr(errors.New("empty poll must not call the consumer")), state, plog.NewLogs())
+	require.NoError(t, err)
+	assert.Zero(t, count)
+	batches, operations, _, _ := backend.writeStats()
+	assert.Zero(t, batches)
+	assert.Zero(t, operations)
+	registry.Close(t.Context())
 }
 
 func TestCounterCheckpointDoesNotPersistRejectedDelivery(t *testing.T) {
@@ -1361,7 +1438,7 @@ func TestLogDedupCheckpointFutureSkewValidation(t *testing.T) {
 				Entries: []logDedupCheckpointEntry{{Key: logDedupStateKey(eventKey), SeenAt: tt.seenAt}},
 			})
 			require.NoError(t, err)
-			manifest, err := json.Marshal(checkpointManifest{Version: checkpointFormatVersion, Active: []uint16{0}})
+			manifest, err := json.Marshal(checkpointManifest{Version: checkpointFormatVersion, Active: []uint16{0}, ClockAnchor: now})
 			require.NoError(t, err)
 			backend.put(binding.shardKey(0), page)
 			backend.put(binding.manifestKey(), manifest)
@@ -1492,7 +1569,7 @@ func TestCounterCheckpointFutureSkewValidation(t *testing.T) {
 			require.NoError(t, err)
 			metadataBytes, err := json.Marshal(metadata)
 			require.NoError(t, err)
-			manifest, err := json.Marshal(checkpointManifest{Version: checkpointFormatVersion, Active: []uint16{0}, Metadata: metadataBytes})
+			manifest, err := json.Marshal(checkpointManifest{Version: checkpointFormatVersion, Active: []uint16{0}, Metadata: metadataBytes, ClockAnchor: now})
 			require.NoError(t, err)
 			backend.put(binding.shardKey(0), page)
 			backend.put(binding.manifestKey(), manifest)

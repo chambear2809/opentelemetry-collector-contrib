@@ -235,7 +235,7 @@ func TestFMCEStreamerCheckpointMigratesMissingClockAnchorAcrossRepeatedRollback(
 	removeCheckpointClockAnchor(t, backend, binding)
 	firstRegistry.Close(t.Context())
 
-	migrationTime := firstObservation.Add(time.Minute)
+	migrationTime := firstObservation.Add(-10 * time.Minute)
 	migrated := newFMCEStreamerResumeState(firstObservation.Add(-time.Hour))
 	migrated.now = func() time.Time { return migrationTime }
 	migratedRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
@@ -244,24 +244,27 @@ func TestFMCEStreamerCheckpointMigratesMissingClockAnchorAcrossRepeatedRollback(
 	require.NoError(t, migratedRegistry.Start(t.Context(), checkpointHost(backend)))
 	batchesAfter, operationsAfter, _, _ := backend.writeStats()
 	assert.Equal(t, batchesBefore+1, batchesAfter)
-	assert.Equal(t, operationsBefore+1, operationsAfter, "anchor migration must rewrite only the manifest")
-	assert.Equal(t, originalShard, backend.value(shardKey))
+	assert.Equal(t, operationsBefore+2, operationsAfter, "rollback migration must rewrite the normalized shard and manifest")
+	assert.NotEqual(t, originalShard, backend.value(shardKey))
 	assert.Equal(t, migrationTime, checkpointTestManifest(t, backend, migrated.checkpoint).ClockAnchor)
 	assert.True(t, migrated.seenBefore("accepted-before-anchor-migration"))
+	assert.Equal(t, migrationTime, migrated.cursor)
+	assert.Equal(t, migrationTime, migrated.seen["accepted-before-anchor-migration"].eventTime)
+	assert.Equal(t, migrationTime, migrated.seen["accepted-before-anchor-migration"].seenAt)
 	migratedRegistry.Close(t.Context())
 
-	for index, restartTime := range []time.Time{firstObservation.Add(-10 * time.Minute), firstObservation.Add(-11 * time.Minute)} {
-		restarted := newFMCEStreamerResumeState(firstObservation.Add(-time.Hour))
-		restarted.now = func() time.Time { return restartTime }
-		restartedRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
-		restartedRegistry.enableFMCResume(target, restarted)
-		require.NoError(t, restartedRegistry.Start(t.Context(), checkpointHost(backend)))
-		assert.False(t, restarted.checkpoint.corrupt.Load(), "rollback restart %d must retain the migrated checkpoint", index+1)
-		assert.Equal(t, restartTime, restarted.cursor)
-		assert.Equal(t, restartTime.Add(-fmcEStreamerResumeOverlap), restarted.requestStart())
-		assert.True(t, restarted.seenBefore("accepted-before-anchor-migration"))
-		restartedRegistry.Close(t.Context())
-	}
+	restartTime := migrationTime.Add(-10 * time.Minute)
+	restarted := newFMCEStreamerResumeState(firstObservation.Add(-time.Hour))
+	restarted.now = func() time.Time { return restartTime }
+	restartedRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+	restartedRegistry.enableFMCResume(target, restarted)
+	require.NoError(t, restartedRegistry.Start(t.Context(), checkpointHost(backend)))
+	assert.False(t, restarted.checkpoint.corrupt.Load(), "the migrated anchor must preserve a second rollback restart")
+	assert.Equal(t, restartTime, restarted.cursor)
+	assert.Equal(t, restartTime.Add(-fmcEStreamerResumeOverlap), restarted.requestStart())
+	assert.True(t, restarted.seenBefore("accepted-before-anchor-migration"))
+	assert.Equal(t, migrationTime, checkpointTestManifest(t, backend, restarted.checkpoint).ClockAnchor)
+	restartedRegistry.Close(t.Context())
 }
 
 func TestFMCEStreamerRequestStartNeverStaysAheadAfterLiveClockRollback(t *testing.T) {
@@ -491,12 +494,12 @@ func TestFMCEStreamerCheckpointRejectsFutureEnvelope(t *testing.T) {
 	page, err := json.Marshal(fmcResumeCheckpointShard{
 		Version: checkpointFormatVersion,
 		Shard:   0,
-		Entries: []fmcResumeCheckpointEntry{{Key: "future-event", EventTime: future, SeenAt: now}},
+		Entries: []fmcResumeCheckpointEntry{{Key: "future-event", EventTime: future, SeenAt: future}},
 	})
 	require.NoError(t, err)
 	metadataBytes, err := json.Marshal(fmcResumeCheckpointMetadata{Cursor: future})
 	require.NoError(t, err)
-	manifest, err := json.Marshal(checkpointManifest{Version: checkpointFormatVersion, Active: []uint16{0}, Metadata: metadataBytes})
+	manifest, err := json.Marshal(checkpointManifest{Version: checkpointFormatVersion, Active: []uint16{0}, Metadata: metadataBytes, ClockAnchor: now})
 	require.NoError(t, err)
 	backend.put(binding.shardKey(0), page)
 	backend.put(binding.manifestKey(), manifest)
