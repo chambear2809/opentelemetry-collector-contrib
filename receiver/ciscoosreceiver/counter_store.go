@@ -405,6 +405,12 @@ func (s *counterStore) restoreCheckpoint(ctx context.Context) {
 	s.mu.Lock()
 	binding := s.checkpoint
 	s.mu.Unlock()
+	restoreAccepted := false
+	defer func() {
+		if !restoreAccepted && binding.replacementRequired() {
+			s.markCheckpointReplacementDirty()
+		}
+	}()
 	loaded, ok := binding.load(ctx)
 	if !ok {
 		return
@@ -413,9 +419,19 @@ func (s *counterStore) restoreCheckpoint(ctx context.Context) {
 		binding.warnCorrupt(err)
 		return
 	}
-	binding.acceptLoaded(loaded.active, loaded.clockAnchor)
+	binding.acceptLoaded(loaded)
+	restoreAccepted = true
 	binding.markValid()
 	s.persistCheckpoint(ctx)
+}
+
+func (s *counterStore) markCheckpointReplacementDirty() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for shard := range s.shards {
+		s.generation[shard]++
+	}
+	s.metadataDirty = true
 }
 
 func (s *counterStore) applyCheckpoint(loaded loadedCheckpoint) error {
@@ -581,6 +597,7 @@ func (s *counterStore) persistCheckpoint(ctx context.Context) {
 	}
 	shards, active, generations, metadata, clockAnchor, dirty, err := s.checkpointSnapshot()
 	if !dirty {
+		binding.maintain(ctx)
 		return
 	}
 	if err != nil {

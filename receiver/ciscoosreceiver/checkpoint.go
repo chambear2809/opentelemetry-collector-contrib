@@ -4,6 +4,7 @@
 package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver"
 
 import (
+	"bytes"
 	"container/list"
 	"context"
 	"crypto/sha256"
@@ -11,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/netip"
 	"net/url"
@@ -32,14 +34,18 @@ import (
 )
 
 const (
-	checkpointFormatVersion = 1
-	checkpointKeyPrefix     = "cisco_os/checkpoints/v1/"
-	checkpointShardCount    = (defaultLogDedupMaxEntries + checkpointShardEntries - 1) / checkpointShardEntries
-	checkpointShardEntries  = 64
-	maxCheckpointShardBytes = 64 * 1024
-	maxCheckpointMetaBytes  = 64 * 1024
-	checkpointFlushTimeout  = 5 * time.Second
-	checkpointFutureSkew    = 5 * time.Minute
+	checkpointFormatVersion         = 1
+	checkpointManifestFormatVersion = 2
+	checkpointSlottedLayout         = 1
+	checkpointShardSlots            = 2
+	checkpointKeyPrefix             = "cisco_os/checkpoints/v1/"
+	checkpointShardCount            = (defaultLogDedupMaxEntries + checkpointShardEntries - 1) / checkpointShardEntries
+	checkpointShardEntries          = 64
+	checkpointCleanupKeyLimit       = checkpointShardCount * (checkpointShardSlots + 1)
+	maxCheckpointShardBytes         = 64 * 1024
+	maxCheckpointMetaBytes          = 64 * 1024
+	checkpointFlushTimeout          = 5 * time.Second
+	checkpointFutureSkew            = 5 * time.Minute
 
 	checkpointSignalMetrics = "metrics"
 	checkpointSignalLogs    = "logs"
@@ -483,7 +489,9 @@ type checkpointRegistry struct {
 
 type checkpointManifest struct {
 	Version     int             `json:"version"`
+	Layout      int             `json:"layout,omitempty"`
 	Active      []uint16        `json:"active,omitempty"`
+	Slots       []uint8         `json:"slots,omitempty"`
 	Metadata    json.RawMessage `json:"metadata,omitempty"`
 	ClockAnchor time.Time       `json:"clock_anchor,omitzero"`
 }
@@ -538,6 +546,9 @@ func checkpointLogRetention(conf *Config, provider string) logCheckpointRetentio
 
 type loadedCheckpoint struct {
 	active      []uint16
+	slots       map[uint16]uint8
+	legacy      bool
+	manifest    []byte
 	metadata    json.RawMessage
 	shards      map[uint16][]byte
 	clockAnchor time.Time
@@ -560,7 +571,8 @@ func newCheckpointRegistry(storageID, receiverID component.ID, signal string, lo
 
 func (r *checkpointRegistry) bind(provider, target, state string, restore func(context.Context)) *checkpointBinding {
 	binding := &checkpointBinding{
-		registry: r,
+		registry:          r,
+		replaceGeneration: true,
 		identity: checkpointIdentity{
 			Receiver: r.receiverID.String(),
 			Provider: provider,
@@ -770,16 +782,48 @@ func (r *checkpointRegistry) batch(ctx context.Context, operations ...*storage.O
 	return true, client.Batch(ctx, operations...)
 }
 
+func (r *checkpointRegistry) set(ctx context.Context, key string, value []byte) (bool, error) {
+	client, available, err := r.beginOperation(ctx)
+	if !available || err != nil {
+		return available, err
+	}
+	defer r.endOperation()
+	return true, client.Set(ctx, key, value)
+}
+
+type checkpointPublication struct {
+	manifest         []byte
+	previousManifest []byte
+	active           map[uint16]struct{}
+	slots            map[uint16]uint8
+	clockAnchor      time.Time
+	stageKeys        []string
+	obsoleteKeys     []string
+}
+
 type checkpointBinding struct {
 	registry *checkpointRegistry
 	identity checkpointIdentity
 
-	loadFailed atomic.Bool
-	saveFailed atomic.Bool
-	corrupt    atomic.Bool
+	loadFailed  atomic.Bool
+	saveFailed  atomic.Bool
+	cleanFailed atomic.Bool
+	corrupt     atomic.Bool
 
-	persistMu sync.Mutex
-	active    map[uint16]struct{}
+	persistMu      sync.Mutex
+	active         map[uint16]struct{}
+	slots          map[uint16]uint8
+	legacy         bool
+	manifest       []byte
+	legacyShards   map[uint16][]byte
+	legacyMetadata json.RawMessage
+	cleanupPending map[string]struct{}
+	uncertain      *checkpointPublication
+	fenceKnown     bool
+	// replaceGeneration means restoration did not populate the in-memory
+	// domain. active/slots still fence the durable generation for safe slot
+	// selection, but none of its logical shards may be carried forward.
+	replaceGeneration bool
 	// clockAnchor is the greatest wall-clock observation included in any
 	// committed manifest. Keeping it monotonic lets a later restore distinguish
 	// a legitimate host-clock rollback from an isolated future timestamp.
@@ -795,6 +839,7 @@ func (b *checkpointBinding) load(ctx context.Context) (loadedCheckpoint, bool) {
 		return loadedCheckpoint{}, false
 	}
 	if err != nil {
+		b.invalidateWriteFence()
 		if b.loadFailed.CompareAndSwap(false, true) {
 			b.warn("Failed to restore Cisco OS checkpoint; collection will continue with empty in-memory state", err)
 		}
@@ -802,24 +847,40 @@ func (b *checkpointBinding) load(ctx context.Context) (loadedCheckpoint, bool) {
 	}
 	b.loadFailed.Store(false)
 	if len(value) == 0 {
+		b.installEmptyWriteFence()
 		return loadedCheckpoint{}, false
 	}
 	if len(value) > maxCheckpointMetaBytes {
+		b.invalidateWriteFence()
 		b.warnCorrupt(fmt.Errorf("checkpoint manifest is %d bytes; maximum is %d", len(value), maxCheckpointMetaBytes))
 		return loadedCheckpoint{}, false
 	}
 	var manifest checkpointManifest
 	if decodeErr := json.Unmarshal(value, &manifest); decodeErr != nil {
+		b.invalidateWriteFence()
 		b.warnCorrupt(fmt.Errorf("decode checkpoint manifest: %w", decodeErr))
 		return loadedCheckpoint{}, false
 	}
 	if validationErr := validateCheckpointManifest(manifest); validationErr != nil {
+		b.invalidateWriteFence()
 		b.warnCorrupt(validationErr)
 		return loadedCheckpoint{}, false
 	}
+	// Install the exact manifest fence before reading any shard. Even if a
+	// shard is missing, a batch read fails, or domain validation later rejects
+	// the payload, subsequent writes must select slots opposite these durable
+	// references and replace (not retain) this logical generation.
+	b.installManifestWriteFence(manifest, value)
+	legacy := manifest.Version == checkpointFormatVersion
+	slots := make(map[uint16]uint8, len(manifest.Active))
 	operations := make([]*storage.Operation, 0, len(manifest.Active))
-	for _, shard := range manifest.Active {
-		operations = append(operations, storage.GetOperation(b.shardKey(shard)))
+	for i, shard := range manifest.Active {
+		key := b.shardKey(shard)
+		if !legacy {
+			slots[shard] = manifest.Slots[i]
+			key = b.slottedShardKey(shard, manifest.Slots[i])
+		}
+		operations = append(operations, storage.GetOperation(key))
 	}
 	if len(operations) > 0 {
 		available, err = b.registry.batch(ctx, operations...)
@@ -845,35 +906,88 @@ func (b *checkpointBinding) load(ctx context.Context) (loadedCheckpoint, bool) {
 		}
 		shards[manifest.Active[i]] = operation.Value
 	}
-	return loadedCheckpoint{active: manifest.Active, metadata: manifest.Metadata, shards: shards, clockAnchor: manifest.ClockAnchor}, true
+	return loadedCheckpoint{
+		active:      manifest.Active,
+		slots:       slots,
+		legacy:      legacy,
+		manifest:    append([]byte(nil), value...),
+		metadata:    manifest.Metadata,
+		shards:      shards,
+		clockAnchor: manifest.ClockAnchor,
+	}, true
 }
 
-// persist rewrites only the shards changed since the prior successful
-// delivery, plus one bounded manifest. At most checkpointShardCount shard
-// operations can occur per delivery, and each shard has independent byte and
-// entry ceilings.
+// persist stages changed shards in the slot not referenced by the committed
+// manifest, then publishes the manifest with a separate single-key write. A
+// failed storage Batch may apply any prefix, so no live shard is ever part of
+// the stage-one operation set.
 func (b *checkpointBinding) persist(ctx context.Context, shards map[uint16][]byte, activeUpdates map[uint16]bool, metadata json.RawMessage, clockAnchor time.Time) bool {
 	if b == nil || b.registry == nil {
 		return false
 	}
-	if len(shards) > checkpointShardCount || len(metadata) > maxCheckpointMetaBytes {
+	if len(shards) > checkpointShardCount || len(activeUpdates) > checkpointShardCount || len(metadata) > maxCheckpointMetaBytes {
 		b.warnPersistFailure(errors.New("checkpoint update exceeds the bounded shard or metadata limit"))
 		return false
 	}
 	b.persistMu.Lock()
 	defer b.persistMu.Unlock()
+	return b.persistLocked(ctx, shards, activeUpdates, metadata, clockAnchor)
+}
+
+func (b *checkpointBinding) persistLocked(ctx context.Context, shards map[uint16][]byte, activeUpdates map[uint16]bool, metadata json.RawMessage, clockAnchor time.Time) bool {
+	if !b.ensureWriteFenceLocked(ctx) {
+		return false
+	}
+	if b.uncertain != nil {
+		resolved, _ := b.resolvePublicationLocked(ctx)
+		if !resolved {
+			return false
+		}
+	}
+	b.runCleanupLocked(ctx)
+	// The clock anchor belongs to the structurally valid committed manifest,
+	// not to any one domain entry. Preserve it even when replacement mode drops
+	// a semantically rejected payload so host-clock rollback handling remains
+	// monotonic without carrying any rejected metadata or shard contents.
 	if b.clockAnchor.After(clockAnchor) {
 		clockAnchor = b.clockAnchor
 	}
 	if b.active == nil {
 		b.active = map[uint16]struct{}{}
 	}
-	nextActive := make(map[uint16]struct{}, len(b.active)+len(activeUpdates))
-	for shard := range b.active {
-		nextActive[shard] = struct{}{}
+	if b.slots == nil {
+		b.slots = map[uint16]uint8{}
 	}
-	indices := make([]int, 0, len(shards))
-	for shard, value := range shards {
+	effectiveShards := make(map[uint16][]byte, len(shards)+len(b.legacyShards))
+	maps.Copy(effectiveShards, shards)
+	effectiveUpdates := make(map[uint16]bool, len(activeUpdates)+len(b.legacyShards))
+	maps.Copy(effectiveUpdates, activeUpdates)
+	// A legacy manifest references unslotted keys. Its complete validated
+	// generation must be copied before the first slotted manifest is published,
+	// including shards that the domain snapshot did not otherwise dirty.
+	if b.legacy && !b.replaceGeneration {
+		for shard := range b.active {
+			if _, updated := effectiveUpdates[shard]; updated {
+				continue
+			}
+			effectiveShards[shard] = b.legacyShards[shard]
+			effectiveUpdates[shard] = true
+		}
+	}
+	if len(effectiveShards) > checkpointShardCount || len(effectiveUpdates) > checkpointShardCount {
+		b.warnPersistFailure(errors.New("checkpoint update exceeds the bounded shard limit after legacy migration"))
+		return false
+	}
+	nextActive := make(map[uint16]struct{}, len(b.active)+len(activeUpdates))
+	nextSlots := make(map[uint16]uint8, len(b.slots)+len(effectiveUpdates))
+	if !b.replaceGeneration {
+		for shard := range b.active {
+			nextActive[shard] = struct{}{}
+		}
+		maps.Copy(nextSlots, b.slots)
+	}
+	indexSet := make(map[uint16]struct{}, len(effectiveShards)+len(effectiveUpdates))
+	for shard, value := range effectiveShards {
 		if shard >= checkpointShardCount {
 			b.warnPersistFailure(fmt.Errorf("checkpoint shard index %d is out of range", shard))
 			return false
@@ -882,22 +996,58 @@ func (b *checkpointBinding) persist(ctx context.Context, shards map[uint16][]byt
 			b.warnPersistFailure(fmt.Errorf("checkpoint shard %d is %d bytes; maximum is %d", shard, len(value), maxCheckpointShardBytes))
 			return false
 		}
+		indexSet[shard] = struct{}{}
+	}
+	for shard := range effectiveUpdates {
+		if shard >= checkpointShardCount {
+			b.warnPersistFailure(fmt.Errorf("checkpoint shard index %d is out of range", shard))
+			return false
+		}
+		indexSet[shard] = struct{}{}
+	}
+	if b.replaceGeneration {
+		for shard := range b.active {
+			indexSet[shard] = struct{}{}
+		}
+	}
+	indices := make([]int, 0, len(indexSet))
+	for shard := range indexSet {
 		indices = append(indices, int(shard))
 	}
 	sort.Ints(indices)
-	operations := make([]*storage.Operation, 0, len(indices)+1)
+	stageOperations := make([]*storage.Operation, 0, len(indices))
+	stageKeys := make([]string, 0, len(indices))
+	obsoleteSet := make(map[string]struct{}, len(indices))
 	for _, index := range indices {
 		shard := uint16(index)
-		if activeUpdates[shard] {
-			if len(shards[shard]) == 0 {
+		if effectiveUpdates[shard] {
+			value := effectiveShards[shard]
+			if len(value) == 0 {
 				b.warnPersistFailure(fmt.Errorf("active checkpoint shard %d is empty", shard))
 				return false
 			}
-			operations = append(operations, storage.SetOperation(b.shardKey(shard), shards[shard]))
+			slot := uint8(0)
+			if _, active := b.active[shard]; active && !b.legacy {
+				slot = (b.slots[shard] + 1) % checkpointShardSlots
+			}
+			key := b.slottedShardKey(shard, slot)
+			delete(b.cleanupPending, key)
+			stageOperations = append(stageOperations, storage.SetOperation(key, value))
+			stageKeys = append(stageKeys, key)
+			if _, active := b.active[shard]; active && b.legacy {
+				obsoleteSet[b.activeShardKeyLocked(shard)] = struct{}{}
+			}
 			nextActive[shard] = struct{}{}
+			nextSlots[shard] = slot
 		} else {
-			operations = append(operations, storage.DeleteOperation(b.shardKey(shard)))
+			if _, active := b.active[shard]; active {
+				obsoleteSet[b.shardKey(shard)] = struct{}{}
+				for slot := range uint8(checkpointShardSlots) {
+					obsoleteSet[b.slottedShardKey(shard, slot)] = struct{}{}
+				}
+			}
 			delete(nextActive, shard)
+			delete(nextSlots, shard)
 		}
 	}
 	active := make([]uint16, 0, len(nextActive))
@@ -905,7 +1055,18 @@ func (b *checkpointBinding) persist(ctx context.Context, shards map[uint16][]byt
 		active = append(active, shard)
 	}
 	slices.Sort(active)
-	manifest, err := json.Marshal(checkpointManifest{Version: checkpointFormatVersion, Active: active, Metadata: metadata, ClockAnchor: clockAnchor.UTC()})
+	slots := make([]uint8, 0, len(active))
+	for _, shard := range active {
+		slots = append(slots, nextSlots[shard])
+	}
+	manifest, err := json.Marshal(checkpointManifest{
+		Version:     checkpointManifestFormatVersion,
+		Layout:      checkpointSlottedLayout,
+		Active:      active,
+		Slots:       slots,
+		Metadata:    metadata,
+		ClockAnchor: clockAnchor.UTC(),
+	})
 	if err != nil {
 		b.warnPersistFailure(fmt.Errorf("encode checkpoint manifest: %w", err))
 		return false
@@ -914,32 +1075,352 @@ func (b *checkpointBinding) persist(ctx context.Context, shards map[uint16][]byt
 		b.warnPersistFailure(fmt.Errorf("checkpoint manifest is %d bytes; maximum is %d", len(manifest), maxCheckpointMetaBytes))
 		return false
 	}
-	operations = append(operations, storage.SetOperation(b.manifestKey(), manifest))
-	available, err := b.registry.batch(ctx, operations...)
+	obsoleteKeys := make([]string, 0, len(obsoleteSet))
+	for key := range obsoleteSet {
+		obsoleteKeys = append(obsoleteKeys, key)
+	}
+	sort.Strings(obsoleteKeys)
+	publication := &checkpointPublication{
+		manifest:         manifest,
+		previousManifest: append([]byte(nil), b.manifest...),
+		active:           nextActive,
+		slots:            nextSlots,
+		clockAnchor:      clockAnchor.UTC(),
+		stageKeys:        stageKeys,
+		obsoleteKeys:     obsoleteKeys,
+	}
+	if len(stageOperations) > 0 {
+		available, stageErr := b.registry.batch(ctx, stageOperations...)
+		if !available || stageErr != nil {
+			b.addCleanupKeysLocked(stageKeys)
+			b.runCleanupLocked(ctx)
+			if stageErr != nil {
+				b.warnPersistFailure(stageErr)
+			}
+			return false
+		}
+	}
+	available, err := b.registry.set(ctx, b.manifestKey(), manifest)
 	if !available {
+		b.addCleanupKeysLocked(stageKeys)
+		b.runCleanupLocked(ctx)
 		return false
 	}
 	if err != nil {
+		// Set may have applied before returning an error. Until a read proves
+		// whether the old or candidate manifest is live, neither slot view is
+		// safe to overwrite.
+		b.uncertain = publication
+		resolved, candidateCommitted := b.resolvePublicationLocked(ctx)
+		if resolved && candidateCommitted {
+			return true
+		}
 		b.warnPersistFailure(err)
 		return false
 	}
-	b.active = nextActive
-	b.clockAnchor = clockAnchor.UTC()
-	b.saveFailed.Store(false)
+	b.commitPublicationLocked(publication)
+	b.runCleanupLocked(ctx)
 	return true
 }
 
-func (b *checkpointBinding) acceptLoaded(active []uint16, clockAnchor time.Time) {
+// maintain retries a validated legacy migration or bounded stale-slot cleanup
+// even when the domain has no dirty state of its own (for example, an empty
+// polling delivery immediately after restore).
+func (b *checkpointBinding) maintain(ctx context.Context) bool {
+	if b == nil || b.registry == nil {
+		return false
+	}
+	b.persistMu.Lock()
+	defer b.persistMu.Unlock()
+	if !b.ensureWriteFenceLocked(ctx) {
+		return false
+	}
+	if b.uncertain != nil {
+		resolved, _ := b.resolvePublicationLocked(ctx)
+		if !resolved {
+			return false
+		}
+	}
+	if b.replaceGeneration {
+		// The binding does not own a domain snapshot or its metadata. The
+		// domain's replacement-dirty path must call persist with the complete
+		// fresh generation before this fence can advance.
+		return false
+	}
+	if b.legacy {
+		return b.persistLocked(ctx, nil, nil, b.legacyMetadata, b.clockAnchor)
+	}
+	b.runCleanupLocked(ctx)
+	return true
+}
+
+func (b *checkpointBinding) acceptLoaded(loaded loadedCheckpoint) {
 	if b == nil {
 		return
 	}
 	b.persistMu.Lock()
-	b.active = make(map[uint16]struct{}, len(active))
-	for _, shard := range active {
+	b.active = make(map[uint16]struct{}, len(loaded.active))
+	for _, shard := range loaded.active {
 		b.active[shard] = struct{}{}
 	}
-	b.clockAnchor = clockAnchor.UTC()
+	b.slots = make(map[uint16]uint8, len(loaded.slots))
+	maps.Copy(b.slots, loaded.slots)
+	b.legacy = loaded.legacy
+	b.manifest = append([]byte(nil), loaded.manifest...)
+	b.clockAnchor = loaded.clockAnchor.UTC()
+	b.fenceKnown = true
+	b.replaceGeneration = false
+	b.legacyShards = nil
+	b.legacyMetadata = nil
+	if loaded.legacy {
+		b.legacyShards = make(map[uint16][]byte, len(loaded.shards))
+		for shard, value := range loaded.shards {
+			b.legacyShards[shard] = append([]byte(nil), value...)
+		}
+		b.legacyMetadata = append(json.RawMessage(nil), loaded.metadata...)
+	}
 	b.persistMu.Unlock()
+}
+
+func (b *checkpointBinding) invalidateWriteFence() {
+	if b == nil {
+		return
+	}
+	b.persistMu.Lock()
+	b.invalidateWriteFenceLocked()
+	b.persistMu.Unlock()
+}
+
+func (b *checkpointBinding) invalidateWriteFenceLocked() {
+	b.fenceKnown = false
+	b.replaceGeneration = true
+	b.active = nil
+	b.slots = nil
+	b.legacy = false
+	b.manifest = nil
+	b.clockAnchor = time.Time{}
+	b.legacyShards = nil
+	b.legacyMetadata = nil
+}
+
+func (b *checkpointBinding) installEmptyWriteFence() {
+	if b == nil {
+		return
+	}
+	b.persistMu.Lock()
+	b.installEmptyWriteFenceLocked()
+	b.persistMu.Unlock()
+}
+
+func (b *checkpointBinding) installEmptyWriteFenceLocked() {
+	b.fenceKnown = true
+	b.replaceGeneration = false
+	b.active = map[uint16]struct{}{}
+	b.slots = map[uint16]uint8{}
+	b.legacy = false
+	b.manifest = nil
+	b.clockAnchor = time.Time{}
+	b.legacyShards = nil
+	b.legacyMetadata = nil
+}
+
+func (b *checkpointBinding) installManifestWriteFence(manifest checkpointManifest, encoded []byte) {
+	if b == nil {
+		return
+	}
+	b.persistMu.Lock()
+	b.installManifestWriteFenceLocked(manifest, encoded)
+	b.persistMu.Unlock()
+}
+
+func (b *checkpointBinding) installManifestWriteFenceLocked(manifest checkpointManifest, encoded []byte) {
+	b.fenceKnown = true
+	b.replaceGeneration = true
+	b.active = make(map[uint16]struct{}, len(manifest.Active))
+	b.slots = make(map[uint16]uint8, len(manifest.Active))
+	for i, shard := range manifest.Active {
+		b.active[shard] = struct{}{}
+		if manifest.Version == checkpointManifestFormatVersion {
+			b.slots[shard] = manifest.Slots[i]
+		}
+	}
+	b.legacy = manifest.Version == checkpointFormatVersion
+	b.manifest = append([]byte(nil), encoded...)
+	b.clockAnchor = manifest.ClockAnchor.UTC()
+	b.legacyShards = nil
+	b.legacyMetadata = nil
+}
+
+func (b *checkpointBinding) ensureWriteFenceLocked(ctx context.Context) bool {
+	if b.fenceKnown {
+		return true
+	}
+	value, available, err := b.registry.get(ctx, b.manifestKey())
+	if !available || err != nil {
+		if err != nil {
+			b.warnPersistFailure(fmt.Errorf("establish checkpoint write fence: %w", err))
+		}
+		return false
+	}
+	if len(value) == 0 {
+		b.installEmptyWriteFenceLocked()
+		return true
+	}
+	if len(value) > maxCheckpointMetaBytes {
+		b.warnPersistFailure(fmt.Errorf("establish checkpoint write fence: manifest is %d bytes; maximum is %d", len(value), maxCheckpointMetaBytes))
+		return false
+	}
+	var manifest checkpointManifest
+	if decodeErr := json.Unmarshal(value, &manifest); decodeErr != nil {
+		b.warnPersistFailure(fmt.Errorf("establish checkpoint write fence: decode manifest: %w", decodeErr))
+		return false
+	}
+	if validationErr := validateCheckpointManifest(manifest); validationErr != nil {
+		b.warnPersistFailure(fmt.Errorf("establish checkpoint write fence: %w", validationErr))
+		return false
+	}
+	b.installManifestWriteFenceLocked(manifest, value)
+	return true
+}
+
+func (b *checkpointBinding) replacementRequired() bool {
+	if b == nil {
+		return false
+	}
+	b.persistMu.Lock()
+	defer b.persistMu.Unlock()
+	return b.replaceGeneration
+}
+
+func (b *checkpointBinding) resolvePublicationLocked(ctx context.Context) (resolved, candidateCommitted bool) {
+	publication := b.uncertain
+	if publication == nil {
+		return true, false
+	}
+	value, available, err := b.registry.get(ctx, b.manifestKey())
+	if !available || err != nil {
+		if err != nil {
+			b.warnPersistFailure(fmt.Errorf("reconcile uncertain checkpoint manifest publication: %w", err))
+		}
+		return false, false
+	}
+	if len(value) > 0 {
+		if len(value) > maxCheckpointMetaBytes {
+			b.warnPersistFailure(fmt.Errorf("reconcile uncertain checkpoint manifest publication: manifest is %d bytes; maximum is %d", len(value), maxCheckpointMetaBytes))
+			return false, false
+		}
+		var manifest checkpointManifest
+		if decodeErr := json.Unmarshal(value, &manifest); decodeErr != nil {
+			b.warnPersistFailure(fmt.Errorf("reconcile uncertain checkpoint manifest publication: %w", decodeErr))
+			return false, false
+		}
+		if validationErr := validateCheckpointManifest(manifest); validationErr != nil {
+			b.warnPersistFailure(fmt.Errorf("reconcile uncertain checkpoint manifest publication: %w", validationErr))
+			return false, false
+		}
+	}
+	switch {
+	case bytes.Equal(value, publication.manifest):
+		b.uncertain = nil
+		b.commitPublicationLocked(publication)
+		b.runCleanupLocked(ctx)
+		return true, true
+	case bytes.Equal(value, publication.previousManifest):
+		b.uncertain = nil
+		b.addCleanupKeysLocked(publication.stageKeys)
+		b.runCleanupLocked(ctx)
+		return true, false
+	default:
+		b.warnPersistFailure(errors.New("reconcile uncertain checkpoint manifest publication: stored manifest is neither the previous nor candidate generation"))
+		return false, false
+	}
+}
+
+func (b *checkpointBinding) commitPublicationLocked(publication *checkpointPublication) {
+	b.active = publication.active
+	b.slots = publication.slots
+	b.legacy = false
+	b.manifest = append([]byte(nil), publication.manifest...)
+	b.clockAnchor = publication.clockAnchor
+	b.fenceKnown = true
+	b.replaceGeneration = false
+	b.legacyShards = nil
+	b.legacyMetadata = nil
+	b.addCleanupKeysLocked(publication.obsoleteKeys)
+	b.filterReferencedCleanupLocked()
+	b.loadFailed.Store(false)
+	b.corrupt.Store(false)
+	b.saveFailed.Store(false)
+}
+
+func (b *checkpointBinding) addCleanupKeysLocked(keys []string) {
+	if b.cleanupPending == nil {
+		b.cleanupPending = make(map[string]struct{}, len(keys))
+	}
+	for _, key := range keys {
+		if key == "" {
+			continue
+		}
+		// There are exactly three possible durable keys per shard: one legacy
+		// key and two slots. The fixed namespace bounds retained cleanup work.
+		if len(b.cleanupPending) < checkpointCleanupKeyLimit {
+			b.cleanupPending[key] = struct{}{}
+		}
+	}
+}
+
+func (b *checkpointBinding) filterReferencedCleanupLocked() {
+	if b.uncertain != nil {
+		return
+	}
+	for shard := range b.active {
+		delete(b.cleanupPending, b.activeShardKeyLocked(shard))
+	}
+}
+
+func (b *checkpointBinding) runCleanupLocked(ctx context.Context) {
+	if len(b.cleanupPending) == 0 {
+		b.cleanFailed.Store(false)
+		return
+	}
+	if b.uncertain != nil {
+		return
+	}
+	b.filterReferencedCleanupLocked()
+	keys := make([]string, 0, len(b.cleanupPending))
+	for key := range b.cleanupPending {
+		keys = append(keys, key)
+	}
+	if len(keys) == 0 {
+		b.cleanFailed.Store(false)
+		return
+	}
+	sort.Strings(keys)
+	operations := make([]*storage.Operation, 0, len(keys))
+	for _, key := range keys {
+		operations = append(operations, storage.DeleteOperation(key))
+	}
+	available, err := b.registry.batch(ctx, operations...)
+	if !available {
+		return
+	}
+	if err != nil {
+		if b.cleanFailed.CompareAndSwap(false, true) {
+			b.warn("Failed to clean stale Cisco OS checkpoint shards; collection will continue and cleanup will retry", err)
+		}
+		return
+	}
+	for _, key := range keys {
+		delete(b.cleanupPending, key)
+	}
+	b.cleanFailed.Store(false)
+}
+
+func (b *checkpointBinding) activeShardKeyLocked(shard uint16) string {
+	if b.legacy {
+		return b.shardKey(shard)
+	}
+	return b.slottedShardKey(shard, b.slots[shard])
 }
 
 func (b *checkpointBinding) warnPersistFailure(err error) {
@@ -954,6 +1435,10 @@ func (b *checkpointBinding) manifestKey() string {
 
 func (b *checkpointBinding) shardKey(shard uint16) string {
 	return fmt.Sprintf("%s/shards/%04d", b.identity.key(), shard)
+}
+
+func (b *checkpointBinding) slottedShardKey(shard uint16, slot uint8) string {
+	return fmt.Sprintf("%s/slots/%d/shards/%04d", b.identity.key(), slot, shard)
 }
 
 func (b *checkpointBinding) warnCorrupt(err error) {
@@ -979,7 +1464,24 @@ func (b *checkpointBinding) warn(message string, err error) {
 }
 
 func validateCheckpointManifest(manifest checkpointManifest) error {
-	if manifest.Version != checkpointFormatVersion {
+	switch manifest.Version {
+	case checkpointFormatVersion:
+		if manifest.Layout != 0 || len(manifest.Slots) != 0 {
+			return errors.New("legacy checkpoint manifest contains slotted-layout fields")
+		}
+	case checkpointManifestFormatVersion:
+		if manifest.Layout != checkpointSlottedLayout {
+			return fmt.Errorf("checkpoint manifest version %d requires layout %d", manifest.Version, checkpointSlottedLayout)
+		}
+		if len(manifest.Slots) != len(manifest.Active) {
+			return fmt.Errorf("checkpoint manifest contains %d active shards but %d slot references", len(manifest.Active), len(manifest.Slots))
+		}
+		for i, slot := range manifest.Slots {
+			if slot >= checkpointShardSlots {
+				return fmt.Errorf("checkpoint manifest shard %d references invalid slot %d", manifest.Active[i], slot)
+			}
+		}
+	default:
 		return fmt.Errorf("unsupported checkpoint manifest version %d", manifest.Version)
 	}
 	if len(manifest.Active) > checkpointShardCount {

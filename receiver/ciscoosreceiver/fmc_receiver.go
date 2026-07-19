@@ -1257,6 +1257,12 @@ func (s *fmcEStreamerResumeState) restoreCheckpoint(ctx context.Context) {
 	binding := s.checkpoint
 	now := s.now()
 	s.mu.Unlock()
+	restoreAccepted := false
+	defer func() {
+		if !restoreAccepted && binding.replacementRequired() {
+			s.markCheckpointReplacementDirty()
+		}
+	}()
 	loaded, ok := binding.load(ctx)
 	if !ok {
 		return
@@ -1412,9 +1418,19 @@ func (s *fmcEStreamerResumeState) restoreCheckpoint(ctx context.Context) {
 	s.lastAttempt = s.now()
 	s.retryAfter = time.Time{}
 	s.mu.Unlock()
-	binding.acceptLoaded(loaded.active, loaded.clockAnchor)
+	binding.acceptLoaded(loaded)
+	restoreAccepted = true
 	binding.markValid()
 	s.persistCheckpoint(ctx, true)
+}
+
+func (s *fmcEStreamerResumeState) markCheckpointReplacementDirty() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for shard := range s.shards {
+		s.generation[shard]++
+	}
+	s.metadataDirty = true
 }
 
 func (s *fmcEStreamerResumeState) persistCheckpoint(ctx context.Context, force bool) {
@@ -1433,6 +1449,7 @@ func (s *fmcEStreamerResumeState) persistCheckpoint(ctx context.Context, force b
 	pending := s.accepted - s.flushed
 	if pending == 0 && !s.metadataDirty && !force {
 		s.mu.Unlock()
+		binding.maintain(ctx)
 		return
 	}
 	if !force {
@@ -1484,6 +1501,7 @@ func (s *fmcEStreamerResumeState) persistCheckpoint(ctx context.Context, force b
 		return
 	}
 	if len(dirty) == 0 && !metadataDirty {
+		binding.maintain(ctx)
 		return
 	}
 	persisted := binding.persist(ctx, shards, active, metadata, clockAnchor)

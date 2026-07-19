@@ -109,11 +109,23 @@ passwords, certificate paths, and unrelated retry or result-limit settings are e
 list or rotating credentials therefore does not orphan state, while a different receiver instance, provider, or endpoint
 cannot consume another target's checkpoint.
 
-State is stored as a manifest plus fixed pages of at most 64 entries and 64 KiB, with at most 1,563 pages and 100,000
-retained counter, deduplication, or eStreamer replay entries. Restoration reads only manifest-listed page keys and does
-not require optional storage walking support. A polling delivery rewrites only pages changed by that accepted batch plus
-the manifest; even a full expiry is capped at 1,563 page operations. Page allocation uses available capacity rather than
-hash buckets, so collisions cannot lower the 100,000-entry correctness ceiling.
+Each checkpoint identity requires one active writer because the Collector storage API provides no cross-process
+compare-and-swap. HA replicas must use separate storage namespaces or receiver instance IDs; sharing the same checkpoint
+keys between active Collectors is not supported by the two-slot protocol.
+
+State is stored as a manifest plus at most 1,563 logical pages of 64 entries and 64 KiB each, retaining up to 100,000
+counter, deduplication, or eStreamer replay entries. Each logical page has two fixed physical slots (at most 3,126 slotted
+page keys), plus at most 1,563 retained unslotted legacy keys. Restoration reads only manifest-listed keys and does
+not require storage walking. A polling delivery stages only changed pages into slots not referenced by the committed
+manifest, then publishes the version 2 manifest with a separate single-key write. A partially applied page batch therefore
+leaves the prior generation readable. After an ambiguous manifest-write failure, persistence pauses until a read identifies
+the committed generation, so a retry cannot overwrite a possibly live slot. Startup manifest failures disable durable writes
+until an absent or valid header establishes a safe fence; if a valid header's pages or domain payload cannot be restored, the
+next complete in-memory snapshot replaces that generation using the fenced slots. Version 1 manifests with unslotted keys
+migrate through the same copy-on-write path; version 1-only downgrade receivers reject a version 2 manifest and start with
+empty in-memory state, which prevents combining a version 2 manifest with stale version 1 pages. Stage writes are capped at
+1,563 per delivery, while fail-open deletion and legacy cleanup use at most three fixed keys per page. Capacity-based page
+allocation prevents collisions from lowering the 100,000-entry correctness ceiling.
 
 Polling-log and counter checkpoints are written only after the next Collector consumer accepts the batch. FMC eStreamer
 and ISE pxGrid checkpoint only accepted streaming messages and debounce persistence until 256 accepted messages or five

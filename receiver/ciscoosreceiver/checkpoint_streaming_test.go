@@ -230,7 +230,7 @@ func TestFMCEStreamerCheckpointMigratesMissingClockAnchorAcrossRepeatedRollback(
 	first.commit("accepted-before-anchor-migration", firstObservation.Add(-time.Second), firstObservation)
 	first.persistCheckpoint(t.Context(), true)
 	binding := first.checkpoint
-	shardKey := binding.shardKey(0)
+	shardKey := checkpointTestReferencedShardKey(t, backend, binding, 0)
 	originalShard := backend.value(shardKey)
 	removeCheckpointClockAnchor(t, backend, binding)
 	firstRegistry.Close(t.Context())
@@ -243,9 +243,10 @@ func TestFMCEStreamerCheckpointMigratesMissingClockAnchorAcrossRepeatedRollback(
 	batchesBefore, operationsBefore, _, _ := backend.writeStats()
 	require.NoError(t, migratedRegistry.Start(t.Context(), checkpointHost(backend)))
 	batchesAfter, operationsAfter, _, _ := backend.writeStats()
-	assert.Equal(t, batchesBefore+1, batchesAfter)
-	assert.Equal(t, operationsBefore+2, operationsAfter, "rollback migration must rewrite the normalized shard and manifest")
-	assert.NotEqual(t, originalShard, backend.value(shardKey))
+	assert.Equal(t, batchesBefore+2, batchesAfter)
+	assert.Equal(t, operationsBefore+2, operationsAfter, "rollback migration must stage the normalized shard before publishing the manifest")
+	assert.Equal(t, originalShard, backend.value(shardKey), "copy-on-write must not mutate the previously referenced slot")
+	assert.NotEqual(t, originalShard, checkpointTestReferencedShard(t, backend, migrated.checkpoint, 0))
 	assert.Equal(t, migrationTime, checkpointTestManifest(t, backend, migrated.checkpoint).ClockAnchor)
 	assert.True(t, migrated.seenBefore("accepted-before-anchor-migration"))
 	assert.Equal(t, migrationTime, migrated.cursor)
@@ -531,10 +532,11 @@ func TestFMCEStreamerHighRateCheckpointWritesAreBounded(t *testing.T) {
 	}
 
 	batches, operations, maxOperations, maxValueSize := backend.writeStats()
-	assert.Equal(t, eventCount/fmcCheckpointFlushEvents, batches)
+	publications := eventCount / fmcCheckpointFlushEvents
+	assert.Equal(t, publications*2, batches, "each checkpoint uses one shard stage and one manifest publication")
 	assert.Less(t, batches, eventCount/100, "high-rate input must not cause one storage write per event")
-	assert.LessOrEqual(t, maxOperations, fmcCheckpointFlushEvents/checkpointShardEntries+2, "one flush may touch only bounded pages plus the manifest")
-	assert.LessOrEqual(t, operations, batches*(fmcCheckpointFlushEvents/checkpointShardEntries+2))
+	assert.LessOrEqual(t, maxOperations, fmcCheckpointFlushEvents/checkpointShardEntries+1, "one stage may touch only bounded shard pages")
+	assert.LessOrEqual(t, operations, publications*(fmcCheckpointFlushEvents/checkpointShardEntries+1))
 	assert.LessOrEqual(t, maxValueSize, maxCheckpointShardBytes)
 
 	state.commit("interval-event", now.Add(time.Second), now.Add(time.Second))
@@ -544,15 +546,15 @@ func TestFMCEStreamerHighRateCheckpointWritesAreBounded(t *testing.T) {
 	now = now.Add(fmcCheckpointFlushInterval)
 	state.persistCheckpoint(t.Context(), false)
 	batchesAfterInterval, _, _, _ := backend.writeStats()
-	assert.Equal(t, batches+1, batchesAfterInterval, "an accepted partial batch must flush at the interval bound")
+	assert.Equal(t, batches+2, batchesAfterInterval, "an accepted partial batch must stage and publish at the interval bound")
 	for i := range fmcCheckpointFlushEvents {
 		eventTime := now.Add(time.Duration(i+1) * time.Nanosecond)
 		state.commit(fmt.Sprintf("post-interval-event-%d", i), eventTime, eventTime)
 		state.persistCheckpoint(t.Context(), false)
 	}
 	batchesAfterPartialPage, _, maxOperations, _ := backend.writeStats()
-	assert.Equal(t, batchesAfterInterval+1, batchesAfterPartialPage)
-	assert.Equal(t, fmcCheckpointFlushEvents/checkpointShardEntries+2, maxOperations, "a partial page plus 256 events must still have a fixed write bound")
+	assert.Equal(t, batchesAfterInterval+2, batchesAfterPartialPage)
+	assert.Equal(t, fmcCheckpointFlushEvents/checkpointShardEntries+1, maxOperations, "a partial page plus 256 events must still have a fixed stage bound")
 }
 
 func TestFMCEStreamerShutdownPersistsOnlyAcceptedEvents(t *testing.T) {
@@ -592,7 +594,7 @@ func TestFMCEStreamerShutdownPersistsOnlyAcceptedEvents(t *testing.T) {
 
 	require.NoError(t, receiver.Shutdown(t.Context()))
 	batches, _, _, _ = backend.writeStats()
-	assert.Equal(t, 1, batches, "shutdown must best-effort flush the accepted partial batch")
+	assert.Equal(t, 2, batches, "shutdown must stage and publish the accepted partial batch")
 	registry.Close(t.Context())
 
 	restored := newFMCEStreamerResumeState(initial)
@@ -629,10 +631,11 @@ func TestISEPxGridHighRateCheckpointWritesAreBoundedAndFlushOnIntervalAndShutdow
 	}
 
 	batches, operations, maxOperations, maxValueSize := backend.writeStats()
-	assert.Equal(t, eventCount/logCheckpointFlushEvents, batches)
+	publications := eventCount / logCheckpointFlushEvents
+	assert.Equal(t, publications*2, batches, "each checkpoint uses one shard stage and one manifest publication")
 	assert.Less(t, batches, eventCount/100, "ISE streaming must not cause one storage write per message")
-	assert.LessOrEqual(t, maxOperations, logCheckpointFlushEvents/checkpointShardEntries+2)
-	assert.LessOrEqual(t, operations, batches*(logCheckpointFlushEvents/checkpointShardEntries+2))
+	assert.LessOrEqual(t, maxOperations, logCheckpointFlushEvents/checkpointShardEntries+1)
+	assert.LessOrEqual(t, operations, publications*(logCheckpointFlushEvents/checkpointShardEntries+1))
 	assert.LessOrEqual(t, maxValueSize, maxCheckpointShardBytes)
 
 	require.NoError(t, receiver.consumePxGridMessage(t.Context(), ise.StompMessage{
@@ -641,22 +644,22 @@ func TestISEPxGridHighRateCheckpointWritesAreBoundedAndFlushOnIntervalAndShutdow
 	now = now.Add(logCheckpointFlushInterval)
 	seen.persistCheckpoint(t.Context(), false)
 	batchesAfterInterval, _, _, _ := backend.writeStats()
-	assert.Equal(t, batches+1, batchesAfterInterval, "an accepted partial batch must flush at the interval bound")
+	assert.Equal(t, batches+2, batchesAfterInterval, "an accepted partial batch must stage and publish at the interval bound")
 	for i := range logCheckpointFlushEvents {
 		require.NoError(t, receiver.consumePxGridMessage(t.Context(), ise.StompMessage{
 			Topic: "com.cisco.ise.session", MessageID: fmt.Sprintf("post-interval-message-%d", i),
 		}))
 	}
 	batchesAfterPartialPage, _, maxOperations, _ := backend.writeStats()
-	assert.Equal(t, batchesAfterInterval+1, batchesAfterPartialPage)
-	assert.Equal(t, logCheckpointFlushEvents/checkpointShardEntries+2, maxOperations, "a partial page plus 256 messages must still have a fixed write bound")
+	assert.Equal(t, batchesAfterInterval+2, batchesAfterPartialPage)
+	assert.Equal(t, logCheckpointFlushEvents/checkpointShardEntries+1, maxOperations, "a partial page plus 256 messages must still have a fixed stage bound")
 
 	require.NoError(t, receiver.consumePxGridMessage(t.Context(), ise.StompMessage{
 		Topic: "com.cisco.ise.session", MessageID: "shutdown-message",
 	}))
 	require.NoError(t, receiver.Shutdown(t.Context()))
 	batchesAfterShutdown, _, _, _ := backend.writeStats()
-	assert.Equal(t, batchesAfterPartialPage+1, batchesAfterShutdown, "shutdown must flush the accepted partial batch")
+	assert.Equal(t, batchesAfterPartialPage+2, batchesAfterShutdown, "shutdown must stage and publish the accepted partial batch")
 }
 
 func TestISEPxGridShutdownPersistsOnlyAcceptedEvents(t *testing.T) {
@@ -730,7 +733,7 @@ func TestISEPxGridShutdownFlushesBeforeBlockedDataConnectClose(t *testing.T) {
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Less(t, time.Since(startedAt), time.Second)
 	batches, _, _, _ = backend.writeStats()
-	assert.Equal(t, 1, batches, "accepted pxGrid state must flush before waiting for Data Connect Close")
+	assert.Equal(t, 2, batches, "accepted pxGrid state must stage and publish before waiting for Data Connect Close")
 	select {
 	case <-blocker.started:
 	default:

@@ -277,6 +277,12 @@ func (d *logDeduplicator) restoreCheckpoint(ctx context.Context) {
 	binding := d.checkpoint
 	now := d.now()
 	d.mu.Unlock()
+	restoreAccepted := false
+	defer func() {
+		if !restoreAccepted && binding.replacementRequired() {
+			d.markCheckpointReplacementDirty()
+		}
+	}()
 	loaded, ok := binding.load(ctx)
 	if !ok {
 		return
@@ -363,9 +369,19 @@ func (d *logDeduplicator) restoreCheckpoint(ctx context.Context) {
 	d.retryAfter = time.Time{}
 	d.manifestDirty = loaded.clockAnchor.IsZero()
 	d.mu.Unlock()
-	binding.acceptLoaded(loaded.active, loaded.clockAnchor)
+	binding.acceptLoaded(loaded)
+	restoreAccepted = true
 	binding.markValid()
 	d.persistCheckpoint(ctx, true)
+}
+
+func (d *logDeduplicator) markCheckpointReplacementDirty() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for shard := range d.shards {
+		d.generation[shard]++
+	}
+	d.manifestDirty = true
 }
 
 func (d *logDeduplicator) persistCheckpoint(ctx context.Context, force bool) {
@@ -394,6 +410,9 @@ func (d *logDeduplicator) persistCheckpoint(ctx context.Context, force bool) {
 	if !force {
 		if (!checkpointDirty && pendingAccepted == 0) || now.Before(d.retryAfter) || (pendingAccepted < logCheckpointFlushEvents && now.Sub(d.lastAttempt) < logCheckpointFlushInterval) {
 			d.mu.Unlock()
+			if !checkpointDirty && pendingAccepted == 0 {
+				binding.maintain(ctx)
+			}
 			return
 		}
 	}
@@ -440,6 +459,7 @@ func (d *logDeduplicator) persistCheckpoint(ctx context.Context, force bool) {
 	manifestDirty := d.manifestDirty
 	d.mu.Unlock()
 	if len(dirty) == 0 && !manifestDirty {
+		binding.maintain(ctx)
 		return
 	}
 	persisted := binding.persist(ctx, shards, active, nil, clockAnchor)
