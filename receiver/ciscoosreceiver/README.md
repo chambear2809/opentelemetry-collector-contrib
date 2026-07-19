@@ -433,7 +433,7 @@ leaf and spine is unavailable.
 | `nexus_dashboard.auth.username` | string | Yes | Username for API-key headers or login token auth. |
 | `nexus_dashboard.auth.api_key` | string | Yes* | Nexus Dashboard API key for `api_key` auth. |
 | `nexus_dashboard.auth.password` | string | Yes** | Password for username/password login token auth. |
-| `nexus_dashboard.page_size` | int | No | Generic page size for controller APIs. Defaults to `100`. |
+| `nexus_dashboard.page_size` | int | No | `max`/`offset` page size for endpoints whose cited contract supports client-driven pagination. It is not sent to single-response, server-link, or unverified legacy routes. Defaults to `100`. |
 | `nexus_dashboard.max_retries` | int | No | Retries for 429 and transient 5xx responses. Defaults to `3`. |
 | `nexus_dashboard.event_lookback` | duration | No | Lookback for audit, event, anomaly, advisory, and deployment evidence. Defaults to `24h`. |
 | `nexus_dashboard.targets.*` | lists | No | Optional filters for `sites`, `fabrics`, `switch_serials`, `switch_ids`, `interface_names`, and `service_names`. |
@@ -446,9 +446,35 @@ The `unified` profile currently polls cluster health, nodes, node hardware, syst
 fabric switch inventory, and fabric switch summaries. Nested hardware, system-resource, and switch-summary values are
 not yet mapped into numeric telemetry; those routes currently provide request-health and generic resource-presence
 evidence. The profile does not emit Nexus Dashboard logs; current audit/event APIs must be verified before log routes
-are added. The `legacy` profile remains the default for compatibility with existing deployments and retains the prior
-endpoint catalog unchanged. The unified catalog currently registers only the `platform` and `ndfc` groups; the
-`insights`, `orchestrator`, `data_broker`, and `performance` group settings do not add unified endpoints yet.
+are added. The `legacy` profile remains the default for compatibility with existing deployments and retains its prior
+endpoint paths. The unified catalog currently registers only the `platform` and `ndfc` groups; the `insights`,
+`orchestrator`, `data_broker`, and `performance` group settings do not add unified endpoints yet.
+
+Pagination is an explicit endpoint/version contract; response shape is not used to guess whether `offset` is safe.
+The catalog is based on these Cisco OpenAPI releases:
+
+| Endpoint family | Strategy | Cisco contract evidence |
+|-----------------|----------|-------------------------|
+| Unified `/api/v1/infra/clusterhealth/status`, `/cluster/nodes`, and `/systemResources/...` | Single response | [Nexus Dashboard Infrastructure v1 1.1.136](https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/infra.json) defines no `max`/`offset` parameters for these operations. |
+| Unified and legacy `/api/v1/manage/fabrics`; unified `/fabrics/{fabricName}/switches` | Offset | [Nexus Dashboard Manage v1 1.1.411](https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/manage.json) defines shared `max` and `offset` parameters for both list operations. This includes the path-level/shared parameter references on `listFabricSwitches`. |
+| Unified `/api/v1/manage/fabrics/{fabricName}/switches/summary` | Single response | Nexus Dashboard Manage v1 1.1.411 defines only cluster/fabric parameters for this summary operation. |
+| Legacy NDFC `/control/fabrics/fabricstatus` | Single response | [Nexus Dashboard Fabric Controller API - LAN 12.5.0](https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/nd-fabric-controller-lan-1242.json) documents this exact path as a complete fabric-status response with no pagination parameters. |
+| Legacy NDO `/mso/api/v1/sites` and `/mso/api/v1/schemas` | Single response | [Nexus Dashboard Orchestrator 5.2.1](https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/orchestration.json) documents “all” sites/schemas and no pagination parameters. |
+| Other legacy `/api/v1/infra/...` compatibility paths | Unverified | The paths are absent from [Nexus Dashboard API 4.2.1](https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/nexus-dashboard-421.json) and Infrastructure v1 1.1.136. |
+| Legacy `/api/v1/manage/fabric-switches/summary` | Unverified | This older path is absent from Nexus Dashboard Manage v1 1.1.411. |
+| Other legacy NDFC App Center paths | Unverified | The exact paths are absent from Nexus Dashboard Fabric Controller API - LAN 12.5.0. |
+| Legacy `/nexus/insights/api/v1/...` paths | Unverified | The exact paths are absent from [Nexus Dashboard Insights API 6.8.0](https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/nd-insights-v2.json) and [Analyze v1 1.1.209](https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/analyze.json). |
+| Legacy NDO tasks, alerts, and audit paths | Unverified | The exact paths are absent from Nexus Dashboard Orchestrator 5.2.1. |
+| Legacy Data Broker paths | Unverified | No matching Data Broker paths appear in the cited Nexus Dashboard API 4.2.1 catalog. |
+
+Offset routes continue after a metadata-free full page. A short page is terminal only when authoritative continuation
+metadata does not claim more; explicit total/remaining terminal values, repeated data/no progress, a configured result
+cap, and the hard page/result/byte budgets also stop collection. Server-provided continuation URLs are resolved against
+the configured endpoint path while remaining pinned to its origin. Single-response routes always perform exactly one
+request and report a contract error if the response claims continuation. Server-link routes never invent `max` or
+`offset` parameters. Unverified routes also send no invented pagination parameters; because their server default is
+unknown, any nonempty response without an explicit next link or terminal total/remaining metadata is emitted as partial
+data with a visible contract error rather than being reported as known-complete.
 
 Collection groups default to enabled and can be disabled or capped independently:
 

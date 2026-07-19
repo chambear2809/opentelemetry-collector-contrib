@@ -1,0 +1,7 @@
+change_type: bug_fix
+component: receiver/cisco_os
+note: Prevent Nexus Dashboard collection from silently truncating paginated API responses.
+issues: [0]
+subtext: |
+  Apply documented per-route pagination contracts, safely advance metadata-free offset pages, and surface unverified legacy responses as partial instead of guessing that a nonempty page is complete.
+change_logs: [user]

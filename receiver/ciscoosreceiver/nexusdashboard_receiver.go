@@ -104,6 +104,67 @@ type nexusDashboardLogsReceiver struct {
 	seen *logDeduplicator
 }
 
+type nexusDashboardPaginationContract struct {
+	strategy      nexusdashboard.PaginationStrategy
+	specification string
+	reference     string
+}
+
+const (
+	nexusDashboardInfraSpec       = "Cisco Nexus Dashboard Infrastructure v1 1.1.136 (Nexus Dashboard API v1, Release 4.2 and above)"
+	nexusDashboardManageSpec      = "Cisco Nexus Dashboard Manage v1 1.1.411 (Nexus Dashboard API v1, Release 4.2 and above)"
+	nexusDashboardNDFCLANSpec     = "Cisco Nexus Dashboard Fabric Controller API - LAN 12.5.0 (Nexus Dashboard API v1, Release 4.2 and above)"
+	nexusDashboardNDOSpec         = "Cisco Nexus Dashboard Orchestrator 5.2.1 (Nexus Dashboard API v1, Release 4.2 and above)"
+	nexusDashboardLegacyInfraSpec = "Legacy infrastructure compatibility route absent from Cisco Nexus Dashboard API 4.2.1 and Infrastructure v1 1.1.136"
+	nexusDashboardLegacyNDFCSpec  = "Legacy NDFC compatibility route absent from Cisco Nexus Dashboard Fabric Controller API - LAN 12.5.0"
+	nexusDashboardLegacyNDOSpec   = "Legacy NDO compatibility route absent from Cisco Nexus Dashboard Orchestrator 5.2.1"
+	nexusDashboardLegacyNISpec    = "Legacy Insights compatibility route absent from Cisco Nexus Dashboard Insights API 6.8.0 and Analyze v1 1.1.209"
+	nexusDashboardLegacyNDDBSpec  = "Legacy Data Broker compatibility route absent from the Cisco Nexus Dashboard API 4.2.1 catalog"
+
+	nexusDashboardInfraSpecURL   = "https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/infra.json"
+	nexusDashboardManageSpecURL  = "https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/manage.json"
+	nexusDashboardNDFCLANSpecURL = "https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/nd-fabric-controller-lan-1242.json"
+	nexusDashboardNDOSpecURL     = "https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/orchestration.json"
+	nexusDashboardLegacySpecURL  = "https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/nexus-dashboard-421.json"
+	nexusDashboardNISpecURL      = "https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/nd-insights-v2.json"
+)
+
+var (
+	nexusDashboardPaginationInfraSingle = nexusDashboardPaginationContract{
+		strategy: nexusdashboard.PaginationSingle, specification: nexusDashboardInfraSpec, reference: nexusDashboardInfraSpecURL,
+	}
+	nexusDashboardPaginationManageOffset = nexusDashboardPaginationContract{
+		strategy: nexusdashboard.PaginationOffset, specification: nexusDashboardManageSpec, reference: nexusDashboardManageSpecURL,
+	}
+	nexusDashboardPaginationManageSingle = nexusDashboardPaginationContract{
+		strategy: nexusdashboard.PaginationSingle, specification: nexusDashboardManageSpec, reference: nexusDashboardManageSpecURL,
+	}
+	nexusDashboardPaginationNDFCLANSingle = nexusDashboardPaginationContract{
+		strategy: nexusdashboard.PaginationSingle, specification: nexusDashboardNDFCLANSpec, reference: nexusDashboardNDFCLANSpecURL,
+	}
+	nexusDashboardPaginationNDOSingle = nexusDashboardPaginationContract{
+		strategy: nexusdashboard.PaginationSingle, specification: nexusDashboardNDOSpec, reference: nexusDashboardNDOSpecURL,
+	}
+	nexusDashboardPaginationLegacyInfraUnknown = nexusDashboardPaginationContract{
+		strategy: nexusdashboard.PaginationUnknown, specification: nexusDashboardLegacyInfraSpec, reference: nexusDashboardLegacySpecURL,
+	}
+	nexusDashboardPaginationLegacyManageUnknown = nexusDashboardPaginationContract{
+		strategy: nexusdashboard.PaginationUnknown, specification: "Legacy Manage compatibility route absent from " + nexusDashboardManageSpec, reference: nexusDashboardManageSpecURL,
+	}
+	nexusDashboardPaginationLegacyNDFCUnknown = nexusDashboardPaginationContract{
+		strategy: nexusdashboard.PaginationUnknown, specification: nexusDashboardLegacyNDFCSpec, reference: nexusDashboardNDFCLANSpecURL,
+	}
+	nexusDashboardPaginationLegacyInsightsUnknown = nexusDashboardPaginationContract{
+		strategy: nexusdashboard.PaginationUnknown, specification: nexusDashboardLegacyNISpec, reference: nexusDashboardNISpecURL,
+	}
+	nexusDashboardPaginationLegacyNDOUnknown = nexusDashboardPaginationContract{
+		strategy: nexusdashboard.PaginationUnknown, specification: nexusDashboardLegacyNDOSpec, reference: nexusDashboardNDOSpecURL,
+	}
+	nexusDashboardPaginationLegacyNDDBUnknown = nexusDashboardPaginationContract{
+		strategy: nexusdashboard.PaginationUnknown, specification: nexusDashboardLegacyNDDBSpec, reference: nexusDashboardLegacySpecURL,
+	}
+)
+
 type nexusDashboardEndpoint struct {
 	group       string
 	operation   string
@@ -111,6 +172,7 @@ type nexusDashboardEndpoint struct {
 	objectType  string
 	product     string
 	selectorKey string
+	pagination  nexusDashboardPaginationContract
 	query       func(*Config, time.Time) url.Values
 }
 
@@ -250,7 +312,14 @@ func (r *nexusDashboardMetricsReceiver) scrape(ctx context.Context) (pmetric.Met
 			builder.recordSkippedEndpoint(*endpoint)
 			continue
 		}
-		objects, err := r.client.List(ctx, endpoint.operation, endpoint.path, nexusDashboardEndpointQuery(endpoint.nexusDashboardEndpoint, r.config, now), nexusDashboardGroupMaxResults(r.config.NexusDashboard, endpoint.group))
+		objects, err := r.client.List(
+			ctx,
+			endpoint.operation,
+			endpoint.path,
+			nexusDashboardEndpointQuery(endpoint.nexusDashboardEndpoint, r.config, now),
+			endpoint.pagination.strategy,
+			nexusDashboardGroupMaxResults(r.config.NexusDashboard, endpoint.group),
+		)
 		for _, obj := range filterNexusDashboardEndpointObjects(objects, *endpoint, r.config) {
 			if !selector.allows(nexusDashboardObjectIdentity(obj)) {
 				continue
@@ -401,7 +470,14 @@ func (r *nexusDashboardLogsReceiver) scrape(ctx context.Context) (plog.Logs, err
 		if !nexusDashboardGroupEnabled(r.config.NexusDashboard, endpoint.group) || endpoint.skipped {
 			continue
 		}
-		objects, err := r.client.List(ctx, endpoint.operation, endpoint.path, nexusDashboardEndpointQuery(endpoint.nexusDashboardEndpoint, r.config, now), nexusDashboardGroupMaxResults(r.config.NexusDashboard, endpoint.group))
+		objects, err := r.client.List(
+			ctx,
+			endpoint.operation,
+			endpoint.path,
+			nexusDashboardEndpointQuery(endpoint.nexusDashboardEndpoint, r.config, now),
+			endpoint.pagination.strategy,
+			nexusDashboardGroupMaxResults(r.config.NexusDashboard, endpoint.group),
+		)
 		for _, obj := range filterNexusDashboardEndpointObjects(objects, *endpoint, r.config) {
 			if !selector.allows(nexusDashboardObjectIdentity(obj)) {
 				continue
@@ -767,7 +843,8 @@ func nexusDashboardLogEndpointInstances(cfg *Config) []nexusDashboardEndpointIns
 
 func expandNexusDashboardEndpoints(endpoints []nexusDashboardEndpoint, cfg *Config) []nexusDashboardEndpointInstance {
 	var out []nexusDashboardEndpointInstance
-	for _, endpoint := range endpoints {
+	for i := range endpoints {
+		endpoint := endpoints[i]
 		switch endpoint.selectorKey {
 		case "":
 			out = append(out, nexusDashboardEndpointInstance{nexusDashboardEndpoint: endpoint, path: endpoint.path})
@@ -824,52 +901,52 @@ func nexusDashboardMetricEndpoints(apiProfile string) []nexusDashboardEndpoint {
 
 func nexusDashboardUnifiedMetricEndpoints() []nexusDashboardEndpoint {
 	return []nexusDashboardEndpoint{
-		{group: "platform", product: "platform", operation: "nd.cluster.health", path: "/api/v1/infra/clusterhealth/status", objectType: "nd.cluster"},
-		{group: "platform", product: "platform", operation: "nd.nodes", path: "/api/v1/infra/cluster/nodes", objectType: "nd.node"},
-		{group: "platform", product: "platform", operation: "nd.hardware", path: "/api/v1/infra/systemResources/nodes/hardware", objectType: "nd.node_hardware"},
-		{group: "platform", product: "platform", operation: "nd.system.resources", path: "/api/v1/infra/systemResources/summary", objectType: "nd.system_resources"},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.manage.fabrics", path: "/api/v1/manage/fabrics", objectType: "ndfc.fabric"},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.manage.fabric_switches", path: "/api/v1/manage/fabrics/{fabricName}/switches", objectType: "ndfc.switch", selectorKey: "fabric"},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.manage.fabric_switches_summary", path: "/api/v1/manage/fabrics/{fabricName}/switches/summary", objectType: "ndfc.switch_summary", selectorKey: "fabric"},
+		{group: "platform", product: "platform", operation: "nd.cluster.health", path: "/api/v1/infra/clusterhealth/status", objectType: "nd.cluster", pagination: nexusDashboardPaginationInfraSingle},
+		{group: "platform", product: "platform", operation: "nd.nodes", path: "/api/v1/infra/cluster/nodes", objectType: "nd.node", pagination: nexusDashboardPaginationInfraSingle},
+		{group: "platform", product: "platform", operation: "nd.hardware", path: "/api/v1/infra/systemResources/nodes/hardware", objectType: "nd.node_hardware", pagination: nexusDashboardPaginationInfraSingle},
+		{group: "platform", product: "platform", operation: "nd.system.resources", path: "/api/v1/infra/systemResources/summary", objectType: "nd.system_resources", pagination: nexusDashboardPaginationInfraSingle},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.manage.fabrics", path: "/api/v1/manage/fabrics", objectType: "ndfc.fabric", pagination: nexusDashboardPaginationManageOffset},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.manage.fabric_switches", path: "/api/v1/manage/fabrics/{fabricName}/switches", objectType: "ndfc.switch", selectorKey: "fabric", pagination: nexusDashboardPaginationManageOffset},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.manage.fabric_switches_summary", path: "/api/v1/manage/fabrics/{fabricName}/switches/summary", objectType: "ndfc.switch_summary", selectorKey: "fabric", pagination: nexusDashboardPaginationManageSingle},
 	}
 }
 
 func nexusDashboardLegacyMetricEndpoints() []nexusDashboardEndpoint {
 	return []nexusDashboardEndpoint{
-		{group: "platform", product: "platform", operation: "nd.cluster.health", path: "/api/v1/infra/cluster/health", objectType: "nd.cluster"},
-		{group: "platform", product: "platform", operation: "nd.nodes", path: "/api/v1/infra/nodes", objectType: "nd.node"},
-		{group: "platform", product: "platform", operation: "nd.services", path: "/api/v1/infra/services", objectType: "nd.service"},
-		{group: "platform", product: "platform", operation: "nd.apps", path: "/api/v1/infra/apps", objectType: "nd.app"},
-		{group: "platform", product: "platform", operation: "nd.storage", path: "/api/v1/infra/storage", objectType: "nd.storage"},
-		{group: "platform", product: "platform", operation: "nd.licenses", path: "/api/v1/infra/licenses", objectType: "nd.license"},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.manage.fabrics", path: "/api/v1/manage/fabrics", objectType: "ndfc.fabric"},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.manage.fabric_switches", path: "/api/v1/manage/fabric-switches/summary", objectType: "ndfc.switch"},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.fabric.status", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/fabrics/fabricstatus", objectType: "ndfc.fabric_status"},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.switches", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/switches", objectType: "ndfc.switch"},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.fabric.switch_overview", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/fabrics/{fabricName}/switches", objectType: "ndfc.switch", selectorKey: "fabric"},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.vpc.pairs", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/vpcpairs", objectType: "ndfc.vpc"},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.endpoints", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/top-down/fabrics/{fabricName}/endpoints", objectType: "ndfc.endpoint", selectorKey: "fabric"},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.policy.deployment", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/switches/{serialNumber}/intent-config", objectType: "ndfc.policy", selectorKey: "serial"},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.audit", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/audit", objectType: "ndfc.audit", query: recentNexusDashboardQuery},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.events", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/events", objectType: "ndfc.event", query: recentNexusDashboardQuery},
-		{group: "performance", product: "ndfc", operation: "ndfc.interface.stats", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/lanSwitches/{switchId}/interfaces", objectType: "ndfc.interface", selectorKey: "switch_id"},
-		{group: "performance", product: "ndfc", operation: "ndfc.telemetry.sync", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/telemetry/sync/status", objectType: "ndfc.telemetry"},
-		{group: "insights", product: "insights", operation: "insights.anomalies", path: "/nexus/insights/api/v1/anomalies", objectType: "insights.anomaly", query: recentNexusDashboardQuery},
-		{group: "insights", product: "insights", operation: "insights.advisories", path: "/nexus/insights/api/v1/advisories", objectType: "insights.advisory", query: recentNexusDashboardQuery},
-		{group: "insights", product: "insights", operation: "insights.root_causes", path: "/nexus/insights/api/v1/rootcauses", objectType: "insights.root_cause", query: recentNexusDashboardQuery},
-		{group: "insights", product: "insights", operation: "insights.sites", path: "/nexus/insights/api/v1/sites", objectType: "insights.site"},
-		{group: "insights", product: "insights", operation: "insights.flow_analyses", path: "/nexus/insights/api/v1/flow/analyses", objectType: "insights.flow"},
-		{group: "insights", product: "insights", operation: "insights.recommendations", path: "/nexus/insights/api/v1/recommendations", objectType: "insights.recommendation"},
-		{group: "orchestrator", product: "orchestrator", operation: "ndo.sites", path: "/mso/api/v1/sites", objectType: "ndo.site"},
-		{group: "orchestrator", product: "orchestrator", operation: "ndo.schemas", path: "/mso/api/v1/schemas", objectType: "ndo.schema"},
-		{group: "orchestrator", product: "orchestrator", operation: "ndo.deployments", path: "/mso/api/v1/tasks", objectType: "ndo.deployment", query: recentNexusDashboardQuery},
-		{group: "orchestrator", product: "orchestrator", operation: "ndo.alerts", path: "/mso/api/v1/alerts", objectType: "ndo.alert", query: recentNexusDashboardQuery},
-		{group: "orchestrator", product: "orchestrator", operation: "ndo.audit", path: "/mso/api/v1/audit", objectType: "ndo.audit", query: recentNexusDashboardQuery},
-		{group: "data_broker", product: "data_broker", operation: "nddb.health", path: "/api/v1/nddb/health", objectType: "nddb.health"},
-		{group: "data_broker", product: "data_broker", operation: "nddb.switches", path: "/api/v1/nddb/switches", objectType: "nddb.switch"},
-		{group: "data_broker", product: "data_broker", operation: "nddb.rules", path: "/api/v1/nddb/rules", objectType: "nddb.rule"},
-		{group: "data_broker", product: "data_broker", operation: "nddb.sessions", path: "/api/v1/nddb/sessions", objectType: "nddb.session"},
-		{group: "data_broker", product: "data_broker", operation: "nddb.events", path: "/api/v1/nddb/events", objectType: "nddb.event", query: recentNexusDashboardQuery},
+		{group: "platform", product: "platform", operation: "nd.cluster.health", path: "/api/v1/infra/cluster/health", objectType: "nd.cluster", pagination: nexusDashboardPaginationLegacyInfraUnknown},
+		{group: "platform", product: "platform", operation: "nd.nodes", path: "/api/v1/infra/nodes", objectType: "nd.node", pagination: nexusDashboardPaginationLegacyInfraUnknown},
+		{group: "platform", product: "platform", operation: "nd.services", path: "/api/v1/infra/services", objectType: "nd.service", pagination: nexusDashboardPaginationLegacyInfraUnknown},
+		{group: "platform", product: "platform", operation: "nd.apps", path: "/api/v1/infra/apps", objectType: "nd.app", pagination: nexusDashboardPaginationLegacyInfraUnknown},
+		{group: "platform", product: "platform", operation: "nd.storage", path: "/api/v1/infra/storage", objectType: "nd.storage", pagination: nexusDashboardPaginationLegacyInfraUnknown},
+		{group: "platform", product: "platform", operation: "nd.licenses", path: "/api/v1/infra/licenses", objectType: "nd.license", pagination: nexusDashboardPaginationLegacyInfraUnknown},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.manage.fabrics", path: "/api/v1/manage/fabrics", objectType: "ndfc.fabric", pagination: nexusDashboardPaginationManageOffset},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.manage.fabric_switches", path: "/api/v1/manage/fabric-switches/summary", objectType: "ndfc.switch", pagination: nexusDashboardPaginationLegacyManageUnknown},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.fabric.status", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/fabrics/fabricstatus", objectType: "ndfc.fabric_status", pagination: nexusDashboardPaginationNDFCLANSingle},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.switches", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/switches", objectType: "ndfc.switch", pagination: nexusDashboardPaginationLegacyNDFCUnknown},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.fabric.switch_overview", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/fabrics/{fabricName}/switches", objectType: "ndfc.switch", selectorKey: "fabric", pagination: nexusDashboardPaginationLegacyNDFCUnknown},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.vpc.pairs", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/vpcpairs", objectType: "ndfc.vpc", pagination: nexusDashboardPaginationLegacyNDFCUnknown},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.endpoints", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/top-down/fabrics/{fabricName}/endpoints", objectType: "ndfc.endpoint", selectorKey: "fabric", pagination: nexusDashboardPaginationLegacyNDFCUnknown},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.policy.deployment", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/switches/{serialNumber}/intent-config", objectType: "ndfc.policy", selectorKey: "serial", pagination: nexusDashboardPaginationLegacyNDFCUnknown},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.audit", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/audit", objectType: "ndfc.audit", pagination: nexusDashboardPaginationLegacyNDFCUnknown, query: recentNexusDashboardQuery},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.events", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/events", objectType: "ndfc.event", pagination: nexusDashboardPaginationLegacyNDFCUnknown, query: recentNexusDashboardQuery},
+		{group: "performance", product: "ndfc", operation: "ndfc.interface.stats", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/lanSwitches/{switchId}/interfaces", objectType: "ndfc.interface", selectorKey: "switch_id", pagination: nexusDashboardPaginationLegacyNDFCUnknown},
+		{group: "performance", product: "ndfc", operation: "ndfc.telemetry.sync", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/telemetry/sync/status", objectType: "ndfc.telemetry", pagination: nexusDashboardPaginationLegacyNDFCUnknown},
+		{group: "insights", product: "insights", operation: "insights.anomalies", path: "/nexus/insights/api/v1/anomalies", objectType: "insights.anomaly", pagination: nexusDashboardPaginationLegacyInsightsUnknown, query: recentNexusDashboardQuery},
+		{group: "insights", product: "insights", operation: "insights.advisories", path: "/nexus/insights/api/v1/advisories", objectType: "insights.advisory", pagination: nexusDashboardPaginationLegacyInsightsUnknown, query: recentNexusDashboardQuery},
+		{group: "insights", product: "insights", operation: "insights.root_causes", path: "/nexus/insights/api/v1/rootcauses", objectType: "insights.root_cause", pagination: nexusDashboardPaginationLegacyInsightsUnknown, query: recentNexusDashboardQuery},
+		{group: "insights", product: "insights", operation: "insights.sites", path: "/nexus/insights/api/v1/sites", objectType: "insights.site", pagination: nexusDashboardPaginationLegacyInsightsUnknown},
+		{group: "insights", product: "insights", operation: "insights.flow_analyses", path: "/nexus/insights/api/v1/flow/analyses", objectType: "insights.flow", pagination: nexusDashboardPaginationLegacyInsightsUnknown},
+		{group: "insights", product: "insights", operation: "insights.recommendations", path: "/nexus/insights/api/v1/recommendations", objectType: "insights.recommendation", pagination: nexusDashboardPaginationLegacyInsightsUnknown},
+		{group: "orchestrator", product: "orchestrator", operation: "ndo.sites", path: "/mso/api/v1/sites", objectType: "ndo.site", pagination: nexusDashboardPaginationNDOSingle},
+		{group: "orchestrator", product: "orchestrator", operation: "ndo.schemas", path: "/mso/api/v1/schemas", objectType: "ndo.schema", pagination: nexusDashboardPaginationNDOSingle},
+		{group: "orchestrator", product: "orchestrator", operation: "ndo.deployments", path: "/mso/api/v1/tasks", objectType: "ndo.deployment", pagination: nexusDashboardPaginationLegacyNDOUnknown, query: recentNexusDashboardQuery},
+		{group: "orchestrator", product: "orchestrator", operation: "ndo.alerts", path: "/mso/api/v1/alerts", objectType: "ndo.alert", pagination: nexusDashboardPaginationLegacyNDOUnknown, query: recentNexusDashboardQuery},
+		{group: "orchestrator", product: "orchestrator", operation: "ndo.audit", path: "/mso/api/v1/audit", objectType: "ndo.audit", pagination: nexusDashboardPaginationLegacyNDOUnknown, query: recentNexusDashboardQuery},
+		{group: "data_broker", product: "data_broker", operation: "nddb.health", path: "/api/v1/nddb/health", objectType: "nddb.health", pagination: nexusDashboardPaginationLegacyNDDBUnknown},
+		{group: "data_broker", product: "data_broker", operation: "nddb.switches", path: "/api/v1/nddb/switches", objectType: "nddb.switch", pagination: nexusDashboardPaginationLegacyNDDBUnknown},
+		{group: "data_broker", product: "data_broker", operation: "nddb.rules", path: "/api/v1/nddb/rules", objectType: "nddb.rule", pagination: nexusDashboardPaginationLegacyNDDBUnknown},
+		{group: "data_broker", product: "data_broker", operation: "nddb.sessions", path: "/api/v1/nddb/sessions", objectType: "nddb.session", pagination: nexusDashboardPaginationLegacyNDDBUnknown},
+		{group: "data_broker", product: "data_broker", operation: "nddb.events", path: "/api/v1/nddb/events", objectType: "nddb.event", pagination: nexusDashboardPaginationLegacyNDDBUnknown, query: recentNexusDashboardQuery},
 	}
 }
 
@@ -882,14 +959,14 @@ func nexusDashboardLogEndpoints(apiProfile string) []nexusDashboardEndpoint {
 
 func nexusDashboardLegacyLogEndpoints() []nexusDashboardEndpoint {
 	return []nexusDashboardEndpoint{
-		{group: "ndfc", product: "ndfc", operation: "ndfc.audit", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/audit", objectType: "ndfc.audit", query: recentNexusDashboardQuery},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.events", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/events", objectType: "ndfc.event", query: recentNexusDashboardQuery},
-		{group: "insights", product: "insights", operation: "insights.anomalies", path: "/nexus/insights/api/v1/anomalies", objectType: "insights.anomaly", query: recentNexusDashboardQuery},
-		{group: "insights", product: "insights", operation: "insights.advisories", path: "/nexus/insights/api/v1/advisories", objectType: "insights.advisory", query: recentNexusDashboardQuery},
-		{group: "insights", product: "insights", operation: "insights.root_causes", path: "/nexus/insights/api/v1/rootcauses", objectType: "insights.root_cause", query: recentNexusDashboardQuery},
-		{group: "orchestrator", product: "orchestrator", operation: "ndo.audit", path: "/mso/api/v1/audit", objectType: "ndo.audit", query: recentNexusDashboardQuery},
-		{group: "orchestrator", product: "orchestrator", operation: "ndo.deployments", path: "/mso/api/v1/tasks", objectType: "ndo.deployment", query: recentNexusDashboardQuery},
-		{group: "data_broker", product: "data_broker", operation: "nddb.events", path: "/api/v1/nddb/events", objectType: "nddb.event", query: recentNexusDashboardQuery},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.audit", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/audit", objectType: "ndfc.audit", pagination: nexusDashboardPaginationLegacyNDFCUnknown, query: recentNexusDashboardQuery},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.events", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/events", objectType: "ndfc.event", pagination: nexusDashboardPaginationLegacyNDFCUnknown, query: recentNexusDashboardQuery},
+		{group: "insights", product: "insights", operation: "insights.anomalies", path: "/nexus/insights/api/v1/anomalies", objectType: "insights.anomaly", pagination: nexusDashboardPaginationLegacyInsightsUnknown, query: recentNexusDashboardQuery},
+		{group: "insights", product: "insights", operation: "insights.advisories", path: "/nexus/insights/api/v1/advisories", objectType: "insights.advisory", pagination: nexusDashboardPaginationLegacyInsightsUnknown, query: recentNexusDashboardQuery},
+		{group: "insights", product: "insights", operation: "insights.root_causes", path: "/nexus/insights/api/v1/rootcauses", objectType: "insights.root_cause", pagination: nexusDashboardPaginationLegacyInsightsUnknown, query: recentNexusDashboardQuery},
+		{group: "orchestrator", product: "orchestrator", operation: "ndo.audit", path: "/mso/api/v1/audit", objectType: "ndo.audit", pagination: nexusDashboardPaginationLegacyNDOUnknown, query: recentNexusDashboardQuery},
+		{group: "orchestrator", product: "orchestrator", operation: "ndo.deployments", path: "/mso/api/v1/tasks", objectType: "ndo.deployment", pagination: nexusDashboardPaginationLegacyNDOUnknown, query: recentNexusDashboardQuery},
+		{group: "data_broker", product: "data_broker", operation: "nddb.events", path: "/api/v1/nddb/events", objectType: "nddb.event", pagination: nexusDashboardPaginationLegacyNDDBUnknown, query: recentNexusDashboardQuery},
 	}
 }
 
