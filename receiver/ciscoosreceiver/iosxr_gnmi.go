@@ -78,7 +78,7 @@ func (d *iosXRGNMIUpdateDecoder) decodeNotification(notification *gnmi.Notificat
 		}
 		attrs["deleted"] = "true"
 		deleteModule := moduleFromParts(module, parts)
-		if !setDirectGNMISourcePath(attrs, prefixText, deletedText, budget) {
+		if !setDirectGNMISourcePath(attrs, prefix, deleted, prefixText, deletedText, budget) {
 			continue
 		}
 		putNonEmpty(attrs, "cisco.yang.module", deleteModule)
@@ -103,11 +103,16 @@ func (d *iosXRGNMIUpdateDecoder) decodeNotification(notification *gnmi.Notificat
 			}
 			continue
 		}
+		if len(parts) == 0 {
+			budget.addDecodeError()
+			budget.drop(false)
+			continue
+		}
 		updateModule := moduleFromParts(module, parts)
 		if updateModule == "" {
 			updateModule = moduleFromGNMIPath(update.GetPath())
 		}
-		if !setDirectGNMISourcePath(attrs, prefixText, updateText, budget) {
+		if !setDirectGNMISourcePath(attrs, prefix, update.GetPath(), prefixText, updateText, budget) {
 			continue
 		}
 		putNonEmpty(attrs, "cisco.yang.module", updateModule)
@@ -536,27 +541,101 @@ func cloneAttrs(attrs map[string]string) map[string]string {
 	return out
 }
 
-func setDirectGNMISourcePath(attrs map[string]string, prefix, relative string, budget *directGNMIDecodeBudget) bool {
-	joined := prefix
-	if relative != "" {
-		if joined != "" {
-			joined += "/"
-		}
-		joined += relative
+func setDirectGNMISourcePath(
+	attrs map[string]string,
+	prefixPath, relativePath *gnmi.Path,
+	prefixText, relativeText string,
+	budget *directGNMIDecodeBudget,
+) bool {
+	limit := budget.limits.maxAttributeValueBytes
+	separatorBytes := 0
+	if prefixText != "" && relativeText != "" {
+		separatorBytes = 1
 	}
-	if len(joined) > budget.limits.maxAttributeValueBytes {
+	if len(prefixText) > limit || separatorBytes > limit-len(prefixText) ||
+		len(relativeText) > limit-len(prefixText)-separatorBytes {
 		budget.drop(false)
 		return false
 	}
+	joinedBytes := len(prefixText) + separatorBytes + len(relativeText)
+
+	var joinedBuilder strings.Builder
+	joinedBuilder.Grow(joinedBytes)
+	joinedBuilder.WriteString(prefixText)
+	if prefixText != "" && relativeText != "" {
+		joinedBuilder.WriteByte('/')
+	}
+	joinedBuilder.WriteString(relativeText)
+	joined := joinedBuilder.String()
+
+	effectiveTarget, ok := directGNMIEffectivePathTarget(prefixPath, relativePath)
+	if !ok {
+		budget.addDecodeError()
+		budget.drop(false)
+		return false
+	}
+	sourcePath := joined
+	if effectiveTarget != "" {
+		// Raw '@' bytes cannot occur in gnmiPathToString output because they
+		// are percent-encoded. Percent-encoding the target as well makes this
+		// frame injective while leaving '#' available for the existing gNMI to
+		// JSON boundary used by extendDirectGNMISourcePath.
+		const targetPrefix = "@target="
+		const targetSuffix = "@"
+		targetSeparatorBytes := 0
+		if joined != "" {
+			targetSeparatorBytes = 1
+		}
+		frameBytes := len(targetPrefix) + len(targetSuffix) + targetSeparatorBytes
+		if frameBytes > limit || len(joined) > limit-frameBytes {
+			budget.drop(false)
+			return false
+		}
+		remainingTargetBytes := limit - frameBytes - len(joined)
+		// Escaping never shortens a target. Reject before allocating an encoded
+		// string when even its raw representation cannot fit the value budget.
+		if len(effectiveTarget) > remainingTargetBytes {
+			budget.drop(false)
+			return false
+		}
+		encodedTarget := escapeDirectGNMIPathComponent(effectiveTarget, false)
+		if len(encodedTarget) > remainingTargetBytes {
+			budget.drop(false)
+			return false
+		}
+		sourceBytes := frameBytes + len(encodedTarget) + len(joined)
+		var sourceBuilder strings.Builder
+		sourceBuilder.Grow(sourceBytes)
+		sourceBuilder.WriteString(targetPrefix)
+		sourceBuilder.WriteString(encodedTarget)
+		sourceBuilder.WriteString(targetSuffix)
+		if joined != "" {
+			sourceBuilder.WriteByte('/')
+			sourceBuilder.WriteString(joined)
+		}
+		sourcePath = sourceBuilder.String()
+	}
+
 	if joined != "" {
-		// cisco.yang.path remains the user-facing gNMI path. Keep a separate,
-		// injective copy for metric-name collision identity because dial-out
-		// normalization is allowed to replace cisco.yang.path with the
-		// subscription encoding path.
+		// cisco.yang.path remains the user-facing gNMI path without Path.Target.
+		// Keep the target-aware, injective identity separate because dial-out
+		// normalization may replace cisco.yang.path with the subscription path.
 		attrs["cisco.yang.path"] = joined
-		attrs["cisco.yang.source_path"] = joined
+		attrs["cisco.yang.source_path"] = sourcePath
 	}
 	return true
+}
+
+func directGNMIEffectivePathTarget(prefix, relative *gnmi.Path) (string, bool) {
+	prefixTarget := prefix.GetTarget()
+	relativeTarget := relative.GetTarget()
+	if prefixTarget != "" && relativeTarget != "" && prefixTarget != relativeTarget {
+		return "", false
+	}
+	if relativeTarget != "" {
+		return relativeTarget, true
+	}
+	return prefixTarget, true
 }
 
 func extendDirectGNMISourcePath(attrs map[string]string, rawElement string, budget *directGNMIDecodeBudget) bool {

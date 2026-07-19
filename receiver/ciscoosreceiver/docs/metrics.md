@@ -1073,28 +1073,20 @@ Enable with `scrapers.interfaces.l2_topology.enabled: true` or an individual `sc
 
 Common L2 topology attributes:
 
-`cisco.topology.neighbor.info` has no required metric attributes. The following six attributes are optional because
+`cisco.topology.neighbor.info` has no required metric attributes. The following nine catalog attributes are optional because
 LLDP, CDP, fabric-link, Meraki, and APIC sources do not all report every field:
 
 | Attribute | Meaning |
 | --- | --- |
-| `cisco.errdisabled.reason` | Why the device disabled the interface. |
-| `cisco.l2.vlan` | VLAN identifier. |
-| `cisco.l2.stp.state` | STP state. |
-| `cisco.lacp.error.type` | LACP error category. |
-| `cisco.lacp.packet.type` | LACP packet category. |
-| `cisco.port_channel.name` | Port-channel name. |
-| `cisco.port_channel.state` | Port-channel or member state. |
-| `cisco.vpc.check` | vPC consistency check name. |
-| `cisco.vpc.domain` | vPC domain identifier. |
-| `cisco.vpc.peer` | vPC peer or member identifier. |
-| `cisco.vpc.state` | vPC state. |
-| `network.interface.name` | Local interface on which the neighbor was observed. |
 | `cisco.topology.protocol` | Discovery protocol, `lldp` or `cdp`. |
+| `network.interface.name` | Local interface on which the neighbor was observed. |
 | `cisco.topology.neighbor.name` | Neighbor system name or device ID. |
 | `cisco.topology.neighbor.interface` | Neighbor interface identifier. |
 | `cisco.topology.neighbor.platform` | Neighbor platform when reported by the device. |
 | `cisco.topology.neighbor.address` | Neighbor management address when reported by the device. |
+| `network.peer.name` | Legacy peer name retained for compatible Meraki and APIC topology sources. |
+| `network.peer.address` | Legacy peer address retained for compatible Meraki and APIC topology sources. |
+| `network.protocol.name` | Legacy discovery protocol name retained for compatible topology sources. |
 
 ## Optional Transceiver Metrics
 

@@ -74,7 +74,7 @@ func (d *catalyst9800GNMIUpdateDecoder) decodeNotification(notification *gnmi.No
 		catalyst9800NormalizePathAttrs(attrs)
 		attrs["deleted"] = "true"
 		deleteModule := moduleFromParts(module, parts)
-		if !setDirectGNMISourcePath(attrs, prefixText, deletedText, budget) {
+		if !setDirectGNMISourcePath(attrs, prefix, deleted, prefixText, deletedText, budget) {
 			continue
 		}
 		putNonEmpty(attrs, "cisco.yang.module", deleteModule)
@@ -99,12 +99,17 @@ func (d *catalyst9800GNMIUpdateDecoder) decodeNotification(notification *gnmi.No
 			}
 			continue
 		}
+		if len(parts) == 0 {
+			budget.addDecodeError()
+			budget.drop(false)
+			continue
+		}
 		catalyst9800NormalizePathAttrs(attrs)
 		updateModule := moduleFromParts(module, parts)
 		if updateModule == "" {
 			updateModule = moduleFromGNMIPath(update.GetPath())
 		}
-		if !setDirectGNMISourcePath(attrs, prefixText, updateText, budget) {
+		if !setDirectGNMISourcePath(attrs, prefix, update.GetPath(), prefixText, updateText, budget) {
 			continue
 		}
 		putNonEmpty(attrs, "cisco.yang.module", updateModule)
