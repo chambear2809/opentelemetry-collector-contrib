@@ -318,31 +318,32 @@ func (c *Client) List(
 		if err != nil {
 			return results, fmt.Errorf("decode nexus dashboard %s response: %w", operation, err)
 		}
-		madeProgress, err := recordObjectProgress(page, seenObjects)
+		rawPageLength := len(page)
+		page, madeProgress, err := filterObjectProgress(page, seenObjects)
 		if err != nil {
 			return results, fmt.Errorf("track nexus dashboard %s pagination progress: %w", operation, err)
 		}
-		if len(page) > 0 && !madeProgress {
+		if rawPageLength > 0 && !madeProgress {
 			return results, fmt.Errorf("paginate nexus dashboard %s response: endpoint made no progress after %d partial results", operation, len(results))
 		}
 		results = append(results, page...)
-		processedOffset := requestOffset + len(page)
+		processedOffset := requestOffset + rawPageLength
 		if pagination == PaginationSingle && metadata.claimsMore(processedOffset) {
 			if len(results) > resultLimit {
 				results = results[:resultLimit]
 			}
 			return results, fmt.Errorf("paginate nexus dashboard %s response: single-response contract claimed continuation after %d partial results", operation, len(results))
 		}
-		if pagination == PaginationUnknown && len(page) > 0 && metadata.next == "" && !metadata.terminal(processedOffset) {
+		if pagination == PaginationUnknown && rawPageLength > 0 && metadata.next == "" && !metadata.terminal(processedOffset) {
 			if len(results) > resultLimit {
 				results = results[:resultLimit]
 			}
 			if metadata.claimsMore(processedOffset) {
 				return results, fmt.Errorf("paginate nexus dashboard %s response: unverified pagination contract reported continuation without a next link after %d partial results", operation, len(results))
 			}
-			return results, fmt.Errorf("paginate nexus dashboard %s response: unverified pagination contract returned %d results without continuation or terminal metadata", operation, len(page))
+			return results, fmt.Errorf("paginate nexus dashboard %s response: unverified pagination contract returned %d results without continuation or terminal metadata", operation, rawPageLength)
 		}
-		complete := paginationPageComplete(pagination, len(page), requestedPageSize, processedOffset, metadata)
+		complete := paginationPageComplete(pagination, rawPageLength, requestedPageSize, processedOffset, metadata)
 		truncated := len(results) > resultLimit
 		if len(results) >= resultLimit {
 			results = results[:resultLimit]
@@ -351,7 +352,7 @@ func (c *Client) List(
 			}
 			return results, nil
 		}
-		if len(page) == 0 && metadata.claimsMore(processedOffset) {
+		if rawPageLength == 0 && metadata.claimsMore(processedOffset) {
 			return results, fmt.Errorf("paginate nexus dashboard %s response: endpoint made no progress with continuation metadata after %d partial results", operation, len(results))
 		}
 		if metadata.next != "" {
@@ -372,7 +373,7 @@ func (c *Client) List(
 			if metadata.claimsMore(processedOffset) {
 				return results, fmt.Errorf("paginate nexus dashboard %s response: unverified pagination contract reported continuation without a next link after %d partial results", operation, len(results))
 			}
-			return results, fmt.Errorf("paginate nexus dashboard %s response: unverified pagination contract returned %d results without continuation or terminal metadata", operation, len(page))
+			return results, fmt.Errorf("paginate nexus dashboard %s response: unverified pagination contract returned %d results without continuation or terminal metadata", operation, rawPageLength)
 		case PaginationOffset:
 			offset = processedOffset
 			requestQuery = pageQuery
@@ -445,21 +446,23 @@ func paginationPageComplete(
 	}
 }
 
-func recordObjectProgress(page []Object, seen map[[sha256.Size]byte]struct{}) (bool, error) {
+func filterObjectProgress(page []Object, seen map[[sha256.Size]byte]struct{}) ([]Object, bool, error) {
+	unique := make([]Object, 0, len(page))
 	progress := false
 	for _, object := range page {
 		encoded, err := json.Marshal(object)
 		if err != nil {
-			return false, err
+			return nil, false, err
 		}
 		fingerprint := sha256.Sum256(encoded)
 		if _, ok := seen[fingerprint]; ok {
 			continue
 		}
 		seen[fingerprint] = struct{}{}
+		unique = append(unique, object)
 		progress = true
 	}
-	return progress, nil
+	return unique, progress, nil
 }
 
 func (c *Client) do(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, http.Header, error) {

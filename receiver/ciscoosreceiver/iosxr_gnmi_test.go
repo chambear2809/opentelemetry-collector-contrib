@@ -997,6 +997,10 @@ func TestIOSXRGNMIJSONRejectsAmbiguousUnrecognizedListIdentity(t *testing.T) {
 		raw  string
 	}{
 		{
+			name: "single unrecognized entry",
+			raw:  `{"items":[{"tenant-code":"blue","value":1}]}`,
+		},
+		{
 			name: "two unrecognized entries",
 			raw:  `{"items":[{"tenant-code":"blue","value":1},{"tenant-code":"red","value":2}]}`,
 		},

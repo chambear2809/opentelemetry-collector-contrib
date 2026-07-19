@@ -609,6 +609,10 @@ func TestCatalyst9800GNMIJSONRejectsAmbiguousUnrecognizedListIdentity(t *testing
 		raw  string
 	}{
 		{
+			name: "single unrecognized entry",
+			raw:  `{"items":[{"tenant-code":"blue","value":1}]}`,
+		},
+		{
 			name: "two unrecognized entries",
 			raw:  `{"items":[{"tenant-code":"blue","value":1},{"tenant-code":"red","value":2}]}`,
 		},

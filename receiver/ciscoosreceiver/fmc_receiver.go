@@ -994,21 +994,22 @@ type fmcEStreamerSeenEvent struct {
 }
 
 type fmcEStreamerResumeState struct {
-	mu          sync.Mutex
-	persistMu   sync.Mutex
-	initialTime time.Time
-	cursor      time.Time
-	seen        map[string]fmcEStreamerSeenEvent
-	checkpoint  *checkpointBinding
-	shards      map[uint16]*list.List
-	nextShard   uint16
-	generation  map[uint16]uint64
-	persisted   map[uint16]uint64
-	accepted    uint64
-	flushed     uint64
-	lastAttempt time.Time
-	retryAfter  time.Time
-	now         func() time.Time
+	mu            sync.Mutex
+	persistMu     sync.Mutex
+	initialTime   time.Time
+	cursor        time.Time
+	seen          map[string]fmcEStreamerSeenEvent
+	checkpoint    *checkpointBinding
+	shards        map[uint16]*list.List
+	nextShard     uint16
+	generation    map[uint16]uint64
+	persisted     map[uint16]uint64
+	accepted      uint64
+	flushed       uint64
+	lastAttempt   time.Time
+	retryAfter    time.Time
+	now           func() time.Time
+	metadataDirty bool
 }
 
 type fmcResumeCheckpointMetadata struct {
@@ -1047,7 +1048,13 @@ func (s *fmcEStreamerResumeState) requestStartLocked() time.Time {
 	if s.cursor.IsZero() {
 		return s.initialTime
 	}
-	return fmcEStreamerRetentionStart(s.cursor)
+	cursor := s.cursor
+	if s.now != nil {
+		if now := s.now(); !now.IsZero() && cursor.After(now) {
+			cursor = now
+		}
+	}
+	return fmcEStreamerRetentionStart(cursor)
 }
 
 func fmcEStreamerRetentionStart(cursor time.Time) time.Time {
@@ -1101,10 +1108,11 @@ func fmcEStreamerResumeEventTime(eventTime, seenAt time.Time) time.Time {
 		return time.Time{}
 	}
 	eventTime = eventTime.UTC()
-	// Keep the delivered controller timestamp unchanged in OTLP, but do not let
-	// a controller clock more than the accepted skew ahead advance the resume
-	// cursor past the collector's observation time and skip normally timed events.
-	if !seenAt.IsZero() && eventTime.After(seenAt.Add(fmcCheckpointFutureSkew)) {
+	// Keep the delivered controller timestamp unchanged in OTLP, but never let a
+	// future controller clock advance the resume cursor past the collector's
+	// observation time. Even a small accepted skew could otherwise skip events
+	// after the controller clock corrects backward and the stream reconnects.
+	if !seenAt.IsZero() && eventTime.After(seenAt) {
 		return seenAt
 	}
 	return eventTime
@@ -1260,8 +1268,9 @@ func (s *fmcEStreamerResumeState) restoreCheckpoint(ctx context.Context) {
 			return
 		}
 	}
-	latestValidTime := now.Add(fmcCheckpointFutureSkew)
-	if metadata.Cursor.After(latestValidTime) {
+	checkpointCursor := metadata.Cursor
+	latestValidTime := checkpointLatestValidTime(now, loaded.clockAnchor)
+	if checkpointCursor.After(latestValidTime) {
 		binding.warnCorrupt(fmt.Errorf("FMC resume checkpoint cursor %s exceeds the allowed future skew from %s", metadata.Cursor, now))
 		return
 	}
@@ -1271,6 +1280,7 @@ func (s *fmcEStreamerResumeState) restoreCheckpoint(ctx context.Context) {
 	}
 	restored := make([]restoredEntry, 0, len(loaded.shards)*checkpointShardEntries)
 	seen := make(map[string]struct{}, cap(restored))
+	normalizedShards := make(map[uint16]struct{})
 	var latestEventTime time.Time
 	var latestSeenAt time.Time
 	for shard, encoded := range loaded.shards {
@@ -1304,7 +1314,7 @@ func (s *fmcEStreamerResumeState) restoreCheckpoint(ctx context.Context) {
 					binding.warnCorrupt(fmt.Errorf("FMC resume checkpoint shard %d contains a future event time", shard))
 					return
 				}
-				if metadata.Cursor.IsZero() || entry.EventTime.After(metadata.Cursor) {
+				if checkpointCursor.IsZero() || entry.EventTime.After(checkpointCursor) {
 					binding.warnCorrupt(fmt.Errorf("FMC resume checkpoint cursor precedes an event in shard %d", shard))
 					return
 				}
@@ -1320,6 +1330,15 @@ func (s *fmcEStreamerResumeState) restoreCheckpoint(ctx context.Context) {
 				binding.warnCorrupt(errors.New("FMC resume checkpoint contains a duplicate entry"))
 				return
 			}
+			originalSeenAt := entry.SeenAt
+			originalEventTime := entry.EventTime
+			if entry.SeenAt.After(now) {
+				entry.SeenAt = now
+			}
+			entry.EventTime = fmcEStreamerResumeEventTime(entry.EventTime, entry.SeenAt)
+			if !entry.SeenAt.Equal(originalSeenAt) || !entry.EventTime.Equal(originalEventTime) {
+				normalizedShards[shard] = struct{}{}
+			}
 			seen[entry.Key] = struct{}{}
 			restored = append(restored, restoredEntry{fmcResumeCheckpointEntry: entry, shard: shard})
 		}
@@ -1328,7 +1347,7 @@ func (s *fmcEStreamerResumeState) restoreCheckpoint(ctx context.Context) {
 		binding.warnCorrupt(fmt.Errorf("FMC resume checkpoint contains %d entries; maximum is %d", len(restored), fmcEStreamerSeenLimit))
 		return
 	}
-	if !metadata.Cursor.IsZero() {
+	if !checkpointCursor.IsZero() {
 		// commit records both the cursor-producing event and its observation.
 		// Size pruning can remove that exact event only while later-observed
 		// entries remain, so the persisted cursor must stay within the same
@@ -1341,10 +1360,15 @@ func (s *fmcEStreamerResumeState) restoreCheckpoint(ctx context.Context) {
 		if latestSeenAt.After(latestEvidence) {
 			latestEvidence = latestSeenAt
 		}
-		if metadata.Cursor.After(latestEvidence.Add(fmcCheckpointFutureSkew)) {
+		if checkpointCursor.After(latestEvidence.Add(fmcCheckpointFutureSkew)) {
 			binding.warnCorrupt(fmt.Errorf("FMC resume checkpoint cursor %s exceeds retained delivery evidence %s by more than %s", metadata.Cursor, latestEvidence, fmcCheckpointFutureSkew))
 			return
 		}
+	}
+	restoredCursor := checkpointCursor.UTC()
+	metadataDirty := restoredCursor.After(now)
+	if metadataDirty {
+		restoredCursor = now.UTC()
 	}
 	sort.Slice(restored, func(i, j int) bool {
 		if restored[i].SeenAt.Equal(restored[j].SeenAt) {
@@ -1353,7 +1377,7 @@ func (s *fmcEStreamerResumeState) restoreCheckpoint(ctx context.Context) {
 		return restored[i].SeenAt.Before(restored[j].SeenAt)
 	})
 	s.mu.Lock()
-	s.cursor = metadata.Cursor.UTC()
+	s.cursor = restoredCursor
 	s.seen = make(map[string]fmcEStreamerSeenEvent, len(restored))
 	s.shards = map[uint16]*list.List{}
 	s.nextShard = 0
@@ -1364,13 +1388,17 @@ func (s *fmcEStreamerResumeState) restoreCheckpoint(ctx context.Context) {
 	}
 	s.generation = map[uint16]uint64{}
 	s.persisted = map[uint16]uint64{}
+	for shard := range normalizedShards {
+		s.generation[shard] = 1
+	}
+	s.metadataDirty = metadataDirty
 	s.pruneLocked()
 	s.accepted = 0
 	s.flushed = 0
 	s.lastAttempt = s.now()
 	s.retryAfter = time.Time{}
 	s.mu.Unlock()
-	binding.acceptLoaded(loaded.active)
+	binding.acceptLoaded(loaded.active, loaded.clockAnchor)
 	binding.markValid()
 	s.persistCheckpoint(ctx, true)
 }
@@ -1410,6 +1438,7 @@ func (s *fmcEStreamerResumeState) persistCheckpoint(ctx context.Context, force b
 	shards := make(map[uint16][]byte, len(dirty))
 	active := make(map[uint16]bool, len(dirty))
 	generations := make(map[uint16]uint64, len(dirty))
+	clockAnchor := checkpointClockAnchor(now, s.cursor)
 	for _, index := range dirty {
 		shard := uint16(index)
 		checkpoint := fmcResumeCheckpointShard{Version: checkpointFormatVersion, Shard: shard}
@@ -1417,6 +1446,8 @@ func (s *fmcEStreamerResumeState) persistCheckpoint(ctx context.Context, force b
 			for element := shardLRU.Front(); element != nil; element = element.Next() {
 				key := element.Value.(string)
 				item := s.seen[key]
+				clockAnchor = checkpointClockAnchor(clockAnchor, item.eventTime)
+				clockAnchor = checkpointClockAnchor(clockAnchor, item.seenAt)
 				checkpoint.Entries = append(checkpoint.Entries, fmcResumeCheckpointEntry{Key: key, EventTime: item.eventTime, SeenAt: item.seenAt})
 			}
 		}
@@ -1432,15 +1463,16 @@ func (s *fmcEStreamerResumeState) persistCheckpoint(ctx context.Context, force b
 	}
 	metadata, err := json.Marshal(fmcResumeCheckpointMetadata{Cursor: s.cursor})
 	accepted := s.accepted
+	metadataDirty := s.metadataDirty
 	s.mu.Unlock()
 	if err != nil {
 		binding.warn("Failed to encode Cisco OS FMC resume checkpoint metadata; collection will continue with in-memory state", err)
 		return
 	}
-	if len(dirty) == 0 {
+	if len(dirty) == 0 && !metadataDirty {
 		return
 	}
-	persisted := binding.persist(ctx, shards, active, metadata)
+	persisted := binding.persist(ctx, shards, active, metadata, clockAnchor)
 	s.mu.Lock()
 	s.lastAttempt = now
 	if persisted {
@@ -1452,6 +1484,7 @@ func (s *fmcEStreamerResumeState) persistCheckpoint(ctx context.Context, force b
 		if accepted > s.flushed {
 			s.flushed = accepted
 		}
+		s.metadataDirty = false
 		s.retryAfter = time.Time{}
 	} else {
 		s.retryAfter = now.Add(fmcCheckpointFlushInterval)

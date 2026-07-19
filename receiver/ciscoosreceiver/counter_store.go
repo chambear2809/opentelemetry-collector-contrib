@@ -156,6 +156,9 @@ func (s *counterStore) AddDouble(resource, name string, attrs map[string]string,
 	now := s.now()
 	s.evictExpiredLocked(now)
 	if series := s.doubleValues[key]; series != nil {
+		if series.lastSeen.After(now) {
+			now = series.lastSeen
+		}
 		series.value += delta
 		series.lastSeen = now
 		s.lru.MoveToBack(series.lru)
@@ -186,6 +189,9 @@ func (s *counterStore) AddInt(resource, name string, attrs map[string]string, de
 	now := s.now()
 	s.evictExpiredLocked(now)
 	if series := s.intValues[key]; series != nil {
+		if series.lastSeen.After(now) {
+			now = series.lastSeen
+		}
 		if delta > 0 && series.value > math.MaxInt64-delta || delta < 0 && series.value < math.MinInt64-delta {
 			// OTLP integer datapoints are signed int64. Start a new cumulative
 			// epoch instead of wrapping through zero and fabricating a negative
@@ -407,14 +413,14 @@ func (s *counterStore) restoreCheckpoint(ctx context.Context) {
 		binding.warnCorrupt(err)
 		return
 	}
-	binding.acceptLoaded(loaded.active)
+	binding.acceptLoaded(loaded.active, loaded.clockAnchor)
 	binding.markValid()
 	s.persistCheckpoint(ctx)
 }
 
 func (s *counterStore) applyCheckpoint(loaded loadedCheckpoint) error {
 	now := s.now()
-	latestValidTime := now.Add(checkpointFutureSkew)
+	latestValidTime := checkpointLatestValidTime(now, loaded.clockAnchor)
 	var metadata counterCheckpointMetadata
 	if err := json.Unmarshal(loaded.metadata, &metadata); err != nil {
 		return fmt.Errorf("decode delta counter checkpoint metadata: %w", err)
@@ -571,7 +577,7 @@ func (s *counterStore) persistCheckpoint(ctx context.Context) {
 	if binding == nil {
 		return
 	}
-	shards, active, generations, metadata, dirty, err := s.checkpointSnapshot()
+	shards, active, generations, metadata, clockAnchor, dirty, err := s.checkpointSnapshot()
 	if !dirty {
 		return
 	}
@@ -579,7 +585,7 @@ func (s *counterStore) persistCheckpoint(ctx context.Context) {
 		binding.warn("Failed to encode Cisco OS delta counter checkpoint; collection will continue with in-memory state", err)
 		return
 	}
-	if binding.persist(ctx, shards, active, metadata) {
+	if binding.persist(ctx, shards, active, metadata, clockAnchor) {
 		s.mu.Lock()
 		for shard, generation := range generations {
 			if generation > s.persisted[shard] {
@@ -591,7 +597,7 @@ func (s *counterStore) persistCheckpoint(ctx context.Context) {
 	}
 }
 
-func (s *counterStore) checkpointSnapshot() (map[uint16][]byte, map[uint16]bool, map[uint16]uint64, json.RawMessage, bool, error) {
+func (s *counterStore) checkpointSnapshot() (map[uint16][]byte, map[uint16]bool, map[uint16]uint64, json.RawMessage, time.Time, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	dirtyShards := make([]int, 0, len(s.generation))
@@ -601,12 +607,13 @@ func (s *counterStore) checkpointSnapshot() (map[uint16][]byte, map[uint16]bool,
 		}
 	}
 	if len(dirtyShards) == 0 && !s.metadataDirty {
-		return nil, nil, nil, nil, false, nil
+		return nil, nil, nil, nil, time.Time{}, false, nil
 	}
 	sort.Ints(dirtyShards)
 	shards := make(map[uint16][]byte, len(dirtyShards))
 	active := make(map[uint16]bool, len(dirtyShards))
 	generations := make(map[uint16]uint64, len(dirtyShards))
+	clockAnchor := checkpointClockAnchor(s.now(), s.startedAt)
 	for _, index := range dirtyShards {
 		shard := uint16(index)
 		checkpoint := counterCheckpointShard{Version: checkpointFormatVersion, Shard: shard}
@@ -619,22 +626,26 @@ func (s *counterStore) checkpointSnapshot() (map[uint16][]byte, map[uint16]bool,
 			encodedKey := base64.RawURLEncoding.EncodeToString([]byte(ref.key))
 			if ref.valueType == counterValueTypeInt {
 				series := s.intValues[ref.key]
+				clockAnchor = checkpointClockAnchor(clockAnchor, series.startedAt)
+				clockAnchor = checkpointClockAnchor(clockAnchor, series.lastSeen)
 				checkpoint.Integers = append(checkpoint.Integers, intCounterCheckpoint{Key: encodedKey, Value: series.value, StartedAt: series.startedAt, LastSeen: series.lastSeen})
 			} else {
 				series := s.doubleValues[ref.key]
+				clockAnchor = checkpointClockAnchor(clockAnchor, series.startedAt)
+				clockAnchor = checkpointClockAnchor(clockAnchor, series.lastSeen)
 				checkpoint.Doubles = append(checkpoint.Doubles, doubleCounterCheckpoint{Key: encodedKey, Value: series.value, StartedAt: series.startedAt, LastSeen: series.lastSeen})
 			}
 		}
 		encoded, err := json.Marshal(checkpoint)
 		if err != nil {
-			return nil, nil, nil, nil, false, err
+			return nil, nil, nil, nil, time.Time{}, false, err
 		}
 		shards[shard] = encoded
 		active[shard] = len(checkpoint.Integers)+len(checkpoint.Doubles) > 0
 		generations[shard] = s.generation[shard]
 	}
 	metadata, err := json.Marshal(counterCheckpointMetadata{StartedAt: s.startedAt})
-	return shards, active, generations, metadata, true, err
+	return shards, active, generations, metadata, clockAnchor, true, err
 }
 
 func decodeCounterCheckpointKey(encoded string) (string, error) {

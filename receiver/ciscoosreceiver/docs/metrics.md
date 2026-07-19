@@ -15,7 +15,9 @@ status, count, counter, and byte aliases; continuous WLC measurements remain dou
 Compact-GPB diagnostics are a single per-message integer gauge and carry no receiver-health state. Direct
 gNMI and GPB-KV dynamic datapoints retain an injective raw source identity in `cisco.yang.source_path`. Direct-gNMI
 structured scalar paths are unchanged; JSON descendants use `rawGNMIPath#/escaped/key` framing, with the fragment
-encoded as a JSON Pointer so the structured-to-JSON boundary and arbitrary object keys remain unambiguous. The normalized
+encoded as a JSON Pointer so the structured-to-JSON boundary and arbitrary object keys remain unambiguous. Complex-array
+entries are emitted only when every entry has a recognized stable identity, including singleton arrays, so
+an anonymous occupant cannot silently inherit a prior series identity. The normalized
 `cisco.topology.*` attributes are additive: ACI continues to emit its legacy `network.peer.name`,
 `network.peer.address`, and `network.protocol.name` attributes.
 

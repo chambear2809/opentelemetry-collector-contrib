@@ -70,6 +70,26 @@ func TestCounterStoreStartsNewEpochInsteadOfOverflowingInt64(t *testing.T) {
 	assert.Equal(t, now, seriesStart)
 }
 
+func TestCounterStoreKeepsSeriesTimesOrderedAcrossWallClockRollback(t *testing.T) {
+	now := time.Unix(1_000, 0)
+	store := newCounterStoreWithConfig(now, counterStoreConfig{now: func() time.Time { return now }})
+
+	_, _ = store.AddDouble("resource-a", "requests", nil, 1)
+	_, _ = store.AddInt("resource-a", "packets", nil, math.MaxInt64)
+	now = now.Add(-time.Minute)
+	_, _ = store.AddDouble("resource-a", "requests", nil, 1)
+	_, intEpoch := store.AddInt("resource-a", "packets", nil, 1)
+
+	doubleSeries := store.doubleValues[counterKey("resource-a", "requests", nil)]
+	intSeries := store.intValues[counterKey("resource-a", "packets", nil)]
+	require.NotNil(t, doubleSeries)
+	require.NotNil(t, intSeries)
+	assert.Equal(t, time.Unix(1_000, 0), doubleSeries.lastSeen)
+	assert.Equal(t, time.Unix(1_000, 0), intSeries.lastSeen)
+	assert.Equal(t, intSeries.startedAt, intSeries.lastSeen)
+	assert.Equal(t, intSeries.startedAt, intEpoch)
+}
+
 func TestCounterStoreKeepsIntegerAndDoubleSeriesSeparate(t *testing.T) {
 	store := newCounterStoreAt(time.Unix(100, 0))
 	const aboveFloatPrecision = int64(1<<53 + 1)

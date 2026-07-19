@@ -287,7 +287,7 @@ func (d *logDeduplicator) restoreCheckpoint(ctx context.Context) {
 	restored := make([]restoredEntry, 0, len(loaded.shards)*checkpointShardEntries)
 	seen := map[string]struct{}{}
 	normalizedShards := map[uint16]struct{}{}
-	latestValidTime := now.Add(checkpointFutureSkew)
+	latestValidTime := checkpointLatestValidTime(now, loaded.clockAnchor)
 	for shard, encoded := range loaded.shards {
 		var checkpoint logDedupCheckpointShard
 		if err := json.Unmarshal(encoded, &checkpoint); err != nil {
@@ -359,7 +359,7 @@ func (d *logDeduplicator) restoreCheckpoint(ctx context.Context) {
 	d.lastAttempt = now
 	d.retryAfter = time.Time{}
 	d.mu.Unlock()
-	binding.acceptLoaded(loaded.active)
+	binding.acceptLoaded(loaded.active, loaded.clockAnchor)
 	binding.markValid()
 	d.persistCheckpoint(ctx, true)
 }
@@ -395,6 +395,7 @@ func (d *logDeduplicator) persistCheckpoint(ctx context.Context, force bool) {
 	shards := make(map[uint16][]byte, len(dirty))
 	active := make(map[uint16]bool, len(dirty))
 	generations := make(map[uint16]uint64, len(dirty))
+	clockAnchor := now
 	for _, index := range dirty {
 		shard := uint16(index)
 		checkpoint := logDedupCheckpointShard{Version: checkpointFormatVersion, Shard: shard}
@@ -407,7 +408,9 @@ func (d *logDeduplicator) persistCheckpoint(ctx context.Context, force bool) {
 				if _, pending := d.streamPending[key]; pending {
 					continue
 				}
-				checkpoint.Entries = append(checkpoint.Entries, logDedupCheckpointEntry{Key: key, SeenAt: d.seen[key].seenAt})
+				seenAt := d.seen[key].seenAt
+				clockAnchor = checkpointClockAnchor(clockAnchor, seenAt)
+				checkpoint.Entries = append(checkpoint.Entries, logDedupCheckpointEntry{Key: key, SeenAt: seenAt})
 			}
 		}
 		encoded, err := json.Marshal(checkpoint)
@@ -425,7 +428,7 @@ func (d *logDeduplicator) persistCheckpoint(ctx context.Context, force bool) {
 	if len(dirty) == 0 {
 		return
 	}
-	persisted := binding.persist(ctx, shards, active, nil)
+	persisted := binding.persist(ctx, shards, active, nil, clockAnchor)
 	d.mu.Lock()
 	d.lastAttempt = now
 	if persisted {

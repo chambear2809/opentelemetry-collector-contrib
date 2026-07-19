@@ -1039,6 +1039,35 @@ func TestClientConfiguredResultLimitStopsAtExactBoundary(t *testing.T) {
 	assert.Equal(t, int64(2), requests.Load())
 }
 
+func TestClientConfiguredResultLimitCountsUniqueObjectsAcrossOverlappingPages(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		switch r.URL.Query().Get("offset") {
+		case "0":
+			assert.Equal(t, "2", r.URL.Query().Get("max"))
+			_, _ = w.Write([]byte(`{"items":[{"id":"a"},{"id":"b"}]}`))
+		case "2":
+			assert.Equal(t, "2", r.URL.Query().Get("max"))
+			_, _ = w.Write([]byte(`{"items":[{"id":"b"},{"id":"c"}]}`))
+		case "4":
+			assert.Equal(t, "1", r.URL.Query().Get("max"))
+			_, _ = w.Write([]byte(`{"items":[{"id":"d"}]}`))
+		default:
+			t.Fatalf("unexpected offset %q", r.URL.Query().Get("offset"))
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, AuthMode: "api_key", Username: "admin", APIKey: "key", PageSize: 2})
+	require.NoError(t, err)
+	got, err := client.List(t.Context(), "fabrics", "/api/v1/manage/fabrics", nil, PaginationOffset, 4)
+	require.NoError(t, err)
+	require.Len(t, got, 4)
+	assert.Equal(t, []any{"a", "b", "c", "d"}, []any{got[0]["id"], got[1]["id"], got[2]["id"], got[3]["id"]})
+	assert.Equal(t, int64(3), requests.Load())
+}
+
 func TestClientOffsetPaginationHonorsExplicitNextAndRemaining(t *testing.T) {
 	var requests atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

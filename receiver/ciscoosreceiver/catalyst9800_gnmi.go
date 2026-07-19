@@ -332,11 +332,9 @@ func walkCatalyst9800JSON(metrics *indexedMetricBuilder, module string, parts []
 }
 
 // validateCatalyst9800JSONArrayIdentity rejects anonymous or duplicate
-// effective identities before emitting any child of a multi-entry array.
+// effective identities before emitting any child of a complex array. A
+// singleton still requires identity because its occupant can change later.
 func validateCatalyst9800JSONArrayIdentity(values []any, attrs map[string]string, budget *directGNMIDecodeBudget, objectPath []string) bool {
-	if len(values) <= 1 {
-		return true
-	}
 	seen := make(map[[32]byte]struct{}, len(values))
 	for _, value := range values {
 		projected := cloneAttrs(attrs)

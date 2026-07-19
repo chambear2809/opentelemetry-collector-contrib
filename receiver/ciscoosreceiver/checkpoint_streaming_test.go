@@ -108,10 +108,10 @@ func TestFMCEStreamerCheckpointRestoredCursorPrecedesAdvancedColdStartLookback(t
 	assert.True(t, restarted.seenBefore("persisted-event"))
 }
 
-func TestFMCEStreamerCheckpointNormalizesOutOfEnvelopeControllerTimeAcrossRestart(t *testing.T) {
+func TestFMCEStreamerCheckpointNormalizesAnyFutureControllerTimeAcrossRestart(t *testing.T) {
 	backend := newCheckpointTestBackend()
 	observedAt := time.Date(2090, time.January, 2, 3, 4, 5, 0, time.UTC)
-	controllerTime := observedAt.Add(fmcCheckpointFutureSkew + 10*time.Minute)
+	controllerTime := observedAt.Add(fmcCheckpointFutureSkew - time.Minute)
 	initial := observedAt.Add(-time.Hour)
 	client, err := fmc.NewEStreamerClient(fmc.EStreamerConfig{
 		Address: "fmc.example.test:8302", Name: "fmc", InitialTime: initial,
@@ -153,6 +153,43 @@ func TestFMCEStreamerCheckpointNormalizesOutOfEnvelopeControllerTimeAcrossRestar
 	assert.Equal(t, observedAt, restarted.cursor)
 	assert.Equal(t, observedAt.Add(-fmcEStreamerResumeOverlap), restarted.requestStart(), "restart must resume behind the observation time instead of the bad future controller clock")
 	assert.True(t, restarted.seenBefore(fmcEStreamerEventKey(event)))
+}
+
+func TestFMCEStreamerCheckpointSurvivesWallClockRollback(t *testing.T) {
+	backend := newCheckpointTestBackend()
+	firstObservation := time.Date(2090, time.January, 2, 3, 4, 5, 0, time.UTC)
+	initial := firstObservation.Add(-time.Hour)
+	first := newFMCEStreamerResumeState(initial)
+	first.now = func() time.Time { return firstObservation }
+	firstRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+	firstRegistry.enableFMCResume("clock-rollback-target", first)
+	require.NoError(t, firstRegistry.Start(t.Context(), checkpointHost(backend)))
+	first.commit("event-before-clock-rollback", firstObservation.Add(-time.Second), firstObservation)
+	first.persistCheckpoint(t.Context(), true)
+	firstRegistry.Close(t.Context())
+
+	restartAt := firstObservation.Add(-10 * time.Minute)
+	restarted := newFMCEStreamerResumeState(initial)
+	restarted.now = func() time.Time { return restartAt }
+	restartedRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+	restartedRegistry.enableFMCResume("clock-rollback-target", restarted)
+	require.NoError(t, restartedRegistry.Start(t.Context(), checkpointHost(backend)))
+	assert.False(t, restarted.checkpoint.corrupt.Load())
+	assert.Equal(t, restartAt, restarted.cursor)
+	assert.Equal(t, restartAt.Add(-fmcEStreamerResumeOverlap), restarted.requestStart(), "rollback normalization must never resume ahead of the current clock")
+	assert.True(t, restarted.seenBefore("event-before-clock-rollback"))
+	restartedRegistry.Close(t.Context())
+}
+
+func TestFMCEStreamerRequestStartNeverStaysAheadAfterLiveClockRollback(t *testing.T) {
+	firstObservation := time.Date(2090, time.January, 2, 3, 4, 5, 0, time.UTC)
+	current := firstObservation
+	state := newFMCEStreamerResumeState(firstObservation.Add(-time.Hour))
+	state.now = func() time.Time { return current }
+	state.commit("event-before-clock-rollback", firstObservation.Add(-time.Second), firstObservation)
+
+	current = firstObservation.Add(-10 * time.Minute)
+	assert.Equal(t, current.Add(-fmcEStreamerResumeOverlap), state.requestStart(), "a live host-clock rollback must not leave reconnect ahead of the current observation clock")
 }
 
 func TestFMCEStreamerCheckpointCommitSubstitutesZeroObservationTime(t *testing.T) {

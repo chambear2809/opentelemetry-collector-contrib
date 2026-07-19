@@ -602,6 +602,65 @@ func TestCounterCheckpointContinuesValueAndEpochAfterRestart(t *testing.T) {
 	assert.Equal(t, startedAt, second.StartTime(), "the receiver counter epoch must survive restart")
 }
 
+func TestCounterCheckpointSurvivesWallClockRollback(t *testing.T) {
+	backend := newCheckpointTestBackend()
+	firstObservation := time.Unix(1_900_000_000, 0).UTC()
+	current := firstObservation
+	first := newCounterStoreWithConfig(firstObservation.Add(-time.Hour), counterStoreConfig{now: func() time.Time { return current }})
+	firstRegistry := newCheckpointTestRegistry(checkpointSignalMetrics, zap.NewNop())
+	consumer := firstRegistry.enableCounter("fmc", "clock-rollback-target", first, consumertest.NewNop())
+	require.NoError(t, firstRegistry.Start(t.Context(), checkpointHost(backend)))
+
+	_, _ = first.AddInt("device-a", "packets", nil, 7)
+	current = firstObservation.Add(-time.Minute)
+	value, _ := first.AddInt("device-a", "packets", nil, 5)
+	assert.Equal(t, int64(12), value)
+	series := first.intValues[counterKey("device-a", "packets", nil)]
+	require.NotNil(t, series)
+	assert.Equal(t, firstObservation, series.lastSeen, "a live clock rollback must not invert the persisted series interval")
+	require.NoError(t, consumer.ConsumeMetrics(t.Context(), pmetric.NewMetrics()))
+	firstRegistry.Close(t.Context())
+
+	restartAt := firstObservation.Add(-10 * time.Minute)
+	restarted := newCounterStoreWithConfig(restartAt, counterStoreConfig{now: func() time.Time { return restartAt }})
+	restartedRegistry := newCheckpointTestRegistry(checkpointSignalMetrics, zap.NewNop())
+	restartedRegistry.enableCounter("fmc", "clock-rollback-target", restarted, consumertest.NewNop())
+	require.NoError(t, restartedRegistry.Start(t.Context(), checkpointHost(backend)))
+	assert.False(t, restarted.checkpoint.corrupt.Load())
+	value, epoch := restarted.AddInt("device-a", "packets", nil, 1)
+	assert.Equal(t, int64(13), value, "clock rollback must not reset the accumulated counter")
+	assert.Equal(t, restartAt, epoch, "future wall times must be normalized to the restored clock")
+	restartedRegistry.Close(t.Context())
+}
+
+func TestLogDedupCheckpointSurvivesWallClockRollback(t *testing.T) {
+	backend := newCheckpointTestBackend()
+	firstObservation := time.Unix(1_900_000_000, 0).UTC()
+	const eventKey = "accepted-before-clock-rollback"
+	first := newLogDeduplicator()
+	first.now = func() time.Time { return firstObservation }
+	firstRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+	firstRegistry.enableLogDedup("ise", "clock-rollback-target", first, logCheckpointRetention{})
+	require.NoError(t, firstRegistry.Start(t.Context(), checkpointHost(backend)))
+	first.BeginBatch()
+	require.True(t, first.MarkPending(eventKey, firstObservation))
+	_, err := consumeDeduplicatedLogs(t.Context(), consumertest.NewNop(), first, oneLogRecord())
+	require.NoError(t, err)
+	firstRegistry.Close(t.Context())
+
+	restartAt := firstObservation.Add(-10 * time.Minute)
+	restarted := newLogDeduplicator()
+	restarted.now = func() time.Time { return restartAt }
+	restartedRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+	restartedRegistry.enableLogDedup("ise", "clock-rollback-target", restarted, logCheckpointRetention{})
+	require.NoError(t, restartedRegistry.Start(t.Context(), checkpointHost(backend)))
+	assert.False(t, restarted.checkpoint.corrupt.Load())
+	restarted.BeginBatch()
+	assert.False(t, restarted.MarkPending(eventKey, restartAt), "clock rollback must not replay an already delivered event")
+	restarted.RollbackBatch()
+	restartedRegistry.Close(t.Context())
+}
+
 func TestCounterCheckpointDoesNotPersistRejectedDelivery(t *testing.T) {
 	backend := newCheckpointTestBackend()
 	now := time.Unix(1_900_000_000, 0).UTC()

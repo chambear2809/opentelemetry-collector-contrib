@@ -345,17 +345,15 @@ func allJSONScalars(values []any) bool {
 	return true
 }
 
-// validateIOSXRJSONArrayIdentity rejects a multi-entry complex array before
-// emitting any datapoints when an entry has no recognized identity or two
-// entries have the same effective identity.
+// validateIOSXRJSONArrayIdentity rejects a complex array before emitting any
+// datapoints when an entry has no recognized identity or two entries have the
+// same effective identity. A singleton still requires identity because a
+// different anonymous entity can occupy that position in a later notification.
 // JSON arrays are frequently YANG lists whose ordering is not stable, so an
 // ordinal would prevent an in-batch collision while silently reassigning a
 // time series after a reorder. Reusing the production extractors makes empty,
 // missing, synonym, and inherited identity semantics exactly match emission.
 func validateIOSXRJSONArrayIdentity(values []any, attrs map[string]string, budget *directGNMIDecodeBudget, objectPath []string) bool {
-	if len(values) <= 1 {
-		return true
-	}
 	seen := make(map[[sha256.Size]byte]struct{}, len(values))
 	for _, value := range values {
 		projected := cloneAttrs(attrs)
@@ -434,7 +432,7 @@ func extractJSONIdentityAttrs(value map[string]any, attrs map[string]string, bud
 	}
 	if !putPreferredScalarJSONIdentity(attrs, "network.vrf.name", value, objectPath, budget, "vrf-name", "vrf") ||
 		!putPreferredScalarJSONIdentity(attrs, "network.peer.address", value, objectPath, budget, "neighbor-address", "neighbor") ||
-		!putPreferredScalarJSONIdentity(attrs, "network.address", value, objectPath, budget, "address") ||
+		!putPreferredScalarJSONIdentity(attrs, "network.address", value, objectPath, budget, "ip", "ip-address", "address") ||
 		!putPreferredScalarJSONIdentity(attrs, "cisco.node.name", value, objectPath, budget, "node-name", "node") ||
 		!putPreferredScalarJSONIdentity(attrs, "cisco.location", value, objectPath, budget, "location") ||
 		!putPreferredScalarJSONIdentity(attrs, "hw.name", value, objectPath, budget, "component") {

@@ -51,6 +51,17 @@ const (
 
 const unassignedCheckpointShard = ^uint16(0)
 
+func checkpointClockAnchor(anchor, candidate time.Time) time.Time {
+	if candidate.After(anchor) {
+		return candidate.UTC()
+	}
+	return anchor.UTC()
+}
+
+func checkpointLatestValidTime(now, anchor time.Time) time.Time {
+	return checkpointClockAnchor(now, anchor).Add(checkpointFutureSkew)
+}
+
 func checkpointFlushContext(parent context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(parent, checkpointFlushTimeout)
 }
@@ -471,9 +482,10 @@ type checkpointRegistry struct {
 }
 
 type checkpointManifest struct {
-	Version  int             `json:"version"`
-	Active   []uint16        `json:"active,omitempty"`
-	Metadata json.RawMessage `json:"metadata,omitempty"`
+	Version     int             `json:"version"`
+	Active      []uint16        `json:"active,omitempty"`
+	Metadata    json.RawMessage `json:"metadata,omitempty"`
+	ClockAnchor time.Time       `json:"clock_anchor,omitzero"`
 }
 
 type logCheckpointRetention struct {
@@ -525,9 +537,10 @@ func checkpointLogRetention(conf *Config, provider string) logCheckpointRetentio
 }
 
 type loadedCheckpoint struct {
-	active   []uint16
-	metadata json.RawMessage
-	shards   map[uint16][]byte
+	active      []uint16
+	metadata    json.RawMessage
+	shards      map[uint16][]byte
+	clockAnchor time.Time
 }
 
 func newCheckpointRegistry(storageID, receiverID component.ID, signal string, logger *zap.Logger) *checkpointRegistry {
@@ -767,6 +780,10 @@ type checkpointBinding struct {
 
 	persistMu sync.Mutex
 	active    map[uint16]struct{}
+	// clockAnchor is the greatest wall-clock observation included in any
+	// committed manifest. Keeping it monotonic lets a later restore distinguish
+	// a legitimate host-clock rollback from an isolated future timestamp.
+	clockAnchor time.Time
 }
 
 func (b *checkpointBinding) load(ctx context.Context) (loadedCheckpoint, bool) {
@@ -828,14 +845,14 @@ func (b *checkpointBinding) load(ctx context.Context) (loadedCheckpoint, bool) {
 		}
 		shards[manifest.Active[i]] = operation.Value
 	}
-	return loadedCheckpoint{active: manifest.Active, metadata: manifest.Metadata, shards: shards}, true
+	return loadedCheckpoint{active: manifest.Active, metadata: manifest.Metadata, shards: shards, clockAnchor: manifest.ClockAnchor}, true
 }
 
 // persist rewrites only the shards changed since the prior successful
 // delivery, plus one bounded manifest. At most checkpointShardCount shard
 // operations can occur per delivery, and each shard has independent byte and
 // entry ceilings.
-func (b *checkpointBinding) persist(ctx context.Context, shards map[uint16][]byte, activeUpdates map[uint16]bool, metadata json.RawMessage) bool {
+func (b *checkpointBinding) persist(ctx context.Context, shards map[uint16][]byte, activeUpdates map[uint16]bool, metadata json.RawMessage, clockAnchor time.Time) bool {
 	if b == nil || b.registry == nil {
 		return false
 	}
@@ -845,6 +862,9 @@ func (b *checkpointBinding) persist(ctx context.Context, shards map[uint16][]byt
 	}
 	b.persistMu.Lock()
 	defer b.persistMu.Unlock()
+	if b.clockAnchor.After(clockAnchor) {
+		clockAnchor = b.clockAnchor
+	}
 	if b.active == nil {
 		b.active = map[uint16]struct{}{}
 	}
@@ -885,7 +905,7 @@ func (b *checkpointBinding) persist(ctx context.Context, shards map[uint16][]byt
 		active = append(active, shard)
 	}
 	slices.Sort(active)
-	manifest, err := json.Marshal(checkpointManifest{Version: checkpointFormatVersion, Active: active, Metadata: metadata})
+	manifest, err := json.Marshal(checkpointManifest{Version: checkpointFormatVersion, Active: active, Metadata: metadata, ClockAnchor: clockAnchor.UTC()})
 	if err != nil {
 		b.warnPersistFailure(fmt.Errorf("encode checkpoint manifest: %w", err))
 		return false
@@ -904,11 +924,12 @@ func (b *checkpointBinding) persist(ctx context.Context, shards map[uint16][]byt
 		return false
 	}
 	b.active = nextActive
+	b.clockAnchor = clockAnchor.UTC()
 	b.saveFailed.Store(false)
 	return true
 }
 
-func (b *checkpointBinding) acceptLoaded(active []uint16) {
+func (b *checkpointBinding) acceptLoaded(active []uint16, clockAnchor time.Time) {
 	if b == nil {
 		return
 	}
@@ -917,6 +938,7 @@ func (b *checkpointBinding) acceptLoaded(active []uint16) {
 	for _, shard := range active {
 		b.active[shard] = struct{}{}
 	}
+	b.clockAnchor = clockAnchor.UTC()
 	b.persistMu.Unlock()
 }
 
