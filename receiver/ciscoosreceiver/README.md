@@ -247,7 +247,7 @@ Use collection groups, target filters, and per-metric forwarding together when s
 cost-sensitive destinations such as Splunk Observability Cloud:
 
 - Collection groups such as `sdwan.interfaces.enabled`, `intersight.telemetry.enabled`, `nexus_dashboard.performance.enabled`, and `aci.stats.enabled` stop whole endpoint families from being polled and emitted.
-- `max_results` caps bound the number of returned objects for each group. Nexus Dashboard exact objects repeated by overlapping pages do not consume that provider's cap. REST pagination has non-configurable safety ceilings of 100 pages, 100,000 retained results, and 64 MiB of aggregate raw page data per operation; larger configured result caps are rejected.
+- `max_results` caps bound the number of returned objects for each group. Nexus Dashboard counts every decoded row, including byte-identical rows returned on the same or different pages. REST pagination has non-configurable safety ceilings of 100 pages, 100,000 retained results, and 64 MiB of aggregate raw page data per operation; larger configured result caps are rejected.
 - Controller `max_retries` values default to `3`, accept `0` to disable retries, and are capped at `10` so exponential backoff cannot overflow or keep a scrape retrying indefinitely.
 - `device_selection` and provider-native `targets` keep collection scoped to the devices, sites, applications, interfaces, tenants, or fabrics that matter.
 - Root-level `metrics` entries remove exact metric names or metric-name globs before the receiver passes data to the next Collector component. Metrics are enabled unless explicitly set to `enabled: false`; exact names override matching globs.
@@ -571,8 +571,8 @@ The catalog is based on these Cisco OpenAPI releases:
 | Legacy Data Broker paths | Unverified | No matching Data Broker paths appear in the cited Nexus Dashboard API 4.2.1 catalog. |
 
 Offset routes continue after a metadata-free full page. A short page is terminal only when authoritative continuation
-metadata does not claim more; explicit total/remaining terminal values, repeated data/no progress, a configured result
-cap, and the hard page/result/byte budgets also stop collection. Server-provided continuation URLs are resolved against
+metadata does not claim more; explicit total/remaining terminal values, repeated continuation requests, a configured
+result cap, and the hard page/result/byte budgets also stop collection. Server-provided continuation URLs are resolved against
 the configured endpoint path while remaining pinned to its origin. Single-response routes always perform exactly one
 request and report a contract error if the response claims continuation. Server-link routes never invent `max` or
 `offset` parameters. Unverified routes also send no invented pagination parameters; because their server default is
@@ -591,9 +591,9 @@ Collection groups default to enabled and can be disabled or capped independently
 | `performance` | interface stats, telemetry sync, and other high-volume fabric performance details |
 
 Each Nexus Dashboard group shares its `max_results` budget across all endpoint instances in catalog order. The budget
-counts objects returned by the pagination client after exact cross-page overlap removal and before target filters, shared
-device selection, or log deduplication. Objects returned alongside a partial-result error consume the budget; empty
-endpoints do not.
+counts every object returned by the pagination client before target filters, shared device selection, or log
+deduplication. Byte-identical objects retain their multiplicity and independently consume the budget. Objects returned
+alongside a partial-result error consume the budget; empty endpoints do not.
 
 Target filters are optional for the broad controller and inventory endpoints, but four enabled detail operations have
 exact selector requirements:

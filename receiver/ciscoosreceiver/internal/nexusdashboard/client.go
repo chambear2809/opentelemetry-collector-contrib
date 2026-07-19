@@ -6,7 +6,6 @@ package nexusdashboard // import "github.com/open-telemetry/opentelemetry-collec
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -292,7 +291,6 @@ func (c *Client) List(
 	pages := 0
 	byteBudget := httpclient.NewPaginationByteBudget(c.maxPaginationBytes)
 	seenRequests := make(map[string]struct{})
-	completedPageObjects := make(map[[sha256.Size]byte]struct{})
 	for {
 		if err := ctx.Err(); err != nil {
 			return results, err
@@ -339,13 +337,6 @@ func (c *Client) List(
 			return results, fmt.Errorf("decode nexus dashboard %s response page %d from %s: %w", operation, pages, requestPath, err)
 		}
 		rawPageLength := len(page)
-		page, madeProgress, err := filterObjectProgress(page, completedPageObjects)
-		if err != nil {
-			return results, fmt.Errorf("track nexus dashboard %s pagination progress: %w", operation, err)
-		}
-		if rawPageLength > 0 && !madeProgress {
-			return results, fmt.Errorf("paginate nexus dashboard %s response: endpoint made no progress after %d partial results", operation, len(results))
-		}
 		results = append(results, page...)
 		processedOffset := requestOffset + rawPageLength
 		if pagination == PaginationSingle && metadata.claimsMore(processedOffset) {
@@ -468,31 +459,6 @@ func paginationPageComplete(
 	default:
 		return false
 	}
-}
-
-func filterObjectProgress(page []Object, completedPages map[[sha256.Size]byte]struct{}) ([]Object, bool, error) {
-	filtered := make([]Object, 0, len(page))
-	pageFingerprints := make(map[[sha256.Size]byte]struct{}, len(page))
-	progress := false
-	for _, object := range page {
-		encoded, err := json.Marshal(object)
-		if err != nil {
-			return nil, false, err
-		}
-		fingerprint := sha256.Sum256(encoded)
-		pageFingerprints[fingerprint] = struct{}{}
-		if _, ok := completedPages[fingerprint]; ok {
-			continue
-		}
-		filtered = append(filtered, object)
-		progress = true
-	}
-	// Merge only after filtering so byte-identical rows first observed together
-	// remain distinct while later pages can still discard exact overlaps.
-	for fingerprint := range pageFingerprints {
-		completedPages[fingerprint] = struct{}{}
-	}
-	return filtered, progress, nil
 }
 
 func (c *Client) do(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, http.Header, error) {
@@ -936,10 +902,12 @@ func objectsFromValue(value any) ([]Object, error) {
 		return objectsFromRows(typed, "top-level response", "")
 	case map[string]any:
 		var collectionKey string
+		var secondCollectionKey string
 		var collectionRows []any
 		// A recognized collection key is an explicit envelope-shape contract.
-		// Validate every present key before singleton handling so a malformed
-		// collection can never turn envelope metadata into a fabricated row.
+		// Validate every present key before singleton or ambiguity handling so a
+		// malformed collection can never turn envelope metadata into a fabricated
+		// row.
 		for _, key := range []string{"items", "data", "results", "fabrics", "switches", "interfaces", "anomalies", "advisories", "nodes", "services", "sites", "schemas", "rules", "sessions", "flows", "events", "faults", "auditLog", "logs", "records"} {
 			collectionValue, present := typed[key]
 			if !present {
@@ -952,12 +920,17 @@ func objectsFromValue(value any) ([]Object, error) {
 			if collectionKey == "" {
 				collectionKey = key
 				collectionRows = items
+			} else if secondCollectionKey == "" {
+				secondCollectionKey = key
 			}
 		}
 		// Cluster health is a true singleton envelope whose recognized nested
 		// fields (such as nodes) are arrays; retain the envelope after validation.
 		if _, ok := typed["isHealthy"]; ok {
 			return []Object{Object(typed)}, nil
+		}
+		if secondCollectionKey != "" {
+			return nil, fmt.Errorf("response has multiple recognized collection fields %q and %q", collectionKey, secondCollectionKey)
 		}
 		if collectionKey != "" {
 			return objectsFromRows(collectionRows, fmt.Sprintf("response field %q", collectionKey), String(Object(typed), "fabricName", "siteName"))

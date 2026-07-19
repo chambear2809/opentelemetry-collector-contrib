@@ -1076,6 +1076,13 @@ func TestDecodeObjectsRejectsMalformedRecognizedCollections(t *testing.T) {
 	}
 }
 
+func TestDecodeObjectsRejectsAmbiguousRecognizedCollections(t *testing.T) {
+	objects, metadata, err := decodeObjects([]byte(`{"items":[{"id":"from-items"}],"data":[{"id":"from-data"}]}`), nil)
+	require.EqualError(t, err, `response has multiple recognized collection fields "items" and "data"`)
+	assert.Empty(t, objects)
+	assert.Equal(t, paginationMetadata{}, metadata)
+}
+
 func TestDecodeObjectsPreservesTrueSingletonObject(t *testing.T) {
 	objects, _, err := decodeObjects([]byte(`{"id":"singleton","status":"healthy"}`), nil)
 	require.NoError(t, err)
@@ -1084,10 +1091,12 @@ func TestDecodeObjectsPreservesTrueSingletonObject(t *testing.T) {
 }
 
 func TestDecodeObjectsPreservesClusterHealthEnvelope(t *testing.T) {
-	objects, _, err := decodeObjects([]byte(`{"isHealthy":true,"severity":"info","nodes":[{"name":"node-1"}]}`), nil)
+	objects, _, err := decodeObjects([]byte(`{"isHealthy":true,"severity":"info","nodes":[{"name":"node-1"}],"services":[{"name":"service-1"}]}`), nil)
 	require.NoError(t, err)
 	require.Len(t, objects, 1)
 	assert.Equal(t, "info", String(objects[0], "severity"))
+	assert.Len(t, objects[0]["nodes"], 1)
+	assert.Len(t, objects[0]["services"], 1)
 	healthy, ok := Bool(objects[0], "isHealthy")
 	require.True(t, ok)
 	assert.True(t, healthy)
@@ -1594,7 +1603,7 @@ func TestClientConfiguredResultLimitStopsAtExactBoundary(t *testing.T) {
 	assert.Equal(t, int64(2), requests.Load())
 }
 
-func TestClientConfiguredResultLimitCountsUniqueObjectsAcrossOverlappingPages(t *testing.T) {
+func TestClientConfiguredResultLimitCountsEveryRowAcrossPages(t *testing.T) {
 	var requests atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
@@ -1605,9 +1614,6 @@ func TestClientConfiguredResultLimitCountsUniqueObjectsAcrossOverlappingPages(t 
 		case "2":
 			assert.Equal(t, "2", r.URL.Query().Get("max"))
 			_, _ = w.Write([]byte(`{"items":[{"id":"b"},{"id":"c"}]}`))
-		case "4":
-			assert.Equal(t, "1", r.URL.Query().Get("max"))
-			_, _ = w.Write([]byte(`{"items":[{"id":"d"}]}`))
 		default:
 			t.Fatalf("unexpected offset %q", r.URL.Query().Get("offset"))
 		}
@@ -1619,11 +1625,11 @@ func TestClientConfiguredResultLimitCountsUniqueObjectsAcrossOverlappingPages(t 
 	got, err := client.List(t.Context(), "fabrics", "/api/v1/manage/fabrics", nil, PaginationOffset, 4)
 	require.NoError(t, err)
 	require.Len(t, got, 4)
-	assert.Equal(t, []any{"a", "b", "c", "d"}, []any{got[0]["id"], got[1]["id"], got[2]["id"], got[3]["id"]})
-	assert.Equal(t, int64(3), requests.Load())
+	assert.Equal(t, []any{"a", "b", "b", "c"}, []any{got[0]["id"], got[1]["id"], got[2]["id"], got[3]["id"]})
+	assert.Equal(t, int64(2), requests.Load())
 }
 
-func TestClientOffsetPaginationPreservesSamePageDuplicatesAndFiltersPriorPageOverlap(t *testing.T) {
+func TestClientOffsetPaginationPreservesDuplicateRowsWithinAndAcrossPages(t *testing.T) {
 	var requests atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
@@ -1644,8 +1650,8 @@ func TestClientOffsetPaginationPreservesSamePageDuplicatesAndFiltersPriorPageOve
 	require.NoError(t, err)
 	got, err := client.List(t.Context(), "fabrics", "/api/v1/manage/fabrics", nil, PaginationOffset, 0)
 	require.NoError(t, err)
-	require.Len(t, got, 3)
-	assert.Equal(t, []any{"same", "same", "new"}, []any{got[0]["id"], got[1]["id"], got[2]["id"]})
+	require.Len(t, got, 4)
+	assert.Equal(t, []any{"same", "same", "same", "new"}, []any{got[0]["id"], got[1]["id"], got[2]["id"], got[3]["id"]})
 	assert.Equal(t, int64(2), requests.Load())
 }
 
@@ -1676,7 +1682,7 @@ func TestClientOffsetPaginationHonorsExplicitNextAndRemaining(t *testing.T) {
 	assert.Equal(t, int64(2), requests.Load())
 }
 
-func TestClientOffsetPaginationRejectsRepeatedFullPage(t *testing.T) {
+func TestClientOffsetPaginationBoundsRepeatedFullPagesByResultLimit(t *testing.T) {
 	var requests atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		requests.Add(1)
@@ -1686,9 +1692,10 @@ func TestClientOffsetPaginationRejectsRepeatedFullPage(t *testing.T) {
 
 	client, err := NewClient(Config{Endpoint: server.URL, AuthMode: "api_key", Username: "admin", APIKey: "key", PageSize: 2})
 	require.NoError(t, err)
-	got, err := client.List(t.Context(), "fabrics", "/api/v1/manage/fabrics", nil, PaginationOffset, 0)
-	require.ErrorContains(t, err, "made no progress")
-	assert.Len(t, got, 2)
+	got, err := client.List(t.Context(), "fabrics", "/api/v1/manage/fabrics", nil, PaginationOffset, 4)
+	require.NoError(t, err)
+	require.Len(t, got, 4)
+	assert.Equal(t, []any{"a", "b", "a", "b"}, []any{got[0]["id"], got[1]["id"], got[2]["id"], got[3]["id"]})
 	assert.Equal(t, int64(2), requests.Load())
 }
 
