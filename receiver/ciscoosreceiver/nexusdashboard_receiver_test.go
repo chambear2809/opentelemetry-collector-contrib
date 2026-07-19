@@ -290,6 +290,84 @@ func TestNexusDashboardUnifiedCatalogUsesVerifiedCurrentAPIs(t *testing.T) {
 	assert.False(t, legacyPaths["/api/v1/infra/clusterhealth/status"])
 }
 
+func TestNexusDashboardSelectorPathsEscapeSegmentsOnce(t *testing.T) {
+	const selector = "selector A/B"
+	tests := []struct {
+		name         string
+		endpoint     nexusDashboardEndpoint
+		configure    func(*NexusDashboardTargetFilters)
+		expectedPath string
+	}{
+		{
+			name: "fabric",
+			endpoint: nexusDashboardEndpoint{
+				operation:   "fabric",
+				path:        "/api/v1/manage/fabrics/{fabricName}/switches",
+				selectorKey: "fabric",
+			},
+			configure: func(targets *NexusDashboardTargetFilters) {
+				targets.Fabrics = []string{selector}
+			},
+			expectedPath: "/reverse/proxy/api/v1/manage/fabrics/selector%20A%2FB/switches",
+		},
+		{
+			name: "switch ID",
+			endpoint: nexusDashboardEndpoint{
+				operation:   "switch",
+				path:        "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/lanSwitches/{switchId}/interfaces",
+				selectorKey: "switch_id",
+			},
+			configure: func(targets *NexusDashboardTargetFilters) {
+				targets.SwitchIDs = []string{selector}
+			},
+			expectedPath: "/reverse/proxy/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/lanSwitches/selector%20A%2FB/interfaces",
+		},
+		{
+			name: "serial",
+			endpoint: nexusDashboardEndpoint{
+				operation:   "serial",
+				path:        "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/switches/{serialNumber}/intent-config",
+				selectorKey: "serial",
+			},
+			configure: func(targets *NexusDashboardTargetFilters) {
+				targets.SwitchSerials = []string{selector}
+			},
+			expectedPath: "/reverse/proxy/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/switches/selector%20A%2FB/intent-config",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			requestPath := make(chan string, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requestPath <- r.URL.EscapedPath()
+				_, _ = w.Write([]byte(`{"items":[]}`))
+			}))
+			defer server.Close()
+
+			cfg := testNexusDashboardConfig(server.URL + "/reverse/proxy")
+			cfg.NexusDashboard.Targets = NexusDashboardTargetFilters{}
+			tt.configure(&cfg.NexusDashboard.Targets)
+			instances := expandNexusDashboardEndpoints([]nexusDashboardEndpoint{tt.endpoint}, cfg)
+			require.Len(t, instances, 1)
+			require.False(t, instances[0].skipped)
+
+			client, err := newNexusDashboardClient(cfg)
+			require.NoError(t, err)
+			objects, err := client.List(t.Context(), tt.endpoint.operation, instances[0].path, nil, nexusdashboard.PaginationSingle, 0)
+			require.NoError(t, err)
+			assert.Empty(t, objects)
+
+			escapedPath := <-requestPath
+			assert.Equal(t, tt.expectedPath, escapedPath)
+			assert.Contains(t, escapedPath, "%20")
+			assert.Contains(t, escapedPath, "%2F")
+			assert.NotContains(t, escapedPath, "%2520")
+			assert.NotContains(t, escapedPath, "%252F")
+		})
+	}
+}
+
 func TestNexusDashboardPaginationContractsMatchDocumentedCatalog(t *testing.T) {
 	type expectation struct {
 		strategy      nexusdashboard.PaginationStrategy

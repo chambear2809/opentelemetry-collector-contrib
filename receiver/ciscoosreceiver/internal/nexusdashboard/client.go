@@ -249,7 +249,9 @@ func Query(values map[string]string) url.Values {
 }
 
 // List fetches generic objects from a Nexus Dashboard endpoint using its
-// explicit versioned pagination contract.
+// explicit versioned pagination contract. path is an endpoint-relative escaped
+// path so selector values escaped as individual URL segments remain segments
+// when the request URL is assembled.
 func (c *Client) List(
 	ctx context.Context,
 	operation, path string,
@@ -828,12 +830,27 @@ func (c *Client) markAuthSuccess(token tokenSnapshot) {
 }
 
 func (c *Client) buildURL(path string, query url.Values) string {
-	u := *c.endpoint
-	u.Path = endpointRequestPath(u.Path, path)
+	u := c.endpointRequestURL(path)
 	if query != nil {
 		u.RawQuery = query.Encode()
 	}
 	return u.String()
+}
+
+func (c *Client) endpointRequestURL(path string) url.URL {
+	u := *c.endpoint
+	escapedPath := endpointRequestPath(u.EscapedPath(), path)
+	decodedPath, err := url.PathUnescape(escapedPath)
+	if err != nil {
+		// Preserve the previous behavior for a malformed server-provided path:
+		// URL.String will safely escape it before the request is sent.
+		u.Path = endpointRequestPath(u.Path, path)
+		u.RawPath = ""
+		return u
+	}
+	u.Path = decodedPath
+	u.RawPath = escapedPath
+	return u
 }
 
 func endpointRequestPath(endpointPath, requestPath string) string {
@@ -899,13 +916,32 @@ func objectsFromValue(value any) ([]Object, error) {
 	case []any:
 		return objectsFromRows(typed, "top-level response", "")
 	case map[string]any:
+		var collectionKey string
+		var collectionRows []any
+		// A recognized collection key is an explicit envelope-shape contract.
+		// Validate every present key before singleton handling so a malformed
+		// collection can never turn envelope metadata into a fabricated row.
+		for _, key := range []string{"items", "data", "results", "fabrics", "switches", "interfaces", "anomalies", "advisories", "nodes", "services", "sites", "schemas", "rules", "sessions", "flows", "events", "faults", "auditLog", "logs", "records"} {
+			collectionValue, present := typed[key]
+			if !present {
+				continue
+			}
+			items, ok := collectionValue.([]any)
+			if !ok {
+				return nil, fmt.Errorf("response field %q is %s, expected an array", key, jsonValueType(collectionValue))
+			}
+			if collectionKey == "" {
+				collectionKey = key
+				collectionRows = items
+			}
+		}
+		// Cluster health is a true singleton envelope whose recognized nested
+		// fields (such as nodes) are arrays; retain the envelope after validation.
 		if _, ok := typed["isHealthy"]; ok {
 			return []Object{Object(typed)}, nil
 		}
-		for _, key := range []string{"items", "data", "results", "fabrics", "switches", "interfaces", "anomalies", "advisories", "nodes", "services", "sites", "schemas", "rules", "sessions", "flows", "events", "faults", "auditLog", "logs", "records"} {
-			if items, ok := typed[key].([]any); ok {
-				return objectsFromRows(items, fmt.Sprintf("response field %q", key), String(Object(typed), "fabricName", "siteName"))
-			}
+		if collectionKey != "" {
+			return objectsFromRows(collectionRows, fmt.Sprintf("response field %q", collectionKey), String(Object(typed), "fabricName", "siteName"))
 		}
 		return []Object{Object(typed)}, nil
 	default:
@@ -940,6 +976,8 @@ func jsonValueType(value any) string {
 		return "a number"
 	case bool:
 		return "a boolean"
+	case map[string]any:
+		return "an object"
 	default:
 		return fmt.Sprintf("a %T value", value)
 	}
@@ -1007,15 +1045,56 @@ func (c *Client) resolveNextURL(currentPath string, currentQuery url.Values, nex
 	if err != nil {
 		return nextURL, nil
 	}
-	base := *c.endpoint
-	base.Path = endpointRequestPath(base.Path, currentPath)
+	base := c.endpointRequestURL(currentPath)
 	base.RawQuery = currentQuery.Encode()
 	resolved := base.ResolveReference(parsed)
 	// Continuation metadata controls only the path and query. Discard its
 	// origin so authentication can never escape the configured controller, and
 	// normalize the path back to endpoint-relative form so buildURL applies a
 	// configured reverse-proxy prefix exactly once.
-	return endpointRelativePath(c.endpoint.Path, resolved.Path), resolved.Query()
+	return endpointRelativeEscapedPath(c.endpoint, resolved), resolved.Query()
+}
+
+func endpointRelativeEscapedPath(endpoint, resolved *url.URL) string {
+	relativePath := endpointRelativePath(endpoint.Path, resolved.Path)
+	basePath := strings.TrimRight(endpoint.Path, "/")
+	cleanPath := "/" + strings.TrimLeft(resolved.Path, "/")
+	cleanEscapedPath := "/" + strings.TrimLeft(resolved.EscapedPath(), "/")
+	if basePath == "" || (cleanPath != basePath && !strings.HasPrefix(cleanPath, basePath+"/")) {
+		return cleanEscapedPath
+	}
+
+	prefixEnd, ok := escapedDecodedPrefixLength(cleanEscapedPath, basePath)
+	if !ok {
+		return (&url.URL{Path: relativePath}).EscapedPath()
+	}
+	if cleanPath == basePath {
+		return "/"
+	}
+	separatorEnd, ok := escapedDecodedPrefixLength(cleanEscapedPath[prefixEnd:], "/")
+	if !ok {
+		return (&url.URL{Path: relativePath}).EscapedPath()
+	}
+	return "/" + cleanEscapedPath[prefixEnd+separatorEnd:]
+}
+
+// escapedDecodedPrefixLength returns the encoded byte length corresponding to
+// decodedPrefix. It permits equivalent URL spellings (including hex-case and
+// escaped-unreserved differences) without re-encoding the remaining path.
+func escapedDecodedPrefixLength(escapedPath, decodedPrefix string) (int, bool) {
+	for index := 1; index <= len(escapedPath); index++ {
+		decoded, err := url.PathUnescape(escapedPath[:index])
+		if err != nil {
+			continue
+		}
+		if decoded == decodedPrefix {
+			return index, true
+		}
+		if len(decoded) >= len(decodedPrefix) {
+			return 0, false
+		}
+	}
+	return 0, false
 }
 
 func queryInt(query url.Values, key string, fallback int) int {

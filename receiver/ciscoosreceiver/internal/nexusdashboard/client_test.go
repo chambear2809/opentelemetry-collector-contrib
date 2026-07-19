@@ -549,6 +549,146 @@ func TestClientLinkPaginationPreservesEndpointPathPrefix(t *testing.T) {
 	}
 }
 
+func TestClientLinkPaginationPreservesEscapedSelectorWithEndpointPathPrefix(t *testing.T) {
+	const escapedPath = "/proxy/api/v1/manage/fabrics/fabric%20A%2FB/switches"
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, escapedPath, r.URL.EscapedPath())
+		switch requests.Add(1) {
+		case 1:
+			_, _ = w.Write([]byte(`{"items":[{"id":"a"}],"meta":{"links":{"next":"?cursor=page-2"}}}`))
+		case 2:
+			assert.Equal(t, "page-2", r.URL.Query().Get("cursor"))
+			_, _ = w.Write([]byte(`{"items":[{"id":"b"}]}`))
+		default:
+			t.Fatalf("unexpected request %d", requests.Load())
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint: server.URL + "/proxy",
+		AuthMode: "api_key",
+		Username: "admin",
+		APIKey:   "nd-api-key",
+		PageSize: 1,
+	})
+	require.NoError(t, err)
+
+	got, err := client.List(t.Context(), "fabrics", "/api/v1/manage/fabrics/fabric%20A%2FB/switches", nil, PaginationLink, 2)
+	require.NoError(t, err)
+	assert.Len(t, got, 2)
+	assert.Equal(t, int64(2), requests.Load())
+}
+
+func TestClientLinkPaginationPreservesEscapedSelectorAcrossEquivalentPrefixSpellings(t *testing.T) {
+	tests := []struct {
+		name               string
+		configuredPrefix   string
+		continuationPrefix string
+	}{
+		{
+			name:               "percent escape hex case",
+			configuredPrefix:   "/reverse%2fproxy",
+			continuationPrefix: "/reverse%2Fproxy",
+		},
+		{
+			name:               "escaped unreserved character",
+			configuredPrefix:   "/rev%65rse/proxy",
+			continuationPrefix: "/reverse/proxy",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var otherRequests atomic.Int64
+			otherServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				otherRequests.Add(1)
+				http.Error(w, "continuation escaped configured controller", http.StatusBadGateway)
+			}))
+			defer otherServer.Close()
+
+			const resourcePath = "/api/v1/manage/fabrics/fabric%20A%2FB/switches"
+			const continuationResourcePath = "/api/v1/manage/fabrics/fabric%20A%2fB/switches"
+			var requests atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				request := requests.Add(1)
+				expectedPath := tt.configuredPrefix + resourcePath
+				if request == 2 {
+					expectedPath = tt.configuredPrefix + continuationResourcePath
+				}
+				assert.Equal(t, expectedPath, r.URL.EscapedPath())
+				assert.NotContains(t, r.URL.EscapedPath(), "%2520")
+				assert.NotContains(t, r.URL.EscapedPath(), "%252F")
+				assert.NotContains(t, r.URL.EscapedPath(), "%252f")
+
+				switch request {
+				case 1:
+					next := otherServer.URL + tt.continuationPrefix + continuationResourcePath + "?cursor=page-2"
+					_, _ = fmt.Fprintf(w, `{"items":[{"id":"a"}],"meta":{"links":{"next":%q}}}`, next)
+				case 2:
+					assert.Equal(t, "page-2", r.URL.Query().Get("cursor"))
+					_, _ = w.Write([]byte(`{"items":[{"id":"b"}]}`))
+				default:
+					t.Fatalf("unexpected request %d", request)
+				}
+			}))
+			defer server.Close()
+
+			client, err := NewClient(Config{
+				Endpoint: server.URL + tt.configuredPrefix,
+				AuthMode: "api_key",
+				Username: "admin",
+				APIKey:   "nd-api-key",
+				PageSize: 1,
+			})
+			require.NoError(t, err)
+
+			got, err := client.List(t.Context(), "fabrics", resourcePath, nil, PaginationLink, 2)
+			require.NoError(t, err)
+			assert.Len(t, got, 2)
+			assert.Equal(t, int64(2), requests.Load())
+			assert.Zero(t, otherRequests.Load())
+		})
+	}
+}
+
+func TestClientEndpointRequestURLKeepsLoginAndSelectorRawPathsValid(t *testing.T) {
+	client, err := NewClient(Config{
+		Endpoint: "https://nexus.example.test/reverse/proxy",
+		AuthMode: "api_key",
+		Username: "admin",
+		APIKey:   "nd-api-key",
+	})
+	require.NoError(t, err)
+
+	tests := []struct {
+		name         string
+		path         string
+		expectedPath string
+	}{
+		{
+			name:         "login",
+			path:         modernLoginPath,
+			expectedPath: "/reverse/proxy/api/v1/infra/login",
+		},
+		{
+			name:         "escaped selector",
+			path:         "/api/v1/manage/fabrics/fabric%20A%2FB/switches",
+			expectedPath: "/reverse/proxy/api/v1/manage/fabrics/fabric%20A%2FB/switches",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			requestURL := client.endpointRequestURL(tt.path)
+			assert.Equal(t, tt.expectedPath, requestURL.RawPath)
+			assert.Equal(t, requestURL.RawPath, requestURL.EscapedPath())
+			assert.Equal(t, "https://nexus.example.test"+tt.expectedPath, requestURL.String())
+		})
+	}
+}
+
 func TestClientSinglePaginationRejectsContinuationWithoutFollowing(t *testing.T) {
 	var requests atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -634,6 +774,46 @@ func TestDecodeObjectsPreservesLargeInteger(t *testing.T) {
 	value, ok := Int64(objects[0], "bytes")
 	require.True(t, ok)
 	assert.Equal(t, int64(9007199254740993), value)
+}
+
+func TestDecodeObjectsRejectsMalformedRecognizedCollections(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		wantErr string
+	}{
+		{
+			name:    "null",
+			body:    `{"items":null}`,
+			wantErr: `response field "items" is null, expected an array`,
+		},
+		{
+			name:    "object",
+			body:    `{"items":{"id":"fabricated"}}`,
+			wantErr: `response field "items" is an object, expected an array`,
+		},
+		{
+			name:    "cluster health envelope with malformed collection",
+			body:    `{"isHealthy":true,"nodes":[],"items":null}`,
+			wantErr: `response field "items" is null, expected an array`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			objects, metadata, err := decodeObjects([]byte(tt.body), nil)
+			require.ErrorContains(t, err, tt.wantErr)
+			assert.Empty(t, objects)
+			assert.Equal(t, paginationMetadata{}, metadata)
+		})
+	}
+}
+
+func TestDecodeObjectsPreservesTrueSingletonObject(t *testing.T) {
+	objects, _, err := decodeObjects([]byte(`{"id":"singleton","status":"healthy"}`), nil)
+	require.NoError(t, err)
+	require.Len(t, objects, 1)
+	assert.Equal(t, "singleton", objects[0]["id"])
 }
 
 func TestDecodeObjectsPreservesClusterHealthEnvelope(t *testing.T) {
@@ -967,6 +1147,50 @@ func TestClientOffsetPaginationRejectsMalformedRowsWithMetadata(t *testing.T) {
 	require.Len(t, got, 2)
 	assert.Equal(t, []any{"a", "b"}, []any{got[0]["id"], got[1]["id"]})
 	assert.Equal(t, int64(2), requests.Load())
+}
+
+func TestClientOffsetPaginationRejectsMalformedRecognizedCollectionsWithoutAdvancing(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		wantErr string
+	}{
+		{
+			name:    "null",
+			body:    `{"items":null,"meta":{"counts":{"total":2}}}`,
+			wantErr: `response field "items" is null, expected an array`,
+		},
+		{
+			name:    "object",
+			body:    `{"items":{"id":"fabricated"},"meta":{"counts":{"total":2}}}`,
+			wantErr: `response field "items" is an object, expected an array`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var offsetsMu sync.Mutex
+			var offsets []string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				offsetsMu.Lock()
+				offsets = append(offsets, r.URL.Query().Get("offset"))
+				offsetsMu.Unlock()
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+
+			client, err := NewClient(Config{Endpoint: server.URL, AuthMode: "api_key", Username: "admin", APIKey: "key", PageSize: 1})
+			require.NoError(t, err)
+			got, err := client.List(t.Context(), "fabrics", "/api/v1/manage/fabrics", nil, PaginationOffset, 0)
+			require.ErrorContains(t, err, "decode nexus dashboard fabrics response page 1")
+			require.ErrorContains(t, err, tt.wantErr)
+			assert.Empty(t, got)
+
+			offsetsMu.Lock()
+			defer offsetsMu.Unlock()
+			assert.Equal(t, []string{"0"}, offsets)
+		})
+	}
 }
 
 func TestClientOffsetPaginationRejectsMalformedRowsWithoutMetadata(t *testing.T) {

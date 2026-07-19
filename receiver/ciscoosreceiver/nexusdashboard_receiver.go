@@ -871,7 +871,7 @@ func expandNexusDashboardEndpoints(endpoints []nexusDashboardEndpoint, cfg *Conf
 			for _, fabric := range values {
 				out = append(out, nexusDashboardEndpointInstance{
 					nexusDashboardEndpoint: endpoint,
-					path:                   strings.ReplaceAll(endpoint.path, "{fabricName}", url.PathEscape(fabric)),
+					path:                   strings.ReplaceAll(endpoint.path, "{fabricName}", nexusDashboardPathSegment(fabric)),
 					attrs:                  map[string]string{"cisco.fabric.name": fabric},
 				})
 			}
@@ -884,7 +884,7 @@ func expandNexusDashboardEndpoints(endpoints []nexusDashboardEndpoint, cfg *Conf
 			for _, switchID := range values {
 				out = append(out, nexusDashboardEndpointInstance{
 					nexusDashboardEndpoint: endpoint,
-					path:                   strings.ReplaceAll(endpoint.path, "{switchId}", url.PathEscape(switchID)),
+					path:                   strings.ReplaceAll(endpoint.path, "{switchId}", nexusDashboardPathSegment(switchID)),
 					attrs:                  map[string]string{"ndfc.switch.id": switchID},
 				})
 			}
@@ -897,13 +897,20 @@ func expandNexusDashboardEndpoints(endpoints []nexusDashboardEndpoint, cfg *Conf
 			for _, serial := range values {
 				out = append(out, nexusDashboardEndpointInstance{
 					nexusDashboardEndpoint: endpoint,
-					path:                   strings.ReplaceAll(endpoint.path, "{serialNumber}", url.PathEscape(serial)),
+					path:                   strings.ReplaceAll(endpoint.path, "{serialNumber}", nexusDashboardPathSegment(serial)),
 					attrs:                  map[string]string{"cisco.switch.serial": serial},
 				})
 			}
 		}
 	}
 	return out
+}
+
+// nexusDashboardPathSegment returns one escaped path segment. The Nexus
+// Dashboard client preserves endpoint-relative escaped paths when combining
+// them with the configured controller prefix, so this escape is applied once.
+func nexusDashboardPathSegment(value string) string {
+	return url.PathEscape(value)
 }
 
 func nexusDashboardMetricEndpoints(apiProfile string) []nexusDashboardEndpoint {
