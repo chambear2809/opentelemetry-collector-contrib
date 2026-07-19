@@ -138,6 +138,24 @@ type requestAuthState struct {
 	failed         bool
 }
 
+// redactedURLRequestError keeps the transport error chain available for
+// errors.Is/errors.As without rendering url.Error.URL, which may contain a
+// server-provided continuation query.
+type redactedURLRequestError struct {
+	err error
+}
+
+func (*redactedURLRequestError) Error() string {
+	return "nexus dashboard HTTP request failed"
+}
+
+func (e *redactedURLRequestError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
+}
+
 // authBackoffSchedule bounds authentication attempts shared by all endpoint
 // groups. This is intentionally independent of ordinary request retries: one
 // operation may retry its own transient login failure, while later operations
@@ -358,7 +376,11 @@ func (c *Client) List(
 			return results, fmt.Errorf("paginate nexus dashboard %s response: endpoint made no progress with continuation metadata after %d partial results", operation, len(results))
 		}
 		if metadata.next != "" {
-			requestPath, requestQuery = c.resolveNextURL(requestPath, pageQuery, metadata.next)
+			nextPath, nextQuery, err := c.resolveNextURL(requestPath, pageQuery, metadata.next)
+			if err != nil {
+				return results, fmt.Errorf("paginate nexus dashboard %s response: resolve continuation after %d partial results: %w", operation, len(results), err)
+			}
+			requestPath, requestQuery = nextPath, nextQuery
 			offset = queryInt(requestQuery, "offset", processedOffset)
 			serverContinuation = true
 			continue
@@ -562,6 +584,7 @@ func (c *Client) doOnce(
 	resp, err := c.client.Do(req)
 	duration := time.Since(start)
 	if err != nil {
+		err = redactURLRequestError(err)
 		err = httpclient.DecorateCertificateVerificationError(err, "", insecureSkipVerifyConfigPath)
 		c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", Duration: duration, Err: err})
 		return nil, nil, 0, requestAuth, err
@@ -591,6 +614,17 @@ func (c *Client) doOnce(
 		Err:         apiErr,
 	})
 	return nil, resp.Header, resp.StatusCode, requestAuth, apiErr
+}
+
+func redactURLRequestError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var requestErr *url.Error
+	if !errors.As(err, &requestErr) {
+		return err
+	}
+	return &redactedURLRequestError{err: err}
 }
 
 func (c *Client) authorize(ctx context.Context, req *http.Request, bypassAuthBackoff bool) (requestAuthState, int, error) {
@@ -859,21 +893,6 @@ func endpointRequestPath(endpointPath, requestPath string) string {
 	return basePath + cleanPath
 }
 
-func endpointRelativePath(endpointPath, resolvedPath string) string {
-	basePath := strings.TrimRight(endpointPath, "/")
-	cleanPath := "/" + strings.TrimLeft(resolvedPath, "/")
-	if basePath == "" {
-		return cleanPath
-	}
-	if cleanPath == basePath {
-		return "/"
-	}
-	if strings.HasPrefix(cleanPath, basePath+"/") {
-		return strings.TrimPrefix(cleanPath, basePath)
-	}
-	return cleanPath
-}
-
 func (c *Client) record(stat RequestStat) {
 	if c.OnRequest != nil {
 		c.OnRequest(stat)
@@ -1040,10 +1059,13 @@ func sleepBeforeRetry(ctx context.Context, attempt int, retryAfter time.Duration
 	}
 }
 
-func (c *Client) resolveNextURL(currentPath string, currentQuery url.Values, nextURL string) (string, url.Values) {
+func (c *Client) resolveNextURL(currentPath string, currentQuery url.Values, nextURL string) (string, url.Values, error) {
 	parsed, err := url.Parse(nextURL)
 	if err != nil {
-		return nextURL, nil
+		return "", nil, errors.New("parse continuation metadata: invalid URL")
+	}
+	if err = validateContinuationEscapedPath(parsed.EscapedPath()); err != nil {
+		return "", nil, fmt.Errorf("reject continuation metadata: %w", err)
 	}
 	base := c.endpointRequestURL(currentPath)
 	base.RawQuery = currentQuery.Encode()
@@ -1052,49 +1074,147 @@ func (c *Client) resolveNextURL(currentPath string, currentQuery url.Values, nex
 	// origin so authentication can never escape the configured controller, and
 	// normalize the path back to endpoint-relative form so buildURL applies a
 	// configured reverse-proxy prefix exactly once.
-	return endpointRelativeEscapedPath(c.endpoint, resolved), resolved.Query()
+	relativePath, err := endpointRelativeEscapedPath(c.endpoint, resolved)
+	if err != nil {
+		return "", nil, fmt.Errorf("rebase continuation metadata: %w", err)
+	}
+	return relativePath, resolved.Query(), nil
 }
 
-func endpointRelativeEscapedPath(endpoint, resolved *url.URL) string {
-	relativePath := endpointRelativePath(endpoint.Path, resolved.Path)
+func validateContinuationEscapedPath(escapedPath string) error {
+	// A reverse proxy and its backend can each decode or normalize a path.
+	// Validate both stages so double-encoded separators and dot bytes cannot
+	// become a traversal segment after the continuation has been rebased.
+	decodedPath, ok := decodeEscapedPath(escapedPath, true)
+	if !ok {
+		return errors.New("path contains an invalid escape")
+	}
+	if containsPathTraversalSegment(decodedPath) {
+		return errors.New("path contains a traversal segment that decodes to \"..\"")
+	}
+	// The wire-level path must be valid, but the result of its first decode may
+	// legitimately contain a literal percent (for example an escaped selector
+	// value ending in %25). A second normalizer would decode only valid %HH
+	// triplets, so preserve other percent bytes during this defensive pass.
+	decodedPath, _ = decodeEscapedPath(decodedPath, false)
+	if containsPathTraversalSegment(decodedPath) {
+		return errors.New("path contains a traversal segment that decodes to \"..\"")
+	}
+	return nil
+}
+
+func decodeEscapedPath(escapedPath string, rejectInvalidEscapes bool) (string, bool) {
+	if !strings.Contains(escapedPath, "%") {
+		return escapedPath, true
+	}
+	var decoded strings.Builder
+	decoded.Grow(len(escapedPath))
+	for encodedIndex := 0; encodedIndex < len(escapedPath); {
+		value, nextIndex, ok := decodeEscapedPathByte(escapedPath, encodedIndex)
+		if !ok {
+			if rejectInvalidEscapes {
+				return "", false
+			}
+			decoded.WriteByte(escapedPath[encodedIndex])
+			encodedIndex++
+			continue
+		}
+		decoded.WriteByte(value)
+		encodedIndex = nextIndex
+	}
+	return decoded.String(), true
+}
+
+func containsPathTraversalSegment(path string) bool {
+	segmentStart := 0
+	for index := 0; index < len(path); index++ {
+		if path[index] != '/' && path[index] != '\\' {
+			continue
+		}
+		if path[segmentStart:index] == ".." {
+			return true
+		}
+		segmentStart = index + 1
+	}
+	return path[segmentStart:] == ".."
+}
+
+func endpointRelativeEscapedPath(endpoint, resolved *url.URL) (string, error) {
 	basePath := strings.TrimRight(endpoint.Path, "/")
 	cleanPath := "/" + strings.TrimLeft(resolved.Path, "/")
 	cleanEscapedPath := "/" + strings.TrimLeft(resolved.EscapedPath(), "/")
 	if basePath == "" || (cleanPath != basePath && !strings.HasPrefix(cleanPath, basePath+"/")) {
-		return cleanEscapedPath
+		return cleanEscapedPath, nil
 	}
 
 	prefixEnd, ok := escapedDecodedPrefixLength(cleanEscapedPath, basePath)
 	if !ok {
-		return (&url.URL{Path: relativePath}).EscapedPath()
+		return "", errors.New("resolved path does not preserve the configured endpoint prefix")
 	}
 	if cleanPath == basePath {
-		return "/"
+		return "/", nil
 	}
 	separatorEnd, ok := escapedDecodedPrefixLength(cleanEscapedPath[prefixEnd:], "/")
 	if !ok {
-		return (&url.URL{Path: relativePath}).EscapedPath()
+		return "", errors.New("resolved path does not contain a separator after the configured endpoint prefix")
 	}
-	return "/" + cleanEscapedPath[prefixEnd+separatorEnd:]
+	return "/" + cleanEscapedPath[prefixEnd+separatorEnd:], nil
 }
 
 // escapedDecodedPrefixLength returns the encoded byte length corresponding to
 // decodedPrefix. It permits equivalent URL spellings (including hex-case and
 // escaped-unreserved differences) without re-encoding the remaining path.
 func escapedDecodedPrefixLength(escapedPath, decodedPrefix string) (int, bool) {
-	for index := 1; index <= len(escapedPath); index++ {
-		decoded, err := url.PathUnescape(escapedPath[:index])
-		if err != nil {
-			continue
+	return escapedDecodedPrefixLengthWithOperations(escapedPath, decodedPrefix, nil)
+}
+
+// escapedDecodedPrefixLengthWithOperations exposes the number of decoded-byte
+// comparisons for a deterministic complexity regression. Each iteration
+// consumes either one literal byte or one complete percent escape.
+func escapedDecodedPrefixLengthWithOperations(escapedPath, decodedPrefix string, operations *int) (int, bool) {
+	encodedIndex := 0
+	for decodedIndex := 0; decodedIndex < len(decodedPrefix); decodedIndex++ {
+		if operations != nil {
+			*operations++
 		}
-		if decoded == decodedPrefix {
-			return index, true
-		}
-		if len(decoded) >= len(decodedPrefix) {
+		decoded, nextIndex, ok := decodeEscapedPathByte(escapedPath, encodedIndex)
+		if !ok || decoded != decodedPrefix[decodedIndex] {
 			return 0, false
 		}
+		encodedIndex = nextIndex
 	}
-	return 0, false
+	return encodedIndex, true
+}
+
+func decodeEscapedPathByte(escapedPath string, encodedIndex int) (byte, int, bool) {
+	if encodedIndex >= len(escapedPath) {
+		return 0, encodedIndex, false
+	}
+	if escapedPath[encodedIndex] != '%' {
+		return escapedPath[encodedIndex], encodedIndex + 1, true
+	}
+	if encodedIndex+2 >= len(escapedPath) {
+		return 0, encodedIndex, false
+	}
+	high, highOK := hexValue(escapedPath[encodedIndex+1])
+	low, lowOK := hexValue(escapedPath[encodedIndex+2])
+	if !highOK || !lowOK {
+		return 0, encodedIndex, false
+	}
+	return high<<4 | low, encodedIndex + 3, true
+}
+
+func hexValue(value byte) (byte, bool) {
+	switch {
+	case value >= '0' && value <= '9':
+		return value - '0', true
+	case value >= 'a' && value <= 'f':
+		return value - 'a' + 10, true
+	case value >= 'A' && value <= 'F':
+		return value - 'A' + 10, true
+	default:
+		return 0, false
+	}
 }
 
 func queryInt(query url.Values, key string, fallback int) int {

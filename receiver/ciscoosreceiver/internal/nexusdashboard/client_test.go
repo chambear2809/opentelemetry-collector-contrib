@@ -5,11 +5,14 @@ package nexusdashboard
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -422,6 +425,12 @@ func (t *failOnceTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	return t.next.RoundTrip(req)
 }
 
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
 func TestClientLinkPaginationDoesNotInventOffsets(t *testing.T) {
 	var requests atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -460,6 +469,72 @@ func TestClientLinkPaginationDoesNotInventOffsets(t *testing.T) {
 	assert.Equal(t, "fabric-a", got[0]["fabricName"])
 	assert.Equal(t, "fabric-b", got[1]["fabricName"])
 	assert.Equal(t, int64(2), requests.Load())
+}
+
+func TestClientLinkPaginationRedactsContinuationTransportErrors(t *testing.T) {
+	const continuationSecret = "continuation-secret"
+	var serverRequests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, int64(1), serverRequests.Add(1))
+		assert.Empty(t, r.URL.Query().Get("cursor"))
+		_, _ = w.Write([]byte(`{"items":[{"id":"page-1"}],"meta":{"links":{"next":"?cursor=` + continuationSecret + `"}}}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:   server.URL,
+		AuthMode:   "api_key",
+		Username:   "admin",
+		APIKey:     "nd-api-key",
+		MaxRetries: 3,
+		PageSize:   1,
+	})
+	require.NoError(t, err)
+
+	transportSentinel := errors.New("classified continuation transport failure")
+	tlsCause := x509.UnknownAuthorityError{Cert: &x509.Certificate{}}
+	transportCause := fmt.Errorf("%w: %w", transportSentinel, tlsCause)
+	nextTransport := client.client.Transport
+	var transportFailures atomic.Int64
+	client.client.Transport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Query().Get("cursor") == continuationSecret {
+			transportFailures.Add(1)
+			return nil, transportCause
+		}
+		return nextTransport.RoundTrip(req)
+	})
+
+	var recordedError error
+	var recordedPath string
+	client.OnRequest = func(stat RequestStat) {
+		if stat.Err != nil {
+			recordedError = stat.Err
+			recordedPath = stat.Path
+		}
+	}
+
+	got, err := client.List(t.Context(), "fabrics", "/api/v1/manage/fabrics", nil, PaginationLink, 2)
+	require.Error(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "page-1", got[0]["id"])
+	assert.ErrorIs(t, err, transportSentinel)
+	var unknownAuthority x509.UnknownAuthorityError
+	assert.ErrorAs(t, err, &unknownAuthority)
+	var requestError *url.Error
+	assert.ErrorAs(t, err, &requestError)
+	assert.True(t, httpclient.IsCertificateVerificationError(err))
+	assert.ErrorContains(t, err, "TLS certificate verification failed")
+	assert.NotContains(t, err.Error(), continuationSecret)
+	assert.NotContains(t, err.Error(), "cursor=")
+
+	require.Error(t, recordedError)
+	assert.ErrorIs(t, recordedError, transportSentinel)
+	assert.True(t, httpclient.IsCertificateVerificationError(recordedError))
+	assert.NotContains(t, recordedError.Error(), continuationSecret)
+	assert.NotContains(t, recordedError.Error(), "cursor=")
+	assert.NotContains(t, recordedPath, continuationSecret)
+	assert.Equal(t, int64(1), serverRequests.Load())
+	assert.Equal(t, int64(1), transportFailures.Load())
 }
 
 func TestClientLinkPaginationPreservesEndpointPathPrefix(t *testing.T) {
@@ -549,36 +624,57 @@ func TestClientLinkPaginationPreservesEndpointPathPrefix(t *testing.T) {
 	}
 }
 
-func TestClientLinkPaginationPreservesEscapedSelectorWithEndpointPathPrefix(t *testing.T) {
-	const escapedPath = "/proxy/api/v1/manage/fabrics/fabric%20A%2FB/switches"
-	var requests atomic.Int64
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, escapedPath, r.URL.EscapedPath())
-		switch requests.Add(1) {
-		case 1:
-			_, _ = w.Write([]byte(`{"items":[{"id":"a"}],"meta":{"links":{"next":"?cursor=page-2"}}}`))
-		case 2:
-			assert.Equal(t, "page-2", r.URL.Query().Get("cursor"))
-			_, _ = w.Write([]byte(`{"items":[{"id":"b"}]}`))
-		default:
-			t.Fatalf("unexpected request %d", requests.Load())
-		}
-	}))
-	defer server.Close()
+func TestClientLinkPaginationPreservesEscapedSelectorsWithEndpointPathPrefix(t *testing.T) {
+	tests := []struct {
+		name         string
+		resourcePath string
+	}{
+		{
+			name:         "escaped slash",
+			resourcePath: "/api/v1/manage/fabrics/fabric%20A%2FB/switches",
+		},
+		{
+			name:         "escaped literal percent",
+			resourcePath: "/api/v1/manage/fabrics/rate%25/switches",
+		},
+	}
 
-	client, err := NewClient(Config{
-		Endpoint: server.URL + "/proxy",
-		AuthMode: "api_key",
-		Username: "admin",
-		APIKey:   "nd-api-key",
-		PageSize: 1,
-	})
-	require.NoError(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			escapedPath := "/proxy" + tt.resourcePath
+			var requests atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, escapedPath, r.URL.EscapedPath())
+				assert.NotContains(t, r.URL.EscapedPath(), "%2525")
+				assert.NotContains(t, r.URL.EscapedPath(), "%252F")
+				switch requests.Add(1) {
+				case 1:
+					next := escapedPath + "?cursor=page-2"
+					_, _ = fmt.Fprintf(w, `{"items":[{"id":"a"}],"meta":{"links":{"next":%q}}}`, next)
+				case 2:
+					assert.Equal(t, "page-2", r.URL.Query().Get("cursor"))
+					_, _ = w.Write([]byte(`{"items":[{"id":"b"}]}`))
+				default:
+					t.Fatalf("unexpected request %d", requests.Load())
+				}
+			}))
+			defer server.Close()
 
-	got, err := client.List(t.Context(), "fabrics", "/api/v1/manage/fabrics/fabric%20A%2FB/switches", nil, PaginationLink, 2)
-	require.NoError(t, err)
-	assert.Len(t, got, 2)
-	assert.Equal(t, int64(2), requests.Load())
+			client, err := NewClient(Config{
+				Endpoint: server.URL + "/proxy",
+				AuthMode: "api_key",
+				Username: "admin",
+				APIKey:   "nd-api-key",
+				PageSize: 1,
+			})
+			require.NoError(t, err)
+
+			got, err := client.List(t.Context(), "fabrics", tt.resourcePath, nil, PaginationLink, 2)
+			require.NoError(t, err)
+			assert.Len(t, got, 2)
+			assert.Equal(t, int64(2), requests.Load())
+		})
+	}
 }
 
 func TestClientLinkPaginationPreservesEscapedSelectorAcrossEquivalentPrefixSpellings(t *testing.T) {
@@ -651,6 +747,177 @@ func TestClientLinkPaginationPreservesEscapedSelectorAcrossEquivalentPrefixSpell
 			assert.Zero(t, otherRequests.Load())
 		})
 	}
+}
+
+func TestClientLinkPaginationRejectsContinuationPathTraversal(t *testing.T) {
+	tests := []struct {
+		name    string
+		next    string
+		wantErr string
+		secrets []string
+	}{
+		{
+			name:    "literal dot-dot segment",
+			next:    "/proxy/../admin?cursor=page-2",
+			wantErr: `path contains a traversal segment that decodes to ".."`,
+		},
+		{
+			name:    "percent-encoded dot-dot segment",
+			next:    "/proxy/%2e%2e/admin?cursor=page-2",
+			wantErr: `path contains a traversal segment that decodes to ".."`,
+		},
+		{
+			name:    "mixed literal and encoded dots",
+			next:    "/proxy/.%2E/admin?cursor=page-2",
+			wantErr: `path contains a traversal segment that decodes to ".."`,
+		},
+		{
+			name:    "encoded and literal dots",
+			next:    "/proxy/%2e./admin?cursor=page-2",
+			wantErr: `path contains a traversal segment that decodes to ".."`,
+		},
+		{
+			name:    "encoded slash terminates dot-dot segment",
+			next:    "/proxy/%2e%2e%2Fadmin?cursor=page-2",
+			wantErr: `path contains a traversal segment that decodes to ".."`,
+		},
+		{
+			name:    "double-encoded slash terminates dot-dot segment",
+			next:    "/proxy/%2e%2e%252Fadmin?cursor=page-2",
+			wantErr: `path contains a traversal segment that decodes to ".."`,
+		},
+		{
+			name:    "decoded backslash terminates dot-dot segment",
+			next:    "/proxy/..%5cadmin?cursor=page-2",
+			wantErr: `path contains a traversal segment that decodes to ".."`,
+		},
+		{
+			name:    "double-encoded traversal metadata is redacted",
+			next:    "https://continuation-user:continuation-password@untrusted.example/proxy/%252e%252e%252fadmin?cursor=continuation-secret-token",
+			wantErr: `path contains a traversal segment that decodes to ".."`,
+			secrets: []string{"continuation-user", "continuation-password", "untrusted.example", "continuation-secret-token"},
+		},
+		{
+			name:    "invalid continuation metadata is redacted",
+			next:    "https://parse-user:parse-password@untrusted.example/proxy/%2g%2e/admin?cursor=parse-secret-token",
+			wantErr: "parse continuation metadata: invalid URL",
+			secrets: []string{"parse-user", "parse-password", "untrusted.example", "parse-secret-token"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var requests atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "/proxy/api/v1/manage/fabrics", r.URL.EscapedPath())
+				if request := requests.Add(1); request != 1 {
+					t.Fatalf("unexpected request %d to %s", request, r.URL.EscapedPath())
+				}
+				_, _ = fmt.Fprintf(w, `{"items":[{"id":"page-1"}],"meta":{"links":{"next":%q}}}`, tt.next)
+			}))
+			defer server.Close()
+
+			client, err := NewClient(Config{
+				Endpoint: server.URL + "/proxy",
+				AuthMode: "api_key",
+				Username: "admin",
+				APIKey:   "nd-api-key",
+				PageSize: 1,
+			})
+			require.NoError(t, err)
+
+			got, err := client.List(t.Context(), "fabrics", "/api/v1/manage/fabrics", nil, PaginationLink, 2)
+			require.ErrorContains(t, err, "paginate nexus dashboard fabrics response: resolve continuation after 1 partial results")
+			require.ErrorContains(t, err, tt.wantErr)
+			assert.NotContains(t, err.Error(), tt.next)
+			for _, secret := range tt.secrets {
+				assert.NotContains(t, err.Error(), secret)
+			}
+			require.Len(t, got, 1)
+			assert.Equal(t, "page-1", got[0]["id"])
+			assert.Equal(t, int64(1), requests.Load())
+		})
+	}
+}
+
+func TestEscapedDecodedPrefixLength(t *testing.T) {
+	tests := []struct {
+		name          string
+		escapedPath   string
+		decodedPrefix string
+		wantBoundary  int
+		wantOK        bool
+	}{
+		{
+			name:          "literal bytes",
+			escapedPath:   "/reverse/proxy/resource",
+			decodedPrefix: "/reverse/proxy",
+			wantBoundary:  len("/reverse/proxy"),
+			wantOK:        true,
+		},
+		{
+			name:          "mixed percent-hex case",
+			escapedPath:   "/one%2ftwo%2Fthree/resource",
+			decodedPrefix: "/one/two/three",
+			wantBoundary:  len("/one%2ftwo%2Fthree"),
+			wantOK:        true,
+		},
+		{
+			name:          "escaped unreserved bytes",
+			escapedPath:   "/%72ev%65rse/proxy/resource",
+			decodedPrefix: "/reverse/proxy",
+			wantBoundary:  len("/%72ev%65rse/proxy"),
+			wantOK:        true,
+		},
+		{
+			name:          "UTF-8 bytes",
+			escapedPath:   "/caf%C3%a9/%e2%98%83/resource",
+			decodedPrefix: "/café/☃",
+			wantBoundary:  len("/caf%C3%a9/%e2%98%83"),
+			wantOK:        true,
+		},
+		{
+			name:          "invalid percent hex",
+			escapedPath:   "/reverse%2Gproxy/resource",
+			decodedPrefix: "/reverse/proxy",
+			wantOK:        false,
+		},
+		{
+			name:          "truncated escape",
+			escapedPath:   "/reverse%2",
+			decodedPrefix: "/reverse/",
+			wantOK:        false,
+		},
+		{
+			name:          "decoded mismatch",
+			escapedPath:   "/reverse/proxy/resource",
+			decodedPrefix: "/reverse/other",
+			wantOK:        false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			boundary, ok := escapedDecodedPrefixLength(tt.escapedPath, tt.decodedPrefix)
+			assert.Equal(t, tt.wantOK, ok)
+			assert.Equal(t, tt.wantBoundary, boundary)
+		})
+	}
+}
+
+func TestEscapedDecodedPrefixLengthHasLinearOperationBound(t *testing.T) {
+	const prefixBytes = 64 * 1024
+	decodedPrefix := "/" + strings.Repeat("a", prefixBytes)
+	escapedPrefix := "/" + strings.Repeat("%61", prefixBytes)
+	escapedPath := escapedPrefix + "/fabric%2Fselector"
+	operations := 0
+
+	boundary, ok := escapedDecodedPrefixLengthWithOperations(escapedPath, decodedPrefix, &operations)
+
+	require.True(t, ok)
+	assert.Equal(t, len(escapedPrefix), boundary)
+	assert.Equal(t, "/fabric%2Fselector", escapedPath[boundary:])
+	assert.LessOrEqual(t, operations, len(decodedPrefix))
 }
 
 func TestClientEndpointRequestURLKeepsLoginAndSelectorRawPathsValid(t *testing.T) {
