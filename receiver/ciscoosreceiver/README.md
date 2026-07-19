@@ -1511,7 +1511,7 @@ The default scraper configuration collects the bounded, low-cardinality metrics 
 | `counters.include` | list | `[]` | Optional glob patterns for allowed `cisco.interface.counter.name` values. Empty means include all collected counters. |
 | `counters.exclude` | list | `[]` | Optional glob patterns for counter names to drop after include filtering. |
 | `counters.max_per_interface` | int | `100` | Maximum `cisco.interface.counter` series emitted per interface. Set to `0` for no per-interface cap. |
-| `counters.max_interfaces` | int | `256` | Maximum interfaces enriched by optional high-cardinality counter commands. A value of `0` selects the safe default. |
+| `counters.max_interfaces` | int | `256` | One shared per-scrape unique-interface budget across every optional counter command family, including platform queue stats. Core `show interface` metrics are outside this budget. A value of `0` selects the safe default. |
 | `counters.commands.all` | bool | `false` | Enables all optional counter command groups. |
 | `counters.commands.interface_counters` | bool | `false` | Enables IOS/IOS XE `show interfaces counters` or NX-OS `show interface counters`. Also enabled by `counters.enabled`. |
 | `counters.commands.interface_errors` | bool | `false` | Enables IOS/IOS XE `show interfaces counters errors` or NX-OS `show interface counters errors`. Also enabled by `counters.enabled`. |

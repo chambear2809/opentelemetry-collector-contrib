@@ -6,6 +6,8 @@ package interfacesscraper
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -461,7 +463,8 @@ func TestInterfacesScraper_EmitsStandardCountersFromOptionalTablesOnce(t *testin
 	cfg.Counters.Commands.InterfaceCounters = true
 	scraper := newStartedTestInterfacesScraper(t, cfg)
 	fakeClient := newFakeInterfacesCommandClient()
-	fakeClient.outputs["show interface"] = `GigabitEthernet1/0/1 is up, line protocol is up`
+	fakeClient.outputs["show interface"] = `GigabitEthernet1/0/1 is up, line protocol is up
+GigabitEthernet1/0/3 is up, line protocol is up`
 	fakeClient.outputs["show interfaces counters"] = `
 Port            InOctets    InUcastPkts    InMcastPkts    InBcastPkts
 Gi1/0/1              520              2              3              4
@@ -494,6 +497,148 @@ Gi1/0/1              19`
 	assert.Equal(t, 2, interfaceMetricDataPointCounts(metrics)["system.network.packet.dropped"])
 	assert.Equal(t, 6, interfaceMetricDataPointCounts(metrics)["system.network.packet.count"])
 	assert.Contains(t, fakeClient.calls, "show interfaces counters")
+}
+
+func TestInterfacesScraper_CounterMaxInterfacesBoundsTableFamilies(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	cfg.Counters.MaxInterfaces = 1
+	cfg.Counters.Commands.InterfaceCounters = true
+	cfg.Counters.Commands.InterfaceErrors = true
+	cfg.Counters.Commands.FlowControl = true
+
+	scraper := newStartedTestInterfacesScraper(t, cfg)
+	fakeClient := newFakeInterfacesCommandClient()
+	fakeClient.outputs["show interface"] = `GigabitEthernet1/0/2 is up, line protocol is up
+GigabitEthernet1/0/1 is up, line protocol is up`
+	fakeClient.outputs["show interfaces counters"] = `
+Port       InOctets
+Gi1/0/1         110
+Gi1/0/2         220`
+	fakeClient.outputs["show interfaces counters errors"] = `
+Port       Xmit-Err Rcv-Err
+Gi1/0/1           11      12
+GigabitEthernet1/0/2 21   22`
+	fakeClient.outputs["show interfaces flowcontrol"] = `
+Port  Send    FlowControl Receive FlowControl RxPause TxPause
+Gi1/0/1 desired off         on      on          31      32
+Gi1/0/2 desired off         on      on          41      42`
+	scraper.rpcClient = fakeClient
+
+	metrics, err := scraper.ScrapeMetrics(t.Context())
+	require.NoError(t, err)
+
+	wantEnriched := map[string]struct{}{"GigabitEthernet1/0/2": {}}
+	assert.Equal(t, wantEnriched, interfaceMetricInterfaceNames(metrics, "system.network.io"))
+	assert.Equal(t, wantEnriched, interfaceMetricInterfaceNames(metrics, "system.network.errors"))
+	assert.Equal(t, wantEnriched, interfaceMetricInterfaceNames(metrics, "cisco.interface.counter"))
+	assert.Equal(t, wantEnriched, interfaceMetricInterfaceNames(metrics, "cisco.interface.pause.frames"))
+	assert.Equal(t, map[string]struct{}{
+		"GigabitEthernet1/0/1": {},
+		"GigabitEthernet1/0/2": {},
+	}, interfaceMetricInterfaceNames(metrics, "system.network.interface.status"), "ordinary show-interface metrics must remain outside the optional enrichment budget")
+}
+
+func TestInterfacesScraper_PlatformQueueStatsSharesCounterInterfaceBudget(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	cfg.Counters.MaxInterfaces = 1
+	cfg.Counters.Commands.InterfaceCounters = true
+	cfg.Counters.Commands.PlatformQueueStats = true
+
+	scraper := newStartedTestInterfacesScraper(t, cfg)
+	fakeClient := newFakeInterfacesCommandClient()
+	fakeClient.outputs["show interface"] = `GigabitEthernet1/0/1 is up, line protocol is up`
+	fakeClient.outputs["show interfaces counters"] = `
+Port       InOctets
+Gi1/0/2         220`
+	firstPlatformCommand := "show platform hardware fed active qos queue stats interface GigabitEthernet1/0/1"
+	fakeClient.outputs[firstPlatformCommand] = `DATA Port:16 Enqueue Counters
+Q Buffers Enqueue-TH0 Enqueue-TH1 Enqueue-TH2 Qpolicer
+0 0 10 20 30 40`
+	scraper.rpcClient = fakeClient
+
+	metrics, err := scraper.ScrapeMetrics(t.Context())
+	require.NoError(t, err)
+
+	wantEnriched := map[string]struct{}{"GigabitEthernet1/0/1": {}}
+	assert.Empty(t, interfaceMetricInterfaceNames(metrics, "system.network.io"), "the table-only interface must not expand the platform interface union")
+	assert.Equal(t, wantEnriched, interfaceMetricInterfaceNames(metrics, "cisco.interface.counter"))
+	assert.Equal(t, wantEnriched, interfaceMetricInterfaceNames(metrics, "cisco.interface.qos.queue.bytes"))
+	assert.Contains(t, fakeClient.calls, firstPlatformCommand)
+	assert.NotContains(t, fakeClient.calls, "show platform hardware fed active qos queue stats interface Gi1/0/2")
+	assert.NotContains(t, fakeClient.calls, "show platform hardware fed switch active qos queue stats interface Gi1/0/2")
+	assert.NotContains(t, fakeClient.calls, "show platform hardware fed active qos queue stats interface GigabitEthernet1/0/3")
+	assert.NotContains(t, fakeClient.calls, "show platform hardware fed switch active qos queue stats interface GigabitEthernet1/0/3")
+}
+
+func TestInterfacesScraper_CounterMaxInterfacesPrioritizesLaterOriginalOverTableOnly(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	cfg.Counters.MaxInterfaces = 1
+	cfg.Counters.Commands.InterfaceCounters = true
+	cfg.Counters.Commands.InterfaceErrors = true
+
+	scraper := newStartedTestInterfacesScraper(t, cfg)
+	fakeClient := newFakeInterfacesCommandClient()
+	fakeClient.outputs["show interface"] = `GigabitEthernet1/0/2 is up, line protocol is up`
+	fakeClient.outputs["show interfaces counters"] = `
+Port       InOctets
+Gi1/0/10        110`
+	fakeClient.outputs["show interfaces counters errors"] = `
+Port       Xmit-Err Rcv-Err
+Gi1/0/2           21      22`
+	scraper.rpcClient = fakeClient
+
+	metrics, err := scraper.ScrapeMetrics(t.Context())
+	require.NoError(t, err)
+
+	wantEnriched := map[string]struct{}{"GigabitEthernet1/0/2": {}}
+	assert.Empty(t, interfaceMetricInterfaceNames(metrics, "system.network.io"))
+	assert.Equal(t, wantEnriched, interfaceMetricInterfaceNames(metrics, "system.network.errors"))
+	assert.Equal(t, wantEnriched, interfaceMetricInterfaceNames(metrics, "cisco.interface.counter"))
+}
+
+func TestInterfacesScraper_CounterMaxInterfacesOrdersTableOnlyInterfacesLexically(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	cfg.Counters.MaxInterfaces = 1
+	cfg.Counters.Commands.InterfaceCounters = true
+
+	scraper := newStartedTestInterfacesScraper(t, cfg)
+	fakeClient := newFakeInterfacesCommandClient()
+	fakeClient.outputs["show interface"] = `GigabitEthernet1/0/9 is up, line protocol is up`
+	fakeClient.outputs["show interfaces counters"] = `
+Port       InOctets
+Gi1/0/20        220
+Gi1/0/10        110`
+	scraper.rpcClient = fakeClient
+
+	metrics, err := scraper.ScrapeMetrics(t.Context())
+	require.NoError(t, err)
+
+	assert.Equal(t, map[string]struct{}{"Gi1/0/10": {}}, interfaceMetricInterfaceNames(metrics, "system.network.io"))
+}
+
+func TestInterfacesScraper_ZeroCounterMaxInterfacesUsesSafeDefaultInEnrichment(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	cfg.Counters.MaxInterfaces = 0
+	cfg.Counters.Commands.InterfaceCounters = true
+
+	scraper := newStartedTestInterfacesScraper(t, cfg)
+	fakeClient := newFakeInterfacesCommandClient()
+	interfaces := make([]*Interface, 0, 257)
+	rows := []string{"Port InOctets"}
+	for i := 1; i <= 257; i++ {
+		interfaces = append(interfaces, NewInterface(fmt.Sprintf("GigabitEthernet1/0/%d", i)))
+		rows = append(rows, fmt.Sprintf("Gi1/0/%d %d", i, i))
+	}
+	fakeClient.outputs["show interfaces counters"] = strings.Join(rows, "\n")
+	scraper.rpcClient = fakeClient
+
+	interfaces = scraper.enrichInterfaceCounters(t.Context(), interfaces)
+
+	require.Len(t, interfaces, 257, "the optional budget must not remove core interfaces")
+	for i := range 256 {
+		assert.Equal(t, int64(i+1), interfaces[i].InputBytes)
+	}
+	assert.Equal(t, invalidCounterValue, interfaces[256].InputBytes)
 }
 
 func TestInterfacesScraper_MergesPrimaryAndOptionalPacketSubtypesWithoutDuplicates(t *testing.T) {
@@ -676,6 +821,37 @@ func interfaceMetricDataPointCounts(metrics pmetric.Metrics) map[string]int {
 		}
 	}
 	return counts
+}
+
+func interfaceMetricInterfaceNames(metrics pmetric.Metrics, metricName string) map[string]struct{} {
+	names := map[string]struct{}{}
+	for i := 0; i < metrics.ResourceMetrics().Len(); i++ {
+		scopeMetrics := metrics.ResourceMetrics().At(i).ScopeMetrics()
+		for j := 0; j < scopeMetrics.Len(); j++ {
+			metricSlice := scopeMetrics.At(j).Metrics()
+			for k := 0; k < metricSlice.Len(); k++ {
+				metric := metricSlice.At(k)
+				if metric.Name() != metricName {
+					continue
+				}
+				switch metric.Type() {
+				case pmetric.MetricTypeGauge:
+					for l := 0; l < metric.Gauge().DataPoints().Len(); l++ {
+						if name, ok := metric.Gauge().DataPoints().At(l).Attributes().Get("network.interface.name"); ok {
+							names[name.Str()] = struct{}{}
+						}
+					}
+				case pmetric.MetricTypeSum:
+					for l := 0; l < metric.Sum().DataPoints().Len(); l++ {
+						if name, ok := metric.Sum().DataPoints().At(l).Attributes().Get("network.interface.name"); ok {
+							names[name.Str()] = struct{}{}
+						}
+					}
+				}
+			}
+		}
+	}
+	return names
 }
 
 func interfaceMetricDataPointCount(metric pmetric.Metric) int {

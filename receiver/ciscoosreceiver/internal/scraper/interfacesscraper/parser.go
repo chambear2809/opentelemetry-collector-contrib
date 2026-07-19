@@ -723,34 +723,8 @@ func parseInterfaceCounterTables(output string, logger *zap.Logger) map[string]m
 }
 
 func mergeInterfaceCounterTables(interfaces []*Interface, counterTables map[string]map[string]int64) []*Interface {
-	if len(counterTables) == 0 {
-		return interfaces
-	}
-
-	byName := make(map[string]*Interface, len(interfaces)*2)
-	for _, intf := range interfaces {
-		byName[intf.Name] = intf
-		byName[normalizeInterfaceName(intf.Name)] = intf
-	}
-
-	for tableName, counters := range counterTables {
-		intf := byName[tableName]
-		if intf == nil {
-			intf = byName[normalizeInterfaceName(tableName)]
-		}
-		if intf == nil {
-			intf = NewInterface(tableName)
-			interfaces = append(interfaces, intf)
-			byName[tableName] = intf
-			byName[normalizeInterfaceName(tableName)] = intf
-		}
-
-		for counterName, value := range counters {
-			applyInterfaceCounterValue(intf, counterName, value)
-		}
-	}
-
-	return interfaces
+	budget := newInterfaceCounterEnrichmentBudget(interfaces, len(interfaces)+len(counterTables))
+	return mergeInterfaceCounterTablesWithinBudget(interfaces, counterTables, budget)
 }
 
 func hasKnownCounterHeader(headers []string) bool {
