@@ -1,4 +1,5 @@
 ciscoos:
+  storage: file_storage/cisco_os
   collection_interval: 60s
   timeout: 30s
   scrapers:

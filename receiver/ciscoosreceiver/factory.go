@@ -70,6 +70,10 @@ func createMetricsReceiver(
 	consumer consumer.Metrics,
 ) (receiver.Metrics, error) {
 	conf := cfg.(*Config)
+	var checkpoints *checkpointRegistry
+	if conf.StorageID != nil {
+		checkpoints = newCheckpointRegistry(*conf.StorageID, set.ID, checkpointSignalMetrics, set.Logger)
+	}
 	warnInsecureTLSOptions(set.Logger, conf)
 	selector := newDeviceSelectionMatcher(conf.DeviceSelection)
 	consumer = newMetricFilteringConsumer(newAbsoluteCounterTrackingConsumer(consumer), conf)
@@ -138,6 +142,9 @@ func createMetricsReceiver(
 		if err != nil {
 			return nil, err
 		}
+		if checkpoints != nil {
+			rcvr.consumer = checkpoints.enableCounter("meraki", checkpointProviderTarget(conf, "meraki"), rcvr.counters, rcvr.consumer)
+		}
 		receivers = append(receivers, rcvr)
 	}
 
@@ -146,6 +153,9 @@ func createMetricsReceiver(
 		if err != nil {
 			return nil, err
 		}
+		if checkpoints != nil {
+			rcvr.consumer = checkpoints.enableCounter("intersight", checkpointProviderTarget(conf, "intersight"), rcvr.counters, rcvr.consumer)
+		}
 		receivers = append(receivers, rcvr)
 	}
 
@@ -153,6 +163,9 @@ func createMetricsReceiver(
 		rcvr, err := newCatalystCenterMetricsReceiver(set, conf, consumer)
 		if err != nil {
 			return nil, err
+		}
+		if checkpoints != nil {
+			rcvr.consumer = checkpoints.enableCounter("catalyst_center", checkpointProviderTarget(conf, "catalyst_center"), rcvr.counters, rcvr.consumer)
 		}
 		receivers = append(receivers, rcvr)
 	}
@@ -173,6 +186,9 @@ func createMetricsReceiver(
 		if err != nil {
 			return nil, err
 		}
+		if checkpoints != nil {
+			rcvr.consumer = checkpoints.enableCounter("sdwan", checkpointProviderTarget(conf, "sdwan"), rcvr.counters, rcvr.consumer)
+		}
 		receivers = append(receivers, rcvr)
 	}
 
@@ -180,6 +196,9 @@ func createMetricsReceiver(
 		rcvr, err := newNexusDashboardMetricsReceiver(set, conf, consumer)
 		if err != nil {
 			return nil, err
+		}
+		if checkpoints != nil {
+			rcvr.consumer = checkpoints.enableCounter("nexus_dashboard", checkpointProviderTarget(conf, "nexus_dashboard"), rcvr.counters, rcvr.consumer)
 		}
 		receivers = append(receivers, rcvr)
 	}
@@ -189,6 +208,9 @@ func createMetricsReceiver(
 		if err != nil {
 			return nil, err
 		}
+		if checkpoints != nil {
+			rcvr.consumer = checkpoints.enableCounter("aci", checkpointProviderTarget(conf, "aci"), rcvr.counters, rcvr.consumer)
+		}
 		receivers = append(receivers, rcvr)
 	}
 
@@ -197,6 +219,9 @@ func createMetricsReceiver(
 		if err != nil {
 			return nil, err
 		}
+		if checkpoints != nil {
+			rcvr.consumer = checkpoints.enableCounter("fmc", checkpointProviderTarget(conf, "fmc"), rcvr.counters, rcvr.consumer)
+		}
 		receivers = append(receivers, rcvr)
 	}
 
@@ -204,6 +229,9 @@ func createMetricsReceiver(
 		rcvr, err := newISEMetricsReceiver(set, conf, consumer)
 		if err != nil {
 			return nil, err
+		}
+		if checkpoints != nil {
+			rcvr.consumer = checkpoints.enableCounter("ise", checkpointProviderTarget(conf, "ise"), rcvr.counters, rcvr.consumer)
 		}
 		receivers = append(receivers, rcvr)
 	}
@@ -227,15 +255,19 @@ func createMetricsReceiver(
 		receivers = append(receivers, rcvr)
 	}
 
-	if len(receivers) == 0 {
-		return &nopMetricsReceiver{}, nil
+	var result receiver.Metrics
+	switch len(receivers) {
+	case 0:
+		result = &nopMetricsReceiver{}
+	case 1:
+		result = receivers[0]
+	default:
+		result = &multiMetricsReceiver{receivers: receivers}
 	}
-
-	if len(receivers) == 1 {
-		return receivers[0], nil
+	if checkpoints != nil {
+		result = &checkpointedMetricsReceiver{next: result, checkpoints: checkpoints}
 	}
-
-	return &multiMetricsReceiver{receivers: receivers}, nil
+	return result, nil
 }
 
 func createLogsReceiver(
@@ -245,12 +277,19 @@ func createLogsReceiver(
 	consumer consumer.Logs,
 ) (receiver.Logs, error) {
 	conf := cfg.(*Config)
+	var checkpoints *checkpointRegistry
+	if conf.StorageID != nil {
+		checkpoints = newCheckpointRegistry(*conf.StorageID, set.ID, checkpointSignalLogs, set.Logger)
+	}
 	warnInsecureTLSOptions(set.Logger, conf)
 	var receivers []receiver.Logs
 	if conf.Intersight.hasTarget() {
 		rcvr, err := newIntersightLogsReceiver(set, conf, consumer)
 		if err != nil {
 			return nil, err
+		}
+		if checkpoints != nil {
+			checkpoints.enableLogDedup("intersight", checkpointProviderTarget(conf, "intersight"), rcvr.seen, checkpointLogRetention(conf, "intersight"))
 		}
 		receivers = append(receivers, rcvr)
 	}
@@ -259,12 +298,18 @@ func createLogsReceiver(
 		if err != nil {
 			return nil, err
 		}
+		if checkpoints != nil {
+			checkpoints.enableLogDedup("sdwan", checkpointProviderTarget(conf, "sdwan"), rcvr.seen, checkpointLogRetention(conf, "sdwan"))
+		}
 		receivers = append(receivers, rcvr)
 	}
 	if conf.NexusDashboard.hasTarget() {
 		rcvr, err := newNexusDashboardLogsReceiver(set, conf, consumer)
 		if err != nil {
 			return nil, err
+		}
+		if checkpoints != nil {
+			checkpoints.enableLogDedup("nexus_dashboard", checkpointProviderTarget(conf, "nexus_dashboard"), rcvr.seen, checkpointLogRetention(conf, "nexus_dashboard"))
 		}
 		receivers = append(receivers, rcvr)
 	}
@@ -273,12 +318,18 @@ func createLogsReceiver(
 		if err != nil {
 			return nil, err
 		}
+		if checkpoints != nil {
+			checkpoints.enableLogDedup("aci", checkpointProviderTarget(conf, "aci"), rcvr.seen, checkpointLogRetention(conf, "aci"))
+		}
 		receivers = append(receivers, rcvr)
 	}
 	if conf.FMC.hasRESTTarget() {
 		rcvr, err := newFMCLogsReceiver(set, conf, consumer)
 		if err != nil {
 			return nil, err
+		}
+		if checkpoints != nil {
+			checkpoints.enableLogDedup("fmc", checkpointProviderTarget(conf, "fmc"), rcvr.seen, checkpointLogRetention(conf, "fmc"))
 		}
 		receivers = append(receivers, rcvr)
 	}
@@ -287,6 +338,11 @@ func createLogsReceiver(
 		if err != nil {
 			return nil, err
 		}
+		if checkpoints != nil {
+			for client, resume := range rcvr.resumes {
+				checkpoints.enableFMCResume(checkpointFMCResumeTargetWithScope(client.ControllerName(), client.Address(), conf.FMC.EStreamer.EventTypes), resume)
+			}
+		}
 		receivers = append(receivers, rcvr)
 	}
 	if conf.ISE.hasTarget() {
@@ -294,15 +350,24 @@ func createLogsReceiver(
 		if err != nil {
 			return nil, err
 		}
+		if checkpoints != nil {
+			checkpoints.enableLogDedup("ise", checkpointProviderTarget(conf, "ise"), rcvr.seen, checkpointLogRetention(conf, "ise"))
+		}
 		receivers = append(receivers, rcvr)
 	}
-	if len(receivers) == 0 {
-		return &nopLogsReceiver{}, nil
+	var result receiver.Logs
+	switch len(receivers) {
+	case 0:
+		result = &nopLogsReceiver{}
+	case 1:
+		result = receivers[0]
+	default:
+		result = &multiLogsReceiver{receivers: receivers}
 	}
-	if len(receivers) == 1 {
-		return receivers[0], nil
+	if checkpoints != nil {
+		result = &checkpointedLogsReceiver{next: result, checkpoints: checkpoints}
 	}
-	return &multiLogsReceiver{receivers: receivers}, nil
+	return result, nil
 }
 
 func cloneSystemScraperConfig(factory scraper.Factory, source *systemscraper.Config, device connection.DeviceConfig, timeout time.Duration) *systemscraper.Config {

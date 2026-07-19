@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -459,6 +460,9 @@ func normalizeEStreamerEventType(value string) string {
 	value = strings.TrimSpace(value)
 	replacer := strings.NewReplacer(" ", "_", "-", "_")
 	value = replacer.Replace(value)
+	if value == strings.ToUpper(value) {
+		return strings.ToLower(strings.Trim(value, "_"))
+	}
 	var out []rune
 	for i, char := range value {
 		if i > 0 && char >= 'A' && char <= 'Z' {
@@ -471,7 +475,7 @@ func normalizeEStreamerEventType(value string) string {
 
 func defaultFQERequest(eventTypes []string) map[string]any {
 	events := map[string]any{}
-	for _, eventType := range normalizeFQEEventTypes(eventTypes) {
+	for _, eventType := range NormalizeEStreamerEventTypes(eventTypes) {
 		switch eventType {
 		case "connection":
 			events["ConnectionEvent"] = fqeEventConfig([]string{"HeaderFieldSet", "ConnectionKeySet", "DetailFieldSet"})
@@ -492,9 +496,11 @@ func defaultFQERequest(eventTypes []string) map[string]any {
 	}
 }
 
-func normalizeFQEEventTypes(values []string) []string {
+// NormalizeEStreamerEventTypes returns the canonical semantic event scope used
+// by both request construction and durable checkpoint identity.
+func NormalizeEStreamerEventTypes(values []string) []string {
 	if len(values) == 0 {
-		return []string{"connection", "intrusion", "intrusion_packet", "file"}
+		return []string{"connection", "file", "intrusion", "intrusion_packet"}
 	}
 	out := make([]string, 0, len(values))
 	seen := map[string]struct{}{}
@@ -507,8 +513,13 @@ func normalizeFQEEventTypes(values []string) []string {
 			normalized = "intrusion"
 		case "intrusion_packet_event":
 			normalized = "intrusion_packet"
-		case "file_event", "malware", "file_malware":
+		case "file_event", "malware", "malware_event", "file_malware", "file_malware_event":
 			normalized = "file"
+		}
+		switch normalized {
+		case "connection", "intrusion", "intrusion_packet", "file":
+		default:
+			continue
 		}
 		if _, ok := seen[normalized]; ok {
 			continue
@@ -516,6 +527,7 @@ func normalizeFQEEventTypes(values []string) []string {
 		seen[normalized] = struct{}{}
 		out = append(out, normalized)
 	}
+	slices.Sort(out)
 	return out
 }
 

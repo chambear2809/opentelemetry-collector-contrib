@@ -1703,6 +1703,8 @@ func TestConfigUnmarshal(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, sub.Unmarshal(cfg))
+	require.NotNil(t, cfg.StorageID)
+	assert.Equal(t, "file_storage/cisco_os", cfg.StorageID.String())
 	require.Len(t, cfg.Devices, 2)
 	assert.Equal(t, "enable-password", string(cfg.Devices[0].Auth.EnablePassword))
 	assert.Equal(t, []string{"device-1", "edge-1"}, cfg.DeviceSelection.Include.HostNames)

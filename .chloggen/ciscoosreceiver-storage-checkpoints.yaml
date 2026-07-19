@@ -1,0 +1,7 @@
+change_type: enhancement
+component: receiver/cisco_os
+note: Add optional storage-backed durable checkpoints for Cisco receiver delivery state.
+issues: [0]
+subtext: |
+  Persists accepted log deduplication, FMC eStreamer resume state, and accumulated delta counters with bounded paged writes, stable secret-free target identities, restart restoration, and fail-open handling for corrupt or transiently unavailable storage after client acquisition.
+change_logs: [user]

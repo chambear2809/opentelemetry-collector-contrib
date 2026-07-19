@@ -36,6 +36,7 @@ The following settings are available:
 
 | Setting | Type | Required | Description |
 |---------|------|----------|-------------|
+| `storage` | string | No | Collector storage extension ID used for durable delivery checkpoints |
 | `devices` | list | Yes* | List of Cisco SSH devices to monitor |
 | `device_selection` | map | No | Shared include/exclude selector applied across SSH, Meraki, Intersight, Catalyst Center, Catalyst 9800, SD-WAN, Nexus Dashboard, ACI, FMC, ISE, and IOS XR telemetry |
 | `metrics` | map | No | Per-metric forwarding switches for cost-sensitive destinations such as Splunk Observability Cloud |
@@ -67,6 +68,62 @@ endpoints must use HTTPS; `insecure_skip_verify` never enables plaintext HTTP. P
 when explicitly enabled, and certificate failures identify the exact opt-in setting for isolated labs. The Meraki option
 is intended only for custom lab API endpoints; leave it disabled for the Cisco-hosted Dashboard API. Shared `gnmi`
 targets also support the explicit lab bypass, while plaintext gNMI remains prohibited in every environment.
+
+### Durable Checkpoints
+
+Set `storage` to the ID of a Collector storage extension to retain the receiver's delivery state across restarts. The
+checkpoint covers accumulated delta counters for controller/API metrics, polling-log deduplication for Intersight,
+SD-WAN, Nexus Dashboard, ACI, FMC, and ISE, ISE pxGrid streaming deduplication, and the FMC eStreamer resume cursor and
+replay set. Omitting `storage` preserves the original in-memory behavior.
+
+The extension must be configured and enabled in `service.extensions`. If `storage` is set but the extension is missing,
+does not implement the Collector storage interface, or cannot provide a client, receiver startup fails. After a client
+has been acquired, an absent key starts with empty state. Corrupt or version-incompatible payloads and transient storage
+read, write, or delete failures emit warnings and fail open so collection continues with bounded in-memory state.
+
+```yaml
+extensions:
+  file_storage/cisco_os:
+    directory: /var/lib/otelcol/cisco-os-checkpoints
+    create_directory: true
+
+receivers:
+  cisco_os/site_a:
+    storage: file_storage/cisco_os
+    # Add one or more Cisco targets here.
+
+service:
+  extensions: [file_storage/cisco_os]
+  pipelines:
+    metrics:
+      receivers: [cisco_os/site_a]
+      exporters: [otlp]
+    logs:
+      receivers: [cisco_os/site_a]
+      exporters: [otlp]
+```
+
+Checkpoint identities are versioned and isolated by receiver instance, provider, canonical target identity, and signal.
+Only normalized endpoints, controller/device identities, and target scope are fingerprinted; credentials, API keys,
+passwords, certificate paths, and unrelated retry or result-limit settings are excluded. Reordering an unordered target
+list or rotating credentials therefore does not orphan state, while a different receiver instance, provider, or endpoint
+cannot consume another target's checkpoint.
+
+State is stored as a manifest plus fixed pages of at most 64 entries and 64 KiB, with at most 1,563 pages and 100,000
+retained counter, deduplication, or eStreamer replay entries. Restoration reads only manifest-listed page keys and does
+not require optional storage walking support. A polling delivery rewrites only pages changed by that accepted batch plus
+the manifest; even a full expiry is capped at 1,563 page operations. Page allocation uses available capacity rather than
+hash buckets, so collisions cannot lower the 100,000-entry correctness ceiling.
+
+Polling-log and counter checkpoints are written only after the next Collector consumer accepts the batch. FMC eStreamer
+and ISE pxGrid checkpoint only accepted streaming messages and debounce persistence until 256 accepted messages or five
+seconds, whichever comes first. They also make a best-effort flush, bounded to five seconds and the Collector shutdown
+context, after their workers stop. While storage is healthy, a crash can replay at most the unflushed window: up to 255
+accepted high-rate messages or approximately five seconds of lower-rate traffic. FMC additionally requests a one-second
+cursor overlap and suppresses restored fingerprints. Transient storage failures can extend the replay window until a
+later write succeeds; delivery state never advances before downstream acceptance. A restored nonzero eStreamer cursor
+must be backed by retained event or observation evidence within five minutes of clock skew; otherwise the entire resume
+checkpoint is ignored and the configured initial lookback is retained.
 
 ### Device Configuration
 

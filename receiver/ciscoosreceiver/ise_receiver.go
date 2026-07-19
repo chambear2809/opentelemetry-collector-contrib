@@ -725,6 +725,11 @@ func (r *iseLogsReceiver) Start(_ context.Context, _ component.Host) error {
 	r.workers.Go(func() {
 		r.run(ctx)
 	})
+	if r.seen.checkpointEnabled() {
+		r.workers.Go(func() {
+			r.runCheckpointFlusher(ctx)
+		})
+	}
 	if r.pxGrid != nil && r.iseConfig.PxGrid.Streaming {
 		for _, subscription := range isePxGridSubscriptions(r.iseConfig.PxGrid.Subscriptions) {
 			r.workers.Go(func() {
@@ -748,7 +753,14 @@ func (r *iseLogsReceiver) Shutdown(ctx context.Context) error {
 		cancel()
 		workerDone = r.done
 	}
-	return waitForISEShutdown(ctx, workerDone, r.beginClose())
+	closeDone := r.beginClose()
+	if err := waitForISEShutdown(ctx, workerDone, nil); err != nil {
+		return err
+	}
+	flushCtx, flushCancel := checkpointFlushContext(ctx)
+	r.seen.persistCheckpoint(flushCtx, true)
+	flushCancel()
+	return waitForISEShutdown(ctx, nil, closeDone)
 }
 
 func (r *iseLogsReceiver) beginClose() <-chan struct{} {
@@ -802,6 +814,19 @@ func (r *iseLogsReceiver) run(ctx context.Context) {
 			return
 		case <-ticker.C:
 			r.collect(ctx)
+		}
+	}
+}
+
+func (r *iseLogsReceiver) runCheckpointFlusher(ctx context.Context) {
+	ticker := time.NewTicker(logCheckpointFlushInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			r.seen.persistCheckpoint(ctx, false)
 		}
 	}
 }
@@ -999,6 +1024,8 @@ func (r *iseLogsReceiver) consumePxGridMessage(ctx context.Context, message ise.
 		r.settings.Logger.Error("ISE pxGrid log consumer failed", zap.Error(err))
 		return err
 	}
+	r.seen.ConfirmCommitted(key)
+	r.seen.persistCheckpoint(ctx, false)
 	return nil
 }
 

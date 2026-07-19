@@ -1588,5 +1588,10 @@ properties:
   sdwan:
     description: SDWAN contains Cisco Catalyst SD-WAN Manager API polling settings.
     $ref: sdwan_config
+  storage:
+    description: StorageID is an optional Collector storage extension used to persist delivery-safe receiver checkpoints across restarts.
+    x-pointer: true
+    type: string
+    x-customType: go.opentelemetry.io/collector/component.ID
 allOf:
   - $ref: go.opentelemetry.io/collector/scraper/scraperhelper.controller_config

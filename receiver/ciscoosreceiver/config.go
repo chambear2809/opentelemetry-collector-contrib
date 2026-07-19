@@ -23,6 +23,7 @@ import (
 	"go.uber.org/multierr"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/connection"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/fmc"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
 
@@ -755,6 +756,10 @@ func (cfg FMCEStreamerConfig) hasTarget() bool {
 // Config defines configuration for Cisco OS receiver.
 type Config struct {
 	scraperhelper.ControllerConfig `mapstructure:",squash"`
+
+	// StorageID is an optional Collector storage extension used to persist
+	// delivery-safe receiver checkpoints across restarts.
+	StorageID *component.ID `mapstructure:"storage"`
 
 	// Devices is the list of Cisco devices to monitor.
 	Devices []DeviceConfig `mapstructure:"devices"`
@@ -1740,14 +1745,7 @@ func inferredControllerAuthMode(auth ControllerAuthConfig) string {
 }
 
 func validFMCEStreamerEventType(value string) bool {
-	switch strings.ToLower(strings.TrimSpace(strings.ReplaceAll(value, "-", "_"))) {
-	case "connection", "connection_event", "traffic", "security_intelligence", "si",
-		"intrusion", "intrusion_event", "intrusion_packet", "intrusion_packet_event",
-		"file", "file_event", "malware", "file_malware":
-		return true
-	default:
-		return false
-	}
+	return len(fmc.NormalizeEStreamerEventTypes([]string{value})) == 1
 }
 
 func validateNexusControllerGroups(prefix string, groups map[string]NexusControllerGroupConfig) error {
