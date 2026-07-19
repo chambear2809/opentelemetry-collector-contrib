@@ -420,6 +420,63 @@ func TestDirectGNMIDecodeBudgetRejectsNonFiniteNumbers(t *testing.T) {
 	assert.Equal(t, int64(1), budget.dropped)
 }
 
+func TestDirectDynamicYANGNonFiniteTypedNumbersCountDecodeErrors(t *testing.T) {
+	for _, product := range dynamicYANGTestProducts() {
+		for _, test := range []struct {
+			name  string
+			leaf  string
+			value *gnmi.TypedValue
+		}{
+			{
+				name:  "float NaN gauge",
+				leaf:  "value",
+				value: &gnmi.TypedValue{Value: &gnmi.TypedValue_FloatVal{FloatVal: float32(math.NaN())}},
+			},
+			{
+				name:  "float positive infinity sum",
+				leaf:  "packets",
+				value: &gnmi.TypedValue{Value: &gnmi.TypedValue_FloatVal{FloatVal: float32(math.Inf(1))}},
+			},
+			{
+				name:  "float negative infinity gauge",
+				leaf:  "value",
+				value: &gnmi.TypedValue{Value: &gnmi.TypedValue_FloatVal{FloatVal: float32(math.Inf(-1))}},
+			},
+			{
+				name:  "double NaN sum",
+				leaf:  "packets",
+				value: &gnmi.TypedValue{Value: &gnmi.TypedValue_DoubleVal{DoubleVal: math.NaN()}},
+			},
+			{
+				name:  "double positive infinity gauge",
+				leaf:  "value",
+				value: &gnmi.TypedValue{Value: &gnmi.TypedValue_DoubleVal{DoubleVal: math.Inf(1)}},
+			},
+			{
+				name:  "double negative infinity sum",
+				leaf:  "packets",
+				value: &gnmi.TypedValue{Value: &gnmi.TypedValue_DoubleVal{DoubleVal: math.Inf(-1)}},
+			},
+		} {
+			t.Run(product.name+"/"+test.name, func(t *testing.T) {
+				health := &iosXRHealth{}
+				md := product.decode(health, &gnmi.Notification{
+					Prefix: mustParseIOSXRPath(t, "test:root"),
+					Update: []*gnmi.Update{{
+						Path: mustParseIOSXRPath(t, test.leaf),
+						Val:  test.value,
+					}},
+				}, directGNMIDecodeLimits{})
+
+				name := mustDynamicYANGName(t, product.prefix, "test", []string{"test:root", test.leaf}, dynamicYANGMetricVariantNumber)
+				assert.Zero(t, metricCountNamed(md, name))
+				assert.Equal(t, int64(1), health.snapshot().decodeErrors)
+				assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
+			})
+		}
+	}
+}
+
 func TestIndexedMetricBuilderInfoValueHasDeterministicPrecedenceAndAccounting(t *testing.T) {
 	attrs := map[string]string{"value": "path-key", "key": "context"}
 	wantBytes := len("value") + len("decoded-leaf") +

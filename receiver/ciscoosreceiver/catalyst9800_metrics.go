@@ -111,11 +111,12 @@ func appendCatalyst9800MetricNumberIndexed(builder *indexedMetricBuilder, module
 	if isCatalyst9800CounterMetric(path.normalized) {
 		metricType = pmetric.MetricTypeSum
 	}
-	value, ok := canonicalDynamicYANGNumber(metricType, value)
+	canonical, ok := canonicalDynamicYANGNumber(metricType, value)
 	if !ok {
-		builder.rejectDatapoint()
+		builder.rejectNoncanonicalDynamicYANGNumber(value)
 		return
 	}
+	value = canonical
 	name, ok := dynamicYANGMetricName(
 		"cisco.catalyst9800.yang",
 		module,
@@ -152,7 +153,22 @@ func appendCatalyst9800InfoMetricIndexed(builder *indexedMetricBuilder, module s
 }
 
 func isCatalyst9800CounterMetric(pathParts []string) bool {
-	return isUnambiguousYANGCounter(pathParts)
+	if isUnambiguousYANGCounter(pathParts) {
+		return true
+	}
+	if len(pathParts) == 0 {
+		return false
+	}
+	// These exact leaves are cumulative in yanggrpcreceiver's bundled
+	// Cisco-IOS-XE-interfaces-oper schema, but intentionally do not match the
+	// shared word heuristic. Keep the exceptions exact so similarly named rate
+	// or state leaves remain gauges.
+	switch pathParts[len(pathParts)-1] {
+	case "num-flaps", "in-unknown-protos", "in-unknown-protos-64":
+		return true
+	default:
+		return false
+	}
 }
 
 func appendCatalyst9800AliasesForValue(sm pmetric.ScopeMetrics, module string, pathParts []string, value any, ts pcommon.Timestamp, attrs map[string]string) {
@@ -381,6 +397,15 @@ func (b *indexedMetricBuilder) rejectDatapoint() {
 	if b.finalBudget != nil {
 		b.finalBudget.dropped++
 	}
+}
+
+func (b *indexedMetricBuilder) rejectNoncanonicalDynamicYANGNumber(value metricNumber) {
+	// validNumber owns the established nonfinite decode-error and dropped-point
+	// accounting. Other representation conflicts are ordinary dropped points.
+	if b.budget != nil && !b.budget.validNumber(value) {
+		return
+	}
+	b.rejectDatapoint()
 }
 
 func catalyst9800PercentageRatio(value float64) (float64, bool) {

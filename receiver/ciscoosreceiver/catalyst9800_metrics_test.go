@@ -237,6 +237,81 @@ func TestCatalyst9800NormalizingConsumerRejectsFractionalIntegerAlias(t *testing
 	assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
 }
 
+func TestCatalyst9800NormalizingConsumerPreservesBuiltinNumFlapsSumAndRejectsConflicts(t *testing.T) {
+	const encodingPath = "Cisco-IOS-XE-interfaces-oper:interfaces/interface/statistics"
+
+	for _, test := range []struct {
+		name        string
+		leaf        string
+		mutate      func(pmetric.Metric)
+		wantMetric  bool
+		wantDropped int64
+	}{
+		{
+			name:       "built-in num-flaps cumulative sum",
+			leaf:       "num-flaps",
+			wantMetric: true,
+		},
+		{
+			name:        "sum conflicts with built-in rate gauge",
+			leaf:        "rx-pps",
+			wantDropped: 1,
+		},
+		{
+			name: "delta num-flaps sum",
+			leaf: "num-flaps",
+			mutate: func(metric pmetric.Metric) {
+				metric.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
+			},
+			wantDropped: 1,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			sink := &consumertest.MetricsSink{}
+			health := &catalyst9800Health{}
+			normalizer := newCatalyst9800NormalizingConsumer(
+				sink,
+				defaultCatalyst9800Config(),
+				newDeviceSelectionMatcher(DeviceSelectionConfig{}),
+				catalyst9800TelemetryTransportDialOut,
+				health,
+			)
+			sourcePath := "interface/statistics/" + test.leaf
+			raw := rawDynamicYANGDialOutMetric(
+				encodingPath,
+				"",
+				"cisco.interface.statistics."+test.leaf,
+				sourcePath,
+				pmetric.MetricTypeSum,
+				intMetricNumber(7),
+			)
+			if test.mutate != nil {
+				test.mutate(raw.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0))
+			}
+
+			require.NoError(t, normalizer.ConsumeMetrics(t.Context(), raw))
+			if test.wantMetric {
+				name := mustDialOutDynamicYANGName(
+					t,
+					"cisco.catalyst9800.yang",
+					"Cisco-IOS-XE-interfaces-oper",
+					encodingPath,
+					sourcePath,
+					dynamicYANGMetricVariantNumber,
+				)
+				metric := mustFindMetricExactInBatches(t, sink.AllMetrics(), name)
+				require.Equal(t, pmetric.MetricTypeSum, metric.Type())
+				assert.True(t, metric.Sum().IsMonotonic())
+				assert.Equal(t, pmetric.AggregationTemporalityCumulative, metric.Sum().AggregationTemporality())
+				assert.Equal(t, int64(7), metric.Sum().DataPoints().At(0).IntValue())
+			} else {
+				assert.Empty(t, sink.AllMetrics())
+			}
+			assert.Equal(t, test.wantDropped, health.snapshot().droppedDatapoints)
+		})
+	}
+}
+
 func TestCatalyst9800NormalizingConsumerPrioritizesCanonicalPointsBeforeAliases(t *testing.T) {
 	sink := &consumertest.MetricsSink{}
 	health := &catalyst9800Health{}

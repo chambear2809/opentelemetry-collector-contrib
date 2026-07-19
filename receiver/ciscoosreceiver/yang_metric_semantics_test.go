@@ -35,6 +35,30 @@ func TestYANGCounterClassificationIsConservative(t *testing.T) {
 	}
 }
 
+func TestCatalyst9800CounterClassificationIncludesBuiltinInterfaceStatisticsExceptions(t *testing.T) {
+	for _, leaf := range []string{
+		"num-flaps",
+		"in-unknown-protos",
+		"in-unknown-protos-64",
+	} {
+		path := []string{"interfaces", "interface", "statistics", leaf}
+		assert.False(t, isUnambiguousYANGCounter(path), "the shared heuristic must remain conservative for %q", leaf)
+		assert.True(t, isCatalyst9800CounterMetric(path), "the exact IOS XE schema counter %q must be cumulative", leaf)
+	}
+
+	for _, leaf := range []string{
+		"num-flaps-per-second",
+		"num_flaps",
+		"in-unknown-protos-rate",
+		"in_unknown_protos",
+		"in-unknown-protos-640",
+		"unknown-protos",
+	} {
+		assert.False(t, isCatalyst9800CounterMetric([]string{"interfaces", "interface", "statistics", leaf}),
+			"near-match %q must not inherit cumulative semantics", leaf)
+	}
+}
+
 func TestIOSXRCounterClassificationUsesContainerSemantics(t *testing.T) {
 	for _, path := range [][]string{
 		{"infra-statistics", "interfaces", "interface", "generic-counters", "applique"},

@@ -265,11 +265,12 @@ func appendIOSXRMetricNumberIndexed(builder *indexedMetricBuilder, module string
 	if isIOSXRCounterMetric(path.normalized) {
 		metricType = pmetric.MetricTypeSum
 	}
-	value, ok := canonicalDynamicYANGNumber(metricType, value)
+	canonical, ok := canonicalDynamicYANGNumber(metricType, value)
 	if !ok {
-		builder.rejectDatapoint()
+		builder.rejectNoncanonicalDynamicYANGNumber(value)
 		return
 	}
+	value = canonical
 	name, ok := dynamicYANGMetricName(
 		"cisco.iosxr.yang",
 		module,
