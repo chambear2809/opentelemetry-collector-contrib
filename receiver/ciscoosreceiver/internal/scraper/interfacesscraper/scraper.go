@@ -192,10 +192,10 @@ func (s *interfacesScraper) ScrapeMetrics(ctx context.Context) (pmetric.Metrics,
 
 func recordPacketCounts(mb *metadata.MetricsBuilder, timestamp pcommon.Timestamp, intf *Interface, description, macAddress, speedString string) {
 	if intf.HasInputPacketTypes {
-		intf.InputUnicast = inferUnicastIfAbsent(intf.InputPackets, intf.InputUnicast, intf.InputMulticast, intf.InputBroadcast)
+		intf.InputUnicast = inferUnicastIfAbsent(intf.InputPackets, intf.InputUnicast, intf.InputMulticast, intf.InputBroadcast, intf.InputBroadcastMulticast)
 	}
 	if intf.HasOutputPacketTypes {
-		intf.OutputUnicast = inferUnicastIfAbsent(intf.OutputPackets, intf.OutputUnicast, intf.OutputMulticast, intf.OutputBroadcast)
+		intf.OutputUnicast = inferUnicastIfAbsent(intf.OutputPackets, intf.OutputUnicast, intf.OutputMulticast, intf.OutputBroadcast, invalidCounterValue)
 	}
 
 	if intf.HasInputPacketTypes {
@@ -210,9 +210,24 @@ func recordPacketCounts(mb *metadata.MetricsBuilder, timestamp pcommon.Timestamp
 	}
 }
 
-func inferUnicastIfAbsent(total, unicast, multicast, broadcast int64) int64 {
+func inferUnicastIfAbsent(total, unicast, multicast, broadcast, broadcastMulticast int64) int64 {
 	if validCounter(unicast) {
 		return unicast
+	}
+	if validCounter(total) && validCounter(broadcastMulticast) {
+		if total < 0 || broadcastMulticast < 0 || broadcastMulticast > total {
+			return invalidCounterValue
+		}
+		if validCounter(multicast) && (multicast < 0 || multicast > broadcastMulticast) {
+			return invalidCounterValue
+		}
+		if validCounter(broadcast) && (broadcast < 0 || broadcast > broadcastMulticast) {
+			return invalidCounterValue
+		}
+		if validCounter(multicast) && validCounter(broadcast) && multicast != broadcastMulticast-broadcast {
+			return invalidCounterValue
+		}
+		return total - broadcastMulticast
 	}
 	if !validCounter(total) || !validCounter(multicast) || !validCounter(broadcast) ||
 		total < 0 || multicast < 0 || broadcast < 0 || multicast > total {

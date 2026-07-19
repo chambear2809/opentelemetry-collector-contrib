@@ -36,16 +36,20 @@ type Interface struct {
 	InputPackets  int64
 	OutputPackets int64
 
-	InputUnicast         int64
-	OutputUnicast        int64
-	InputBroadcast       int64
-	InputMulticast       int64
-	InputIPMulticast     int64
-	InputTotalMulticast  int64
-	OutputBroadcast      int64
-	OutputMulticast      int64
-	HasInputPacketTypes  bool
-	HasOutputPacketTypes bool
+	InputUnicast   int64
+	OutputUnicast  int64
+	InputBroadcast int64
+	// InputBroadcastMulticast is the IOS/IOS-XE "Received ... broadcasts"
+	// aggregate. Cisco defines that field as the total number of broadcast or
+	// multicast packets, so it must not be exported as a broadcast subtype.
+	InputBroadcastMulticast int64
+	InputMulticast          int64
+	InputIPMulticast        int64
+	InputTotalMulticast     int64
+	OutputBroadcast         int64
+	OutputMulticast         int64
+	HasInputPacketTypes     bool
+	HasOutputPacketTypes    bool
 
 	InputRateBits     int64
 	OutputRateBits    int64
@@ -69,26 +73,27 @@ const (
 
 func NewInterface(name string) *Interface {
 	return &Interface{
-		Name:                name,
-		AdminStatus:         StatusDown,
-		OperStatus:          StatusDown,
-		InputErrors:         invalidCounterValue,
-		OutputErrors:        invalidCounterValue,
-		InputDrops:          invalidCounterValue,
-		OutputDrops:         invalidCounterValue,
-		InputBytes:          invalidCounterValue,
-		OutputBytes:         invalidCounterValue,
-		InputPackets:        invalidCounterValue,
-		OutputPackets:       invalidCounterValue,
-		InputUnicast:        invalidCounterValue,
-		OutputUnicast:       invalidCounterValue,
-		InputBroadcast:      invalidCounterValue,
-		InputMulticast:      invalidCounterValue,
-		InputIPMulticast:    invalidCounterValue,
-		InputTotalMulticast: invalidCounterValue,
-		OutputBroadcast:     invalidCounterValue,
-		OutputMulticast:     invalidCounterValue,
-		Counters:            map[string]int64{},
+		Name:                    name,
+		AdminStatus:             StatusDown,
+		OperStatus:              StatusDown,
+		InputErrors:             invalidCounterValue,
+		OutputErrors:            invalidCounterValue,
+		InputDrops:              invalidCounterValue,
+		OutputDrops:             invalidCounterValue,
+		InputBytes:              invalidCounterValue,
+		OutputBytes:             invalidCounterValue,
+		InputPackets:            invalidCounterValue,
+		OutputPackets:           invalidCounterValue,
+		InputUnicast:            invalidCounterValue,
+		OutputUnicast:           invalidCounterValue,
+		InputBroadcast:          invalidCounterValue,
+		InputBroadcastMulticast: invalidCounterValue,
+		InputMulticast:          invalidCounterValue,
+		InputIPMulticast:        invalidCounterValue,
+		InputTotalMulticast:     invalidCounterValue,
+		OutputBroadcast:         invalidCounterValue,
+		OutputMulticast:         invalidCounterValue,
+		Counters:                map[string]int64{},
 	}
 }
 
@@ -475,12 +480,12 @@ func parseInterfaces(output string, logger *zap.Logger) []*Interface {
 			}
 		case multiBroadIOSXE.MatchString(line):
 			matches := multiBroadIOSXE.FindStringSubmatch(line)
-			current.InputBroadcast = str2int64(matches[1])
+			current.InputBroadcastMulticast = str2int64(matches[1])
 			current.InputIPMulticast = str2int64(matches[2])
 			current.HasInputPacketTypes = true
 		case multiBroadIOS.MatchString(line):
 			matches := multiBroadIOS.FindStringSubmatch(line)
-			current.InputBroadcast = str2int64(matches[1])
+			current.InputBroadcastMulticast = str2int64(matches[1])
 			current.HasInputPacketTypes = true
 		case nxBroadcastBytesRegexp.MatchString(line):
 			matches := nxBroadcastBytesRegexp.FindStringSubmatch(line)
@@ -665,13 +670,16 @@ func parseInterfaces(output string, logger *zap.Logger) []*Interface {
 }
 
 func finalizeInterfacePacketTypes(intf *Interface) {
-	// IOS and IOS-XE report IP multicast and total multicast on separate
-	// lines. Resolve them after parsing the full interface so line order cannot
-	// change the precedence, while retaining IP multicast as the fallback.
+	// IOS and IOS-XE report an aggregate broadcast-or-multicast count on the
+	// "Received ... broadcasts" line. The later "... multicast ..." field is
+	// the total multicast counter; the parenthesized IP multicast value is only
+	// a subset and cannot stand in for it. Resolve the fields after parsing the
+	// full interface so line order cannot change the result.
 	if validCounter(intf.InputTotalMulticast) {
 		intf.InputMulticast = intf.InputTotalMulticast
-	} else if validCounter(intf.InputIPMulticast) {
-		intf.InputMulticast = intf.InputIPMulticast
+		if validCounter(intf.InputBroadcastMulticast) && intf.InputBroadcastMulticast >= intf.InputTotalMulticast {
+			intf.InputBroadcast = intf.InputBroadcastMulticast - intf.InputTotalMulticast
+		}
 	}
 }
 

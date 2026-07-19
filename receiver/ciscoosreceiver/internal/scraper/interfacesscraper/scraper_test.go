@@ -349,19 +349,16 @@ admin state is up, Dedicated Interface
 			},
 		},
 		{
-			name: "multicast plus broadcast",
+			name: "IOS aggregate without total subtype counters",
 			output: `GigabitEthernet1/0/1 is up, line protocol is up
   Received 7 broadcasts (3 IP multicasts)`,
-			expected: map[string]int64{
-				"receive/multicast": 3,
-				"receive/broadcast": 7,
-			},
+			expected: map[string]int64{},
 		},
 		{
 			name: "IOS XE zero IP multicast uses total multicast",
 			output: `GigabitEthernet1/0/1 is up, line protocol is up
   100 packets input, 1000 bytes
-  Received 20 broadcasts (0 IP multicasts)
+  Received 50 broadcasts (0 IP multicasts)
   0 watchdog, 30 multicast, 0 pause input`,
 			expected: map[string]int64{
 				"receive/unicast":   50,
@@ -374,11 +371,20 @@ admin state is up, Dedicated Interface
 			output: `GigabitEthernet1/0/1 is up, line protocol is up
   100 packets input, 1000 bytes
   0 watchdog, 30 multicast, 0 pause input
-  Received 20 broadcasts (40 IP multicasts)`,
+  Received 50 broadcasts (20 IP multicasts)`,
 			expected: map[string]int64{
 				"receive/unicast":   50,
 				"receive/multicast": 30,
 				"receive/broadcast": 20,
+			},
+		},
+		{
+			name: "IOS aggregate alone infers only unicast",
+			output: `GigabitEthernet1/0/1 is up, line protocol is up
+  100 packets input, 1000 bytes
+  Received 20 broadcasts (5 IP multicasts)`,
+			expected: map[string]int64{
+				"receive/unicast": 80,
 			},
 		},
 		{
@@ -479,6 +485,19 @@ func TestRecordPacketCounts_InputUnicastUnderflowGuard(t *testing.T) {
 
 	assert.Equal(t, int64(50), valid.InputUnicast,
 		"InputUnicast should be 50 when multicast+broadcast sums to 50 out of 100 total")
+
+	// Case 3: an IOS aggregate smaller than a known multicast subtype is
+	// internally inconsistent and must not produce a fabricated unicast count.
+	inconsistent := NewInterface("Gi1/0/3")
+	inconsistent.HasInputPacketTypes = true
+	inconsistent.InputPackets = 100
+	inconsistent.InputBroadcastMulticast = 20
+	inconsistent.InputMulticast = 30
+	recordPacketCounts(scraper.mb, ts, inconsistent, "", "", "")
+	scraper.mb.Emit()
+
+	assert.Equal(t, invalidCounterValue, inconsistent.InputUnicast,
+		"InputUnicast should remain absent when the combined counter is smaller than multicast")
 }
 
 func TestInterfacesScraper_NonPositiveTroubleshootingCapsUseDefaults(t *testing.T) {
