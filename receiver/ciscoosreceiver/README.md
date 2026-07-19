@@ -79,7 +79,31 @@ replay set. Omitting `storage` preserves the original in-memory behavior.
 The extension must be configured and enabled in `service.extensions`. If `storage` is set but the extension is missing,
 does not implement the Collector storage interface, or cannot provide a client, receiver startup fails. After a client
 has been acquired, an absent key starts with empty state. Corrupt or version-incompatible payloads and transient storage
-read, write, or delete failures emit warnings and fail open so collection continues with bounded in-memory state.
+read or write failures emit warnings and fail open so collection continues with bounded in-memory state.
+
+Checkpoint keys must not expire. The generic Collector storage `Client` does not expose a key TTL or a capability that
+lets the receiver validate retention. In particular, configure the Redis storage extension with `expiration: 0`.
+Refreshing only pages changed by a delivery cannot make an expiring backend safe: an unchanged page, or every page while
+the receiver is idle, can expire while a newer manifest still references it. Use a dedicated non-expiring storage
+namespace for checkpoint data.
+
+The storage client must serialize operations for this single writer and provide synchronous map semantics. A successful
+page `Batch` must durably apply its operations in order before returning, and a subsequent successful manifest `Set` must
+be durably ordered after that completed stage. A failed page `Batch` may have applied any operation prefix before returning,
+but it must not continue mutating page keys after return; a late failed-stage write could otherwise overwrite a slot after
+a later manifest makes it live.
+
+The manifest key additionally requires per-key invocation ordering and read-after-success consistency. Each successful
+`Set` must be durable before returning; a later successful `Get` must return that value or one from a later invocation; and
+an earlier errored `Set` must never take effect after a later `Set` succeeds. An errored `Set` is ambiguous only about
+whether it was accepted within its invocation: reconciliation may temporarily read the previous manifest and later observe
+the accepted candidate, but that is a stale observation, not permission for the failed operation to reorder after later
+writes. The receiver retains the staged candidate and never treats the previous-manifest read as rejection. A later
+checkpoint attempt retries that exact candidate once. A successful exact retry orders any earlier candidate write before
+itself and commits the candidate, after which the same attempt may safely stage and publish a newer manifest that supersedes
+every candidate invocation. Observing the candidate also commits it, another retry error keeps both slot views fenced, and
+an unrelated manifest keeps writes fenced. A backend that permits an errored candidate `Set` to overwrite a later successful
+manifest `Set` is unsupported and cannot be made safe by this protocol without compare-and-swap or generation fencing.
 
 ```yaml
 extensions:
@@ -113,19 +137,27 @@ Each checkpoint identity requires one active writer because the Collector storag
 compare-and-swap. HA replicas must use separate storage namespaces or receiver instance IDs; sharing the same checkpoint
 keys between active Collectors is not supported by the two-slot protocol.
 
+The physical key bound is per stable checkpoint identity, not global across configuration history. Changing an identity
+field such as receiver instance, provider endpoint, or target scope creates a new hashed namespace; the generic storage
+API provides no mandatory namespace walk with which to find and reclaim the old one. Repeated identity churn can therefore
+retain old bounded namespaces. Operators should dedicate a backend prefix or storage instance to the receiver lifecycle
+and remove obsolete namespaces manually only after every Collector that could reference them has stopped.
+
 State is stored as a manifest plus at most 1,563 logical pages of 64 entries and 64 KiB each, retaining up to 100,000
 counter, deduplication, or eStreamer replay entries. Each logical page has two fixed physical slots (at most 3,126 slotted
 page keys), plus at most 1,563 retained unslotted legacy keys. Restoration reads only manifest-listed keys and does
 not require storage walking. A polling delivery stages only changed pages into slots not referenced by the committed
 manifest, then publishes the version 2 manifest with a separate single-key write. A partially applied page batch therefore
 leaves the prior generation readable. After an ambiguous manifest-write failure, persistence pauses until a read identifies
-the committed generation, so a retry cannot overwrite a possibly live slot. Startup manifest failures disable durable writes
+the candidate or a later attempt republishes the exact same candidate manifest, so a retry cannot overwrite a possibly live
+slot. Startup manifest failures disable durable writes
 until an absent or valid header establishes a safe fence; if a valid header's pages or domain payload cannot be restored, the
 next complete in-memory snapshot replaces that generation using the fenced slots. Version 1 manifests with unslotted keys
 migrate through the same copy-on-write path; version 1-only downgrade receivers reject a version 2 manifest and start with
 empty in-memory state, which prevents combining a version 2 manifest with stale version 1 pages. Stage writes are capped at
-1,563 per delivery, while fail-open deletion and legacy cleanup use at most three fixed keys per page. Capacity-based page
-allocation prevents collisions from lowering the 100,000-entry correctness ceiling.
+1,563 per delivery. Stale slots and legacy keys are deliberately not deleted: retaining at most three fixed page keys per
+logical page keeps storage bounded per identity without allowing best-effort cleanup to delay publication or shutdown.
+Capacity-based page allocation prevents collisions from lowering the 100,000-entry correctness ceiling.
 
 Polling-log and counter checkpoints are written only after the next Collector consumer accepts the batch. FMC eStreamer
 and ISE pxGrid checkpoint only accepted streaming messages and debounce persistence until 256 accepted messages or five

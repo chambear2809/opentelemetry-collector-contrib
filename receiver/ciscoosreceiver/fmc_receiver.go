@@ -216,8 +216,9 @@ func newFMCEStreamerLogsReceiver(set receiver.Settings, conf *Config, consumer c
 		obs:      newPlatformObsReport(set, "tcp"),
 		done:     make(chan struct{}),
 	}
+	lookback := fmcEStreamerConfiguredLookback(conf)
 	for _, client := range clients {
-		receiver.resumes[client] = newFMCEStreamerResumeState(client.InitialTime())
+		receiver.resumes[client] = newFMCEStreamerResumeStateWithLookback(client.InitialTime(), lookback)
 	}
 	return receiver, nil
 }
@@ -260,10 +261,7 @@ func newFMCEStreamerClients(conf *Config) ([]*fmc.EStreamerClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	lookback := conf.FMC.EStreamer.Lookback
-	if lookback <= 0 {
-		lookback = defaultFMCConfig().EStreamer.Lookback
-	}
+	lookback := fmcEStreamerConfiguredLookback(conf)
 	var initialTime time.Time
 	if lookback > 0 {
 		initialTime = time.Now().Add(-lookback)
@@ -286,6 +284,14 @@ func newFMCEStreamerClients(conf *Config) ([]*fmc.EStreamerClient, error) {
 		clients = append(clients, client)
 	}
 	return clients, nil
+}
+
+func fmcEStreamerConfiguredLookback(conf *Config) time.Duration {
+	lookback := conf.FMC.EStreamer.Lookback
+	if lookback <= 0 {
+		lookback = defaultFMCConfig().EStreamer.Lookback
+	}
+	return lookback
 }
 
 func (r *fmcMetricsReceiver) Start(_ context.Context, _ component.Host) error {
@@ -997,6 +1003,7 @@ type fmcEStreamerResumeState struct {
 	mu            sync.Mutex
 	persistMu     sync.Mutex
 	initialTime   time.Time
+	lookback      time.Duration
 	cursor        time.Time
 	seen          map[string]fmcEStreamerSeenEvent
 	checkpoint    *checkpointBinding
@@ -1029,8 +1036,13 @@ type fmcResumeCheckpointEntry struct {
 }
 
 func newFMCEStreamerResumeState(initialTime time.Time) *fmcEStreamerResumeState {
+	return newFMCEStreamerResumeStateWithLookback(initialTime, 0)
+}
+
+func newFMCEStreamerResumeStateWithLookback(initialTime time.Time, lookback time.Duration) *fmcEStreamerResumeState {
 	return &fmcEStreamerResumeState{
 		initialTime: initialTime,
+		lookback:    lookback,
 		seen:        make(map[string]fmcEStreamerSeenEvent),
 		generation:  map[uint16]uint64{},
 		persisted:   map[uint16]uint64{},
@@ -1046,6 +1058,14 @@ func (s *fmcEStreamerResumeState) requestStart() time.Time {
 
 func (s *fmcEStreamerResumeState) requestStartLocked() time.Time {
 	if s.cursor.IsZero() {
+		if s.now != nil {
+			if now := s.now(); !now.IsZero() && s.initialTime.After(now) {
+				if s.lookback > 0 {
+					return now.Add(-s.lookback)
+				}
+				return now
+			}
+		}
 		return s.initialTime
 	}
 	cursor := s.cursor

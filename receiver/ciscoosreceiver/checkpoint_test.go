@@ -38,13 +38,21 @@ type checkpointTestBackend struct {
 	values map[string][]byte
 
 	getErr                error
+	staleGetOnceKey       string
+	staleGetOnceValue     []byte
 	batchReadErr          error
 	batchMissingKey       string
 	batchWriteErr         error
 	batchWritePrefix      int
 	setErr                error
 	setApplyThenErr       bool
+	setDeferApplyThenErr  bool
+	deferredSetKey        string
+	deferredSetValue      []byte
 	deleteErr             error
+	deleteEntered         chan struct{}
+	deleteRelease         <-chan struct{}
+	deleteUntilContext    bool
 	closeErr              error
 	batchEntered          chan struct{}
 	batchRelease          <-chan struct{}
@@ -56,6 +64,9 @@ type checkpointTestBackend struct {
 	writeOps       int
 	maxWriteOps    int
 	maxValueSize   int
+	setValues      [][]byte
+	deferredSets   int
+	deleteCalls    int
 	closeCalls     int
 	closeSucceeded bool
 }
@@ -80,6 +91,61 @@ func (b *checkpointTestBackend) writeStats() (batches, operations, maxOperations
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.writeBatches, b.writeOps, b.maxWriteOps, b.maxValueSize
+}
+
+func (b *checkpointTestBackend) deleteStats() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.deleteCalls
+}
+
+func (b *checkpointTestBackend) manifestSetValues() [][]byte {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	values := make([][]byte, len(b.setValues))
+	for i, value := range b.setValues {
+		values[i] = append([]byte(nil), value...)
+	}
+	return values
+}
+
+func (b *checkpointTestBackend) hasDeferredSet() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.deferredSetKey != ""
+}
+
+func (b *checkpointTestBackend) deferredSetStats() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.deferredSets
+}
+
+func (b *checkpointTestBackend) waitForDelete(ctx context.Context) error {
+	b.mu.Lock()
+	b.deleteCalls++
+	entered := b.deleteEntered
+	release := b.deleteRelease
+	untilContext := b.deleteUntilContext
+	b.mu.Unlock()
+	if entered != nil {
+		select {
+		case entered <- struct{}{}:
+		default:
+		}
+	}
+	if release != nil {
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	if untilContext {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	return nil
 }
 
 func checkpointTestManifest(t *testing.T, backend *checkpointTestBackend, binding *checkpointBinding) checkpointManifest {
@@ -173,16 +239,32 @@ func (c *checkpointTestClient) Get(_ context.Context, key string) ([]byte, error
 	if c.backend.getErr != nil {
 		return nil, c.backend.getErr
 	}
+	if key == c.backend.staleGetOnceKey {
+		value := append([]byte(nil), c.backend.staleGetOnceValue...)
+		c.backend.staleGetOnceKey = ""
+		c.backend.staleGetOnceValue = nil
+		return value, nil
+	}
 	return append([]byte(nil), c.backend.values[key]...), nil
 }
 
 func (c *checkpointTestClient) Set(_ context.Context, key string, value []byte) error {
 	c.backend.mu.Lock()
 	defer c.backend.mu.Unlock()
+	if key == c.backend.deferredSetKey {
+		// Model the latest effect permitted by the checkpoint storage contract:
+		// an errored Set may become visible only in invocation order, before a
+		// later Set to the same key is applied.
+		c.backend.values[key] = append([]byte(nil), c.backend.deferredSetValue...)
+		c.backend.deferredSets++
+		c.backend.deferredSetKey = ""
+		c.backend.deferredSetValue = nil
+	}
 	c.backend.writeBatches++
 	c.backend.writeOps++
 	c.backend.maxWriteOps = max(c.backend.maxWriteOps, 1)
 	c.backend.maxValueSize = max(c.backend.maxValueSize, len(value))
+	c.backend.setValues = append(c.backend.setValues, append([]byte(nil), value...))
 	err := c.backend.setErr
 	if err == nil {
 		err = c.backend.batchWriteErr
@@ -190,6 +272,9 @@ func (c *checkpointTestClient) Set(_ context.Context, key string, value []byte) 
 	if err != nil {
 		if c.backend.setApplyThenErr {
 			c.backend.values[key] = append([]byte(nil), value...)
+		} else if c.backend.setDeferApplyThenErr {
+			c.backend.deferredSetKey = key
+			c.backend.deferredSetValue = append([]byte(nil), value...)
 		}
 		return err
 	}
@@ -197,7 +282,10 @@ func (c *checkpointTestClient) Set(_ context.Context, key string, value []byte) 
 	return nil
 }
 
-func (c *checkpointTestClient) Delete(_ context.Context, key string) error {
+func (c *checkpointTestClient) Delete(ctx context.Context, key string) error {
+	if err := c.backend.waitForDelete(ctx); err != nil {
+		return err
+	}
 	c.backend.mu.Lock()
 	defer c.backend.mu.Unlock()
 	if c.backend.deleteErr != nil {
@@ -207,7 +295,7 @@ func (c *checkpointTestClient) Delete(_ context.Context, key string) error {
 	return nil
 }
 
-func (c *checkpointTestClient) Batch(_ context.Context, operations ...*storage.Operation) error {
+func (c *checkpointTestClient) Batch(ctx context.Context, operations ...*storage.Operation) error {
 	if c.backend.batchEntered != nil {
 		select {
 		case c.backend.batchEntered <- struct{}{}:
@@ -217,8 +305,6 @@ func (c *checkpointTestClient) Batch(_ context.Context, operations ...*storage.O
 	if c.backend.batchRelease != nil {
 		<-c.backend.batchRelease
 	}
-	c.backend.mu.Lock()
-	defer c.backend.mu.Unlock()
 	hasRead := false
 	hasWrite := false
 	hasDelete := false
@@ -236,6 +322,13 @@ func (c *checkpointTestClient) Batch(_ context.Context, operations ...*storage.O
 			writeOperations++
 		}
 	}
+	if hasDelete {
+		if err := c.backend.waitForDelete(ctx); err != nil {
+			return err
+		}
+	}
+	c.backend.mu.Lock()
+	defer c.backend.mu.Unlock()
 	if hasWrite {
 		c.backend.writeBatches++
 		c.backend.writeOps += writeOperations
@@ -417,62 +510,117 @@ func TestCheckpointShardStagePrefixFailuresPreserveCommittedGeneration(t *testin
 	}
 }
 
-func TestCheckpointManifestFailurePreservesOldGenerationAndRetries(t *testing.T) {
+func TestCheckpointPreviousManifestReadRetriesExactCandidateOnce(t *testing.T) {
 	backend := newCheckpointTestBackend()
-	registry, binding := startCheckpointTestBinding(t, backend, "manifest-not-applied")
+	registry, binding := startCheckpointTestBinding(t, backend, "manifest-exact-retry")
 	defer registry.Close(t.Context())
 	oldShards, active := checkpointTestGeneration("old", 2)
 	require.True(t, binding.persist(t.Context(), oldShards, active, nil, time.Unix(100, 0)))
 	oldManifest := backend.value(binding.manifestKey())
 
-	backend.setErr = errors.New("manifest rejected")
-	newShards, _ := checkpointTestGeneration("new", 2)
-	assert.False(t, binding.persist(t.Context(), newShards, active, nil, time.Unix(200, 0)))
+	backend.setErr = errors.New("manifest outcome unknown")
+	backend.setDeferApplyThenErr = true
+	candidateShards, _ := checkpointTestGeneration("candidate", 2)
+	assert.False(t, binding.persist(t.Context(), candidateShards, active, nil, time.Unix(200, 0)))
+	require.NotNil(t, binding.uncertain)
+	require.True(t, backend.hasDeferredSet(), "the test backend must hold the errored Set until the next same-key Set invocation")
+	candidateManifest := append([]byte(nil), binding.uncertain.manifest...)
 	assert.Equal(t, oldManifest, backend.value(binding.manifestKey()))
-	restartRegistry, restartBinding := startCheckpointTestBinding(t, backend, "manifest-not-applied")
-	requireCheckpointTestGeneration(t, restartBinding, "old", 2)
-	restartRegistry.Close(t.Context())
+	var candidate checkpointManifest
+	require.NoError(t, json.Unmarshal(candidateManifest, &candidate))
+	candidateKeys := make(map[uint16]string, len(candidate.Active))
+	for i, shard := range candidate.Active {
+		candidateKeys[shard] = binding.slottedShardKey(shard, candidate.Slots[i])
+		assert.Equal(t, fmt.Sprintf("candidate-%d", shard), string(backend.value(candidateKeys[shard])))
+	}
 
+	batchesBefore, _, _, _ := backend.writeStats()
+	setValuesBefore := len(backend.manifestSetValues())
 	backend.setErr = nil
-	require.True(t, binding.persist(t.Context(), newShards, active, nil, time.Unix(200, 0)))
-	finalRegistry, finalBinding := startCheckpointTestBinding(t, backend, "manifest-not-applied")
-	requireCheckpointTestGeneration(t, finalBinding, "new", 2)
+	backend.setDeferApplyThenErr = false
+	newerShards, _ := checkpointTestGeneration("newer", 2)
+	require.True(t, binding.persist(t.Context(), newerShards, active, nil, time.Unix(300, 0)), "the pending caller snapshot must advance through the exact candidate retry")
+	batchesAfter, _, _, _ := backend.writeStats()
+	assert.Equal(t, batchesBefore+3, batchesAfter, "resolution must Set the candidate once, then stage and publish the pending snapshot")
+	setValues := backend.manifestSetValues()
+	require.Len(t, setValues, setValuesBefore+2)
+	assert.Equal(t, candidateManifest, setValues[setValuesBefore], "uncertainty resolution must retry byte-identical candidate manifest data")
+	assert.Nil(t, binding.uncertain)
+	assert.False(t, backend.hasDeferredSet(), "the earlier errored Set must be ordered before the successful exact retry")
+	assert.Equal(t, 1, backend.deferredSetStats(), "the storage model must apply the errored candidate before the later successful retry")
+	finalManifest := checkpointTestManifest(t, backend, binding)
+	for i, shard := range finalManifest.Active {
+		assert.NotEqual(t, candidate.Slots[i], finalManifest.Slots[i], "the pending snapshot must stage opposite the committed candidate slot")
+		assert.Equal(t, fmt.Sprintf("candidate-%d", shard), string(backend.value(candidateKeys[shard])), "publishing the pending snapshot must not overwrite the candidate slot")
+	}
+	finalRegistry, finalBinding := startCheckpointTestBinding(t, backend, "manifest-exact-retry")
+	requireCheckpointTestGeneration(t, finalBinding, "newer", 2)
 	finalRegistry.Close(t.Context())
 }
 
-func TestCheckpointUnappliedManifestErrorReconcilesOldBeforeRetry(t *testing.T) {
+func TestCheckpointStalePreviousObservationThenCandidateVisibilityCommitsWithoutSlotReuse(t *testing.T) {
 	backend := newCheckpointTestBackend()
-	registry, binding := startCheckpointTestBinding(t, backend, "manifest-unapplied-unknown")
+	registry, binding := startCheckpointTestBinding(t, backend, "manifest-late-candidate")
 	defer registry.Close(t.Context())
 	oldShards, active := checkpointTestGeneration("old", 2)
 	require.True(t, binding.persist(t.Context(), oldShards, active, nil, time.Unix(100, 0)))
 	oldManifest := backend.value(binding.manifestKey())
 
-	backend.setErr = errors.New("manifest write failed before apply")
-	backend.getErr = errors.New("manifest reconciliation read failed")
+	backend.setErr = errors.New("manifest result ambiguous")
+	backend.setApplyThenErr = true
+	backend.staleGetOnceKey = binding.manifestKey()
+	backend.staleGetOnceValue = oldManifest
 	firstNew, _ := checkpointTestGeneration("new-one", 2)
 	assert.False(t, binding.persist(t.Context(), firstNew, active, nil, time.Unix(200, 0)))
 	require.NotNil(t, binding.uncertain)
+	candidateManifest := append([]byte(nil), binding.uncertain.manifest...)
 	assert.Equal(t, oldManifest, binding.uncertain.previousManifest)
-	assert.Equal(t, oldManifest, backend.value(binding.manifestKey()))
+	assert.Equal(t, candidateManifest, backend.value(binding.manifestKey()), "the errored Set may have been accepted even though reconciliation observed the stale previous value")
 
-	beforeBlockedRetry := checkpointTestValues(backend)
+	backend.setApplyThenErr = false
+	backend.staleGetOnceKey = binding.manifestKey()
+	backend.staleGetOnceValue = oldManifest
+	beforeRetry := checkpointTestValues(backend)
 	secondNew, _ := checkpointTestGeneration("new-two", 2)
 	assert.False(t, binding.persist(t.Context(), secondNew, active, nil, time.Unix(300, 0)))
-	assert.Equal(t, beforeBlockedRetry, checkpointTestValues(backend))
+	assert.Equal(t, beforeRetry, checkpointTestValues(backend), "another ambiguous exact retry must retain the candidate slots unchanged")
+	require.NotNil(t, binding.uncertain)
 
-	backend.getErr = nil
-	require.True(t, binding.maintain(t.Context()), "a readable old manifest must resolve the unknown publication")
+	batchesBefore, _, _, _ := backend.writeStats()
+	require.True(t, binding.maintain(t.Context()), "a fresh candidate observation must commit the already staged generation")
+	batchesAfter, _, _, _ := backend.writeStats()
+	assert.Equal(t, batchesBefore, batchesAfter, "observing the candidate must require no write")
 	assert.Nil(t, binding.uncertain)
-	oldRestartRegistry, oldRestartBinding := startCheckpointTestBinding(t, backend, "manifest-unapplied-unknown")
-	requireCheckpointTestGeneration(t, oldRestartBinding, "old", 2)
-	oldRestartRegistry.Close(t.Context())
-
-	backend.setErr = nil
-	require.True(t, binding.persist(t.Context(), secondNew, active, nil, time.Unix(300, 0)))
-	newRestartRegistry, newRestartBinding := startCheckpointTestBinding(t, backend, "manifest-unapplied-unknown")
-	requireCheckpointTestGeneration(t, newRestartBinding, "new-two", 2)
+	newRestartRegistry, newRestartBinding := startCheckpointTestBinding(t, backend, "manifest-late-candidate")
+	requireCheckpointTestGeneration(t, newRestartBinding, "new-one", 2)
 	newRestartRegistry.Close(t.Context())
+}
+
+func TestCheckpointUnrelatedManifestKeepsAmbiguousCandidateFenced(t *testing.T) {
+	backend := newCheckpointTestBackend()
+	registry, binding := startCheckpointTestBinding(t, backend, "manifest-unrelated-fence")
+	defer registry.Close(t.Context())
+	oldShards, active := checkpointTestGeneration("old", 2)
+	require.True(t, binding.persist(t.Context(), oldShards, active, nil, time.Unix(100, 0)))
+
+	backend.setErr = errors.New("manifest outcome unknown")
+	candidateShards, _ := checkpointTestGeneration("candidate", 2)
+	assert.False(t, binding.persist(t.Context(), candidateShards, active, nil, time.Unix(200, 0)))
+	require.NotNil(t, binding.uncertain)
+
+	var unrelated checkpointManifest
+	require.NoError(t, json.Unmarshal(binding.uncertain.previousManifest, &unrelated))
+	unrelated.Metadata = json.RawMessage(`{"writer":"unrelated"}`)
+	unrelatedManifest, err := json.Marshal(unrelated)
+	require.NoError(t, err)
+	backend.put(binding.manifestKey(), unrelatedManifest)
+	before := checkpointTestValues(backend)
+
+	assert.False(t, binding.maintain(t.Context()))
+	assert.NotNil(t, binding.uncertain)
+	nextShards, _ := checkpointTestGeneration("next", 2)
+	assert.False(t, binding.persist(t.Context(), nextShards, active, nil, time.Unix(300, 0)))
+	assert.Equal(t, before, checkpointTestValues(backend), "an unrelated manifest must permit no shard or manifest write")
 }
 
 func TestCheckpointAppliedManifestErrorImmediatelyReconcilesSuccess(t *testing.T) {
@@ -603,10 +751,7 @@ func TestCheckpointManifestReadFailureEstablishesFenceBeforeReplacementStage(t *
 	assert.False(t, replacement.loadFailed.Load())
 	finalRegistry, finalBinding := startCheckpointTestBinding(t, backend, "manifest-read-fence")
 	requireCheckpointTestGeneration(t, finalBinding, "fresh", 2)
-	assert.Nil(t, backend.value(omittedKey), "replacement cleanup must remove every key for an omitted old shard")
-	for slot := range uint8(checkpointShardSlots) {
-		assert.Nil(t, backend.value(finalBinding.slottedShardKey(2, slot)))
-	}
+	assert.Equal(t, oldReferenced[omittedKey], backend.value(omittedKey), "an omitted shard may remain physically retained but must not be manifest-referenced")
 	finalRegistry.Close(t.Context())
 }
 
@@ -986,10 +1131,7 @@ func TestCheckpointDeletionAndReactivationUseCompleteGenerations(t *testing.T) {
 	require.True(t, binding.persist(t.Context(), nil, map[uint16]bool{0: false}, nil, time.Unix(200, 0)))
 	deletedManifest := checkpointTestManifest(t, backend, binding)
 	assert.Empty(t, deletedManifest.Active)
-	assert.Nil(t, backend.value(binding.shardKey(0)))
-	for slot := range uint8(checkpointShardSlots) {
-		assert.Nil(t, backend.value(binding.slottedShardKey(0, slot)))
-	}
+	assert.Equal(t, []byte("old-0"), backend.value(binding.slottedShardKey(0, 0)), "logical deletion must not require physical cleanup")
 	deletedRestartRegistry, deletedRestartBinding := startCheckpointTestBinding(t, backend, "delete-reactivate")
 	deleted := requireCheckpointTestGeneration(t, deletedRestartBinding, "unused", 0)
 	deletedRestartBinding.acceptLoaded(deleted)
@@ -1001,32 +1143,96 @@ func TestCheckpointDeletionAndReactivationUseCompleteGenerations(t *testing.T) {
 	reactivatedRestartRegistry.Close(t.Context())
 }
 
-func TestCheckpointCleanupWarningResetsWhenPendingKeyBecomesReferenced(t *testing.T) {
-	backend := newCheckpointTestBackend()
-	core, observed := observer.New(zap.WarnLevel)
-	registry := newCheckpointTestRegistry(checkpointSignalLogs, zap.New(core))
-	binding := registry.bind("atomic-test", "cleanup-warning-reset", "generation", func(context.Context) {})
-	require.NoError(t, registry.Start(t.Context(), checkpointHost(backend)))
-	defer registry.Close(t.Context())
+func TestCheckpointStaleKeyDeletionCannotBlockPublicationOtherIdentitiesOrShutdown(t *testing.T) {
+	tests := []struct {
+		name              string
+		blockUntilRelease bool
+		blockUntilContext bool
+	}{
+		{name: "delete blocks until released", blockUntilRelease: true},
+		{name: "delete exhausts its context", blockUntilContext: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			backend := newCheckpointTestBackend()
+			registry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
+			first := registry.bind("atomic-test", "delete-liveness-first", "generation", func(context.Context) {})
+			second := registry.bind("atomic-test", "delete-liveness-second", "generation", func(context.Context) {})
+			require.NoError(t, registry.Start(t.Context(), checkpointHost(backend)))
+			active := map[uint16]bool{0: true}
+			require.True(t, first.persist(t.Context(), map[uint16][]byte{0: []byte("generation-0")}, active, nil, time.Unix(100, 0)))
+			require.True(t, first.persist(t.Context(), map[uint16][]byte{0: []byte("generation-1")}, active, nil, time.Unix(200, 0)))
 
-	require.True(t, binding.persist(t.Context(), map[uint16][]byte{0: []byte("old")}, map[uint16]bool{0: true}, nil, time.Unix(100, 0)))
-	backend.setErr = errors.New("manifest not applied")
-	backend.deleteErr = errors.New("stale key cleanup failed")
-	assert.False(t, binding.persist(t.Context(), map[uint16][]byte{0: []byte("new")}, map[uint16]bool{0: true}, nil, time.Unix(200, 0)))
-	assert.True(t, binding.cleanFailed.Load())
-	assert.Len(t, binding.cleanupPending, 1)
-	assert.Len(t, observed.FilterMessageSnippet("Failed to clean stale Cisco OS checkpoint shards").All(), 1)
+			deleteEntered := make(chan struct{}, 1)
+			backend.deleteEntered = deleteEntered
+			var releaseDelete chan struct{}
+			if tt.blockUntilRelease {
+				releaseDelete = make(chan struct{})
+				backend.deleteRelease = releaseDelete
+			}
+			backend.deleteUntilContext = tt.blockUntilContext
+			operationCtx, cancelOperations := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancelOperations()
+			var releaseOnce sync.Once
+			release := func() {
+				releaseOnce.Do(func() {
+					cancelOperations()
+					if releaseDelete != nil {
+						close(releaseDelete)
+					}
+				})
+			}
+			defer release()
 
-	backend.setErr = nil
-	require.True(t, binding.persist(t.Context(), map[uint16][]byte{0: []byte("new")}, map[uint16]bool{0: true}, nil, time.Unix(200, 0)))
-	assert.Empty(t, binding.cleanupPending, "the staged key is no longer stale once the manifest references it")
-	assert.False(t, binding.cleanFailed.Load(), "an empty cleanup queue must reset warning suppression")
-	assert.Len(t, observed.FilterMessageSnippet("Failed to clean stale Cisco OS checkpoint shards").All(), 1)
+			requireReturns := func(name string, call func() bool) {
+				done := make(chan bool, 1)
+				go func() { done <- call() }()
+				select {
+				case result := <-done:
+					require.True(t, result, name)
+				case <-time.After(time.Second):
+					release()
+					select {
+					case <-done:
+					case <-time.After(time.Second):
+						t.Errorf("%s did not stop after releasing the adversarial storage operation", name)
+					}
+					t.Fatalf("%s was delayed by stale-key deletion", name)
+				}
+			}
 
-	require.True(t, binding.persist(t.Context(), nil, map[uint16]bool{0: false}, nil, time.Unix(300, 0)))
-	assert.True(t, binding.cleanFailed.Load())
-	assert.Len(t, observed.FilterMessageSnippet("Failed to clean stale Cisco OS checkpoint shards").All(), 2,
-		"an unrelated later cleanup failure must emit a new warning")
+			requireReturns("subsequent generation publication", func() bool {
+				return first.persist(operationCtx, map[uint16][]byte{0: []byte("generation-2")}, active, nil, time.Unix(300, 0))
+			})
+			requireReturns("unrelated identity publication", func() bool {
+				return second.persist(operationCtx, map[uint16][]byte{0: []byte("unrelated")}, active, nil, time.Unix(300, 0))
+			})
+			loaded, ok := first.load(t.Context())
+			require.True(t, ok)
+			assert.Equal(t, []byte("generation-2"), loaded.shards[0])
+			assert.Zero(t, backend.deleteStats(), "checkpoint persistence must never invoke stale-key deletion")
+			select {
+			case <-deleteEntered:
+				t.Fatal("stale-key deletion entered storage")
+			default:
+			}
+
+			shutdownCtx, cancelShutdown := context.WithTimeout(t.Context(), time.Second)
+			defer cancelShutdown()
+			shutdownDone := make(chan struct{})
+			go func() {
+				registry.Close(shutdownCtx)
+				close(shutdownDone)
+			}()
+			select {
+			case <-shutdownDone:
+			case <-shutdownCtx.Done():
+				release()
+				<-shutdownDone
+				t.Fatal("checkpoint shutdown was delayed by stale-key deletion")
+			}
+		})
+	}
 }
 
 func TestCheckpointLegacyManifestMigratesAtomicallyToVersionTwo(t *testing.T) {
@@ -1056,8 +1262,8 @@ func TestCheckpointLegacyManifestMigratesAtomicallyToVersionTwo(t *testing.T) {
 	assert.Equal(t, []uint8{0, 0}, manifest.Slots)
 	assert.Equal(t, metadata, manifest.Metadata)
 	assert.Equal(t, anchor, manifest.ClockAnchor)
-	assert.Nil(t, backend.value(binding.shardKey(0)))
-	assert.Nil(t, backend.value(binding.shardKey(1)))
+	assert.Equal(t, []byte("legacy-0"), backend.value(binding.shardKey(0)), "legacy keys remain as bounded stale storage")
+	assert.Equal(t, []byte("legacy-1"), backend.value(binding.shardKey(1)), "legacy keys remain as bounded stale storage")
 	requireCheckpointTestGeneration(t, binding, "legacy", 2)
 
 	backend.put(binding.shardKey(0), []byte("stale-v1-0"))
@@ -1129,9 +1335,9 @@ func TestCheckpointManifestVersionAndSlotValidation(t *testing.T) {
 	}))
 }
 
-func TestCheckpointCleanupIsRetryableAndKeyspaceBounded(t *testing.T) {
+func TestCheckpointRetainedStaleKeyspaceIsBounded(t *testing.T) {
 	backend := newCheckpointTestBackend()
-	registry, binding := startCheckpointTestBinding(t, backend, "cleanup")
+	registry, binding := startCheckpointTestBinding(t, backend, "bounded-stale-keys")
 	defer registry.Close(t.Context())
 	active := map[uint16]bool{0: true}
 	require.True(t, binding.persist(t.Context(), map[uint16][]byte{0: []byte("generation-0")}, active, nil, time.Unix(100, 0)))
@@ -1146,21 +1352,17 @@ func TestCheckpointCleanupIsRetryableAndKeyspaceBounded(t *testing.T) {
 	values := checkpointTestValues(backend)
 	assert.LessOrEqual(t, len(values), 1+checkpointShardSlots, "manifest plus two fixed slots bounds stale generations")
 
-	backend.deleteErr = errors.New("cleanup unavailable")
-	require.True(t, binding.persist(t.Context(), nil, map[uint16]bool{0: false}, nil, time.Unix(200, 0)), "cleanup failure must not undo the committed deletion")
+	require.True(t, binding.persist(t.Context(), nil, map[uint16]bool{0: false}, nil, time.Unix(200, 0)))
 	loaded, ok := binding.load(t.Context())
 	require.True(t, ok)
 	assert.Empty(t, loaded.shards)
 	binding.acceptLoaded(loaded)
-	assert.LessOrEqual(t, len(binding.cleanupPending), checkpointCleanupKeyLimit)
 	values = checkpointTestValues(backend)
-	assert.LessOrEqual(t, len(values), 1+checkpointShardSlots, "failed deletion cleanup remains bounded by the fixed slot namespace")
+	assert.LessOrEqual(t, len(values), 1+checkpointShardSlots, "retained stale data remains bounded by the fixed slot namespace")
 
-	backend.deleteErr = nil
 	require.True(t, binding.maintain(t.Context()))
-	assert.Empty(t, binding.cleanupPending)
-	values = checkpointTestValues(backend)
-	assert.Len(t, values, 1, "cleanup must retain only the empty committed manifest")
+	assert.Equal(t, values, checkpointTestValues(backend), "maintenance must perform no stale-key I/O")
+	assert.Zero(t, backend.deleteStats())
 	loaded, ok = binding.load(t.Context())
 	require.True(t, ok)
 	assert.Empty(t, loaded.shards)
@@ -1827,7 +2029,7 @@ func TestCounterCheckpointDoesNotPersistRejectedDelivery(t *testing.T) {
 	assert.Zero(t, batches, "checkpoint must not advance before downstream acceptance")
 }
 
-func TestCounterRestoreDeletesTTLExpiredCheckpointEntries(t *testing.T) {
+func TestCounterRestoreDropsTTLExpiredCheckpointEntries(t *testing.T) {
 	backend := newCheckpointTestBackend()
 	lastSeen := time.Unix(1_900_000_000, 0).UTC()
 	idleTTL := time.Hour
@@ -1854,7 +2056,7 @@ func TestCounterRestoreDeletesTTLExpiredCheckpointEntries(t *testing.T) {
 	restartedRegistry.enableCounter("ise", "ttl-target", restarted, consumertest.NewNop())
 	require.NoError(t, restartedRegistry.Start(t.Context(), checkpointHost(backend)))
 	assert.Empty(t, restarted.intValues)
-	assert.Empty(t, backend.value(shardKey), "a page containing only expired series must be deleted during restore")
+	assert.NotEmpty(t, backend.value(shardKey), "the expired page may remain physically retained in the bounded slot namespace")
 	var manifest checkpointManifest
 	require.NoError(t, json.Unmarshal(backend.value(manifestKey), &manifest))
 	assert.Empty(t, manifest.Active)
@@ -1870,7 +2072,7 @@ func TestCounterRestoreDeletesTTLExpiredCheckpointEntries(t *testing.T) {
 	assert.Empty(t, third.intValues, "expired series must not be reloaded on subsequent restarts")
 }
 
-func TestLogDedupRestoreDeletesTTLExpiredCheckpointEntries(t *testing.T) {
+func TestLogDedupRestoreDropsTTLExpiredCheckpointEntries(t *testing.T) {
 	backend := newCheckpointTestBackend()
 	seenAt := time.Unix(1_900_000_000, 0).UTC()
 	retention := logCheckpointRetention{ttl: time.Hour, maxEntries: defaultLogDedupMaxEntries}
@@ -1895,7 +2097,7 @@ func TestLogDedupRestoreDeletesTTLExpiredCheckpointEntries(t *testing.T) {
 	restartedRegistry.enableLogDedup("ise", "ttl-target", restarted, retention)
 	require.NoError(t, restartedRegistry.Start(t.Context(), checkpointHost(backend)))
 	assert.Empty(t, restarted.seen)
-	assert.Empty(t, backend.value(shardKey), "a page containing only expired dedup entries must be deleted during restore")
+	assert.NotEmpty(t, backend.value(shardKey), "the expired page may remain physically retained in the bounded slot namespace")
 	var manifest checkpointManifest
 	require.NoError(t, json.Unmarshal(backend.value(manifestKey), &manifest))
 	assert.Empty(t, manifest.Active)
@@ -2005,25 +2207,6 @@ func TestCheckpointCorruptAndTransientStorageFailuresFailOpenWithWarnings(t *tes
 		assert.False(t, state.MarkPending("event", time.Now()), "in-memory dedup must remain active after storage failure")
 		state.RollbackBatch()
 		require.NotEmpty(t, observed.FilterMessageSnippet("Failed to persist Cisco OS checkpoint").All())
-	})
-
-	t.Run("delete failure", func(t *testing.T) {
-		backend := newCheckpointTestBackend()
-		core, observed := observer.New(zap.WarnLevel)
-		registry := newCheckpointTestRegistry(checkpointSignalLogs, zap.New(core))
-		state := newLogDeduplicator()
-		registry.enableLogDedup("ise", "target", state, logCheckpointRetention{})
-		require.NoError(t, registry.Start(t.Context(), checkpointHost(backend)))
-		now := time.Now()
-		state.BeginBatch()
-		require.True(t, state.MarkPending("event", now))
-		_, err := consumeDeduplicatedLogs(t.Context(), consumertest.NewNop(), state, oneLogRecord())
-		require.NoError(t, err)
-		backend.deleteErr = errors.New("temporary delete failure")
-		state.Expire(now.Add(time.Second), defaultLogDedupMaxEntries)
-
-		state.persistCheckpoint(t.Context(), true)
-		require.NotEmpty(t, observed.FilterMessageSnippet("Failed to clean stale Cisco OS checkpoint shards").All())
 	})
 }
 
@@ -2342,7 +2525,7 @@ func TestLogDedupCheckpointFutureSkewValidation(t *testing.T) {
 				assert.False(t, state.MarkPending(eventKey, now), "the exact skew boundary must remain valid")
 				assert.Equal(t, now, state.seen[logDedupStateKey(eventKey)].seenAt, "accepted future observations must be normalized before entering TTL/LRU state")
 				batches, _, _, _ := backend.writeStats()
-				assert.Equal(t, 3, batches, "legacy restore must stage, publish, and clean the normalized observation")
+				assert.Equal(t, 2, batches, "legacy restore must stage and publish the normalized observation")
 
 				const normalEventKey = "normal-log-event"
 				current = now.Add(time.Second)
@@ -2362,7 +2545,7 @@ func TestLogDedupCheckpointFutureSkewValidation(t *testing.T) {
 				assert.False(t, restarted.MarkPending(normalEventKey, current.Add(time.Second)))
 				restarted.RollbackBatch()
 				batches, _, _, _ = backend.writeStats()
-				assert.Equal(t, 5, batches, "the second restart must not need another normalization write")
+				assert.Equal(t, 4, batches, "the second restart must not need another normalization write")
 				restartedRegistry.Close(t.Context())
 			}
 		})
@@ -2483,7 +2666,7 @@ func TestCounterCheckpointFutureSkewValidation(t *testing.T) {
 				assert.Equal(t, now, state.doubleValues[doubleKey].startedAt)
 				assert.Equal(t, now, state.doubleValues[doubleKey].lastSeen)
 				batches, _, _, _ := backend.writeStats()
-				assert.Equal(t, 3, batches, "legacy restore must stage, publish, and clean normalized metadata and series")
+				assert.Equal(t, 2, batches, "legacy restore must stage and publish normalized metadata and series")
 
 				current = now.Add(time.Second)
 				intValue, intEpoch := state.AddInt("resource", "integer", nil, 1)
@@ -2509,7 +2692,7 @@ func TestCounterCheckpointFutureSkewValidation(t *testing.T) {
 				assert.Equal(t, now, restartedIntEpoch)
 				assert.Equal(t, now, restartedDoubleEpoch)
 				batches, _, _, _ = backend.writeStats()
-				assert.Equal(t, 5, batches, "the second restart must not need another normalization write")
+				assert.Equal(t, 4, batches, "the second restart must not need another normalization write")
 				restartedRegistry.Close(t.Context())
 			}
 		})

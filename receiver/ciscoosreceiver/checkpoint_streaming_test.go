@@ -279,6 +279,30 @@ func TestFMCEStreamerRequestStartNeverStaysAheadAfterLiveClockRollback(t *testin
 	assert.Equal(t, current.Add(-fmcEStreamerResumeOverlap), state.requestStart(), "a live host-clock rollback must not leave reconnect ahead of the current observation clock")
 }
 
+func TestFMCEStreamerZeroCursorRequestStartRebasesLookbackAfterClockRollback(t *testing.T) {
+	initialObservation := time.Date(2090, time.January, 2, 3, 4, 5, 0, time.UTC)
+	const lookback = 10 * time.Minute
+	current := initialObservation
+	state := newFMCEStreamerResumeStateWithLookback(initialObservation.Add(-lookback), lookback)
+	state.now = func() time.Time { return current }
+
+	current = initialObservation.Add(-time.Hour)
+	assert.True(t, state.cursor.IsZero())
+	assert.Equal(t, current.Add(-lookback), state.requestStart(), "a zero cursor must preserve the configured lookback after rollback")
+	assert.False(t, state.requestStart().After(current), "a zero cursor must never request a future start")
+}
+
+func TestFMCEStreamerZeroCursorRequestStartKeepsInitialTimeWithoutRollback(t *testing.T) {
+	now := time.Date(2090, time.January, 2, 3, 4, 5, 0, time.UTC)
+	const lookback = 10 * time.Minute
+	initial := now.Add(-lookback)
+	state := newFMCEStreamerResumeStateWithLookback(initial, lookback)
+	state.now = func() time.Time { return now }
+
+	assert.True(t, state.cursor.IsZero())
+	assert.Equal(t, initial, state.requestStart(), "normal clocks must retain the original configured lookback cursor")
+}
+
 func TestFMCEStreamerCheckpointCommitSubstitutesZeroObservationTime(t *testing.T) {
 	backend := newCheckpointTestBackend()
 	now := time.Date(2090, time.January, 2, 3, 4, 5, 0, time.UTC)
@@ -359,7 +383,7 @@ func TestFMCEStreamerCheckpointRejectsInconsistentEnvelopeWithoutPruning(t *test
 	assert.Equal(t, page, backend.value(binding.shardKey(0)), "invalid state must not be destructively pruned")
 	assert.Equal(t, manifest, backend.value(binding.manifestKey()))
 	batches, _, _, _ := backend.writeStats()
-	assert.Zero(t, batches, "invalid state must not trigger a cleanup write")
+	assert.Zero(t, batches, "invalid state must not trigger a repair write")
 }
 
 func TestFMCEStreamerCheckpointRejectsCursorAheadOfRetainedEvidenceWithoutPruning(t *testing.T) {
@@ -393,7 +417,7 @@ func TestFMCEStreamerCheckpointRejectsCursorAheadOfRetainedEvidenceWithoutPrunin
 	assert.Equal(t, page, backend.value(binding.shardKey(0)), "invalid state must not be destructively pruned")
 	assert.Equal(t, manifest, backend.value(binding.manifestKey()))
 	batches, _, _, _ := backend.writeStats()
-	assert.Zero(t, batches, "invalid state must not trigger a cleanup write")
+	assert.Zero(t, batches, "invalid state must not trigger a repair write")
 }
 
 func TestFMCEStreamerCheckpointAcceptsShardedSizePrunedEvidence(t *testing.T) {
@@ -423,7 +447,7 @@ func TestFMCEStreamerCheckpointAcceptsShardedSizePrunedEvidence(t *testing.T) {
 	assert.Equal(t, cursor, state.cursor)
 	assert.False(t, state.seenBefore("old-entry"), "ordinary stale entries should still be pruned")
 	assert.True(t, state.seenBefore("later-seen-evidence"), "later observation evidence must retain a size-pruned cursor anchor")
-	assert.Nil(t, backend.value(state.checkpoint.shardKey(0)))
+	assert.NotNil(t, backend.value(state.checkpoint.shardKey(0)), "the legacy page may remain physically retained after logical pruning")
 	registry.Close(t.Context())
 
 	restarted := newFMCEStreamerResumeState(initial)
@@ -431,7 +455,7 @@ func TestFMCEStreamerCheckpointAcceptsShardedSizePrunedEvidence(t *testing.T) {
 	restartedRegistry := newCheckpointTestRegistry(checkpointSignalLogs, zap.NewNop())
 	restartedRegistry.enableFMCResume("sharded-pruned-target", restarted)
 	require.NoError(t, restartedRegistry.Start(t.Context(), checkpointHost(backend)))
-	assert.False(t, restarted.checkpoint.corrupt.Load(), "a cleanup-persisted pruned checkpoint must remain valid")
+	assert.False(t, restarted.checkpoint.corrupt.Load(), "a pruning-persisted checkpoint must remain valid")
 	assert.Equal(t, cursor, restarted.cursor)
 	assert.True(t, restarted.seenBefore("later-seen-evidence"))
 }
@@ -512,7 +536,7 @@ func TestFMCEStreamerCheckpointRejectsFutureEnvelope(t *testing.T) {
 	assert.Equal(t, page, backend.value(binding.shardKey(0)))
 	assert.Equal(t, manifest, backend.value(binding.manifestKey()))
 	batches, _, _, _ := backend.writeStats()
-	assert.Zero(t, batches, "future state must not trigger a cleanup write")
+	assert.Zero(t, batches, "future state must not trigger a repair write")
 }
 
 func TestFMCEStreamerHighRateCheckpointWritesAreBounded(t *testing.T) {
