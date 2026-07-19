@@ -760,8 +760,12 @@ func (c *Client) sessionRequestOnce(ctx context.Context, method, operation, path
 	bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
-		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, RateLimited: resp.StatusCode == http.StatusTooManyRequests, Err: readErr})
-		return authSession{}, resp.Header, resp.StatusCode, readErr
+		responseErr := readErr
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			responseErr = errors.Join(&APIError{StatusCode: resp.StatusCode}, readErr)
+		}
+		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, RateLimited: resp.StatusCode == http.StatusTooManyRequests, Err: responseErr})
+		return authSession{}, resp.Header, resp.StatusCode, responseErr
 	}
 	if closeErr != nil {
 		return authSession{}, resp.Header, resp.StatusCode, closeErr

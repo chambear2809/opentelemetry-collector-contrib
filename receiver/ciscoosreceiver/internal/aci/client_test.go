@@ -84,7 +84,7 @@ func TestClientPreservesStatusAndReadErrorForIncompleteNonAuthenticationResponse
 	assert.Equal(t, http.StatusTeapot, apiErr.StatusCode)
 }
 
-func TestClientRetriesIncompleteSuccessfulLoginBody(t *testing.T) {
+func TestClientRetriesIncompleteSuccessfulLoginBodyWithoutAPIError(t *testing.T) {
 	var logins atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/aaaLogin.json" {
@@ -102,9 +102,20 @@ func TestClientRetriesIncompleteSuccessfulLoginBody(t *testing.T) {
 
 	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", MaxRetries: 1})
 	require.NoError(t, err)
+	var stats []RequestStat
+	client.OnRequest = func(stat RequestStat) {
+		stats = append(stats, stat)
+	}
 	_, err = client.List(t.Context(), "test.list", "/api/test.json", nil, 10)
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), logins.Load())
+	require.NotEmpty(t, stats)
+	assert.Equal(t, "aaaLogin", stats[0].Operation)
+	assert.Equal(t, "error", stats[0].Outcome)
+	assert.Equal(t, http.StatusOK, stats[0].StatusCode)
+	assert.True(t, httpclient.IsResponseBodyReadError(stats[0].Err))
+	var apiErr *APIError
+	assert.NotErrorAs(t, stats[0].Err, &apiErr, "a truncated 2xx response must not masquerade as an API status error")
 }
 
 func TestClientRetriesTransientLoginStatuses(t *testing.T) {
@@ -171,6 +182,44 @@ func TestClientDoesNotRetryRejectedLogin(t *testing.T) {
 	_, err = client.List(t.Context(), "test.list", "/api/test.json", nil, 10)
 	require.ErrorContains(t, err, "HTTP 401")
 	assert.Equal(t, int64(1), logins.Load())
+}
+
+func TestClientIncompleteUnauthorizedLoginPreservesStatusAndEntersBackoff(t *testing.T) {
+	var logins atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/aaaLogin.json" {
+			http.NotFound(w, r)
+			return
+		}
+		logins.Add(1)
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"imdata":`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", MaxRetries: 3})
+	require.NoError(t, err)
+	for range 2 {
+		_, err = client.List(t.Context(), "test.list", "/api/test.json", nil, 10)
+		require.Error(t, err)
+		assert.True(t, httpclient.IsResponseBodyReadError(err))
+		var apiErr *APIError
+		require.ErrorAs(t, err, &apiErr)
+		assert.Equal(t, http.StatusUnauthorized, apiErr.StatusCode)
+		assert.True(t, authenticationRejected(err))
+	}
+
+	assert.Equal(t, int64(1), logins.Load(), "the second request must use authentication backoff")
+	client.tokenMu.Lock()
+	assert.Empty(t, client.token)
+	assert.Equal(t, 1, client.authFailures)
+	lastAuthErr := client.lastAuthErr
+	client.tokenMu.Unlock()
+	assert.True(t, httpclient.IsResponseBodyReadError(lastAuthErr))
+	var apiErr *APIError
+	require.ErrorAs(t, lastAuthErr, &apiErr)
+	assert.Equal(t, http.StatusUnauthorized, apiErr.StatusCode)
 }
 
 func TestClientLoginCookieAndClassDecode(t *testing.T) {
@@ -317,6 +366,75 @@ func TestClientRefreshRejectionFallsBackToOneLoginForEstablishedSession(t *testi
 	assert.Equal(t, "login-replacement", client.token)
 	assert.True(t, client.tokenAccepted)
 	assert.Zero(t, client.authFailures)
+	client.tokenMu.Unlock()
+}
+
+func TestClientIncompleteUnauthorizedRefreshForcesOneReplacementLogin(t *testing.T) {
+	var refreshes atomic.Int64
+	var logins atomic.Int64
+	var dataRequests atomic.Int64
+	var staleDataRequests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/aaaRefresh.json":
+			refreshes.Add(1)
+			cookie, err := r.Cookie("APIC-cookie")
+			if !assert.NoError(t, err) {
+				http.Error(w, "missing cookie", http.StatusUnauthorized)
+				return
+			}
+			assert.Equal(t, "expiring-token", cookie.Value)
+			w.Header().Set("Content-Length", "100")
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"imdata":`))
+		case "/api/aaaLogin.json":
+			logins.Add(1)
+			_, _ = w.Write([]byte(`{"imdata":[{"aaaLogin":{"attributes":{"token":"login-replacement","refreshTimeoutSeconds":"600"}}}]}`))
+		default:
+			dataRequests.Add(1)
+			cookie, err := r.Cookie("APIC-cookie")
+			if !assert.NoError(t, err) {
+				http.Error(w, "missing cookie", http.StatusUnauthorized)
+				return
+			}
+			if cookie.Value == "expiring-token" {
+				staleDataRequests.Add(1)
+				writeAPICError(w, http.StatusUnauthorized, "Token was invalid (Error: Token timeout)")
+				return
+			}
+			assert.Equal(t, "login-replacement", cookie.Value)
+			_, _ = w.Write([]byte(`{"totalCount":"0","imdata":[]}`))
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", Timeout: time.Second, MaxRetries: 3})
+	require.NoError(t, err)
+	var refreshErr error
+	client.OnRequest = func(stat RequestStat) {
+		if stat.Operation == "aaaRefresh" && stat.Outcome == "error" {
+			refreshErr = stat.Err
+		}
+	}
+	seedProactiveRefreshAcceptedSession(client)
+
+	_, err = client.ListClass(t.Context(), "fabric.nodes", "fabricNode", nil, 0)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), refreshes.Load())
+	assert.Equal(t, int64(1), logins.Load())
+	assert.Equal(t, int64(1), dataRequests.Load())
+	assert.Zero(t, staleDataRequests.Load(), "the rejected refresh generation must be retired before a data request")
+	assert.True(t, httpclient.IsResponseBodyReadError(refreshErr))
+	var apiErr *APIError
+	require.ErrorAs(t, refreshErr, &apiErr)
+	assert.Equal(t, http.StatusUnauthorized, apiErr.StatusCode)
+	assert.True(t, authenticationRejected(refreshErr))
+	client.tokenMu.Lock()
+	assert.Equal(t, "login-replacement", client.token)
+	assert.Equal(t, uint64(2), client.tokenGeneration)
+	assert.True(t, client.tokenAccepted)
+	assert.Zero(t, client.authFailures)
+	assert.Zero(t, client.refreshFailures)
 	client.tokenMu.Unlock()
 }
 
