@@ -325,7 +325,7 @@ func TestACIObjectFiltersApplyBeforeResultLimit(t *testing.T) {
 			requests := 0
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == "/api/aaaLogin.json" {
-					_, _ = w.Write([]byte(`{"imdata":[{"aaaLogin":{"attributes":{"token":"apic-token"}}}]}`))
+					_, _ = w.Write([]byte(`{"imdata":[{"aaaLogin":{"attributes":{"token":"apic-token","refreshTimeoutSeconds":"600"}}}]}`))
 					return
 				}
 				assert.Equal(t, "/api/class/"+tc.className+".json", r.URL.Path)
@@ -1000,7 +1000,7 @@ func newACIFixtureServer(t *testing.T, routes map[string]string) *httptest.Serve
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/aaaLogin.json" {
-			_, _ = w.Write([]byte(`{"imdata":[{"aaaLogin":{"attributes":{"token":"apic-token"}}}]}`))
+			_, _ = w.Write([]byte(`{"imdata":[{"aaaLogin":{"attributes":{"token":"apic-token","refreshTimeoutSeconds":"600"}}}]}`))
 			return
 		}
 		cookie, err := r.Cookie("APIC-cookie")
@@ -1023,7 +1023,7 @@ func newACICancelAfterDataServer(t *testing.T, routes map[string]string, blockin
 	var blockOnce sync.Once
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/aaaLogin.json" {
-			_, _ = w.Write([]byte(`{"imdata":[{"aaaLogin":{"attributes":{"token":"apic-token"}}}]}`))
+			_, _ = w.Write([]byte(`{"imdata":[{"aaaLogin":{"attributes":{"token":"apic-token","refreshTimeoutSeconds":"600"}}}]}`))
 			return
 		}
 		cookie, err := r.Cookie("APIC-cookie")

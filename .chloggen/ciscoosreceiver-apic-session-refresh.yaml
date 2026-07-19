@@ -1,0 +1,7 @@
+change_type: bug_fix
+component: receiver/cisco_os
+note: Refresh Cisco APIC sessions before their authentication tokens expire.
+issues: [0]
+subtext: |
+  Use APIC-provided refresh timeouts and replacement tokens, with bounded recovery when an established session expires between refreshes.
+change_logs: [user]
