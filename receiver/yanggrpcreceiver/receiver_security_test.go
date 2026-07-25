@@ -50,7 +50,7 @@ func TestReceiverStreamSecurityInterceptor(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			endpoint := unusedLocalEndpoint(t)
 			cfg := createDefaultConfig().(*Config)
-			cfg.NetAddr.Endpoint = endpoint
+			cfg.ServerConfig.NetAddr.Endpoint = endpoint
 			cfg.Security.AllowedClients = tt.allowedClients
 
 			rcvr := createMetricsReceiver(t.Context(), createTestSettings(), cfg, consumertest.NewNop())
@@ -84,7 +84,7 @@ func TestReceiverStreamSecurityInterceptor(t *testing.T) {
 func TestReceiverRateLimitsEachStreamMessage(t *testing.T) {
 	endpoint := unusedLocalEndpoint(t)
 	cfg := createDefaultConfig().(*Config)
-	cfg.NetAddr.Endpoint = endpoint
+	cfg.ServerConfig.NetAddr.Endpoint = endpoint
 	cfg.Security.RateLimiting.Enabled = true
 	cfg.Security.RateLimiting.RequestsPerSecond = 0.000001
 	cfg.Security.RateLimiting.BurstSize = 1
@@ -112,8 +112,8 @@ func TestReceiverRateLimitsEachStreamMessage(t *testing.T) {
 func TestReceiverStartRejectsAggregateFrameBudget(t *testing.T) {
 	endpoint := unusedLocalEndpoint(t)
 	cfg := createDefaultConfig().(*Config)
-	cfg.NetAddr.Endpoint = endpoint
-	cfg.MaxConcurrentStreams = 65
+	cfg.ServerConfig.NetAddr.Endpoint = endpoint
+	cfg.ServerConfig.MaxConcurrentStreams = 65
 	receiver := createMetricsReceiver(t.Context(), createTestSettings(), cfg, consumertest.NewNop())
 	require.ErrorContains(t, receiver.Start(t.Context(), componenttest.NewNopHost()), "must not exceed 256 MiB")
 	require.NoError(t, receiver.Shutdown(t.Context()))
@@ -151,8 +151,8 @@ func TestReceiverRejectsGlobalAndPerClientStreamExcess(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			endpoint := unusedLocalEndpoint(t)
 			cfg := createDefaultConfig().(*Config)
-			cfg.NetAddr.Endpoint = endpoint
-			cfg.MaxConcurrentStreams = tt.globalLimit
+			cfg.ServerConfig.NetAddr.Endpoint = endpoint
+			cfg.ServerConfig.MaxConcurrentStreams = tt.globalLimit
 			cfg.MaxConcurrentStreamsPerClient = tt.perClientLimit
 			receiver := createMetricsReceiver(t.Context(), createTestSettings(), cfg, consumertest.NewNop()).(*yangReceiver)
 			require.NoError(t, receiver.Start(t.Context(), componenttest.NewNopHost()))
@@ -197,7 +197,7 @@ func TestReceiverRejectsGlobalAndPerClientStreamExcess(t *testing.T) {
 func TestReceiverGracefulShutdownCancelsIdleStream(t *testing.T) {
 	endpoint := unusedLocalEndpoint(t)
 	cfg := createDefaultConfig().(*Config)
-	cfg.NetAddr.Endpoint = endpoint
+	cfg.ServerConfig.NetAddr.Endpoint = endpoint
 	receiver := createMetricsReceiver(t.Context(), createTestSettings(), cfg, consumertest.NewNop()).(*yangReceiver)
 	require.NoError(t, receiver.Start(t.Context(), componenttest.NewNopHost()))
 
@@ -218,8 +218,8 @@ func TestReceiverGracefulShutdownCancelsIdleStream(t *testing.T) {
 func TestReceiverStreamIdleTimeoutReleasesAdmission(t *testing.T) {
 	endpoint := unusedLocalEndpoint(t)
 	cfg := createDefaultConfig().(*Config)
-	cfg.NetAddr.Endpoint = endpoint
-	cfg.MaxConcurrentStreams = 1
+	cfg.ServerConfig.NetAddr.Endpoint = endpoint
+	cfg.ServerConfig.MaxConcurrentStreams = 1
 	cfg.MaxConcurrentStreamsPerClient = 1
 	cfg.StreamIdleTimeout = minStreamIdleTimeout
 	receiver := createMetricsReceiver(t.Context(), createTestSettings(), cfg, consumertest.NewNop()).(*yangReceiver)
@@ -250,7 +250,7 @@ func TestReceiverStreamIdleTimeoutReleasesAdmission(t *testing.T) {
 func TestReceiverStreamActivityRefreshesIdleTimeout(t *testing.T) {
 	endpoint := unusedLocalEndpoint(t)
 	cfg := createDefaultConfig().(*Config)
-	cfg.NetAddr.Endpoint = endpoint
+	cfg.ServerConfig.NetAddr.Endpoint = endpoint
 	cfg.StreamIdleTimeout = 2 * minStreamIdleTimeout
 	sink := &consumertest.MetricsSink{}
 	receiver := createMetricsReceiver(t.Context(), createTestSettings(), cfg, sink).(*yangReceiver)
@@ -282,7 +282,7 @@ func TestReceiverStreamActivityRefreshesIdleTimeout(t *testing.T) {
 func TestReceiverStartFailureCleansUpSecurityAndListener(t *testing.T) {
 	endpoint := unusedLocalEndpoint(t)
 	cfg := createDefaultConfig().(*Config)
-	cfg.NetAddr.Endpoint = endpoint
+	cfg.ServerConfig.NetAddr.Endpoint = endpoint
 	cfg.Security.RateLimiting.Enabled = true
 
 	missingPEM := filepath.Join(t.TempDir(), "missing.pem")
@@ -306,7 +306,7 @@ func TestReceiverStartFailureCleansUpSecurityAndListener(t *testing.T) {
 func TestReceiverModuleLoadFailureCleansUpSecurityAndListener(t *testing.T) {
 	endpoint := unusedLocalEndpoint(t)
 	cfg := createDefaultConfig().(*Config)
-	cfg.NetAddr.Endpoint = endpoint
+	cfg.ServerConfig.NetAddr.Endpoint = endpoint
 	cfg.Security.RateLimiting.Enabled = true
 	cfg.YANG.ModulePaths = []string{filepath.Join(t.TempDir(), "missing")}
 
@@ -322,7 +322,7 @@ func TestReceiverModuleLoadFailureCleansUpSecurityAndListener(t *testing.T) {
 func TestReceiverShutdownCancelsActiveStreamBeforeGracefulStop(t *testing.T) {
 	endpoint := unusedLocalEndpoint(t)
 	cfg := createDefaultConfig().(*Config)
-	cfg.NetAddr.Endpoint = endpoint
+	cfg.ServerConfig.NetAddr.Endpoint = endpoint
 	next := &blockingMetricsConsumer{started: make(chan struct{}), canceled: make(chan struct{})}
 	rcvr := createMetricsReceiver(t.Context(), createTestSettings(), cfg, next)
 	require.NoError(t, rcvr.Start(t.Context(), componenttest.NewNopHost()))
@@ -356,7 +356,7 @@ func TestReceiverShutdownCancelsActiveStreamBeforeGracefulStop(t *testing.T) {
 func TestReceiverShutdownDeadlineDoesNotWaitForBlockedDownstream(t *testing.T) {
 	endpoint := unusedLocalEndpoint(t)
 	cfg := createDefaultConfig().(*Config)
-	cfg.NetAddr.Endpoint = endpoint
+	cfg.ServerConfig.NetAddr.Endpoint = endpoint
 	next := &nonCooperativeMetricsConsumer{
 		started:  make(chan struct{}),
 		release:  make(chan struct{}),

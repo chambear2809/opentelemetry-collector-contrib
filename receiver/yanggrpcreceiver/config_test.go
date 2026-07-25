@@ -142,11 +142,11 @@ func TestSecurityConfig_Validation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.config.MaxRecvMsgSizeMiB == 0 {
-				tt.config.MaxRecvMsgSizeMiB = 4
+			if tt.config.ServerConfig.MaxRecvMsgSizeMiB == 0 {
+				tt.config.ServerConfig.MaxRecvMsgSizeMiB = 4
 			}
-			if tt.config.MaxConcurrentStreams == 0 {
-				tt.config.MaxConcurrentStreams = defaultMaxConcurrentStreams
+			if tt.config.ServerConfig.MaxConcurrentStreams == 0 {
+				tt.config.ServerConfig.MaxConcurrentStreams = defaultMaxConcurrentStreams
 			}
 			err := tt.config.Validate()
 			if tt.expectError {
@@ -190,18 +190,18 @@ func validTestServerConfig() configgrpc.ServerConfig {
 
 func TestServerResourceLimitValidation(t *testing.T) {
 	defaults := createDefaultConfig().(*Config)
-	assert.Equal(t, 4, defaults.MaxRecvMsgSizeMiB)
-	assert.Equal(t, uint32(defaultMaxConcurrentStreams), defaults.MaxConcurrentStreams)
+	assert.Equal(t, 4, defaults.ServerConfig.MaxRecvMsgSizeMiB)
+	assert.Equal(t, uint32(defaultMaxConcurrentStreams), defaults.ServerConfig.MaxConcurrentStreams)
 	assert.Equal(t, uint32(defaultMaxConnections), defaults.MaxConnections)
 	assert.Zero(t, defaults.MaxConcurrentStreamsPerClient)
 	assert.Equal(t, defaultMaxStreamsPerClient, effectiveMaxConcurrentStreamsPerClient(
 		defaults.MaxConcurrentStreamsPerClient,
-		defaults.MaxConcurrentStreams,
+		defaults.ServerConfig.MaxConcurrentStreams,
 	))
 	assert.Equal(t, uint32(defaultMaxConcurrentConversions), defaults.MaxConcurrentConversions)
 	assert.Equal(t, defaultConnectionTimeout, defaults.ConnectionTimeout)
 	assert.Equal(t, defaultStreamIdleTimeout, defaults.StreamIdleTimeout)
-	assert.Equal(t, defaultMaxConnectionIdle, defaults.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault().MaxConnectionIdle)
+	assert.Equal(t, defaultMaxConnectionIdle, defaults.ServerConfig.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault().MaxConnectionIdle)
 	require.NoError(t, defaults.Validate())
 
 	for _, test := range []struct {
@@ -221,8 +221,8 @@ func TestServerResourceLimitValidation(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			cfg := createDefaultConfig().(*Config)
-			cfg.MaxRecvMsgSizeMiB = test.recvMiB
-			cfg.MaxConcurrentStreams = test.streams
+			cfg.ServerConfig.MaxRecvMsgSizeMiB = test.recvMiB
+			cfg.ServerConfig.MaxConcurrentStreams = test.streams
 			if test.streamsPerClient != 0 {
 				cfg.MaxConcurrentStreamsPerClient = test.streamsPerClient
 			}
@@ -242,7 +242,7 @@ func TestServerResourceLimitValidation(t *testing.T) {
 	assert.Equal(t, 4, effectiveMaxConcurrentStreamsPerClient(0, 4))
 
 	cfg = createDefaultConfig().(*Config)
-	cfg.MaxConcurrentStreams = 4
+	cfg.ServerConfig.MaxConcurrentStreams = 4
 	require.NoError(t, cfg.Validate(), "the omitted per-client limit must follow a lower global limit")
 	cfg.MaxConcurrentStreamsPerClient = 5
 	require.ErrorContains(t, cfg.Validate(), "max_concurrent_streams_per_client must not exceed max_concurrent_streams")

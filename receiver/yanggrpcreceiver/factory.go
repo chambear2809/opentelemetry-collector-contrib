@@ -43,13 +43,13 @@ func createDefaultConfig() component.Config {
 			},
 		},
 	}
-	config.NetAddr.Transport = "tcp"
-	config.NetAddr.Endpoint = "localhost:57500"
-	config.MaxRecvMsgSizeMiB = 4
-	config.MaxConcurrentStreams = defaultMaxConcurrentStreams
-	config.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault().MaxConnectionIdle = defaultMaxConnectionIdle
-	config.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault().Time = 30 * time.Second
-	config.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault().Timeout = 10 * time.Second
+	config.ServerConfig.NetAddr.Transport = "tcp"
+	config.ServerConfig.NetAddr.Endpoint = "localhost:57500"
+	config.ServerConfig.MaxRecvMsgSizeMiB = 4
+	config.ServerConfig.MaxConcurrentStreams = defaultMaxConcurrentStreams
+	config.ServerConfig.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault().MaxConnectionIdle = defaultMaxConnectionIdle
+	config.ServerConfig.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault().Time = 30 * time.Second
+	config.ServerConfig.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault().Timeout = 10 * time.Second
 
 	return config
 }

@@ -106,7 +106,7 @@ type YANGConfig struct {
 
 // Config defines configuration for yanggrpc receiver.
 type Config struct {
-	configgrpc.ServerConfig `mapstructure:",squash"`
+	ServerConfig configgrpc.ServerConfig `mapstructure:",squash"`
 
 	// MaxConnections is the maximum number of accepted network connections.
 	// Zero uses the default of 256.
@@ -166,20 +166,20 @@ func (c *Config) Validate() error {
 	if err := c.ServerConfig.Validate(); err != nil {
 		return err
 	}
-	if c.MaxRecvMsgSizeMiB < minMaxRecvMsgSizeMiB || c.MaxRecvMsgSizeMiB > maxMaxRecvMsgSizeMiB {
+	if c.ServerConfig.MaxRecvMsgSizeMiB < minMaxRecvMsgSizeMiB || c.ServerConfig.MaxRecvMsgSizeMiB > maxMaxRecvMsgSizeMiB {
 		return fmt.Errorf("max_recv_msg_size_mib must be between %d and %d", minMaxRecvMsgSizeMiB, maxMaxRecvMsgSizeMiB)
 	}
-	if c.MaxConcurrentStreams < minMaxConcurrentStreams || c.MaxConcurrentStreams > maxMaxConcurrentStreams {
+	if c.ServerConfig.MaxConcurrentStreams < minMaxConcurrentStreams || c.ServerConfig.MaxConcurrentStreams > maxMaxConcurrentStreams {
 		return fmt.Errorf("max_concurrent_streams must be between %d and %d", minMaxConcurrentStreams, maxMaxConcurrentStreams)
 	}
-	if uint64(c.MaxConcurrentStreams)*uint64(c.MaxRecvMsgSizeMiB) > maxInFlightTelemetryMiB {
+	if uint64(c.ServerConfig.MaxConcurrentStreams)*uint64(c.ServerConfig.MaxRecvMsgSizeMiB) > maxInFlightTelemetryMiB {
 		return fmt.Errorf("max_concurrent_streams multiplied by max_recv_msg_size_mib must not exceed %d MiB", maxInFlightTelemetryMiB)
 	}
 	if c.MaxConcurrentStreamsPerClient > maxMaxConcurrentStreams {
 		return fmt.Errorf("max_concurrent_streams_per_client must not exceed %d", maxMaxConcurrentStreams)
 	}
 	if c.MaxConcurrentStreamsPerClient > 0 &&
-		effectiveMaxConcurrentStreamsPerClient(c.MaxConcurrentStreamsPerClient, c.MaxConcurrentStreams) > effectiveMaxConcurrentStreams(c.MaxConcurrentStreams) {
+		effectiveMaxConcurrentStreamsPerClient(c.MaxConcurrentStreamsPerClient, c.ServerConfig.MaxConcurrentStreams) > effectiveMaxConcurrentStreams(c.ServerConfig.MaxConcurrentStreams) {
 		return errors.New("max_concurrent_streams_per_client must not exceed max_concurrent_streams")
 	}
 	if err := c.validateRuntimeAvailability(); err != nil {
@@ -259,7 +259,7 @@ func effectiveStreamIdleTimeout(configured time.Duration) time.Duration {
 // unauthenticated telemetry-ingestion endpoint. The plaintext default remains
 // available on loopback for local development and tests.
 func (c *Config) validateRemoteListenerSecurity() error {
-	endpoint := strings.TrimSpace(c.NetAddr.Endpoint)
+	endpoint := strings.TrimSpace(c.ServerConfig.NetAddr.Endpoint)
 	if endpoint == "" || strings.HasPrefix(endpoint, "unix://") {
 		return nil
 	}
@@ -274,7 +274,7 @@ func (c *Config) validateRemoteListenerSecurity() error {
 	}
 
 	var validationErr error
-	tlsConfig := c.TLS.Get()
+	tlsConfig := c.ServerConfig.TLS.Get()
 	if tlsConfig == nil {
 		validationErr = errors.Join(validationErr, errors.New("non-loopback listeners require TLS"))
 	}

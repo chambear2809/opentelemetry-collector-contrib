@@ -47,10 +47,10 @@ func createMetricsReceiver(_ context.Context, settings receiver.Settings, cfg co
 		shutdownDone:    make(chan struct{}),
 		processingSlots: make(chan struct{}, effectiveMaxConcurrentConversions(cfg.(*Config).MaxConcurrentConversions)),
 		streamAdmission: newStreamAdmission(
-			effectiveMaxConcurrentStreams(cfg.(*Config).MaxConcurrentStreams),
+			effectiveMaxConcurrentStreams(cfg.(*Config).ServerConfig.MaxConcurrentStreams),
 			effectiveMaxConcurrentStreamsPerClient(
 				cfg.(*Config).MaxConcurrentStreamsPerClient,
-				cfg.(*Config).MaxConcurrentStreams,
+				cfg.(*Config).ServerConfig.MaxConcurrentStreams,
 			),
 		),
 	}
@@ -62,13 +62,13 @@ func (y *yangReceiver) Start(ctx context.Context, host component.Host) error {
 	if err := y.config.Validate(); err != nil {
 		return err
 	}
-	serverParameters := y.config.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault()
+	serverParameters := y.config.ServerConfig.Keepalive.GetOrInsertDefault().ServerParameters.GetOrInsertDefault()
 	if serverParameters.MaxConnectionIdle == 0 {
 		serverParameters.MaxConnectionIdle = defaultMaxConnectionIdle
 	}
 
 	// 1. Setup Network Listener
-	listener, err := y.config.NetAddr.Listen(ctx)
+	listener, err := y.config.ServerConfig.NetAddr.Listen(ctx)
 	if err != nil {
 		return err
 	}
@@ -85,7 +85,7 @@ func (y *yangReceiver) Start(ctx context.Context, host component.Host) error {
 	)
 
 	// 3. Configure gRPC Server with Security Interceptors
-	server, err := y.config.ToServer(ctx, host.GetExtensions(), y.settings.TelemetrySettings,
+	server, err := y.config.ServerConfig.ToServer(ctx, host.GetExtensions(), y.settings.TelemetrySettings,
 		configgrpc.WithGrpcServerOption(grpc.UnaryInterceptor(securityManager.CreateSecurityInterceptor())),
 		configgrpc.WithGrpcServerOption(grpc.ChainStreamInterceptor(
 			securityManager.CreateStreamSecurityInterceptor(),
@@ -126,7 +126,7 @@ func (y *yangReceiver) Start(ctx context.Context, host component.Host) error {
 	// 6. Start Serving
 	y.wg.Go(func() {
 		y.settings.Logger.Info("Starting YANG gRPC receiver",
-			zap.String("endpoint", y.config.NetAddr.Endpoint))
+			zap.String("endpoint", y.config.ServerConfig.NetAddr.Endpoint))
 		if err := y.server.Serve(listener); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 			y.settings.Logger.Error("gRPC server error", zap.Error(err))
 		}
