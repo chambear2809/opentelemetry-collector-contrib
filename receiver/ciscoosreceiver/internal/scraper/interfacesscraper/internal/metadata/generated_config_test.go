@@ -140,7 +140,7 @@ func TestMetricsBuilderConfig(t *testing.T) {
 					CiscoTopologyNeighborInfo: CiscoTopologyNeighborInfoMetricConfig{
 						Enabled:             true,
 						AggregationStrategy: AggregationStrategyAvg,
-						EnabledAttributes:   []CiscoTopologyNeighborInfoMetricAttributeKey{CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyProtocol, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkInterfaceName, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborName, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborInterface, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborPlatform, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborAddress},
+						EnabledAttributes:   []CiscoTopologyNeighborInfoMetricAttributeKey{CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyProtocol, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkInterfaceName, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborName, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborInterface, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborPlatform, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborAddress, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkPeerName, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkPeerAddress, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkProtocolName},
 					},
 					CiscoTransceiverSensor: CiscoTransceiverSensorMetricConfig{
 						Enabled:             true,
@@ -312,7 +312,7 @@ func TestMetricsBuilderConfig(t *testing.T) {
 					CiscoTopologyNeighborInfo: CiscoTopologyNeighborInfoMetricConfig{
 						Enabled:             false,
 						AggregationStrategy: AggregationStrategyAvg,
-						EnabledAttributes:   []CiscoTopologyNeighborInfoMetricAttributeKey{CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyProtocol, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkInterfaceName, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborName, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborInterface, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborPlatform, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborAddress},
+						EnabledAttributes:   []CiscoTopologyNeighborInfoMetricAttributeKey{CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyProtocol, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkInterfaceName, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborName, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborInterface, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborPlatform, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborAddress, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkPeerName, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkPeerAddress, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkProtocolName},
 					},
 					CiscoTransceiverSensor: CiscoTransceiverSensorMetricConfig{
 						Enabled:             false,
@@ -632,7 +632,7 @@ func TestCiscoTopologyNeighborInfoMetricsConfig_Validate(t *testing.T) {
 	require.NoError(t, cfg.Validate())
 
 	cfg.EnabledAttributes = []CiscoTopologyNeighborInfoMetricAttributeKey{"invalid"}
-	require.ErrorContains(t, cfg.Validate(), "metric cisco.topology.neighbor.info doesn't have an attribute invalid, valid attributes: [cisco.topology.protocol, network.interface.name, cisco.topology.neighbor.name, cisco.topology.neighbor.interface, cisco.topology.neighbor.platform, cisco.topology.neighbor.address]")
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.topology.neighbor.info doesn't have an attribute invalid, valid attributes: [cisco.topology.protocol, network.interface.name, cisco.topology.neighbor.name, cisco.topology.neighbor.interface, cisco.topology.neighbor.platform, cisco.topology.neighbor.address, network.peer.name, network.peer.address, network.protocol.name]")
 
 	cfg = DefaultMetricsConfig().CiscoTopologyNeighborInfo
 	cfg.AggregationStrategy = "invalid"

@@ -20,14 +20,28 @@ const (
 
 // PaginationByteBudget tracks aggregate raw page bytes for one operation.
 type PaginationByteBudget struct {
-	used int
+	used    int
+	maximum int
+}
+
+// NewPaginationByteBudget creates an aggregate pagination budget. Values that
+// are non-positive or exceed the hard ceiling resolve to the hard ceiling.
+func NewPaginationByteBudget(maximum int) PaginationByteBudget {
+	if maximum <= 0 || maximum > HardMaxPaginationBytes {
+		maximum = HardMaxPaginationBytes
+	}
+	return PaginationByteBudget{maximum: maximum}
 }
 
 // Charge reserves one page before it is decoded. An over-budget page is not
 // decoded or appended, so callers can safely return their prior partial slice.
 func (b *PaginationByteBudget) Charge(operation string, pageBytes, partialResults int) error {
-	if pageBytes < 0 || pageBytes > HardMaxPaginationBytes-b.used {
-		return NewPaginationLimitError(operation, "byte", HardMaxPaginationBytes, partialResults)
+	maximum := b.maximum
+	if maximum <= 0 || maximum > HardMaxPaginationBytes {
+		maximum = HardMaxPaginationBytes
+	}
+	if pageBytes < 0 || pageBytes > maximum-b.used {
+		return NewPaginationLimitError(operation, "byte", maximum, partialResults)
 	}
 	b.used += pageBytes
 	return nil

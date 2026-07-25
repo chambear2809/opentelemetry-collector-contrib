@@ -364,7 +364,7 @@ Cisco receiver command execution errors
 
 ### cisco.scrape.partial_success
 
-Cisco receiver scrape partial success status (1 = partial success, 0 = complete success)
+Whether the scrape completed with at least one command-family failure.
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
@@ -380,7 +380,7 @@ The number of successful Cisco SSH reconnects by the receiver
 
 ### cisco.topology.neighbor.info
 
-Cisco LLDP or CDP topology neighbor edge information
+LLDP, CDP, and fabric-link neighbor information.
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
@@ -396,10 +396,13 @@ Cisco LLDP or CDP topology neighbor edge information
 | cisco.topology.neighbor.interface | Cisco topology neighbor interface identifier | Any Str | Recommended | - |
 | cisco.topology.neighbor.platform | Cisco topology neighbor platform | Any Str | Recommended | - |
 | cisco.topology.neighbor.address | Cisco topology neighbor management address | Any Str | Recommended | - |
+| network.peer.name | Legacy topology neighbor system, chassis, port, or object name | Any Str | Recommended | - |
+| network.peer.address | Legacy topology neighbor management address | Any Str | Recommended | - |
+| network.protocol.name | Legacy topology discovery protocol name | Any Str | Recommended | - |
 
 ### cisco.transceiver.sensor
 
-Cisco transceiver digital optical monitoring sensor value. The physical unit varies by sensor type and is carried in the cisco.transceiver.sensor.unit attribute (Cel, V, mA, dBm, or 1 when unitless).
+Digital optical monitoring sensor values, such as temperature, voltage, current, or optical receive/transmit power. The actual physical unit is in `cisco.transceiver.sensor.unit`.
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
@@ -499,7 +502,7 @@ The number of bytes transmitted and received
 
 ### system.network.packet.count
 
-The number of packets transmitted or received, categorized by type
+The number of packets transmitted or received by direction and, when available, packet type
 
 | Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
 | ---- | ----------- | ---------- | ----------------------- | --------- | --------- |

@@ -46,6 +46,32 @@ type Config struct {
 	InsecureSkipVerify bool
 }
 
+// PaginationStrategy identifies the continuation contract for one Nexus
+// Dashboard route. Cisco's APIs mix max/offset endpoints with server-driven
+// next-link endpoints and single-response resources, so callers must select a
+// strategy from the versioned endpoint catalog instead of inferring one from a
+// response body.
+type PaginationStrategy string
+
+const (
+	// PaginationSingle performs exactly one request. It is reserved for routes
+	// whose documented response is a single resource or complete collection.
+	PaginationSingle PaginationStrategy = "single"
+	// PaginationLink follows only continuation links returned by the server. It
+	// never adds max or offset query parameters.
+	PaginationLink PaginationStrategy = "link"
+	// PaginationUnknown is the conservative contract for compatibility routes
+	// that are absent from the versioned Cisco specifications used by the
+	// endpoint catalog. It follows an explicit server continuation, never adds
+	// pagination parameters, and requires explicit terminal metadata for every
+	// nonempty response instead of inferring completeness from its length.
+	PaginationUnknown PaginationStrategy = "unknown"
+	// PaginationOffset uses Cisco's max/offset query contract. When a server
+	// omits optional continuation metadata, a full page advances by its actual
+	// result count until a safe termination condition is observed.
+	PaginationOffset PaginationStrategy = "offset"
+)
+
 // RequestStat describes a single Nexus Dashboard API request attempt.
 type RequestStat struct {
 	Operation   string
@@ -79,6 +105,10 @@ type Client struct {
 	client    *http.Client
 	retries   int
 	pageSize  int
+	// maxPaginationBytes remains fixed at the shared hard ceiling in production.
+	// Keeping it on the client makes aggregate-budget behavior deterministic in
+	// focused tests without allocating tens of megabytes per test case.
+	maxPaginationBytes int
 
 	tokenMu         sync.Mutex
 	token           string
@@ -105,6 +135,24 @@ type requestAuthState struct {
 	token          tokenSnapshot
 	loginAttempted bool
 	failed         bool
+}
+
+// redactedURLRequestError keeps the transport error chain available for
+// errors.Is/errors.As without rendering url.Error.URL, which may contain a
+// server-provided continuation query.
+type redactedURLRequestError struct {
+	err error
+}
+
+func (*redactedURLRequestError) Error() string {
+	return "nexus dashboard HTTP request failed"
+}
+
+func (e *redactedURLRequestError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
 }
 
 // authBackoffSchedule bounds authentication attempts shared by all endpoint
@@ -186,17 +234,18 @@ func NewClient(cfg Config) (*Client, error) {
 	}
 
 	return &Client{
-		endpoint:  parsed,
-		authMode:  authMode,
-		username:  cfg.Username,
-		password:  cfg.Password,
-		apiKey:    cfg.APIKey,
-		domain:    domain,
-		userAgent: userAgent,
-		client:    &http.Client{Timeout: timeout, Transport: transport, CheckRedirect: httpclient.SameOriginRedirectPolicy(parsed)},
-		retries:   retries,
-		pageSize:  pageSize,
-		loginPath: modernLoginPath,
+		endpoint:           parsed,
+		authMode:           authMode,
+		username:           cfg.Username,
+		password:           cfg.Password,
+		apiKey:             cfg.APIKey,
+		domain:             domain,
+		userAgent:          userAgent,
+		client:             &http.Client{Timeout: timeout, Transport: transport, CheckRedirect: httpclient.SameOriginRedirectPolicy(parsed)},
+		retries:            retries,
+		pageSize:           pageSize,
+		maxPaginationBytes: httpclient.HardMaxPaginationBytes,
+		loginPath:          modernLoginPath,
 	}, nil
 }
 
@@ -216,18 +265,36 @@ func Query(values map[string]string) url.Values {
 	return query
 }
 
-// List fetches generic objects from a Nexus Dashboard endpoint.
-func (c *Client) List(ctx context.Context, operation, path string, query url.Values, maxResults int) ([]Object, error) {
+// List fetches generic objects from a Nexus Dashboard endpoint using its
+// explicit versioned pagination contract. path is an endpoint-relative escaped
+// path so selector values escaped as individual URL segments remain segments
+// when the request URL is assembled.
+func (c *Client) List(
+	ctx context.Context,
+	operation, path string,
+	query url.Values,
+	pagination PaginationStrategy,
+	maxResults int,
+) ([]Object, error) {
+	if !validPaginationStrategy(pagination) {
+		return nil, fmt.Errorf("unsupported nexus dashboard pagination strategy %q for %s", pagination, operation)
+	}
 	if query == nil {
 		query = url.Values{}
 	}
 	var results []Object
 	resultLimit, hardResultLimit := httpclient.EffectivePaginationResultLimit(maxResults)
-	offset := 0
+	requestPath := path
+	requestQuery := cloneValues(query)
+	offset := queryInt(requestQuery, "offset", 0)
+	serverContinuation := false
 	pages := 0
-	var byteBudget httpclient.PaginationByteBudget
+	byteBudget := httpclient.NewPaginationByteBudget(c.maxPaginationBytes)
 	seenRequests := make(map[string]struct{})
 	for {
+		if err := ctx.Err(); err != nil {
+			return results, err
+		}
 		if len(results) >= resultLimit {
 			if hardResultLimit {
 				return results, httpclient.NewPaginationLimitError(operation, "result", resultLimit, len(results))
@@ -237,24 +304,27 @@ func (c *Client) List(ctx context.Context, operation, path string, query url.Val
 		if pages >= httpclient.HardMaxPaginationPages {
 			return results, httpclient.NewPaginationLimitError(operation, "page", httpclient.HardMaxPaginationPages, len(results))
 		}
-		pageQuery := cloneValues(query)
-		pageSize := c.pageSize
-		if remaining := resultLimit - len(results); remaining < pageSize {
-			pageSize = remaining
+
+		pageQuery := cloneValues(requestQuery)
+		requestOffset := offset
+		requestedPageSize := 0
+		if pagination == PaginationOffset {
+			if serverContinuation {
+				requestOffset = queryInt(pageQuery, "offset", offset)
+				requestedPageSize = queryInt(pageQuery, "max", 0)
+			} else {
+				requestedPageSize = min(c.pageSize, resultLimit-len(results))
+				pageQuery.Set("max", strconv.Itoa(requestedPageSize))
+				pageQuery.Set("offset", strconv.Itoa(requestOffset))
+			}
 		}
-		if _, hasMax := pageQuery["max"]; !hasMax {
-			pageQuery.Set("max", strconv.Itoa(pageSize))
-		}
-		if _, hasOffset := pageQuery["offset"]; !hasOffset {
-			pageQuery.Set("offset", strconv.Itoa(offset))
-		}
-		requestKey := path + "?" + pageQuery.Encode()
+		requestKey := requestPath + "?" + pageQuery.Encode()
 		if _, seen := seenRequests[requestKey]; seen {
 			return results, fmt.Errorf("paginate nexus dashboard %s response: detected continuation cycle after %d partial results", operation, len(results))
 		}
 		seenRequests[requestKey] = struct{}{}
 
-		body, header, err := c.do(ctx, http.MethodGet, operation, path, pageQuery, nil)
+		body, header, err := c.do(ctx, http.MethodGet, operation, requestPath, pageQuery, nil)
 		if err != nil {
 			return results, err
 		}
@@ -262,12 +332,29 @@ func (c *Client) List(ctx context.Context, operation, path string, query url.Val
 			return results, budgetErr
 		}
 		pages++
-		page, next, remaining, err := decodeObjects(body, header)
+		page, metadata, err := decodeObjects(body, header)
 		if err != nil {
-			return results, fmt.Errorf("decode nexus dashboard %s response: %w", operation, err)
+			return results, fmt.Errorf("decode nexus dashboard %s response page %d from %s: %w", operation, pages, requestPath, err)
 		}
+		rawPageLength := len(page)
 		results = append(results, page...)
-		complete := next == "" && (len(page) == 0 || len(page) < pageSize || remaining <= 0)
+		processedOffset := requestOffset + rawPageLength
+		if pagination == PaginationSingle && metadata.claimsMore(processedOffset) {
+			if len(results) > resultLimit {
+				results = results[:resultLimit]
+			}
+			return results, fmt.Errorf("paginate nexus dashboard %s response: single-response contract claimed continuation after %d partial results", operation, len(results))
+		}
+		if pagination == PaginationUnknown && rawPageLength > 0 && metadata.next == "" && !metadata.terminal(processedOffset) {
+			if len(results) > resultLimit {
+				results = results[:resultLimit]
+			}
+			if metadata.claimsMore(processedOffset) {
+				return results, fmt.Errorf("paginate nexus dashboard %s response: unverified pagination contract reported continuation without a next link after %d partial results", operation, len(results))
+			}
+			return results, fmt.Errorf("paginate nexus dashboard %s response: unverified pagination contract returned %d results without continuation or terminal metadata", operation, rawPageLength)
+		}
+		complete := paginationPageComplete(pagination, rawPageLength, requestedPageSize, processedOffset, metadata)
 		truncated := len(results) > resultLimit
 		if len(results) >= resultLimit {
 			results = results[:resultLimit]
@@ -276,15 +363,101 @@ func (c *Client) List(ctx context.Context, operation, path string, query url.Val
 			}
 			return results, nil
 		}
-		if next != "" {
-			path, query = splitNextURL(next)
-			offset = 0
+		if rawPageLength == 0 && metadata.claimsMore(processedOffset) {
+			return results, fmt.Errorf("paginate nexus dashboard %s response: endpoint made no progress with continuation metadata after %d partial results", operation, len(results))
+		}
+		if metadata.next != "" {
+			nextPath, nextQuery, err := c.resolveNextURL(requestPath, pageQuery, metadata.next)
+			if err != nil {
+				return results, fmt.Errorf("paginate nexus dashboard %s response: resolve continuation after %d partial results: %w", operation, len(results), err)
+			}
+			requestPath, requestQuery = nextPath, nextQuery
+			offset = queryInt(requestQuery, "offset", processedOffset)
+			serverContinuation = true
 			continue
 		}
 		if complete {
 			return results, nil
 		}
-		offset += len(page)
+		switch pagination {
+		case PaginationSingle:
+			return results, fmt.Errorf("paginate nexus dashboard %s response: single-response contract reported more than %d partial results", operation, len(results))
+		case PaginationLink:
+			return results, fmt.Errorf("paginate nexus dashboard %s response: continuation metadata omitted a next link after %d partial results", operation, len(results))
+		case PaginationUnknown:
+			if metadata.claimsMore(processedOffset) {
+				return results, fmt.Errorf("paginate nexus dashboard %s response: unverified pagination contract reported continuation without a next link after %d partial results", operation, len(results))
+			}
+			return results, fmt.Errorf("paginate nexus dashboard %s response: unverified pagination contract returned %d results without continuation or terminal metadata", operation, rawPageLength)
+		case PaginationOffset:
+			offset = processedOffset
+			requestQuery = pageQuery
+			serverContinuation = false
+		}
+	}
+}
+
+type paginationMetadata struct {
+	next           string
+	remaining      int
+	remainingKnown bool
+	total          int
+	totalKnown     bool
+}
+
+func (m paginationMetadata) claimsMore(processedOffset int) bool {
+	return m.next != "" ||
+		m.remainingKnown && m.remaining > 0 ||
+		m.totalKnown && processedOffset < m.total
+}
+
+func (m paginationMetadata) terminal(processedOffset int) bool {
+	if m.claimsMore(processedOffset) {
+		return false
+	}
+	return m.remainingKnown && m.remaining <= 0 ||
+		m.totalKnown && processedOffset >= m.total
+}
+
+func validPaginationStrategy(strategy PaginationStrategy) bool {
+	switch strategy {
+	case PaginationSingle, PaginationLink, PaginationUnknown, PaginationOffset:
+		return true
+	default:
+		return false
+	}
+}
+
+func paginationPageComplete(
+	strategy PaginationStrategy,
+	pageLength, requestedPageSize, processedOffset int,
+	metadata paginationMetadata,
+) bool {
+	if metadata.next != "" {
+		return false
+	}
+	if pageLength == 0 {
+		return !metadata.claimsMore(processedOffset)
+	}
+	if metadata.claimsMore(processedOffset) {
+		// An offset endpoint can return fewer objects than requested while
+		// authoritative metadata still identifies later objects. Continuation
+		// metadata takes precedence over the short-page fallback.
+		return false
+	}
+	if metadata.terminal(processedOffset) {
+		return true
+	}
+	if strategy == PaginationOffset && requestedPageSize > 0 && pageLength < requestedPageSize {
+		return true
+	}
+	switch strategy {
+	case PaginationSingle, PaginationLink:
+		return !metadata.claimsMore(processedOffset)
+	case PaginationUnknown:
+		return false
+	default:
+		return false
 	}
 }
 
@@ -377,6 +550,7 @@ func (c *Client) doOnce(
 	resp, err := c.client.Do(req)
 	duration := time.Since(start)
 	if err != nil {
+		err = redactURLRequestError(err)
 		err = httpclient.DecorateCertificateVerificationError(err, "", insecureSkipVerifyConfigPath)
 		c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", Duration: duration, Err: err})
 		return nil, nil, 0, requestAuth, err
@@ -406,6 +580,17 @@ func (c *Client) doOnce(
 		Err:         apiErr,
 	})
 	return nil, resp.Header, resp.StatusCode, requestAuth, apiErr
+}
+
+func redactURLRequestError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var requestErr *url.Error
+	if !errors.As(err, &requestErr) {
+		return err
+	}
+	return &redactedURLRequestError{err: err}
 }
 
 func (c *Client) authorize(ctx context.Context, req *http.Request, bypassAuthBackoff bool) (requestAuthState, int, error) {
@@ -645,14 +830,33 @@ func (c *Client) markAuthSuccess(token tokenSnapshot) {
 }
 
 func (c *Client) buildURL(path string, query url.Values) string {
-	u := *c.endpoint
-	basePath := strings.TrimRight(u.Path, "/")
-	cleanPath := "/" + strings.TrimLeft(path, "/")
-	u.Path = basePath + cleanPath
+	u := c.endpointRequestURL(path)
 	if query != nil {
 		u.RawQuery = query.Encode()
 	}
 	return u.String()
+}
+
+func (c *Client) endpointRequestURL(path string) url.URL {
+	u := *c.endpoint
+	escapedPath := endpointRequestPath(u.EscapedPath(), path)
+	decodedPath, err := url.PathUnescape(escapedPath)
+	if err != nil {
+		// Preserve the previous behavior for a malformed server-provided path:
+		// URL.String will safely escape it before the request is sent.
+		u.Path = endpointRequestPath(u.Path, path)
+		u.RawPath = ""
+		return u
+	}
+	u.Path = decodedPath
+	u.RawPath = escapedPath
+	return u
+}
+
+func endpointRequestPath(endpointPath, requestPath string) string {
+	basePath := strings.TrimRight(endpointPath, "/")
+	cleanPath := "/" + strings.TrimLeft(requestPath, "/")
+	return basePath + cleanPath
 }
 
 func (c *Client) record(stat RequestStat) {
@@ -661,55 +865,113 @@ func (c *Client) record(stat RequestStat) {
 	}
 }
 
-func decodeObjects(body []byte, header http.Header) ([]Object, string, int, error) {
+func decodeObjects(body []byte, header http.Header) ([]Object, paginationMetadata, error) {
 	var value any
 	if err := httpclient.DecodeJSON(body, &value); err != nil {
-		return nil, "", 0, err
+		return nil, paginationMetadata{}, err
 	}
-	objects := objectsFromValue(value)
-	next := httpclient.NextLink(header.Get("Link"))
-	remaining := -1
+	objects, err := objectsFromValue(value)
+	if err != nil {
+		return nil, paginationMetadata{}, err
+	}
+	metadata := paginationMetadata{next: httpclient.NextLink(header.Get("Link"))}
 	if root, ok := value.(map[string]any); ok {
-		next = firstNonEmpty(next, stringFromPath(root, "meta", "links", "next"), stringFromPath(root, "links", "next"), stringFromPath(root, "pagination", "next"))
-		remaining = intFromPath(root, "meta", "counts", "remaining")
-		if remaining < 0 {
-			remaining = intFromPath(root, "pagination", "remaining")
-		}
+		metadata.next = firstNonEmpty(
+			metadata.next,
+			stringFromPath(root, "meta", "links", "next"),
+			stringFromPath(root, "links", "next"),
+			stringFromPath(root, "pagination", "next"),
+		)
+		metadata.remaining, metadata.remainingKnown = firstNonNegativeIntFromPaths(root,
+			[]string{"meta", "counts", "remaining"},
+			[]string{"meta", "remaining"},
+			[]string{"pagination", "remaining"},
+		)
+		metadata.total, metadata.totalKnown = firstNonNegativeIntFromPaths(root,
+			[]string{"meta", "counts", "total"},
+			[]string{"meta", "total"},
+			[]string{"pagination", "total"},
+		)
 	}
-	return objects, next, remaining, nil
+	return objects, metadata, nil
 }
 
-func objectsFromValue(value any) []Object {
+func objectsFromValue(value any) ([]Object, error) {
 	switch typed := value.(type) {
 	case []any:
-		out := make([]Object, 0, len(typed))
-		for _, item := range typed {
-			if obj, ok := objectFromValue(item); ok {
-				out = append(out, obj)
-			}
-		}
-		return out
+		return objectsFromRows(typed, "top-level response", "")
 	case map[string]any:
-		if _, ok := typed["isHealthy"]; ok {
-			return []Object{Object(typed)}
-		}
+		var collectionKey string
+		var secondCollectionKey string
+		var collectionRows []any
+		// A recognized collection key is an explicit envelope-shape contract.
+		// Validate every present key before singleton or ambiguity handling so a
+		// malformed collection can never turn envelope metadata into a fabricated
+		// row.
 		for _, key := range []string{"items", "data", "results", "fabrics", "switches", "interfaces", "anomalies", "advisories", "nodes", "services", "sites", "schemas", "rules", "sessions", "flows", "events", "faults", "auditLog", "logs", "records"} {
-			if items, ok := typed[key].([]any); ok {
-				out := make([]Object, 0, len(items))
-				for _, item := range items {
-					if obj, ok := objectFromValue(item); ok {
-						if fabric := String(Object(typed), "fabricName", "siteName"); fabric != "" {
-							obj["_parent"] = fabric
-						}
-						out = append(out, obj)
-					}
-				}
-				return out
+			collectionValue, present := typed[key]
+			if !present {
+				continue
+			}
+			items, ok := collectionValue.([]any)
+			if !ok {
+				return nil, fmt.Errorf("response field %q is %s, expected an array", key, jsonValueType(collectionValue))
+			}
+			if collectionKey == "" {
+				collectionKey = key
+				collectionRows = items
+			} else if secondCollectionKey == "" {
+				secondCollectionKey = key
 			}
 		}
-		return []Object{Object(typed)}
+		// Cluster health is a true singleton envelope whose recognized nested
+		// fields (such as nodes) are arrays; retain the envelope after validation.
+		if _, ok := typed["isHealthy"]; ok {
+			return []Object{Object(typed)}, nil
+		}
+		if secondCollectionKey != "" {
+			return nil, fmt.Errorf("response has multiple recognized collection fields %q and %q", collectionKey, secondCollectionKey)
+		}
+		if collectionKey != "" {
+			return objectsFromRows(collectionRows, fmt.Sprintf("response field %q", collectionKey), String(Object(typed), "fabricName", "siteName"))
+		}
+		return []Object{Object(typed)}, nil
 	default:
-		return nil
+		return nil, fmt.Errorf("top-level response is %s, expected object or array", jsonValueType(value))
+	}
+}
+
+func objectsFromRows(rows []any, location, parent string) ([]Object, error) {
+	out := make([]Object, 0, len(rows))
+	for index, row := range rows {
+		obj, ok := objectFromValue(row)
+		if !ok {
+			return nil, fmt.Errorf("%s row %d is %s, expected object", location, index, jsonValueType(row))
+		}
+		if parent != "" {
+			obj["_parent"] = parent
+		}
+		out = append(out, obj)
+	}
+	return out, nil
+}
+
+func jsonValueType(value any) string {
+	switch value.(type) {
+	case nil:
+		return "null"
+	case []any:
+		return "an array"
+	case string:
+		return "a string"
+	case json.Number, float64:
+		return "a number"
+	case bool:
+		return "a boolean"
+	case map[string]any:
+		return "an object"
+	default:
+		return fmt.Sprintf("a %T value", value)
 	}
 }
 
@@ -770,12 +1032,174 @@ func sleepBeforeRetry(ctx context.Context, attempt int, retryAfter time.Duration
 	}
 }
 
-func splitNextURL(nextURL string) (string, url.Values) {
+func (c *Client) resolveNextURL(currentPath string, currentQuery url.Values, nextURL string) (string, url.Values, error) {
 	parsed, err := url.Parse(nextURL)
 	if err != nil {
-		return nextURL, nil
+		return "", nil, errors.New("parse continuation metadata: invalid URL")
 	}
-	return parsed.Path, parsed.Query()
+	if err = validateContinuationEscapedPath(parsed.EscapedPath()); err != nil {
+		return "", nil, fmt.Errorf("reject continuation metadata: %w", err)
+	}
+	base := c.endpointRequestURL(currentPath)
+	base.RawQuery = currentQuery.Encode()
+	resolved := base.ResolveReference(parsed)
+	// Continuation metadata controls only the path and query. Discard its
+	// origin so authentication can never escape the configured controller, and
+	// normalize the path back to endpoint-relative form so buildURL applies a
+	// configured reverse-proxy prefix exactly once.
+	relativePath, err := endpointRelativeEscapedPath(c.endpoint, resolved)
+	if err != nil {
+		return "", nil, fmt.Errorf("rebase continuation metadata: %w", err)
+	}
+	return relativePath, resolved.Query(), nil
+}
+
+func validateContinuationEscapedPath(escapedPath string) error {
+	// A reverse proxy and its backend can each decode or normalize a path.
+	// Validate both stages so double-encoded separators and dot bytes cannot
+	// become a traversal segment after the continuation has been rebased.
+	decodedPath, ok := decodeEscapedPath(escapedPath, true)
+	if !ok {
+		return errors.New("path contains an invalid escape")
+	}
+	if containsPathTraversalSegment(decodedPath) {
+		return errors.New("path contains a traversal segment that decodes to \"..\"")
+	}
+	// The wire-level path must be valid, but the result of its first decode may
+	// legitimately contain a literal percent (for example an escaped selector
+	// value ending in %25). A second normalizer would decode only valid %HH
+	// triplets, so preserve other percent bytes during this defensive pass.
+	decodedPath, _ = decodeEscapedPath(decodedPath, false)
+	if containsPathTraversalSegment(decodedPath) {
+		return errors.New("path contains a traversal segment that decodes to \"..\"")
+	}
+	return nil
+}
+
+func decodeEscapedPath(escapedPath string, rejectInvalidEscapes bool) (string, bool) {
+	if !strings.Contains(escapedPath, "%") {
+		return escapedPath, true
+	}
+	var decoded strings.Builder
+	decoded.Grow(len(escapedPath))
+	for encodedIndex := 0; encodedIndex < len(escapedPath); {
+		value, nextIndex, ok := decodeEscapedPathByte(escapedPath, encodedIndex)
+		if !ok {
+			if rejectInvalidEscapes {
+				return "", false
+			}
+			decoded.WriteByte(escapedPath[encodedIndex])
+			encodedIndex++
+			continue
+		}
+		decoded.WriteByte(value)
+		encodedIndex = nextIndex
+	}
+	return decoded.String(), true
+}
+
+func containsPathTraversalSegment(path string) bool {
+	segmentStart := 0
+	for index := 0; index < len(path); index++ {
+		if path[index] != '/' && path[index] != '\\' {
+			continue
+		}
+		if path[segmentStart:index] == ".." {
+			return true
+		}
+		segmentStart = index + 1
+	}
+	return path[segmentStart:] == ".."
+}
+
+func endpointRelativeEscapedPath(endpoint, resolved *url.URL) (string, error) {
+	basePath := strings.TrimRight(endpoint.Path, "/")
+	cleanPath := "/" + strings.TrimLeft(resolved.Path, "/")
+	cleanEscapedPath := "/" + strings.TrimLeft(resolved.EscapedPath(), "/")
+	if basePath == "" || (cleanPath != basePath && !strings.HasPrefix(cleanPath, basePath+"/")) {
+		return cleanEscapedPath, nil
+	}
+
+	prefixEnd, ok := escapedDecodedPrefixLength(cleanEscapedPath, basePath)
+	if !ok {
+		return "", errors.New("resolved path does not preserve the configured endpoint prefix")
+	}
+	if cleanPath == basePath {
+		return "/", nil
+	}
+	separatorEnd, ok := escapedDecodedPrefixLength(cleanEscapedPath[prefixEnd:], "/")
+	if !ok {
+		return "", errors.New("resolved path does not contain a separator after the configured endpoint prefix")
+	}
+	return "/" + cleanEscapedPath[prefixEnd+separatorEnd:], nil
+}
+
+// escapedDecodedPrefixLength returns the encoded byte length corresponding to
+// decodedPrefix. It permits equivalent URL spellings (including hex-case and
+// escaped-unreserved differences) without re-encoding the remaining path.
+func escapedDecodedPrefixLength(escapedPath, decodedPrefix string) (int, bool) {
+	return escapedDecodedPrefixLengthWithOperations(escapedPath, decodedPrefix, nil)
+}
+
+// escapedDecodedPrefixLengthWithOperations exposes the number of decoded-byte
+// comparisons for a deterministic complexity regression. Each iteration
+// consumes either one literal byte or one complete percent escape.
+func escapedDecodedPrefixLengthWithOperations(escapedPath, decodedPrefix string, operations *int) (int, bool) {
+	encodedIndex := 0
+	for decodedIndex := 0; decodedIndex < len(decodedPrefix); decodedIndex++ {
+		if operations != nil {
+			*operations++
+		}
+		decoded, nextIndex, ok := decodeEscapedPathByte(escapedPath, encodedIndex)
+		if !ok || decoded != decodedPrefix[decodedIndex] {
+			return 0, false
+		}
+		encodedIndex = nextIndex
+	}
+	return encodedIndex, true
+}
+
+func decodeEscapedPathByte(escapedPath string, encodedIndex int) (byte, int, bool) {
+	if encodedIndex >= len(escapedPath) {
+		return 0, encodedIndex, false
+	}
+	if escapedPath[encodedIndex] != '%' {
+		return escapedPath[encodedIndex], encodedIndex + 1, true
+	}
+	if encodedIndex+2 >= len(escapedPath) {
+		return 0, encodedIndex, false
+	}
+	high, highOK := hexValue(escapedPath[encodedIndex+1])
+	low, lowOK := hexValue(escapedPath[encodedIndex+2])
+	if !highOK || !lowOK {
+		return 0, encodedIndex, false
+	}
+	return high<<4 | low, encodedIndex + 3, true
+}
+
+func hexValue(value byte) (byte, bool) {
+	switch {
+	case value >= '0' && value <= '9':
+		return value - '0', true
+	case value >= 'a' && value <= 'f':
+		return value - 'a' + 10, true
+	case value >= 'A' && value <= 'F':
+		return value - 'A' + 10, true
+	default:
+		return 0, false
+	}
+}
+
+func queryInt(query url.Values, key string, fallback int) int {
+	value := query.Get(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 0 {
+		return fallback
+	}
+	return parsed
 }
 
 func stringFromPath(obj map[string]any, path ...string) string {
@@ -806,4 +1230,14 @@ func intFromPath(obj map[string]any, path ...string) int {
 		return -1
 	}
 	return i
+}
+
+func firstNonNegativeIntFromPaths(obj map[string]any, paths ...[]string) (int, bool) {
+	for _, path := range paths {
+		value := intFromPath(obj, path...)
+		if value >= 0 {
+			return value, true
+		}
+	}
+	return 0, false
 }

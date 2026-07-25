@@ -78,17 +78,235 @@ func TestDeprecatedProductGNMIDecodersAcceptLegacyValueAndSecondsTimestamp(t *te
 	for name, decode := range decoders {
 		t.Run(name, func(t *testing.T) {
 			md := decode()
-			metricName := "cisco." + strings.ReplaceAll(name, "-", "") + ".yang.test.root.value"
+			prefix := "cisco.catalyst9800.yang"
 			if name == "ios-xr" {
-				metricName = "cisco.iosxr.yang.test.root.value"
+				prefix = "cisco.iosxr.yang"
 			}
+			metricName := mustDynamicYANGName(t, prefix, "test", []string{"root", "value"}, dynamicYANGMetricVariantNumber)
 			metric := mustFindIOSXRMetric(t, md, metricName)
 			require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
 			dp := metric.Gauge().DataPoints().At(0)
-			assert.Equal(t, int64(5), dp.IntValue())
+			assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+			assert.Equal(t, float64(5), dp.DoubleValue())
 			assert.Equal(t, eventTime, dp.Timestamp().AsTime())
 		})
 	}
+}
+
+func TestDirectGNMIPathTargetsSeparateDynamicSourceIdentity(t *testing.T) {
+	products := []struct {
+		name       string
+		metricBase string
+		decode     func(*gnmi.Notification, *iosXRHealth) pmetric.Metrics
+	}{
+		{
+			name:       "ios-xr",
+			metricBase: "cisco.iosxr.yang",
+			decode: func(notification *gnmi.Notification, health *iosXRHealth) pmetric.Metrics {
+				decoder := iosXRGNMIUpdateDecoder{target: IOSXRTargetConfig{Name: "xr"}, health: health}
+				return decoder.decodeNotification(notification, iosXRTelemetryTransportDialIn)
+			},
+		},
+		{
+			name:       "catalyst-9800",
+			metricBase: "cisco.catalyst9800.yang",
+			decode: func(notification *gnmi.Notification, health *iosXRHealth) pmetric.Metrics {
+				decoder := catalyst9800GNMIUpdateDecoder{target: Catalyst9800TargetConfig{Name: "wlc"}, health: health}
+				return decoder.decodeNotification(notification, catalyst9800TelemetryTransportDialIn)
+			},
+		},
+	}
+
+	for _, product := range products {
+		t.Run(product.name, func(t *testing.T) {
+			prefix := mustParseIOSXRPath(t, "test:root")
+			pathForTarget := func(path, target string) *gnmi.Path {
+				parsed := mustParseIOSXRPath(t, path)
+				parsed.Target = target
+				return parsed
+			}
+			health := &iosXRHealth{}
+			md := product.decode(&gnmi.Notification{
+				Prefix: prefix,
+				Update: []*gnmi.Update{
+					{Path: pathForTarget("value", "tenant-a"), Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_IntVal{IntVal: 1}}},
+					{Path: pathForTarget("value", "tenant-b"), Val: &gnmi.TypedValue{Value: &gnmi.TypedValue_IntVal{IntVal: 2}}},
+				},
+				Delete: []*gnmi.Path{
+					pathForTarget("stale", "tenant-a"),
+					pathForTarget("stale", "tenant-b"),
+				},
+			}, health)
+
+			metricName := mustDynamicYANGName(t, product.metricBase, "test", []string{"root", "value"}, dynamicYANGMetricVariantNumber)
+			metric := mustFindIOSXRMetric(t, md, metricName)
+			require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+			points := metric.Gauge().DataPoints()
+			require.Equal(t, 2, points.Len(), "otherwise identical path targets must remain separate datapoints")
+			valuesBySource := make(map[string]float64, points.Len())
+			for index := 0; index < points.Len(); index++ {
+				point := points.At(index)
+				assert.Equal(t, "test:root/value", attrValue(t, point.Attributes(), "cisco.yang.path"))
+				valuesBySource[attrValue(t, point.Attributes(), "cisco.yang.source_path")] = point.DoubleValue()
+			}
+			assert.Equal(t, map[string]float64{
+				"@target=tenant-a@/test:root/value": 1,
+				"@target=tenant-b@/test:root/value": 2,
+			}, valuesBySource)
+
+			deleteName := mustDynamicYANGName(t, product.metricBase, "test", []string{"root", "stale"}, dynamicYANGMetricVariantInfo)
+			deleted := mustFindIOSXRMetric(t, md, deleteName).Gauge().DataPoints()
+			require.Equal(t, 2, deleted.Len(), "relative delete targets must participate in source identity")
+			deleteSources := make(map[string]struct{}, deleted.Len())
+			for index := 0; index < deleted.Len(); index++ {
+				point := deleted.At(index)
+				assert.Equal(t, "test:root/stale", attrValue(t, point.Attributes(), "cisco.yang.path"))
+				assert.Equal(t, "deleted", attrValue(t, point.Attributes(), "value"))
+				deleteSources[attrValue(t, point.Attributes(), "cisco.yang.source_path")] = struct{}{}
+			}
+			assert.Equal(t, map[string]struct{}{
+				"@target=tenant-a@/test:root/stale": {},
+				"@target=tenant-b@/test:root/stale": {},
+			}, deleteSources)
+
+			prefixTarget := mustParseIOSXRPath(t, "test:root")
+			prefixTarget.Target = "tenant-prefix"
+			prefixMD := product.decode(&gnmi.Notification{
+				Prefix: prefixTarget,
+				Update: []*gnmi.Update{{
+					Path: mustParseIOSXRPath(t, "value"),
+					Val:  &gnmi.TypedValue{Value: &gnmi.TypedValue_IntVal{IntVal: 3}},
+				}},
+				Delete: []*gnmi.Path{mustParseIOSXRPath(t, "stale")},
+			}, health)
+			prefixPoint := mustFindIOSXRMetric(t, prefixMD, metricName).Gauge().DataPoints().At(0)
+			assert.Equal(t, "@target=tenant-prefix@/test:root/value", attrValue(t, prefixPoint.Attributes(), "cisco.yang.source_path"))
+			prefixDelete := mustFindIOSXRMetric(t, prefixMD, deleteName).Gauge().DataPoints().At(0)
+			assert.Equal(t, "@target=tenant-prefix@/test:root/stale", attrValue(t, prefixDelete.Attributes(), "cisco.yang.source_path"))
+			assert.Zero(t, health.snapshot().decodeErrors)
+			assert.Zero(t, health.snapshot().droppedDatapoints)
+		})
+	}
+}
+
+func TestDirectGNMISourcePathTargetFramingIsInjectiveAndBounded(t *testing.T) {
+	const (
+		pathText       = "test:root/value"
+		target         = "tenant/a@b#c%"
+		expectedSource = "@target=tenant%2Fa%40b%23c%25@/" + pathText
+	)
+
+	for _, test := range []struct {
+		name     string
+		prefix   *gnmi.Path
+		relative *gnmi.Path
+	}{
+		{name: "prefix target", prefix: &gnmi.Path{Target: target}, relative: &gnmi.Path{}},
+		{name: "relative update or delete target", prefix: &gnmi.Path{}, relative: &gnmi.Path{Target: target}},
+		{name: "matching prefix and relative targets", prefix: &gnmi.Path{Target: target}, relative: &gnmi.Path{Target: target}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			attrs := map[string]string{}
+			budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{maxAttributeValueBytes: len(expectedSource)}, 10)
+			require.True(t, setDirectGNMISourcePath(attrs, test.prefix, test.relative, "test:root", "value", budget))
+			assert.Equal(t, pathText, attrs["cisco.yang.path"], "the user-facing path must not gain target framing")
+			assert.Equal(t, expectedSource, attrs["cisco.yang.source_path"])
+			assert.Zero(t, budget.decodeErrors)
+			assert.Zero(t, budget.dropped)
+		})
+	}
+
+	t.Run("target frame preserves JSON boundary", func(t *testing.T) {
+		const expectedJSONSource = expectedSource + "#/child~1name"
+		attrs := map[string]string{}
+		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{maxAttributeValueBytes: len(expectedJSONSource)}, 10)
+		require.True(t, setDirectGNMISourcePath(attrs, &gnmi.Path{}, &gnmi.Path{Target: target}, "test:root", "value", budget))
+		require.True(t, extendDirectGNMISourcePath(attrs, "child/name", budget))
+		assert.Equal(t, expectedJSONSource, attrs["cisco.yang.source_path"])
+		assert.Equal(t, pathText+"/child~1name", attrs["cisco.yang.path"])
+	})
+
+	t.Run("one byte over value budget is rejected atomically", func(t *testing.T) {
+		attrs := map[string]string{"existing": "value"}
+		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{maxAttributeValueBytes: len(expectedSource) - 1}, 10)
+		assert.False(t, setDirectGNMISourcePath(attrs, &gnmi.Path{Target: target}, nil, "test:root", "value", budget))
+		assert.Equal(t, map[string]string{"existing": "value"}, attrs)
+		assert.Zero(t, budget.decodeErrors)
+		assert.Equal(t, int64(1), budget.dropped)
+	})
+
+	t.Run("conflicting targets are decode failures", func(t *testing.T) {
+		attrs := map[string]string{}
+		budget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{}, 10)
+		assert.False(t, setDirectGNMISourcePath(attrs, &gnmi.Path{Target: "tenant-a"}, &gnmi.Path{Target: "tenant-b"}, "test:root", "value", budget))
+		assert.Empty(t, attrs)
+		assert.Equal(t, int64(1), budget.decodeErrors)
+		assert.Equal(t, int64(1), budget.dropped)
+	})
+}
+
+func TestDirectGNMIDecodersRejectEmptyEffectiveUpdatePathsBeforeValueDecode(t *testing.T) {
+	values := []struct {
+		name  string
+		value *gnmi.TypedValue
+	}{
+		{name: "scalar", value: &gnmi.TypedValue{Value: &gnmi.TypedValue_IntVal{IntVal: 1}}},
+		{name: "JSON scalar", value: &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: []byte("2")}}},
+		{name: "JSON root object", value: &gnmi.TypedValue{Value: &gnmi.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`{"child":3}`)}}},
+	}
+	products := []struct {
+		name       string
+		metricBase string
+		decode     func(*gnmi.Notification, *iosXRHealth) pmetric.Metrics
+	}{
+		{
+			name:       "ios-xr",
+			metricBase: "cisco.iosxr.yang",
+			decode: func(notification *gnmi.Notification, health *iosXRHealth) pmetric.Metrics {
+				decoder := iosXRGNMIUpdateDecoder{target: IOSXRTargetConfig{Name: "xr"}, health: health}
+				return decoder.decodeNotification(notification, iosXRTelemetryTransportDialIn)
+			},
+		},
+		{
+			name:       "catalyst-9800",
+			metricBase: "cisco.catalyst9800.yang",
+			decode: func(notification *gnmi.Notification, health *iosXRHealth) pmetric.Metrics {
+				decoder := catalyst9800GNMIUpdateDecoder{target: Catalyst9800TargetConfig{Name: "wlc"}, health: health}
+				return decoder.decodeNotification(notification, catalyst9800TelemetryTransportDialIn)
+			},
+		},
+	}
+
+	for _, product := range products {
+		for _, value := range values {
+			t.Run(product.name+"/"+value.name, func(t *testing.T) {
+				health := &iosXRHealth{}
+				md := product.decode(&gnmi.Notification{Update: []*gnmi.Update{{Val: value.value}}}, health)
+
+				assert.Zero(t, metricCountNamed(md, product.metricBase), "a bare dynamic YANG metric must never be emitted")
+				assert.Zero(t, metricCountNamed(md, product.metricBase+".child"), "a root JSON object must not manufacture a descendant metric")
+				assert.Empty(t, directGNMIMetricNamesWithPrefix(md, product.metricBase+"."))
+				assert.Equal(t, int64(1), health.snapshot().decodeErrors)
+				assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
+			})
+		}
+	}
+}
+
+func directGNMIMetricNamesWithPrefix(md pmetric.Metrics, prefix string) []string {
+	names := []string{}
+	for resourceIndex := 0; resourceIndex < md.ResourceMetrics().Len(); resourceIndex++ {
+		scopes := md.ResourceMetrics().At(resourceIndex).ScopeMetrics()
+		for scopeIndex := 0; scopeIndex < scopes.Len(); scopeIndex++ {
+			metrics := scopes.At(scopeIndex).Metrics()
+			for metricIndex := 0; metricIndex < metrics.Len(); metricIndex++ {
+				if name := metrics.At(metricIndex).Name(); strings.HasPrefix(name, prefix) {
+					names = append(names, name)
+				}
+			}
+		}
+	}
+	return names
 }
 
 func TestIndexedMetricBuilderCoalescesStreams(t *testing.T) {
@@ -133,9 +351,6 @@ func TestDirectGNMIDecodeBudgetRejectsOversizedFieldsBeforeAppend(t *testing.T) 
 	assert.True(t, fieldBudget.visitField(1))
 	assert.False(t, fieldBudget.visitField(1))
 	assert.True(t, fieldBudget.exhausted)
-
-	nameBudget := newDirectGNMIDecodeBudget(directGNMIDecodeLimits{maxMetricNameBytes: 16}, 10)
-	assert.False(t, nameBudget.allowMetricName("base", "module", []string{"oversized-path"}, ""))
 }
 
 func TestDirectGNMIDecodeBudgetCapsAggregateAttributeBytes(t *testing.T) {
@@ -203,6 +418,63 @@ func TestDirectGNMIDecodeBudgetRejectsNonFiniteNumbers(t *testing.T) {
 	assert.Zero(t, sm.Metrics().Len())
 	assert.Equal(t, int64(1), budget.decodeErrors)
 	assert.Equal(t, int64(1), budget.dropped)
+}
+
+func TestDirectDynamicYANGNonFiniteTypedNumbersCountDecodeErrors(t *testing.T) {
+	for _, product := range dynamicYANGTestProducts() {
+		for _, test := range []struct {
+			name  string
+			leaf  string
+			value *gnmi.TypedValue
+		}{
+			{
+				name:  "float NaN gauge",
+				leaf:  "value",
+				value: &gnmi.TypedValue{Value: &gnmi.TypedValue_FloatVal{FloatVal: float32(math.NaN())}},
+			},
+			{
+				name:  "float positive infinity sum",
+				leaf:  "packets",
+				value: &gnmi.TypedValue{Value: &gnmi.TypedValue_FloatVal{FloatVal: float32(math.Inf(1))}},
+			},
+			{
+				name:  "float negative infinity gauge",
+				leaf:  "value",
+				value: &gnmi.TypedValue{Value: &gnmi.TypedValue_FloatVal{FloatVal: float32(math.Inf(-1))}},
+			},
+			{
+				name:  "double NaN sum",
+				leaf:  "packets",
+				value: &gnmi.TypedValue{Value: &gnmi.TypedValue_DoubleVal{DoubleVal: math.NaN()}},
+			},
+			{
+				name:  "double positive infinity gauge",
+				leaf:  "value",
+				value: &gnmi.TypedValue{Value: &gnmi.TypedValue_DoubleVal{DoubleVal: math.Inf(1)}},
+			},
+			{
+				name:  "double negative infinity sum",
+				leaf:  "packets",
+				value: &gnmi.TypedValue{Value: &gnmi.TypedValue_DoubleVal{DoubleVal: math.Inf(-1)}},
+			},
+		} {
+			t.Run(product.name+"/"+test.name, func(t *testing.T) {
+				health := &iosXRHealth{}
+				md := product.decode(health, &gnmi.Notification{
+					Prefix: mustParseIOSXRPath(t, "test:root"),
+					Update: []*gnmi.Update{{
+						Path: mustParseIOSXRPath(t, test.leaf),
+						Val:  test.value,
+					}},
+				}, directGNMIDecodeLimits{})
+
+				name := mustDynamicYANGName(t, product.prefix, "test", []string{"test:root", test.leaf}, dynamicYANGMetricVariantNumber)
+				assert.Zero(t, metricCountNamed(md, name))
+				assert.Equal(t, int64(1), health.snapshot().decodeErrors)
+				assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
+			})
+		}
+	}
 }
 
 func TestIndexedMetricBuilderInfoValueHasDeterministicPrecedenceAndAccounting(t *testing.T) {

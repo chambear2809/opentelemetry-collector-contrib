@@ -6,6 +6,7 @@ package ciscoosreceiver
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -70,8 +71,10 @@ func TestCatalyst9800DialInReceiverUsesLegacySharedSession(t *testing.T) {
 	}.withDefaults(cfg)
 
 	require.NoError(t, receiver.subscribeTarget(t.Context(), target))
-	data := metricsBatchWithName(t, sink.AllMetrics(), "cisco.catalyst9800.yang.wireless_ap_global_oper.ap_global_oper_data.ap_join_stats.ap_join_info.is_joined")
-	assertMetricExists(t, data, "cisco.catalyst9800.yang.wireless_ap_global_oper.ap_global_oper_data.ap_join_stats.ap_join_info.is_joined")
+	metricName := mustDynamicYANGName(t, "cisco.catalyst9800.yang", "wireless-ap-global-oper",
+		[]string{"ap-global-oper-data", "ap-join-stats", "ap-join-info", "is-joined"}, dynamicYANGMetricVariantNumber)
+	data := metricsBatchWithName(t, sink.AllMetrics(), metricName)
+	assertMetricExists(t, data, metricName)
 	assertMetricExists(t, data, "cisco.wlc.ap.join.status")
 
 	fake.mu.Lock()
@@ -348,7 +351,9 @@ func TestCatalyst9800NormalizingConsumerRenamesDialOutMetricsAndAddsAliases(t *t
 	require.Len(t, sink.AllMetrics(), 1)
 
 	md := sink.AllMetrics()[0]
-	assertMetricExists(t, md, "cisco.catalyst9800.yang.wireless_rrm_oper.rrm_oper_data.rrm_measurement.cca_util_percentage")
+	metricName := mustDialOutDynamicYANGName(t, "cisco.catalyst9800.yang", "wireless-rrm-oper",
+		"wireless-rrm-oper:rrm-oper-data/rrm-measurement", "rrm-oper-data/rrm-measurement/cca-util-percentage", dynamicYANGMetricVariantNumber)
+	assertMetricExists(t, md, metricName)
 	assertMetricExists(t, md, "cisco.wlc.rf.channel.utilization")
 
 	resourceAttrs := md.ResourceMetrics().At(0).Resource().Attributes()
@@ -359,7 +364,7 @@ func TestCatalyst9800NormalizingConsumerRenamesDialOutMetricsAndAddsAliases(t *t
 	assert.Equal(t, "mdt_grpc_dial_out", attrValue(t, resourceAttrs, "cisco.telemetry.transport"))
 	_, hasResourceModule := resourceAttrs.Get("cisco.yang.module")
 	assert.False(t, hasResourceModule)
-	metric := requireMetricByName(t, md, "cisco.catalyst9800.yang.wireless_rrm_oper.rrm_oper_data.rrm_measurement.cca_util_percentage")
+	metric := requireMetricByName(t, md, metricName)
 	assert.Equal(t, "wireless-rrm-oper", attrValue(t, metric.Gauge().DataPoints().At(0).Attributes(), "cisco.yang.module"))
 }
 
@@ -381,7 +386,9 @@ func TestCatalyst9800NormalizingConsumerAllowsRootMetricPatternFilteringAfterAli
 	require.Len(t, sink.AllMetrics(), 1)
 
 	md := sink.AllMetrics()[0]
-	assertMetricExists(t, md, "cisco.catalyst9800.yang.wireless_rrm_oper.rrm_oper_data.rrm_measurement.cca_util_percentage")
+	metricName := mustDialOutDynamicYANGName(t, "cisco.catalyst9800.yang", "wireless-rrm-oper",
+		"wireless-rrm-oper:rrm-oper-data/rrm-measurement", "rrm-oper-data/rrm-measurement/cca-util-percentage", dynamicYANGMetricVariantNumber)
+	assertMetricExists(t, md, metricName)
 	assert.NotContains(t, metricNames(md), "cisco.wlc.rf.channel.utilization")
 }
 
@@ -395,5 +402,6 @@ func rawCatalyst9800DialOutMetrics(metricName string, value float64, nodeID stri
 	metric.SetName(metricName)
 	dp := metric.SetEmptyGauge().DataPoints().AppendEmpty()
 	dp.SetDoubleValue(value)
+	dp.Attributes().PutStr("cisco.yang.source_path", strings.ReplaceAll(strings.TrimPrefix(metricName, "cisco."), ".", "/"))
 	return md
 }

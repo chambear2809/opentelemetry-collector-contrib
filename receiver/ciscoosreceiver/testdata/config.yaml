@@ -1,4 +1,5 @@
 ciscoos:
+  storage: file_storage/cisco_os
   collection_interval: 60s
   timeout: 30s
   scrapers:
@@ -98,7 +99,7 @@ ciscoos:
       enabled: false
     cisco.wlc.client.*:
       enabled: false
-    cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.*:
+    cisco.iosxr.yang.__v1.*:
       enabled: false
   meraki:
     auth:
@@ -256,6 +257,13 @@ ciscoos:
     faults:
       enabled: true
       max_results: 300
+    logs:
+      faults:
+        enabled: true
+      audit:
+        enabled: true
+      events:
+        enabled: false
     endpoints:
       enabled: true
       max_results: 400

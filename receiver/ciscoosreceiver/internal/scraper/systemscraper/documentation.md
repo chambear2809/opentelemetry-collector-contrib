@@ -443,7 +443,7 @@ Cisco receiver command execution errors
 
 ### cisco.scrape.partial_success
 
-Cisco receiver scrape partial success status (1 = partial success, 0 = complete success)
+Whether the scrape completed with at least one command-family failure.
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |

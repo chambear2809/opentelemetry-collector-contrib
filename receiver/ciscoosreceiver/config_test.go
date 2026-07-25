@@ -5,6 +5,7 @@ package ciscoosreceiver
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -39,6 +40,227 @@ func validTestDevice() DeviceConfig {
 		Password:           configopaque.String("password"),
 		InsecureSkipVerify: true,
 	})
+}
+
+func TestDefaultACIConfigKeepsMetricsEnabledAndLogsDisabled(t *testing.T) {
+	cfg := defaultACIConfig()
+
+	assert.True(t, cfg.Faults.Enabled)
+	assert.True(t, cfg.Audit.Enabled)
+	assert.True(t, cfg.Events.Enabled)
+	assert.False(t, cfg.Logs.Faults.Enabled)
+	assert.False(t, cfg.Logs.Audit.Enabled)
+	assert.False(t, cfg.Logs.Events.Enabled)
+	assert.False(t, cfg.hasLogs())
+}
+
+func TestACILogOptInActivatesACIValidationWithAnotherValidProvider(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	cfg.Meraki.Auth.APIKey = configopaque.String("meraki-key")
+	cfg.Meraki.Organizations = []MerakiOrganizationConfig{{OrganizationID: "123456"}}
+
+	assert.False(t, cfg.ACI.hasTarget())
+	require.NoError(t, cfg.Validate(), "safe-default ACI logs must remain inert")
+
+	cfg.ACI.Logs.Audit.Enabled = true
+	assert.True(t, cfg.ACI.hasTarget(), "an explicit ACI log opt-in must express ACI configuration intent")
+	err := cfg.Validate()
+	require.ErrorContains(t, err, "aci.controllers must include at least one APIC endpoint")
+	assert.ErrorContains(t, err, "aci.auth.username must be provided")
+	assert.ErrorContains(t, err, "aci.auth.password must be provided")
+}
+
+func TestACILogOnlyIntentActivatesACIValidationWithoutAnotherProvider(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	cfg.ACI.Logs.Events.Enabled = true
+
+	assert.True(t, cfg.ACI.hasTarget())
+	err := cfg.Validate()
+	require.ErrorContains(t, err, "aci.controllers must include at least one APIC endpoint")
+	assert.ErrorContains(t, err, "aci.auth.username must be provided")
+	assert.ErrorContains(t, err, "aci.auth.password must be provided")
+}
+
+func TestConfigUnmarshalACILogOptInAndLegacyCompatibility(t *testing.T) {
+	tests := []struct {
+		name             string
+		aci              map[string]any
+		wantMetricFaults bool
+		wantLogs         ACILogsConfig
+	}{
+		{
+			name:             "omitted log config stays disabled",
+			aci:              map[string]any{},
+			wantMetricFaults: true,
+		},
+		{
+			name: "new signal settings opt in independently",
+			aci: map[string]any{
+				"logs": map[string]any{
+					"faults": map[string]any{"enabled": true},
+					"audit":  map[string]any{"enabled": false},
+					"events": map[string]any{"enabled": true},
+				},
+			},
+			wantMetricFaults: true,
+			wantLogs: ACILogsConfig{
+				Faults: ACILogSignalConfig{Enabled: true},
+				Events: ACILogSignalConfig{Enabled: true},
+			},
+		},
+		{
+			name: "explicit legacy group opt in remains compatible",
+			aci: map[string]any{
+				"faults": map[string]any{"enabled": true},
+				"audit":  map[string]any{"enabled": false},
+			},
+			wantMetricFaults: true,
+			wantLogs: ACILogsConfig{
+				Faults: ACILogSignalConfig{Enabled: true},
+			},
+		},
+		{
+			name: "new explicit setting overrides legacy opt in",
+			aci: map[string]any{
+				"faults": map[string]any{"enabled": true},
+				"logs": map[string]any{
+					"faults": map[string]any{"enabled": false},
+				},
+			},
+			wantMetricFaults: true,
+		},
+		{
+			name: "new empty signal block keeps safe default over legacy opt in",
+			aci: map[string]any{
+				"faults": map[string]any{"enabled": true},
+				"logs": map[string]any{
+					"faults": map[string]any{},
+				},
+			},
+			wantMetricFaults: true,
+		},
+		{
+			name: "log opt in does not reenable fault metrics",
+			aci: map[string]any{
+				"faults": map[string]any{"enabled": false},
+				"logs": map[string]any{
+					"faults": map[string]any{"enabled": true},
+				},
+			},
+			wantMetricFaults: false,
+			wantLogs: ACILogsConfig{
+				Faults: ACILogSignalConfig{Enabled: true},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := createDefaultConfig().(*Config)
+			require.NoError(t, cfg.Unmarshal(confmap.NewFromStringMap(map[string]any{"aci": tt.aci})))
+
+			assert.Equal(t, tt.wantMetricFaults, cfg.ACI.Faults.Enabled)
+			assert.Equal(t, tt.wantLogs.Faults.Enabled, cfg.ACI.Logs.Faults.Enabled)
+			assert.Equal(t, tt.wantLogs.Audit.Enabled, cfg.ACI.Logs.Audit.Enabled)
+			assert.Equal(t, tt.wantLogs.Events.Enabled, cfg.ACI.Logs.Events.Enabled)
+		})
+	}
+}
+
+func TestConfigUnmarshalRejectsMalformedACILogSettings(t *testing.T) {
+	type malformedShape struct {
+		name    string
+		value   any
+		nullErr bool
+	}
+	shapes := []malformedShape{
+		{name: "boolean", value: false},
+		{name: "null", value: nil, nullErr: true},
+		{name: "string", value: "enabled"},
+		{name: "list", value: []any{"enabled"}},
+	}
+	type testCase struct {
+		name    string
+		aci     map[string]any
+		wantErr string
+	}
+
+	tests := make([]testCase, 0, len(shapes)*4)
+	for _, shape := range shapes {
+		wantErr := "logs"
+		if shape.nullErr {
+			wantErr = "aci.logs must be a map and cannot be null"
+		}
+		tests = append(tests, testCase{
+			name: "top-level logs/" + shape.name,
+			aci: map[string]any{
+				"faults": map[string]any{"enabled": true},
+				"logs":   shape.value,
+			},
+			wantErr: wantErr,
+		})
+
+		for _, signal := range []string{"faults", "audit", "events"} {
+			wantSignalErr := "logs"
+			if shape.nullErr {
+				wantSignalErr = fmt.Sprintf("aci.logs.%s must be a map and cannot be null", signal)
+			}
+			tests = append(tests, testCase{
+				name: signal + " signal/" + shape.name,
+				aci: map[string]any{
+					signal: map[string]any{"enabled": true},
+					"logs": map[string]any{signal: shape.value},
+				},
+				wantErr: wantSignalErr,
+			})
+		}
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := createDefaultConfig().(*Config)
+			err := cfg.Unmarshal(confmap.NewFromStringMap(map[string]any{"aci": tt.aci}))
+			require.Error(t, err)
+			assert.Contains(t, strings.ToLower(err.Error()), strings.ToLower(tt.wantErr))
+			assert.False(t, cfg.ACI.hasLogs(), "malformed input must never enable ACI logs")
+		})
+	}
+}
+
+func TestConfigUnmarshalRejectsNullACILogSettingsFromYAML(t *testing.T) {
+	type testCase struct {
+		name    string
+		yaml    string
+		wantErr string
+	}
+	tests := []testCase{
+		{
+			name:    "top-level logs",
+			yaml:    "aci:\n  logs: null\n",
+			wantErr: "aci.logs must be a map and cannot be null",
+		},
+	}
+	for _, signal := range []string{"faults", "audit", "events"} {
+		tests = append(tests, testCase{
+			name:    signal + " signal",
+			yaml:    fmt.Sprintf("aci:\n  logs:\n    %s: null\n", signal),
+			wantErr: fmt.Sprintf("aci.logs.%s must be a map and cannot be null", signal),
+		})
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			require.NoError(t, os.WriteFile(path, []byte(tt.yaml), 0o600))
+			cm, err := confmaptest.LoadConf(path)
+			require.NoError(t, err)
+
+			cfg := createDefaultConfig().(*Config)
+			err = cfg.Unmarshal(cm)
+			require.ErrorContains(t, err, tt.wantErr)
+			assert.False(t, cfg.ACI.hasLogs(), "YAML null must never enable ACI logs")
+		})
+	}
 }
 
 func TestConfigValidateRejectsUnsafeDeviceSelection(t *testing.T) {
@@ -1096,7 +1318,7 @@ func TestConfigValidate(t *testing.T) {
 					CollectionInterval: 60 * time.Second,
 				},
 				Metrics: map[string]MetricConfig{
-					"cisco.iosxr.yang.[": {Enabled: false},
+					"cisco.iosxr.yang.__v1.[": {Enabled: false},
 				},
 				Meraki: MerakiConfig{
 					Auth:          MerakiAuthConfig{APIKey: configopaque.String("meraki-key")},
@@ -1481,6 +1703,8 @@ func TestConfigUnmarshal(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, sub.Unmarshal(cfg))
+	require.NotNil(t, cfg.StorageID)
+	assert.Equal(t, "file_storage/cisco_os", cfg.StorageID.String())
 	require.Len(t, cfg.Devices, 2)
 	assert.Equal(t, "enable-password", string(cfg.Devices[0].Auth.EnablePassword))
 	assert.Equal(t, []string{"device-1", "edge-1"}, cfg.DeviceSelection.Include.HostNames)
@@ -1496,7 +1720,7 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.False(t, cfg.Metrics["sdwan.app_route.loss"].Enabled)
 	assert.False(t, cfg.Metrics["system.network.errors"].Enabled)
 	assert.False(t, cfg.Metrics["cisco.wlc.client.*"].Enabled)
-	assert.False(t, cfg.Metrics["cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.*"].Enabled)
+	assert.False(t, cfg.Metrics["cisco.iosxr.yang.__v1.*"].Enabled)
 	assert.Equal(t, "https://api.meraki.com/api/v1", cfg.Meraki.BaseURL)
 	assert.Equal(t, 3, cfg.Meraki.MaxRetries)
 	assert.True(t, cfg.Meraki.InsecureSkipVerify)
@@ -1606,6 +1830,9 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.Equal(t, []string{"101"}, cfg.ACI.Targets.NodeIDs)
 	assert.Equal(t, []string{"prod"}, cfg.ACI.Targets.Tenants)
 	assert.Equal(t, 300, cfg.ACI.Faults.MaxResults)
+	assert.True(t, cfg.ACI.Logs.Faults.Enabled)
+	assert.True(t, cfg.ACI.Logs.Audit.Enabled)
+	assert.False(t, cfg.ACI.Logs.Events.Enabled)
 	assert.Equal(t, 400, cfg.ACI.Endpoints.MaxResults)
 	assert.Equal(t, 500, cfg.ACI.Tenants.MaxResults)
 	assert.True(t, cfg.FMC.Enabled)

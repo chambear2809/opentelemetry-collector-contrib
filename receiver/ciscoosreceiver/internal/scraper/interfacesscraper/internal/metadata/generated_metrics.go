@@ -169,7 +169,7 @@ var MetricsInfo = metricsInfo{
 	},
 	CiscoTopologyNeighborInfo: metricInfo{
 		Name:       "cisco.topology.neighbor.info",
-		Attributes: []string{"cisco.topology.protocol", "network.interface.name", "cisco.topology.neighbor.name", "cisco.topology.neighbor.interface", "cisco.topology.neighbor.platform", "cisco.topology.neighbor.address"},
+		Attributes: []string{"cisco.topology.protocol", "network.interface.name", "cisco.topology.neighbor.name", "cisco.topology.neighbor.interface", "cisco.topology.neighbor.platform", "cisco.topology.neighbor.address", "network.peer.name", "network.peer.address", "network.protocol.name"},
 	},
 	CiscoTransceiverSensor: metricInfo{
 		Name:       "cisco.transceiver.sensor",
@@ -2311,7 +2311,7 @@ type metricCiscoScrapePartialSuccess struct {
 // init fills cisco.scrape.partial_success metric with initial data.
 func (m *metricCiscoScrapePartialSuccess) init() {
 	m.data.SetName("cisco.scrape.partial_success")
-	m.data.SetDescription("Cisco receiver scrape partial success status (1 = partial success, 0 = complete success)")
+	m.data.SetDescription("Whether the scrape completed with at least one command-family failure.")
 	m.data.SetUnit("1")
 	m.data.SetEmptyGauge()
 }
@@ -2414,14 +2414,14 @@ type metricCiscoTopologyNeighborInfo struct {
 // init fills cisco.topology.neighbor.info metric with initial data.
 func (m *metricCiscoTopologyNeighborInfo) init() {
 	m.data.SetName("cisco.topology.neighbor.info")
-	m.data.SetDescription("Cisco LLDP or CDP topology neighbor edge information")
+	m.data.SetDescription("LLDP, CDP, and fabric-link neighbor information.")
 	m.data.SetUnit("1")
 	m.data.SetEmptyGauge()
 	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
 	m.aggDataPoints = m.aggDataPoints[:0]
 }
 
-func (m *metricCiscoTopologyNeighborInfo) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoTopologyProtocolAttributeValue string, networkInterfaceNameAttributeValue string, ciscoTopologyNeighborNameAttributeValue string, ciscoTopologyNeighborInterfaceAttributeValue string, ciscoTopologyNeighborPlatformAttributeValue string, ciscoTopologyNeighborAddressAttributeValue string) {
+func (m *metricCiscoTopologyNeighborInfo) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoTopologyProtocolAttributeValue string, networkInterfaceNameAttributeValue string, ciscoTopologyNeighborNameAttributeValue string, ciscoTopologyNeighborInterfaceAttributeValue string, ciscoTopologyNeighborPlatformAttributeValue string, ciscoTopologyNeighborAddressAttributeValue string, networkPeerNameAttributeValue string, networkPeerAddressAttributeValue string, networkProtocolNameAttributeValue string) {
 	if !m.config.Enabled {
 		return
 	}
@@ -2446,6 +2446,15 @@ func (m *metricCiscoTopologyNeighborInfo) recordDataPoint(start pcommon.Timestam
 	}
 	if slices.Contains(m.config.EnabledAttributes, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborAddress) {
 		dp.Attributes().PutStr("cisco.topology.neighbor.address", ciscoTopologyNeighborAddressAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkPeerName) {
+		dp.Attributes().PutStr("network.peer.name", networkPeerNameAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkPeerAddress) {
+		dp.Attributes().PutStr("network.peer.address", networkPeerAddressAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkProtocolName) {
+		dp.Attributes().PutStr("network.protocol.name", networkProtocolNameAttributeValue)
 	}
 
 	var s string
@@ -2518,7 +2527,7 @@ type metricCiscoTransceiverSensor struct {
 // init fills cisco.transceiver.sensor metric with initial data.
 func (m *metricCiscoTransceiverSensor) init() {
 	m.data.SetName("cisco.transceiver.sensor")
-	m.data.SetDescription("Cisco transceiver digital optical monitoring sensor value. The physical unit varies by sensor type and is carried in the cisco.transceiver.sensor.unit attribute (Cel, V, mA, dBm, or 1 when unitless).")
+	m.data.SetDescription("Digital optical monitoring sensor values, such as temperature, voltage, current, or optical receive/transmit power. The actual physical unit is in `cisco.transceiver.sensor.unit`.")
 	m.data.SetUnit("1")
 	m.data.SetEmptyGauge()
 	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
@@ -3104,7 +3113,7 @@ type metricSystemNetworkPacketCount struct {
 // init fills system.network.packet.count metric with initial data.
 func (m *metricSystemNetworkPacketCount) init() {
 	m.data.SetName("system.network.packet.count")
-	m.data.SetDescription("The number of packets transmitted or received, categorized by type")
+	m.data.SetDescription("The number of packets transmitted or received by direction and, when available, packet type")
 	m.data.SetUnit("{packet}")
 	m.data.SetEmptySum()
 	m.data.Sum().SetIsMonotonic(true)
@@ -3695,8 +3704,8 @@ func (mb *MetricsBuilder) RecordCiscoSSHReconnectsDataPoint(ts pcommon.Timestamp
 }
 
 // RecordCiscoTopologyNeighborInfoDataPoint adds a data point to cisco.topology.neighbor.info metric.
-func (mb *MetricsBuilder) RecordCiscoTopologyNeighborInfoDataPoint(ts pcommon.Timestamp, val int64, ciscoTopologyProtocolAttributeValue string, networkInterfaceNameAttributeValue string, ciscoTopologyNeighborNameAttributeValue string, ciscoTopologyNeighborInterfaceAttributeValue string, ciscoTopologyNeighborPlatformAttributeValue string, ciscoTopologyNeighborAddressAttributeValue string) {
-	mb.metricCiscoTopologyNeighborInfo.recordDataPoint(mb.startTime, ts, val, ciscoTopologyProtocolAttributeValue, networkInterfaceNameAttributeValue, ciscoTopologyNeighborNameAttributeValue, ciscoTopologyNeighborInterfaceAttributeValue, ciscoTopologyNeighborPlatformAttributeValue, ciscoTopologyNeighborAddressAttributeValue)
+func (mb *MetricsBuilder) RecordCiscoTopologyNeighborInfoDataPoint(ts pcommon.Timestamp, val int64, ciscoTopologyProtocolAttributeValue string, networkInterfaceNameAttributeValue string, ciscoTopologyNeighborNameAttributeValue string, ciscoTopologyNeighborInterfaceAttributeValue string, ciscoTopologyNeighborPlatformAttributeValue string, ciscoTopologyNeighborAddressAttributeValue string, networkPeerNameAttributeValue string, networkPeerAddressAttributeValue string, networkProtocolNameAttributeValue string) {
+	mb.metricCiscoTopologyNeighborInfo.recordDataPoint(mb.startTime, ts, val, ciscoTopologyProtocolAttributeValue, networkInterfaceNameAttributeValue, ciscoTopologyNeighborNameAttributeValue, ciscoTopologyNeighborInterfaceAttributeValue, ciscoTopologyNeighborPlatformAttributeValue, ciscoTopologyNeighborAddressAttributeValue, networkPeerNameAttributeValue, networkPeerAddressAttributeValue, networkProtocolNameAttributeValue)
 }
 
 // RecordCiscoTransceiverSensorDataPoint adds a data point to cisco.transceiver.sensor metric.

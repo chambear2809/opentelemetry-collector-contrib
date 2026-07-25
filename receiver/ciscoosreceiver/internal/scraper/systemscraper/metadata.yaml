@@ -420,7 +420,7 @@ metrics:
 
   cisco.scrape.partial_success:
     enabled: true
-    description: Cisco receiver scrape partial success status (1 = partial success, 0 = complete success)
+    description: Whether the scrape completed with at least one command-family failure.
     stability: development
     unit: "1"
     gauge:

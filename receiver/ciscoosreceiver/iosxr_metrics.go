@@ -37,7 +37,6 @@ type iosXRHealth struct {
 	unsupportedPaths    int64
 	reconnects          int64
 	droppedDatapoints   int64
-	compactGPBPayloads  int64
 	lastSuccess         time.Time
 	targets             map[string]iosXRTargetHealth
 }
@@ -119,12 +118,6 @@ func (h *iosXRHealth) addDroppedDatapoints(value int64) {
 	h.droppedDatapoints = saturatingAddNonNegative(h.droppedDatapoints, value)
 }
 
-func (h *iosXRHealth) addCompactGPBPayloads(value int64) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.compactGPBPayloads = saturatingAddNonNegative(h.compactGPBPayloads, value)
-}
-
 func saturatingAddNonNegative(current, value int64) int64 {
 	if current < 0 {
 		current = 0
@@ -158,7 +151,6 @@ func (h *iosXRHealth) snapshotLocked(target string) iosXRHealthSnapshot {
 		unsupportedPaths:    h.unsupportedPaths,
 		reconnects:          h.reconnects,
 		droppedDatapoints:   h.droppedDatapoints,
-		compactGPBPayloads:  h.compactGPBPayloads,
 		lastSuccess:         h.lastSuccess,
 	}
 	if target != "" {
@@ -178,7 +170,6 @@ type iosXRHealthSnapshot struct {
 	unsupportedPaths      int64
 	reconnects            int64
 	droppedDatapoints     int64
-	compactGPBPayloads    int64
 	lastSuccess           time.Time
 	targetActive          bool
 	targetUpdatesReceived int64
@@ -250,64 +241,109 @@ func appendIOSXRHealthMetrics(md pmetric.Metrics, health *iosXRHealth, ctx iosXR
 	sm := rm.ScopeMetrics().AppendEmpty()
 	sm.Scope().SetName("github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/iosxr")
 	snap := health.snapshotForTarget(ctx.targetName)
-	appendGaugeMetric(sm, "cisco.iosxr.receiver.active_subscriptions", float64(snap.activeSubscriptions), ts, nil)
-	appendSumMetric(sm, "cisco.iosxr.receiver.updates", float64(snap.updatesReceived), ts, nil)
-	appendSumMetric(sm, "cisco.iosxr.receiver.decode_errors", float64(snap.decodeErrors), ts, nil)
-	appendSumMetric(sm, "cisco.iosxr.receiver.unsupported_paths", float64(snap.unsupportedPaths), ts, nil)
-	appendSumMetric(sm, "cisco.iosxr.receiver.reconnects", float64(snap.reconnects), ts, nil)
-	appendSumMetric(sm, "cisco.iosxr.receiver.dropped_datapoints", float64(snap.droppedDatapoints), ts, nil)
-	appendSumMetric(sm, "cisco.iosxr.receiver.compact_gpb_payloads", float64(snap.compactGPBPayloads), ts, nil)
+	appendIntGaugeMetric(sm, "cisco.iosxr.receiver.active_subscriptions", snap.activeSubscriptions, ts, nil)
+	appendIntSumMetric(sm, "cisco.iosxr.receiver.updates", snap.updatesReceived, ts, nil)
+	appendIntSumMetric(sm, "cisco.iosxr.receiver.decode_errors", snap.decodeErrors, ts, nil)
+	appendIntSumMetric(sm, "cisco.iosxr.receiver.unsupported_paths", snap.unsupportedPaths, ts, nil)
+	appendIntSumMetric(sm, "cisco.iosxr.receiver.reconnects", snap.reconnects, ts, nil)
+	appendIntSumMetric(sm, "cisco.iosxr.receiver.dropped_datapoints", snap.droppedDatapoints, ts, nil)
 	if !snap.lastSuccess.IsZero() {
-		appendGaugeMetric(sm, "cisco.iosxr.receiver.last_success_timestamp", float64(snap.lastSuccess.Unix()), ts, nil)
+		appendIntGaugeMetric(sm, "cisco.iosxr.receiver.last_success_timestamp", snap.lastSuccess.Unix(), ts, nil)
 	}
 	if ctx.targetName != "" {
-		appendGaugeMetric(sm, "cisco.iosxr.receiver.target.subscription.active", float64(boolToInt(snap.targetActive)), ts, nil)
-		appendSumMetric(sm, "cisco.iosxr.receiver.target.updates", float64(snap.targetUpdatesReceived), ts, nil)
-		appendSumMetric(sm, "cisco.iosxr.receiver.target.reconnects", float64(snap.targetReconnects), ts, nil)
+		appendIntGaugeMetric(sm, "cisco.iosxr.receiver.target.subscription.active", boolToInt(snap.targetActive), ts, nil)
+		appendIntSumMetric(sm, "cisco.iosxr.receiver.target.updates", snap.targetUpdatesReceived, ts, nil)
+		appendIntSumMetric(sm, "cisco.iosxr.receiver.target.reconnects", snap.targetReconnects, ts, nil)
 		if !snap.targetLastSuccess.IsZero() {
-			appendGaugeMetric(sm, "cisco.iosxr.receiver.target.last_success_timestamp", float64(snap.targetLastSuccess.Unix()), ts, nil)
+			appendIntGaugeMetric(sm, "cisco.iosxr.receiver.target.last_success_timestamp", snap.targetLastSuccess.Unix(), ts, nil)
 		}
 	}
 }
 
-func appendIOSXRMetricNumberIndexed(builder *indexedMetricBuilder, module string, pathParts []string, value metricNumber, ts pcommon.Timestamp, attrs map[string]string) {
-	if builder.budget != nil && !builder.budget.allowMetricName("cisco.iosxr.yang", module, pathParts, "") {
+func appendIOSXRMetricNumberIndexed(builder *indexedMetricBuilder, module string, path dynamicYANGPath, value metricNumber, ts pcommon.Timestamp, attrs map[string]string) {
+	metricType := pmetric.MetricTypeGauge
+	if isIOSXRCounterMetric(path.normalized) {
+		metricType = pmetric.MetricTypeSum
+	}
+	canonical, ok := canonicalDynamicYANGNumber(metricType, value)
+	if !ok {
+		builder.rejectNoncanonicalDynamicYANGNumber(value)
 		return
 	}
-	name := iosXRMetricName(module, pathParts)
-	if isIOSXRCounterMetric(pathParts) {
-		builder.appendNumber(name, pmetric.MetricTypeSum, value, ts, attrs)
+	value = canonical
+	name, ok := dynamicYANGMetricName(
+		"cisco.iosxr.yang",
+		module,
+		path.identity,
+		dynamicYANGMetricVariantNumber,
+		builder.dynamicYANGMetricNameLimit(),
+	)
+	if !ok {
+		builder.rejectDatapoint()
 		return
 	}
-	builder.appendNumber(name, pmetric.MetricTypeGauge, value, ts, attrs)
+	builder.appendNumber(name, metricType, value, ts, attrs)
 }
 
-func appendIOSXRInfoMetricIndexed(builder *indexedMetricBuilder, module string, pathParts []string, value string, ts pcommon.Timestamp, attrs map[string]string) {
-	if builder.budget != nil && !builder.budget.allowMetricName("cisco.iosxr.yang", module, pathParts, "_info") {
+func dynamicYANGMetricIsInfoVariant(metric pmetric.Metric) bool {
+	if metric.Type() != pmetric.MetricTypeGauge || metric.Gauge().DataPoints().Len() == 0 {
+		return false
+	}
+	points := metric.Gauge().DataPoints()
+	for index := 0; index < points.Len(); index++ {
+		dp := points.At(index)
+		value, present := dp.Attributes().Get("value")
+		if !present || value.Type() != pcommon.ValueTypeStr ||
+			dp.ValueType() != pmetric.NumberDataPointValueTypeDouble || dp.DoubleValue() != 1 {
+			return false
+		}
+	}
+	return true
+}
+
+func appendIOSXRInfoMetricIndexed(builder *indexedMetricBuilder, module string, path dynamicYANGPath, value string, ts pcommon.Timestamp, attrs map[string]string) {
+	name, ok := dynamicYANGMetricName(
+		"cisco.iosxr.yang",
+		module,
+		path.identity,
+		dynamicYANGMetricVariantInfo,
+		builder.dynamicYANGMetricNameLimit(),
+	)
+	if !ok {
+		builder.rejectDatapoint()
 		return
 	}
-	name := iosXRMetricName(module, pathParts) + "_info"
 	builder.appendInfo(name, value, ts, attrs)
 }
 
-func appendGaugeMetric(sm pmetric.ScopeMetrics, name string, value float64, ts pcommon.Timestamp, attrs map[string]string) { //nolint:unparam // Attribute support is shared infrastructure for future receiver-health dimensions.
-	appendMetricNumberGauge(sm, name, doubleMetricNumber(value), ts, attrs)
+func appendIntGaugeMetric(sm pmetric.ScopeMetrics, name string, value int64, ts pcommon.Timestamp, attrs map[string]string) { //nolint:unparam // Attribute support is shared infrastructure for future receiver-health dimensions.
+	appendMetricNumberGauge(sm, name, intMetricNumber(value), ts, attrs)
 }
 
 func appendMetricNumberGauge(sm pmetric.ScopeMetrics, name string, value metricNumber, ts pcommon.Timestamp, attrs map[string]string) {
-	metric := getOrCreateMetric(sm, name, pmetric.MetricTypeGauge)
+	valueType := fixedMetricValueTypeDouble
+	if value.isInt {
+		valueType = fixedMetricValueTypeInt
+	}
+	description, unit := governedFixedMetricMetadata(name, pmetric.MetricTypeGauge, valueType, "", "")
+	metric := getOrCreateMetric(sm, name, pmetric.MetricTypeGauge, description, unit)
 	dp := metric.Gauge().DataPoints().AppendEmpty()
 	value.set(dp)
 	dp.SetTimestamp(ts)
 	applyStringAttrs(dp.Attributes(), attrs)
 }
 
-func appendSumMetric(sm pmetric.ScopeMetrics, name string, value float64, ts pcommon.Timestamp, attrs map[string]string) { //nolint:unparam // Attribute support is shared infrastructure for future receiver-health dimensions.
-	appendMetricNumberSum(sm, name, doubleMetricNumber(value), ts, attrs)
+func appendIntSumMetric(sm pmetric.ScopeMetrics, name string, value int64, ts pcommon.Timestamp, attrs map[string]string) { //nolint:unparam // Attribute support is shared infrastructure for future receiver-health dimensions.
+	appendMetricNumberSum(sm, name, intMetricNumber(value), ts, attrs)
 }
 
 func appendMetricNumberSum(sm pmetric.ScopeMetrics, name string, value metricNumber, ts pcommon.Timestamp, attrs map[string]string) {
-	metric := getOrCreateMetric(sm, name, pmetric.MetricTypeSum)
+	valueType := fixedMetricValueTypeDouble
+	if value.isInt {
+		valueType = fixedMetricValueTypeInt
+	}
+	description, unit := governedFixedMetricMetadata(name, pmetric.MetricTypeSum, valueType, "", "")
+	metric := getOrCreateMetric(sm, name, pmetric.MetricTypeSum, description, unit)
 	sum := metric.Sum()
 	dp := sum.DataPoints().AppendEmpty()
 	value.set(dp)
@@ -315,7 +351,7 @@ func appendMetricNumberSum(sm pmetric.ScopeMetrics, name string, value metricNum
 	applyStringAttrs(dp.Attributes(), attrs)
 }
 
-func getOrCreateMetric(sm pmetric.ScopeMetrics, name string, metricType pmetric.MetricType) pmetric.Metric {
+func getOrCreateMetric(sm pmetric.ScopeMetrics, name string, metricType pmetric.MetricType, description, unit string) pmetric.Metric {
 	metrics := sm.Metrics()
 	for i := 0; i < metrics.Len(); i++ {
 		metric := metrics.At(i)
@@ -325,6 +361,8 @@ func getOrCreateMetric(sm pmetric.ScopeMetrics, name string, metricType pmetric.
 	}
 	metric := metrics.AppendEmpty()
 	metric.SetName(name)
+	metric.SetDescription(description)
+	metric.SetUnit(unit)
 	switch metricType {
 	case pmetric.MetricTypeGauge:
 		metric.SetEmptyGauge()
@@ -334,19 +372,6 @@ func getOrCreateMetric(sm pmetric.ScopeMetrics, name string, metricType pmetric.
 		sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
 	}
 	return metric
-}
-
-func iosXRMetricName(module string, pathParts []string) string {
-	parts := []string{"cisco", "iosxr", "yang"}
-	if module != "" {
-		parts = append(parts, sanitizeMetricSegment(module))
-	}
-	for _, part := range pathParts {
-		if cleaned := sanitizeMetricSegment(part); cleaned != "" {
-			parts = append(parts, cleaned)
-		}
-	}
-	return strings.Join(parts, ".")
 }
 
 func sanitizeMetricSegment(value string) string {
@@ -550,7 +575,7 @@ type iosXRNormalizingConsumer struct {
 	budgetLimits finalDatapointBudgetLimits
 }
 
-func newIOSXRNormalizingConsumer(next consumer.Metrics, config IOSXRConfig, selector deviceSelectionMatcher, transport string, health *iosXRHealth) consumer.Metrics { //nolint:unparam // Transport remains explicit because the normalizer owns transport attribution.
+func newIOSXRNormalizingConsumer(next consumer.Metrics, config IOSXRConfig, selector deviceSelectionMatcher, transport string, health *iosXRHealth) consumer.Metrics {
 	return &iosXRNormalizingConsumer{next: next, config: config, selector: selector, transport: transport, health: health}
 }
 
@@ -609,19 +634,67 @@ func (c *iosXRNormalizingConsumer) normalize(md pmetric.Metrics, budget *finalDa
 			metrics := sm.Metrics()
 			for k := 0; k < metrics.Len(); k++ {
 				metric := metrics.At(k)
-				switch metric.Name() {
-				case "cisco.yang_grpc.compact_gpb_payloads":
-					metric.SetName("cisco.iosxr.receiver.compact_gpb_payloads")
-					if c.health != nil {
-						c.health.addCompactGPBPayloads(metricNumericTotal(metric))
+				originalName := metric.Name()
+				if c.transport == iosXRTelemetryTransportDialIn {
+					dynamic := strings.HasPrefix(originalName, "cisco.iosxr.yang.__v1.")
+					_, fixed := governedFixedMetricNames[originalName]
+					trustedFixed := fixed && strings.HasPrefix(originalName, "cisco.iosxr.")
+					if !dynamic && !trustedFixed {
+						dropDynamicYANGMetric(metric, budget)
+						continue
 					}
+					if dynamic && !enforceDialInDynamicYANGContract(metric, budget) {
+						continue
+					}
+					annotateMetricDatapoints(metric, module, encodingPath, c.transport, budget)
+					continue
+				}
+				switch {
+				case originalName == "cisco.yang_grpc.compact_gpb_payloads" && isTrustedCompactGPBDiagnostic(metric):
+					normalizeCompactGPBDiagnostic(
+						metric,
+						"cisco.iosxr.receiver.compact_gpb_payloads",
+						"Compact GPB payload rows in the current MDT message; the rows are not generically decoded.",
+					)
 				default:
-					if strings.HasPrefix(metric.Name(), "cisco.") && !strings.HasPrefix(metric.Name(), "cisco.iosxr.") {
-						name := strings.TrimPrefix(metric.Name(), "cisco.")
-						pathParts := strings.Split(name, ".")
-						metric.SetName(iosXRMetricName(module, pathParts))
-						normalizeIOSXRDialOutMetricSemantics(metric, encodingPath, pathParts)
+					if !strings.HasPrefix(metric.Name(), "cisco.") {
+						dropDynamicYANGMetric(metric, budget)
+						continue
 					}
+					info := dynamicYANGMetricIsInfoVariant(metric)
+					path, ok := dialOutDynamicYANGPathParts(metric, originalName, encodingPath, info)
+					if !ok {
+						dropDynamicYANGMetric(metric, budget)
+						continue
+					}
+					variant := dynamicYANGMetricVariantNumber
+					if info {
+						variant = dynamicYANGMetricVariantInfo
+						if !enforceDynamicYANGInfoContract(metric, budget) {
+							continue
+						}
+					} else {
+						metricType := pmetric.MetricTypeGauge
+						if isIOSXRCounterMetric(path.normalized) {
+							metricType = pmetric.MetricTypeSum
+						}
+						if !enforceDynamicYANGNumberContract(metric, metricType, budget) {
+							continue
+						}
+					}
+					name, ok := dynamicYANGDialOutMetricName(
+						"cisco.iosxr.yang",
+						module,
+						path.encodingIdentity,
+						path.sourceIdentity,
+						variant,
+						budget.limits.maxMetricNameBytes,
+					)
+					if !ok {
+						dropDynamicYANGMetric(metric, budget)
+						continue
+					}
+					metric.SetName(name)
 				}
 				annotateMetricDatapoints(metric, module, encodingPath, c.transport, budget)
 			}
@@ -633,56 +706,49 @@ func (c *iosXRNormalizingConsumer) normalize(md pmetric.Metrics, budget *finalDa
 	})
 }
 
-func normalizeIOSXRDialOutMetricSemantics(metric pmetric.Metric, encodingPath string, relativePath []string) {
-	if metric.Type() != pmetric.MetricTypeGauge || strings.HasSuffix(metric.Name(), "_info") {
-		return
-	}
-	pathParts := append(iosXREncodingPathParts(encodingPath), relativePath...)
-	if !isIOSXRCounterMetric(pathParts) {
-		return
-	}
-
-	datapoints := pmetric.NewNumberDataPointSlice()
-	metric.Gauge().DataPoints().CopyTo(datapoints)
-	sum := metric.SetEmptySum()
-	sum.SetIsMonotonic(true)
-	sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
-	datapoints.MoveAndAppendTo(sum.DataPoints())
-}
-
-func iosXREncodingPathParts(value string) []string {
-	value = strings.Trim(strings.TrimSpace(value), "/")
-	if index := strings.IndexByte(value, ':'); index >= 0 {
-		value = value[index+1:]
-	}
-	if value == "" {
-		return nil
-	}
-	return strings.Split(value, "/")
-}
-
-func metricNumericTotal(metric pmetric.Metric) int64 {
-	var total int64
-	add := func(dp pmetric.NumberDataPoint) {
-		value, ok := numberDatapointInt64(dp)
-		if !ok || value <= 0 {
-			return
-		}
-		total = saturatingAddNonNegative(total, value)
-	}
+func normalizeCompactGPBDiagnostic(metric pmetric.Metric, name, description string) {
+	sources := pmetric.NewNumberDataPointSlice()
 	switch metric.Type() {
 	case pmetric.MetricTypeGauge:
-		dps := metric.Gauge().DataPoints()
-		for i := 0; i < dps.Len(); i++ {
-			add(dps.At(i))
-		}
+		metric.Gauge().DataPoints().CopyTo(sources)
 	case pmetric.MetricTypeSum:
-		dps := metric.Sum().DataPoints()
-		for i := 0; i < dps.Len(); i++ {
-			add(dps.At(i))
-		}
+		metric.Sum().DataPoints().CopyTo(sources)
 	}
-	return total
+	description, unit := governedFixedMetricMetadata(name, pmetric.MetricTypeGauge, fixedMetricValueTypeInt, description, "")
+	metric.SetName(name)
+	metric.SetDescription(description)
+	metric.SetUnit(unit)
+	points := metric.SetEmptyGauge().DataPoints()
+	for index := 0; index < sources.Len(); index++ {
+		source := sources.At(index)
+		value, ok := numberDatapointInt64(source)
+		if !ok || value < 0 {
+			continue
+		}
+		dp := points.AppendEmpty()
+		dp.SetIntValue(value)
+		dp.SetTimestamp(source.Timestamp())
+		source.Attributes().CopyTo(dp.Attributes())
+	}
+}
+
+func isTrustedCompactGPBDiagnostic(metric pmetric.Metric) bool {
+	if metric.Type() != pmetric.MetricTypeGauge || metric.Description() != "" || metric.Unit() != "" {
+		return false
+	}
+	points := metric.Gauge().DataPoints()
+	if points.Len() != 1 {
+		return false
+	}
+	point := points.At(0)
+	if point.ValueType() != pmetric.NumberDataPointValueTypeInt || point.IntValue() <= 0 || point.Attributes().Len() != 2 {
+		return false
+	}
+	nodeID, hasNodeID := point.Attributes().Get("node_id")
+	encodingPath, hasEncodingPath := point.Attributes().Get("encoding_path")
+	_, hasSourcePath := point.Attributes().Get("cisco.yang.source_path")
+	return hasNodeID && nodeID.Type() == pcommon.ValueTypeStr &&
+		hasEncodingPath && encodingPath.Type() == pcommon.ValueTypeStr && !hasSourcePath
 }
 
 func numberDatapointInt64(dp pmetric.NumberDataPoint) (int64, bool) {
@@ -780,10 +846,31 @@ func annotateMetricDatapoints(metric pmetric.Metric, module, yangPath, transport
 func moduleFromYANGPath(value string) string {
 	value = strings.TrimSpace(value)
 	value = strings.Trim(value, "/")
-	if idx := strings.Index(value, ":"); idx > 0 {
-		return value[:idx]
+	module := ""
+	segmentStart := 0
+	predicateDepth := 0
+	visit := func(segment string) {
+		if qualifier, _, ok := parseYANGQualifiedName(segment); ok {
+			module = qualifier
+		}
 	}
-	return ""
+	for index := 0; index < len(value); index++ {
+		switch value[index] {
+		case '[':
+			predicateDepth++
+		case ']':
+			if predicateDepth > 0 {
+				predicateDepth--
+			}
+		case '/':
+			if predicateDepth == 0 {
+				visit(value[segmentStart:index])
+				segmentStart = index + 1
+			}
+		}
+	}
+	visit(value[segmentStart:])
+	return module
 }
 
 func putIPAttr(attrs pcommon.Map, key, value string) {

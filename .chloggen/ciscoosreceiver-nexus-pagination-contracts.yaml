@@ -1,0 +1,7 @@
+change_type: bug_fix
+component: receiver/cisco_os
+note: Prevent Nexus Dashboard collection from silently truncating paginated API responses.
+issues: [0]
+subtext: |
+  Apply documented per-route pagination contracts, safely advance metadata-free offset pages, preserve byte-identical rows across pages while counting every row against the configured result cap, and surface unverified legacy responses as partial instead of guessing that a nonempty page is complete. Fail closed when decoding malformed or ambiguous recognized collection envelopes, escape selector segments exactly once, confine continuation metadata to the configured origin and reverse-proxy prefix while rejecting traversal, redact server-provided continuation URLs and queries from transport errors, and handle encoded path prefixes in linear work.
+change_logs: [user]

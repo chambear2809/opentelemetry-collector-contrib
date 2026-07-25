@@ -36,6 +36,7 @@ The following settings are available:
 
 | Setting | Type | Required | Description |
 |---------|------|----------|-------------|
+| `storage` | string | No | Collector storage extension ID used for durable delivery checkpoints |
 | `devices` | list | Yes* | List of Cisco SSH devices to monitor |
 | `device_selection` | map | No | Shared include/exclude selector applied across SSH, Meraki, Intersight, Catalyst Center, Catalyst 9800, SD-WAN, Nexus Dashboard, ACI, FMC, ISE, and IOS XR telemetry |
 | `metrics` | map | No | Per-metric forwarding switches for cost-sensitive destinations such as Splunk Observability Cloud |
@@ -67,6 +68,108 @@ endpoints must use HTTPS; `insecure_skip_verify` never enables plaintext HTTP. P
 when explicitly enabled, and certificate failures identify the exact opt-in setting for isolated labs. The Meraki option
 is intended only for custom lab API endpoints; leave it disabled for the Cisco-hosted Dashboard API. Shared `gnmi`
 targets also support the explicit lab bypass, while plaintext gNMI remains prohibited in every environment.
+
+### Durable Checkpoints
+
+Set `storage` to the ID of a Collector storage extension to retain the receiver's delivery state across restarts. The
+checkpoint covers accumulated delta counters for controller/API metrics, polling-log deduplication for Intersight,
+SD-WAN, Nexus Dashboard, ACI, FMC, and ISE, ISE pxGrid streaming deduplication, and the FMC eStreamer resume cursor and
+replay set. Omitting `storage` preserves the original in-memory behavior.
+
+The extension must be configured and enabled in `service.extensions`. If `storage` is set but the extension is missing,
+does not implement the Collector storage interface, or cannot provide a client, receiver startup fails. After a client
+has been acquired, an absent key starts with empty state. Corrupt or version-incompatible payloads and transient storage
+read or write failures emit warnings and fail open so collection continues with bounded in-memory state.
+
+Checkpoint keys must not expire. The generic Collector storage `Client` does not expose a key TTL or a capability that
+lets the receiver validate retention. In particular, configure the Redis storage extension with `expiration: 0`.
+Refreshing only pages changed by a delivery cannot make an expiring backend safe: an unchanged page, or every page while
+the receiver is idle, can expire while a newer manifest still references it. Use a dedicated non-expiring storage
+namespace for checkpoint data.
+
+The storage client must serialize operations for this single writer and provide synchronous map semantics. A successful
+page `Batch` must durably apply its operations in order before returning, and a subsequent successful manifest `Set` must
+be durably ordered after that completed stage. A failed page `Batch` may have applied any operation prefix before returning,
+but it must not continue mutating page keys after return; a late failed-stage write could otherwise overwrite a slot after
+a later manifest makes it live.
+
+The manifest key additionally requires per-key invocation ordering and read-after-success consistency. Each successful
+`Set` must be durable before returning; a later successful `Get` must return that value or one from a later invocation; and
+an earlier errored `Set` must never take effect after a later `Set` succeeds. An errored `Set` is ambiguous only about
+whether it was accepted within its invocation: reconciliation may temporarily read the previous manifest and later observe
+the accepted candidate, but that is a stale observation, not permission for the failed operation to reorder after later
+writes. The receiver retains the staged candidate and never treats the previous-manifest read as rejection. A later
+checkpoint attempt retries that exact candidate once. A successful exact retry orders any earlier candidate write before
+itself and commits the candidate, after which the same attempt may safely stage and publish a newer manifest that supersedes
+every candidate invocation. Observing the candidate also commits it, another retry error keeps both slot views fenced, and
+an unrelated manifest keeps writes fenced. A backend that permits an errored candidate `Set` to overwrite a later successful
+manifest `Set` is unsupported and cannot be made safe by this protocol without compare-and-swap or generation fencing.
+
+```yaml
+extensions:
+  file_storage/cisco_os:
+    directory: /var/lib/otelcol/cisco-os-checkpoints
+    create_directory: true
+
+receivers:
+  cisco_os/site_a:
+    storage: file_storage/cisco_os
+    # Add one or more Cisco targets here.
+
+service:
+  extensions: [file_storage/cisco_os]
+  pipelines:
+    metrics:
+      receivers: [cisco_os/site_a]
+      exporters: [otlp]
+    logs:
+      receivers: [cisco_os/site_a]
+      exporters: [otlp]
+```
+
+Checkpoint identities are versioned and isolated by receiver instance, provider, canonical target identity, and signal.
+Only normalized endpoints, controller/device identities, and target scope are fingerprinted; credentials, API keys,
+passwords, certificate paths, and unrelated retry or result-limit settings are excluded. Reordering an unordered target
+list or rotating credentials therefore does not orphan state, while a different receiver instance, provider, or endpoint
+cannot consume another target's checkpoint.
+
+Each checkpoint identity requires one active writer because the Collector storage API provides no cross-process
+compare-and-swap. HA replicas must use separate storage namespaces or receiver instance IDs; sharing the same checkpoint
+keys between active Collectors is not supported by the two-slot protocol.
+
+The physical key bound is per stable checkpoint identity, not global across configuration history. Changing an identity
+field such as receiver instance, provider endpoint, or target scope creates a new hashed namespace; the generic storage
+API provides no mandatory namespace walk with which to find and reclaim the old one. Repeated identity churn can therefore
+retain old bounded namespaces. Operators should dedicate a backend prefix or storage instance to the receiver lifecycle
+and remove obsolete namespaces manually only after every Collector that could reference them has stopped.
+
+State is stored as a manifest plus at most 1,563 logical pages of 64 entries and 64 KiB each, retaining up to 100,000
+counter, deduplication, or eStreamer replay entries. Each logical page has two fixed physical slots (at most 3,126 slotted
+page keys), plus at most 1,563 retained unslotted legacy keys. Restoration reads only manifest-listed keys and does
+not require storage walking. A polling delivery stages only changed pages into slots not referenced by the committed
+manifest, then publishes the version 2 manifest with a separate single-key write. A partially applied page batch therefore
+leaves the prior generation readable. After an ambiguous manifest-write failure, persistence pauses until a read identifies
+the candidate or a later attempt republishes the exact same candidate manifest, so a retry cannot overwrite a possibly live
+slot. Startup manifest failures disable durable writes
+until an absent or valid header establishes a safe fence; if a valid header's pages or domain payload cannot be restored, the
+next complete in-memory snapshot replaces that generation using the fenced slots. Version 1 manifests with unslotted keys
+migrate through the same copy-on-write path; version 1-only downgrade receivers reject a version 2 manifest and start with
+empty in-memory state, which prevents combining a version 2 manifest with stale version 1 pages. Stage writes are capped at
+1,563 per delivery. Stale slots and legacy keys are deliberately not deleted: retaining at most three fixed page keys per
+logical page keeps storage bounded per identity without allowing best-effort cleanup to delay publication or shutdown.
+Capacity-based page allocation prevents collisions from lowering the 100,000-entry correctness ceiling.
+
+Polling-log and counter checkpoints are written only after the next Collector consumer accepts the batch. FMC eStreamer
+and ISE pxGrid checkpoint only accepted streaming messages and debounce persistence until 256 accepted messages or five
+seconds, whichever comes first. They also make a best-effort flush, bounded to five seconds and the Collector shutdown
+context, after their workers stop. While storage is healthy, a crash can replay at most the unflushed window: up to 255
+accepted high-rate messages or approximately five seconds of lower-rate traffic. FMC additionally requests a one-second
+cursor overlap and suppresses restored fingerprints. Transient storage failures can extend the replay window until a
+later write succeeds; delivery state never advances before downstream acceptance. A restored nonzero eStreamer cursor
+must be backed by retained event or observation evidence within five minutes of clock skew; otherwise the entire resume
+checkpoint is ignored and the configured initial lookback is retained. Each manifest retains a monotonic clock anchor so
+a host wall-clock rollback can normalize stored epochs and observations without discarding valid state. A future FMC
+controller timestamp remains unchanged on the exported log, but its resume cursor is capped to local observation time.
 
 ### Device Configuration
 
@@ -144,7 +247,7 @@ Use collection groups, target filters, and per-metric forwarding together when s
 cost-sensitive destinations such as Splunk Observability Cloud:
 
 - Collection groups such as `sdwan.interfaces.enabled`, `intersight.telemetry.enabled`, `nexus_dashboard.performance.enabled`, and `aci.stats.enabled` stop whole endpoint families from being polled and emitted.
-- `max_results` caps bound the number of returned objects for each group. REST pagination has non-configurable safety ceilings of 100 pages, 100,000 retained results, and 64 MiB of aggregate raw page data per operation; larger configured result caps are rejected.
+- `max_results` caps bound the number of returned objects for each group. Nexus Dashboard counts every decoded row, including byte-identical rows returned on the same or different pages. REST pagination has non-configurable safety ceilings of 100 pages, 100,000 retained results, and 64 MiB of aggregate raw page data per operation; larger configured result caps are rejected.
 - Controller `max_retries` values default to `3`, accept `0` to disable retries, and are capped at `10` so exponential backoff cannot overflow or keep a scrape retrying indefinitely.
 - `device_selection` and provider-native `targets` keep collection scoped to the devices, sites, applications, interfaces, tenants, or fabrics that matter.
 - Root-level `metrics` entries remove exact metric names or metric-name globs before the receiver passes data to the next Collector component. Metrics are enabled unless explicitly set to `enabled: false`; exact names override matching globs.
@@ -159,7 +262,7 @@ receivers:
         enabled: false
       cisco.wlc.client.*:
         enabled: false
-      cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.*:
+      cisco.iosxr.yang.__v1.*:
         enabled: false
     sdwan:
       enabled: true
@@ -433,7 +536,7 @@ leaf and spine is unavailable.
 | `nexus_dashboard.auth.username` | string | Yes | Username for API-key headers or login token auth. |
 | `nexus_dashboard.auth.api_key` | string | Yes* | Nexus Dashboard API key for `api_key` auth. |
 | `nexus_dashboard.auth.password` | string | Yes** | Password for username/password login token auth. |
-| `nexus_dashboard.page_size` | int | No | Generic page size for controller APIs. Defaults to `100`. |
+| `nexus_dashboard.page_size` | int | No | `max`/`offset` page size for endpoints whose cited contract supports client-driven pagination. It is not sent to single-response, server-link, or unverified legacy routes. Defaults to `100`. |
 | `nexus_dashboard.max_retries` | int | No | Retries for 429 and transient 5xx responses. Defaults to `3`. |
 | `nexus_dashboard.event_lookback` | duration | No | Lookback for audit, event, anomaly, advisory, and deployment evidence. Defaults to `24h`. |
 | `nexus_dashboard.targets.*` | lists | No | Optional filters for `sites`, `fabrics`, `switch_serials`, `switch_ids`, `interface_names`, and `service_names`. |
@@ -446,9 +549,35 @@ The `unified` profile currently polls cluster health, nodes, node hardware, syst
 fabric switch inventory, and fabric switch summaries. Nested hardware, system-resource, and switch-summary values are
 not yet mapped into numeric telemetry; those routes currently provide request-health and generic resource-presence
 evidence. The profile does not emit Nexus Dashboard logs; current audit/event APIs must be verified before log routes
-are added. The `legacy` profile remains the default for compatibility with existing deployments and retains the prior
-endpoint catalog unchanged. The unified catalog currently registers only the `platform` and `ndfc` groups; the
-`insights`, `orchestrator`, `data_broker`, and `performance` group settings do not add unified endpoints yet.
+are added. The `legacy` profile remains the default for compatibility with existing deployments and retains its prior
+endpoint paths. The unified catalog currently registers only the `platform` and `ndfc` groups; the `insights`,
+`orchestrator`, `data_broker`, and `performance` group settings do not add unified endpoints yet.
+
+Pagination is an explicit endpoint/version contract; response shape is not used to guess whether `offset` is safe.
+The catalog is based on these Cisco OpenAPI releases:
+
+| Endpoint family | Strategy | Cisco contract evidence |
+|-----------------|----------|-------------------------|
+| Unified `/api/v1/infra/clusterhealth/status`, `/cluster/nodes`, and `/systemResources/...` | Single response | [Nexus Dashboard Infrastructure v1 1.1.136](https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/infra.json) defines no `max`/`offset` parameters for these operations. |
+| Unified and legacy `/api/v1/manage/fabrics`; unified `/fabrics/{fabricName}/switches` | Offset | [Nexus Dashboard Manage v1 1.1.411](https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/manage.json) defines shared `max` and `offset` parameters for both list operations. This includes the path-level/shared parameter references on `listFabricSwitches`. |
+| Unified `/api/v1/manage/fabrics/{fabricName}/switches/summary` | Single response | Nexus Dashboard Manage v1 1.1.411 defines only cluster/fabric parameters for this summary operation. |
+| Legacy NDFC `/control/fabrics/fabricstatus` | Single response | [Nexus Dashboard Fabric Controller API - LAN 12.5.0](https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/nd-fabric-controller-lan-1242.json) documents this exact path as a complete fabric-status response with no pagination parameters. |
+| Legacy NDO `/mso/api/v1/sites` and `/mso/api/v1/schemas` | Single response | [Nexus Dashboard Orchestrator 5.2.1](https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/orchestration.json) documents “all” sites/schemas and no pagination parameters. |
+| Other legacy `/api/v1/infra/...` compatibility paths | Unverified | The paths are absent from [Nexus Dashboard API 4.2.1](https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/nexus-dashboard-421.json) and Infrastructure v1 1.1.136. |
+| Legacy `/api/v1/manage/fabric-switches/summary` | Unverified | This older path is absent from Nexus Dashboard Manage v1 1.1.411. |
+| Other legacy NDFC App Center paths | Unverified | The exact paths are absent from Nexus Dashboard Fabric Controller API - LAN 12.5.0. |
+| Legacy `/nexus/insights/api/v1/...` paths | Unverified | The exact paths are absent from [Nexus Dashboard Insights API 6.8.0](https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/nd-insights-v2.json) and [Analyze v1 1.1.209](https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/analyze.json). |
+| Legacy NDO tasks, alerts, and audit paths | Unverified | The exact paths are absent from Nexus Dashboard Orchestrator 5.2.1. |
+| Legacy Data Broker paths | Unverified | No matching Data Broker paths appear in the cited Nexus Dashboard API 4.2.1 catalog. |
+
+Offset routes continue after a metadata-free full page. A short page is terminal only when authoritative continuation
+metadata does not claim more; explicit total/remaining terminal values, repeated continuation requests, a configured
+result cap, and the hard page/result/byte budgets also stop collection. Server-provided continuation URLs are resolved against
+the configured endpoint path while remaining pinned to its origin. Single-response routes always perform exactly one
+request and report a contract error if the response claims continuation. Server-link routes never invent `max` or
+`offset` parameters. Unverified routes also send no invented pagination parameters; because their server default is
+unknown, any nonempty response without an explicit next link or terminal total/remaining metadata is emitted as partial
+data with a visible contract error rather than being reported as known-complete.
 
 Collection groups default to enabled and can be disabled or capped independently:
 
@@ -460,6 +589,11 @@ Collection groups default to enabled and can be disabled or capped independently
 | `orchestrator` | sites, schemas, deployments, policy deltas, template/site sync, and multi-site alerts |
 | `data_broker` | broker health, switch participation, TAP/SPAN/rule/session state, and events |
 | `performance` | interface stats, telemetry sync, and other high-volume fabric performance details |
+
+Each Nexus Dashboard group shares its `max_results` budget across all endpoint instances in catalog order. The budget
+counts every object returned by the pagination client before target filters, shared device selection, or log
+deduplication. Byte-identical objects retain their multiplicity and independently consume the budget. Objects returned
+alongside a partial-result error consume the budget; empty endpoints do not.
 
 Target filters are optional for the broad controller and inventory endpoints, but four enabled detail operations have
 exact selector requirements:
@@ -521,18 +655,22 @@ pipeline with batching, retry, and secure certificate verification by default.
 | `aci.server_name` | string | No | TLS certificate name and SNI override, useful when an APIC endpoint is configured by IP address. |
 | `aci.insecure_skip_verify` | bool | No | Disables APIC certificate verification for self-signed lab certificates. Prefer `ca_file` and a matching endpoint or `server_name`; use this only in an isolated lab. |
 | `aci.event_lookback` | duration | No | Lookback for faults, audits, and events. Defaults to `24h`. |
+| `aci.logs.faults.enabled` | bool | No | Emits allowlisted `faultInst` records as logs. Defaults to `false`. |
+| `aci.logs.audit.enabled` | bool | No | Emits allowlisted `aaaModLR` records as logs. Defaults to `false`. |
+| `aci.logs.events.enabled` | bool | No | Emits allowlisted `eventRecord` records as logs. Defaults to `false`. |
 | `aci.targets.*` | lists | No | Optional filters for sites, fabrics, node IDs, serials, tenants, VRFs, bridge domains, EPGs, and interfaces. |
 
-Collection groups default to enabled and can be disabled or capped independently:
+ACI metric collection groups default to enabled and can be disabled or capped independently. The metric defaults are
+independent from the opt-in log settings described below.
 
 | Group | Coverage |
 |-------|----------|
 | `controller_health` | APIC controller inventory and firmware status |
 | `fabric` | pods and aggregate health |
 | `nodes` | leaf/spine inventory and fabric membership |
-| `faults` | active APIC faults emitted as metrics and logs |
-| `audit` | APIC audit/config-change records emitted as logs |
-| `events` | APIC event records emitted as logs |
+| `faults` | active APIC fault metrics and optional fault logs |
+| `audit` | APIC audit/config-change rollup metrics and optional audit logs |
+| `events` | APIC event rollup metrics and optional event logs |
 | `stats` | physical, port-channel, and management interface status; five-minute ingress/egress rates and utilization; RMON byte, packet, error, and discard counters; CPU, memory, and fabric health history |
 | `endpoints` | endpoint MAC/IP presence |
 | `tenants` | tenants, VRFs, bridge domains, EPGs, app profiles, contracts, and L3Outs |
@@ -550,6 +688,57 @@ result set is complete. If APIC reports more objects, the receiver emits the ret
 `aci.api.endpoint.error` with `aci.error.kind=pagination_limit`, and sets `aci.scrape.partial_success=1`. Audit and
 event queries are ordered by `created` newest first, ensuring a bounded collection retains the newest records. Size
 `audit.max_results`, `events.max_results`, and `event_lookback` for the deployment's peak event volume.
+
+ACI fault, audit, and event logs are disabled by default even though their metric groups remain enabled. Opt into only
+the record classes required by the logs pipeline:
+
+```yaml
+aci:
+  logs:
+    faults:
+      enabled: true
+    audit:
+      enabled: true
+    events:
+      enabled: false
+```
+
+For configuration compatibility, an explicitly written legacy `aci.faults.enabled: true`,
+`aci.audit.enabled: true`, or `aci.events.enabled: true` also opts into that log signal when its new
+`aci.logs.<signal>` block is absent. Merely inheriting the metric group's default does not enable logs, and an explicit
+new log block—including an empty block with disabled defaults—takes precedence. Configure the new settings directly
+when log collection is intended. Any enabled log signal counts as ACI target intent and therefore requires valid
+`aci.controllers` and `aci.auth`, even when another receiver provider is configured; omitted or explicitly disabled
+signals remain inert. Present YAML `null` values for `aci.logs` or `aci.logs.<signal>` are rejected explicitly. Other
+malformed non-map values are preserved for strict configuration decoding, and compatibility handling never coerces
+malformed input into enabled settings.
+
+Log bodies use fixed APIC-class schemas. Only nonempty string-valued fields in the following table are copied; all
+other APIC attributes are dropped.
+
+| Log signal | APIC class | Allowlisted body fields |
+|------------|------------|-------------------------|
+| `faults` | `faultInst` | `ack`, `affected`, `cause`, `code`, `created`, `descr`, `dn`, `domain`, `highestSeverity`, `id`, `lastTransition`, `lc`, `occur`, `origSeverity`, `prevSeverity`, `rule`, `severity`, `status`, `type` |
+| `audit` | `aaaModLR` | `affected`, `cause`, `code`, `created`, `descr`, `dn`, `id`, `ind`, `severity`, `status`, `trig`, `txId`, `user` |
+| `events` | `eventRecord` | `affected`, `cause`, `code`, `created`, `descr`, `dn`, `id`, `ind`, `severity`, `status`, `trig`, `txId`, `user` |
+
+The complete exported record is derived from that body envelope plus controlled receiver metadata. Resource attributes
+use configured controller identity, the fixed endpoint class, and `host.id`, `host.name`, `aci.dn`, and `aci.node.id`
+values derived only from allowlisted `dn`, `affected`, `id`, or `txId`. Log-record `aci.status`, `aci.severity`, event
+timestamp/severity, and `user.name` likewise use only allowlisted fields; `user.name` is sourced only from `user`.
+Raw `aci.class`, `name`, `serial`, `nodeId`, `fabricName`, `userName`, `createdBy`, `modifiedBy`, `modTs`, APIC
+`changeSet`, session identifiers, controller-added attributes, and nested values are never consulted or forwarded.
+
+Deduplication hashes the complete sanitized semantic record, including its body, resource and record attributes,
+source timestamp, severity, and scope. The scrape-local observed timestamp is delivery metadata and is intentionally
+not part of replay identity. For `txId`-backed audit records, only APIC replica-local body `id`/`dn` and the resource
+copy of `dn` are excluded from the hash. Dedup is scoped by the configured controller name and endpoint; records from
+different configured controllers are not collapsed because the sanitized schemas do not admit a safe logical-fabric
+identity. Without `storage`, deduplication state is process-local and a Collector restart can replay records still
+inside `event_lookback`. When `storage` is configured, accepted ACI deduplication state is checkpointed across restarts
+subject to the bounded unflushed and fail-open replay windows described in [Durable Checkpoints](#durable-checkpoints).
+Live ACI restart delivery and replay behavior remains unqualified. Keep each log signal disabled unless that replay
+behavior and its destination retention/privacy policy are acceptable.
 
 For production, keep certificate verification enabled. When the APIC certificate is issued by a private CA, configure
 `ca_file` with that CA chain. If a controller endpoint uses an IP address, set `server_name` to a DNS name listed in
@@ -1098,7 +1287,7 @@ See the [complete security, operations, metric, and qualification guide](docs/gn
 Catalyst 9800 support collects direct WLC/AP telemetry from IOS XE wireless controllers through two Cisco-supported
 model-driven telemetry modes: collector-managed gNMI dial-in and WLC-pushed MDT gRPC dial-out. gNMI subscriptions use
 JSON or JSON_IETF; gRPC dial-out reuses the `yang_grpc` receiver path for self-describing KV-GPB, then normalizes the
-same YANG leaves into raw `cisco.catalyst9800.yang.*` metrics and stable `cisco.wlc.*` aliases.
+same YANG leaves into raw `cisco.catalyst9800.yang.__v1.*` metrics and stable `cisco.wlc.*` aliases.
 
 Collector distributions that embed either Cisco dial-out mode must resolve a `yang_grpc` receiver from the same or a
 newer contrib release with runtime-hardening contract version 3. Startup fails closed when an older dependency is
@@ -1366,7 +1555,7 @@ The default scraper configuration collects the bounded, low-cardinality metrics 
 | `counters.include` | list | `[]` | Optional glob patterns for allowed `cisco.interface.counter.name` values. Empty means include all collected counters. |
 | `counters.exclude` | list | `[]` | Optional glob patterns for counter names to drop after include filtering. |
 | `counters.max_per_interface` | int | `100` | Maximum `cisco.interface.counter` series emitted per interface. Set to `0` for no per-interface cap. |
-| `counters.max_interfaces` | int | `256` | Maximum interfaces enriched by optional high-cardinality counter commands. A value of `0` selects the safe default. |
+| `counters.max_interfaces` | int | `256` | One shared per-scrape unique-interface budget across every optional counter command family, including platform queue stats. Core `show interface` metrics are outside this budget. A value of `0` selects the safe default. |
 | `counters.commands.all` | bool | `false` | Enables all optional counter command groups. |
 | `counters.commands.interface_counters` | bool | `false` | Enables IOS/IOS XE `show interfaces counters` or NX-OS `show interface counters`. Also enabled by `counters.enabled`. |
 | `counters.commands.interface_errors` | bool | `false` | Enables IOS/IOS XE `show interfaces counters errors` or NX-OS `show interface counters errors`. Also enabled by `counters.enabled`. |
@@ -1450,11 +1639,11 @@ state, NX-OS NVE/EVPN fabric metrics, vPC, LACP counters, and detailed QoS queue
 ### Nexus Dashboard And ACI API Metrics And Logs
 - Nexus Dashboard API health: `nexus_dashboard.api.request.duration`, `nexus_dashboard.api.request.errors`, `nexus_dashboard.api.endpoint.error`, `nexus_dashboard.api.rate_limited`, `nexus_dashboard.scrape.partial_success`, `nexus_dashboard.scrape.last_success`, `nexus_dashboard.service.unavailable`, and `nexus_dashboard.service.skipped`.
 - NDFC and Nexus switch state: `nexus_dashboard.resource.info`, `nexus_dashboard.resource.status`, `nexus_dashboard.fabric.health`, `nexus_dashboard.config.compliance`, `nexus_dashboard.deployment.status`, `nexus_dashboard.endpoint.count`, `cisco.device.up`, `system.network.interface.status`, `cisco.interface.io.rate`, and `cisco.interface.utilization`.
-- Change and incident evidence: `nexus_dashboard.audit.record.count`, `nexus_dashboard.event.count`, `aci.audit.record.count`, and `aci.event.count` expose bounded audit/event rollups while logs preserve high-cardinality record bodies and user context.
+- Change and incident evidence: `nexus_dashboard.audit.record.count`, `nexus_dashboard.event.count`, `aci.audit.record.count`, and `aci.event.count` expose bounded audit/event rollups; opt-in ACI logs preserve allowlisted record envelopes and user context without forwarding arbitrary APIC attributes.
 - Insights, Orchestrator, and Data Broker: `nexus_dashboard.insights.anomaly.*`, `nexus_dashboard.insights.score`, `nexus_dashboard.insights.confidence`, `nexus_dashboard.orchestrator.deployment.status`, `nexus_dashboard.orchestrator.policy_delta.count`, `nexus_dashboard.data_broker.status`, `nexus_dashboard.data_broker.rule.count`, and `nexus_dashboard.data_broker.session.count`.
 - APIC API and ACI fabric health: `aci.api.request.duration`, `aci.api.request.errors`, `aci.api.endpoint.error`, `aci.api.rate_limited`, `aci.controller.up`, `aci.scrape.partial_success`, `aci.scrape.last_success`, `aci.resource.info`, `aci.resource.status`, `aci.fabric.health`, `cisco.device.up`, `system.cpu.utilization`, and `system.memory.utilization`.
 - ACI troubleshooting: `aci.fault.active`, `aci.fault.count`, `aci.endpoint.present`, `aci.endpoint.count`, `aci.tenant.status`, `aci.tenant.object.count`, `system.network.interface.status`, `cisco.interface.io.rate`, and `cisco.topology.neighbor.info`.
-- Logs: Nexus Dashboard logs carry NDFC audit/event, Insights anomaly/root-cause, NDO deployment/audit, and Data Broker event evidence. ACI logs carry faults, audits, and events. Both preserve the original API object body and bounded correlation attributes for fabric, site, switch serial, node ID, tenant, endpoint, and user.
+- Logs: Nexus Dashboard logs carry NDFC audit/event, Insights anomaly/root-cause, NDO deployment/audit, and Data Broker event evidence. Opt-in ACI logs carry faults, audits, and events using the signal-specific allowlisted bodies documented above plus correlation attributes derived only from those bodies and configured controller metadata.
 
 ### Secure Firewall Management Center Metrics And Logs
 - FMC API health: `fmc.api.request.duration`, `fmc.api.request.errors`, `fmc.api.endpoint.error`, `fmc.api.rate_limited`, `fmc.manager.up`, `fmc.scrape.partial_success`, and `fmc.scrape.last_success`.
@@ -1472,17 +1661,17 @@ state, NX-OS NVE/EVPN fabric metrics, vPC, LACP counters, and detailed QoS queue
 - Logs: ISE logs preserve recursively redacted REST/OpenAPI/ERS/MnT, pxGrid, and Data Connect records with `event.domain=ise`, `event.name`, node, protocol, outcome, failure reason, policy, network device, endpoint MAC, user, session/audit ID, and HTTP status attributes where present. MnT `ActiveList` and `AuthList` records require the opt-in `session_details` group.
 
 ### Catalyst 9800 Metrics
-- Generic YANG telemetry: numeric leaves are emitted as `cisco.catalyst9800.yang.<module>.<path>.<leaf>`; integral values are preserved as int64 datapoints when representable, while other numeric values use double datapoints. String and enum leaves use an `_info` metric with the original value on the `value` attribute, known counters are cumulative sums, and other numeric leaves are gauges.
-- Wireless aliases: stable `cisco.wlc.*` metrics cover AP join/failure/disconnect/CAPWAP state, RF utilization/noise/client count/channel changes, SSID client/utilization/traffic/retry counters, client connection/auth/roam/RSSI/SNR, mobility peer/roam/handoff, HA state, RADIUS summary health, and controller CPU/receiver health.
-- Correlation attributes: Catalyst 9800 metrics include `host.name`, `host.id`, `host.ip`, `hw.type=network`, `cisco.os.name=ios_xe`, `cisco.platform.family=catalyst_9800`, the full `cisco.yang.path`, collision-safe `cisco.yang.source_path` for GPB-KV fields, `cisco.yang.module`, `cisco.telemetry.transport`, AP MAC/name, radio slot, WLAN ID, SSID, client MAC, and mobility peer IP when present. Present empty YANG list keys remain explicit attributes rather than collapsing into missing keys.
-- Receiver health: `cisco.catalyst9800.receiver.active_subscriptions`, `cisco.catalyst9800.receiver.updates`, `cisco.catalyst9800.receiver.decode_errors`, `cisco.catalyst9800.receiver.unsupported_paths`, `cisco.catalyst9800.receiver.reconnects`, `cisco.catalyst9800.receiver.dropped_datapoints`, `cisco.catalyst9800.receiver.compact_gpb_payloads`, and `cisco.catalyst9800.receiver.last_success_timestamp` help detect stale or lossy WLC telemetry.
+- Pattern-governed YANG telemetry (outside exact fixed-name completeness): names start with `cisco.catalyst9800.yang.__v1.` and reversibly length-frame module presence/value plus raw, ordered path bytes. Direct gNMI uses one counted path tuple; dial-out separately counts canonical nonempty `encoding_path` containers and raw GPB-KV `cisco.yang.source_path` segments, with `e0` for the deliberate absent/empty encoding-path class. A nonempty `encoding_path` must be slash-delimited with no surrounding whitespace or slash and no empty segment; noncanonical input is dropped rather than normalized. Numeric names end in `.n`; info names end in `.i`. Gauge streams always use finite double datapoints, cumulative monotonic counter streams always use int64 datapoints, and info streams are double gauges with the original text, including an empty string, on `value`. Exact cross-representation values are accepted; unset or nonnumeric points, inexact gauge integers, fractional/out-of-range counters, conflicting sums, and names exceeding the active final-name limit (at most 1024 bytes) are dropped and counted. This versioned naming is a breaking replacement for the former sanitized dynamic names; fixed metrics, `cisco.wlc.*` aliases, and shared-gNMI normalized profiles are unchanged.
+- Wireless aliases: stable `cisco.wlc.*` metrics cover AP join/failure/disconnect/CAPWAP state, RF utilization/noise/client count/channel changes, SSID client/utilization/traffic/retry counters, client connection/auth/roam/RSSI/SNR, mobility peer/roam/handoff, HA state, RADIUS summary health, and controller CPU/receiver health. Discrete status, count, counter, and byte aliases preserve exact int64 values; continuous measurements remain double gauges with cataloged units.
+- Correlation attributes: Catalyst 9800 metrics include `host.name`, `host.id`, `host.ip`, `hw.type=network`, `cisco.os.name=ios_xe`, `cisco.platform.family=catalyst_9800`, the full `cisco.yang.path`, collision-safe `cisco.yang.source_path` for direct gNMI and GPB-KV fields, `cisco.yang.module`, `cisco.telemetry.transport`, AP MAC/name, radio slot, WLAN ID, SSID, client MAC, and mobility peer IP when present. Direct-gNMI JSON descendants use a `rawGNMIPath#/JSON-pointer` source identity while structured scalar paths remain unchanged. Complex-array entries, including singletons, require a recognized stable identity. Present empty YANG list keys remain explicit attributes rather than collapsing into missing keys.
+- Receiver health: `cisco.catalyst9800.receiver.active_subscriptions`, `cisco.catalyst9800.receiver.updates`, `cisco.catalyst9800.receiver.decode_errors`, `cisco.catalyst9800.receiver.unsupported_paths`, `cisco.catalyst9800.receiver.reconnects`, `cisco.catalyst9800.receiver.dropped_datapoints`, `cisco.catalyst9800.receiver.compact_gpb_payloads`, and `cisco.catalyst9800.receiver.last_success_timestamp` help detect stale or lossy WLC telemetry. Receiver-health values use governed integer datapoints; compact-GPB rows are a single per-message integer gauge.
 
 ### IOS XR Metrics
-- Generic YANG telemetry: numeric leaves are emitted as `cisco.iosxr.yang.<module>.<path>.<leaf>`; integral values are preserved as int64 datapoints when representable, while other numeric values use double datapoints. String and enum leaves use an `_info` metric with the original value on the `value` attribute, known counters are cumulative sums, and other numeric leaves are gauges.
+- Pattern-governed YANG telemetry (outside exact fixed-name completeness): names start with `cisco.iosxr.yang.__v1.` and reversibly length-frame module presence/value plus raw, ordered path bytes. Direct gNMI uses one counted path tuple; dial-out separately counts canonical nonempty `encoding_path` containers and raw GPB-KV `cisco.yang.source_path` segments, with `e0` for the deliberate absent/empty encoding-path class. A nonempty `encoding_path` must be slash-delimited with no surrounding whitespace or slash and no empty segment; noncanonical input is dropped rather than normalized. Numeric names end in `.n`; info names end in `.i`. Gauge streams always use finite double datapoints, cumulative monotonic counter streams always use int64 datapoints, and info streams are double gauges with the original text, including an empty string, on `value`. Parser-less dial-out gauges are promoted only when deterministic path classification requires a counter; conflicting or malformed sums are rejected. Exact cross-representation values are accepted; unset or nonnumeric points, inexact gauge integers, fractional/out-of-range counters, and names exceeding the active final-name limit (at most 1024 bytes) are dropped and counted. This versioned naming is a breaking replacement for the former sanitized dynamic names; fixed metrics and shared-gNMI normalized profiles are unchanged.
 - Core WAN evidence: curated path groups cover system, platform, environment, high-speed interfaces, optics, routing, FIB/CEF, BGP, ISIS, MPLS, SR/SRv6, QoS, security policy, BFD, topology, time sync, ASIC, and telemetry self-health.
-- Correlation attributes: IOS XR metrics include `host.name`, `host.id`, `host.ip`, `hw.type=network`, `cisco.os.name=ios_xr`, `cisco.platform.family`, the full `cisco.yang.path`, collision-safe `cisco.yang.source_path` for GPB-KV fields, `cisco.yang.module`, `cisco.telemetry.transport`, and normalized interface, VRF, neighbor, node, and location keys where available. Present empty YANG list keys remain explicit attributes rather than collapsing into missing keys.
-- Receiver health: `cisco.iosxr.receiver.active_subscriptions`, `cisco.iosxr.receiver.updates`, `cisco.iosxr.receiver.decode_errors`, `cisco.iosxr.receiver.unsupported_paths`, `cisco.iosxr.receiver.reconnects`, `cisco.iosxr.receiver.dropped_datapoints`, `cisco.iosxr.receiver.compact_gpb_payloads`, and `cisco.iosxr.receiver.last_success_timestamp` help detect stale or lossy telemetry.
-- Compact GPB behavior: MDT self-describing KV-GPB is decoded through `yang_grpc`; compact `data_gpb` is counted diagnostically instead of silently dropped.
+- Correlation attributes: IOS XR metrics include `host.name`, `host.id`, `host.ip`, `hw.type=network`, `cisco.os.name=ios_xr`, `cisco.platform.family`, the full `cisco.yang.path`, collision-safe `cisco.yang.source_path` for direct gNMI and GPB-KV fields, `cisco.yang.module`, `cisco.telemetry.transport`, and normalized interface, VRF, neighbor, node, and location keys where available. Direct-gNMI JSON descendants use a `rawGNMIPath#/JSON-pointer` source identity while structured scalar paths remain unchanged. Complex-array entries, including singletons, require a recognized stable identity. Present empty YANG list keys remain explicit attributes rather than collapsing into missing keys.
+- Receiver health: `cisco.iosxr.receiver.active_subscriptions`, `cisco.iosxr.receiver.updates`, `cisco.iosxr.receiver.decode_errors`, `cisco.iosxr.receiver.unsupported_paths`, `cisco.iosxr.receiver.reconnects`, `cisco.iosxr.receiver.dropped_datapoints`, `cisco.iosxr.receiver.compact_gpb_payloads`, and `cisco.iosxr.receiver.last_success_timestamp` help detect stale or lossy telemetry. Receiver-health values use governed integer datapoints; compact-GPB rows are a single per-message integer gauge.
+- Compact GPB behavior: MDT self-describing KV-GPB is decoded through `yang_grpc`; compact `data_gpb` rows are reported as the current-message gauge without carrying state between notifications or targets.
 
 ### Interface Metrics
 - `system.network.io` - Number of bytes transmitted and received (with `network.io.direction` attribute: `receive` or `transmit`)
@@ -1690,6 +1879,13 @@ receivers:
         epgs: ["web"]
       faults:
         max_results: 1000
+      logs:
+        faults:
+          enabled: true
+        audit:
+          enabled: true
+        events:
+          enabled: true
 
 exporters:
   debug:
@@ -1837,13 +2033,15 @@ export CISCOOS_E2E_IOSXR_CA_FILE=/etc/otelcol/certs/ios-xr-ca.pem
 export CISCOOS_E2E_IOSXR_SERVER_NAME=router.example.net
 export CISCOOS_E2E_IOSXR_INSECURE_SKIP_VERIFY=false
 export CISCOOS_E2E_IOSXR_PATH_GROUPS=interfaces,optics,bgp
-export CISCOOS_E2E_IOSXR_EXPECT_METRICS=cisco.iosxr.yang.cisco_ios_xr_infra_statsd_oper.infra_statistics.interfaces.interface.generic_counters.bytes_received
+export CISCOOS_E2E_IOSXR_EXPECT_METRICS=cisco.iosxr.yang.__v1.m1.s30_Cisco_2DIOS_2DXR_2Dinfra_2Dstatsd_2Doper.p5.s16_infra_2Dstatistics.s10_interfaces.s9_interface.s16_generic_2Dcounters.s14_bytes_2Dreceived.n
 
 (cd receiver/ciscoosreceiver && go test -tags=e2e -run TestE2EIOSXRGNMIDialIn -count=1 -timeout=3m .)
 ```
 
-The dial-in test always requires at least one decoded `cisco.iosxr.yang.*` metric, so receiver-health metrics alone cannot
+The dial-in test always requires at least one decoded `cisco.iosxr.yang.__v1.*` metric, so receiver-health metrics alone cannot
 satisfy the live gate. `CISCOOS_E2E_IOSXR_EXPECT_METRICS` optionally adds exact comma-separated metric assertions.
+The exact example above is derived from module `Cisco-IOS-XR-infra-statsd-oper` and the ordered direct path tuple
+`infra-statistics/interfaces/interface/generic-counters/bytes-received`; it is not a sanitized display name.
 
 For MDT gRPC dial-out, configure the IOS XR router subscription to stream to the collector endpoint, then run:
 

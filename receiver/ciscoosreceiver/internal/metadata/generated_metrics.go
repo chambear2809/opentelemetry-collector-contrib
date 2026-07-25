@@ -207,12 +207,216 @@ var MapAttributeNetworkPacketType = map[string]AttributeNetworkPacketType{
 }
 
 var MetricsInfo = metricsInfo{
+	AciAPIEndpointError: metricInfo{
+		Name: "aci.api.endpoint.error",
+	},
+	AciAPIRateLimited: metricInfo{
+		Name: "aci.api.rate_limited",
+	},
+	AciAPIRequestDuration: metricInfo{
+		Name: "aci.api.request.duration",
+	},
+	AciAPIRequestErrors: metricInfo{
+		Name: "aci.api.request.errors",
+	},
+	AciAuditRecordCount: metricInfo{
+		Name: "aci.audit.record.count",
+	},
+	AciControllerUp: metricInfo{
+		Name: "aci.controller.up",
+	},
+	AciEndpointCount: metricInfo{
+		Name: "aci.endpoint.count",
+	},
+	AciEndpointPresent: metricInfo{
+		Name: "aci.endpoint.present",
+	},
+	AciEventCount: metricInfo{
+		Name: "aci.event.count",
+	},
+	AciFabricHealth: metricInfo{
+		Name: "aci.fabric.health",
+	},
+	AciFaultActive: metricInfo{
+		Name: "aci.fault.active",
+	},
+	AciFaultCount: metricInfo{
+		Name: "aci.fault.count",
+	},
+	AciResourceCount: metricInfo{
+		Name: "aci.resource.count",
+	},
+	AciResourceInfo: metricInfo{
+		Name: "aci.resource.info",
+	},
+	AciResourceStatus: metricInfo{
+		Name: "aci.resource.status",
+	},
+	AciScrapeLastSuccess: metricInfo{
+		Name: "aci.scrape.last_success",
+	},
+	AciScrapePartialSuccess: metricInfo{
+		Name: "aci.scrape.partial_success",
+	},
+	AciTenantObjectCount: metricInfo{
+		Name: "aci.tenant.object.count",
+	},
+	AciTenantStatus: metricInfo{
+		Name: "aci.tenant.status",
+	},
+	CatalystCenterAPIRateLimited: metricInfo{
+		Name: "catalyst_center.api.rate_limited",
+	},
+	CatalystCenterAPIRequestDuration: metricInfo{
+		Name: "catalyst_center.api.request.duration",
+	},
+	CatalystCenterAPIRequestErrors: metricInfo{
+		Name: "catalyst_center.api.request.errors",
+	},
+	CatalystCenterClientCount: metricInfo{
+		Name: "catalyst_center.client.count",
+	},
+	CatalystCenterClientDetailHealthScore: metricInfo{
+		Name: "catalyst_center.client.detail.health.score",
+	},
+	CatalystCenterClientHealthScore: metricInfo{
+		Name: "catalyst_center.client.health.score",
+	},
+	CatalystCenterClientIssueCount: metricInfo{
+		Name: "catalyst_center.client.issue.count",
+	},
+	CatalystCenterClientNetworkIo: metricInfo{
+		Name: "catalyst_center.client.network.io",
+	},
+	CatalystCenterClientUniqueCount: metricInfo{
+		Name: "catalyst_center.client.unique.count",
+	},
+	CatalystCenterClientWirelessRssi: metricInfo{
+		Name: "catalyst_center.client.wireless.rssi",
+	},
+	CatalystCenterClientWirelessSnr: metricInfo{
+		Name: "catalyst_center.client.wireless.snr",
+	},
+	CatalystCenterDeviceCollectionStatus: metricInfo{
+		Name: "catalyst_center.device.collection.status",
+	},
+	CatalystCenterDeviceDetailCommunicationStatus: metricInfo{
+		Name: "catalyst_center.device.detail.communication.status",
+	},
+	CatalystCenterDeviceDetailHealthScore: metricInfo{
+		Name: "catalyst_center.device.detail.health.score",
+	},
+	CatalystCenterDeviceInterfaceCount: metricInfo{
+		Name: "catalyst_center.device.interface.count",
+	},
+	CatalystCenterDeviceReachabilityStatus: metricInfo{
+		Name: "catalyst_center.device.reachability.status",
+	},
+	CatalystCenterDeviceUptime: metricInfo{
+		Name: "catalyst_center.device.uptime",
+	},
+	CatalystCenterInterfaceCount: metricInfo{
+		Name: "catalyst_center.interface.count",
+	},
+	CatalystCenterInventoryDeviceCount: metricInfo{
+		Name: "catalyst_center.inventory.device.count",
+	},
+	CatalystCenterIssueActiveCount: metricInfo{
+		Name: "catalyst_center.issue.active.count",
+	},
+	CatalystCenterIssueCount: metricInfo{
+		Name: "catalyst_center.issue.count",
+	},
+	CatalystCenterNetworkDeviceCount: metricInfo{
+		Name: "catalyst_center.network.device.count",
+	},
+	CatalystCenterNetworkHealthCategoryScore: metricInfo{
+		Name: "catalyst_center.network.health.category.score",
+	},
+	CatalystCenterNetworkHealthEntityCount: metricInfo{
+		Name: "catalyst_center.network.health.entity.count",
+	},
+	CatalystCenterNetworkHealthEntityScore: metricInfo{
+		Name: "catalyst_center.network.health.entity.score",
+	},
+	CatalystCenterNetworkHealthScore: metricInfo{
+		Name: "catalyst_center.network.health.score",
+	},
+	CatalystCenterScrapeLastSuccess: metricInfo{
+		Name: "catalyst_center.scrape.last_success",
+	},
+	CatalystCenterScrapePartialSuccess: metricInfo{
+		Name: "catalyst_center.scrape.partial_success",
+	},
+	CatalystCenterSiteClientCount: metricInfo{
+		Name: "catalyst_center.site.client.count",
+	},
+	CatalystCenterSiteClientHealthPercentage: metricInfo{
+		Name: "catalyst_center.site.client.health.percentage",
+	},
+	CatalystCenterSiteHealthCount: metricInfo{
+		Name: "catalyst_center.site.health.count",
+	},
+	CatalystCenterSiteIssueCount: metricInfo{
+		Name: "catalyst_center.site.issue.count",
+	},
+	CatalystCenterSiteNetworkDeviceCount: metricInfo{
+		Name: "catalyst_center.site.network_device.count",
+	},
+	CatalystCenterSiteNetworkDeviceHealthPercentage: metricInfo{
+		Name: "catalyst_center.site.network_device.health.percentage",
+	},
+	CatalystCenterTopologyLinkCount: metricInfo{
+		Name: "catalyst_center.topology.link.count",
+	},
+	CatalystCenterTopologyNodeCount: metricInfo{
+		Name: "catalyst_center.topology.node.count",
+	},
+	CiscoCatalyst9800ReceiverActiveSubscriptions: metricInfo{
+		Name: "cisco.catalyst9800.receiver.active_subscriptions",
+	},
+	CiscoCatalyst9800ReceiverCompactGpbPayloads: metricInfo{
+		Name: "cisco.catalyst9800.receiver.compact_gpb_payloads",
+	},
+	CiscoCatalyst9800ReceiverDecodeErrors: metricInfo{
+		Name: "cisco.catalyst9800.receiver.decode_errors",
+	},
+	CiscoCatalyst9800ReceiverDroppedDatapoints: metricInfo{
+		Name: "cisco.catalyst9800.receiver.dropped_datapoints",
+	},
+	CiscoCatalyst9800ReceiverLastSuccessTimestamp: metricInfo{
+		Name: "cisco.catalyst9800.receiver.last_success_timestamp",
+	},
+	CiscoCatalyst9800ReceiverReconnects: metricInfo{
+		Name: "cisco.catalyst9800.receiver.reconnects",
+	},
+	CiscoCatalyst9800ReceiverTargetLastSuccessTimestamp: metricInfo{
+		Name: "cisco.catalyst9800.receiver.target.last_success_timestamp",
+	},
+	CiscoCatalyst9800ReceiverTargetReconnects: metricInfo{
+		Name: "cisco.catalyst9800.receiver.target.reconnects",
+	},
+	CiscoCatalyst9800ReceiverTargetSubscriptionActive: metricInfo{
+		Name: "cisco.catalyst9800.receiver.target.subscription.active",
+	},
+	CiscoCatalyst9800ReceiverTargetUpdates: metricInfo{
+		Name: "cisco.catalyst9800.receiver.target.updates",
+	},
+	CiscoCatalyst9800ReceiverUnsupportedPaths: metricInfo{
+		Name: "cisco.catalyst9800.receiver.unsupported_paths",
+	},
+	CiscoCatalyst9800ReceiverUpdates: metricInfo{
+		Name: "cisco.catalyst9800.receiver.updates",
+	},
 	CiscoDeviceUp: metricInfo{
 		Name: "cisco.device.up",
 	},
 	CiscoInterfaceAdminStatus: metricInfo{
 		Name:       "cisco.interface.admin.status",
 		Attributes: []string{"network.interface.name"},
+	},
+	CiscoInterfaceDropRate: metricInfo{
+		Name: "cisco.interface.drop.rate",
 	},
 	CiscoInterfaceIoRate: metricInfo{
 		Name:       "cisco.interface.io.rate",
@@ -229,6 +433,42 @@ var MetricsInfo = metricsInfo{
 	CiscoInterfaceUtilization: metricInfo{
 		Name:       "cisco.interface.utilization",
 		Attributes: []string{"network.io.direction", "network.interface.name"},
+	},
+	CiscoIosxrReceiverActiveSubscriptions: metricInfo{
+		Name: "cisco.iosxr.receiver.active_subscriptions",
+	},
+	CiscoIosxrReceiverCompactGpbPayloads: metricInfo{
+		Name: "cisco.iosxr.receiver.compact_gpb_payloads",
+	},
+	CiscoIosxrReceiverDecodeErrors: metricInfo{
+		Name: "cisco.iosxr.receiver.decode_errors",
+	},
+	CiscoIosxrReceiverDroppedDatapoints: metricInfo{
+		Name: "cisco.iosxr.receiver.dropped_datapoints",
+	},
+	CiscoIosxrReceiverLastSuccessTimestamp: metricInfo{
+		Name: "cisco.iosxr.receiver.last_success_timestamp",
+	},
+	CiscoIosxrReceiverReconnects: metricInfo{
+		Name: "cisco.iosxr.receiver.reconnects",
+	},
+	CiscoIosxrReceiverTargetLastSuccessTimestamp: metricInfo{
+		Name: "cisco.iosxr.receiver.target.last_success_timestamp",
+	},
+	CiscoIosxrReceiverTargetReconnects: metricInfo{
+		Name: "cisco.iosxr.receiver.target.reconnects",
+	},
+	CiscoIosxrReceiverTargetSubscriptionActive: metricInfo{
+		Name: "cisco.iosxr.receiver.target.subscription.active",
+	},
+	CiscoIosxrReceiverTargetUpdates: metricInfo{
+		Name: "cisco.iosxr.receiver.target.updates",
+	},
+	CiscoIosxrReceiverUnsupportedPaths: metricInfo{
+		Name: "cisco.iosxr.receiver.unsupported_paths",
+	},
+	CiscoIosxrReceiverUpdates: metricInfo{
+		Name: "cisco.iosxr.receiver.updates",
 	},
 	CiscoOpticsEsnr: metricInfo{
 		Name:       "cisco.optics.esnr",
@@ -274,6 +514,883 @@ var MetricsInfo = metricsInfo{
 		Name:       "cisco.optics.voltage",
 		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
 	},
+	CiscoScrapePartialSuccess: metricInfo{
+		Name: "cisco.scrape.partial_success",
+	},
+	CiscoTopologyNeighborInfo: metricInfo{
+		Name:       "cisco.topology.neighbor.info",
+		Attributes: []string{"cisco.topology.protocol", "network.interface.name", "cisco.topology.neighbor.name", "cisco.topology.neighbor.interface", "cisco.topology.neighbor.platform", "cisco.topology.neighbor.address", "network.peer.name", "network.peer.address", "network.protocol.name"},
+	},
+	CiscoTransceiverSensor: metricInfo{
+		Name: "cisco.transceiver.sensor",
+	},
+	CiscoWlcApCapwapEncryptionEnabled: metricInfo{
+		Name: "cisco.wlc.ap.capwap.encryption.enabled",
+	},
+	CiscoWlcApCapwapState: metricInfo{
+		Name: "cisco.wlc.ap.capwap.state",
+	},
+	CiscoWlcApDisconnect: metricInfo{
+		Name: "cisco.wlc.ap.disconnect",
+	},
+	CiscoWlcApDisconnectReasonInfo: metricInfo{
+		Name: "cisco.wlc.ap.disconnect.reason.info",
+	},
+	CiscoWlcApJoinFailureReasonInfo: metricInfo{
+		Name: "cisco.wlc.ap.join.failure.reason.info",
+	},
+	CiscoWlcApJoinStatus: metricInfo{
+		Name: "cisco.wlc.ap.join.status",
+	},
+	CiscoWlcAuthRadiusAccessAcceptCount: metricInfo{
+		Name: "cisco.wlc.auth.radius.access.accept.count",
+	},
+	CiscoWlcAuthRadiusAccessRejectCount: metricInfo{
+		Name: "cisco.wlc.auth.radius.access.reject.count",
+	},
+	CiscoWlcAuthRadiusBadAuthenticatorCount: metricInfo{
+		Name: "cisco.wlc.auth.radius.bad_authenticator.count",
+	},
+	CiscoWlcAuthRadiusResponseCount: metricInfo{
+		Name: "cisco.wlc.auth.radius.response.count",
+	},
+	CiscoWlcAuthRadiusResponseDelayAvg: metricInfo{
+		Name: "cisco.wlc.auth.radius.response_delay.avg",
+	},
+	CiscoWlcAuthRadiusResponseDelayMax: metricInfo{
+		Name: "cisco.wlc.auth.radius.response_delay.max",
+	},
+	CiscoWlcAuthRadiusTimeoutCount: metricInfo{
+		Name: "cisco.wlc.auth.radius.timeout.count",
+	},
+	CiscoWlcClientAuthFailureReasonInfo: metricInfo{
+		Name: "cisco.wlc.client.auth.failure.reason.info",
+	},
+	CiscoWlcClientConnectionState: metricInfo{
+		Name: "cisco.wlc.client.connection.state",
+	},
+	CiscoWlcClientNetworkIo: metricInfo{
+		Name: "cisco.wlc.client.network.io",
+	},
+	CiscoWlcClientNetworkPackets: metricInfo{
+		Name: "cisco.wlc.client.network.packets",
+	},
+	CiscoWlcClientRoamCount: metricInfo{
+		Name: "cisco.wlc.client.roam.count",
+	},
+	CiscoWlcClientRoamFailureCount: metricInfo{
+		Name: "cisco.wlc.client.roam.failure.count",
+	},
+	CiscoWlcClientRoamTypeInfo: metricInfo{
+		Name: "cisco.wlc.client.roam.type.info",
+	},
+	CiscoWlcClientWirelessRssi: metricInfo{
+		Name: "cisco.wlc.client.wireless.rssi",
+	},
+	CiscoWlcClientWirelessSnr: metricInfo{
+		Name: "cisco.wlc.client.wireless.snr",
+	},
+	CiscoWlcControllerCPUUtilization: metricInfo{
+		Name: "cisco.wlc.controller.cpu.utilization",
+	},
+	CiscoWlcControllerMemoryBytes: metricInfo{
+		Name: "cisco.wlc.controller.memory.bytes",
+	},
+	CiscoWlcControllerReceiverActiveSubscriptions: metricInfo{
+		Name: "cisco.wlc.controller.receiver.active_subscriptions",
+	},
+	CiscoWlcControllerReceiverDecodeErrors: metricInfo{
+		Name: "cisco.wlc.controller.receiver.decode_errors",
+	},
+	CiscoWlcControllerReceiverSubscriptionActive: metricInfo{
+		Name: "cisco.wlc.controller.receiver.subscription.active",
+	},
+	CiscoWlcControllerReceiverUpdates: metricInfo{
+		Name: "cisco.wlc.controller.receiver.updates",
+	},
+	CiscoWlcHaEnabled: metricInfo{
+		Name: "cisco.wlc.ha.enabled",
+	},
+	CiscoWlcHaStandbyFailureCount: metricInfo{
+		Name: "cisco.wlc.ha.standby.failure.count",
+	},
+	CiscoWlcHaState: metricInfo{
+		Name: "cisco.wlc.ha.state",
+	},
+	CiscoWlcHaSwitchoverCount: metricInfo{
+		Name: "cisco.wlc.ha.switchover.count",
+	},
+	CiscoWlcMobilityHandoffCount: metricInfo{
+		Name: "cisco.wlc.mobility.handoff.count",
+	},
+	CiscoWlcMobilityHandoffFailureCount: metricInfo{
+		Name: "cisco.wlc.mobility.handoff.failure.count",
+	},
+	CiscoWlcMobilityPeerStatus: metricInfo{
+		Name: "cisco.wlc.mobility.peer.status",
+	},
+	CiscoWlcMobilityRoamCount: metricInfo{
+		Name: "cisco.wlc.mobility.roam.count",
+	},
+	CiscoWlcRfChannelChangeCount: metricInfo{
+		Name: "cisco.wlc.rf.channel.change.count",
+	},
+	CiscoWlcRfChannelRecommended: metricInfo{
+		Name: "cisco.wlc.rf.channel.recommended",
+	},
+	CiscoWlcRfChannelUtilization: metricInfo{
+		Name: "cisco.wlc.rf.channel.utilization",
+	},
+	CiscoWlcRfClientCount: metricInfo{
+		Name: "cisco.wlc.rf.client.count",
+	},
+	CiscoWlcRfNoiseFloor: metricInfo{
+		Name: "cisco.wlc.rf.noise_floor",
+	},
+	CiscoWlcSsidChannelUtilization: metricInfo{
+		Name: "cisco.wlc.ssid.channel.utilization",
+	},
+	CiscoWlcSsidClientCount: metricInfo{
+		Name: "cisco.wlc.ssid.client.count",
+	},
+	CiscoWlcSsidNetworkIo: metricInfo{
+		Name: "cisco.wlc.ssid.network.io",
+	},
+	CiscoWlcSsidRetryCount: metricInfo{
+		Name: "cisco.wlc.ssid.retry.count",
+	},
+	FmcAPIEndpointError: metricInfo{
+		Name: "fmc.api.endpoint.error",
+	},
+	FmcAPIRateLimited: metricInfo{
+		Name: "fmc.api.rate_limited",
+	},
+	FmcAPIRequestDuration: metricInfo{
+		Name: "fmc.api.request.duration",
+	},
+	FmcAPIRequestErrors: metricInfo{
+		Name: "fmc.api.request.errors",
+	},
+	FmcAuditRecordCount: metricInfo{
+		Name: "fmc.audit.record.count",
+	},
+	FmcDeploymentPendingCount: metricInfo{
+		Name: "fmc.deployment.pending.count",
+	},
+	FmcDeploymentStatus: metricInfo{
+		Name: "fmc.deployment.status",
+	},
+	FmcHaStatus: metricInfo{
+		Name: "fmc.ha.status",
+	},
+	FmcHealthEventCount: metricInfo{
+		Name: "fmc.health.event.count",
+	},
+	FmcHealthStatus: metricInfo{
+		Name: "fmc.health.status",
+	},
+	FmcManagerUp: metricInfo{
+		Name: "fmc.manager.up",
+	},
+	FmcPolicyObjectCount: metricInfo{
+		Name: "fmc.policy.object.count",
+	},
+	FmcResourceCount: metricInfo{
+		Name: "fmc.resource.count",
+	},
+	FmcResourceInfo: metricInfo{
+		Name: "fmc.resource.info",
+	},
+	FmcResourceStatus: metricInfo{
+		Name: "fmc.resource.status",
+	},
+	FmcScrapeLastSuccess: metricInfo{
+		Name: "fmc.scrape.last_success",
+	},
+	FmcScrapePartialSuccess: metricInfo{
+		Name: "fmc.scrape.partial_success",
+	},
+	FmcVpnTunnelStatus: metricInfo{
+		Name: "fmc.vpn.tunnel.status",
+	},
+	IntersightAdvisoryActive: metricInfo{
+		Name: "intersight.advisory.active",
+	},
+	IntersightAdvisoryCount: metricInfo{
+		Name: "intersight.advisory.count",
+	},
+	IntersightAlarmActive: metricInfo{
+		Name: "intersight.alarm.active",
+	},
+	IntersightAlarmCount: metricInfo{
+		Name: "intersight.alarm.count",
+	},
+	IntersightAPIRateLimited: metricInfo{
+		Name: "intersight.api.rate_limited",
+	},
+	IntersightAPIRequestDuration: metricInfo{
+		Name: "intersight.api.request.duration",
+	},
+	IntersightAPIRequestErrors: metricInfo{
+		Name: "intersight.api.request.errors",
+	},
+	IntersightAuditRecordCount: metricInfo{
+		Name: "intersight.audit.record.count",
+	},
+	IntersightComputeAvailableMemory: metricInfo{
+		Name: "intersight.compute.available_memory",
+	},
+	IntersightComputeThreadCount: metricInfo{
+		Name: "intersight.compute.thread.count",
+	},
+	IntersightFaultCount: metricInfo{
+		Name: "intersight.fault.count",
+	},
+	IntersightFirmwareBundleInfo: metricInfo{
+		Name: "intersight.firmware.bundle.info",
+	},
+	IntersightHclStatus: metricInfo{
+		Name: "intersight.hcl.status",
+	},
+	IntersightHclStatusCount: metricInfo{
+		Name: "intersight.hcl.status.count",
+	},
+	IntersightHyperflexReadIops: metricInfo{
+		Name: "intersight.hyperflex.read.iops",
+	},
+	IntersightHyperflexReadLatency: metricInfo{
+		Name: "intersight.hyperflex.read.latency",
+	},
+	IntersightHyperflexStatus: metricInfo{
+		Name: "intersight.hyperflex.status",
+	},
+	IntersightHyperflexWriteIops: metricInfo{
+		Name: "intersight.hyperflex.write.iops",
+	},
+	IntersightHyperflexWriteLatency: metricInfo{
+		Name: "intersight.hyperflex.write.latency",
+	},
+	IntersightKubernetesClusterConnectionStatus: metricInfo{
+		Name: "intersight.kubernetes.cluster.connection_status",
+	},
+	IntersightResourceCount: metricInfo{
+		Name: "intersight.resource.count",
+	},
+	IntersightResourceInfo: metricInfo{
+		Name: "intersight.resource.info",
+	},
+	IntersightResourceStatus: metricInfo{
+		Name: "intersight.resource.status",
+	},
+	IntersightScrapeLastSuccess: metricInfo{
+		Name: "intersight.scrape.last_success",
+	},
+	IntersightScrapePartialSuccess: metricInfo{
+		Name: "intersight.scrape.partial_success",
+	},
+	IntersightStorageLifeLeft: metricInfo{
+		Name: "intersight.storage.life_left",
+	},
+	IntersightStorageMediaErrorCount: metricInfo{
+		Name: "intersight.storage.media_error.count",
+	},
+	IntersightStoragePowerOnHours: metricInfo{
+		Name: "intersight.storage.power_on.hours",
+	},
+	IntersightStoragePredictiveFailureCount: metricInfo{
+		Name: "intersight.storage.predictive_failure.count",
+	},
+	IntersightStorageRebuildRate: metricInfo{
+		Name: "intersight.storage.rebuild.rate",
+	},
+	IntersightStorageStatus: metricInfo{
+		Name: "intersight.storage.status",
+	},
+	IntersightStorageTemperature: metricInfo{
+		Name: "intersight.storage.temperature",
+	},
+	IntersightTargetConnectionStatus: metricInfo{
+		Name: "intersight.target.connection_status",
+	},
+	IntersightTaskCount: metricInfo{
+		Name: "intersight.task.count",
+	},
+	IntersightTaskStatus: metricInfo{
+		Name: "intersight.task.status",
+	},
+	IntersightTechsupportCount: metricInfo{
+		Name: "intersight.techsupport.count",
+	},
+	IntersightTechsupportStatus: metricInfo{
+		Name: "intersight.techsupport.status",
+	},
+	IntersightTelemetryQueryRows: metricInfo{
+		Name: "intersight.telemetry.query.rows",
+	},
+	IntersightUcsCPUIdleUtilization: metricInfo{
+		Name: "intersight.ucs.cpu.idle.utilization",
+	},
+	IntersightUcsCPUSystemUtilization: metricInfo{
+		Name: "intersight.ucs.cpu.system.utilization",
+	},
+	IntersightUcsCurrent: metricInfo{
+		Name: "intersight.ucs.current",
+	},
+	IntersightUcsFanSpeed: metricInfo{
+		Name: "intersight.ucs.fan.speed",
+	},
+	IntersightUcsFanSpeedRatio: metricInfo{
+		Name: "intersight.ucs.fan.speed_ratio",
+	},
+	IntersightUcsFanStatus: metricInfo{
+		Name: "intersight.ucs.fan.status",
+	},
+	IntersightUcsHostEnergy: metricInfo{
+		Name: "intersight.ucs.host.energy",
+	},
+	IntersightUcsHostPower: metricInfo{
+		Name: "intersight.ucs.host.power",
+	},
+	IntersightUcsHostPowerState: metricInfo{
+		Name: "intersight.ucs.host.power_state",
+	},
+	IntersightUcsMemoryCached: metricInfo{
+		Name: "intersight.ucs.memory.cached",
+	},
+	IntersightUcsMemoryEccCorrectable: metricInfo{
+		Name: "intersight.ucs.memory.ecc.correctable",
+	},
+	IntersightUcsMemoryEccUncorrectable: metricInfo{
+		Name: "intersight.ucs.memory.ecc.uncorrectable",
+	},
+	IntersightUcsMemoryFree: metricInfo{
+		Name: "intersight.ucs.memory.free",
+	},
+	IntersightUcsMemoryModuleSize: metricInfo{
+		Name: "intersight.ucs.memory.module.size",
+	},
+	IntersightUcsMemoryStatus: metricInfo{
+		Name: "intersight.ucs.memory.status",
+	},
+	IntersightUcsMemoryUsed: metricInfo{
+		Name: "intersight.ucs.memory.used",
+	},
+	IntersightUcsNetworkInterfaceResets: metricInfo{
+		Name: "intersight.ucs.network.interface_resets",
+	},
+	IntersightUcsNetworkLinkStatus: metricInfo{
+		Name: "intersight.ucs.network.link.status",
+	},
+	IntersightUcsNetworkLinkFailures: metricInfo{
+		Name: "intersight.ucs.network.link_failures",
+	},
+	IntersightUcsNetworkReceive: metricInfo{
+		Name: "intersight.ucs.network.receive",
+	},
+	IntersightUcsNetworkReceiveCrcErrors: metricInfo{
+		Name: "intersight.ucs.network.receive.crc_errors",
+	},
+	IntersightUcsNetworkReceiveDiscards: metricInfo{
+		Name: "intersight.ucs.network.receive.discards",
+	},
+	IntersightUcsNetworkReceiveDrops: metricInfo{
+		Name: "intersight.ucs.network.receive.drops",
+	},
+	IntersightUcsNetworkReceiveErrors: metricInfo{
+		Name: "intersight.ucs.network.receive.errors",
+	},
+	IntersightUcsNetworkReceiveNoBuffer: metricInfo{
+		Name: "intersight.ucs.network.receive.no_buffer",
+	},
+	IntersightUcsNetworkReceivePackets: metricInfo{
+		Name: "intersight.ucs.network.receive.packets",
+	},
+	IntersightUcsNetworkReceivePauseFrames: metricInfo{
+		Name: "intersight.ucs.network.receive.pause_frames",
+	},
+	IntersightUcsNetworkSignalLosses: metricInfo{
+		Name: "intersight.ucs.network.signal_losses",
+	},
+	IntersightUcsNetworkSpeed: metricInfo{
+		Name: "intersight.ucs.network.speed",
+	},
+	IntersightUcsNetworkTransmit: metricInfo{
+		Name: "intersight.ucs.network.transmit",
+	},
+	IntersightUcsNetworkTransmitDiscards: metricInfo{
+		Name: "intersight.ucs.network.transmit.discards",
+	},
+	IntersightUcsNetworkTransmitDrops: metricInfo{
+		Name: "intersight.ucs.network.transmit.drops",
+	},
+	IntersightUcsNetworkTransmitErrors: metricInfo{
+		Name: "intersight.ucs.network.transmit.errors",
+	},
+	IntersightUcsNetworkTransmitPackets: metricInfo{
+		Name: "intersight.ucs.network.transmit.packets",
+	},
+	IntersightUcsNetworkTransmitPauseFrames: metricInfo{
+		Name: "intersight.ucs.network.transmit.pause_frames",
+	},
+	IntersightUcsNetworkUtilization: metricInfo{
+		Name: "intersight.ucs.network.utilization",
+	},
+	IntersightUcsPowerSupplyOutputPower: metricInfo{
+		Name: "intersight.ucs.power_supply.output_power",
+	},
+	IntersightUcsPowerSupplyStatus: metricInfo{
+		Name: "intersight.ucs.power_supply.status",
+	},
+	IntersightUcsPowerSupplyUtilization: metricInfo{
+		Name: "intersight.ucs.power_supply.utilization",
+	},
+	IntersightUcsSignalPowerReceive: metricInfo{
+		Name: "intersight.ucs.signal_power.receive",
+	},
+	IntersightUcsSignalPowerTransmit: metricInfo{
+		Name: "intersight.ucs.signal_power.transmit",
+	},
+	IntersightUcsTemperature: metricInfo{
+		Name: "intersight.ucs.temperature",
+	},
+	IntersightUcsTemperatureLimitHighCritical: metricInfo{
+		Name: "intersight.ucs.temperature.limit_high_critical",
+	},
+	IntersightUcsTemperatureLimitLowCritical: metricInfo{
+		Name: "intersight.ucs.temperature.limit_low_critical",
+	},
+	IntersightUcsTemperatureStatus: metricInfo{
+		Name: "intersight.ucs.temperature.status",
+	},
+	IntersightUcsVoltage: metricInfo{
+		Name: "intersight.ucs.voltage",
+	},
+	IntersightVirtualMachineCount: metricInfo{
+		Name: "intersight.virtual_machine.count",
+	},
+	IntersightVirtualMachineCPUCount: metricInfo{
+		Name: "intersight.virtual_machine.cpu.count",
+	},
+	IntersightVirtualMachineMemory: metricInfo{
+		Name: "intersight.virtual_machine.memory",
+	},
+	IntersightVirtualMachinePowerState: metricInfo{
+		Name: "intersight.virtual_machine.power_state",
+	},
+	IntersightWorkflowCount: metricInfo{
+		Name: "intersight.workflow.count",
+	},
+	IntersightWorkflowStatus: metricInfo{
+		Name: "intersight.workflow.status",
+	},
+	IseAccountingSessionCount: metricInfo{
+		Name: "ise.accounting.session.count",
+	},
+	IseAlarmCount: metricInfo{
+		Name: "ise.alarm.count",
+	},
+	IseAPIEndpointError: metricInfo{
+		Name: "ise.api.endpoint.error",
+	},
+	IseAPIRateLimited: metricInfo{
+		Name: "ise.api.rate_limited",
+	},
+	IseAPIRequestDuration: metricInfo{
+		Name: "ise.api.request.duration",
+	},
+	IseAPIRequestErrors: metricInfo{
+		Name: "ise.api.request.errors",
+	},
+	IseAuthFailureReasonInfo: metricInfo{
+		Name: "ise.auth.failure.reason.info",
+	},
+	IseCertificateCount: metricInfo{
+		Name: "ise.certificate.count",
+	},
+	IseCertificateExpiration: metricInfo{
+		Name: "ise.certificate.expiration",
+	},
+	IseControllerUp: metricInfo{
+		Name: "ise.controller.up",
+	},
+	IseDataconnectQueryDuration: metricInfo{
+		Name: "ise.dataconnect.query.duration",
+	},
+	IseDataconnectQueryErrors: metricInfo{
+		Name: "ise.dataconnect.query.errors",
+	},
+	IseDataconnectQueryRows: metricInfo{
+		Name: "ise.dataconnect.query.rows",
+	},
+	IseDataconnectRowCount: metricInfo{
+		Name: "ise.dataconnect.row.count",
+	},
+	IseDeploymentNodeCount: metricInfo{
+		Name: "ise.deployment.node.count",
+	},
+	IseDeploymentNodeStatus: metricInfo{
+		Name: "ise.deployment.node.status",
+	},
+	IseEndpointCount: metricInfo{
+		Name: "ise.endpoint.count",
+	},
+	IseEndpointPostureCount: metricInfo{
+		Name: "ise.endpoint.posture.count",
+	},
+	IseEndpointPostureStatus: metricInfo{
+		Name: "ise.endpoint.posture.status",
+	},
+	IseEndpointProfileCount: metricInfo{
+		Name: "ise.endpoint.profile.count",
+	},
+	IseEndpointStatus: metricInfo{
+		Name: "ise.endpoint.status",
+	},
+	IseLicenseCount: metricInfo{
+		Name: "ise.license.count",
+	},
+	IseLicenseStatus: metricInfo{
+		Name: "ise.license.status",
+	},
+	IseNetworkDeviceCount: metricInfo{
+		Name: "ise.network_device.count",
+	},
+	IseNetworkDeviceStatus: metricInfo{
+		Name: "ise.network_device.status",
+	},
+	IsePolicyObjectCount: metricInfo{
+		Name: "ise.policy.object.count",
+	},
+	IsePolicyStatus: metricInfo{
+		Name: "ise.policy.status",
+	},
+	IseProfilerPolicyStatus: metricInfo{
+		Name: "ise.profiler.policy.status",
+	},
+	IsePxgridMessageCount: metricInfo{
+		Name: "ise.pxgrid.message.count",
+	},
+	IsePxgridServiceStatus: metricInfo{
+		Name: "ise.pxgrid.service.status",
+	},
+	IsePxgridSubscriptionStatus: metricInfo{
+		Name: "ise.pxgrid.subscription.status",
+	},
+	IseRadiusFailureCount: metricInfo{
+		Name: "ise.radius.failure.count",
+	},
+	IseResourceInfo: metricInfo{
+		Name: "ise.resource.info",
+	},
+	IseResourceStatus: metricInfo{
+		Name: "ise.resource.status",
+	},
+	IseScrapeLastSuccess: metricInfo{
+		Name: "ise.scrape.last_success",
+	},
+	IseScrapePartialSuccess: metricInfo{
+		Name: "ise.scrape.partial_success",
+	},
+	IseServiceSkipped: metricInfo{
+		Name: "ise.service.skipped",
+	},
+	IseServiceUnavailable: metricInfo{
+		Name: "ise.service.unavailable",
+	},
+	IseSessionActiveCount: metricInfo{
+		Name: "ise.session.active.count",
+	},
+	IseSessionCount: metricInfo{
+		Name: "ise.session.count",
+	},
+	IseTacacsFailureCount: metricInfo{
+		Name: "ise.tacacs.failure.count",
+	},
+	IseTrustsecResourceCount: metricInfo{
+		Name: "ise.trustsec.resource.count",
+	},
+	IseTrustsecResourceStatus: metricInfo{
+		Name: "ise.trustsec.resource.status",
+	},
+	IseWebhookDeliveryCount: metricInfo{
+		Name: "ise.webhook.delivery.count",
+	},
+	MerakiAPIRequestDuration: metricInfo{
+		Name: "meraki.api.request.duration",
+	},
+	MerakiAPIRequestErrors: metricInfo{
+		Name: "meraki.api.request.errors",
+	},
+	MerakiAPIRequestRateLimited: metricInfo{
+		Name: "meraki.api.request.rate_limited",
+	},
+	MerakiAppliancePerformanceScore: metricInfo{
+		Name: "meraki.appliance.performance.score",
+	},
+	MerakiControllerUp: metricInfo{
+		Name: "meraki.controller.up",
+	},
+	MerakiDeviceStatus: metricInfo{
+		Name: "meraki.device.status",
+	},
+	MerakiPowerModuleStatus: metricInfo{
+		Name: "meraki.power.module.status",
+	},
+	MerakiScrapeLastSuccess: metricInfo{
+		Name: "meraki.scrape.last_success",
+	},
+	MerakiSwitchPortAlertActive: metricInfo{
+		Name: "meraki.switch.port.alert.active",
+	},
+	MerakiSwitchPortPoeAllocated: metricInfo{
+		Name: "meraki.switch.port.poe.allocated",
+	},
+	MerakiSwitchPortUsage: metricInfo{
+		Name: "meraki.switch.port.usage",
+	},
+	MerakiUplinkCellularSignalRsrp: metricInfo{
+		Name: "meraki.uplink.cellular.signal.rsrp",
+	},
+	MerakiUplinkCellularSignalRsrq: metricInfo{
+		Name: "meraki.uplink.cellular.signal.rsrq",
+	},
+	MerakiUplinkLatency: metricInfo{
+		Name: "meraki.uplink.latency",
+	},
+	MerakiUplinkLoss: metricInfo{
+		Name: "meraki.uplink.loss",
+	},
+	MerakiUplinkStatus: metricInfo{
+		Name: "meraki.uplink.status",
+	},
+	MerakiVpnPeerJitter: metricInfo{
+		Name: "meraki.vpn.peer.jitter",
+	},
+	MerakiVpnPeerLatency: metricInfo{
+		Name: "meraki.vpn.peer.latency",
+	},
+	MerakiVpnPeerLoss: metricInfo{
+		Name: "meraki.vpn.peer.loss",
+	},
+	MerakiVpnPeerMos: metricInfo{
+		Name: "meraki.vpn.peer.mos",
+	},
+	MerakiVpnPeerStatus: metricInfo{
+		Name: "meraki.vpn.peer.status",
+	},
+	MerakiVpnPeerUsage: metricInfo{
+		Name: "meraki.vpn.peer.usage",
+	},
+	MerakiWirelessChannelUtilization: metricInfo{
+		Name: "meraki.wireless.channel_utilization",
+	},
+	MerakiWirelessClientCount: metricInfo{
+		Name: "meraki.wireless.client.count",
+	},
+	MerakiWirelessPacketCount: metricInfo{
+		Name: "meraki.wireless.packet.count",
+	},
+	MerakiWirelessPacketLoss: metricInfo{
+		Name: "meraki.wireless.packet.loss",
+	},
+	MerakiWirelessPacketLossPercentage: metricInfo{
+		Name: "meraki.wireless.packet.loss_percentage",
+	},
+	MerakiWirelessSsidStatus: metricInfo{
+		Name: "meraki.wireless.ssid.status",
+	},
+	NexusDashboardAPIEndpointError: metricInfo{
+		Name: "nexus_dashboard.api.endpoint.error",
+	},
+	NexusDashboardAPIRateLimited: metricInfo{
+		Name: "nexus_dashboard.api.rate_limited",
+	},
+	NexusDashboardAPIRequestDuration: metricInfo{
+		Name: "nexus_dashboard.api.request.duration",
+	},
+	NexusDashboardAPIRequestErrors: metricInfo{
+		Name: "nexus_dashboard.api.request.errors",
+	},
+	NexusDashboardAuditRecordCount: metricInfo{
+		Name: "nexus_dashboard.audit.record.count",
+	},
+	NexusDashboardConfigCompliance: metricInfo{
+		Name: "nexus_dashboard.config.compliance",
+	},
+	NexusDashboardDataBrokerRuleCount: metricInfo{
+		Name: "nexus_dashboard.data_broker.rule.count",
+	},
+	NexusDashboardDataBrokerSessionCount: metricInfo{
+		Name: "nexus_dashboard.data_broker.session.count",
+	},
+	NexusDashboardDataBrokerStatus: metricInfo{
+		Name: "nexus_dashboard.data_broker.status",
+	},
+	NexusDashboardDeploymentStatus: metricInfo{
+		Name: "nexus_dashboard.deployment.status",
+	},
+	NexusDashboardEndpointCount: metricInfo{
+		Name: "nexus_dashboard.endpoint.count",
+	},
+	NexusDashboardEventCount: metricInfo{
+		Name: "nexus_dashboard.event.count",
+	},
+	NexusDashboardFabricHealth: metricInfo{
+		Name: "nexus_dashboard.fabric.health",
+	},
+	NexusDashboardInsightsAnomalyActive: metricInfo{
+		Name: "nexus_dashboard.insights.anomaly.active",
+	},
+	NexusDashboardInsightsAnomalyCount: metricInfo{
+		Name: "nexus_dashboard.insights.anomaly.count",
+	},
+	NexusDashboardInsightsConfidence: metricInfo{
+		Name: "nexus_dashboard.insights.confidence",
+	},
+	NexusDashboardInsightsScore: metricInfo{
+		Name: "nexus_dashboard.insights.score",
+	},
+	NexusDashboardInsightsStatus: metricInfo{
+		Name: "nexus_dashboard.insights.status",
+	},
+	NexusDashboardOrchestratorDeploymentCount: metricInfo{
+		Name: "nexus_dashboard.orchestrator.deployment.count",
+	},
+	NexusDashboardOrchestratorDeploymentStatus: metricInfo{
+		Name: "nexus_dashboard.orchestrator.deployment.status",
+	},
+	NexusDashboardOrchestratorPolicyDeltaCount: metricInfo{
+		Name: "nexus_dashboard.orchestrator.policy_delta.count",
+	},
+	NexusDashboardResourceCount: metricInfo{
+		Name: "nexus_dashboard.resource.count",
+	},
+	NexusDashboardResourceInfo: metricInfo{
+		Name: "nexus_dashboard.resource.info",
+	},
+	NexusDashboardResourceStatus: metricInfo{
+		Name: "nexus_dashboard.resource.status",
+	},
+	NexusDashboardScrapeLastSuccess: metricInfo{
+		Name: "nexus_dashboard.scrape.last_success",
+	},
+	NexusDashboardScrapePartialSuccess: metricInfo{
+		Name: "nexus_dashboard.scrape.partial_success",
+	},
+	NexusDashboardServiceHealth: metricInfo{
+		Name: "nexus_dashboard.service.health",
+	},
+	NexusDashboardServiceSkipped: metricInfo{
+		Name: "nexus_dashboard.service.skipped",
+	},
+	NexusDashboardServiceUnavailable: metricInfo{
+		Name: "nexus_dashboard.service.unavailable",
+	},
+	NexusDashboardStorageUtilization: metricInfo{
+		Name: "nexus_dashboard.storage.utilization",
+	},
+	NexusDashboardVpcPeerCount: metricInfo{
+		Name: "nexus_dashboard.vpc.peer.count",
+	},
+	SdwanAPIRateLimited: metricInfo{
+		Name: "sdwan.api.rate_limited",
+	},
+	SdwanAPIRequestDuration: metricInfo{
+		Name: "sdwan.api.request.duration",
+	},
+	SdwanAPIRequestErrors: metricInfo{
+		Name: "sdwan.api.request.errors",
+	},
+	SdwanAppRouteJitter: metricInfo{
+		Name: "sdwan.app_route.jitter",
+	},
+	SdwanAppRouteLatency: metricInfo{
+		Name: "sdwan.app_route.latency",
+	},
+	SdwanAppRouteLoss: metricInfo{
+		Name: "sdwan.app_route.loss",
+	},
+	SdwanAppRouteSLAStatus: metricInfo{
+		Name: "sdwan.app_route.sla.status",
+	},
+	SdwanBfdSessionCount: metricInfo{
+		Name: "sdwan.bfd.session.count",
+	},
+	SdwanBfdSessionFlapCount: metricInfo{
+		Name: "sdwan.bfd.session.flap.count",
+	},
+	SdwanBfdSessionStatus: metricInfo{
+		Name: "sdwan.bfd.session.status",
+	},
+	SdwanBfdSessionTransitions: metricInfo{
+		Name: "sdwan.bfd.session.transitions",
+	},
+	SdwanCollectionObjectCount: metricInfo{
+		Name: "sdwan.collection.object.count",
+	},
+	SdwanControlActualConnections: metricInfo{
+		Name: "sdwan.control.actual_connections",
+	},
+	SdwanControlConnectionCount: metricInfo{
+		Name: "sdwan.control.connection.count",
+	},
+	SdwanControlConnectionStatus: metricInfo{
+		Name: "sdwan.control.connection.status",
+	},
+	SdwanControlExpectedConnections: metricInfo{
+		Name: "sdwan.control.expected_connections",
+	},
+	SdwanDeviceCertificateStatus: metricInfo{
+		Name: "sdwan.device.certificate.status",
+	},
+	SdwanDeviceReachabilityStatus: metricInfo{
+		Name: "sdwan.device.reachability.status",
+	},
+	SdwanDeviceValidityStatus: metricInfo{
+		Name: "sdwan.device.validity.status",
+	},
+	SdwanEventCount: metricInfo{
+		Name: "sdwan.event.count",
+	},
+	SdwanInventoryDeviceCount: metricInfo{
+		Name: "sdwan.inventory.device.count",
+	},
+	SdwanManagerEndpointStatus: metricInfo{
+		Name: "sdwan.manager.endpoint.status",
+	},
+	SdwanManagerHealthScore: metricInfo{
+		Name: "sdwan.manager.health.score",
+	},
+	SdwanManagerStatus: metricInfo{
+		Name: "sdwan.manager.status",
+	},
+	SdwanManagerUp: metricInfo{
+		Name: "sdwan.manager.up",
+	},
+	SdwanResourceInfo: metricInfo{
+		Name: "sdwan.resource.info",
+	},
+	SdwanResourceStatus: metricInfo{
+		Name: "sdwan.resource.status",
+	},
+	SdwanScrapeLastSuccess: metricInfo{
+		Name: "sdwan.scrape.last_success",
+	},
+	SdwanScrapePartialSuccess: metricInfo{
+		Name: "sdwan.scrape.partial_success",
+	},
+	SdwanServiceSkipped: metricInfo{
+		Name: "sdwan.service.skipped",
+	},
+	SdwanServiceUnavailable: metricInfo{
+		Name: "sdwan.service.unavailable",
+	},
+	SdwanTransportInterfaceStatus: metricInfo{
+		Name: "sdwan.transport.interface.status",
+	},
+	SystemCPULogicalCount: metricInfo{
+		Name: "system.cpu.logical.count",
+	},
 	SystemCPUUtilization: metricInfo{
 		Name:       "system.cpu.utilization",
 		Attributes: []string{"cisco.node.name"},
@@ -308,36 +1425,3782 @@ var MetricsInfo = metricsInfo{
 }
 
 type metricsInfo struct {
-	CiscoDeviceUp                metricInfo
-	CiscoInterfaceAdminStatus    metricInfo
-	CiscoInterfaceIoRate         metricInfo
-	CiscoInterfacePacketRate     metricInfo
-	CiscoInterfaceSpeed          metricInfo
-	CiscoInterfaceUtilization    metricInfo
-	CiscoOpticsEsnr              metricInfo
-	CiscoOpticsLaserBiasCurrent  metricInfo
-	CiscoOpticsPreFecBer         metricInfo
-	CiscoOpticsPresent           metricInfo
-	CiscoOpticsRxPower           metricInfo
-	CiscoOpticsTdecq             metricInfo
-	CiscoOpticsTecCurrent        metricInfo
-	CiscoOpticsTecUtilization    metricInfo
-	CiscoOpticsTemperature       metricInfo
-	CiscoOpticsTxPower           metricInfo
-	CiscoOpticsVoltage           metricInfo
-	SystemCPUUtilization         metricInfo
-	SystemMemoryUtilization      metricInfo
-	SystemNetworkErrors          metricInfo
-	SystemNetworkInterfaceStatus metricInfo
-	SystemNetworkIo              metricInfo
-	SystemNetworkPacketCount     metricInfo
-	SystemNetworkPacketDropped   metricInfo
-	SystemUptime                 metricInfo
+	AciAPIEndpointError                                 metricInfo
+	AciAPIRateLimited                                   metricInfo
+	AciAPIRequestDuration                               metricInfo
+	AciAPIRequestErrors                                 metricInfo
+	AciAuditRecordCount                                 metricInfo
+	AciControllerUp                                     metricInfo
+	AciEndpointCount                                    metricInfo
+	AciEndpointPresent                                  metricInfo
+	AciEventCount                                       metricInfo
+	AciFabricHealth                                     metricInfo
+	AciFaultActive                                      metricInfo
+	AciFaultCount                                       metricInfo
+	AciResourceCount                                    metricInfo
+	AciResourceInfo                                     metricInfo
+	AciResourceStatus                                   metricInfo
+	AciScrapeLastSuccess                                metricInfo
+	AciScrapePartialSuccess                             metricInfo
+	AciTenantObjectCount                                metricInfo
+	AciTenantStatus                                     metricInfo
+	CatalystCenterAPIRateLimited                        metricInfo
+	CatalystCenterAPIRequestDuration                    metricInfo
+	CatalystCenterAPIRequestErrors                      metricInfo
+	CatalystCenterClientCount                           metricInfo
+	CatalystCenterClientDetailHealthScore               metricInfo
+	CatalystCenterClientHealthScore                     metricInfo
+	CatalystCenterClientIssueCount                      metricInfo
+	CatalystCenterClientNetworkIo                       metricInfo
+	CatalystCenterClientUniqueCount                     metricInfo
+	CatalystCenterClientWirelessRssi                    metricInfo
+	CatalystCenterClientWirelessSnr                     metricInfo
+	CatalystCenterDeviceCollectionStatus                metricInfo
+	CatalystCenterDeviceDetailCommunicationStatus       metricInfo
+	CatalystCenterDeviceDetailHealthScore               metricInfo
+	CatalystCenterDeviceInterfaceCount                  metricInfo
+	CatalystCenterDeviceReachabilityStatus              metricInfo
+	CatalystCenterDeviceUptime                          metricInfo
+	CatalystCenterInterfaceCount                        metricInfo
+	CatalystCenterInventoryDeviceCount                  metricInfo
+	CatalystCenterIssueActiveCount                      metricInfo
+	CatalystCenterIssueCount                            metricInfo
+	CatalystCenterNetworkDeviceCount                    metricInfo
+	CatalystCenterNetworkHealthCategoryScore            metricInfo
+	CatalystCenterNetworkHealthEntityCount              metricInfo
+	CatalystCenterNetworkHealthEntityScore              metricInfo
+	CatalystCenterNetworkHealthScore                    metricInfo
+	CatalystCenterScrapeLastSuccess                     metricInfo
+	CatalystCenterScrapePartialSuccess                  metricInfo
+	CatalystCenterSiteClientCount                       metricInfo
+	CatalystCenterSiteClientHealthPercentage            metricInfo
+	CatalystCenterSiteHealthCount                       metricInfo
+	CatalystCenterSiteIssueCount                        metricInfo
+	CatalystCenterSiteNetworkDeviceCount                metricInfo
+	CatalystCenterSiteNetworkDeviceHealthPercentage     metricInfo
+	CatalystCenterTopologyLinkCount                     metricInfo
+	CatalystCenterTopologyNodeCount                     metricInfo
+	CiscoCatalyst9800ReceiverActiveSubscriptions        metricInfo
+	CiscoCatalyst9800ReceiverCompactGpbPayloads         metricInfo
+	CiscoCatalyst9800ReceiverDecodeErrors               metricInfo
+	CiscoCatalyst9800ReceiverDroppedDatapoints          metricInfo
+	CiscoCatalyst9800ReceiverLastSuccessTimestamp       metricInfo
+	CiscoCatalyst9800ReceiverReconnects                 metricInfo
+	CiscoCatalyst9800ReceiverTargetLastSuccessTimestamp metricInfo
+	CiscoCatalyst9800ReceiverTargetReconnects           metricInfo
+	CiscoCatalyst9800ReceiverTargetSubscriptionActive   metricInfo
+	CiscoCatalyst9800ReceiverTargetUpdates              metricInfo
+	CiscoCatalyst9800ReceiverUnsupportedPaths           metricInfo
+	CiscoCatalyst9800ReceiverUpdates                    metricInfo
+	CiscoDeviceUp                                       metricInfo
+	CiscoInterfaceAdminStatus                           metricInfo
+	CiscoInterfaceDropRate                              metricInfo
+	CiscoInterfaceIoRate                                metricInfo
+	CiscoInterfacePacketRate                            metricInfo
+	CiscoInterfaceSpeed                                 metricInfo
+	CiscoInterfaceUtilization                           metricInfo
+	CiscoIosxrReceiverActiveSubscriptions               metricInfo
+	CiscoIosxrReceiverCompactGpbPayloads                metricInfo
+	CiscoIosxrReceiverDecodeErrors                      metricInfo
+	CiscoIosxrReceiverDroppedDatapoints                 metricInfo
+	CiscoIosxrReceiverLastSuccessTimestamp              metricInfo
+	CiscoIosxrReceiverReconnects                        metricInfo
+	CiscoIosxrReceiverTargetLastSuccessTimestamp        metricInfo
+	CiscoIosxrReceiverTargetReconnects                  metricInfo
+	CiscoIosxrReceiverTargetSubscriptionActive          metricInfo
+	CiscoIosxrReceiverTargetUpdates                     metricInfo
+	CiscoIosxrReceiverUnsupportedPaths                  metricInfo
+	CiscoIosxrReceiverUpdates                           metricInfo
+	CiscoOpticsEsnr                                     metricInfo
+	CiscoOpticsLaserBiasCurrent                         metricInfo
+	CiscoOpticsPreFecBer                                metricInfo
+	CiscoOpticsPresent                                  metricInfo
+	CiscoOpticsRxPower                                  metricInfo
+	CiscoOpticsTdecq                                    metricInfo
+	CiscoOpticsTecCurrent                               metricInfo
+	CiscoOpticsTecUtilization                           metricInfo
+	CiscoOpticsTemperature                              metricInfo
+	CiscoOpticsTxPower                                  metricInfo
+	CiscoOpticsVoltage                                  metricInfo
+	CiscoScrapePartialSuccess                           metricInfo
+	CiscoTopologyNeighborInfo                           metricInfo
+	CiscoTransceiverSensor                              metricInfo
+	CiscoWlcApCapwapEncryptionEnabled                   metricInfo
+	CiscoWlcApCapwapState                               metricInfo
+	CiscoWlcApDisconnect                                metricInfo
+	CiscoWlcApDisconnectReasonInfo                      metricInfo
+	CiscoWlcApJoinFailureReasonInfo                     metricInfo
+	CiscoWlcApJoinStatus                                metricInfo
+	CiscoWlcAuthRadiusAccessAcceptCount                 metricInfo
+	CiscoWlcAuthRadiusAccessRejectCount                 metricInfo
+	CiscoWlcAuthRadiusBadAuthenticatorCount             metricInfo
+	CiscoWlcAuthRadiusResponseCount                     metricInfo
+	CiscoWlcAuthRadiusResponseDelayAvg                  metricInfo
+	CiscoWlcAuthRadiusResponseDelayMax                  metricInfo
+	CiscoWlcAuthRadiusTimeoutCount                      metricInfo
+	CiscoWlcClientAuthFailureReasonInfo                 metricInfo
+	CiscoWlcClientConnectionState                       metricInfo
+	CiscoWlcClientNetworkIo                             metricInfo
+	CiscoWlcClientNetworkPackets                        metricInfo
+	CiscoWlcClientRoamCount                             metricInfo
+	CiscoWlcClientRoamFailureCount                      metricInfo
+	CiscoWlcClientRoamTypeInfo                          metricInfo
+	CiscoWlcClientWirelessRssi                          metricInfo
+	CiscoWlcClientWirelessSnr                           metricInfo
+	CiscoWlcControllerCPUUtilization                    metricInfo
+	CiscoWlcControllerMemoryBytes                       metricInfo
+	CiscoWlcControllerReceiverActiveSubscriptions       metricInfo
+	CiscoWlcControllerReceiverDecodeErrors              metricInfo
+	CiscoWlcControllerReceiverSubscriptionActive        metricInfo
+	CiscoWlcControllerReceiverUpdates                   metricInfo
+	CiscoWlcHaEnabled                                   metricInfo
+	CiscoWlcHaStandbyFailureCount                       metricInfo
+	CiscoWlcHaState                                     metricInfo
+	CiscoWlcHaSwitchoverCount                           metricInfo
+	CiscoWlcMobilityHandoffCount                        metricInfo
+	CiscoWlcMobilityHandoffFailureCount                 metricInfo
+	CiscoWlcMobilityPeerStatus                          metricInfo
+	CiscoWlcMobilityRoamCount                           metricInfo
+	CiscoWlcRfChannelChangeCount                        metricInfo
+	CiscoWlcRfChannelRecommended                        metricInfo
+	CiscoWlcRfChannelUtilization                        metricInfo
+	CiscoWlcRfClientCount                               metricInfo
+	CiscoWlcRfNoiseFloor                                metricInfo
+	CiscoWlcSsidChannelUtilization                      metricInfo
+	CiscoWlcSsidClientCount                             metricInfo
+	CiscoWlcSsidNetworkIo                               metricInfo
+	CiscoWlcSsidRetryCount                              metricInfo
+	FmcAPIEndpointError                                 metricInfo
+	FmcAPIRateLimited                                   metricInfo
+	FmcAPIRequestDuration                               metricInfo
+	FmcAPIRequestErrors                                 metricInfo
+	FmcAuditRecordCount                                 metricInfo
+	FmcDeploymentPendingCount                           metricInfo
+	FmcDeploymentStatus                                 metricInfo
+	FmcHaStatus                                         metricInfo
+	FmcHealthEventCount                                 metricInfo
+	FmcHealthStatus                                     metricInfo
+	FmcManagerUp                                        metricInfo
+	FmcPolicyObjectCount                                metricInfo
+	FmcResourceCount                                    metricInfo
+	FmcResourceInfo                                     metricInfo
+	FmcResourceStatus                                   metricInfo
+	FmcScrapeLastSuccess                                metricInfo
+	FmcScrapePartialSuccess                             metricInfo
+	FmcVpnTunnelStatus                                  metricInfo
+	IntersightAdvisoryActive                            metricInfo
+	IntersightAdvisoryCount                             metricInfo
+	IntersightAlarmActive                               metricInfo
+	IntersightAlarmCount                                metricInfo
+	IntersightAPIRateLimited                            metricInfo
+	IntersightAPIRequestDuration                        metricInfo
+	IntersightAPIRequestErrors                          metricInfo
+	IntersightAuditRecordCount                          metricInfo
+	IntersightComputeAvailableMemory                    metricInfo
+	IntersightComputeThreadCount                        metricInfo
+	IntersightFaultCount                                metricInfo
+	IntersightFirmwareBundleInfo                        metricInfo
+	IntersightHclStatus                                 metricInfo
+	IntersightHclStatusCount                            metricInfo
+	IntersightHyperflexReadIops                         metricInfo
+	IntersightHyperflexReadLatency                      metricInfo
+	IntersightHyperflexStatus                           metricInfo
+	IntersightHyperflexWriteIops                        metricInfo
+	IntersightHyperflexWriteLatency                     metricInfo
+	IntersightKubernetesClusterConnectionStatus         metricInfo
+	IntersightResourceCount                             metricInfo
+	IntersightResourceInfo                              metricInfo
+	IntersightResourceStatus                            metricInfo
+	IntersightScrapeLastSuccess                         metricInfo
+	IntersightScrapePartialSuccess                      metricInfo
+	IntersightStorageLifeLeft                           metricInfo
+	IntersightStorageMediaErrorCount                    metricInfo
+	IntersightStoragePowerOnHours                       metricInfo
+	IntersightStoragePredictiveFailureCount             metricInfo
+	IntersightStorageRebuildRate                        metricInfo
+	IntersightStorageStatus                             metricInfo
+	IntersightStorageTemperature                        metricInfo
+	IntersightTargetConnectionStatus                    metricInfo
+	IntersightTaskCount                                 metricInfo
+	IntersightTaskStatus                                metricInfo
+	IntersightTechsupportCount                          metricInfo
+	IntersightTechsupportStatus                         metricInfo
+	IntersightTelemetryQueryRows                        metricInfo
+	IntersightUcsCPUIdleUtilization                     metricInfo
+	IntersightUcsCPUSystemUtilization                   metricInfo
+	IntersightUcsCurrent                                metricInfo
+	IntersightUcsFanSpeed                               metricInfo
+	IntersightUcsFanSpeedRatio                          metricInfo
+	IntersightUcsFanStatus                              metricInfo
+	IntersightUcsHostEnergy                             metricInfo
+	IntersightUcsHostPower                              metricInfo
+	IntersightUcsHostPowerState                         metricInfo
+	IntersightUcsMemoryCached                           metricInfo
+	IntersightUcsMemoryEccCorrectable                   metricInfo
+	IntersightUcsMemoryEccUncorrectable                 metricInfo
+	IntersightUcsMemoryFree                             metricInfo
+	IntersightUcsMemoryModuleSize                       metricInfo
+	IntersightUcsMemoryStatus                           metricInfo
+	IntersightUcsMemoryUsed                             metricInfo
+	IntersightUcsNetworkInterfaceResets                 metricInfo
+	IntersightUcsNetworkLinkStatus                      metricInfo
+	IntersightUcsNetworkLinkFailures                    metricInfo
+	IntersightUcsNetworkReceive                         metricInfo
+	IntersightUcsNetworkReceiveCrcErrors                metricInfo
+	IntersightUcsNetworkReceiveDiscards                 metricInfo
+	IntersightUcsNetworkReceiveDrops                    metricInfo
+	IntersightUcsNetworkReceiveErrors                   metricInfo
+	IntersightUcsNetworkReceiveNoBuffer                 metricInfo
+	IntersightUcsNetworkReceivePackets                  metricInfo
+	IntersightUcsNetworkReceivePauseFrames              metricInfo
+	IntersightUcsNetworkSignalLosses                    metricInfo
+	IntersightUcsNetworkSpeed                           metricInfo
+	IntersightUcsNetworkTransmit                        metricInfo
+	IntersightUcsNetworkTransmitDiscards                metricInfo
+	IntersightUcsNetworkTransmitDrops                   metricInfo
+	IntersightUcsNetworkTransmitErrors                  metricInfo
+	IntersightUcsNetworkTransmitPackets                 metricInfo
+	IntersightUcsNetworkTransmitPauseFrames             metricInfo
+	IntersightUcsNetworkUtilization                     metricInfo
+	IntersightUcsPowerSupplyOutputPower                 metricInfo
+	IntersightUcsPowerSupplyStatus                      metricInfo
+	IntersightUcsPowerSupplyUtilization                 metricInfo
+	IntersightUcsSignalPowerReceive                     metricInfo
+	IntersightUcsSignalPowerTransmit                    metricInfo
+	IntersightUcsTemperature                            metricInfo
+	IntersightUcsTemperatureLimitHighCritical           metricInfo
+	IntersightUcsTemperatureLimitLowCritical            metricInfo
+	IntersightUcsTemperatureStatus                      metricInfo
+	IntersightUcsVoltage                                metricInfo
+	IntersightVirtualMachineCount                       metricInfo
+	IntersightVirtualMachineCPUCount                    metricInfo
+	IntersightVirtualMachineMemory                      metricInfo
+	IntersightVirtualMachinePowerState                  metricInfo
+	IntersightWorkflowCount                             metricInfo
+	IntersightWorkflowStatus                            metricInfo
+	IseAccountingSessionCount                           metricInfo
+	IseAlarmCount                                       metricInfo
+	IseAPIEndpointError                                 metricInfo
+	IseAPIRateLimited                                   metricInfo
+	IseAPIRequestDuration                               metricInfo
+	IseAPIRequestErrors                                 metricInfo
+	IseAuthFailureReasonInfo                            metricInfo
+	IseCertificateCount                                 metricInfo
+	IseCertificateExpiration                            metricInfo
+	IseControllerUp                                     metricInfo
+	IseDataconnectQueryDuration                         metricInfo
+	IseDataconnectQueryErrors                           metricInfo
+	IseDataconnectQueryRows                             metricInfo
+	IseDataconnectRowCount                              metricInfo
+	IseDeploymentNodeCount                              metricInfo
+	IseDeploymentNodeStatus                             metricInfo
+	IseEndpointCount                                    metricInfo
+	IseEndpointPostureCount                             metricInfo
+	IseEndpointPostureStatus                            metricInfo
+	IseEndpointProfileCount                             metricInfo
+	IseEndpointStatus                                   metricInfo
+	IseLicenseCount                                     metricInfo
+	IseLicenseStatus                                    metricInfo
+	IseNetworkDeviceCount                               metricInfo
+	IseNetworkDeviceStatus                              metricInfo
+	IsePolicyObjectCount                                metricInfo
+	IsePolicyStatus                                     metricInfo
+	IseProfilerPolicyStatus                             metricInfo
+	IsePxgridMessageCount                               metricInfo
+	IsePxgridServiceStatus                              metricInfo
+	IsePxgridSubscriptionStatus                         metricInfo
+	IseRadiusFailureCount                               metricInfo
+	IseResourceInfo                                     metricInfo
+	IseResourceStatus                                   metricInfo
+	IseScrapeLastSuccess                                metricInfo
+	IseScrapePartialSuccess                             metricInfo
+	IseServiceSkipped                                   metricInfo
+	IseServiceUnavailable                               metricInfo
+	IseSessionActiveCount                               metricInfo
+	IseSessionCount                                     metricInfo
+	IseTacacsFailureCount                               metricInfo
+	IseTrustsecResourceCount                            metricInfo
+	IseTrustsecResourceStatus                           metricInfo
+	IseWebhookDeliveryCount                             metricInfo
+	MerakiAPIRequestDuration                            metricInfo
+	MerakiAPIRequestErrors                              metricInfo
+	MerakiAPIRequestRateLimited                         metricInfo
+	MerakiAppliancePerformanceScore                     metricInfo
+	MerakiControllerUp                                  metricInfo
+	MerakiDeviceStatus                                  metricInfo
+	MerakiPowerModuleStatus                             metricInfo
+	MerakiScrapeLastSuccess                             metricInfo
+	MerakiSwitchPortAlertActive                         metricInfo
+	MerakiSwitchPortPoeAllocated                        metricInfo
+	MerakiSwitchPortUsage                               metricInfo
+	MerakiUplinkCellularSignalRsrp                      metricInfo
+	MerakiUplinkCellularSignalRsrq                      metricInfo
+	MerakiUplinkLatency                                 metricInfo
+	MerakiUplinkLoss                                    metricInfo
+	MerakiUplinkStatus                                  metricInfo
+	MerakiVpnPeerJitter                                 metricInfo
+	MerakiVpnPeerLatency                                metricInfo
+	MerakiVpnPeerLoss                                   metricInfo
+	MerakiVpnPeerMos                                    metricInfo
+	MerakiVpnPeerStatus                                 metricInfo
+	MerakiVpnPeerUsage                                  metricInfo
+	MerakiWirelessChannelUtilization                    metricInfo
+	MerakiWirelessClientCount                           metricInfo
+	MerakiWirelessPacketCount                           metricInfo
+	MerakiWirelessPacketLoss                            metricInfo
+	MerakiWirelessPacketLossPercentage                  metricInfo
+	MerakiWirelessSsidStatus                            metricInfo
+	NexusDashboardAPIEndpointError                      metricInfo
+	NexusDashboardAPIRateLimited                        metricInfo
+	NexusDashboardAPIRequestDuration                    metricInfo
+	NexusDashboardAPIRequestErrors                      metricInfo
+	NexusDashboardAuditRecordCount                      metricInfo
+	NexusDashboardConfigCompliance                      metricInfo
+	NexusDashboardDataBrokerRuleCount                   metricInfo
+	NexusDashboardDataBrokerSessionCount                metricInfo
+	NexusDashboardDataBrokerStatus                      metricInfo
+	NexusDashboardDeploymentStatus                      metricInfo
+	NexusDashboardEndpointCount                         metricInfo
+	NexusDashboardEventCount                            metricInfo
+	NexusDashboardFabricHealth                          metricInfo
+	NexusDashboardInsightsAnomalyActive                 metricInfo
+	NexusDashboardInsightsAnomalyCount                  metricInfo
+	NexusDashboardInsightsConfidence                    metricInfo
+	NexusDashboardInsightsScore                         metricInfo
+	NexusDashboardInsightsStatus                        metricInfo
+	NexusDashboardOrchestratorDeploymentCount           metricInfo
+	NexusDashboardOrchestratorDeploymentStatus          metricInfo
+	NexusDashboardOrchestratorPolicyDeltaCount          metricInfo
+	NexusDashboardResourceCount                         metricInfo
+	NexusDashboardResourceInfo                          metricInfo
+	NexusDashboardResourceStatus                        metricInfo
+	NexusDashboardScrapeLastSuccess                     metricInfo
+	NexusDashboardScrapePartialSuccess                  metricInfo
+	NexusDashboardServiceHealth                         metricInfo
+	NexusDashboardServiceSkipped                        metricInfo
+	NexusDashboardServiceUnavailable                    metricInfo
+	NexusDashboardStorageUtilization                    metricInfo
+	NexusDashboardVpcPeerCount                          metricInfo
+	SdwanAPIRateLimited                                 metricInfo
+	SdwanAPIRequestDuration                             metricInfo
+	SdwanAPIRequestErrors                               metricInfo
+	SdwanAppRouteJitter                                 metricInfo
+	SdwanAppRouteLatency                                metricInfo
+	SdwanAppRouteLoss                                   metricInfo
+	SdwanAppRouteSLAStatus                              metricInfo
+	SdwanBfdSessionCount                                metricInfo
+	SdwanBfdSessionFlapCount                            metricInfo
+	SdwanBfdSessionStatus                               metricInfo
+	SdwanBfdSessionTransitions                          metricInfo
+	SdwanCollectionObjectCount                          metricInfo
+	SdwanControlActualConnections                       metricInfo
+	SdwanControlConnectionCount                         metricInfo
+	SdwanControlConnectionStatus                        metricInfo
+	SdwanControlExpectedConnections                     metricInfo
+	SdwanDeviceCertificateStatus                        metricInfo
+	SdwanDeviceReachabilityStatus                       metricInfo
+	SdwanDeviceValidityStatus                           metricInfo
+	SdwanEventCount                                     metricInfo
+	SdwanInventoryDeviceCount                           metricInfo
+	SdwanManagerEndpointStatus                          metricInfo
+	SdwanManagerHealthScore                             metricInfo
+	SdwanManagerStatus                                  metricInfo
+	SdwanManagerUp                                      metricInfo
+	SdwanResourceInfo                                   metricInfo
+	SdwanResourceStatus                                 metricInfo
+	SdwanScrapeLastSuccess                              metricInfo
+	SdwanScrapePartialSuccess                           metricInfo
+	SdwanServiceSkipped                                 metricInfo
+	SdwanServiceUnavailable                             metricInfo
+	SdwanTransportInterfaceStatus                       metricInfo
+	SystemCPULogicalCount                               metricInfo
+	SystemCPUUtilization                                metricInfo
+	SystemMemoryUtilization                             metricInfo
+	SystemNetworkErrors                                 metricInfo
+	SystemNetworkInterfaceStatus                        metricInfo
+	SystemNetworkIo                                     metricInfo
+	SystemNetworkPacketCount                            metricInfo
+	SystemNetworkPacketDropped                          metricInfo
+	SystemUptime                                        metricInfo
 }
 
 type metricInfo struct {
 	Name       string
 	Attributes []string
+}
+
+type metricAciAPIEndpointError struct {
+	data     pmetric.Metric                  // data buffer for generated metric.
+	config   AciAPIEndpointErrorMetricConfig // metric config provided by user.
+	capacity int                             // max observed number of data points added to the metric.
+}
+
+// init fills aci.api.endpoint.error metric with initial data.
+func (m *metricAciAPIEndpointError) init() {
+	m.data.SetName("aci.api.endpoint.error")
+	m.data.SetDescription("APIC class or endpoint-family scrape failures.")
+	m.data.SetUnit("{error}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricAciAPIEndpointError) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricAciAPIEndpointError) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricAciAPIEndpointError) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricAciAPIEndpointError(cfg AciAPIEndpointErrorMetricConfig) metricAciAPIEndpointError {
+	m := metricAciAPIEndpointError{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricAciAPIRateLimited struct {
+	data     pmetric.Metric                // data buffer for generated metric.
+	config   AciAPIRateLimitedMetricConfig // metric config provided by user.
+	capacity int                           // max observed number of data points added to the metric.
+}
+
+// init fills aci.api.rate_limited metric with initial data.
+func (m *metricAciAPIRateLimited) init() {
+	m.data.SetName("aci.api.rate_limited")
+	m.data.SetDescription("APIC requests that received HTTP 429.")
+	m.data.SetUnit("{request}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricAciAPIRateLimited) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricAciAPIRateLimited) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricAciAPIRateLimited) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricAciAPIRateLimited(cfg AciAPIRateLimitedMetricConfig) metricAciAPIRateLimited {
+	m := metricAciAPIRateLimited{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricAciAPIRequestDuration struct {
+	data     pmetric.Metric                    // data buffer for generated metric.
+	config   AciAPIRequestDurationMetricConfig // metric config provided by user.
+	capacity int                               // max observed number of data points added to the metric.
+}
+
+// init fills aci.api.request.duration metric with initial data.
+func (m *metricAciAPIRequestDuration) init() {
+	m.data.SetName("aci.api.request.duration")
+	m.data.SetDescription("Average duration of APIC API request attempts within the scrape for each matching request-attribute set.")
+	m.data.SetUnit("s")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricAciAPIRequestDuration) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricAciAPIRequestDuration) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricAciAPIRequestDuration) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricAciAPIRequestDuration(cfg AciAPIRequestDurationMetricConfig) metricAciAPIRequestDuration {
+	m := metricAciAPIRequestDuration{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricAciAPIRequestErrors struct {
+	data     pmetric.Metric                  // data buffer for generated metric.
+	config   AciAPIRequestErrorsMetricConfig // metric config provided by user.
+	capacity int                             // max observed number of data points added to the metric.
+}
+
+// init fills aci.api.request.errors metric with initial data.
+func (m *metricAciAPIRequestErrors) init() {
+	m.data.SetName("aci.api.request.errors")
+	m.data.SetDescription("APIC API request failures.")
+	m.data.SetUnit("{error}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricAciAPIRequestErrors) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricAciAPIRequestErrors) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricAciAPIRequestErrors) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricAciAPIRequestErrors(cfg AciAPIRequestErrorsMetricConfig) metricAciAPIRequestErrors {
+	m := metricAciAPIRequestErrors{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricAciAuditRecordCount struct {
+	data     pmetric.Metric                  // data buffer for generated metric.
+	config   AciAuditRecordCountMetricConfig // metric config provided by user.
+	capacity int                             // max observed number of data points added to the metric.
+}
+
+// init fills aci.audit.record.count metric with initial data.
+func (m *metricAciAuditRecordCount) init() {
+	m.data.SetName("aci.audit.record.count")
+	m.data.SetDescription("Recent APIC audit records by bounded operation, status, and severity attributes.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricAciAuditRecordCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricAciAuditRecordCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricAciAuditRecordCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricAciAuditRecordCount(cfg AciAuditRecordCountMetricConfig) metricAciAuditRecordCount {
+	m := metricAciAuditRecordCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricAciControllerUp struct {
+	data     pmetric.Metric              // data buffer for generated metric.
+	config   AciControllerUpMetricConfig // metric config provided by user.
+	capacity int                         // max observed number of data points added to the metric.
+}
+
+// init fills aci.controller.up metric with initial data.
+func (m *metricAciControllerUp) init() {
+	m.data.SetName("aci.controller.up")
+	m.data.SetDescription("Whether an APIC controller API was reachable for the scrape.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricAciControllerUp) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricAciControllerUp) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricAciControllerUp) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricAciControllerUp(cfg AciControllerUpMetricConfig) metricAciControllerUp {
+	m := metricAciControllerUp{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricAciEndpointCount struct {
+	data     pmetric.Metric               // data buffer for generated metric.
+	config   AciEndpointCountMetricConfig // metric config provided by user.
+	capacity int                          // max observed number of data points added to the metric.
+}
+
+// init fills aci.endpoint.count metric with initial data.
+func (m *metricAciEndpointCount) init() {
+	m.data.SetName("aci.endpoint.count")
+	m.data.SetDescription("Endpoint count by bounded tenant/EPG context.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricAciEndpointCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricAciEndpointCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricAciEndpointCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricAciEndpointCount(cfg AciEndpointCountMetricConfig) metricAciEndpointCount {
+	m := metricAciEndpointCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricAciEndpointPresent struct {
+	data     pmetric.Metric                 // data buffer for generated metric.
+	config   AciEndpointPresentMetricConfig // metric config provided by user.
+	capacity int                            // max observed number of data points added to the metric.
+}
+
+// init fills aci.endpoint.present metric with initial data.
+func (m *metricAciEndpointPresent) init() {
+	m.data.SetName("aci.endpoint.present")
+	m.data.SetDescription("Endpoint MAC/IP presence.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricAciEndpointPresent) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricAciEndpointPresent) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricAciEndpointPresent) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricAciEndpointPresent(cfg AciEndpointPresentMetricConfig) metricAciEndpointPresent {
+	m := metricAciEndpointPresent{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricAciEventCount struct {
+	data     pmetric.Metric            // data buffer for generated metric.
+	config   AciEventCountMetricConfig // metric config provided by user.
+	capacity int                       // max observed number of data points added to the metric.
+}
+
+// init fills aci.event.count metric with initial data.
+func (m *metricAciEventCount) init() {
+	m.data.SetName("aci.event.count")
+	m.data.SetDescription("Recent APIC event records by bounded operation, status, and severity attributes.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricAciEventCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricAciEventCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricAciEventCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricAciEventCount(cfg AciEventCountMetricConfig) metricAciEventCount {
+	m := metricAciEventCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricAciFabricHealth struct {
+	data     pmetric.Metric              // data buffer for generated metric.
+	config   AciFabricHealthMetricConfig // metric config provided by user.
+	capacity int                         // max observed number of data points added to the metric.
+}
+
+// init fills aci.fabric.health metric with initial data.
+func (m *metricAciFabricHealth) init() {
+	m.data.SetName("aci.fabric.health")
+	m.data.SetDescription("Fabric, pod, node, or tenant health score where exposed by APIC.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricAciFabricHealth) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricAciFabricHealth) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricAciFabricHealth) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricAciFabricHealth(cfg AciFabricHealthMetricConfig) metricAciFabricHealth {
+	m := metricAciFabricHealth{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricAciFaultActive struct {
+	data     pmetric.Metric             // data buffer for generated metric.
+	config   AciFaultActiveMetricConfig // metric config provided by user.
+	capacity int                        // max observed number of data points added to the metric.
+}
+
+// init fills aci.fault.active metric with initial data.
+func (m *metricAciFaultActive) init() {
+	m.data.SetName("aci.fault.active")
+	m.data.SetDescription("Active APIC fault instance.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricAciFaultActive) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricAciFaultActive) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricAciFaultActive) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricAciFaultActive(cfg AciFaultActiveMetricConfig) metricAciFaultActive {
+	m := metricAciFaultActive{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricAciFaultCount struct {
+	data     pmetric.Metric            // data buffer for generated metric.
+	config   AciFaultCountMetricConfig // metric config provided by user.
+	capacity int                       // max observed number of data points added to the metric.
+}
+
+// init fills aci.fault.count metric with initial data.
+func (m *metricAciFaultCount) init() {
+	m.data.SetName("aci.fault.count")
+	m.data.SetDescription("Active APIC fault counts by bounded attributes.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricAciFaultCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricAciFaultCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricAciFaultCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricAciFaultCount(cfg AciFaultCountMetricConfig) metricAciFaultCount {
+	m := metricAciFaultCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricAciResourceCount struct {
+	data     pmetric.Metric               // data buffer for generated metric.
+	config   AciResourceCountMetricConfig // metric config provided by user.
+	capacity int                          // max observed number of data points added to the metric.
+}
+
+// init fills aci.resource.count metric with initial data.
+func (m *metricAciResourceCount) init() {
+	m.data.SetName("aci.resource.count")
+	m.data.SetDescription("APIC resources grouped by bounded group, class, type, status, and severity.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricAciResourceCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricAciResourceCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricAciResourceCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricAciResourceCount(cfg AciResourceCountMetricConfig) metricAciResourceCount {
+	m := metricAciResourceCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricAciResourceInfo struct {
+	data     pmetric.Metric              // data buffer for generated metric.
+	config   AciResourceInfoMetricConfig // metric config provided by user.
+	capacity int                         // max observed number of data points added to the metric.
+}
+
+// init fills aci.resource.info metric with initial data.
+func (m *metricAciResourceInfo) init() {
+	m.data.SetName("aci.resource.info")
+	m.data.SetDescription("Bounded metadata for APIC managed objects.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricAciResourceInfo) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricAciResourceInfo) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricAciResourceInfo) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricAciResourceInfo(cfg AciResourceInfoMetricConfig) metricAciResourceInfo {
+	m := metricAciResourceInfo{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricAciResourceStatus struct {
+	data     pmetric.Metric                // data buffer for generated metric.
+	config   AciResourceStatusMetricConfig // metric config provided by user.
+	capacity int                           // max observed number of data points added to the metric.
+}
+
+// init fills aci.resource.status metric with initial data.
+func (m *metricAciResourceStatus) init() {
+	m.data.SetName("aci.resource.status")
+	m.data.SetDescription("Encoded APIC object status with original state attributes.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricAciResourceStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricAciResourceStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricAciResourceStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricAciResourceStatus(cfg AciResourceStatusMetricConfig) metricAciResourceStatus {
+	m := metricAciResourceStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricAciScrapeLastSuccess struct {
+	data     pmetric.Metric                   // data buffer for generated metric.
+	config   AciScrapeLastSuccessMetricConfig // metric config provided by user.
+	capacity int                              // max observed number of data points added to the metric.
+}
+
+// init fills aci.scrape.last_success metric with initial data.
+func (m *metricAciScrapeLastSuccess) init() {
+	m.data.SetName("aci.scrape.last_success")
+	m.data.SetDescription("Unix timestamp of the most recent fully successful APIC scrape.")
+	m.data.SetUnit("s")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricAciScrapeLastSuccess) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricAciScrapeLastSuccess) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricAciScrapeLastSuccess) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricAciScrapeLastSuccess(cfg AciScrapeLastSuccessMetricConfig) metricAciScrapeLastSuccess {
+	m := metricAciScrapeLastSuccess{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricAciScrapePartialSuccess struct {
+	data     pmetric.Metric                      // data buffer for generated metric.
+	config   AciScrapePartialSuccessMetricConfig // metric config provided by user.
+	capacity int                                 // max observed number of data points added to the metric.
+}
+
+// init fills aci.scrape.partial_success metric with initial data.
+func (m *metricAciScrapePartialSuccess) init() {
+	m.data.SetName("aci.scrape.partial_success")
+	m.data.SetDescription("Whether one or more APIC endpoint families failed during the scrape.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricAciScrapePartialSuccess) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricAciScrapePartialSuccess) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricAciScrapePartialSuccess) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricAciScrapePartialSuccess(cfg AciScrapePartialSuccessMetricConfig) metricAciScrapePartialSuccess {
+	m := metricAciScrapePartialSuccess{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricAciTenantObjectCount struct {
+	data     pmetric.Metric                   // data buffer for generated metric.
+	config   AciTenantObjectCountMetricConfig // metric config provided by user.
+	capacity int                              // max observed number of data points added to the metric.
+}
+
+// init fills aci.tenant.object.count metric with initial data.
+func (m *metricAciTenantObjectCount) init() {
+	m.data.SetName("aci.tenant.object.count")
+	m.data.SetDescription("Tenant object counts by bounded tenant/VRF/BD/EPG attributes.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricAciTenantObjectCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricAciTenantObjectCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricAciTenantObjectCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricAciTenantObjectCount(cfg AciTenantObjectCountMetricConfig) metricAciTenantObjectCount {
+	m := metricAciTenantObjectCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricAciTenantStatus struct {
+	data     pmetric.Metric              // data buffer for generated metric.
+	config   AciTenantStatusMetricConfig // metric config provided by user.
+	capacity int                         // max observed number of data points added to the metric.
+}
+
+// init fills aci.tenant.status metric with initial data.
+func (m *metricAciTenantStatus) init() {
+	m.data.SetName("aci.tenant.status")
+	m.data.SetDescription("Tenant, VRF, bridge domain, EPG, app profile, contract, or L3Out status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricAciTenantStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricAciTenantStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricAciTenantStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricAciTenantStatus(cfg AciTenantStatusMetricConfig) metricAciTenantStatus {
+	m := metricAciTenantStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterAPIRateLimited struct {
+	data     pmetric.Metric                           // data buffer for generated metric.
+	config   CatalystCenterAPIRateLimitedMetricConfig // metric config provided by user.
+	capacity int                                      // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.api.rate_limited metric with initial data.
+func (m *metricCatalystCenterAPIRateLimited) init() {
+	m.data.SetName("catalyst_center.api.rate_limited")
+	m.data.SetDescription("Requests that received HTTP 429.")
+	m.data.SetUnit("{request}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCatalystCenterAPIRateLimited) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterAPIRateLimited) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterAPIRateLimited) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterAPIRateLimited(cfg CatalystCenterAPIRateLimitedMetricConfig) metricCatalystCenterAPIRateLimited {
+	m := metricCatalystCenterAPIRateLimited{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterAPIRequestDuration struct {
+	data     pmetric.Metric                               // data buffer for generated metric.
+	config   CatalystCenterAPIRequestDurationMetricConfig // metric config provided by user.
+	capacity int                                          // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.api.request.duration metric with initial data.
+func (m *metricCatalystCenterAPIRequestDuration) init() {
+	m.data.SetName("catalyst_center.api.request.duration")
+	m.data.SetDescription("Average duration of Catalyst Center API request attempts within the scrape for each matching request-attribute set.")
+	m.data.SetUnit("s")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterAPIRequestDuration) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterAPIRequestDuration) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterAPIRequestDuration) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterAPIRequestDuration(cfg CatalystCenterAPIRequestDurationMetricConfig) metricCatalystCenterAPIRequestDuration {
+	m := metricCatalystCenterAPIRequestDuration{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterAPIRequestErrors struct {
+	data     pmetric.Metric                             // data buffer for generated metric.
+	config   CatalystCenterAPIRequestErrorsMetricConfig // metric config provided by user.
+	capacity int                                        // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.api.request.errors metric with initial data.
+func (m *metricCatalystCenterAPIRequestErrors) init() {
+	m.data.SetName("catalyst_center.api.request.errors")
+	m.data.SetDescription("Catalyst Center API request failures.")
+	m.data.SetUnit("{error}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCatalystCenterAPIRequestErrors) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterAPIRequestErrors) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterAPIRequestErrors) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterAPIRequestErrors(cfg CatalystCenterAPIRequestErrorsMetricConfig) metricCatalystCenterAPIRequestErrors {
+	m := metricCatalystCenterAPIRequestErrors{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterClientCount struct {
+	data     pmetric.Metric                        // data buffer for generated metric.
+	config   CatalystCenterClientCountMetricConfig // metric config provided by user.
+	capacity int                                   // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.client.count metric with initial data.
+func (m *metricCatalystCenterClientCount) init() {
+	m.data.SetName("catalyst_center.client.count")
+	m.data.SetDescription("Client count by health category.")
+	m.data.SetUnit("{client}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterClientCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterClientCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterClientCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterClientCount(cfg CatalystCenterClientCountMetricConfig) metricCatalystCenterClientCount {
+	m := metricCatalystCenterClientCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterClientDetailHealthScore struct {
+	data     pmetric.Metric                                    // data buffer for generated metric.
+	config   CatalystCenterClientDetailHealthScoreMetricConfig // metric config provided by user.
+	capacity int                                               // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.client.detail.health.score metric with initial data.
+func (m *metricCatalystCenterClientDetailHealthScore) init() {
+	m.data.SetName("catalyst_center.client.detail.health.score")
+	m.data.SetDescription("Targeted client-detail health score by client, health type, and reason.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterClientDetailHealthScore) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterClientDetailHealthScore) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterClientDetailHealthScore) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterClientDetailHealthScore(cfg CatalystCenterClientDetailHealthScoreMetricConfig) metricCatalystCenterClientDetailHealthScore {
+	m := metricCatalystCenterClientDetailHealthScore{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterClientHealthScore struct {
+	data     pmetric.Metric                              // data buffer for generated metric.
+	config   CatalystCenterClientHealthScoreMetricConfig // metric config provided by user.
+	capacity int                                         // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.client.health.score metric with initial data.
+func (m *metricCatalystCenterClientHealthScore) init() {
+	m.data.SetName("catalyst_center.client.health.score")
+	m.data.SetDescription("Client health score by site and score category.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterClientHealthScore) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterClientHealthScore) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterClientHealthScore) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterClientHealthScore(cfg CatalystCenterClientHealthScoreMetricConfig) metricCatalystCenterClientHealthScore {
+	m := metricCatalystCenterClientHealthScore{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterClientIssueCount struct {
+	data     pmetric.Metric                             // data buffer for generated metric.
+	config   CatalystCenterClientIssueCountMetricConfig // metric config provided by user.
+	capacity int                                        // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.client.issue.count metric with initial data.
+func (m *metricCatalystCenterClientIssueCount) init() {
+	m.data.SetName("catalyst_center.client.issue.count")
+	m.data.SetDescription("Issue count for a targeted client detail lookup.")
+	m.data.SetUnit("{issue}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterClientIssueCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterClientIssueCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterClientIssueCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterClientIssueCount(cfg CatalystCenterClientIssueCountMetricConfig) metricCatalystCenterClientIssueCount {
+	m := metricCatalystCenterClientIssueCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterClientNetworkIo struct {
+	data     pmetric.Metric                            // data buffer for generated metric.
+	config   CatalystCenterClientNetworkIoMetricConfig // metric config provided by user.
+	capacity int                                       // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.client.network.io metric with initial data.
+func (m *metricCatalystCenterClientNetworkIo) init() {
+	m.data.SetName("catalyst_center.client.network.io")
+	m.data.SetDescription("Client transmit and receive bytes.")
+	m.data.SetUnit("By")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterClientNetworkIo) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterClientNetworkIo) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterClientNetworkIo) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterClientNetworkIo(cfg CatalystCenterClientNetworkIoMetricConfig) metricCatalystCenterClientNetworkIo {
+	m := metricCatalystCenterClientNetworkIo{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterClientUniqueCount struct {
+	data     pmetric.Metric                              // data buffer for generated metric.
+	config   CatalystCenterClientUniqueCountMetricConfig // metric config provided by user.
+	capacity int                                         // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.client.unique.count metric with initial data.
+func (m *metricCatalystCenterClientUniqueCount) init() {
+	m.data.SetName("catalyst_center.client.unique.count")
+	m.data.SetDescription("Unique client count by health category.")
+	m.data.SetUnit("{client}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterClientUniqueCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterClientUniqueCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterClientUniqueCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterClientUniqueCount(cfg CatalystCenterClientUniqueCountMetricConfig) metricCatalystCenterClientUniqueCount {
+	m := metricCatalystCenterClientUniqueCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterClientWirelessRssi struct {
+	data     pmetric.Metric                               // data buffer for generated metric.
+	config   CatalystCenterClientWirelessRssiMetricConfig // metric config provided by user.
+	capacity int                                          // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.client.wireless.rssi metric with initial data.
+func (m *metricCatalystCenterClientWirelessRssi) init() {
+	m.data.SetName("catalyst_center.client.wireless.rssi")
+	m.data.SetDescription("RSSI for a targeted wireless client.")
+	m.data.SetUnit("dBm")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterClientWirelessRssi) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterClientWirelessRssi) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterClientWirelessRssi) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterClientWirelessRssi(cfg CatalystCenterClientWirelessRssiMetricConfig) metricCatalystCenterClientWirelessRssi {
+	m := metricCatalystCenterClientWirelessRssi{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterClientWirelessSnr struct {
+	data     pmetric.Metric                              // data buffer for generated metric.
+	config   CatalystCenterClientWirelessSnrMetricConfig // metric config provided by user.
+	capacity int                                         // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.client.wireless.snr metric with initial data.
+func (m *metricCatalystCenterClientWirelessSnr) init() {
+	m.data.SetName("catalyst_center.client.wireless.snr")
+	m.data.SetDescription("SNR for a targeted wireless client.")
+	m.data.SetUnit("dB")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterClientWirelessSnr) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterClientWirelessSnr) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterClientWirelessSnr) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterClientWirelessSnr(cfg CatalystCenterClientWirelessSnrMetricConfig) metricCatalystCenterClientWirelessSnr {
+	m := metricCatalystCenterClientWirelessSnr{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterDeviceCollectionStatus struct {
+	data     pmetric.Metric                                   // data buffer for generated metric.
+	config   CatalystCenterDeviceCollectionStatusMetricConfig // metric config provided by user.
+	capacity int                                              // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.device.collection.status metric with initial data.
+func (m *metricCatalystCenterDeviceCollectionStatus) init() {
+	m.data.SetName("catalyst_center.device.collection.status")
+	m.data.SetDescription("Encoded Catalyst Center collection status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterDeviceCollectionStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterDeviceCollectionStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterDeviceCollectionStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterDeviceCollectionStatus(cfg CatalystCenterDeviceCollectionStatusMetricConfig) metricCatalystCenterDeviceCollectionStatus {
+	m := metricCatalystCenterDeviceCollectionStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterDeviceDetailCommunicationStatus struct {
+	data     pmetric.Metric                                            // data buffer for generated metric.
+	config   CatalystCenterDeviceDetailCommunicationStatusMetricConfig // metric config provided by user.
+	capacity int                                                       // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.device.detail.communication.status metric with initial data.
+func (m *metricCatalystCenterDeviceDetailCommunicationStatus) init() {
+	m.data.SetName("catalyst_center.device.detail.communication.status")
+	m.data.SetDescription("Targeted device communication status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterDeviceDetailCommunicationStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterDeviceDetailCommunicationStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterDeviceDetailCommunicationStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterDeviceDetailCommunicationStatus(cfg CatalystCenterDeviceDetailCommunicationStatusMetricConfig) metricCatalystCenterDeviceDetailCommunicationStatus {
+	m := metricCatalystCenterDeviceDetailCommunicationStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterDeviceDetailHealthScore struct {
+	data     pmetric.Metric                                    // data buffer for generated metric.
+	config   CatalystCenterDeviceDetailHealthScoreMetricConfig // metric config provided by user.
+	capacity int                                               // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.device.detail.health.score metric with initial data.
+func (m *metricCatalystCenterDeviceDetailHealthScore) init() {
+	m.data.SetName("catalyst_center.device.detail.health.score")
+	m.data.SetDescription("Targeted device-detail health score.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterDeviceDetailHealthScore) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterDeviceDetailHealthScore) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterDeviceDetailHealthScore) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterDeviceDetailHealthScore(cfg CatalystCenterDeviceDetailHealthScoreMetricConfig) metricCatalystCenterDeviceDetailHealthScore {
+	m := metricCatalystCenterDeviceDetailHealthScore{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterDeviceInterfaceCount struct {
+	data     pmetric.Metric                                 // data buffer for generated metric.
+	config   CatalystCenterDeviceInterfaceCountMetricConfig // metric config provided by user.
+	capacity int                                            // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.device.interface.count metric with initial data.
+func (m *metricCatalystCenterDeviceInterfaceCount) init() {
+	m.data.SetName("catalyst_center.device.interface.count")
+	m.data.SetDescription("Interface count reported for a device.")
+	m.data.SetUnit("{interface}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterDeviceInterfaceCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterDeviceInterfaceCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterDeviceInterfaceCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterDeviceInterfaceCount(cfg CatalystCenterDeviceInterfaceCountMetricConfig) metricCatalystCenterDeviceInterfaceCount {
+	m := metricCatalystCenterDeviceInterfaceCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterDeviceReachabilityStatus struct {
+	data     pmetric.Metric                                     // data buffer for generated metric.
+	config   CatalystCenterDeviceReachabilityStatusMetricConfig // metric config provided by user.
+	capacity int                                                // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.device.reachability.status metric with initial data.
+func (m *metricCatalystCenterDeviceReachabilityStatus) init() {
+	m.data.SetName("catalyst_center.device.reachability.status")
+	m.data.SetDescription("Encoded device reachability status with the original status retained as an attribute.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterDeviceReachabilityStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterDeviceReachabilityStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterDeviceReachabilityStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterDeviceReachabilityStatus(cfg CatalystCenterDeviceReachabilityStatusMetricConfig) metricCatalystCenterDeviceReachabilityStatus {
+	m := metricCatalystCenterDeviceReachabilityStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterDeviceUptime struct {
+	data     pmetric.Metric                         // data buffer for generated metric.
+	config   CatalystCenterDeviceUptimeMetricConfig // metric config provided by user.
+	capacity int                                    // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.device.uptime metric with initial data.
+func (m *metricCatalystCenterDeviceUptime) init() {
+	m.data.SetName("catalyst_center.device.uptime")
+	m.data.SetDescription("Device uptime reported by Catalyst Center.")
+	m.data.SetUnit("s")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterDeviceUptime) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterDeviceUptime) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterDeviceUptime) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterDeviceUptime(cfg CatalystCenterDeviceUptimeMetricConfig) metricCatalystCenterDeviceUptime {
+	m := metricCatalystCenterDeviceUptime{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterInterfaceCount struct {
+	data     pmetric.Metric                           // data buffer for generated metric.
+	config   CatalystCenterInterfaceCountMetricConfig // metric config provided by user.
+	capacity int                                      // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.interface.count metric with initial data.
+func (m *metricCatalystCenterInterfaceCount) init() {
+	m.data.SetName("catalyst_center.interface.count")
+	m.data.SetDescription("Interface inventory count.")
+	m.data.SetUnit("{interface}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterInterfaceCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterInterfaceCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterInterfaceCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterInterfaceCount(cfg CatalystCenterInterfaceCountMetricConfig) metricCatalystCenterInterfaceCount {
+	m := metricCatalystCenterInterfaceCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterInventoryDeviceCount struct {
+	data     pmetric.Metric                                 // data buffer for generated metric.
+	config   CatalystCenterInventoryDeviceCountMetricConfig // metric config provided by user.
+	capacity int                                            // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.inventory.device.count metric with initial data.
+func (m *metricCatalystCenterInventoryDeviceCount) init() {
+	m.data.SetName("catalyst_center.inventory.device.count")
+	m.data.SetDescription("Network-device inventory count.")
+	m.data.SetUnit("{device}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterInventoryDeviceCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterInventoryDeviceCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterInventoryDeviceCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterInventoryDeviceCount(cfg CatalystCenterInventoryDeviceCountMetricConfig) metricCatalystCenterInventoryDeviceCount {
+	m := metricCatalystCenterInventoryDeviceCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterIssueActiveCount struct {
+	data     pmetric.Metric                             // data buffer for generated metric.
+	config   CatalystCenterIssueActiveCountMetricConfig // metric config provided by user.
+	capacity int                                        // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.issue.active.count metric with initial data.
+func (m *metricCatalystCenterIssueActiveCount) init() {
+	m.data.SetName("catalyst_center.issue.active.count")
+	m.data.SetDescription("Active Assurance issues grouped by severity, priority, status, category, entity type, and site.")
+	m.data.SetUnit("{item}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterIssueActiveCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterIssueActiveCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterIssueActiveCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterIssueActiveCount(cfg CatalystCenterIssueActiveCountMetricConfig) metricCatalystCenterIssueActiveCount {
+	m := metricCatalystCenterIssueActiveCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterIssueCount struct {
+	data     pmetric.Metric                       // data buffer for generated metric.
+	config   CatalystCenterIssueCountMetricConfig // metric config provided by user.
+	capacity int                                  // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.issue.count metric with initial data.
+func (m *metricCatalystCenterIssueCount) init() {
+	m.data.SetName("catalyst_center.issue.count")
+	m.data.SetDescription("Assurance issue count in the configured lookback window.")
+	m.data.SetUnit("{issue}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterIssueCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterIssueCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterIssueCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterIssueCount(cfg CatalystCenterIssueCountMetricConfig) metricCatalystCenterIssueCount {
+	m := metricCatalystCenterIssueCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterNetworkDeviceCount struct {
+	data     pmetric.Metric                               // data buffer for generated metric.
+	config   CatalystCenterNetworkDeviceCountMetricConfig // metric config provided by user.
+	capacity int                                          // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.network.device.count metric with initial data.
+func (m *metricCatalystCenterNetworkDeviceCount) init() {
+	m.data.SetName("catalyst_center.network.device.count")
+	m.data.SetDescription("Network device count by health state.")
+	m.data.SetUnit("{device}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterNetworkDeviceCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterNetworkDeviceCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterNetworkDeviceCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterNetworkDeviceCount(cfg CatalystCenterNetworkDeviceCountMetricConfig) metricCatalystCenterNetworkDeviceCount {
+	m := metricCatalystCenterNetworkDeviceCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterNetworkHealthCategoryScore struct {
+	data     pmetric.Metric                                       // data buffer for generated metric.
+	config   CatalystCenterNetworkHealthCategoryScoreMetricConfig // metric config provided by user.
+	capacity int                                                  // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.network.health.category.score metric with initial data.
+func (m *metricCatalystCenterNetworkHealthCategoryScore) init() {
+	m.data.SetName("catalyst_center.network.health.category.score")
+	m.data.SetDescription("Network health score by device category.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterNetworkHealthCategoryScore) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterNetworkHealthCategoryScore) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterNetworkHealthCategoryScore) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterNetworkHealthCategoryScore(cfg CatalystCenterNetworkHealthCategoryScoreMetricConfig) metricCatalystCenterNetworkHealthCategoryScore {
+	m := metricCatalystCenterNetworkHealthCategoryScore{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterNetworkHealthEntityCount struct {
+	data     pmetric.Metric                                     // data buffer for generated metric.
+	config   CatalystCenterNetworkHealthEntityCountMetricConfig // metric config provided by user.
+	capacity int                                                // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.network.health.entity.count metric with initial data.
+func (m *metricCatalystCenterNetworkHealthEntityCount) init() {
+	m.data.SetName("catalyst_center.network.health.entity.count")
+	m.data.SetDescription("Entity count by health state.")
+	m.data.SetUnit("{device}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterNetworkHealthEntityCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterNetworkHealthEntityCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterNetworkHealthEntityCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterNetworkHealthEntityCount(cfg CatalystCenterNetworkHealthEntityCountMetricConfig) metricCatalystCenterNetworkHealthEntityCount {
+	m := metricCatalystCenterNetworkHealthEntityCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterNetworkHealthEntityScore struct {
+	data     pmetric.Metric                                     // data buffer for generated metric.
+	config   CatalystCenterNetworkHealthEntityScoreMetricConfig // metric config provided by user.
+	capacity int                                                // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.network.health.entity.score metric with initial data.
+func (m *metricCatalystCenterNetworkHealthEntityScore) init() {
+	m.data.SetName("catalyst_center.network.health.entity.score")
+	m.data.SetDescription("Network health score by Assurance entity.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterNetworkHealthEntityScore) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterNetworkHealthEntityScore) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterNetworkHealthEntityScore) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterNetworkHealthEntityScore(cfg CatalystCenterNetworkHealthEntityScoreMetricConfig) metricCatalystCenterNetworkHealthEntityScore {
+	m := metricCatalystCenterNetworkHealthEntityScore{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterNetworkHealthScore struct {
+	data     pmetric.Metric                               // data buffer for generated metric.
+	config   CatalystCenterNetworkHealthScoreMetricConfig // metric config provided by user.
+	capacity int                                          // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.network.health.score metric with initial data.
+func (m *metricCatalystCenterNetworkHealthScore) init() {
+	m.data.SetName("catalyst_center.network.health.score")
+	m.data.SetDescription("Latest global Catalyst Center network health score.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterNetworkHealthScore) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterNetworkHealthScore) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterNetworkHealthScore) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterNetworkHealthScore(cfg CatalystCenterNetworkHealthScoreMetricConfig) metricCatalystCenterNetworkHealthScore {
+	m := metricCatalystCenterNetworkHealthScore{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterScrapeLastSuccess struct {
+	data     pmetric.Metric                              // data buffer for generated metric.
+	config   CatalystCenterScrapeLastSuccessMetricConfig // metric config provided by user.
+	capacity int                                         // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.scrape.last_success metric with initial data.
+func (m *metricCatalystCenterScrapeLastSuccess) init() {
+	m.data.SetName("catalyst_center.scrape.last_success")
+	m.data.SetDescription("Unix timestamp of the most recent fully successful Catalyst Center scrape.")
+	m.data.SetUnit("s")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterScrapeLastSuccess) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterScrapeLastSuccess) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterScrapeLastSuccess) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterScrapeLastSuccess(cfg CatalystCenterScrapeLastSuccessMetricConfig) metricCatalystCenterScrapeLastSuccess {
+	m := metricCatalystCenterScrapeLastSuccess{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterScrapePartialSuccess struct {
+	data     pmetric.Metric                                 // data buffer for generated metric.
+	config   CatalystCenterScrapePartialSuccessMetricConfig // metric config provided by user.
+	capacity int                                            // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.scrape.partial_success metric with initial data.
+func (m *metricCatalystCenterScrapePartialSuccess) init() {
+	m.data.SetName("catalyst_center.scrape.partial_success")
+	m.data.SetDescription("Whether one or more Catalyst Center endpoint families failed during a scrape.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterScrapePartialSuccess) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterScrapePartialSuccess) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterScrapePartialSuccess) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterScrapePartialSuccess(cfg CatalystCenterScrapePartialSuccessMetricConfig) metricCatalystCenterScrapePartialSuccess {
+	m := metricCatalystCenterScrapePartialSuccess{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterSiteClientCount struct {
+	data     pmetric.Metric                            // data buffer for generated metric.
+	config   CatalystCenterSiteClientCountMetricConfig // metric config provided by user.
+	capacity int                                       // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.site.client.count metric with initial data.
+func (m *metricCatalystCenterSiteClientCount) init() {
+	m.data.SetName("catalyst_center.site.client.count")
+	m.data.SetDescription("Site client population by client type and health state.")
+	m.data.SetUnit("{client}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterSiteClientCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterSiteClientCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterSiteClientCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterSiteClientCount(cfg CatalystCenterSiteClientCountMetricConfig) metricCatalystCenterSiteClientCount {
+	m := metricCatalystCenterSiteClientCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterSiteClientHealthPercentage struct {
+	data     pmetric.Metric                                       // data buffer for generated metric.
+	config   CatalystCenterSiteClientHealthPercentageMetricConfig // metric config provided by user.
+	capacity int                                                  // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.site.client.health.percentage metric with initial data.
+func (m *metricCatalystCenterSiteClientHealthPercentage) init() {
+	m.data.SetName("catalyst_center.site.client.health.percentage")
+	m.data.SetDescription("Percent of healthy clients by site.")
+	m.data.SetUnit("%")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterSiteClientHealthPercentage) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterSiteClientHealthPercentage) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterSiteClientHealthPercentage) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterSiteClientHealthPercentage(cfg CatalystCenterSiteClientHealthPercentageMetricConfig) metricCatalystCenterSiteClientHealthPercentage {
+	m := metricCatalystCenterSiteClientHealthPercentage{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterSiteHealthCount struct {
+	data     pmetric.Metric                            // data buffer for generated metric.
+	config   CatalystCenterSiteHealthCountMetricConfig // metric config provided by user.
+	capacity int                                       // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.site.health.count metric with initial data.
+func (m *metricCatalystCenterSiteHealthCount) init() {
+	m.data.SetName("catalyst_center.site.health.count")
+	m.data.SetDescription("Site health counts for devices, clients, wireless, APs, WLCs, switches, routers, and issues.")
+	m.data.SetUnit("{item}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterSiteHealthCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterSiteHealthCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterSiteHealthCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterSiteHealthCount(cfg CatalystCenterSiteHealthCountMetricConfig) metricCatalystCenterSiteHealthCount {
+	m := metricCatalystCenterSiteHealthCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterSiteIssueCount struct {
+	data     pmetric.Metric                           // data buffer for generated metric.
+	config   CatalystCenterSiteIssueCountMetricConfig // metric config provided by user.
+	capacity int                                      // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.site.issue.count metric with initial data.
+func (m *metricCatalystCenterSiteIssueCount) init() {
+	m.data.SetName("catalyst_center.site.issue.count")
+	m.data.SetDescription("Site issue counts by priority.")
+	m.data.SetUnit("{issue}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterSiteIssueCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterSiteIssueCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterSiteIssueCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterSiteIssueCount(cfg CatalystCenterSiteIssueCountMetricConfig) metricCatalystCenterSiteIssueCount {
+	m := metricCatalystCenterSiteIssueCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterSiteNetworkDeviceCount struct {
+	data     pmetric.Metric                                   // data buffer for generated metric.
+	config   CatalystCenterSiteNetworkDeviceCountMetricConfig // metric config provided by user.
+	capacity int                                              // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.site.network_device.count metric with initial data.
+func (m *metricCatalystCenterSiteNetworkDeviceCount) init() {
+	m.data.SetName("catalyst_center.site.network_device.count")
+	m.data.SetDescription("Site network-device population by role and health state.")
+	m.data.SetUnit("{device}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterSiteNetworkDeviceCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterSiteNetworkDeviceCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterSiteNetworkDeviceCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterSiteNetworkDeviceCount(cfg CatalystCenterSiteNetworkDeviceCountMetricConfig) metricCatalystCenterSiteNetworkDeviceCount {
+	m := metricCatalystCenterSiteNetworkDeviceCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterSiteNetworkDeviceHealthPercentage struct {
+	data     pmetric.Metric                                              // data buffer for generated metric.
+	config   CatalystCenterSiteNetworkDeviceHealthPercentageMetricConfig // metric config provided by user.
+	capacity int                                                         // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.site.network_device.health.percentage metric with initial data.
+func (m *metricCatalystCenterSiteNetworkDeviceHealthPercentage) init() {
+	m.data.SetName("catalyst_center.site.network_device.health.percentage")
+	m.data.SetDescription("Percent of healthy network devices by site.")
+	m.data.SetUnit("%")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterSiteNetworkDeviceHealthPercentage) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterSiteNetworkDeviceHealthPercentage) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterSiteNetworkDeviceHealthPercentage) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterSiteNetworkDeviceHealthPercentage(cfg CatalystCenterSiteNetworkDeviceHealthPercentageMetricConfig) metricCatalystCenterSiteNetworkDeviceHealthPercentage {
+	m := metricCatalystCenterSiteNetworkDeviceHealthPercentage{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterTopologyLinkCount struct {
+	data     pmetric.Metric                              // data buffer for generated metric.
+	config   CatalystCenterTopologyLinkCountMetricConfig // metric config provided by user.
+	capacity int                                         // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.topology.link.count metric with initial data.
+func (m *metricCatalystCenterTopologyLinkCount) init() {
+	m.data.SetName("catalyst_center.topology.link.count")
+	m.data.SetDescription("Physical topology link count globally and by link status.")
+	m.data.SetUnit("{link}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterTopologyLinkCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterTopologyLinkCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterTopologyLinkCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterTopologyLinkCount(cfg CatalystCenterTopologyLinkCountMetricConfig) metricCatalystCenterTopologyLinkCount {
+	m := metricCatalystCenterTopologyLinkCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCatalystCenterTopologyNodeCount struct {
+	data     pmetric.Metric                              // data buffer for generated metric.
+	config   CatalystCenterTopologyNodeCountMetricConfig // metric config provided by user.
+	capacity int                                         // max observed number of data points added to the metric.
+}
+
+// init fills catalyst_center.topology.node.count metric with initial data.
+func (m *metricCatalystCenterTopologyNodeCount) init() {
+	m.data.SetName("catalyst_center.topology.node.count")
+	m.data.SetDescription("Physical topology node count globally and by node attributes.")
+	m.data.SetUnit("{node}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCatalystCenterTopologyNodeCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCatalystCenterTopologyNodeCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCatalystCenterTopologyNodeCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCatalystCenterTopologyNodeCount(cfg CatalystCenterTopologyNodeCountMetricConfig) metricCatalystCenterTopologyNodeCount {
+	m := metricCatalystCenterTopologyNodeCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoCatalyst9800ReceiverActiveSubscriptions struct {
+	data     pmetric.Metric                                           // data buffer for generated metric.
+	config   CiscoCatalyst9800ReceiverActiveSubscriptionsMetricConfig // metric config provided by user.
+	capacity int                                                      // max observed number of data points added to the metric.
+}
+
+// init fills cisco.catalyst9800.receiver.active_subscriptions metric with initial data.
+func (m *metricCiscoCatalyst9800ReceiverActiveSubscriptions) init() {
+	m.data.SetName("cisco.catalyst9800.receiver.active_subscriptions")
+	m.data.SetDescription("Current number of active Catalyst 9800 telemetry subscriptions.")
+	m.data.SetUnit("")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoCatalyst9800ReceiverActiveSubscriptions) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoCatalyst9800ReceiverActiveSubscriptions) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoCatalyst9800ReceiverActiveSubscriptions) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoCatalyst9800ReceiverActiveSubscriptions(cfg CiscoCatalyst9800ReceiverActiveSubscriptionsMetricConfig) metricCiscoCatalyst9800ReceiverActiveSubscriptions {
+	m := metricCiscoCatalyst9800ReceiverActiveSubscriptions{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoCatalyst9800ReceiverCompactGpbPayloads struct {
+	data     pmetric.Metric                                          // data buffer for generated metric.
+	config   CiscoCatalyst9800ReceiverCompactGpbPayloadsMetricConfig // metric config provided by user.
+	capacity int                                                     // max observed number of data points added to the metric.
+}
+
+// init fills cisco.catalyst9800.receiver.compact_gpb_payloads metric with initial data.
+func (m *metricCiscoCatalyst9800ReceiverCompactGpbPayloads) init() {
+	m.data.SetName("cisco.catalyst9800.receiver.compact_gpb_payloads")
+	m.data.SetDescription("Compact GPB payload rows in the current MDT message; the rows are not generically decoded.")
+	m.data.SetUnit("")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoCatalyst9800ReceiverCompactGpbPayloads) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoCatalyst9800ReceiverCompactGpbPayloads) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoCatalyst9800ReceiverCompactGpbPayloads) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoCatalyst9800ReceiverCompactGpbPayloads(cfg CiscoCatalyst9800ReceiverCompactGpbPayloadsMetricConfig) metricCiscoCatalyst9800ReceiverCompactGpbPayloads {
+	m := metricCiscoCatalyst9800ReceiverCompactGpbPayloads{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoCatalyst9800ReceiverDecodeErrors struct {
+	data     pmetric.Metric                                    // data buffer for generated metric.
+	config   CiscoCatalyst9800ReceiverDecodeErrorsMetricConfig // metric config provided by user.
+	capacity int                                               // max observed number of data points added to the metric.
+}
+
+// init fills cisco.catalyst9800.receiver.decode_errors metric with initial data.
+func (m *metricCiscoCatalyst9800ReceiverDecodeErrors) init() {
+	m.data.SetName("cisco.catalyst9800.receiver.decode_errors")
+	m.data.SetDescription("Catalyst 9800 telemetry decode failures.")
+	m.data.SetUnit("")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoCatalyst9800ReceiverDecodeErrors) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoCatalyst9800ReceiverDecodeErrors) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoCatalyst9800ReceiverDecodeErrors) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoCatalyst9800ReceiverDecodeErrors(cfg CiscoCatalyst9800ReceiverDecodeErrorsMetricConfig) metricCiscoCatalyst9800ReceiverDecodeErrors {
+	m := metricCiscoCatalyst9800ReceiverDecodeErrors{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoCatalyst9800ReceiverDroppedDatapoints struct {
+	data     pmetric.Metric                                         // data buffer for generated metric.
+	config   CiscoCatalyst9800ReceiverDroppedDatapointsMetricConfig // metric config provided by user.
+	capacity int                                                    // max observed number of data points added to the metric.
+}
+
+// init fills cisco.catalyst9800.receiver.dropped_datapoints metric with initial data.
+func (m *metricCiscoCatalyst9800ReceiverDroppedDatapoints) init() {
+	m.data.SetName("cisco.catalyst9800.receiver.dropped_datapoints")
+	m.data.SetDescription("Catalyst 9800 datapoints dropped by the receiver cardinality guard.")
+	m.data.SetUnit("")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoCatalyst9800ReceiverDroppedDatapoints) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoCatalyst9800ReceiverDroppedDatapoints) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoCatalyst9800ReceiverDroppedDatapoints) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoCatalyst9800ReceiverDroppedDatapoints(cfg CiscoCatalyst9800ReceiverDroppedDatapointsMetricConfig) metricCiscoCatalyst9800ReceiverDroppedDatapoints {
+	m := metricCiscoCatalyst9800ReceiverDroppedDatapoints{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoCatalyst9800ReceiverLastSuccessTimestamp struct {
+	data     pmetric.Metric                                            // data buffer for generated metric.
+	config   CiscoCatalyst9800ReceiverLastSuccessTimestampMetricConfig // metric config provided by user.
+	capacity int                                                       // max observed number of data points added to the metric.
+}
+
+// init fills cisco.catalyst9800.receiver.last_success_timestamp metric with initial data.
+func (m *metricCiscoCatalyst9800ReceiverLastSuccessTimestamp) init() {
+	m.data.SetName("cisco.catalyst9800.receiver.last_success_timestamp")
+	m.data.SetDescription("Unix timestamp of the last successful Catalyst 9800 telemetry update.")
+	m.data.SetUnit("")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoCatalyst9800ReceiverLastSuccessTimestamp) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoCatalyst9800ReceiverLastSuccessTimestamp) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoCatalyst9800ReceiverLastSuccessTimestamp) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoCatalyst9800ReceiverLastSuccessTimestamp(cfg CiscoCatalyst9800ReceiverLastSuccessTimestampMetricConfig) metricCiscoCatalyst9800ReceiverLastSuccessTimestamp {
+	m := metricCiscoCatalyst9800ReceiverLastSuccessTimestamp{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoCatalyst9800ReceiverReconnects struct {
+	data     pmetric.Metric                                  // data buffer for generated metric.
+	config   CiscoCatalyst9800ReceiverReconnectsMetricConfig // metric config provided by user.
+	capacity int                                             // max observed number of data points added to the metric.
+}
+
+// init fills cisco.catalyst9800.receiver.reconnects metric with initial data.
+func (m *metricCiscoCatalyst9800ReceiverReconnects) init() {
+	m.data.SetName("cisco.catalyst9800.receiver.reconnects")
+	m.data.SetDescription("Catalyst 9800 telemetry reconnect attempts.")
+	m.data.SetUnit("")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoCatalyst9800ReceiverReconnects) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoCatalyst9800ReceiverReconnects) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoCatalyst9800ReceiverReconnects) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoCatalyst9800ReceiverReconnects(cfg CiscoCatalyst9800ReceiverReconnectsMetricConfig) metricCiscoCatalyst9800ReceiverReconnects {
+	m := metricCiscoCatalyst9800ReceiverReconnects{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoCatalyst9800ReceiverTargetLastSuccessTimestamp struct {
+	data     pmetric.Metric                                                  // data buffer for generated metric.
+	config   CiscoCatalyst9800ReceiverTargetLastSuccessTimestampMetricConfig // metric config provided by user.
+	capacity int                                                             // max observed number of data points added to the metric.
+}
+
+// init fills cisco.catalyst9800.receiver.target.last_success_timestamp metric with initial data.
+func (m *metricCiscoCatalyst9800ReceiverTargetLastSuccessTimestamp) init() {
+	m.data.SetName("cisco.catalyst9800.receiver.target.last_success_timestamp")
+	m.data.SetDescription("Unix timestamp of the individual target's last successful update.")
+	m.data.SetUnit("")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoCatalyst9800ReceiverTargetLastSuccessTimestamp) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoCatalyst9800ReceiverTargetLastSuccessTimestamp) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoCatalyst9800ReceiverTargetLastSuccessTimestamp) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoCatalyst9800ReceiverTargetLastSuccessTimestamp(cfg CiscoCatalyst9800ReceiverTargetLastSuccessTimestampMetricConfig) metricCiscoCatalyst9800ReceiverTargetLastSuccessTimestamp {
+	m := metricCiscoCatalyst9800ReceiverTargetLastSuccessTimestamp{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoCatalyst9800ReceiverTargetReconnects struct {
+	data     pmetric.Metric                                        // data buffer for generated metric.
+	config   CiscoCatalyst9800ReceiverTargetReconnectsMetricConfig // metric config provided by user.
+	capacity int                                                   // max observed number of data points added to the metric.
+}
+
+// init fills cisco.catalyst9800.receiver.target.reconnects metric with initial data.
+func (m *metricCiscoCatalyst9800ReceiverTargetReconnects) init() {
+	m.data.SetName("cisco.catalyst9800.receiver.target.reconnects")
+	m.data.SetDescription("Reconnect attempts for an individual target.")
+	m.data.SetUnit("")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoCatalyst9800ReceiverTargetReconnects) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoCatalyst9800ReceiverTargetReconnects) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoCatalyst9800ReceiverTargetReconnects) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoCatalyst9800ReceiverTargetReconnects(cfg CiscoCatalyst9800ReceiverTargetReconnectsMetricConfig) metricCiscoCatalyst9800ReceiverTargetReconnects {
+	m := metricCiscoCatalyst9800ReceiverTargetReconnects{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoCatalyst9800ReceiverTargetSubscriptionActive struct {
+	data     pmetric.Metric                                                // data buffer for generated metric.
+	config   CiscoCatalyst9800ReceiverTargetSubscriptionActiveMetricConfig // metric config provided by user.
+	capacity int                                                           // max observed number of data points added to the metric.
+}
+
+// init fills cisco.catalyst9800.receiver.target.subscription.active metric with initial data.
+func (m *metricCiscoCatalyst9800ReceiverTargetSubscriptionActive) init() {
+	m.data.SetName("cisco.catalyst9800.receiver.target.subscription.active")
+	m.data.SetDescription("Whether an individual configured target has an active subscription.")
+	m.data.SetUnit("")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoCatalyst9800ReceiverTargetSubscriptionActive) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoCatalyst9800ReceiverTargetSubscriptionActive) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoCatalyst9800ReceiverTargetSubscriptionActive) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoCatalyst9800ReceiverTargetSubscriptionActive(cfg CiscoCatalyst9800ReceiverTargetSubscriptionActiveMetricConfig) metricCiscoCatalyst9800ReceiverTargetSubscriptionActive {
+	m := metricCiscoCatalyst9800ReceiverTargetSubscriptionActive{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoCatalyst9800ReceiverTargetUpdates struct {
+	data     pmetric.Metric                                     // data buffer for generated metric.
+	config   CiscoCatalyst9800ReceiverTargetUpdatesMetricConfig // metric config provided by user.
+	capacity int                                                // max observed number of data points added to the metric.
+}
+
+// init fills cisco.catalyst9800.receiver.target.updates metric with initial data.
+func (m *metricCiscoCatalyst9800ReceiverTargetUpdates) init() {
+	m.data.SetName("cisco.catalyst9800.receiver.target.updates")
+	m.data.SetDescription("Updates received from an individual target.")
+	m.data.SetUnit("")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoCatalyst9800ReceiverTargetUpdates) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoCatalyst9800ReceiverTargetUpdates) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoCatalyst9800ReceiverTargetUpdates) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoCatalyst9800ReceiverTargetUpdates(cfg CiscoCatalyst9800ReceiverTargetUpdatesMetricConfig) metricCiscoCatalyst9800ReceiverTargetUpdates {
+	m := metricCiscoCatalyst9800ReceiverTargetUpdates{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoCatalyst9800ReceiverUnsupportedPaths struct {
+	data     pmetric.Metric                                        // data buffer for generated metric.
+	config   CiscoCatalyst9800ReceiverUnsupportedPathsMetricConfig // metric config provided by user.
+	capacity int                                                   // max observed number of data points added to the metric.
+}
+
+// init fills cisco.catalyst9800.receiver.unsupported_paths metric with initial data.
+func (m *metricCiscoCatalyst9800ReceiverUnsupportedPaths) init() {
+	m.data.SetName("cisco.catalyst9800.receiver.unsupported_paths")
+	m.data.SetDescription("Catalyst 9800 telemetry paths rejected or pruned as unsupported.")
+	m.data.SetUnit("")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoCatalyst9800ReceiverUnsupportedPaths) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoCatalyst9800ReceiverUnsupportedPaths) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoCatalyst9800ReceiverUnsupportedPaths) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoCatalyst9800ReceiverUnsupportedPaths(cfg CiscoCatalyst9800ReceiverUnsupportedPathsMetricConfig) metricCiscoCatalyst9800ReceiverUnsupportedPaths {
+	m := metricCiscoCatalyst9800ReceiverUnsupportedPaths{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoCatalyst9800ReceiverUpdates struct {
+	data     pmetric.Metric                               // data buffer for generated metric.
+	config   CiscoCatalyst9800ReceiverUpdatesMetricConfig // metric config provided by user.
+	capacity int                                          // max observed number of data points added to the metric.
+}
+
+// init fills cisco.catalyst9800.receiver.updates metric with initial data.
+func (m *metricCiscoCatalyst9800ReceiverUpdates) init() {
+	m.data.SetName("cisco.catalyst9800.receiver.updates")
+	m.data.SetDescription("Catalyst 9800 telemetry updates and deletes received.")
+	m.data.SetUnit("")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoCatalyst9800ReceiverUpdates) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoCatalyst9800ReceiverUpdates) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoCatalyst9800ReceiverUpdates) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoCatalyst9800ReceiverUpdates(cfg CiscoCatalyst9800ReceiverUpdatesMetricConfig) metricCiscoCatalyst9800ReceiverUpdates {
+	m := metricCiscoCatalyst9800ReceiverUpdates{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
 }
 
 type metricCiscoDeviceUp struct {
@@ -471,6 +5334,56 @@ func (m *metricCiscoInterfaceAdminStatus) emit(metrics pmetric.MetricSlice) {
 
 func newMetricCiscoInterfaceAdminStatus(cfg CiscoInterfaceAdminStatusMetricConfig) metricCiscoInterfaceAdminStatus {
 	m := metricCiscoInterfaceAdminStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoInterfaceDropRate struct {
+	data     pmetric.Metric                     // data buffer for generated metric.
+	config   CiscoInterfaceDropRateMetricConfig // metric config provided by user.
+	capacity int                                // max observed number of data points added to the metric.
+}
+
+// init fills cisco.interface.drop.rate metric with initial data.
+func (m *metricCiscoInterfaceDropRate) init() {
+	m.data.SetName("cisco.interface.drop.rate")
+	m.data.SetDescription("APIC interface packet-drop rate when exposed by statistics classes.")
+	m.data.SetUnit("{drop}/s")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoInterfaceDropRate) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoInterfaceDropRate) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoInterfaceDropRate) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoInterfaceDropRate(cfg CiscoInterfaceDropRateMetricConfig) metricCiscoInterfaceDropRate {
+	m := metricCiscoInterfaceDropRate{config: cfg}
 
 	if cfg.Enabled {
 		m.data = pmetric.NewMetric()
@@ -836,6 +5749,620 @@ func (m *metricCiscoInterfaceUtilization) emit(metrics pmetric.MetricSlice) {
 
 func newMetricCiscoInterfaceUtilization(cfg CiscoInterfaceUtilizationMetricConfig) metricCiscoInterfaceUtilization {
 	m := metricCiscoInterfaceUtilization{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoIosxrReceiverActiveSubscriptions struct {
+	data     pmetric.Metric                                    // data buffer for generated metric.
+	config   CiscoIosxrReceiverActiveSubscriptionsMetricConfig // metric config provided by user.
+	capacity int                                               // max observed number of data points added to the metric.
+}
+
+// init fills cisco.iosxr.receiver.active_subscriptions metric with initial data.
+func (m *metricCiscoIosxrReceiverActiveSubscriptions) init() {
+	m.data.SetName("cisco.iosxr.receiver.active_subscriptions")
+	m.data.SetDescription("Active gNMI dial-in targets.")
+	m.data.SetUnit("")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoIosxrReceiverActiveSubscriptions) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoIosxrReceiverActiveSubscriptions) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoIosxrReceiverActiveSubscriptions) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoIosxrReceiverActiveSubscriptions(cfg CiscoIosxrReceiverActiveSubscriptionsMetricConfig) metricCiscoIosxrReceiverActiveSubscriptions {
+	m := metricCiscoIosxrReceiverActiveSubscriptions{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoIosxrReceiverCompactGpbPayloads struct {
+	data     pmetric.Metric                                   // data buffer for generated metric.
+	config   CiscoIosxrReceiverCompactGpbPayloadsMetricConfig // metric config provided by user.
+	capacity int                                              // max observed number of data points added to the metric.
+}
+
+// init fills cisco.iosxr.receiver.compact_gpb_payloads metric with initial data.
+func (m *metricCiscoIosxrReceiverCompactGpbPayloads) init() {
+	m.data.SetName("cisco.iosxr.receiver.compact_gpb_payloads")
+	m.data.SetDescription("Compact GPB payload rows in the current MDT message; the rows are not generically decoded.")
+	m.data.SetUnit("")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoIosxrReceiverCompactGpbPayloads) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoIosxrReceiverCompactGpbPayloads) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoIosxrReceiverCompactGpbPayloads) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoIosxrReceiverCompactGpbPayloads(cfg CiscoIosxrReceiverCompactGpbPayloadsMetricConfig) metricCiscoIosxrReceiverCompactGpbPayloads {
+	m := metricCiscoIosxrReceiverCompactGpbPayloads{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoIosxrReceiverDecodeErrors struct {
+	data     pmetric.Metric                             // data buffer for generated metric.
+	config   CiscoIosxrReceiverDecodeErrorsMetricConfig // metric config provided by user.
+	capacity int                                        // max observed number of data points added to the metric.
+}
+
+// init fills cisco.iosxr.receiver.decode_errors metric with initial data.
+func (m *metricCiscoIosxrReceiverDecodeErrors) init() {
+	m.data.SetName("cisco.iosxr.receiver.decode_errors")
+	m.data.SetDescription("JSON/YANG decode failures.")
+	m.data.SetUnit("")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoIosxrReceiverDecodeErrors) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoIosxrReceiverDecodeErrors) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoIosxrReceiverDecodeErrors) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoIosxrReceiverDecodeErrors(cfg CiscoIosxrReceiverDecodeErrorsMetricConfig) metricCiscoIosxrReceiverDecodeErrors {
+	m := metricCiscoIosxrReceiverDecodeErrors{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoIosxrReceiverDroppedDatapoints struct {
+	data     pmetric.Metric                                  // data buffer for generated metric.
+	config   CiscoIosxrReceiverDroppedDatapointsMetricConfig // metric config provided by user.
+	capacity int                                             // max observed number of data points added to the metric.
+}
+
+// init fills cisco.iosxr.receiver.dropped_datapoints metric with initial data.
+func (m *metricCiscoIosxrReceiverDroppedDatapoints) init() {
+	m.data.SetName("cisco.iosxr.receiver.dropped_datapoints")
+	m.data.SetDescription("Datapoints dropped by the receiver cardinality guard.")
+	m.data.SetUnit("")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoIosxrReceiverDroppedDatapoints) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoIosxrReceiverDroppedDatapoints) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoIosxrReceiverDroppedDatapoints) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoIosxrReceiverDroppedDatapoints(cfg CiscoIosxrReceiverDroppedDatapointsMetricConfig) metricCiscoIosxrReceiverDroppedDatapoints {
+	m := metricCiscoIosxrReceiverDroppedDatapoints{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoIosxrReceiverLastSuccessTimestamp struct {
+	data     pmetric.Metric                                     // data buffer for generated metric.
+	config   CiscoIosxrReceiverLastSuccessTimestampMetricConfig // metric config provided by user.
+	capacity int                                                // max observed number of data points added to the metric.
+}
+
+// init fills cisco.iosxr.receiver.last_success_timestamp metric with initial data.
+func (m *metricCiscoIosxrReceiverLastSuccessTimestamp) init() {
+	m.data.SetName("cisco.iosxr.receiver.last_success_timestamp")
+	m.data.SetDescription("Unix timestamp of the last successful gNMI update.")
+	m.data.SetUnit("")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoIosxrReceiverLastSuccessTimestamp) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoIosxrReceiverLastSuccessTimestamp) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoIosxrReceiverLastSuccessTimestamp) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoIosxrReceiverLastSuccessTimestamp(cfg CiscoIosxrReceiverLastSuccessTimestampMetricConfig) metricCiscoIosxrReceiverLastSuccessTimestamp {
+	m := metricCiscoIosxrReceiverLastSuccessTimestamp{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoIosxrReceiverReconnects struct {
+	data     pmetric.Metric                           // data buffer for generated metric.
+	config   CiscoIosxrReceiverReconnectsMetricConfig // metric config provided by user.
+	capacity int                                      // max observed number of data points added to the metric.
+}
+
+// init fills cisco.iosxr.receiver.reconnects metric with initial data.
+func (m *metricCiscoIosxrReceiverReconnects) init() {
+	m.data.SetName("cisco.iosxr.receiver.reconnects")
+	m.data.SetDescription("gNMI reconnect attempts after subscription failures.")
+	m.data.SetUnit("")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoIosxrReceiverReconnects) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoIosxrReceiverReconnects) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoIosxrReceiverReconnects) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoIosxrReceiverReconnects(cfg CiscoIosxrReceiverReconnectsMetricConfig) metricCiscoIosxrReceiverReconnects {
+	m := metricCiscoIosxrReceiverReconnects{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoIosxrReceiverTargetLastSuccessTimestamp struct {
+	data     pmetric.Metric                                           // data buffer for generated metric.
+	config   CiscoIosxrReceiverTargetLastSuccessTimestampMetricConfig // metric config provided by user.
+	capacity int                                                      // max observed number of data points added to the metric.
+}
+
+// init fills cisco.iosxr.receiver.target.last_success_timestamp metric with initial data.
+func (m *metricCiscoIosxrReceiverTargetLastSuccessTimestamp) init() {
+	m.data.SetName("cisco.iosxr.receiver.target.last_success_timestamp")
+	m.data.SetDescription("Unix timestamp of the individual target's last successful update.")
+	m.data.SetUnit("")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoIosxrReceiverTargetLastSuccessTimestamp) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoIosxrReceiverTargetLastSuccessTimestamp) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoIosxrReceiverTargetLastSuccessTimestamp) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoIosxrReceiverTargetLastSuccessTimestamp(cfg CiscoIosxrReceiverTargetLastSuccessTimestampMetricConfig) metricCiscoIosxrReceiverTargetLastSuccessTimestamp {
+	m := metricCiscoIosxrReceiverTargetLastSuccessTimestamp{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoIosxrReceiverTargetReconnects struct {
+	data     pmetric.Metric                                 // data buffer for generated metric.
+	config   CiscoIosxrReceiverTargetReconnectsMetricConfig // metric config provided by user.
+	capacity int                                            // max observed number of data points added to the metric.
+}
+
+// init fills cisco.iosxr.receiver.target.reconnects metric with initial data.
+func (m *metricCiscoIosxrReceiverTargetReconnects) init() {
+	m.data.SetName("cisco.iosxr.receiver.target.reconnects")
+	m.data.SetDescription("Reconnect attempts for an individual target.")
+	m.data.SetUnit("")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoIosxrReceiverTargetReconnects) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoIosxrReceiverTargetReconnects) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoIosxrReceiverTargetReconnects) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoIosxrReceiverTargetReconnects(cfg CiscoIosxrReceiverTargetReconnectsMetricConfig) metricCiscoIosxrReceiverTargetReconnects {
+	m := metricCiscoIosxrReceiverTargetReconnects{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoIosxrReceiverTargetSubscriptionActive struct {
+	data     pmetric.Metric                                         // data buffer for generated metric.
+	config   CiscoIosxrReceiverTargetSubscriptionActiveMetricConfig // metric config provided by user.
+	capacity int                                                    // max observed number of data points added to the metric.
+}
+
+// init fills cisco.iosxr.receiver.target.subscription.active metric with initial data.
+func (m *metricCiscoIosxrReceiverTargetSubscriptionActive) init() {
+	m.data.SetName("cisco.iosxr.receiver.target.subscription.active")
+	m.data.SetDescription("Whether an individual configured target has an active subscription.")
+	m.data.SetUnit("")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoIosxrReceiverTargetSubscriptionActive) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoIosxrReceiverTargetSubscriptionActive) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoIosxrReceiverTargetSubscriptionActive) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoIosxrReceiverTargetSubscriptionActive(cfg CiscoIosxrReceiverTargetSubscriptionActiveMetricConfig) metricCiscoIosxrReceiverTargetSubscriptionActive {
+	m := metricCiscoIosxrReceiverTargetSubscriptionActive{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoIosxrReceiverTargetUpdates struct {
+	data     pmetric.Metric                              // data buffer for generated metric.
+	config   CiscoIosxrReceiverTargetUpdatesMetricConfig // metric config provided by user.
+	capacity int                                         // max observed number of data points added to the metric.
+}
+
+// init fills cisco.iosxr.receiver.target.updates metric with initial data.
+func (m *metricCiscoIosxrReceiverTargetUpdates) init() {
+	m.data.SetName("cisco.iosxr.receiver.target.updates")
+	m.data.SetDescription("Updates received from an individual target.")
+	m.data.SetUnit("")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoIosxrReceiverTargetUpdates) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoIosxrReceiverTargetUpdates) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoIosxrReceiverTargetUpdates) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoIosxrReceiverTargetUpdates(cfg CiscoIosxrReceiverTargetUpdatesMetricConfig) metricCiscoIosxrReceiverTargetUpdates {
+	m := metricCiscoIosxrReceiverTargetUpdates{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoIosxrReceiverUnsupportedPaths struct {
+	data     pmetric.Metric                                 // data buffer for generated metric.
+	config   CiscoIosxrReceiverUnsupportedPathsMetricConfig // metric config provided by user.
+	capacity int                                            // max observed number of data points added to the metric.
+}
+
+// init fills cisco.iosxr.receiver.unsupported_paths metric with initial data.
+func (m *metricCiscoIosxrReceiverUnsupportedPaths) init() {
+	m.data.SetName("cisco.iosxr.receiver.unsupported_paths")
+	m.data.SetDescription("Paths rejected or pruned by gNMI capabilities.")
+	m.data.SetUnit("")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoIosxrReceiverUnsupportedPaths) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoIosxrReceiverUnsupportedPaths) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoIosxrReceiverUnsupportedPaths) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoIosxrReceiverUnsupportedPaths(cfg CiscoIosxrReceiverUnsupportedPathsMetricConfig) metricCiscoIosxrReceiverUnsupportedPaths {
+	m := metricCiscoIosxrReceiverUnsupportedPaths{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoIosxrReceiverUpdates struct {
+	data     pmetric.Metric                        // data buffer for generated metric.
+	config   CiscoIosxrReceiverUpdatesMetricConfig // metric config provided by user.
+	capacity int                                   // max observed number of data points added to the metric.
+}
+
+// init fills cisco.iosxr.receiver.updates metric with initial data.
+func (m *metricCiscoIosxrReceiverUpdates) init() {
+	m.data.SetName("cisco.iosxr.receiver.updates")
+	m.data.SetDescription("gNMI updates and deletes received.")
+	m.data.SetUnit("")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoIosxrReceiverUpdates) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoIosxrReceiverUpdates) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoIosxrReceiverUpdates) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoIosxrReceiverUpdates(cfg CiscoIosxrReceiverUpdatesMetricConfig) metricCiscoIosxrReceiverUpdates {
+	m := metricCiscoIosxrReceiverUpdates{config: cfg}
 
 	if cfg.Enabled {
 		m.data = pmetric.NewMetric()
@@ -1952,6 +7479,14745 @@ func newMetricCiscoOpticsVoltage(cfg CiscoOpticsVoltageMetricConfig) metricCisco
 	return m
 }
 
+type metricCiscoScrapePartialSuccess struct {
+	data     pmetric.Metric                        // data buffer for generated metric.
+	config   CiscoScrapePartialSuccessMetricConfig // metric config provided by user.
+	capacity int                                   // max observed number of data points added to the metric.
+}
+
+// init fills cisco.scrape.partial_success metric with initial data.
+func (m *metricCiscoScrapePartialSuccess) init() {
+	m.data.SetName("cisco.scrape.partial_success")
+	m.data.SetDescription("Whether the scrape completed with at least one command-family failure.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoScrapePartialSuccess) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoScrapePartialSuccess) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoScrapePartialSuccess) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoScrapePartialSuccess(cfg CiscoScrapePartialSuccessMetricConfig) metricCiscoScrapePartialSuccess {
+	m := metricCiscoScrapePartialSuccess{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoTopologyNeighborInfo struct {
+	data          pmetric.Metric                        // data buffer for generated metric.
+	config        CiscoTopologyNeighborInfoMetricConfig // metric config provided by user.
+	capacity      int                                   // max observed number of data points added to the metric.
+	aggDataPoints []int64                               // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.topology.neighbor.info metric with initial data.
+func (m *metricCiscoTopologyNeighborInfo) init() {
+	m.data.SetName("cisco.topology.neighbor.info")
+	m.data.SetDescription("LLDP, CDP, and fabric-link neighbor information.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoTopologyNeighborInfo) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoTopologyProtocolAttributeValue string, networkInterfaceNameAttributeValue string, ciscoTopologyNeighborNameAttributeValue string, ciscoTopologyNeighborInterfaceAttributeValue string, ciscoTopologyNeighborPlatformAttributeValue string, ciscoTopologyNeighborAddressAttributeValue string, networkPeerNameAttributeValue string, networkPeerAddressAttributeValue string, networkProtocolNameAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyProtocol) {
+		dp.Attributes().PutStr("cisco.topology.protocol", ciscoTopologyProtocolAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkInterfaceName) {
+		dp.Attributes().PutStr("network.interface.name", networkInterfaceNameAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborName) {
+		dp.Attributes().PutStr("cisco.topology.neighbor.name", ciscoTopologyNeighborNameAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborInterface) {
+		dp.Attributes().PutStr("cisco.topology.neighbor.interface", ciscoTopologyNeighborInterfaceAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborPlatform) {
+		dp.Attributes().PutStr("cisco.topology.neighbor.platform", ciscoTopologyNeighborPlatformAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborAddress) {
+		dp.Attributes().PutStr("cisco.topology.neighbor.address", ciscoTopologyNeighborAddressAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkPeerName) {
+		dp.Attributes().PutStr("network.peer.name", networkPeerNameAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkPeerAddress) {
+		dp.Attributes().PutStr("network.peer.address", networkPeerAddressAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkProtocolName) {
+		dp.Attributes().PutStr("network.protocol.name", networkProtocolNameAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoTopologyNeighborInfo) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoTopologyNeighborInfo) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetIntValue(m.data.Gauge().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoTopologyNeighborInfo(cfg CiscoTopologyNeighborInfoMetricConfig) metricCiscoTopologyNeighborInfo {
+	m := metricCiscoTopologyNeighborInfo{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoTransceiverSensor struct {
+	data     pmetric.Metric                     // data buffer for generated metric.
+	config   CiscoTransceiverSensorMetricConfig // metric config provided by user.
+	capacity int                                // max observed number of data points added to the metric.
+}
+
+// init fills cisco.transceiver.sensor metric with initial data.
+func (m *metricCiscoTransceiverSensor) init() {
+	m.data.SetName("cisco.transceiver.sensor")
+	m.data.SetDescription("Digital optical monitoring sensor values, such as temperature, voltage, current, or optical receive/transmit power. The actual physical unit is in `cisco.transceiver.sensor.unit`.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoTransceiverSensor) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoTransceiverSensor) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoTransceiverSensor) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoTransceiverSensor(cfg CiscoTransceiverSensorMetricConfig) metricCiscoTransceiverSensor {
+	m := metricCiscoTransceiverSensor{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcApCapwapEncryptionEnabled struct {
+	data     pmetric.Metric                                // data buffer for generated metric.
+	config   CiscoWlcApCapwapEncryptionEnabledMetricConfig // metric config provided by user.
+	capacity int                                           // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.ap.capwap.encryption.enabled metric with initial data.
+func (m *metricCiscoWlcApCapwapEncryptionEnabled) init() {
+	m.data.SetName("cisco.wlc.ap.capwap.encryption.enabled")
+	m.data.SetDescription("Whether CAPWAP link encryption is enabled.")
+	m.data.SetUnit("")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcApCapwapEncryptionEnabled) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcApCapwapEncryptionEnabled) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcApCapwapEncryptionEnabled) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcApCapwapEncryptionEnabled(cfg CiscoWlcApCapwapEncryptionEnabledMetricConfig) metricCiscoWlcApCapwapEncryptionEnabled {
+	m := metricCiscoWlcApCapwapEncryptionEnabled{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcApCapwapState struct {
+	data     pmetric.Metric                    // data buffer for generated metric.
+	config   CiscoWlcApCapwapStateMetricConfig // metric config provided by user.
+	capacity int                               // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.ap.capwap.state metric with initial data.
+func (m *metricCiscoWlcApCapwapState) init() {
+	m.data.SetName("cisco.wlc.ap.capwap.state")
+	m.data.SetDescription("CAPWAP/AP operational state with state text as an attribute.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcApCapwapState) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcApCapwapState) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcApCapwapState) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcApCapwapState(cfg CiscoWlcApCapwapStateMetricConfig) metricCiscoWlcApCapwapState {
+	m := metricCiscoWlcApCapwapState{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcApDisconnect struct {
+	data     pmetric.Metric                   // data buffer for generated metric.
+	config   CiscoWlcApDisconnectMetricConfig // metric config provided by user.
+	capacity int                              // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.ap.disconnect metric with initial data.
+func (m *metricCiscoWlcApDisconnect) init() {
+	m.data.SetName("cisco.wlc.ap.disconnect")
+	m.data.SetDescription("AP disconnect counter.")
+	m.data.SetUnit("{disconnect}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoWlcApDisconnect) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcApDisconnect) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcApDisconnect) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcApDisconnect(cfg CiscoWlcApDisconnectMetricConfig) metricCiscoWlcApDisconnect {
+	m := metricCiscoWlcApDisconnect{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcApDisconnectReasonInfo struct {
+	data     pmetric.Metric                             // data buffer for generated metric.
+	config   CiscoWlcApDisconnectReasonInfoMetricConfig // metric config provided by user.
+	capacity int                                        // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.ap.disconnect.reason.info metric with initial data.
+func (m *metricCiscoWlcApDisconnectReasonInfo) init() {
+	m.data.SetName("cisco.wlc.ap.disconnect.reason.info")
+	m.data.SetDescription("Current AP disconnect reason evidence.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcApDisconnectReasonInfo) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcApDisconnectReasonInfo) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcApDisconnectReasonInfo) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcApDisconnectReasonInfo(cfg CiscoWlcApDisconnectReasonInfoMetricConfig) metricCiscoWlcApDisconnectReasonInfo {
+	m := metricCiscoWlcApDisconnectReasonInfo{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcApJoinFailureReasonInfo struct {
+	data     pmetric.Metric                              // data buffer for generated metric.
+	config   CiscoWlcApJoinFailureReasonInfoMetricConfig // metric config provided by user.
+	capacity int                                         // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.ap.join.failure.reason.info metric with initial data.
+func (m *metricCiscoWlcApJoinFailureReasonInfo) init() {
+	m.data.SetName("cisco.wlc.ap.join.failure.reason.info")
+	m.data.SetDescription("Current AP join failure reason evidence.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcApJoinFailureReasonInfo) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcApJoinFailureReasonInfo) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcApJoinFailureReasonInfo) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcApJoinFailureReasonInfo(cfg CiscoWlcApJoinFailureReasonInfoMetricConfig) metricCiscoWlcApJoinFailureReasonInfo {
+	m := metricCiscoWlcApJoinFailureReasonInfo{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcApJoinStatus struct {
+	data     pmetric.Metric                   // data buffer for generated metric.
+	config   CiscoWlcApJoinStatusMetricConfig // metric config provided by user.
+	capacity int                              // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.ap.join.status metric with initial data.
+func (m *metricCiscoWlcApJoinStatus) init() {
+	m.data.SetName("cisco.wlc.ap.join.status")
+	m.data.SetDescription("Whether an AP is joined.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcApJoinStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcApJoinStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcApJoinStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcApJoinStatus(cfg CiscoWlcApJoinStatusMetricConfig) metricCiscoWlcApJoinStatus {
+	m := metricCiscoWlcApJoinStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcAuthRadiusAccessAcceptCount struct {
+	data     pmetric.Metric                                  // data buffer for generated metric.
+	config   CiscoWlcAuthRadiusAccessAcceptCountMetricConfig // metric config provided by user.
+	capacity int                                             // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.auth.radius.access.accept.count metric with initial data.
+func (m *metricCiscoWlcAuthRadiusAccessAcceptCount) init() {
+	m.data.SetName("cisco.wlc.auth.radius.access.accept.count")
+	m.data.SetDescription("Device-reported RADIUS access-accept counter; the source path does not declare a unit.")
+	m.data.SetUnit("")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoWlcAuthRadiusAccessAcceptCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcAuthRadiusAccessAcceptCount) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcAuthRadiusAccessAcceptCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcAuthRadiusAccessAcceptCount(cfg CiscoWlcAuthRadiusAccessAcceptCountMetricConfig) metricCiscoWlcAuthRadiusAccessAcceptCount {
+	m := metricCiscoWlcAuthRadiusAccessAcceptCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcAuthRadiusAccessRejectCount struct {
+	data     pmetric.Metric                                  // data buffer for generated metric.
+	config   CiscoWlcAuthRadiusAccessRejectCountMetricConfig // metric config provided by user.
+	capacity int                                             // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.auth.radius.access.reject.count metric with initial data.
+func (m *metricCiscoWlcAuthRadiusAccessRejectCount) init() {
+	m.data.SetName("cisco.wlc.auth.radius.access.reject.count")
+	m.data.SetDescription("Device-reported RADIUS access-reject counter; the source path does not declare a unit.")
+	m.data.SetUnit("")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoWlcAuthRadiusAccessRejectCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcAuthRadiusAccessRejectCount) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcAuthRadiusAccessRejectCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcAuthRadiusAccessRejectCount(cfg CiscoWlcAuthRadiusAccessRejectCountMetricConfig) metricCiscoWlcAuthRadiusAccessRejectCount {
+	m := metricCiscoWlcAuthRadiusAccessRejectCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcAuthRadiusBadAuthenticatorCount struct {
+	data     pmetric.Metric                                      // data buffer for generated metric.
+	config   CiscoWlcAuthRadiusBadAuthenticatorCountMetricConfig // metric config provided by user.
+	capacity int                                                 // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.auth.radius.bad_authenticator.count metric with initial data.
+func (m *metricCiscoWlcAuthRadiusBadAuthenticatorCount) init() {
+	m.data.SetName("cisco.wlc.auth.radius.bad_authenticator.count")
+	m.data.SetDescription("Device-reported RADIUS bad-authenticator counter; the source path does not declare a unit.")
+	m.data.SetUnit("")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoWlcAuthRadiusBadAuthenticatorCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcAuthRadiusBadAuthenticatorCount) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcAuthRadiusBadAuthenticatorCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcAuthRadiusBadAuthenticatorCount(cfg CiscoWlcAuthRadiusBadAuthenticatorCountMetricConfig) metricCiscoWlcAuthRadiusBadAuthenticatorCount {
+	m := metricCiscoWlcAuthRadiusBadAuthenticatorCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcAuthRadiusResponseCount struct {
+	data     pmetric.Metric                              // data buffer for generated metric.
+	config   CiscoWlcAuthRadiusResponseCountMetricConfig // metric config provided by user.
+	capacity int                                         // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.auth.radius.response.count metric with initial data.
+func (m *metricCiscoWlcAuthRadiusResponseCount) init() {
+	m.data.SetName("cisco.wlc.auth.radius.response.count")
+	m.data.SetDescription("Device-reported RADIUS response counter; the source path does not declare a unit.")
+	m.data.SetUnit("")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoWlcAuthRadiusResponseCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcAuthRadiusResponseCount) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcAuthRadiusResponseCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcAuthRadiusResponseCount(cfg CiscoWlcAuthRadiusResponseCountMetricConfig) metricCiscoWlcAuthRadiusResponseCount {
+	m := metricCiscoWlcAuthRadiusResponseCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcAuthRadiusResponseDelayAvg struct {
+	data     pmetric.Metric                                 // data buffer for generated metric.
+	config   CiscoWlcAuthRadiusResponseDelayAvgMetricConfig // metric config provided by user.
+	capacity int                                            // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.auth.radius.response_delay.avg metric with initial data.
+func (m *metricCiscoWlcAuthRadiusResponseDelayAvg) init() {
+	m.data.SetName("cisco.wlc.auth.radius.response_delay.avg")
+	m.data.SetDescription("Device-reported average RADIUS authentication response delay in source-defined units.")
+	m.data.SetUnit("")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcAuthRadiusResponseDelayAvg) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcAuthRadiusResponseDelayAvg) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcAuthRadiusResponseDelayAvg) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcAuthRadiusResponseDelayAvg(cfg CiscoWlcAuthRadiusResponseDelayAvgMetricConfig) metricCiscoWlcAuthRadiusResponseDelayAvg {
+	m := metricCiscoWlcAuthRadiusResponseDelayAvg{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcAuthRadiusResponseDelayMax struct {
+	data     pmetric.Metric                                 // data buffer for generated metric.
+	config   CiscoWlcAuthRadiusResponseDelayMaxMetricConfig // metric config provided by user.
+	capacity int                                            // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.auth.radius.response_delay.max metric with initial data.
+func (m *metricCiscoWlcAuthRadiusResponseDelayMax) init() {
+	m.data.SetName("cisco.wlc.auth.radius.response_delay.max")
+	m.data.SetDescription("Device-reported maximum RADIUS authentication response delay in source-defined units.")
+	m.data.SetUnit("")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcAuthRadiusResponseDelayMax) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcAuthRadiusResponseDelayMax) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcAuthRadiusResponseDelayMax) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcAuthRadiusResponseDelayMax(cfg CiscoWlcAuthRadiusResponseDelayMaxMetricConfig) metricCiscoWlcAuthRadiusResponseDelayMax {
+	m := metricCiscoWlcAuthRadiusResponseDelayMax{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcAuthRadiusTimeoutCount struct {
+	data     pmetric.Metric                             // data buffer for generated metric.
+	config   CiscoWlcAuthRadiusTimeoutCountMetricConfig // metric config provided by user.
+	capacity int                                        // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.auth.radius.timeout.count metric with initial data.
+func (m *metricCiscoWlcAuthRadiusTimeoutCount) init() {
+	m.data.SetName("cisco.wlc.auth.radius.timeout.count")
+	m.data.SetDescription("Device-reported RADIUS timeout counter; the source path does not declare a unit.")
+	m.data.SetUnit("")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoWlcAuthRadiusTimeoutCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcAuthRadiusTimeoutCount) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcAuthRadiusTimeoutCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcAuthRadiusTimeoutCount(cfg CiscoWlcAuthRadiusTimeoutCountMetricConfig) metricCiscoWlcAuthRadiusTimeoutCount {
+	m := metricCiscoWlcAuthRadiusTimeoutCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcClientAuthFailureReasonInfo struct {
+	data     pmetric.Metric                                  // data buffer for generated metric.
+	config   CiscoWlcClientAuthFailureReasonInfoMetricConfig // metric config provided by user.
+	capacity int                                             // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.client.auth.failure.reason.info metric with initial data.
+func (m *metricCiscoWlcClientAuthFailureReasonInfo) init() {
+	m.data.SetName("cisco.wlc.client.auth.failure.reason.info")
+	m.data.SetDescription("Client auth/exclusion failure reason.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcClientAuthFailureReasonInfo) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcClientAuthFailureReasonInfo) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcClientAuthFailureReasonInfo) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcClientAuthFailureReasonInfo(cfg CiscoWlcClientAuthFailureReasonInfoMetricConfig) metricCiscoWlcClientAuthFailureReasonInfo {
+	m := metricCiscoWlcClientAuthFailureReasonInfo{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcClientConnectionState struct {
+	data     pmetric.Metric                            // data buffer for generated metric.
+	config   CiscoWlcClientConnectionStateMetricConfig // metric config provided by user.
+	capacity int                                       // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.client.connection.state metric with initial data.
+func (m *metricCiscoWlcClientConnectionState) init() {
+	m.data.SetName("cisco.wlc.client.connection.state")
+	m.data.SetDescription("Client connection state.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcClientConnectionState) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcClientConnectionState) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcClientConnectionState) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcClientConnectionState(cfg CiscoWlcClientConnectionStateMetricConfig) metricCiscoWlcClientConnectionState {
+	m := metricCiscoWlcClientConnectionState{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcClientNetworkIo struct {
+	data     pmetric.Metric                      // data buffer for generated metric.
+	config   CiscoWlcClientNetworkIoMetricConfig // metric config provided by user.
+	capacity int                                 // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.client.network.io metric with initial data.
+func (m *metricCiscoWlcClientNetworkIo) init() {
+	m.data.SetName("cisco.wlc.client.network.io")
+	m.data.SetDescription("Client traffic volume by direction.")
+	m.data.SetUnit("By")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoWlcClientNetworkIo) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcClientNetworkIo) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcClientNetworkIo) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcClientNetworkIo(cfg CiscoWlcClientNetworkIoMetricConfig) metricCiscoWlcClientNetworkIo {
+	m := metricCiscoWlcClientNetworkIo{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcClientNetworkPackets struct {
+	data     pmetric.Metric                           // data buffer for generated metric.
+	config   CiscoWlcClientNetworkPacketsMetricConfig // metric config provided by user.
+	capacity int                                      // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.client.network.packets metric with initial data.
+func (m *metricCiscoWlcClientNetworkPackets) init() {
+	m.data.SetName("cisco.wlc.client.network.packets")
+	m.data.SetDescription("Client packet volume by direction.")
+	m.data.SetUnit("{packet}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoWlcClientNetworkPackets) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcClientNetworkPackets) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcClientNetworkPackets) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcClientNetworkPackets(cfg CiscoWlcClientNetworkPacketsMetricConfig) metricCiscoWlcClientNetworkPackets {
+	m := metricCiscoWlcClientNetworkPackets{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcClientRoamCount struct {
+	data     pmetric.Metric                      // data buffer for generated metric.
+	config   CiscoWlcClientRoamCountMetricConfig // metric config provided by user.
+	capacity int                                 // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.client.roam.count metric with initial data.
+func (m *metricCiscoWlcClientRoamCount) init() {
+	m.data.SetName("cisco.wlc.client.roam.count")
+	m.data.SetDescription("Client or mobility roam counter.")
+	m.data.SetUnit("{roam}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoWlcClientRoamCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcClientRoamCount) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcClientRoamCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcClientRoamCount(cfg CiscoWlcClientRoamCountMetricConfig) metricCiscoWlcClientRoamCount {
+	m := metricCiscoWlcClientRoamCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcClientRoamFailureCount struct {
+	data     pmetric.Metric                             // data buffer for generated metric.
+	config   CiscoWlcClientRoamFailureCountMetricConfig // metric config provided by user.
+	capacity int                                        // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.client.roam.failure.count metric with initial data.
+func (m *metricCiscoWlcClientRoamFailureCount) init() {
+	m.data.SetName("cisco.wlc.client.roam.failure.count")
+	m.data.SetDescription("Client roam failure counters.")
+	m.data.SetUnit("{failure}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoWlcClientRoamFailureCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcClientRoamFailureCount) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcClientRoamFailureCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcClientRoamFailureCount(cfg CiscoWlcClientRoamFailureCountMetricConfig) metricCiscoWlcClientRoamFailureCount {
+	m := metricCiscoWlcClientRoamFailureCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcClientRoamTypeInfo struct {
+	data     pmetric.Metric                         // data buffer for generated metric.
+	config   CiscoWlcClientRoamTypeInfoMetricConfig // metric config provided by user.
+	capacity int                                    // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.client.roam.type.info metric with initial data.
+func (m *metricCiscoWlcClientRoamTypeInfo) init() {
+	m.data.SetName("cisco.wlc.client.roam.type.info")
+	m.data.SetDescription("Current client roam type evidence.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcClientRoamTypeInfo) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcClientRoamTypeInfo) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcClientRoamTypeInfo) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcClientRoamTypeInfo(cfg CiscoWlcClientRoamTypeInfoMetricConfig) metricCiscoWlcClientRoamTypeInfo {
+	m := metricCiscoWlcClientRoamTypeInfo{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcClientWirelessRssi struct {
+	data     pmetric.Metric                         // data buffer for generated metric.
+	config   CiscoWlcClientWirelessRssiMetricConfig // metric config provided by user.
+	capacity int                                    // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.client.wireless.rssi metric with initial data.
+func (m *metricCiscoWlcClientWirelessRssi) init() {
+	m.data.SetName("cisco.wlc.client.wireless.rssi")
+	m.data.SetDescription("Client RSSI.")
+	m.data.SetUnit("dBm")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcClientWirelessRssi) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcClientWirelessRssi) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcClientWirelessRssi) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcClientWirelessRssi(cfg CiscoWlcClientWirelessRssiMetricConfig) metricCiscoWlcClientWirelessRssi {
+	m := metricCiscoWlcClientWirelessRssi{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcClientWirelessSnr struct {
+	data     pmetric.Metric                        // data buffer for generated metric.
+	config   CiscoWlcClientWirelessSnrMetricConfig // metric config provided by user.
+	capacity int                                   // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.client.wireless.snr metric with initial data.
+func (m *metricCiscoWlcClientWirelessSnr) init() {
+	m.data.SetName("cisco.wlc.client.wireless.snr")
+	m.data.SetDescription("Client SNR.")
+	m.data.SetUnit("dB")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcClientWirelessSnr) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcClientWirelessSnr) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcClientWirelessSnr) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcClientWirelessSnr(cfg CiscoWlcClientWirelessSnrMetricConfig) metricCiscoWlcClientWirelessSnr {
+	m := metricCiscoWlcClientWirelessSnr{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcControllerCPUUtilization struct {
+	data     pmetric.Metric                               // data buffer for generated metric.
+	config   CiscoWlcControllerCPUUtilizationMetricConfig // metric config provided by user.
+	capacity int                                          // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.controller.cpu.utilization metric with initial data.
+func (m *metricCiscoWlcControllerCPUUtilization) init() {
+	m.data.SetName("cisco.wlc.controller.cpu.utilization")
+	m.data.SetDescription("WLC controller CPU utilization normalized to a ratio from 0 to 1.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcControllerCPUUtilization) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcControllerCPUUtilization) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcControllerCPUUtilization) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcControllerCPUUtilization(cfg CiscoWlcControllerCPUUtilizationMetricConfig) metricCiscoWlcControllerCPUUtilization {
+	m := metricCiscoWlcControllerCPUUtilization{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcControllerMemoryBytes struct {
+	data     pmetric.Metric                            // data buffer for generated metric.
+	config   CiscoWlcControllerMemoryBytesMetricConfig // metric config provided by user.
+	capacity int                                       // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.controller.memory.bytes metric with initial data.
+func (m *metricCiscoWlcControllerMemoryBytes) init() {
+	m.data.SetName("cisco.wlc.controller.memory.bytes")
+	m.data.SetDescription("Device-reported WLC controller memory value by state; the source path does not declare a unit.")
+	m.data.SetUnit("")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcControllerMemoryBytes) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcControllerMemoryBytes) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcControllerMemoryBytes) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcControllerMemoryBytes(cfg CiscoWlcControllerMemoryBytesMetricConfig) metricCiscoWlcControllerMemoryBytes {
+	m := metricCiscoWlcControllerMemoryBytes{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcControllerReceiverActiveSubscriptions struct {
+	data     pmetric.Metric                                            // data buffer for generated metric.
+	config   CiscoWlcControllerReceiverActiveSubscriptionsMetricConfig // metric config provided by user.
+	capacity int                                                       // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.controller.receiver.active_subscriptions metric with initial data.
+func (m *metricCiscoWlcControllerReceiverActiveSubscriptions) init() {
+	m.data.SetName("cisco.wlc.controller.receiver.active_subscriptions")
+	m.data.SetDescription("Current number of active WLC controller telemetry subscriptions.")
+	m.data.SetUnit("")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcControllerReceiverActiveSubscriptions) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcControllerReceiverActiveSubscriptions) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcControllerReceiverActiveSubscriptions) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcControllerReceiverActiveSubscriptions(cfg CiscoWlcControllerReceiverActiveSubscriptionsMetricConfig) metricCiscoWlcControllerReceiverActiveSubscriptions {
+	m := metricCiscoWlcControllerReceiverActiveSubscriptions{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcControllerReceiverDecodeErrors struct {
+	data     pmetric.Metric                                     // data buffer for generated metric.
+	config   CiscoWlcControllerReceiverDecodeErrorsMetricConfig // metric config provided by user.
+	capacity int                                                // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.controller.receiver.decode_errors metric with initial data.
+func (m *metricCiscoWlcControllerReceiverDecodeErrors) init() {
+	m.data.SetName("cisco.wlc.controller.receiver.decode_errors")
+	m.data.SetDescription("WLC controller telemetry decode failures.")
+	m.data.SetUnit("")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoWlcControllerReceiverDecodeErrors) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcControllerReceiverDecodeErrors) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcControllerReceiverDecodeErrors) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcControllerReceiverDecodeErrors(cfg CiscoWlcControllerReceiverDecodeErrorsMetricConfig) metricCiscoWlcControllerReceiverDecodeErrors {
+	m := metricCiscoWlcControllerReceiverDecodeErrors{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcControllerReceiverSubscriptionActive struct {
+	data     pmetric.Metric                                           // data buffer for generated metric.
+	config   CiscoWlcControllerReceiverSubscriptionActiveMetricConfig // metric config provided by user.
+	capacity int                                                      // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.controller.receiver.subscription.active metric with initial data.
+func (m *metricCiscoWlcControllerReceiverSubscriptionActive) init() {
+	m.data.SetName("cisco.wlc.controller.receiver.subscription.active")
+	m.data.SetDescription("Whether an individual WLC controller target has an active telemetry subscription.")
+	m.data.SetUnit("")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcControllerReceiverSubscriptionActive) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcControllerReceiverSubscriptionActive) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcControllerReceiverSubscriptionActive) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcControllerReceiverSubscriptionActive(cfg CiscoWlcControllerReceiverSubscriptionActiveMetricConfig) metricCiscoWlcControllerReceiverSubscriptionActive {
+	m := metricCiscoWlcControllerReceiverSubscriptionActive{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcControllerReceiverUpdates struct {
+	data     pmetric.Metric                                // data buffer for generated metric.
+	config   CiscoWlcControllerReceiverUpdatesMetricConfig // metric config provided by user.
+	capacity int                                           // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.controller.receiver.updates metric with initial data.
+func (m *metricCiscoWlcControllerReceiverUpdates) init() {
+	m.data.SetName("cisco.wlc.controller.receiver.updates")
+	m.data.SetDescription("WLC controller telemetry updates and deletes received.")
+	m.data.SetUnit("")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoWlcControllerReceiverUpdates) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcControllerReceiverUpdates) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcControllerReceiverUpdates) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcControllerReceiverUpdates(cfg CiscoWlcControllerReceiverUpdatesMetricConfig) metricCiscoWlcControllerReceiverUpdates {
+	m := metricCiscoWlcControllerReceiverUpdates{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcHaEnabled struct {
+	data     pmetric.Metric                // data buffer for generated metric.
+	config   CiscoWlcHaEnabledMetricConfig // metric config provided by user.
+	capacity int                           // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.ha.enabled metric with initial data.
+func (m *metricCiscoWlcHaEnabled) init() {
+	m.data.SetName("cisco.wlc.ha.enabled")
+	m.data.SetDescription("Whether HA is enabled.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcHaEnabled) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcHaEnabled) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcHaEnabled) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcHaEnabled(cfg CiscoWlcHaEnabledMetricConfig) metricCiscoWlcHaEnabled {
+	m := metricCiscoWlcHaEnabled{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcHaStandbyFailureCount struct {
+	data     pmetric.Metric                            // data buffer for generated metric.
+	config   CiscoWlcHaStandbyFailureCountMetricConfig // metric config provided by user.
+	capacity int                                       // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.ha.standby.failure.count metric with initial data.
+func (m *metricCiscoWlcHaStandbyFailureCount) init() {
+	m.data.SetName("cisco.wlc.ha.standby.failure.count")
+	m.data.SetDescription("Standby failure counter.")
+	m.data.SetUnit("{failure}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoWlcHaStandbyFailureCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcHaStandbyFailureCount) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcHaStandbyFailureCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcHaStandbyFailureCount(cfg CiscoWlcHaStandbyFailureCountMetricConfig) metricCiscoWlcHaStandbyFailureCount {
+	m := metricCiscoWlcHaStandbyFailureCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcHaState struct {
+	data     pmetric.Metric              // data buffer for generated metric.
+	config   CiscoWlcHaStateMetricConfig // metric config provided by user.
+	capacity int                         // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.ha.state metric with initial data.
+func (m *metricCiscoWlcHaState) init() {
+	m.data.SetName("cisco.wlc.ha.state")
+	m.data.SetDescription("Local or peer HA state.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcHaState) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcHaState) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcHaState) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcHaState(cfg CiscoWlcHaStateMetricConfig) metricCiscoWlcHaState {
+	m := metricCiscoWlcHaState{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcHaSwitchoverCount struct {
+	data     pmetric.Metric                        // data buffer for generated metric.
+	config   CiscoWlcHaSwitchoverCountMetricConfig // metric config provided by user.
+	capacity int                                   // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.ha.switchover.count metric with initial data.
+func (m *metricCiscoWlcHaSwitchoverCount) init() {
+	m.data.SetName("cisco.wlc.ha.switchover.count")
+	m.data.SetDescription("HA switchover counter.")
+	m.data.SetUnit("{switchover}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoWlcHaSwitchoverCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcHaSwitchoverCount) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcHaSwitchoverCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcHaSwitchoverCount(cfg CiscoWlcHaSwitchoverCountMetricConfig) metricCiscoWlcHaSwitchoverCount {
+	m := metricCiscoWlcHaSwitchoverCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcMobilityHandoffCount struct {
+	data     pmetric.Metric                           // data buffer for generated metric.
+	config   CiscoWlcMobilityHandoffCountMetricConfig // metric config provided by user.
+	capacity int                                      // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.mobility.handoff.count metric with initial data.
+func (m *metricCiscoWlcMobilityHandoffCount) init() {
+	m.data.SetName("cisco.wlc.mobility.handoff.count")
+	m.data.SetDescription("Successful handoff counters.")
+	m.data.SetUnit("{handoff}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoWlcMobilityHandoffCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcMobilityHandoffCount) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcMobilityHandoffCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcMobilityHandoffCount(cfg CiscoWlcMobilityHandoffCountMetricConfig) metricCiscoWlcMobilityHandoffCount {
+	m := metricCiscoWlcMobilityHandoffCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcMobilityHandoffFailureCount struct {
+	data     pmetric.Metric                                  // data buffer for generated metric.
+	config   CiscoWlcMobilityHandoffFailureCountMetricConfig // metric config provided by user.
+	capacity int                                             // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.mobility.handoff.failure.count metric with initial data.
+func (m *metricCiscoWlcMobilityHandoffFailureCount) init() {
+	m.data.SetName("cisco.wlc.mobility.handoff.failure.count")
+	m.data.SetDescription("Failed handoff counters.")
+	m.data.SetUnit("{failure}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoWlcMobilityHandoffFailureCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcMobilityHandoffFailureCount) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcMobilityHandoffFailureCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcMobilityHandoffFailureCount(cfg CiscoWlcMobilityHandoffFailureCountMetricConfig) metricCiscoWlcMobilityHandoffFailureCount {
+	m := metricCiscoWlcMobilityHandoffFailureCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcMobilityPeerStatus struct {
+	data     pmetric.Metric                         // data buffer for generated metric.
+	config   CiscoWlcMobilityPeerStatusMetricConfig // metric config provided by user.
+	capacity int                                    // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.mobility.peer.status metric with initial data.
+func (m *metricCiscoWlcMobilityPeerStatus) init() {
+	m.data.SetName("cisco.wlc.mobility.peer.status")
+	m.data.SetDescription("Mobility peer/link status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcMobilityPeerStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcMobilityPeerStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcMobilityPeerStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcMobilityPeerStatus(cfg CiscoWlcMobilityPeerStatusMetricConfig) metricCiscoWlcMobilityPeerStatus {
+	m := metricCiscoWlcMobilityPeerStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcMobilityRoamCount struct {
+	data     pmetric.Metric                        // data buffer for generated metric.
+	config   CiscoWlcMobilityRoamCountMetricConfig // metric config provided by user.
+	capacity int                                   // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.mobility.roam.count metric with initial data.
+func (m *metricCiscoWlcMobilityRoamCount) init() {
+	m.data.SetName("cisco.wlc.mobility.roam.count")
+	m.data.SetDescription("L2/L3 mobility roam counters.")
+	m.data.SetUnit("{roam}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoWlcMobilityRoamCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcMobilityRoamCount) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcMobilityRoamCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcMobilityRoamCount(cfg CiscoWlcMobilityRoamCountMetricConfig) metricCiscoWlcMobilityRoamCount {
+	m := metricCiscoWlcMobilityRoamCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcRfChannelChangeCount struct {
+	data     pmetric.Metric                           // data buffer for generated metric.
+	config   CiscoWlcRfChannelChangeCountMetricConfig // metric config provided by user.
+	capacity int                                      // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.rf.channel.change.count metric with initial data.
+func (m *metricCiscoWlcRfChannelChangeCount) init() {
+	m.data.SetName("cisco.wlc.rf.channel.change.count")
+	m.data.SetDescription("DCA/channel change counters.")
+	m.data.SetUnit("{change}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoWlcRfChannelChangeCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcRfChannelChangeCount) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcRfChannelChangeCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcRfChannelChangeCount(cfg CiscoWlcRfChannelChangeCountMetricConfig) metricCiscoWlcRfChannelChangeCount {
+	m := metricCiscoWlcRfChannelChangeCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcRfChannelRecommended struct {
+	data     pmetric.Metric                           // data buffer for generated metric.
+	config   CiscoWlcRfChannelRecommendedMetricConfig // metric config provided by user.
+	capacity int                                      // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.rf.channel.recommended metric with initial data.
+func (m *metricCiscoWlcRfChannelRecommended) init() {
+	m.data.SetName("cisco.wlc.rf.channel.recommended")
+	m.data.SetDescription("Controller-recommended RF channel.")
+	m.data.SetUnit("")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcRfChannelRecommended) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcRfChannelRecommended) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcRfChannelRecommended) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcRfChannelRecommended(cfg CiscoWlcRfChannelRecommendedMetricConfig) metricCiscoWlcRfChannelRecommended {
+	m := metricCiscoWlcRfChannelRecommended{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcRfChannelUtilization struct {
+	data     pmetric.Metric                           // data buffer for generated metric.
+	config   CiscoWlcRfChannelUtilizationMetricConfig // metric config provided by user.
+	capacity int                                      // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.rf.channel.utilization metric with initial data.
+func (m *metricCiscoWlcRfChannelUtilization) init() {
+	m.data.SetName("cisco.wlc.rf.channel.utilization")
+	m.data.SetDescription("RF/channel utilization normalized to a ratio from 0 to 1.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcRfChannelUtilization) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcRfChannelUtilization) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcRfChannelUtilization) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcRfChannelUtilization(cfg CiscoWlcRfChannelUtilizationMetricConfig) metricCiscoWlcRfChannelUtilization {
+	m := metricCiscoWlcRfChannelUtilization{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcRfClientCount struct {
+	data     pmetric.Metric                    // data buffer for generated metric.
+	config   CiscoWlcRfClientCountMetricConfig // metric config provided by user.
+	capacity int                               // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.rf.client.count metric with initial data.
+func (m *metricCiscoWlcRfClientCount) init() {
+	m.data.SetName("cisco.wlc.rf.client.count")
+	m.data.SetDescription("Client count per radio/RRM measurement.")
+	m.data.SetUnit("{client}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcRfClientCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcRfClientCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcRfClientCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcRfClientCount(cfg CiscoWlcRfClientCountMetricConfig) metricCiscoWlcRfClientCount {
+	m := metricCiscoWlcRfClientCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcRfNoiseFloor struct {
+	data     pmetric.Metric                   // data buffer for generated metric.
+	config   CiscoWlcRfNoiseFloorMetricConfig // metric config provided by user.
+	capacity int                              // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.rf.noise_floor metric with initial data.
+func (m *metricCiscoWlcRfNoiseFloor) init() {
+	m.data.SetName("cisco.wlc.rf.noise_floor")
+	m.data.SetDescription("RF noise floor.")
+	m.data.SetUnit("dBm")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcRfNoiseFloor) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcRfNoiseFloor) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcRfNoiseFloor) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcRfNoiseFloor(cfg CiscoWlcRfNoiseFloorMetricConfig) metricCiscoWlcRfNoiseFloor {
+	m := metricCiscoWlcRfNoiseFloor{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcSsidChannelUtilization struct {
+	data     pmetric.Metric                             // data buffer for generated metric.
+	config   CiscoWlcSsidChannelUtilizationMetricConfig // metric config provided by user.
+	capacity int                                        // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.ssid.channel.utilization metric with initial data.
+func (m *metricCiscoWlcSsidChannelUtilization) init() {
+	m.data.SetName("cisco.wlc.ssid.channel.utilization")
+	m.data.SetDescription("SSID/BSSID channel utilization normalized to a ratio from 0 to 1.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcSsidChannelUtilization) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcSsidChannelUtilization) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcSsidChannelUtilization) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcSsidChannelUtilization(cfg CiscoWlcSsidChannelUtilizationMetricConfig) metricCiscoWlcSsidChannelUtilization {
+	m := metricCiscoWlcSsidChannelUtilization{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcSsidClientCount struct {
+	data     pmetric.Metric                      // data buffer for generated metric.
+	config   CiscoWlcSsidClientCountMetricConfig // metric config provided by user.
+	capacity int                                 // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.ssid.client.count metric with initial data.
+func (m *metricCiscoWlcSsidClientCount) init() {
+	m.data.SetName("cisco.wlc.ssid.client.count")
+	m.data.SetDescription("Associated clients per SSID/BSSID.")
+	m.data.SetUnit("{client}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricCiscoWlcSsidClientCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcSsidClientCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcSsidClientCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcSsidClientCount(cfg CiscoWlcSsidClientCountMetricConfig) metricCiscoWlcSsidClientCount {
+	m := metricCiscoWlcSsidClientCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcSsidNetworkIo struct {
+	data     pmetric.Metric                    // data buffer for generated metric.
+	config   CiscoWlcSsidNetworkIoMetricConfig // metric config provided by user.
+	capacity int                               // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.ssid.network.io metric with initial data.
+func (m *metricCiscoWlcSsidNetworkIo) init() {
+	m.data.SetName("cisco.wlc.ssid.network.io")
+	m.data.SetDescription("SSID traffic by direction.")
+	m.data.SetUnit("By")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoWlcSsidNetworkIo) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcSsidNetworkIo) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcSsidNetworkIo) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcSsidNetworkIo(cfg CiscoWlcSsidNetworkIoMetricConfig) metricCiscoWlcSsidNetworkIo {
+	m := metricCiscoWlcSsidNetworkIo{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcSsidRetryCount struct {
+	data     pmetric.Metric                     // data buffer for generated metric.
+	config   CiscoWlcSsidRetryCountMetricConfig // metric config provided by user.
+	capacity int                                // max observed number of data points added to the metric.
+}
+
+// init fills cisco.wlc.ssid.retry.count metric with initial data.
+func (m *metricCiscoWlcSsidRetryCount) init() {
+	m.data.SetName("cisco.wlc.ssid.retry.count")
+	m.data.SetDescription("SSID retry counters.")
+	m.data.SetUnit("{retry}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricCiscoWlcSsidRetryCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcSsidRetryCount) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcSsidRetryCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcSsidRetryCount(cfg CiscoWlcSsidRetryCountMetricConfig) metricCiscoWlcSsidRetryCount {
+	m := metricCiscoWlcSsidRetryCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricFmcAPIEndpointError struct {
+	data     pmetric.Metric                  // data buffer for generated metric.
+	config   FmcAPIEndpointErrorMetricConfig // metric config provided by user.
+	capacity int                             // max observed number of data points added to the metric.
+}
+
+// init fills fmc.api.endpoint.error metric with initial data.
+func (m *metricFmcAPIEndpointError) init() {
+	m.data.SetName("fmc.api.endpoint.error")
+	m.data.SetDescription("FMC endpoint-family scrape failures.")
+	m.data.SetUnit("{error}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricFmcAPIEndpointError) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricFmcAPIEndpointError) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricFmcAPIEndpointError) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricFmcAPIEndpointError(cfg FmcAPIEndpointErrorMetricConfig) metricFmcAPIEndpointError {
+	m := metricFmcAPIEndpointError{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricFmcAPIRateLimited struct {
+	data     pmetric.Metric                // data buffer for generated metric.
+	config   FmcAPIRateLimitedMetricConfig // metric config provided by user.
+	capacity int                           // max observed number of data points added to the metric.
+}
+
+// init fills fmc.api.rate_limited metric with initial data.
+func (m *metricFmcAPIRateLimited) init() {
+	m.data.SetName("fmc.api.rate_limited")
+	m.data.SetDescription("FMC REST requests that were rate limited.")
+	m.data.SetUnit("{request}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricFmcAPIRateLimited) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricFmcAPIRateLimited) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricFmcAPIRateLimited) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricFmcAPIRateLimited(cfg FmcAPIRateLimitedMetricConfig) metricFmcAPIRateLimited {
+	m := metricFmcAPIRateLimited{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricFmcAPIRequestDuration struct {
+	data     pmetric.Metric                    // data buffer for generated metric.
+	config   FmcAPIRequestDurationMetricConfig // metric config provided by user.
+	capacity int                               // max observed number of data points added to the metric.
+}
+
+// init fills fmc.api.request.duration metric with initial data.
+func (m *metricFmcAPIRequestDuration) init() {
+	m.data.SetName("fmc.api.request.duration")
+	m.data.SetDescription("Average duration of FMC REST request attempts within the scrape for each matching request-attribute set.")
+	m.data.SetUnit("s")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricFmcAPIRequestDuration) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricFmcAPIRequestDuration) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricFmcAPIRequestDuration) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricFmcAPIRequestDuration(cfg FmcAPIRequestDurationMetricConfig) metricFmcAPIRequestDuration {
+	m := metricFmcAPIRequestDuration{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricFmcAPIRequestErrors struct {
+	data     pmetric.Metric                  // data buffer for generated metric.
+	config   FmcAPIRequestErrorsMetricConfig // metric config provided by user.
+	capacity int                             // max observed number of data points added to the metric.
+}
+
+// init fills fmc.api.request.errors metric with initial data.
+func (m *metricFmcAPIRequestErrors) init() {
+	m.data.SetName("fmc.api.request.errors")
+	m.data.SetDescription("FMC REST request failures.")
+	m.data.SetUnit("{error}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricFmcAPIRequestErrors) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricFmcAPIRequestErrors) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricFmcAPIRequestErrors) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricFmcAPIRequestErrors(cfg FmcAPIRequestErrorsMetricConfig) metricFmcAPIRequestErrors {
+	m := metricFmcAPIRequestErrors{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricFmcAuditRecordCount struct {
+	data     pmetric.Metric                  // data buffer for generated metric.
+	config   FmcAuditRecordCountMetricConfig // metric config provided by user.
+	capacity int                             // max observed number of data points added to the metric.
+}
+
+// init fills fmc.audit.record.count metric with initial data.
+func (m *metricFmcAuditRecordCount) init() {
+	m.data.SetName("fmc.audit.record.count")
+	m.data.SetDescription("Audit and configuration-change records by bounded attributes.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricFmcAuditRecordCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricFmcAuditRecordCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricFmcAuditRecordCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricFmcAuditRecordCount(cfg FmcAuditRecordCountMetricConfig) metricFmcAuditRecordCount {
+	m := metricFmcAuditRecordCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricFmcDeploymentPendingCount struct {
+	data     pmetric.Metric                        // data buffer for generated metric.
+	config   FmcDeploymentPendingCountMetricConfig // metric config provided by user.
+	capacity int                                   // max observed number of data points added to the metric.
+}
+
+// init fills fmc.deployment.pending.count metric with initial data.
+func (m *metricFmcDeploymentPendingCount) init() {
+	m.data.SetName("fmc.deployment.pending.count")
+	m.data.SetDescription("Deployment jobs, deployable devices, and pending changes by bounded status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricFmcDeploymentPendingCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricFmcDeploymentPendingCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricFmcDeploymentPendingCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricFmcDeploymentPendingCount(cfg FmcDeploymentPendingCountMetricConfig) metricFmcDeploymentPendingCount {
+	m := metricFmcDeploymentPendingCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricFmcDeploymentStatus struct {
+	data     pmetric.Metric                  // data buffer for generated metric.
+	config   FmcDeploymentStatusMetricConfig // metric config provided by user.
+	capacity int                             // max observed number of data points added to the metric.
+}
+
+// init fills fmc.deployment.status metric with initial data.
+func (m *metricFmcDeploymentStatus) init() {
+	m.data.SetName("fmc.deployment.status")
+	m.data.SetDescription("Deployment job, deployable device, or pending-change status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricFmcDeploymentStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricFmcDeploymentStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricFmcDeploymentStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricFmcDeploymentStatus(cfg FmcDeploymentStatusMetricConfig) metricFmcDeploymentStatus {
+	m := metricFmcDeploymentStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricFmcHaStatus struct {
+	data     pmetric.Metric          // data buffer for generated metric.
+	config   FmcHaStatusMetricConfig // metric config provided by user.
+	capacity int                     // max observed number of data points added to the metric.
+}
+
+// init fills fmc.ha.status metric with initial data.
+func (m *metricFmcHaStatus) init() {
+	m.data.SetName("fmc.ha.status")
+	m.data.SetDescription("FMC HA, FTD HA-pair, monitored-interface, cluster, or failover state.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricFmcHaStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricFmcHaStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricFmcHaStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricFmcHaStatus(cfg FmcHaStatusMetricConfig) metricFmcHaStatus {
+	m := metricFmcHaStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricFmcHealthEventCount struct {
+	data     pmetric.Metric                  // data buffer for generated metric.
+	config   FmcHealthEventCountMetricConfig // metric config provided by user.
+	capacity int                             // max observed number of data points added to the metric.
+}
+
+// init fills fmc.health.event.count metric with initial data.
+func (m *metricFmcHealthEventCount) init() {
+	m.data.SetName("fmc.health.event.count")
+	m.data.SetDescription("Recent health alerts/events by bounded status and severity.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricFmcHealthEventCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricFmcHealthEventCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricFmcHealthEventCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricFmcHealthEventCount(cfg FmcHealthEventCountMetricConfig) metricFmcHealthEventCount {
+	m := metricFmcHealthEventCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricFmcHealthStatus struct {
+	data     pmetric.Metric              // data buffer for generated metric.
+	config   FmcHealthStatusMetricConfig // metric config provided by user.
+	capacity int                         // max observed number of data points added to the metric.
+}
+
+// init fills fmc.health.status metric with initial data.
+func (m *metricFmcHealthStatus) init() {
+	m.data.SetName("fmc.health.status")
+	m.data.SetDescription("FMC health alert, event, path-monitor, or aggregate CPU/memory/interface/disk/chassis metric status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricFmcHealthStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricFmcHealthStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricFmcHealthStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricFmcHealthStatus(cfg FmcHealthStatusMetricConfig) metricFmcHealthStatus {
+	m := metricFmcHealthStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricFmcManagerUp struct {
+	data     pmetric.Metric           // data buffer for generated metric.
+	config   FmcManagerUpMetricConfig // metric config provided by user.
+	capacity int                      // max observed number of data points added to the metric.
+}
+
+// init fills fmc.manager.up metric with initial data.
+func (m *metricFmcManagerUp) init() {
+	m.data.SetName("fmc.manager.up")
+	m.data.SetDescription("Whether the FMC REST API was reachable for the scrape.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricFmcManagerUp) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricFmcManagerUp) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricFmcManagerUp) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricFmcManagerUp(cfg FmcManagerUpMetricConfig) metricFmcManagerUp {
+	m := metricFmcManagerUp{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricFmcPolicyObjectCount struct {
+	data     pmetric.Metric                   // data buffer for generated metric.
+	config   FmcPolicyObjectCountMetricConfig // metric config provided by user.
+	capacity int                              // max observed number of data points added to the metric.
+}
+
+// init fills fmc.policy.object.count metric with initial data.
+func (m *metricFmcPolicyObjectCount) init() {
+	m.data.SetName("fmc.policy.object.count")
+	m.data.SetDescription("FMC policy, assignment, rule, object, security-zone, SGT, syslog, and security-intelligence resources by bounded attributes.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricFmcPolicyObjectCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricFmcPolicyObjectCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricFmcPolicyObjectCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricFmcPolicyObjectCount(cfg FmcPolicyObjectCountMetricConfig) metricFmcPolicyObjectCount {
+	m := metricFmcPolicyObjectCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricFmcResourceCount struct {
+	data     pmetric.Metric               // data buffer for generated metric.
+	config   FmcResourceCountMetricConfig // metric config provided by user.
+	capacity int                          // max observed number of data points added to the metric.
+}
+
+// init fills fmc.resource.count metric with initial data.
+func (m *metricFmcResourceCount) init() {
+	m.data.SetName("fmc.resource.count")
+	m.data.SetDescription("FMC resources by group, operation, resource type, status, and severity.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricFmcResourceCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricFmcResourceCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricFmcResourceCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricFmcResourceCount(cfg FmcResourceCountMetricConfig) metricFmcResourceCount {
+	m := metricFmcResourceCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricFmcResourceInfo struct {
+	data     pmetric.Metric              // data buffer for generated metric.
+	config   FmcResourceInfoMetricConfig // metric config provided by user.
+	capacity int                         // max observed number of data points added to the metric.
+}
+
+// init fills fmc.resource.info metric with initial data.
+func (m *metricFmcResourceInfo) init() {
+	m.data.SetName("fmc.resource.info")
+	m.data.SetDescription("Bounded metadata for FMC managed objects.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricFmcResourceInfo) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricFmcResourceInfo) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricFmcResourceInfo) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricFmcResourceInfo(cfg FmcResourceInfoMetricConfig) metricFmcResourceInfo {
+	m := metricFmcResourceInfo{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricFmcResourceStatus struct {
+	data     pmetric.Metric                // data buffer for generated metric.
+	config   FmcResourceStatusMetricConfig // metric config provided by user.
+	capacity int                           // max observed number of data points added to the metric.
+}
+
+// init fills fmc.resource.status metric with initial data.
+func (m *metricFmcResourceStatus) init() {
+	m.data.SetName("fmc.resource.status")
+	m.data.SetDescription("Encoded FMC object status with original state attributes.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricFmcResourceStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricFmcResourceStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricFmcResourceStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricFmcResourceStatus(cfg FmcResourceStatusMetricConfig) metricFmcResourceStatus {
+	m := metricFmcResourceStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricFmcScrapeLastSuccess struct {
+	data     pmetric.Metric                   // data buffer for generated metric.
+	config   FmcScrapeLastSuccessMetricConfig // metric config provided by user.
+	capacity int                              // max observed number of data points added to the metric.
+}
+
+// init fills fmc.scrape.last_success metric with initial data.
+func (m *metricFmcScrapeLastSuccess) init() {
+	m.data.SetName("fmc.scrape.last_success")
+	m.data.SetDescription("Unix timestamp of the most recent fully successful FMC scrape.")
+	m.data.SetUnit("s")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricFmcScrapeLastSuccess) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricFmcScrapeLastSuccess) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricFmcScrapeLastSuccess) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricFmcScrapeLastSuccess(cfg FmcScrapeLastSuccessMetricConfig) metricFmcScrapeLastSuccess {
+	m := metricFmcScrapeLastSuccess{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricFmcScrapePartialSuccess struct {
+	data     pmetric.Metric                      // data buffer for generated metric.
+	config   FmcScrapePartialSuccessMetricConfig // metric config provided by user.
+	capacity int                                 // max observed number of data points added to the metric.
+}
+
+// init fills fmc.scrape.partial_success metric with initial data.
+func (m *metricFmcScrapePartialSuccess) init() {
+	m.data.SetName("fmc.scrape.partial_success")
+	m.data.SetDescription("Whether one or more FMC endpoint families failed during the scrape.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricFmcScrapePartialSuccess) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricFmcScrapePartialSuccess) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricFmcScrapePartialSuccess) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricFmcScrapePartialSuccess(cfg FmcScrapePartialSuccessMetricConfig) metricFmcScrapePartialSuccess {
+	m := metricFmcScrapePartialSuccess{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricFmcVpnTunnelStatus struct {
+	data     pmetric.Metric                 // data buffer for generated metric.
+	config   FmcVpnTunnelStatusMetricConfig // metric config provided by user.
+	capacity int                            // max observed number of data points added to the metric.
+}
+
+// init fills fmc.vpn.tunnel.status metric with initial data.
+func (m *metricFmcVpnTunnelStatus) init() {
+	m.data.SetName("fmc.vpn.tunnel.status")
+	m.data.SetDescription("VPN policy, tunnel, tunnel-detail, summary, or remote-access gateway status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricFmcVpnTunnelStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricFmcVpnTunnelStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricFmcVpnTunnelStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricFmcVpnTunnelStatus(cfg FmcVpnTunnelStatusMetricConfig) metricFmcVpnTunnelStatus {
+	m := metricFmcVpnTunnelStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightAdvisoryActive struct {
+	data     pmetric.Metric                       // data buffer for generated metric.
+	config   IntersightAdvisoryActiveMetricConfig // metric config provided by user.
+	capacity int                                  // max observed number of data points added to the metric.
+}
+
+// init fills intersight.advisory.active metric with initial data.
+func (m *metricIntersightAdvisoryActive) init() {
+	m.data.SetName("intersight.advisory.active")
+	m.data.SetDescription("Active advisory or security advisory exposure.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightAdvisoryActive) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightAdvisoryActive) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightAdvisoryActive) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightAdvisoryActive(cfg IntersightAdvisoryActiveMetricConfig) metricIntersightAdvisoryActive {
+	m := metricIntersightAdvisoryActive{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightAdvisoryCount struct {
+	data     pmetric.Metric                      // data buffer for generated metric.
+	config   IntersightAdvisoryCountMetricConfig // metric config provided by user.
+	capacity int                                 // max observed number of data points added to the metric.
+}
+
+// init fills intersight.advisory.count metric with initial data.
+func (m *metricIntersightAdvisoryCount) init() {
+	m.data.SetName("intersight.advisory.count")
+	m.data.SetDescription("Active Intersight advisory exposures.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightAdvisoryCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightAdvisoryCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightAdvisoryCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightAdvisoryCount(cfg IntersightAdvisoryCountMetricConfig) metricIntersightAdvisoryCount {
+	m := metricIntersightAdvisoryCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightAlarmActive struct {
+	data     pmetric.Metric                    // data buffer for generated metric.
+	config   IntersightAlarmActiveMetricConfig // metric config provided by user.
+	capacity int                               // max observed number of data points added to the metric.
+}
+
+// init fills intersight.alarm.active metric with initial data.
+func (m *metricIntersightAlarmActive) init() {
+	m.data.SetName("intersight.alarm.active")
+	m.data.SetDescription("Active alarm instances.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightAlarmActive) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightAlarmActive) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightAlarmActive) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightAlarmActive(cfg IntersightAlarmActiveMetricConfig) metricIntersightAlarmActive {
+	m := metricIntersightAlarmActive{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightAlarmCount struct {
+	data     pmetric.Metric                   // data buffer for generated metric.
+	config   IntersightAlarmCountMetricConfig // metric config provided by user.
+	capacity int                              // max observed number of data points added to the metric.
+}
+
+// init fills intersight.alarm.count metric with initial data.
+func (m *metricIntersightAlarmCount) init() {
+	m.data.SetName("intersight.alarm.count")
+	m.data.SetDescription("Active alarm counts by bounded attributes.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightAlarmCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightAlarmCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightAlarmCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightAlarmCount(cfg IntersightAlarmCountMetricConfig) metricIntersightAlarmCount {
+	m := metricIntersightAlarmCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightAPIRateLimited struct {
+	data     pmetric.Metric                       // data buffer for generated metric.
+	config   IntersightAPIRateLimitedMetricConfig // metric config provided by user.
+	capacity int                                  // max observed number of data points added to the metric.
+}
+
+// init fills intersight.api.rate_limited metric with initial data.
+func (m *metricIntersightAPIRateLimited) init() {
+	m.data.SetName("intersight.api.rate_limited")
+	m.data.SetDescription("Requests that received HTTP 429.")
+	m.data.SetUnit("{request}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricIntersightAPIRateLimited) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightAPIRateLimited) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightAPIRateLimited) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightAPIRateLimited(cfg IntersightAPIRateLimitedMetricConfig) metricIntersightAPIRateLimited {
+	m := metricIntersightAPIRateLimited{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightAPIRequestDuration struct {
+	data     pmetric.Metric                           // data buffer for generated metric.
+	config   IntersightAPIRequestDurationMetricConfig // metric config provided by user.
+	capacity int                                      // max observed number of data points added to the metric.
+}
+
+// init fills intersight.api.request.duration metric with initial data.
+func (m *metricIntersightAPIRequestDuration) init() {
+	m.data.SetName("intersight.api.request.duration")
+	m.data.SetDescription("Average duration of Intersight API request attempts within the scrape for each matching request-attribute set.")
+	m.data.SetUnit("s")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightAPIRequestDuration) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightAPIRequestDuration) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightAPIRequestDuration) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightAPIRequestDuration(cfg IntersightAPIRequestDurationMetricConfig) metricIntersightAPIRequestDuration {
+	m := metricIntersightAPIRequestDuration{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightAPIRequestErrors struct {
+	data     pmetric.Metric                         // data buffer for generated metric.
+	config   IntersightAPIRequestErrorsMetricConfig // metric config provided by user.
+	capacity int                                    // max observed number of data points added to the metric.
+}
+
+// init fills intersight.api.request.errors metric with initial data.
+func (m *metricIntersightAPIRequestErrors) init() {
+	m.data.SetName("intersight.api.request.errors")
+	m.data.SetDescription("Intersight API request failures.")
+	m.data.SetUnit("{error}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricIntersightAPIRequestErrors) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightAPIRequestErrors) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightAPIRequestErrors) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightAPIRequestErrors(cfg IntersightAPIRequestErrorsMetricConfig) metricIntersightAPIRequestErrors {
+	m := metricIntersightAPIRequestErrors{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightAuditRecordCount struct {
+	data     pmetric.Metric                         // data buffer for generated metric.
+	config   IntersightAuditRecordCountMetricConfig // metric config provided by user.
+	capacity int                                    // max observed number of data points added to the metric.
+}
+
+// init fills intersight.audit.record.count metric with initial data.
+func (m *metricIntersightAuditRecordCount) init() {
+	m.data.SetName("intersight.audit.record.count")
+	m.data.SetDescription("Recent audit/config-change records by user.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightAuditRecordCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightAuditRecordCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightAuditRecordCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightAuditRecordCount(cfg IntersightAuditRecordCountMetricConfig) metricIntersightAuditRecordCount {
+	m := metricIntersightAuditRecordCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightComputeAvailableMemory struct {
+	data     pmetric.Metric                               // data buffer for generated metric.
+	config   IntersightComputeAvailableMemoryMetricConfig // metric config provided by user.
+	capacity int                                          // max observed number of data points added to the metric.
+}
+
+// init fills intersight.compute.available_memory metric with initial data.
+func (m *metricIntersightComputeAvailableMemory) init() {
+	m.data.SetName("intersight.compute.available_memory")
+	m.data.SetDescription("Available server memory reported by Intersight.")
+	m.data.SetUnit("MBy")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightComputeAvailableMemory) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightComputeAvailableMemory) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightComputeAvailableMemory) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightComputeAvailableMemory(cfg IntersightComputeAvailableMemoryMetricConfig) metricIntersightComputeAvailableMemory {
+	m := metricIntersightComputeAvailableMemory{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightComputeThreadCount struct {
+	data     pmetric.Metric                           // data buffer for generated metric.
+	config   IntersightComputeThreadCountMetricConfig // metric config provided by user.
+	capacity int                                      // max observed number of data points added to the metric.
+}
+
+// init fills intersight.compute.thread.count metric with initial data.
+func (m *metricIntersightComputeThreadCount) init() {
+	m.data.SetName("intersight.compute.thread.count")
+	m.data.SetDescription("CPU thread count reported by Intersight.")
+	m.data.SetUnit("{thread}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightComputeThreadCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightComputeThreadCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightComputeThreadCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightComputeThreadCount(cfg IntersightComputeThreadCountMetricConfig) metricIntersightComputeThreadCount {
+	m := metricIntersightComputeThreadCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightFaultCount struct {
+	data     pmetric.Metric                   // data buffer for generated metric.
+	config   IntersightFaultCountMetricConfig // metric config provided by user.
+	capacity int                              // max observed number of data points added to the metric.
+}
+
+// init fills intersight.fault.count metric with initial data.
+func (m *metricIntersightFaultCount) init() {
+	m.data.SetName("intersight.fault.count")
+	m.data.SetDescription("Fault summary values from compute or HyperFlex objects.")
+	m.data.SetUnit("{fault}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightFaultCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightFaultCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightFaultCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightFaultCount(cfg IntersightFaultCountMetricConfig) metricIntersightFaultCount {
+	m := metricIntersightFaultCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightFirmwareBundleInfo struct {
+	data     pmetric.Metric                           // data buffer for generated metric.
+	config   IntersightFirmwareBundleInfoMetricConfig // metric config provided by user.
+	capacity int                                      // max observed number of data points added to the metric.
+}
+
+// init fills intersight.firmware.bundle.info metric with initial data.
+func (m *metricIntersightFirmwareBundleInfo) init() {
+	m.data.SetName("intersight.firmware.bundle.info")
+	m.data.SetDescription("Firmware bundle identity with the version in `intersight.firmware.version`.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightFirmwareBundleInfo) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightFirmwareBundleInfo) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightFirmwareBundleInfo) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightFirmwareBundleInfo(cfg IntersightFirmwareBundleInfoMetricConfig) metricIntersightFirmwareBundleInfo {
+	m := metricIntersightFirmwareBundleInfo{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightHclStatus struct {
+	data     pmetric.Metric                  // data buffer for generated metric.
+	config   IntersightHclStatusMetricConfig // metric config provided by user.
+	capacity int                             // max observed number of data points added to the metric.
+}
+
+// init fills intersight.hcl.status metric with initial data.
+func (m *metricIntersightHclStatus) init() {
+	m.data.SetName("intersight.hcl.status")
+	m.data.SetDescription("Hardware compatibility/compliance status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightHclStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightHclStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightHclStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightHclStatus(cfg IntersightHclStatusMetricConfig) metricIntersightHclStatus {
+	m := metricIntersightHclStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightHclStatusCount struct {
+	data     pmetric.Metric                       // data buffer for generated metric.
+	config   IntersightHclStatusCountMetricConfig // metric config provided by user.
+	capacity int                                  // max observed number of data points added to the metric.
+}
+
+// init fills intersight.hcl.status.count metric with initial data.
+func (m *metricIntersightHclStatusCount) init() {
+	m.data.SetName("intersight.hcl.status.count")
+	m.data.SetDescription("HCL/compliance records grouped by bounded status and resource attributes.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightHclStatusCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightHclStatusCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightHclStatusCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightHclStatusCount(cfg IntersightHclStatusCountMetricConfig) metricIntersightHclStatusCount {
+	m := metricIntersightHclStatusCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightHyperflexReadIops struct {
+	data     pmetric.Metric                          // data buffer for generated metric.
+	config   IntersightHyperflexReadIopsMetricConfig // metric config provided by user.
+	capacity int                                     // max observed number of data points added to the metric.
+}
+
+// init fills intersight.hyperflex.read.iops metric with initial data.
+func (m *metricIntersightHyperflexReadIops) init() {
+	m.data.SetName("intersight.hyperflex.read.iops")
+	m.data.SetDescription("HyperFlex read IOPS.")
+	m.data.SetUnit("{operation}/s")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightHyperflexReadIops) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightHyperflexReadIops) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightHyperflexReadIops) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightHyperflexReadIops(cfg IntersightHyperflexReadIopsMetricConfig) metricIntersightHyperflexReadIops {
+	m := metricIntersightHyperflexReadIops{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightHyperflexReadLatency struct {
+	data     pmetric.Metric                             // data buffer for generated metric.
+	config   IntersightHyperflexReadLatencyMetricConfig // metric config provided by user.
+	capacity int                                        // max observed number of data points added to the metric.
+}
+
+// init fills intersight.hyperflex.read.latency metric with initial data.
+func (m *metricIntersightHyperflexReadLatency) init() {
+	m.data.SetName("intersight.hyperflex.read.latency")
+	m.data.SetDescription("HyperFlex read latency.")
+	m.data.SetUnit("ms")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightHyperflexReadLatency) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightHyperflexReadLatency) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightHyperflexReadLatency) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightHyperflexReadLatency(cfg IntersightHyperflexReadLatencyMetricConfig) metricIntersightHyperflexReadLatency {
+	m := metricIntersightHyperflexReadLatency{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightHyperflexStatus struct {
+	data     pmetric.Metric                        // data buffer for generated metric.
+	config   IntersightHyperflexStatusMetricConfig // metric config provided by user.
+	capacity int                                   // max observed number of data points added to the metric.
+}
+
+// init fills intersight.hyperflex.status metric with initial data.
+func (m *metricIntersightHyperflexStatus) init() {
+	m.data.SetName("intersight.hyperflex.status")
+	m.data.SetDescription("Encoded HyperFlex cluster or node state.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightHyperflexStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightHyperflexStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightHyperflexStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightHyperflexStatus(cfg IntersightHyperflexStatusMetricConfig) metricIntersightHyperflexStatus {
+	m := metricIntersightHyperflexStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightHyperflexWriteIops struct {
+	data     pmetric.Metric                           // data buffer for generated metric.
+	config   IntersightHyperflexWriteIopsMetricConfig // metric config provided by user.
+	capacity int                                      // max observed number of data points added to the metric.
+}
+
+// init fills intersight.hyperflex.write.iops metric with initial data.
+func (m *metricIntersightHyperflexWriteIops) init() {
+	m.data.SetName("intersight.hyperflex.write.iops")
+	m.data.SetDescription("HyperFlex write IOPS.")
+	m.data.SetUnit("{operation}/s")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightHyperflexWriteIops) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightHyperflexWriteIops) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightHyperflexWriteIops) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightHyperflexWriteIops(cfg IntersightHyperflexWriteIopsMetricConfig) metricIntersightHyperflexWriteIops {
+	m := metricIntersightHyperflexWriteIops{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightHyperflexWriteLatency struct {
+	data     pmetric.Metric                              // data buffer for generated metric.
+	config   IntersightHyperflexWriteLatencyMetricConfig // metric config provided by user.
+	capacity int                                         // max observed number of data points added to the metric.
+}
+
+// init fills intersight.hyperflex.write.latency metric with initial data.
+func (m *metricIntersightHyperflexWriteLatency) init() {
+	m.data.SetName("intersight.hyperflex.write.latency")
+	m.data.SetDescription("HyperFlex write latency.")
+	m.data.SetUnit("ms")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightHyperflexWriteLatency) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightHyperflexWriteLatency) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightHyperflexWriteLatency) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightHyperflexWriteLatency(cfg IntersightHyperflexWriteLatencyMetricConfig) metricIntersightHyperflexWriteLatency {
+	m := metricIntersightHyperflexWriteLatency{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightKubernetesClusterConnectionStatus struct {
+	data     pmetric.Metric                                          // data buffer for generated metric.
+	config   IntersightKubernetesClusterConnectionStatusMetricConfig // metric config provided by user.
+	capacity int                                                     // max observed number of data points added to the metric.
+}
+
+// init fills intersight.kubernetes.cluster.connection_status metric with initial data.
+func (m *metricIntersightKubernetesClusterConnectionStatus) init() {
+	m.data.SetName("intersight.kubernetes.cluster.connection_status")
+	m.data.SetDescription("Encoded Kubernetes target connection state.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightKubernetesClusterConnectionStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightKubernetesClusterConnectionStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightKubernetesClusterConnectionStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightKubernetesClusterConnectionStatus(cfg IntersightKubernetesClusterConnectionStatusMetricConfig) metricIntersightKubernetesClusterConnectionStatus {
+	m := metricIntersightKubernetesClusterConnectionStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightResourceCount struct {
+	data     pmetric.Metric                      // data buffer for generated metric.
+	config   IntersightResourceCountMetricConfig // metric config provided by user.
+	capacity int                                 // max observed number of data points added to the metric.
+}
+
+// init fills intersight.resource.count metric with initial data.
+func (m *metricIntersightResourceCount) init() {
+	m.data.SetName("intersight.resource.count")
+	m.data.SetDescription("Resource count grouped by type, status, and severity.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightResourceCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightResourceCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightResourceCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightResourceCount(cfg IntersightResourceCountMetricConfig) metricIntersightResourceCount {
+	m := metricIntersightResourceCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightResourceInfo struct {
+	data     pmetric.Metric                     // data buffer for generated metric.
+	config   IntersightResourceInfoMetricConfig // metric config provided by user.
+	capacity int                                // max observed number of data points added to the metric.
+}
+
+// init fills intersight.resource.info metric with initial data.
+func (m *metricIntersightResourceInfo) init() {
+	m.data.SetName("intersight.resource.info")
+	m.data.SetDescription("Inventory metadata for an Intersight resource.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightResourceInfo) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightResourceInfo) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightResourceInfo) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightResourceInfo(cfg IntersightResourceInfoMetricConfig) metricIntersightResourceInfo {
+	m := metricIntersightResourceInfo{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightResourceStatus struct {
+	data     pmetric.Metric                       // data buffer for generated metric.
+	config   IntersightResourceStatusMetricConfig // metric config provided by user.
+	capacity int                                  // max observed number of data points added to the metric.
+}
+
+// init fills intersight.resource.status metric with initial data.
+func (m *metricIntersightResourceStatus) init() {
+	m.data.SetName("intersight.resource.status")
+	m.data.SetDescription("Encoded resource status, with the original status retained as an attribute.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightResourceStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightResourceStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightResourceStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightResourceStatus(cfg IntersightResourceStatusMetricConfig) metricIntersightResourceStatus {
+	m := metricIntersightResourceStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightScrapeLastSuccess struct {
+	data     pmetric.Metric                          // data buffer for generated metric.
+	config   IntersightScrapeLastSuccessMetricConfig // metric config provided by user.
+	capacity int                                     // max observed number of data points added to the metric.
+}
+
+// init fills intersight.scrape.last_success metric with initial data.
+func (m *metricIntersightScrapeLastSuccess) init() {
+	m.data.SetName("intersight.scrape.last_success")
+	m.data.SetDescription("Unix timestamp of the most recent fully successful Intersight scrape.")
+	m.data.SetUnit("s")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightScrapeLastSuccess) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightScrapeLastSuccess) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightScrapeLastSuccess) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightScrapeLastSuccess(cfg IntersightScrapeLastSuccessMetricConfig) metricIntersightScrapeLastSuccess {
+	m := metricIntersightScrapeLastSuccess{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightScrapePartialSuccess struct {
+	data     pmetric.Metric                             // data buffer for generated metric.
+	config   IntersightScrapePartialSuccessMetricConfig // metric config provided by user.
+	capacity int                                        // max observed number of data points added to the metric.
+}
+
+// init fills intersight.scrape.partial_success metric with initial data.
+func (m *metricIntersightScrapePartialSuccess) init() {
+	m.data.SetName("intersight.scrape.partial_success")
+	m.data.SetDescription("Whether one or more Intersight endpoint families failed during a scrape.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightScrapePartialSuccess) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightScrapePartialSuccess) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightScrapePartialSuccess) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightScrapePartialSuccess(cfg IntersightScrapePartialSuccessMetricConfig) metricIntersightScrapePartialSuccess {
+	m := metricIntersightScrapePartialSuccess{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightStorageLifeLeft struct {
+	data     pmetric.Metric                        // data buffer for generated metric.
+	config   IntersightStorageLifeLeftMetricConfig // metric config provided by user.
+	capacity int                                   // max observed number of data points added to the metric.
+}
+
+// init fills intersight.storage.life_left metric with initial data.
+func (m *metricIntersightStorageLifeLeft) init() {
+	m.data.SetName("intersight.storage.life_left")
+	m.data.SetDescription("Remaining storage media life.")
+	m.data.SetUnit("%")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightStorageLifeLeft) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightStorageLifeLeft) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightStorageLifeLeft) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightStorageLifeLeft(cfg IntersightStorageLifeLeftMetricConfig) metricIntersightStorageLifeLeft {
+	m := metricIntersightStorageLifeLeft{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightStorageMediaErrorCount struct {
+	data     pmetric.Metric                               // data buffer for generated metric.
+	config   IntersightStorageMediaErrorCountMetricConfig // metric config provided by user.
+	capacity int                                          // max observed number of data points added to the metric.
+}
+
+// init fills intersight.storage.media_error.count metric with initial data.
+func (m *metricIntersightStorageMediaErrorCount) init() {
+	m.data.SetName("intersight.storage.media_error.count")
+	m.data.SetDescription("Media errors reported by storage disks.")
+	m.data.SetUnit("{error}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightStorageMediaErrorCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightStorageMediaErrorCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightStorageMediaErrorCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightStorageMediaErrorCount(cfg IntersightStorageMediaErrorCountMetricConfig) metricIntersightStorageMediaErrorCount {
+	m := metricIntersightStorageMediaErrorCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightStoragePowerOnHours struct {
+	data     pmetric.Metric                            // data buffer for generated metric.
+	config   IntersightStoragePowerOnHoursMetricConfig // metric config provided by user.
+	capacity int                                       // max observed number of data points added to the metric.
+}
+
+// init fills intersight.storage.power_on.hours metric with initial data.
+func (m *metricIntersightStoragePowerOnHours) init() {
+	m.data.SetName("intersight.storage.power_on.hours")
+	m.data.SetDescription("Storage device power-on hours.")
+	m.data.SetUnit("h")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightStoragePowerOnHours) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightStoragePowerOnHours) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightStoragePowerOnHours) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightStoragePowerOnHours(cfg IntersightStoragePowerOnHoursMetricConfig) metricIntersightStoragePowerOnHours {
+	m := metricIntersightStoragePowerOnHours{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightStoragePredictiveFailureCount struct {
+	data     pmetric.Metric                                      // data buffer for generated metric.
+	config   IntersightStoragePredictiveFailureCountMetricConfig // metric config provided by user.
+	capacity int                                                 // max observed number of data points added to the metric.
+}
+
+// init fills intersight.storage.predictive_failure.count metric with initial data.
+func (m *metricIntersightStoragePredictiveFailureCount) init() {
+	m.data.SetName("intersight.storage.predictive_failure.count")
+	m.data.SetDescription("Predictive failure count for storage media.")
+	m.data.SetUnit("{failure}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightStoragePredictiveFailureCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightStoragePredictiveFailureCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightStoragePredictiveFailureCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightStoragePredictiveFailureCount(cfg IntersightStoragePredictiveFailureCountMetricConfig) metricIntersightStoragePredictiveFailureCount {
+	m := metricIntersightStoragePredictiveFailureCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightStorageRebuildRate struct {
+	data     pmetric.Metric                           // data buffer for generated metric.
+	config   IntersightStorageRebuildRateMetricConfig // metric config provided by user.
+	capacity int                                      // max observed number of data points added to the metric.
+}
+
+// init fills intersight.storage.rebuild.rate metric with initial data.
+func (m *metricIntersightStorageRebuildRate) init() {
+	m.data.SetName("intersight.storage.rebuild.rate")
+	m.data.SetDescription("Storage controller rebuild progress/rate.")
+	m.data.SetUnit("%")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightStorageRebuildRate) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightStorageRebuildRate) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightStorageRebuildRate) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightStorageRebuildRate(cfg IntersightStorageRebuildRateMetricConfig) metricIntersightStorageRebuildRate {
+	m := metricIntersightStorageRebuildRate{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightStorageStatus struct {
+	data     pmetric.Metric                      // data buffer for generated metric.
+	config   IntersightStorageStatusMetricConfig // metric config provided by user.
+	capacity int                                 // max observed number of data points added to the metric.
+}
+
+// init fills intersight.storage.status metric with initial data.
+func (m *metricIntersightStorageStatus) init() {
+	m.data.SetName("intersight.storage.status")
+	m.data.SetDescription("Encoded storage controller, disk, or virtual-drive state.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightStorageStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightStorageStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightStorageStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightStorageStatus(cfg IntersightStorageStatusMetricConfig) metricIntersightStorageStatus {
+	m := metricIntersightStorageStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightStorageTemperature struct {
+	data     pmetric.Metric                           // data buffer for generated metric.
+	config   IntersightStorageTemperatureMetricConfig // metric config provided by user.
+	capacity int                                      // max observed number of data points added to the metric.
+}
+
+// init fills intersight.storage.temperature metric with initial data.
+func (m *metricIntersightStorageTemperature) init() {
+	m.data.SetName("intersight.storage.temperature")
+	m.data.SetDescription("Storage device temperature.")
+	m.data.SetUnit("Cel")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightStorageTemperature) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightStorageTemperature) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightStorageTemperature) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightStorageTemperature(cfg IntersightStorageTemperatureMetricConfig) metricIntersightStorageTemperature {
+	m := metricIntersightStorageTemperature{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightTargetConnectionStatus struct {
+	data     pmetric.Metric                               // data buffer for generated metric.
+	config   IntersightTargetConnectionStatusMetricConfig // metric config provided by user.
+	capacity int                                          // max observed number of data points added to the metric.
+}
+
+// init fills intersight.target.connection_status metric with initial data.
+func (m *metricIntersightTargetConnectionStatus) init() {
+	m.data.SetName("intersight.target.connection_status")
+	m.data.SetDescription("Target connection state reported by Intersight.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightTargetConnectionStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightTargetConnectionStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightTargetConnectionStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightTargetConnectionStatus(cfg IntersightTargetConnectionStatusMetricConfig) metricIntersightTargetConnectionStatus {
+	m := metricIntersightTargetConnectionStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightTaskCount struct {
+	data     pmetric.Metric                  // data buffer for generated metric.
+	config   IntersightTaskCountMetricConfig // metric config provided by user.
+	capacity int                             // max observed number of data points added to the metric.
+}
+
+// init fills intersight.task.count metric with initial data.
+func (m *metricIntersightTaskCount) init() {
+	m.data.SetName("intersight.task.count")
+	m.data.SetDescription("Workflow task records grouped by bounded status attributes.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightTaskCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightTaskCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightTaskCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightTaskCount(cfg IntersightTaskCountMetricConfig) metricIntersightTaskCount {
+	m := metricIntersightTaskCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightTaskStatus struct {
+	data     pmetric.Metric                   // data buffer for generated metric.
+	config   IntersightTaskStatusMetricConfig // metric config provided by user.
+	capacity int                              // max observed number of data points added to the metric.
+}
+
+// init fills intersight.task.status metric with initial data.
+func (m *metricIntersightTaskStatus) init() {
+	m.data.SetName("intersight.task.status")
+	m.data.SetDescription("Workflow task execution status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightTaskStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightTaskStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightTaskStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightTaskStatus(cfg IntersightTaskStatusMetricConfig) metricIntersightTaskStatus {
+	m := metricIntersightTaskStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightTechsupportCount struct {
+	data     pmetric.Metric                         // data buffer for generated metric.
+	config   IntersightTechsupportCountMetricConfig // metric config provided by user.
+	capacity int                                    // max observed number of data points added to the metric.
+}
+
+// init fills intersight.techsupport.count metric with initial data.
+func (m *metricIntersightTechsupportCount) init() {
+	m.data.SetName("intersight.techsupport.count")
+	m.data.SetDescription("Tech-support jobs grouped by bounded status attributes.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightTechsupportCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightTechsupportCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightTechsupportCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightTechsupportCount(cfg IntersightTechsupportCountMetricConfig) metricIntersightTechsupportCount {
+	m := metricIntersightTechsupportCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightTechsupportStatus struct {
+	data     pmetric.Metric                          // data buffer for generated metric.
+	config   IntersightTechsupportStatusMetricConfig // metric config provided by user.
+	capacity int                                     // max observed number of data points added to the metric.
+}
+
+// init fills intersight.techsupport.status metric with initial data.
+func (m *metricIntersightTechsupportStatus) init() {
+	m.data.SetName("intersight.techsupport.status")
+	m.data.SetDescription("Tech-support collection/upload status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightTechsupportStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightTechsupportStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightTechsupportStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightTechsupportStatus(cfg IntersightTechsupportStatusMetricConfig) metricIntersightTechsupportStatus {
+	m := metricIntersightTechsupportStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightTelemetryQueryRows struct {
+	data     pmetric.Metric                           // data buffer for generated metric.
+	config   IntersightTelemetryQueryRowsMetricConfig // metric config provided by user.
+	capacity int                                      // max observed number of data points added to the metric.
+}
+
+// init fills intersight.telemetry.query.rows metric with initial data.
+func (m *metricIntersightTelemetryQueryRows) init() {
+	m.data.SetName("intersight.telemetry.query.rows")
+	m.data.SetDescription("Per-query telemetry rows classified by the bounded `intersight.telemetry.outcome` attribute as emitted, capped, filtered, sparse, invalid, or malformed.")
+	m.data.SetUnit("{row}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightTelemetryQueryRows) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightTelemetryQueryRows) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightTelemetryQueryRows) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightTelemetryQueryRows(cfg IntersightTelemetryQueryRowsMetricConfig) metricIntersightTelemetryQueryRows {
+	m := metricIntersightTelemetryQueryRows{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsCPUIdleUtilization struct {
+	data     pmetric.Metric                              // data buffer for generated metric.
+	config   IntersightUcsCPUIdleUtilizationMetricConfig // metric config provided by user.
+	capacity int                                         // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.cpu.idle.utilization metric with initial data.
+func (m *metricIntersightUcsCPUIdleUtilization) init() {
+	m.data.SetName("intersight.ucs.cpu.idle.utilization")
+	m.data.SetDescription("Idle CPU utilization from Intersight telemetry.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsCPUIdleUtilization) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsCPUIdleUtilization) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsCPUIdleUtilization) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsCPUIdleUtilization(cfg IntersightUcsCPUIdleUtilizationMetricConfig) metricIntersightUcsCPUIdleUtilization {
+	m := metricIntersightUcsCPUIdleUtilization{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsCPUSystemUtilization struct {
+	data     pmetric.Metric                                // data buffer for generated metric.
+	config   IntersightUcsCPUSystemUtilizationMetricConfig // metric config provided by user.
+	capacity int                                           // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.cpu.system.utilization metric with initial data.
+func (m *metricIntersightUcsCPUSystemUtilization) init() {
+	m.data.SetName("intersight.ucs.cpu.system.utilization")
+	m.data.SetDescription("System CPU utilization from Intersight telemetry.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsCPUSystemUtilization) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsCPUSystemUtilization) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsCPUSystemUtilization) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsCPUSystemUtilization(cfg IntersightUcsCPUSystemUtilizationMetricConfig) metricIntersightUcsCPUSystemUtilization {
+	m := metricIntersightUcsCPUSystemUtilization{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsCurrent struct {
+	data     pmetric.Metric                   // data buffer for generated metric.
+	config   IntersightUcsCurrentMetricConfig // metric config provided by user.
+	capacity int                              // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.current metric with initial data.
+func (m *metricIntersightUcsCurrent) init() {
+	m.data.SetName("intersight.ucs.current")
+	m.data.SetDescription("Mean current from Intersight telemetry GroupBy.")
+	m.data.SetUnit("A")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsCurrent) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsCurrent) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsCurrent) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsCurrent(cfg IntersightUcsCurrentMetricConfig) metricIntersightUcsCurrent {
+	m := metricIntersightUcsCurrent{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsFanSpeed struct {
+	data     pmetric.Metric                    // data buffer for generated metric.
+	config   IntersightUcsFanSpeedMetricConfig // metric config provided by user.
+	capacity int                               // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.fan.speed metric with initial data.
+func (m *metricIntersightUcsFanSpeed) init() {
+	m.data.SetName("intersight.ucs.fan.speed")
+	m.data.SetDescription("Mean fan speed from Intersight telemetry GroupBy.")
+	m.data.SetUnit("rpm")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsFanSpeed) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsFanSpeed) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsFanSpeed) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsFanSpeed(cfg IntersightUcsFanSpeedMetricConfig) metricIntersightUcsFanSpeed {
+	m := metricIntersightUcsFanSpeed{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsFanSpeedRatio struct {
+	data     pmetric.Metric                         // data buffer for generated metric.
+	config   IntersightUcsFanSpeedRatioMetricConfig // metric config provided by user.
+	capacity int                                    // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.fan.speed_ratio metric with initial data.
+func (m *metricIntersightUcsFanSpeedRatio) init() {
+	m.data.SetName("intersight.ucs.fan.speed_ratio")
+	m.data.SetDescription("Mean fan speed as a percentage of maximum.")
+	m.data.SetUnit("%")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsFanSpeedRatio) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsFanSpeedRatio) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsFanSpeedRatio) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsFanSpeedRatio(cfg IntersightUcsFanSpeedRatioMetricConfig) metricIntersightUcsFanSpeedRatio {
+	m := metricIntersightUcsFanSpeedRatio{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsFanStatus struct {
+	data     pmetric.Metric                     // data buffer for generated metric.
+	config   IntersightUcsFanStatusMetricConfig // metric config provided by user.
+	capacity int                                // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.fan.status metric with initial data.
+func (m *metricIntersightUcsFanStatus) init() {
+	m.data.SetName("intersight.ucs.fan.status")
+	m.data.SetDescription("Fan operational status from Intersight telemetry.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsFanStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsFanStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsFanStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsFanStatus(cfg IntersightUcsFanStatusMetricConfig) metricIntersightUcsFanStatus {
+	m := metricIntersightUcsFanStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsHostEnergy struct {
+	data     pmetric.Metric                      // data buffer for generated metric.
+	config   IntersightUcsHostEnergyMetricConfig // metric config provided by user.
+	capacity int                                 // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.host.energy metric with initial data.
+func (m *metricIntersightUcsHostEnergy) init() {
+	m.data.SetName("intersight.ucs.host.energy")
+	m.data.SetDescription("Host energy consumption from Intersight telemetry.")
+	m.data.SetUnit("J")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsHostEnergy) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsHostEnergy) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsHostEnergy) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsHostEnergy(cfg IntersightUcsHostEnergyMetricConfig) metricIntersightUcsHostEnergy {
+	m := metricIntersightUcsHostEnergy{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsHostPower struct {
+	data     pmetric.Metric                     // data buffer for generated metric.
+	config   IntersightUcsHostPowerMetricConfig // metric config provided by user.
+	capacity int                                // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.host.power metric with initial data.
+func (m *metricIntersightUcsHostPower) init() {
+	m.data.SetName("intersight.ucs.host.power")
+	m.data.SetDescription("Mean host power from Intersight telemetry GroupBy.")
+	m.data.SetUnit("W")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsHostPower) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsHostPower) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsHostPower) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsHostPower(cfg IntersightUcsHostPowerMetricConfig) metricIntersightUcsHostPower {
+	m := metricIntersightUcsHostPower{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsHostPowerState struct {
+	data     pmetric.Metric                          // data buffer for generated metric.
+	config   IntersightUcsHostPowerStateMetricConfig // metric config provided by user.
+	capacity int                                     // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.host.power_state metric with initial data.
+func (m *metricIntersightUcsHostPowerState) init() {
+	m.data.SetName("intersight.ucs.host.power_state")
+	m.data.SetDescription("Encoded host power state from telemetry.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsHostPowerState) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsHostPowerState) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsHostPowerState) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsHostPowerState(cfg IntersightUcsHostPowerStateMetricConfig) metricIntersightUcsHostPowerState {
+	m := metricIntersightUcsHostPowerState{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsMemoryCached struct {
+	data     pmetric.Metric                        // data buffer for generated metric.
+	config   IntersightUcsMemoryCachedMetricConfig // metric config provided by user.
+	capacity int                                   // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.memory.cached metric with initial data.
+func (m *metricIntersightUcsMemoryCached) init() {
+	m.data.SetName("intersight.ucs.memory.cached")
+	m.data.SetDescription("Cached system memory from Intersight telemetry.")
+	m.data.SetUnit("By")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsMemoryCached) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsMemoryCached) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsMemoryCached) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsMemoryCached(cfg IntersightUcsMemoryCachedMetricConfig) metricIntersightUcsMemoryCached {
+	m := metricIntersightUcsMemoryCached{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsMemoryEccCorrectable struct {
+	data     pmetric.Metric                                // data buffer for generated metric.
+	config   IntersightUcsMemoryEccCorrectableMetricConfig // metric config provided by user.
+	capacity int                                           // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.memory.ecc.correctable metric with initial data.
+func (m *metricIntersightUcsMemoryEccCorrectable) init() {
+	m.data.SetName("intersight.ucs.memory.ecc.correctable")
+	m.data.SetDescription("Correctable memory ECC errors.")
+	m.data.SetUnit("{error}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsMemoryEccCorrectable) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsMemoryEccCorrectable) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsMemoryEccCorrectable) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsMemoryEccCorrectable(cfg IntersightUcsMemoryEccCorrectableMetricConfig) metricIntersightUcsMemoryEccCorrectable {
+	m := metricIntersightUcsMemoryEccCorrectable{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsMemoryEccUncorrectable struct {
+	data     pmetric.Metric                                  // data buffer for generated metric.
+	config   IntersightUcsMemoryEccUncorrectableMetricConfig // metric config provided by user.
+	capacity int                                             // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.memory.ecc.uncorrectable metric with initial data.
+func (m *metricIntersightUcsMemoryEccUncorrectable) init() {
+	m.data.SetName("intersight.ucs.memory.ecc.uncorrectable")
+	m.data.SetDescription("Uncorrectable memory ECC errors.")
+	m.data.SetUnit("{error}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsMemoryEccUncorrectable) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsMemoryEccUncorrectable) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsMemoryEccUncorrectable) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsMemoryEccUncorrectable(cfg IntersightUcsMemoryEccUncorrectableMetricConfig) metricIntersightUcsMemoryEccUncorrectable {
+	m := metricIntersightUcsMemoryEccUncorrectable{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsMemoryFree struct {
+	data     pmetric.Metric                      // data buffer for generated metric.
+	config   IntersightUcsMemoryFreeMetricConfig // metric config provided by user.
+	capacity int                                 // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.memory.free metric with initial data.
+func (m *metricIntersightUcsMemoryFree) init() {
+	m.data.SetName("intersight.ucs.memory.free")
+	m.data.SetDescription("Free system memory from Intersight telemetry.")
+	m.data.SetUnit("By")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsMemoryFree) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsMemoryFree) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsMemoryFree) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsMemoryFree(cfg IntersightUcsMemoryFreeMetricConfig) metricIntersightUcsMemoryFree {
+	m := metricIntersightUcsMemoryFree{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsMemoryModuleSize struct {
+	data     pmetric.Metric                            // data buffer for generated metric.
+	config   IntersightUcsMemoryModuleSizeMetricConfig // metric config provided by user.
+	capacity int                                       // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.memory.module.size metric with initial data.
+func (m *metricIntersightUcsMemoryModuleSize) init() {
+	m.data.SetName("intersight.ucs.memory.module.size")
+	m.data.SetDescription("Memory module size from Intersight telemetry.")
+	m.data.SetUnit("By")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsMemoryModuleSize) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsMemoryModuleSize) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsMemoryModuleSize) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsMemoryModuleSize(cfg IntersightUcsMemoryModuleSizeMetricConfig) metricIntersightUcsMemoryModuleSize {
+	m := metricIntersightUcsMemoryModuleSize{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsMemoryStatus struct {
+	data     pmetric.Metric                        // data buffer for generated metric.
+	config   IntersightUcsMemoryStatusMetricConfig // metric config provided by user.
+	capacity int                                   // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.memory.status metric with initial data.
+func (m *metricIntersightUcsMemoryStatus) init() {
+	m.data.SetName("intersight.ucs.memory.status")
+	m.data.SetDescription("Memory module operational status from Intersight telemetry.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsMemoryStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsMemoryStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsMemoryStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsMemoryStatus(cfg IntersightUcsMemoryStatusMetricConfig) metricIntersightUcsMemoryStatus {
+	m := metricIntersightUcsMemoryStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsMemoryUsed struct {
+	data     pmetric.Metric                      // data buffer for generated metric.
+	config   IntersightUcsMemoryUsedMetricConfig // metric config provided by user.
+	capacity int                                 // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.memory.used metric with initial data.
+func (m *metricIntersightUcsMemoryUsed) init() {
+	m.data.SetName("intersight.ucs.memory.used")
+	m.data.SetDescription("Used system memory from Intersight telemetry.")
+	m.data.SetUnit("By")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsMemoryUsed) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsMemoryUsed) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsMemoryUsed) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsMemoryUsed(cfg IntersightUcsMemoryUsedMetricConfig) metricIntersightUcsMemoryUsed {
+	m := metricIntersightUcsMemoryUsed{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsNetworkInterfaceResets struct {
+	data     pmetric.Metric                                  // data buffer for generated metric.
+	config   IntersightUcsNetworkInterfaceResetsMetricConfig // metric config provided by user.
+	capacity int                                             // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.network.interface_resets metric with initial data.
+func (m *metricIntersightUcsNetworkInterfaceResets) init() {
+	m.data.SetName("intersight.ucs.network.interface_resets")
+	m.data.SetDescription("Interface reset counters from Intersight telemetry.")
+	m.data.SetUnit("{reset}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsNetworkInterfaceResets) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsNetworkInterfaceResets) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsNetworkInterfaceResets) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsNetworkInterfaceResets(cfg IntersightUcsNetworkInterfaceResetsMetricConfig) metricIntersightUcsNetworkInterfaceResets {
+	m := metricIntersightUcsNetworkInterfaceResets{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsNetworkLinkStatus struct {
+	data     pmetric.Metric                             // data buffer for generated metric.
+	config   IntersightUcsNetworkLinkStatusMetricConfig // metric config provided by user.
+	capacity int                                        // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.network.link.status metric with initial data.
+func (m *metricIntersightUcsNetworkLinkStatus) init() {
+	m.data.SetName("intersight.ucs.network.link.status")
+	m.data.SetDescription("Network link status from Intersight telemetry.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsNetworkLinkStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsNetworkLinkStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsNetworkLinkStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsNetworkLinkStatus(cfg IntersightUcsNetworkLinkStatusMetricConfig) metricIntersightUcsNetworkLinkStatus {
+	m := metricIntersightUcsNetworkLinkStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsNetworkLinkFailures struct {
+	data     pmetric.Metric                               // data buffer for generated metric.
+	config   IntersightUcsNetworkLinkFailuresMetricConfig // metric config provided by user.
+	capacity int                                          // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.network.link_failures metric with initial data.
+func (m *metricIntersightUcsNetworkLinkFailures) init() {
+	m.data.SetName("intersight.ucs.network.link_failures")
+	m.data.SetDescription("Link failure counters from Intersight telemetry.")
+	m.data.SetUnit("{failure}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsNetworkLinkFailures) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsNetworkLinkFailures) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsNetworkLinkFailures) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsNetworkLinkFailures(cfg IntersightUcsNetworkLinkFailuresMetricConfig) metricIntersightUcsNetworkLinkFailures {
+	m := metricIntersightUcsNetworkLinkFailures{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsNetworkReceive struct {
+	data     pmetric.Metric                          // data buffer for generated metric.
+	config   IntersightUcsNetworkReceiveMetricConfig // metric config provided by user.
+	capacity int                                     // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.network.receive metric with initial data.
+func (m *metricIntersightUcsNetworkReceive) init() {
+	m.data.SetName("intersight.ucs.network.receive")
+	m.data.SetDescription("Network receive volume from Intersight telemetry.")
+	m.data.SetUnit("By")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsNetworkReceive) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsNetworkReceive) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsNetworkReceive) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsNetworkReceive(cfg IntersightUcsNetworkReceiveMetricConfig) metricIntersightUcsNetworkReceive {
+	m := metricIntersightUcsNetworkReceive{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsNetworkReceiveCrcErrors struct {
+	data     pmetric.Metric                                   // data buffer for generated metric.
+	config   IntersightUcsNetworkReceiveCrcErrorsMetricConfig // metric config provided by user.
+	capacity int                                              // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.network.receive.crc_errors metric with initial data.
+func (m *metricIntersightUcsNetworkReceiveCrcErrors) init() {
+	m.data.SetName("intersight.ucs.network.receive.crc_errors")
+	m.data.SetDescription("Receive CRC errors from Intersight telemetry.")
+	m.data.SetUnit("{error}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsNetworkReceiveCrcErrors) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsNetworkReceiveCrcErrors) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsNetworkReceiveCrcErrors) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsNetworkReceiveCrcErrors(cfg IntersightUcsNetworkReceiveCrcErrorsMetricConfig) metricIntersightUcsNetworkReceiveCrcErrors {
+	m := metricIntersightUcsNetworkReceiveCrcErrors{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsNetworkReceiveDiscards struct {
+	data     pmetric.Metric                                  // data buffer for generated metric.
+	config   IntersightUcsNetworkReceiveDiscardsMetricConfig // metric config provided by user.
+	capacity int                                             // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.network.receive.discards metric with initial data.
+func (m *metricIntersightUcsNetworkReceiveDiscards) init() {
+	m.data.SetName("intersight.ucs.network.receive.discards")
+	m.data.SetDescription("Receive discards from Intersight telemetry.")
+	m.data.SetUnit("{discard}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsNetworkReceiveDiscards) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsNetworkReceiveDiscards) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsNetworkReceiveDiscards) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsNetworkReceiveDiscards(cfg IntersightUcsNetworkReceiveDiscardsMetricConfig) metricIntersightUcsNetworkReceiveDiscards {
+	m := metricIntersightUcsNetworkReceiveDiscards{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsNetworkReceiveDrops struct {
+	data     pmetric.Metric                               // data buffer for generated metric.
+	config   IntersightUcsNetworkReceiveDropsMetricConfig // metric config provided by user.
+	capacity int                                          // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.network.receive.drops metric with initial data.
+func (m *metricIntersightUcsNetworkReceiveDrops) init() {
+	m.data.SetName("intersight.ucs.network.receive.drops")
+	m.data.SetDescription("Receive drops from Intersight telemetry.")
+	m.data.SetUnit("{drop}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsNetworkReceiveDrops) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsNetworkReceiveDrops) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsNetworkReceiveDrops) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsNetworkReceiveDrops(cfg IntersightUcsNetworkReceiveDropsMetricConfig) metricIntersightUcsNetworkReceiveDrops {
+	m := metricIntersightUcsNetworkReceiveDrops{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsNetworkReceiveErrors struct {
+	data     pmetric.Metric                                // data buffer for generated metric.
+	config   IntersightUcsNetworkReceiveErrorsMetricConfig // metric config provided by user.
+	capacity int                                           // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.network.receive.errors metric with initial data.
+func (m *metricIntersightUcsNetworkReceiveErrors) init() {
+	m.data.SetName("intersight.ucs.network.receive.errors")
+	m.data.SetDescription("Receive errors from Intersight telemetry.")
+	m.data.SetUnit("{error}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsNetworkReceiveErrors) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsNetworkReceiveErrors) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsNetworkReceiveErrors) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsNetworkReceiveErrors(cfg IntersightUcsNetworkReceiveErrorsMetricConfig) metricIntersightUcsNetworkReceiveErrors {
+	m := metricIntersightUcsNetworkReceiveErrors{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsNetworkReceiveNoBuffer struct {
+	data     pmetric.Metric                                  // data buffer for generated metric.
+	config   IntersightUcsNetworkReceiveNoBufferMetricConfig // metric config provided by user.
+	capacity int                                             // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.network.receive.no_buffer metric with initial data.
+func (m *metricIntersightUcsNetworkReceiveNoBuffer) init() {
+	m.data.SetName("intersight.ucs.network.receive.no_buffer")
+	m.data.SetDescription("Receive no-buffer errors from Intersight telemetry.")
+	m.data.SetUnit("{error}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsNetworkReceiveNoBuffer) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsNetworkReceiveNoBuffer) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsNetworkReceiveNoBuffer) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsNetworkReceiveNoBuffer(cfg IntersightUcsNetworkReceiveNoBufferMetricConfig) metricIntersightUcsNetworkReceiveNoBuffer {
+	m := metricIntersightUcsNetworkReceiveNoBuffer{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsNetworkReceivePackets struct {
+	data     pmetric.Metric                                 // data buffer for generated metric.
+	config   IntersightUcsNetworkReceivePacketsMetricConfig // metric config provided by user.
+	capacity int                                            // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.network.receive.packets metric with initial data.
+func (m *metricIntersightUcsNetworkReceivePackets) init() {
+	m.data.SetName("intersight.ucs.network.receive.packets")
+	m.data.SetDescription("Receive packet volume from Intersight telemetry.")
+	m.data.SetUnit("{packet}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsNetworkReceivePackets) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsNetworkReceivePackets) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsNetworkReceivePackets) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsNetworkReceivePackets(cfg IntersightUcsNetworkReceivePacketsMetricConfig) metricIntersightUcsNetworkReceivePackets {
+	m := metricIntersightUcsNetworkReceivePackets{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsNetworkReceivePauseFrames struct {
+	data     pmetric.Metric                                     // data buffer for generated metric.
+	config   IntersightUcsNetworkReceivePauseFramesMetricConfig // metric config provided by user.
+	capacity int                                                // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.network.receive.pause_frames metric with initial data.
+func (m *metricIntersightUcsNetworkReceivePauseFrames) init() {
+	m.data.SetName("intersight.ucs.network.receive.pause_frames")
+	m.data.SetDescription("Receive pause frames from Intersight telemetry.")
+	m.data.SetUnit("{frame}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsNetworkReceivePauseFrames) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsNetworkReceivePauseFrames) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsNetworkReceivePauseFrames) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsNetworkReceivePauseFrames(cfg IntersightUcsNetworkReceivePauseFramesMetricConfig) metricIntersightUcsNetworkReceivePauseFrames {
+	m := metricIntersightUcsNetworkReceivePauseFrames{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsNetworkSignalLosses struct {
+	data     pmetric.Metric                               // data buffer for generated metric.
+	config   IntersightUcsNetworkSignalLossesMetricConfig // metric config provided by user.
+	capacity int                                          // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.network.signal_losses metric with initial data.
+func (m *metricIntersightUcsNetworkSignalLosses) init() {
+	m.data.SetName("intersight.ucs.network.signal_losses")
+	m.data.SetDescription("Signal-loss counters from Intersight telemetry.")
+	m.data.SetUnit("{error}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsNetworkSignalLosses) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsNetworkSignalLosses) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsNetworkSignalLosses) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsNetworkSignalLosses(cfg IntersightUcsNetworkSignalLossesMetricConfig) metricIntersightUcsNetworkSignalLosses {
+	m := metricIntersightUcsNetworkSignalLosses{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsNetworkSpeed struct {
+	data     pmetric.Metric                        // data buffer for generated metric.
+	config   IntersightUcsNetworkSpeedMetricConfig // metric config provided by user.
+	capacity int                                   // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.network.speed metric with initial data.
+func (m *metricIntersightUcsNetworkSpeed) init() {
+	m.data.SetName("intersight.ucs.network.speed")
+	m.data.SetDescription("Operational link speed.")
+	m.data.SetUnit("By/s")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsNetworkSpeed) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsNetworkSpeed) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsNetworkSpeed) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsNetworkSpeed(cfg IntersightUcsNetworkSpeedMetricConfig) metricIntersightUcsNetworkSpeed {
+	m := metricIntersightUcsNetworkSpeed{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsNetworkTransmit struct {
+	data     pmetric.Metric                           // data buffer for generated metric.
+	config   IntersightUcsNetworkTransmitMetricConfig // metric config provided by user.
+	capacity int                                      // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.network.transmit metric with initial data.
+func (m *metricIntersightUcsNetworkTransmit) init() {
+	m.data.SetName("intersight.ucs.network.transmit")
+	m.data.SetDescription("Network transmit volume from Intersight telemetry.")
+	m.data.SetUnit("By")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsNetworkTransmit) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsNetworkTransmit) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsNetworkTransmit) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsNetworkTransmit(cfg IntersightUcsNetworkTransmitMetricConfig) metricIntersightUcsNetworkTransmit {
+	m := metricIntersightUcsNetworkTransmit{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsNetworkTransmitDiscards struct {
+	data     pmetric.Metric                                   // data buffer for generated metric.
+	config   IntersightUcsNetworkTransmitDiscardsMetricConfig // metric config provided by user.
+	capacity int                                              // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.network.transmit.discards metric with initial data.
+func (m *metricIntersightUcsNetworkTransmitDiscards) init() {
+	m.data.SetName("intersight.ucs.network.transmit.discards")
+	m.data.SetDescription("Transmit discards from Intersight telemetry.")
+	m.data.SetUnit("{discard}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsNetworkTransmitDiscards) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsNetworkTransmitDiscards) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsNetworkTransmitDiscards) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsNetworkTransmitDiscards(cfg IntersightUcsNetworkTransmitDiscardsMetricConfig) metricIntersightUcsNetworkTransmitDiscards {
+	m := metricIntersightUcsNetworkTransmitDiscards{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsNetworkTransmitDrops struct {
+	data     pmetric.Metric                                // data buffer for generated metric.
+	config   IntersightUcsNetworkTransmitDropsMetricConfig // metric config provided by user.
+	capacity int                                           // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.network.transmit.drops metric with initial data.
+func (m *metricIntersightUcsNetworkTransmitDrops) init() {
+	m.data.SetName("intersight.ucs.network.transmit.drops")
+	m.data.SetDescription("Transmit drops from Intersight telemetry.")
+	m.data.SetUnit("{drop}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsNetworkTransmitDrops) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsNetworkTransmitDrops) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsNetworkTransmitDrops) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsNetworkTransmitDrops(cfg IntersightUcsNetworkTransmitDropsMetricConfig) metricIntersightUcsNetworkTransmitDrops {
+	m := metricIntersightUcsNetworkTransmitDrops{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsNetworkTransmitErrors struct {
+	data     pmetric.Metric                                 // data buffer for generated metric.
+	config   IntersightUcsNetworkTransmitErrorsMetricConfig // metric config provided by user.
+	capacity int                                            // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.network.transmit.errors metric with initial data.
+func (m *metricIntersightUcsNetworkTransmitErrors) init() {
+	m.data.SetName("intersight.ucs.network.transmit.errors")
+	m.data.SetDescription("Transmit errors from Intersight telemetry.")
+	m.data.SetUnit("{error}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsNetworkTransmitErrors) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsNetworkTransmitErrors) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsNetworkTransmitErrors) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsNetworkTransmitErrors(cfg IntersightUcsNetworkTransmitErrorsMetricConfig) metricIntersightUcsNetworkTransmitErrors {
+	m := metricIntersightUcsNetworkTransmitErrors{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsNetworkTransmitPackets struct {
+	data     pmetric.Metric                                  // data buffer for generated metric.
+	config   IntersightUcsNetworkTransmitPacketsMetricConfig // metric config provided by user.
+	capacity int                                             // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.network.transmit.packets metric with initial data.
+func (m *metricIntersightUcsNetworkTransmitPackets) init() {
+	m.data.SetName("intersight.ucs.network.transmit.packets")
+	m.data.SetDescription("Transmit packet volume from Intersight telemetry.")
+	m.data.SetUnit("{packet}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsNetworkTransmitPackets) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsNetworkTransmitPackets) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsNetworkTransmitPackets) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsNetworkTransmitPackets(cfg IntersightUcsNetworkTransmitPacketsMetricConfig) metricIntersightUcsNetworkTransmitPackets {
+	m := metricIntersightUcsNetworkTransmitPackets{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsNetworkTransmitPauseFrames struct {
+	data     pmetric.Metric                                      // data buffer for generated metric.
+	config   IntersightUcsNetworkTransmitPauseFramesMetricConfig // metric config provided by user.
+	capacity int                                                 // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.network.transmit.pause_frames metric with initial data.
+func (m *metricIntersightUcsNetworkTransmitPauseFrames) init() {
+	m.data.SetName("intersight.ucs.network.transmit.pause_frames")
+	m.data.SetDescription("Transmit pause frames from Intersight telemetry.")
+	m.data.SetUnit("{frame}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsNetworkTransmitPauseFrames) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsNetworkTransmitPauseFrames) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsNetworkTransmitPauseFrames) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsNetworkTransmitPauseFrames(cfg IntersightUcsNetworkTransmitPauseFramesMetricConfig) metricIntersightUcsNetworkTransmitPauseFrames {
+	m := metricIntersightUcsNetworkTransmitPauseFrames{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsNetworkUtilization struct {
+	data     pmetric.Metric                              // data buffer for generated metric.
+	config   IntersightUcsNetworkUtilizationMetricConfig // metric config provided by user.
+	capacity int                                         // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.network.utilization metric with initial data.
+func (m *metricIntersightUcsNetworkUtilization) init() {
+	m.data.SetName("intersight.ucs.network.utilization")
+	m.data.SetDescription("Network bandwidth utilization.")
+	m.data.SetUnit("%")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsNetworkUtilization) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsNetworkUtilization) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsNetworkUtilization) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsNetworkUtilization(cfg IntersightUcsNetworkUtilizationMetricConfig) metricIntersightUcsNetworkUtilization {
+	m := metricIntersightUcsNetworkUtilization{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsPowerSupplyOutputPower struct {
+	data     pmetric.Metric                                  // data buffer for generated metric.
+	config   IntersightUcsPowerSupplyOutputPowerMetricConfig // metric config provided by user.
+	capacity int                                             // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.power_supply.output_power metric with initial data.
+func (m *metricIntersightUcsPowerSupplyOutputPower) init() {
+	m.data.SetName("intersight.ucs.power_supply.output_power")
+	m.data.SetDescription("PSU output power.")
+	m.data.SetUnit("W")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsPowerSupplyOutputPower) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsPowerSupplyOutputPower) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsPowerSupplyOutputPower) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsPowerSupplyOutputPower(cfg IntersightUcsPowerSupplyOutputPowerMetricConfig) metricIntersightUcsPowerSupplyOutputPower {
+	m := metricIntersightUcsPowerSupplyOutputPower{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsPowerSupplyStatus struct {
+	data     pmetric.Metric                             // data buffer for generated metric.
+	config   IntersightUcsPowerSupplyStatusMetricConfig // metric config provided by user.
+	capacity int                                        // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.power_supply.status metric with initial data.
+func (m *metricIntersightUcsPowerSupplyStatus) init() {
+	m.data.SetName("intersight.ucs.power_supply.status")
+	m.data.SetDescription("PSU operational status from Intersight telemetry.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsPowerSupplyStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsPowerSupplyStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsPowerSupplyStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsPowerSupplyStatus(cfg IntersightUcsPowerSupplyStatusMetricConfig) metricIntersightUcsPowerSupplyStatus {
+	m := metricIntersightUcsPowerSupplyStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsPowerSupplyUtilization struct {
+	data     pmetric.Metric                                  // data buffer for generated metric.
+	config   IntersightUcsPowerSupplyUtilizationMetricConfig // metric config provided by user.
+	capacity int                                             // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.power_supply.utilization metric with initial data.
+func (m *metricIntersightUcsPowerSupplyUtilization) init() {
+	m.data.SetName("intersight.ucs.power_supply.utilization")
+	m.data.SetDescription("PSU utilization.")
+	m.data.SetUnit("%")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsPowerSupplyUtilization) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsPowerSupplyUtilization) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsPowerSupplyUtilization) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsPowerSupplyUtilization(cfg IntersightUcsPowerSupplyUtilizationMetricConfig) metricIntersightUcsPowerSupplyUtilization {
+	m := metricIntersightUcsPowerSupplyUtilization{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsSignalPowerReceive struct {
+	data     pmetric.Metric                              // data buffer for generated metric.
+	config   IntersightUcsSignalPowerReceiveMetricConfig // metric config provided by user.
+	capacity int                                         // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.signal_power.receive metric with initial data.
+func (m *metricIntersightUcsSignalPowerReceive) init() {
+	m.data.SetName("intersight.ucs.signal_power.receive")
+	m.data.SetDescription("Transceiver receive optical power.")
+	m.data.SetUnit("dBm")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsSignalPowerReceive) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsSignalPowerReceive) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsSignalPowerReceive) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsSignalPowerReceive(cfg IntersightUcsSignalPowerReceiveMetricConfig) metricIntersightUcsSignalPowerReceive {
+	m := metricIntersightUcsSignalPowerReceive{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsSignalPowerTransmit struct {
+	data     pmetric.Metric                               // data buffer for generated metric.
+	config   IntersightUcsSignalPowerTransmitMetricConfig // metric config provided by user.
+	capacity int                                          // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.signal_power.transmit metric with initial data.
+func (m *metricIntersightUcsSignalPowerTransmit) init() {
+	m.data.SetName("intersight.ucs.signal_power.transmit")
+	m.data.SetDescription("Transceiver transmit optical power.")
+	m.data.SetUnit("dBm")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsSignalPowerTransmit) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsSignalPowerTransmit) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsSignalPowerTransmit) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsSignalPowerTransmit(cfg IntersightUcsSignalPowerTransmitMetricConfig) metricIntersightUcsSignalPowerTransmit {
+	m := metricIntersightUcsSignalPowerTransmit{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsTemperature struct {
+	data     pmetric.Metric                       // data buffer for generated metric.
+	config   IntersightUcsTemperatureMetricConfig // metric config provided by user.
+	capacity int                                  // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.temperature metric with initial data.
+func (m *metricIntersightUcsTemperature) init() {
+	m.data.SetName("intersight.ucs.temperature")
+	m.data.SetDescription("Mean temperature from Intersight telemetry GroupBy.")
+	m.data.SetUnit("Cel")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsTemperature) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsTemperature) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsTemperature) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsTemperature(cfg IntersightUcsTemperatureMetricConfig) metricIntersightUcsTemperature {
+	m := metricIntersightUcsTemperature{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsTemperatureLimitHighCritical struct {
+	data     pmetric.Metric                                        // data buffer for generated metric.
+	config   IntersightUcsTemperatureLimitHighCriticalMetricConfig // metric config provided by user.
+	capacity int                                                   // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.temperature.limit_high_critical metric with initial data.
+func (m *metricIntersightUcsTemperatureLimitHighCritical) init() {
+	m.data.SetName("intersight.ucs.temperature.limit_high_critical")
+	m.data.SetDescription("High critical temperature threshold.")
+	m.data.SetUnit("Cel")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsTemperatureLimitHighCritical) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsTemperatureLimitHighCritical) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsTemperatureLimitHighCritical) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsTemperatureLimitHighCritical(cfg IntersightUcsTemperatureLimitHighCriticalMetricConfig) metricIntersightUcsTemperatureLimitHighCritical {
+	m := metricIntersightUcsTemperatureLimitHighCritical{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsTemperatureLimitLowCritical struct {
+	data     pmetric.Metric                                       // data buffer for generated metric.
+	config   IntersightUcsTemperatureLimitLowCriticalMetricConfig // metric config provided by user.
+	capacity int                                                  // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.temperature.limit_low_critical metric with initial data.
+func (m *metricIntersightUcsTemperatureLimitLowCritical) init() {
+	m.data.SetName("intersight.ucs.temperature.limit_low_critical")
+	m.data.SetDescription("Low critical temperature threshold.")
+	m.data.SetUnit("Cel")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsTemperatureLimitLowCritical) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsTemperatureLimitLowCritical) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsTemperatureLimitLowCritical) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsTemperatureLimitLowCritical(cfg IntersightUcsTemperatureLimitLowCriticalMetricConfig) metricIntersightUcsTemperatureLimitLowCritical {
+	m := metricIntersightUcsTemperatureLimitLowCritical{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsTemperatureStatus struct {
+	data     pmetric.Metric                             // data buffer for generated metric.
+	config   IntersightUcsTemperatureStatusMetricConfig // metric config provided by user.
+	capacity int                                        // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.temperature.status metric with initial data.
+func (m *metricIntersightUcsTemperatureStatus) init() {
+	m.data.SetName("intersight.ucs.temperature.status")
+	m.data.SetDescription("Temperature sensor operational status from Intersight telemetry.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsTemperatureStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsTemperatureStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsTemperatureStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsTemperatureStatus(cfg IntersightUcsTemperatureStatusMetricConfig) metricIntersightUcsTemperatureStatus {
+	m := metricIntersightUcsTemperatureStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightUcsVoltage struct {
+	data     pmetric.Metric                   // data buffer for generated metric.
+	config   IntersightUcsVoltageMetricConfig // metric config provided by user.
+	capacity int                              // max observed number of data points added to the metric.
+}
+
+// init fills intersight.ucs.voltage metric with initial data.
+func (m *metricIntersightUcsVoltage) init() {
+	m.data.SetName("intersight.ucs.voltage")
+	m.data.SetDescription("Mean voltage from Intersight telemetry GroupBy.")
+	m.data.SetUnit("V")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightUcsVoltage) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightUcsVoltage) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightUcsVoltage) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightUcsVoltage(cfg IntersightUcsVoltageMetricConfig) metricIntersightUcsVoltage {
+	m := metricIntersightUcsVoltage{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightVirtualMachineCount struct {
+	data     pmetric.Metric                            // data buffer for generated metric.
+	config   IntersightVirtualMachineCountMetricConfig // metric config provided by user.
+	capacity int                                       // max observed number of data points added to the metric.
+}
+
+// init fills intersight.virtual_machine.count metric with initial data.
+func (m *metricIntersightVirtualMachineCount) init() {
+	m.data.SetName("intersight.virtual_machine.count")
+	m.data.SetDescription("Virtual machine count on HyperFlex clusters.")
+	m.data.SetUnit("{vm}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightVirtualMachineCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightVirtualMachineCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightVirtualMachineCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightVirtualMachineCount(cfg IntersightVirtualMachineCountMetricConfig) metricIntersightVirtualMachineCount {
+	m := metricIntersightVirtualMachineCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightVirtualMachineCPUCount struct {
+	data     pmetric.Metric                               // data buffer for generated metric.
+	config   IntersightVirtualMachineCPUCountMetricConfig // metric config provided by user.
+	capacity int                                          // max observed number of data points added to the metric.
+}
+
+// init fills intersight.virtual_machine.cpu.count metric with initial data.
+func (m *metricIntersightVirtualMachineCPUCount) init() {
+	m.data.SetName("intersight.virtual_machine.cpu.count")
+	m.data.SetDescription("vCPU count for a VM.")
+	m.data.SetUnit("{cpu}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightVirtualMachineCPUCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightVirtualMachineCPUCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightVirtualMachineCPUCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightVirtualMachineCPUCount(cfg IntersightVirtualMachineCPUCountMetricConfig) metricIntersightVirtualMachineCPUCount {
+	m := metricIntersightVirtualMachineCPUCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightVirtualMachineMemory struct {
+	data     pmetric.Metric                             // data buffer for generated metric.
+	config   IntersightVirtualMachineMemoryMetricConfig // metric config provided by user.
+	capacity int                                        // max observed number of data points added to the metric.
+}
+
+// init fills intersight.virtual_machine.memory metric with initial data.
+func (m *metricIntersightVirtualMachineMemory) init() {
+	m.data.SetName("intersight.virtual_machine.memory")
+	m.data.SetDescription("VM configured memory.")
+	m.data.SetUnit("MBy")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightVirtualMachineMemory) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightVirtualMachineMemory) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightVirtualMachineMemory) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightVirtualMachineMemory(cfg IntersightVirtualMachineMemoryMetricConfig) metricIntersightVirtualMachineMemory {
+	m := metricIntersightVirtualMachineMemory{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightVirtualMachinePowerState struct {
+	data     pmetric.Metric                                 // data buffer for generated metric.
+	config   IntersightVirtualMachinePowerStateMetricConfig // metric config provided by user.
+	capacity int                                            // max observed number of data points added to the metric.
+}
+
+// init fills intersight.virtual_machine.power_state metric with initial data.
+func (m *metricIntersightVirtualMachinePowerState) init() {
+	m.data.SetName("intersight.virtual_machine.power_state")
+	m.data.SetDescription("Encoded VM power state.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightVirtualMachinePowerState) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightVirtualMachinePowerState) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightVirtualMachinePowerState) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightVirtualMachinePowerState(cfg IntersightVirtualMachinePowerStateMetricConfig) metricIntersightVirtualMachinePowerState {
+	m := metricIntersightVirtualMachinePowerState{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightWorkflowCount struct {
+	data     pmetric.Metric                      // data buffer for generated metric.
+	config   IntersightWorkflowCountMetricConfig // metric config provided by user.
+	capacity int                                 // max observed number of data points added to the metric.
+}
+
+// init fills intersight.workflow.count metric with initial data.
+func (m *metricIntersightWorkflowCount) init() {
+	m.data.SetName("intersight.workflow.count")
+	m.data.SetDescription("Workflow records grouped by bounded status attributes.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightWorkflowCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightWorkflowCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightWorkflowCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightWorkflowCount(cfg IntersightWorkflowCountMetricConfig) metricIntersightWorkflowCount {
+	m := metricIntersightWorkflowCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIntersightWorkflowStatus struct {
+	data     pmetric.Metric                       // data buffer for generated metric.
+	config   IntersightWorkflowStatusMetricConfig // metric config provided by user.
+	capacity int                                  // max observed number of data points added to the metric.
+}
+
+// init fills intersight.workflow.status metric with initial data.
+func (m *metricIntersightWorkflowStatus) init() {
+	m.data.SetName("intersight.workflow.status")
+	m.data.SetDescription("Workflow execution status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIntersightWorkflowStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIntersightWorkflowStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIntersightWorkflowStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIntersightWorkflowStatus(cfg IntersightWorkflowStatusMetricConfig) metricIntersightWorkflowStatus {
+	m := metricIntersightWorkflowStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseAccountingSessionCount struct {
+	data     pmetric.Metric                        // data buffer for generated metric.
+	config   IseAccountingSessionCountMetricConfig // metric config provided by user.
+	capacity int                                   // max observed number of data points added to the metric.
+}
+
+// init fills ise.accounting.session.count metric with initial data.
+func (m *metricIseAccountingSessionCount) init() {
+	m.data.SetName("ise.accounting.session.count")
+	m.data.SetDescription("Accounting/session records from available APIs or Data Connect views.")
+	m.data.SetUnit("{item}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseAccountingSessionCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseAccountingSessionCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseAccountingSessionCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseAccountingSessionCount(cfg IseAccountingSessionCountMetricConfig) metricIseAccountingSessionCount {
+	m := metricIseAccountingSessionCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseAlarmCount struct {
+	data     pmetric.Metric            // data buffer for generated metric.
+	config   IseAlarmCountMetricConfig // metric config provided by user.
+	capacity int                       // max observed number of data points added to the metric.
+}
+
+// init fills ise.alarm.count metric with initial data.
+func (m *metricIseAlarmCount) init() {
+	m.data.SetName("ise.alarm.count")
+	m.data.SetDescription("ISE alarm rules and active/recent alarm instances by bounded severity/status.")
+	m.data.SetUnit("{item}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseAlarmCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseAlarmCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseAlarmCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseAlarmCount(cfg IseAlarmCountMetricConfig) metricIseAlarmCount {
+	m := metricIseAlarmCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseAPIEndpointError struct {
+	data     pmetric.Metric                  // data buffer for generated metric.
+	config   IseAPIEndpointErrorMetricConfig // metric config provided by user.
+	capacity int                             // max observed number of data points added to the metric.
+}
+
+// init fills ise.api.endpoint.error metric with initial data.
+func (m *metricIseAPIEndpointError) init() {
+	m.data.SetName("ise.api.endpoint.error")
+	m.data.SetDescription("Endpoint-family scrape failures.")
+	m.data.SetUnit("{error}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricIseAPIEndpointError) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseAPIEndpointError) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseAPIEndpointError) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseAPIEndpointError(cfg IseAPIEndpointErrorMetricConfig) metricIseAPIEndpointError {
+	m := metricIseAPIEndpointError{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseAPIRateLimited struct {
+	data     pmetric.Metric                // data buffer for generated metric.
+	config   IseAPIRateLimitedMetricConfig // metric config provided by user.
+	capacity int                           // max observed number of data points added to the metric.
+}
+
+// init fills ise.api.rate_limited metric with initial data.
+func (m *metricIseAPIRateLimited) init() {
+	m.data.SetName("ise.api.rate_limited")
+	m.data.SetDescription("ISE API requests that were rate limited.")
+	m.data.SetUnit("{request}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricIseAPIRateLimited) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseAPIRateLimited) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseAPIRateLimited) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseAPIRateLimited(cfg IseAPIRateLimitedMetricConfig) metricIseAPIRateLimited {
+	m := metricIseAPIRateLimited{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseAPIRequestDuration struct {
+	data     pmetric.Metric                    // data buffer for generated metric.
+	config   IseAPIRequestDurationMetricConfig // metric config provided by user.
+	capacity int                               // max observed number of data points added to the metric.
+}
+
+// init fills ise.api.request.duration metric with initial data.
+func (m *metricIseAPIRequestDuration) init() {
+	m.data.SetName("ise.api.request.duration")
+	m.data.SetDescription("Average duration of ISE REST/OpenAPI/ERS/MnT and pxGrid REST request attempts within the scrape for each matching request-attribute set.")
+	m.data.SetUnit("s")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseAPIRequestDuration) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseAPIRequestDuration) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseAPIRequestDuration) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseAPIRequestDuration(cfg IseAPIRequestDurationMetricConfig) metricIseAPIRequestDuration {
+	m := metricIseAPIRequestDuration{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseAPIRequestErrors struct {
+	data     pmetric.Metric                  // data buffer for generated metric.
+	config   IseAPIRequestErrorsMetricConfig // metric config provided by user.
+	capacity int                             // max observed number of data points added to the metric.
+}
+
+// init fills ise.api.request.errors metric with initial data.
+func (m *metricIseAPIRequestErrors) init() {
+	m.data.SetName("ise.api.request.errors")
+	m.data.SetDescription("ISE API request failures.")
+	m.data.SetUnit("{error}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricIseAPIRequestErrors) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseAPIRequestErrors) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseAPIRequestErrors) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseAPIRequestErrors(cfg IseAPIRequestErrorsMetricConfig) metricIseAPIRequestErrors {
+	m := metricIseAPIRequestErrors{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseAuthFailureReasonInfo struct {
+	data     pmetric.Metric                       // data buffer for generated metric.
+	config   IseAuthFailureReasonInfoMetricConfig // metric config provided by user.
+	capacity int                                  // max observed number of data points added to the metric.
+}
+
+// init fills ise.auth.failure.reason.info metric with initial data.
+func (m *metricIseAuthFailureReasonInfo) init() {
+	m.data.SetName("ise.auth.failure.reason.info")
+	m.data.SetDescription("Bounded authentication-failure reason evidence.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseAuthFailureReasonInfo) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseAuthFailureReasonInfo) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseAuthFailureReasonInfo) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseAuthFailureReasonInfo(cfg IseAuthFailureReasonInfoMetricConfig) metricIseAuthFailureReasonInfo {
+	m := metricIseAuthFailureReasonInfo{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseCertificateCount struct {
+	data     pmetric.Metric                  // data buffer for generated metric.
+	config   IseCertificateCountMetricConfig // metric config provided by user.
+	capacity int                             // max observed number of data points added to the metric.
+}
+
+// init fills ise.certificate.count metric with initial data.
+func (m *metricIseCertificateCount) init() {
+	m.data.SetName("ise.certificate.count")
+	m.data.SetDescription("Certificate inventory count by bounded object type.")
+	m.data.SetUnit("{item}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseCertificateCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseCertificateCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseCertificateCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseCertificateCount(cfg IseCertificateCountMetricConfig) metricIseCertificateCount {
+	m := metricIseCertificateCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseCertificateExpiration struct {
+	data     pmetric.Metric                       // data buffer for generated metric.
+	config   IseCertificateExpirationMetricConfig // metric config provided by user.
+	capacity int                                  // max observed number of data points added to the metric.
+}
+
+// init fills ise.certificate.expiration metric with initial data.
+func (m *metricIseCertificateExpiration) init() {
+	m.data.SetName("ise.certificate.expiration")
+	m.data.SetDescription("Certificate expiration Unix timestamp.")
+	m.data.SetUnit("s")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseCertificateExpiration) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseCertificateExpiration) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseCertificateExpiration) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseCertificateExpiration(cfg IseCertificateExpirationMetricConfig) metricIseCertificateExpiration {
+	m := metricIseCertificateExpiration{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseControllerUp struct {
+	data     pmetric.Metric              // data buffer for generated metric.
+	config   IseControllerUpMetricConfig // metric config provided by user.
+	capacity int                         // max observed number of data points added to the metric.
+}
+
+// init fills ise.controller.up metric with initial data.
+func (m *metricIseControllerUp) init() {
+	m.data.SetName("ise.controller.up")
+	m.data.SetDescription("Whether any ISE REST, pxGrid, or Data Connect operation succeeded in the scrape.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseControllerUp) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseControllerUp) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseControllerUp) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseControllerUp(cfg IseControllerUpMetricConfig) metricIseControllerUp {
+	m := metricIseControllerUp{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseDataconnectQueryDuration struct {
+	data     pmetric.Metric                          // data buffer for generated metric.
+	config   IseDataconnectQueryDurationMetricConfig // metric config provided by user.
+	capacity int                                     // max observed number of data points added to the metric.
+}
+
+// init fills ise.dataconnect.query.duration metric with initial data.
+func (m *metricIseDataconnectQueryDuration) init() {
+	m.data.SetName("ise.dataconnect.query.duration")
+	m.data.SetDescription("Duration of each Data Connect query.")
+	m.data.SetUnit("s")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseDataconnectQueryDuration) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseDataconnectQueryDuration) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseDataconnectQueryDuration) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseDataconnectQueryDuration(cfg IseDataconnectQueryDurationMetricConfig) metricIseDataconnectQueryDuration {
+	m := metricIseDataconnectQueryDuration{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseDataconnectQueryErrors struct {
+	data     pmetric.Metric                        // data buffer for generated metric.
+	config   IseDataconnectQueryErrorsMetricConfig // metric config provided by user.
+	capacity int                                   // max observed number of data points added to the metric.
+}
+
+// init fills ise.dataconnect.query.errors metric with initial data.
+func (m *metricIseDataconnectQueryErrors) init() {
+	m.data.SetName("ise.dataconnect.query.errors")
+	m.data.SetDescription("Data Connect query failures.")
+	m.data.SetUnit("{error}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricIseDataconnectQueryErrors) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseDataconnectQueryErrors) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseDataconnectQueryErrors) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseDataconnectQueryErrors(cfg IseDataconnectQueryErrorsMetricConfig) metricIseDataconnectQueryErrors {
+	m := metricIseDataconnectQueryErrors{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseDataconnectQueryRows struct {
+	data     pmetric.Metric                      // data buffer for generated metric.
+	config   IseDataconnectQueryRowsMetricConfig // metric config provided by user.
+	capacity int                                 // max observed number of data points added to the metric.
+}
+
+// init fills ise.dataconnect.query.rows metric with initial data.
+func (m *metricIseDataconnectQueryRows) init() {
+	m.data.SetName("ise.dataconnect.query.rows")
+	m.data.SetDescription("Rows returned from each allowlisted Data Connect view.")
+	m.data.SetUnit("{row}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseDataconnectQueryRows) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseDataconnectQueryRows) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseDataconnectQueryRows) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseDataconnectQueryRows(cfg IseDataconnectQueryRowsMetricConfig) metricIseDataconnectQueryRows {
+	m := metricIseDataconnectQueryRows{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseDataconnectRowCount struct {
+	data     pmetric.Metric                     // data buffer for generated metric.
+	config   IseDataconnectRowCountMetricConfig // metric config provided by user.
+	capacity int                                // max observed number of data points added to the metric.
+}
+
+// init fills ise.dataconnect.row.count metric with initial data.
+func (m *metricIseDataconnectRowCount) init() {
+	m.data.SetName("ise.dataconnect.row.count")
+	m.data.SetDescription("Data Connect evidence rows by bounded view and outcome attributes.")
+	m.data.SetUnit("{item}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseDataconnectRowCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseDataconnectRowCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseDataconnectRowCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseDataconnectRowCount(cfg IseDataconnectRowCountMetricConfig) metricIseDataconnectRowCount {
+	m := metricIseDataconnectRowCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseDeploymentNodeCount struct {
+	data     pmetric.Metric                     // data buffer for generated metric.
+	config   IseDeploymentNodeCountMetricConfig // metric config provided by user.
+	capacity int                                // max observed number of data points added to the metric.
+}
+
+// init fills ise.deployment.node.count metric with initial data.
+func (m *metricIseDeploymentNodeCount) init() {
+	m.data.SetName("ise.deployment.node.count")
+	m.data.SetDescription("Deployment node/persona records by bounded status.")
+	m.data.SetUnit("{item}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseDeploymentNodeCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseDeploymentNodeCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseDeploymentNodeCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseDeploymentNodeCount(cfg IseDeploymentNodeCountMetricConfig) metricIseDeploymentNodeCount {
+	m := metricIseDeploymentNodeCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseDeploymentNodeStatus struct {
+	data     pmetric.Metric                      // data buffer for generated metric.
+	config   IseDeploymentNodeStatusMetricConfig // metric config provided by user.
+	capacity int                                 // max observed number of data points added to the metric.
+}
+
+// init fills ise.deployment.node.status metric with initial data.
+func (m *metricIseDeploymentNodeStatus) init() {
+	m.data.SetName("ise.deployment.node.status")
+	m.data.SetDescription("Encoded deployment node/persona status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseDeploymentNodeStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseDeploymentNodeStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseDeploymentNodeStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseDeploymentNodeStatus(cfg IseDeploymentNodeStatusMetricConfig) metricIseDeploymentNodeStatus {
+	m := metricIseDeploymentNodeStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseEndpointCount struct {
+	data     pmetric.Metric               // data buffer for generated metric.
+	config   IseEndpointCountMetricConfig // metric config provided by user.
+	capacity int                          // max observed number of data points added to the metric.
+}
+
+// init fills ise.endpoint.count metric with initial data.
+func (m *metricIseEndpointCount) init() {
+	m.data.SetName("ise.endpoint.count")
+	m.data.SetDescription("Endpoint inventory and rejected endpoint counts.")
+	m.data.SetUnit("{item}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseEndpointCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseEndpointCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseEndpointCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseEndpointCount(cfg IseEndpointCountMetricConfig) metricIseEndpointCount {
+	m := metricIseEndpointCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseEndpointPostureCount struct {
+	data     pmetric.Metric                      // data buffer for generated metric.
+	config   IseEndpointPostureCountMetricConfig // metric config provided by user.
+	capacity int                                 // max observed number of data points added to the metric.
+}
+
+// init fills ise.endpoint.posture.count metric with initial data.
+func (m *metricIseEndpointPostureCount) init() {
+	m.data.SetName("ise.endpoint.posture.count")
+	m.data.SetDescription("Endpoint posture records by bounded posture status.")
+	m.data.SetUnit("{item}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseEndpointPostureCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseEndpointPostureCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseEndpointPostureCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseEndpointPostureCount(cfg IseEndpointPostureCountMetricConfig) metricIseEndpointPostureCount {
+	m := metricIseEndpointPostureCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseEndpointPostureStatus struct {
+	data     pmetric.Metric                       // data buffer for generated metric.
+	config   IseEndpointPostureStatusMetricConfig // metric config provided by user.
+	capacity int                                  // max observed number of data points added to the metric.
+}
+
+// init fills ise.endpoint.posture.status metric with initial data.
+func (m *metricIseEndpointPostureStatus) init() {
+	m.data.SetName("ise.endpoint.posture.status")
+	m.data.SetDescription("Endpoint posture state encoded numerically.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseEndpointPostureStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseEndpointPostureStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseEndpointPostureStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseEndpointPostureStatus(cfg IseEndpointPostureStatusMetricConfig) metricIseEndpointPostureStatus {
+	m := metricIseEndpointPostureStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseEndpointProfileCount struct {
+	data     pmetric.Metric                      // data buffer for generated metric.
+	config   IseEndpointProfileCountMetricConfig // metric config provided by user.
+	capacity int                                 // max observed number of data points added to the metric.
+}
+
+// init fills ise.endpoint.profile.count metric with initial data.
+func (m *metricIseEndpointProfileCount) init() {
+	m.data.SetName("ise.endpoint.profile.count")
+	m.data.SetDescription("Endpoint profiler records by bounded object type.")
+	m.data.SetUnit("{item}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseEndpointProfileCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseEndpointProfileCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseEndpointProfileCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseEndpointProfileCount(cfg IseEndpointProfileCountMetricConfig) metricIseEndpointProfileCount {
+	m := metricIseEndpointProfileCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseEndpointStatus struct {
+	data     pmetric.Metric                // data buffer for generated metric.
+	config   IseEndpointStatusMetricConfig // metric config provided by user.
+	capacity int                           // max observed number of data points added to the metric.
+}
+
+// init fills ise.endpoint.status metric with initial data.
+func (m *metricIseEndpointStatus) init() {
+	m.data.SetName("ise.endpoint.status")
+	m.data.SetDescription("Encoded endpoint inventory status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseEndpointStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseEndpointStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseEndpointStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseEndpointStatus(cfg IseEndpointStatusMetricConfig) metricIseEndpointStatus {
+	m := metricIseEndpointStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseLicenseCount struct {
+	data     pmetric.Metric              // data buffer for generated metric.
+	config   IseLicenseCountMetricConfig // metric config provided by user.
+	capacity int                         // max observed number of data points added to the metric.
+}
+
+// init fills ise.license.count metric with initial data.
+func (m *metricIseLicenseCount) init() {
+	m.data.SetName("ise.license.count")
+	m.data.SetDescription("License inventory count by bounded type and status.")
+	m.data.SetUnit("{item}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseLicenseCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseLicenseCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseLicenseCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseLicenseCount(cfg IseLicenseCountMetricConfig) metricIseLicenseCount {
+	m := metricIseLicenseCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseLicenseStatus struct {
+	data     pmetric.Metric               // data buffer for generated metric.
+	config   IseLicenseStatusMetricConfig // metric config provided by user.
+	capacity int                          // max observed number of data points added to the metric.
+}
+
+// init fills ise.license.status metric with initial data.
+func (m *metricIseLicenseStatus) init() {
+	m.data.SetName("ise.license.status")
+	m.data.SetDescription("ISE license status encoded numerically.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseLicenseStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseLicenseStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseLicenseStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseLicenseStatus(cfg IseLicenseStatusMetricConfig) metricIseLicenseStatus {
+	m := metricIseLicenseStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseNetworkDeviceCount struct {
+	data     pmetric.Metric                    // data buffer for generated metric.
+	config   IseNetworkDeviceCountMetricConfig // metric config provided by user.
+	capacity int                               // max observed number of data points added to the metric.
+}
+
+// init fills ise.network_device.count metric with initial data.
+func (m *metricIseNetworkDeviceCount) init() {
+	m.data.SetName("ise.network_device.count")
+	m.data.SetDescription("Network access device inventory count.")
+	m.data.SetUnit("{item}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseNetworkDeviceCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseNetworkDeviceCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseNetworkDeviceCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseNetworkDeviceCount(cfg IseNetworkDeviceCountMetricConfig) metricIseNetworkDeviceCount {
+	m := metricIseNetworkDeviceCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseNetworkDeviceStatus struct {
+	data     pmetric.Metric                     // data buffer for generated metric.
+	config   IseNetworkDeviceStatusMetricConfig // metric config provided by user.
+	capacity int                                // max observed number of data points added to the metric.
+}
+
+// init fills ise.network_device.status metric with initial data.
+func (m *metricIseNetworkDeviceStatus) init() {
+	m.data.SetName("ise.network_device.status")
+	m.data.SetDescription("Encoded network-access-device status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseNetworkDeviceStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseNetworkDeviceStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseNetworkDeviceStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseNetworkDeviceStatus(cfg IseNetworkDeviceStatusMetricConfig) metricIseNetworkDeviceStatus {
+	m := metricIseNetworkDeviceStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIsePolicyObjectCount struct {
+	data     pmetric.Metric                   // data buffer for generated metric.
+	config   IsePolicyObjectCountMetricConfig // metric config provided by user.
+	capacity int                              // max observed number of data points added to the metric.
+}
+
+// init fills ise.policy.object.count metric with initial data.
+func (m *metricIsePolicyObjectCount) init() {
+	m.data.SetName("ise.policy.object.count")
+	m.data.SetDescription("Network-access, device-admin, TACACS, and policy object counts.")
+	m.data.SetUnit("{item}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIsePolicyObjectCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIsePolicyObjectCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIsePolicyObjectCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIsePolicyObjectCount(cfg IsePolicyObjectCountMetricConfig) metricIsePolicyObjectCount {
+	m := metricIsePolicyObjectCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIsePolicyStatus struct {
+	data     pmetric.Metric              // data buffer for generated metric.
+	config   IsePolicyStatusMetricConfig // metric config provided by user.
+	capacity int                         // max observed number of data points added to the metric.
+}
+
+// init fills ise.policy.status metric with initial data.
+func (m *metricIsePolicyStatus) init() {
+	m.data.SetName("ise.policy.status")
+	m.data.SetDescription("Encoded policy object status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIsePolicyStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIsePolicyStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIsePolicyStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIsePolicyStatus(cfg IsePolicyStatusMetricConfig) metricIsePolicyStatus {
+	m := metricIsePolicyStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseProfilerPolicyStatus struct {
+	data     pmetric.Metric                      // data buffer for generated metric.
+	config   IseProfilerPolicyStatusMetricConfig // metric config provided by user.
+	capacity int                                 // max observed number of data points added to the metric.
+}
+
+// init fills ise.profiler.policy.status metric with initial data.
+func (m *metricIseProfilerPolicyStatus) init() {
+	m.data.SetName("ise.profiler.policy.status")
+	m.data.SetDescription("Encoded profiler-policy status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseProfilerPolicyStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseProfilerPolicyStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseProfilerPolicyStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseProfilerPolicyStatus(cfg IseProfilerPolicyStatusMetricConfig) metricIseProfilerPolicyStatus {
+	m := metricIseProfilerPolicyStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIsePxgridMessageCount struct {
+	data     pmetric.Metric                    // data buffer for generated metric.
+	config   IsePxgridMessageCountMetricConfig // metric config provided by user.
+	capacity int                               // max observed number of data points added to the metric.
+}
+
+// init fills ise.pxgrid.message.count metric with initial data.
+func (m *metricIsePxgridMessageCount) init() {
+	m.data.SetName("ise.pxgrid.message.count")
+	m.data.SetDescription("pxGrid messages by bounded topic, object type, protocol, and outcome.")
+	m.data.SetUnit("{item}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIsePxgridMessageCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIsePxgridMessageCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIsePxgridMessageCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIsePxgridMessageCount(cfg IsePxgridMessageCountMetricConfig) metricIsePxgridMessageCount {
+	m := metricIsePxgridMessageCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIsePxgridServiceStatus struct {
+	data     pmetric.Metric                     // data buffer for generated metric.
+	config   IsePxgridServiceStatusMetricConfig // metric config provided by user.
+	capacity int                                // max observed number of data points added to the metric.
+}
+
+// init fills ise.pxgrid.service.status metric with initial data.
+func (m *metricIsePxgridServiceStatus) init() {
+	m.data.SetName("ise.pxgrid.service.status")
+	m.data.SetDescription("pxGrid service lookup and pxGrid Cloud/Direct status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIsePxgridServiceStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIsePxgridServiceStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIsePxgridServiceStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIsePxgridServiceStatus(cfg IsePxgridServiceStatusMetricConfig) metricIsePxgridServiceStatus {
+	m := metricIsePxgridServiceStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIsePxgridSubscriptionStatus struct {
+	data     pmetric.Metric                          // data buffer for generated metric.
+	config   IsePxgridSubscriptionStatusMetricConfig // metric config provided by user.
+	capacity int                                     // max observed number of data points added to the metric.
+}
+
+// init fills ise.pxgrid.subscription.status metric with initial data.
+func (m *metricIsePxgridSubscriptionStatus) init() {
+	m.data.SetName("ise.pxgrid.subscription.status")
+	m.data.SetDescription("Configured pxGrid subscription status by topic.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIsePxgridSubscriptionStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIsePxgridSubscriptionStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIsePxgridSubscriptionStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIsePxgridSubscriptionStatus(cfg IsePxgridSubscriptionStatusMetricConfig) metricIsePxgridSubscriptionStatus {
+	m := metricIsePxgridSubscriptionStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseRadiusFailureCount struct {
+	data     pmetric.Metric                    // data buffer for generated metric.
+	config   IseRadiusFailureCountMetricConfig // metric config provided by user.
+	capacity int                               // max observed number of data points added to the metric.
+}
+
+// init fills ise.radius.failure.count metric with initial data.
+func (m *metricIseRadiusFailureCount) init() {
+	m.data.SetName("ise.radius.failure.count")
+	m.data.SetDescription("RADIUS authentication failure records.")
+	m.data.SetUnit("{item}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseRadiusFailureCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseRadiusFailureCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseRadiusFailureCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseRadiusFailureCount(cfg IseRadiusFailureCountMetricConfig) metricIseRadiusFailureCount {
+	m := metricIseRadiusFailureCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseResourceInfo struct {
+	data     pmetric.Metric              // data buffer for generated metric.
+	config   IseResourceInfoMetricConfig // metric config provided by user.
+	capacity int                         // max observed number of data points added to the metric.
+}
+
+// init fills ise.resource.info metric with initial data.
+func (m *metricIseResourceInfo) init() {
+	m.data.SetName("ise.resource.info")
+	m.data.SetDescription("Bounded metadata for ISE resources and evidence records.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseResourceInfo) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseResourceInfo) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseResourceInfo) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseResourceInfo(cfg IseResourceInfoMetricConfig) metricIseResourceInfo {
+	m := metricIseResourceInfo{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseResourceStatus struct {
+	data     pmetric.Metric                // data buffer for generated metric.
+	config   IseResourceStatusMetricConfig // metric config provided by user.
+	capacity int                           // max observed number of data points added to the metric.
+}
+
+// init fills ise.resource.status metric with initial data.
+func (m *metricIseResourceStatus) init() {
+	m.data.SetName("ise.resource.status")
+	m.data.SetDescription("Encoded resource state with original status as an attribute.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseResourceStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseResourceStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseResourceStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseResourceStatus(cfg IseResourceStatusMetricConfig) metricIseResourceStatus {
+	m := metricIseResourceStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseScrapeLastSuccess struct {
+	data     pmetric.Metric                   // data buffer for generated metric.
+	config   IseScrapeLastSuccessMetricConfig // metric config provided by user.
+	capacity int                              // max observed number of data points added to the metric.
+}
+
+// init fills ise.scrape.last_success metric with initial data.
+func (m *metricIseScrapeLastSuccess) init() {
+	m.data.SetName("ise.scrape.last_success")
+	m.data.SetDescription("Unix timestamp of the most recent fully successful ISE scrape.")
+	m.data.SetUnit("s")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseScrapeLastSuccess) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseScrapeLastSuccess) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseScrapeLastSuccess) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseScrapeLastSuccess(cfg IseScrapeLastSuccessMetricConfig) metricIseScrapeLastSuccess {
+	m := metricIseScrapeLastSuccess{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseScrapePartialSuccess struct {
+	data     pmetric.Metric                      // data buffer for generated metric.
+	config   IseScrapePartialSuccessMetricConfig // metric config provided by user.
+	capacity int                                 // max observed number of data points added to the metric.
+}
+
+// init fills ise.scrape.partial_success metric with initial data.
+func (m *metricIseScrapePartialSuccess) init() {
+	m.data.SetName("ise.scrape.partial_success")
+	m.data.SetDescription("Whether one or more ISE endpoint families failed or were skipped.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseScrapePartialSuccess) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseScrapePartialSuccess) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseScrapePartialSuccess) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseScrapePartialSuccess(cfg IseScrapePartialSuccessMetricConfig) metricIseScrapePartialSuccess {
+	m := metricIseScrapePartialSuccess{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseServiceSkipped struct {
+	data     pmetric.Metric                // data buffer for generated metric.
+	config   IseServiceSkippedMetricConfig // metric config provided by user.
+	capacity int                           // max observed number of data points added to the metric.
+}
+
+// init fills ise.service.skipped metric with initial data.
+func (m *metricIseServiceSkipped) init() {
+	m.data.SetName("ise.service.skipped")
+	m.data.SetDescription("ISE service or endpoint family skipped because required target scope was not configured.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseServiceSkipped) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseServiceSkipped) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseServiceSkipped) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseServiceSkipped(cfg IseServiceSkippedMetricConfig) metricIseServiceSkipped {
+	m := metricIseServiceSkipped{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseServiceUnavailable struct {
+	data     pmetric.Metric                    // data buffer for generated metric.
+	config   IseServiceUnavailableMetricConfig // metric config provided by user.
+	capacity int                               // max observed number of data points added to the metric.
+}
+
+// init fills ise.service.unavailable metric with initial data.
+func (m *metricIseServiceUnavailable) init() {
+	m.data.SetName("ise.service.unavailable")
+	m.data.SetDescription("ISE API, pxGrid, or Data Connect service unavailable, disabled, unauthorized, or not installed.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseServiceUnavailable) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseServiceUnavailable) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseServiceUnavailable) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseServiceUnavailable(cfg IseServiceUnavailableMetricConfig) metricIseServiceUnavailable {
+	m := metricIseServiceUnavailable{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseSessionActiveCount struct {
+	data     pmetric.Metric                    // data buffer for generated metric.
+	config   IseSessionActiveCountMetricConfig // metric config provided by user.
+	capacity int                               // max observed number of data points added to the metric.
+}
+
+// init fills ise.session.active.count metric with initial data.
+func (m *metricIseSessionActiveCount) init() {
+	m.data.SetName("ise.session.active.count")
+	m.data.SetDescription("Active session counters from MnT.")
+	m.data.SetUnit("{session}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseSessionActiveCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseSessionActiveCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseSessionActiveCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseSessionActiveCount(cfg IseSessionActiveCountMetricConfig) metricIseSessionActiveCount {
+	m := metricIseSessionActiveCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseSessionCount struct {
+	data     pmetric.Metric              // data buffer for generated metric.
+	config   IseSessionCountMetricConfig // metric config provided by user.
+	capacity int                         // max observed number of data points added to the metric.
+}
+
+// init fills ise.session.count metric with initial data.
+func (m *metricIseSessionCount) init() {
+	m.data.SetName("ise.session.count")
+	m.data.SetDescription("Session evidence records by bounded attributes.")
+	m.data.SetUnit("{item}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseSessionCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseSessionCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseSessionCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseSessionCount(cfg IseSessionCountMetricConfig) metricIseSessionCount {
+	m := metricIseSessionCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseTacacsFailureCount struct {
+	data     pmetric.Metric                    // data buffer for generated metric.
+	config   IseTacacsFailureCountMetricConfig // metric config provided by user.
+	capacity int                               // max observed number of data points added to the metric.
+}
+
+// init fills ise.tacacs.failure.count metric with initial data.
+func (m *metricIseTacacsFailureCount) init() {
+	m.data.SetName("ise.tacacs.failure.count")
+	m.data.SetDescription("TACACS authentication/authorization/accounting failure records.")
+	m.data.SetUnit("{item}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseTacacsFailureCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseTacacsFailureCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseTacacsFailureCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseTacacsFailureCount(cfg IseTacacsFailureCountMetricConfig) metricIseTacacsFailureCount {
+	m := metricIseTacacsFailureCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseTrustsecResourceCount struct {
+	data     pmetric.Metric                       // data buffer for generated metric.
+	config   IseTrustsecResourceCountMetricConfig // metric config provided by user.
+	capacity int                                  // max observed number of data points added to the metric.
+}
+
+// init fills ise.trustsec.resource.count metric with initial data.
+func (m *metricIseTrustsecResourceCount) init() {
+	m.data.SetName("ise.trustsec.resource.count")
+	m.data.SetDescription("SGT, SGACL, and SG mapping records.")
+	m.data.SetUnit("{item}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseTrustsecResourceCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseTrustsecResourceCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseTrustsecResourceCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseTrustsecResourceCount(cfg IseTrustsecResourceCountMetricConfig) metricIseTrustsecResourceCount {
+	m := metricIseTrustsecResourceCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseTrustsecResourceStatus struct {
+	data     pmetric.Metric                        // data buffer for generated metric.
+	config   IseTrustsecResourceStatusMetricConfig // metric config provided by user.
+	capacity int                                   // max observed number of data points added to the metric.
+}
+
+// init fills ise.trustsec.resource.status metric with initial data.
+func (m *metricIseTrustsecResourceStatus) init() {
+	m.data.SetName("ise.trustsec.resource.status")
+	m.data.SetDescription("Encoded TrustSec resource status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseTrustsecResourceStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseTrustsecResourceStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseTrustsecResourceStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseTrustsecResourceStatus(cfg IseTrustsecResourceStatusMetricConfig) metricIseTrustsecResourceStatus {
+	m := metricIseTrustsecResourceStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricIseWebhookDeliveryCount struct {
+	data     pmetric.Metric                      // data buffer for generated metric.
+	config   IseWebhookDeliveryCountMetricConfig // metric config provided by user.
+	capacity int                                 // max observed number of data points added to the metric.
+}
+
+// init fills ise.webhook.delivery.count metric with initial data.
+func (m *metricIseWebhookDeliveryCount) init() {
+	m.data.SetName("ise.webhook.delivery.count")
+	m.data.SetDescription("Recent webhook delivery evidence count.")
+	m.data.SetUnit("{item}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricIseWebhookDeliveryCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricIseWebhookDeliveryCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricIseWebhookDeliveryCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricIseWebhookDeliveryCount(cfg IseWebhookDeliveryCountMetricConfig) metricIseWebhookDeliveryCount {
+	m := metricIseWebhookDeliveryCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiAPIRequestDuration struct {
+	data     pmetric.Metric                       // data buffer for generated metric.
+	config   MerakiAPIRequestDurationMetricConfig // metric config provided by user.
+	capacity int                                  // max observed number of data points added to the metric.
+}
+
+// init fills meraki.api.request.duration metric with initial data.
+func (m *metricMerakiAPIRequestDuration) init() {
+	m.data.SetName("meraki.api.request.duration")
+	m.data.SetDescription("Average duration of Dashboard API request attempts within the scrape for each matching request-attribute set.")
+	m.data.SetUnit("s")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiAPIRequestDuration) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiAPIRequestDuration) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiAPIRequestDuration) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiAPIRequestDuration(cfg MerakiAPIRequestDurationMetricConfig) metricMerakiAPIRequestDuration {
+	m := metricMerakiAPIRequestDuration{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiAPIRequestErrors struct {
+	data     pmetric.Metric                     // data buffer for generated metric.
+	config   MerakiAPIRequestErrorsMetricConfig // metric config provided by user.
+	capacity int                                // max observed number of data points added to the metric.
+}
+
+// init fills meraki.api.request.errors metric with initial data.
+func (m *metricMerakiAPIRequestErrors) init() {
+	m.data.SetName("meraki.api.request.errors")
+	m.data.SetDescription("Dashboard API request failures.")
+	m.data.SetUnit("{error}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricMerakiAPIRequestErrors) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiAPIRequestErrors) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiAPIRequestErrors) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiAPIRequestErrors(cfg MerakiAPIRequestErrorsMetricConfig) metricMerakiAPIRequestErrors {
+	m := metricMerakiAPIRequestErrors{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiAPIRequestRateLimited struct {
+	data     pmetric.Metric                          // data buffer for generated metric.
+	config   MerakiAPIRequestRateLimitedMetricConfig // metric config provided by user.
+	capacity int                                     // max observed number of data points added to the metric.
+}
+
+// init fills meraki.api.request.rate_limited metric with initial data.
+func (m *metricMerakiAPIRequestRateLimited) init() {
+	m.data.SetName("meraki.api.request.rate_limited")
+	m.data.SetDescription("Requests that received HTTP 429.")
+	m.data.SetUnit("{request}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricMerakiAPIRequestRateLimited) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiAPIRequestRateLimited) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiAPIRequestRateLimited) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiAPIRequestRateLimited(cfg MerakiAPIRequestRateLimitedMetricConfig) metricMerakiAPIRequestRateLimited {
+	m := metricMerakiAPIRequestRateLimited{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiAppliancePerformanceScore struct {
+	data     pmetric.Metric                              // data buffer for generated metric.
+	config   MerakiAppliancePerformanceScoreMetricConfig // metric config provided by user.
+	capacity int                                         // max observed number of data points added to the metric.
+}
+
+// init fills meraki.appliance.performance.score metric with initial data.
+func (m *metricMerakiAppliancePerformanceScore) init() {
+	m.data.SetName("meraki.appliance.performance.score")
+	m.data.SetDescription("Meraki appliance performance score.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiAppliancePerformanceScore) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiAppliancePerformanceScore) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiAppliancePerformanceScore) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiAppliancePerformanceScore(cfg MerakiAppliancePerformanceScoreMetricConfig) metricMerakiAppliancePerformanceScore {
+	m := metricMerakiAppliancePerformanceScore{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiControllerUp struct {
+	data     pmetric.Metric                 // data buffer for generated metric.
+	config   MerakiControllerUpMetricConfig // metric config provided by user.
+	capacity int                            // max observed number of data points added to the metric.
+}
+
+// init fills meraki.controller.up metric with initial data.
+func (m *metricMerakiControllerUp) init() {
+	m.data.SetName("meraki.controller.up")
+	m.data.SetDescription("Whether at least one Dashboard API request for the organization succeeded in the current scrape.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiControllerUp) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiControllerUp) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiControllerUp) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiControllerUp(cfg MerakiControllerUpMetricConfig) metricMerakiControllerUp {
+	m := metricMerakiControllerUp{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiDeviceStatus struct {
+	data     pmetric.Metric                 // data buffer for generated metric.
+	config   MerakiDeviceStatusMetricConfig // metric config provided by user.
+	capacity int                            // max observed number of data points added to the metric.
+}
+
+// init fills meraki.device.status metric with initial data.
+func (m *metricMerakiDeviceStatus) init() {
+	m.data.SetName("meraki.device.status")
+	m.data.SetDescription("Dashboard device status code with the original status as an attribute.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiDeviceStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiDeviceStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiDeviceStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiDeviceStatus(cfg MerakiDeviceStatusMetricConfig) metricMerakiDeviceStatus {
+	m := metricMerakiDeviceStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiPowerModuleStatus struct {
+	data     pmetric.Metric                      // data buffer for generated metric.
+	config   MerakiPowerModuleStatusMetricConfig // metric config provided by user.
+	capacity int                                 // max observed number of data points added to the metric.
+}
+
+// init fills meraki.power.module.status metric with initial data.
+func (m *metricMerakiPowerModuleStatus) init() {
+	m.data.SetName("meraki.power.module.status")
+	m.data.SetDescription("Power module connection/powering status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiPowerModuleStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiPowerModuleStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiPowerModuleStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiPowerModuleStatus(cfg MerakiPowerModuleStatusMetricConfig) metricMerakiPowerModuleStatus {
+	m := metricMerakiPowerModuleStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiScrapeLastSuccess struct {
+	data     pmetric.Metric                      // data buffer for generated metric.
+	config   MerakiScrapeLastSuccessMetricConfig // metric config provided by user.
+	capacity int                                 // max observed number of data points added to the metric.
+}
+
+// init fills meraki.scrape.last_success metric with initial data.
+func (m *metricMerakiScrapeLastSuccess) init() {
+	m.data.SetName("meraki.scrape.last_success")
+	m.data.SetDescription("Unix timestamp of the most recent fully successful scrape for the organization.")
+	m.data.SetUnit("s")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiScrapeLastSuccess) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiScrapeLastSuccess) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiScrapeLastSuccess) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiScrapeLastSuccess(cfg MerakiScrapeLastSuccessMetricConfig) metricMerakiScrapeLastSuccess {
+	m := metricMerakiScrapeLastSuccess{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiSwitchPortAlertActive struct {
+	data     pmetric.Metric                          // data buffer for generated metric.
+	config   MerakiSwitchPortAlertActiveMetricConfig // metric config provided by user.
+	capacity int                                     // max observed number of data points added to the metric.
+}
+
+// init fills meraki.switch.port.alert.active metric with initial data.
+func (m *metricMerakiSwitchPortAlertActive) init() {
+	m.data.SetName("meraki.switch.port.alert.active")
+	m.data.SetDescription("Current port warning or error state by severity and reason.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiSwitchPortAlertActive) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiSwitchPortAlertActive) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiSwitchPortAlertActive) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiSwitchPortAlertActive(cfg MerakiSwitchPortAlertActiveMetricConfig) metricMerakiSwitchPortAlertActive {
+	m := metricMerakiSwitchPortAlertActive{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiSwitchPortPoeAllocated struct {
+	data     pmetric.Metric                           // data buffer for generated metric.
+	config   MerakiSwitchPortPoeAllocatedMetricConfig // metric config provided by user.
+	capacity int                                      // max observed number of data points added to the metric.
+}
+
+// init fills meraki.switch.port.poe.allocated metric with initial data.
+func (m *metricMerakiSwitchPortPoeAllocated) init() {
+	m.data.SetName("meraki.switch.port.poe.allocated")
+	m.data.SetDescription("Whether Dashboard reports that PoE is allocated to the switch port.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiSwitchPortPoeAllocated) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiSwitchPortPoeAllocated) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiSwitchPortPoeAllocated) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiSwitchPortPoeAllocated(cfg MerakiSwitchPortPoeAllocatedMetricConfig) metricMerakiSwitchPortPoeAllocated {
+	m := metricMerakiSwitchPortPoeAllocated{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiSwitchPortUsage struct {
+	data     pmetric.Metric                    // data buffer for generated metric.
+	config   MerakiSwitchPortUsageMetricConfig // metric config provided by user.
+	capacity int                               // max observed number of data points added to the metric.
+}
+
+// init fills meraki.switch.port.usage metric with initial data.
+func (m *metricMerakiSwitchPortUsage) init() {
+	m.data.SetName("meraki.switch.port.usage")
+	m.data.SetDescription("Windowed switch port usage.")
+	m.data.SetUnit("kBy")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiSwitchPortUsage) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiSwitchPortUsage) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiSwitchPortUsage) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiSwitchPortUsage(cfg MerakiSwitchPortUsageMetricConfig) metricMerakiSwitchPortUsage {
+	m := metricMerakiSwitchPortUsage{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiUplinkCellularSignalRsrp struct {
+	data     pmetric.Metric                             // data buffer for generated metric.
+	config   MerakiUplinkCellularSignalRsrpMetricConfig // metric config provided by user.
+	capacity int                                        // max observed number of data points added to the metric.
+}
+
+// init fills meraki.uplink.cellular.signal.rsrp metric with initial data.
+func (m *metricMerakiUplinkCellularSignalRsrp) init() {
+	m.data.SetName("meraki.uplink.cellular.signal.rsrp")
+	m.data.SetDescription("Cellular uplink reference-signal received power.")
+	m.data.SetUnit("dBm")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiUplinkCellularSignalRsrp) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiUplinkCellularSignalRsrp) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiUplinkCellularSignalRsrp) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiUplinkCellularSignalRsrp(cfg MerakiUplinkCellularSignalRsrpMetricConfig) metricMerakiUplinkCellularSignalRsrp {
+	m := metricMerakiUplinkCellularSignalRsrp{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiUplinkCellularSignalRsrq struct {
+	data     pmetric.Metric                             // data buffer for generated metric.
+	config   MerakiUplinkCellularSignalRsrqMetricConfig // metric config provided by user.
+	capacity int                                        // max observed number of data points added to the metric.
+}
+
+// init fills meraki.uplink.cellular.signal.rsrq metric with initial data.
+func (m *metricMerakiUplinkCellularSignalRsrq) init() {
+	m.data.SetName("meraki.uplink.cellular.signal.rsrq")
+	m.data.SetDescription("Cellular uplink reference-signal received quality.")
+	m.data.SetUnit("dB")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiUplinkCellularSignalRsrq) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiUplinkCellularSignalRsrq) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiUplinkCellularSignalRsrq) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiUplinkCellularSignalRsrq(cfg MerakiUplinkCellularSignalRsrqMetricConfig) metricMerakiUplinkCellularSignalRsrq {
+	m := metricMerakiUplinkCellularSignalRsrq{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiUplinkLatency struct {
+	data     pmetric.Metric                  // data buffer for generated metric.
+	config   MerakiUplinkLatencyMetricConfig // metric config provided by user.
+	capacity int                             // max observed number of data points added to the metric.
+}
+
+// init fills meraki.uplink.latency metric with initial data.
+func (m *metricMerakiUplinkLatency) init() {
+	m.data.SetName("meraki.uplink.latency")
+	m.data.SetDescription("Latest Dashboard uplink latency sample.")
+	m.data.SetUnit("ms")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiUplinkLatency) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiUplinkLatency) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiUplinkLatency) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiUplinkLatency(cfg MerakiUplinkLatencyMetricConfig) metricMerakiUplinkLatency {
+	m := metricMerakiUplinkLatency{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiUplinkLoss struct {
+	data     pmetric.Metric               // data buffer for generated metric.
+	config   MerakiUplinkLossMetricConfig // metric config provided by user.
+	capacity int                          // max observed number of data points added to the metric.
+}
+
+// init fills meraki.uplink.loss metric with initial data.
+func (m *metricMerakiUplinkLoss) init() {
+	m.data.SetName("meraki.uplink.loss")
+	m.data.SetDescription("Latest Dashboard uplink packet-loss sample.")
+	m.data.SetUnit("%")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiUplinkLoss) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiUplinkLoss) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiUplinkLoss) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiUplinkLoss(cfg MerakiUplinkLossMetricConfig) metricMerakiUplinkLoss {
+	m := metricMerakiUplinkLoss{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiUplinkStatus struct {
+	data     pmetric.Metric                 // data buffer for generated metric.
+	config   MerakiUplinkStatusMetricConfig // metric config provided by user.
+	capacity int                            // max observed number of data points added to the metric.
+}
+
+// init fills meraki.uplink.status metric with initial data.
+func (m *metricMerakiUplinkStatus) init() {
+	m.data.SetName("meraki.uplink.status")
+	m.data.SetDescription("WAN/uplink active state.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiUplinkStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiUplinkStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiUplinkStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiUplinkStatus(cfg MerakiUplinkStatusMetricConfig) metricMerakiUplinkStatus {
+	m := metricMerakiUplinkStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiVpnPeerJitter struct {
+	data     pmetric.Metric                  // data buffer for generated metric.
+	config   MerakiVpnPeerJitterMetricConfig // metric config provided by user.
+	capacity int                             // max observed number of data points added to the metric.
+}
+
+// init fills meraki.vpn.peer.jitter metric with initial data.
+func (m *metricMerakiVpnPeerJitter) init() {
+	m.data.SetName("meraki.vpn.peer.jitter")
+	m.data.SetDescription("Windowed VPN peer jitter by sender and receiver uplink.")
+	m.data.SetUnit("ms")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiVpnPeerJitter) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiVpnPeerJitter) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiVpnPeerJitter) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiVpnPeerJitter(cfg MerakiVpnPeerJitterMetricConfig) metricMerakiVpnPeerJitter {
+	m := metricMerakiVpnPeerJitter{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiVpnPeerLatency struct {
+	data     pmetric.Metric                   // data buffer for generated metric.
+	config   MerakiVpnPeerLatencyMetricConfig // metric config provided by user.
+	capacity int                              // max observed number of data points added to the metric.
+}
+
+// init fills meraki.vpn.peer.latency metric with initial data.
+func (m *metricMerakiVpnPeerLatency) init() {
+	m.data.SetName("meraki.vpn.peer.latency")
+	m.data.SetDescription("Windowed VPN peer latency by sender and receiver uplink.")
+	m.data.SetUnit("ms")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiVpnPeerLatency) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiVpnPeerLatency) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiVpnPeerLatency) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiVpnPeerLatency(cfg MerakiVpnPeerLatencyMetricConfig) metricMerakiVpnPeerLatency {
+	m := metricMerakiVpnPeerLatency{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiVpnPeerLoss struct {
+	data     pmetric.Metric                // data buffer for generated metric.
+	config   MerakiVpnPeerLossMetricConfig // metric config provided by user.
+	capacity int                           // max observed number of data points added to the metric.
+}
+
+// init fills meraki.vpn.peer.loss metric with initial data.
+func (m *metricMerakiVpnPeerLoss) init() {
+	m.data.SetName("meraki.vpn.peer.loss")
+	m.data.SetDescription("Windowed VPN peer loss by sender and receiver uplink.")
+	m.data.SetUnit("%")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiVpnPeerLoss) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiVpnPeerLoss) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiVpnPeerLoss) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiVpnPeerLoss(cfg MerakiVpnPeerLossMetricConfig) metricMerakiVpnPeerLoss {
+	m := metricMerakiVpnPeerLoss{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiVpnPeerMos struct {
+	data     pmetric.Metric               // data buffer for generated metric.
+	config   MerakiVpnPeerMosMetricConfig // metric config provided by user.
+	capacity int                          // max observed number of data points added to the metric.
+}
+
+// init fills meraki.vpn.peer.mos metric with initial data.
+func (m *metricMerakiVpnPeerMos) init() {
+	m.data.SetName("meraki.vpn.peer.mos")
+	m.data.SetDescription("Windowed VPN peer mean opinion score.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiVpnPeerMos) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiVpnPeerMos) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiVpnPeerMos) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiVpnPeerMos(cfg MerakiVpnPeerMosMetricConfig) metricMerakiVpnPeerMos {
+	m := metricMerakiVpnPeerMos{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiVpnPeerStatus struct {
+	data     pmetric.Metric                  // data buffer for generated metric.
+	config   MerakiVpnPeerStatusMetricConfig // metric config provided by user.
+	capacity int                             // max observed number of data points added to the metric.
+}
+
+// init fills meraki.vpn.peer.status metric with initial data.
+func (m *metricMerakiVpnPeerStatus) init() {
+	m.data.SetName("meraki.vpn.peer.status")
+	m.data.SetDescription("Auto VPN or third-party VPN peer reachability.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiVpnPeerStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiVpnPeerStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiVpnPeerStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiVpnPeerStatus(cfg MerakiVpnPeerStatusMetricConfig) metricMerakiVpnPeerStatus {
+	m := metricMerakiVpnPeerStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiVpnPeerUsage struct {
+	data     pmetric.Metric                 // data buffer for generated metric.
+	config   MerakiVpnPeerUsageMetricConfig // metric config provided by user.
+	capacity int                            // max observed number of data points added to the metric.
+}
+
+// init fills meraki.vpn.peer.usage metric with initial data.
+func (m *metricMerakiVpnPeerUsage) init() {
+	m.data.SetName("meraki.vpn.peer.usage")
+	m.data.SetDescription("Windowed VPN peer usage by direction.")
+	m.data.SetUnit("kBy")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiVpnPeerUsage) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiVpnPeerUsage) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiVpnPeerUsage) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiVpnPeerUsage(cfg MerakiVpnPeerUsageMetricConfig) metricMerakiVpnPeerUsage {
+	m := metricMerakiVpnPeerUsage{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiWirelessChannelUtilization struct {
+	data     pmetric.Metric                               // data buffer for generated metric.
+	config   MerakiWirelessChannelUtilizationMetricConfig // metric config provided by user.
+	capacity int                                          // max observed number of data points added to the metric.
+}
+
+// init fills meraki.wireless.channel_utilization metric with initial data.
+func (m *metricMerakiWirelessChannelUtilization) init() {
+	m.data.SetName("meraki.wireless.channel_utilization")
+	m.data.SetDescription("Wi-Fi, non-Wi-Fi, and total channel utilization by band.")
+	m.data.SetUnit("%")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiWirelessChannelUtilization) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiWirelessChannelUtilization) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiWirelessChannelUtilization) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiWirelessChannelUtilization(cfg MerakiWirelessChannelUtilizationMetricConfig) metricMerakiWirelessChannelUtilization {
+	m := metricMerakiWirelessChannelUtilization{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiWirelessClientCount struct {
+	data     pmetric.Metric                        // data buffer for generated metric.
+	config   MerakiWirelessClientCountMetricConfig // metric config provided by user.
+	capacity int                                   // max observed number of data points added to the metric.
+}
+
+// init fills meraki.wireless.client.count metric with initial data.
+func (m *metricMerakiWirelessClientCount) init() {
+	m.data.SetName("meraki.wireless.client.count")
+	m.data.SetDescription("Wireless client counts by status.")
+	m.data.SetUnit("{client}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiWirelessClientCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiWirelessClientCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiWirelessClientCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiWirelessClientCount(cfg MerakiWirelessClientCountMetricConfig) metricMerakiWirelessClientCount {
+	m := metricMerakiWirelessClientCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiWirelessPacketCount struct {
+	data     pmetric.Metric                        // data buffer for generated metric.
+	config   MerakiWirelessPacketCountMetricConfig // metric config provided by user.
+	capacity int                                   // max observed number of data points added to the metric.
+}
+
+// init fills meraki.wireless.packet.count metric with initial data.
+func (m *metricMerakiWirelessPacketCount) init() {
+	m.data.SetName("meraki.wireless.packet.count")
+	m.data.SetDescription("Windowed wireless packet count by direction.")
+	m.data.SetUnit("{packet}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiWirelessPacketCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiWirelessPacketCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiWirelessPacketCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiWirelessPacketCount(cfg MerakiWirelessPacketCountMetricConfig) metricMerakiWirelessPacketCount {
+	m := metricMerakiWirelessPacketCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiWirelessPacketLoss struct {
+	data     pmetric.Metric                       // data buffer for generated metric.
+	config   MerakiWirelessPacketLossMetricConfig // metric config provided by user.
+	capacity int                                  // max observed number of data points added to the metric.
+}
+
+// init fills meraki.wireless.packet.loss metric with initial data.
+func (m *metricMerakiWirelessPacketLoss) init() {
+	m.data.SetName("meraki.wireless.packet.loss")
+	m.data.SetDescription("Windowed wireless lost-packet count by direction.")
+	m.data.SetUnit("{packet}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiWirelessPacketLoss) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiWirelessPacketLoss) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiWirelessPacketLoss) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiWirelessPacketLoss(cfg MerakiWirelessPacketLossMetricConfig) metricMerakiWirelessPacketLoss {
+	m := metricMerakiWirelessPacketLoss{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiWirelessPacketLossPercentage struct {
+	data     pmetric.Metric                                 // data buffer for generated metric.
+	config   MerakiWirelessPacketLossPercentageMetricConfig // metric config provided by user.
+	capacity int                                            // max observed number of data points added to the metric.
+}
+
+// init fills meraki.wireless.packet.loss_percentage metric with initial data.
+func (m *metricMerakiWirelessPacketLossPercentage) init() {
+	m.data.SetName("meraki.wireless.packet.loss_percentage")
+	m.data.SetDescription("Wireless packet loss percentage by direction.")
+	m.data.SetUnit("%")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiWirelessPacketLossPercentage) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiWirelessPacketLossPercentage) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiWirelessPacketLossPercentage) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiWirelessPacketLossPercentage(cfg MerakiWirelessPacketLossPercentageMetricConfig) metricMerakiWirelessPacketLossPercentage {
+	m := metricMerakiWirelessPacketLossPercentage{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricMerakiWirelessSsidStatus struct {
+	data     pmetric.Metric                       // data buffer for generated metric.
+	config   MerakiWirelessSsidStatusMetricConfig // metric config provided by user.
+	capacity int                                  // max observed number of data points added to the metric.
+}
+
+// init fills meraki.wireless.ssid.status metric with initial data.
+func (m *metricMerakiWirelessSsidStatus) init() {
+	m.data.SetName("meraki.wireless.ssid.status")
+	m.data.SetDescription("Whether an SSID is enabled, advertised, and broadcasting on a BSS.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricMerakiWirelessSsidStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricMerakiWirelessSsidStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricMerakiWirelessSsidStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricMerakiWirelessSsidStatus(cfg MerakiWirelessSsidStatusMetricConfig) metricMerakiWirelessSsidStatus {
+	m := metricMerakiWirelessSsidStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardAPIEndpointError struct {
+	data     pmetric.Metric                             // data buffer for generated metric.
+	config   NexusDashboardAPIEndpointErrorMetricConfig // metric config provided by user.
+	capacity int                                        // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.api.endpoint.error metric with initial data.
+func (m *metricNexusDashboardAPIEndpointError) init() {
+	m.data.SetName("nexus_dashboard.api.endpoint.error")
+	m.data.SetDescription("Endpoint-family scrape failures.")
+	m.data.SetUnit("{error}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricNexusDashboardAPIEndpointError) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardAPIEndpointError) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardAPIEndpointError) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardAPIEndpointError(cfg NexusDashboardAPIEndpointErrorMetricConfig) metricNexusDashboardAPIEndpointError {
+	m := metricNexusDashboardAPIEndpointError{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardAPIRateLimited struct {
+	data     pmetric.Metric                           // data buffer for generated metric.
+	config   NexusDashboardAPIRateLimitedMetricConfig // metric config provided by user.
+	capacity int                                      // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.api.rate_limited metric with initial data.
+func (m *metricNexusDashboardAPIRateLimited) init() {
+	m.data.SetName("nexus_dashboard.api.rate_limited")
+	m.data.SetDescription("Requests that received HTTP 429.")
+	m.data.SetUnit("{request}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricNexusDashboardAPIRateLimited) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardAPIRateLimited) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardAPIRateLimited) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardAPIRateLimited(cfg NexusDashboardAPIRateLimitedMetricConfig) metricNexusDashboardAPIRateLimited {
+	m := metricNexusDashboardAPIRateLimited{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardAPIRequestDuration struct {
+	data     pmetric.Metric                               // data buffer for generated metric.
+	config   NexusDashboardAPIRequestDurationMetricConfig // metric config provided by user.
+	capacity int                                          // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.api.request.duration metric with initial data.
+func (m *metricNexusDashboardAPIRequestDuration) init() {
+	m.data.SetName("nexus_dashboard.api.request.duration")
+	m.data.SetDescription("Average duration of Nexus Dashboard API request attempts within the scrape for each matching request-attribute set.")
+	m.data.SetUnit("s")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardAPIRequestDuration) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardAPIRequestDuration) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardAPIRequestDuration) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardAPIRequestDuration(cfg NexusDashboardAPIRequestDurationMetricConfig) metricNexusDashboardAPIRequestDuration {
+	m := metricNexusDashboardAPIRequestDuration{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardAPIRequestErrors struct {
+	data     pmetric.Metric                             // data buffer for generated metric.
+	config   NexusDashboardAPIRequestErrorsMetricConfig // metric config provided by user.
+	capacity int                                        // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.api.request.errors metric with initial data.
+func (m *metricNexusDashboardAPIRequestErrors) init() {
+	m.data.SetName("nexus_dashboard.api.request.errors")
+	m.data.SetDescription("Nexus Dashboard API request failures.")
+	m.data.SetUnit("{error}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricNexusDashboardAPIRequestErrors) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardAPIRequestErrors) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardAPIRequestErrors) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardAPIRequestErrors(cfg NexusDashboardAPIRequestErrorsMetricConfig) metricNexusDashboardAPIRequestErrors {
+	m := metricNexusDashboardAPIRequestErrors{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardAuditRecordCount struct {
+	data     pmetric.Metric                             // data buffer for generated metric.
+	config   NexusDashboardAuditRecordCountMetricConfig // metric config provided by user.
+	capacity int                                        // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.audit.record.count metric with initial data.
+func (m *metricNexusDashboardAuditRecordCount) init() {
+	m.data.SetName("nexus_dashboard.audit.record.count")
+	m.data.SetDescription("Recent Nexus Dashboard audit records by bounded product, operation, status, and severity attributes.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardAuditRecordCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardAuditRecordCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardAuditRecordCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardAuditRecordCount(cfg NexusDashboardAuditRecordCountMetricConfig) metricNexusDashboardAuditRecordCount {
+	m := metricNexusDashboardAuditRecordCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardConfigCompliance struct {
+	data     pmetric.Metric                             // data buffer for generated metric.
+	config   NexusDashboardConfigComplianceMetricConfig // metric config provided by user.
+	capacity int                                        // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.config.compliance metric with initial data.
+func (m *metricNexusDashboardConfigCompliance) init() {
+	m.data.SetName("nexus_dashboard.config.compliance")
+	m.data.SetDescription("NDFC configuration compliance score.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardConfigCompliance) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardConfigCompliance) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardConfigCompliance) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardConfigCompliance(cfg NexusDashboardConfigComplianceMetricConfig) metricNexusDashboardConfigCompliance {
+	m := metricNexusDashboardConfigCompliance{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardDataBrokerRuleCount struct {
+	data     pmetric.Metric                                // data buffer for generated metric.
+	config   NexusDashboardDataBrokerRuleCountMetricConfig // metric config provided by user.
+	capacity int                                           // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.data_broker.rule.count metric with initial data.
+func (m *metricNexusDashboardDataBrokerRuleCount) init() {
+	m.data.SetName("nexus_dashboard.data_broker.rule.count")
+	m.data.SetDescription("Data Broker rule count.")
+	m.data.SetUnit("{rule}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardDataBrokerRuleCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardDataBrokerRuleCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardDataBrokerRuleCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardDataBrokerRuleCount(cfg NexusDashboardDataBrokerRuleCountMetricConfig) metricNexusDashboardDataBrokerRuleCount {
+	m := metricNexusDashboardDataBrokerRuleCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardDataBrokerSessionCount struct {
+	data     pmetric.Metric                                   // data buffer for generated metric.
+	config   NexusDashboardDataBrokerSessionCountMetricConfig // metric config provided by user.
+	capacity int                                              // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.data_broker.session.count metric with initial data.
+func (m *metricNexusDashboardDataBrokerSessionCount) init() {
+	m.data.SetName("nexus_dashboard.data_broker.session.count")
+	m.data.SetDescription("Data Broker session count.")
+	m.data.SetUnit("{session}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardDataBrokerSessionCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardDataBrokerSessionCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardDataBrokerSessionCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardDataBrokerSessionCount(cfg NexusDashboardDataBrokerSessionCountMetricConfig) metricNexusDashboardDataBrokerSessionCount {
+	m := metricNexusDashboardDataBrokerSessionCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardDataBrokerStatus struct {
+	data     pmetric.Metric                             // data buffer for generated metric.
+	config   NexusDashboardDataBrokerStatusMetricConfig // metric config provided by user.
+	capacity int                                        // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.data_broker.status metric with initial data.
+func (m *metricNexusDashboardDataBrokerStatus) init() {
+	m.data.SetName("nexus_dashboard.data_broker.status")
+	m.data.SetDescription("Data Broker broker, TAP, SPAN, rule, filter, or session status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardDataBrokerStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardDataBrokerStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardDataBrokerStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardDataBrokerStatus(cfg NexusDashboardDataBrokerStatusMetricConfig) metricNexusDashboardDataBrokerStatus {
+	m := metricNexusDashboardDataBrokerStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardDeploymentStatus struct {
+	data     pmetric.Metric                             // data buffer for generated metric.
+	config   NexusDashboardDeploymentStatusMetricConfig // metric config provided by user.
+	capacity int                                        // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.deployment.status metric with initial data.
+func (m *metricNexusDashboardDeploymentStatus) init() {
+	m.data.SetName("nexus_dashboard.deployment.status")
+	m.data.SetDescription("NDFC deployment, image, or change-control state.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardDeploymentStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardDeploymentStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardDeploymentStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardDeploymentStatus(cfg NexusDashboardDeploymentStatusMetricConfig) metricNexusDashboardDeploymentStatus {
+	m := metricNexusDashboardDeploymentStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardEndpointCount struct {
+	data     pmetric.Metric                          // data buffer for generated metric.
+	config   NexusDashboardEndpointCountMetricConfig // metric config provided by user.
+	capacity int                                     // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.endpoint.count metric with initial data.
+func (m *metricNexusDashboardEndpointCount) init() {
+	m.data.SetName("nexus_dashboard.endpoint.count")
+	m.data.SetDescription("Endpoint counts reported by NDFC.")
+	m.data.SetUnit("{endpoint}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardEndpointCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardEndpointCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardEndpointCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardEndpointCount(cfg NexusDashboardEndpointCountMetricConfig) metricNexusDashboardEndpointCount {
+	m := metricNexusDashboardEndpointCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardEventCount struct {
+	data     pmetric.Metric                       // data buffer for generated metric.
+	config   NexusDashboardEventCountMetricConfig // metric config provided by user.
+	capacity int                                  // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.event.count metric with initial data.
+func (m *metricNexusDashboardEventCount) init() {
+	m.data.SetName("nexus_dashboard.event.count")
+	m.data.SetDescription("Recent events, anomalies, advisories, alerts, and root causes by bounded product, operation, status, and severity attributes.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardEventCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardEventCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardEventCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardEventCount(cfg NexusDashboardEventCountMetricConfig) metricNexusDashboardEventCount {
+	m := metricNexusDashboardEventCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardFabricHealth struct {
+	data     pmetric.Metric                         // data buffer for generated metric.
+	config   NexusDashboardFabricHealthMetricConfig // metric config provided by user.
+	capacity int                                    // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.fabric.health metric with initial data.
+func (m *metricNexusDashboardFabricHealth) init() {
+	m.data.SetName("nexus_dashboard.fabric.health")
+	m.data.SetDescription("NDFC fabric, switch, or site health score when exposed by the API.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardFabricHealth) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardFabricHealth) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardFabricHealth) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardFabricHealth(cfg NexusDashboardFabricHealthMetricConfig) metricNexusDashboardFabricHealth {
+	m := metricNexusDashboardFabricHealth{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardInsightsAnomalyActive struct {
+	data     pmetric.Metric                                  // data buffer for generated metric.
+	config   NexusDashboardInsightsAnomalyActiveMetricConfig // metric config provided by user.
+	capacity int                                             // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.insights.anomaly.active metric with initial data.
+func (m *metricNexusDashboardInsightsAnomalyActive) init() {
+	m.data.SetName("nexus_dashboard.insights.anomaly.active")
+	m.data.SetDescription("Active Insights anomaly or advisory.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardInsightsAnomalyActive) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardInsightsAnomalyActive) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardInsightsAnomalyActive) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardInsightsAnomalyActive(cfg NexusDashboardInsightsAnomalyActiveMetricConfig) metricNexusDashboardInsightsAnomalyActive {
+	m := metricNexusDashboardInsightsAnomalyActive{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardInsightsAnomalyCount struct {
+	data     pmetric.Metric                                 // data buffer for generated metric.
+	config   NexusDashboardInsightsAnomalyCountMetricConfig // metric config provided by user.
+	capacity int                                            // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.insights.anomaly.count metric with initial data.
+func (m *metricNexusDashboardInsightsAnomalyCount) init() {
+	m.data.SetName("nexus_dashboard.insights.anomaly.count")
+	m.data.SetDescription("Insights anomaly/advisory count by severity and category.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardInsightsAnomalyCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardInsightsAnomalyCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardInsightsAnomalyCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardInsightsAnomalyCount(cfg NexusDashboardInsightsAnomalyCountMetricConfig) metricNexusDashboardInsightsAnomalyCount {
+	m := metricNexusDashboardInsightsAnomalyCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardInsightsConfidence struct {
+	data     pmetric.Metric                               // data buffer for generated metric.
+	config   NexusDashboardInsightsConfidenceMetricConfig // metric config provided by user.
+	capacity int                                          // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.insights.confidence metric with initial data.
+func (m *metricNexusDashboardInsightsConfidence) init() {
+	m.data.SetName("nexus_dashboard.insights.confidence")
+	m.data.SetDescription("Root-cause confidence where exposed by Insights.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardInsightsConfidence) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardInsightsConfidence) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardInsightsConfidence) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardInsightsConfidence(cfg NexusDashboardInsightsConfidenceMetricConfig) metricNexusDashboardInsightsConfidence {
+	m := metricNexusDashboardInsightsConfidence{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardInsightsScore struct {
+	data     pmetric.Metric                          // data buffer for generated metric.
+	config   NexusDashboardInsightsScoreMetricConfig // metric config provided by user.
+	capacity int                                     // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.insights.score metric with initial data.
+func (m *metricNexusDashboardInsightsScore) init() {
+	m.data.SetName("nexus_dashboard.insights.score")
+	m.data.SetDescription("Insights site, fabric, anomaly, advisory, or recommendation score.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardInsightsScore) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardInsightsScore) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardInsightsScore) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardInsightsScore(cfg NexusDashboardInsightsScoreMetricConfig) metricNexusDashboardInsightsScore {
+	m := metricNexusDashboardInsightsScore{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardInsightsStatus struct {
+	data     pmetric.Metric                           // data buffer for generated metric.
+	config   NexusDashboardInsightsStatusMetricConfig // metric config provided by user.
+	capacity int                                      // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.insights.status metric with initial data.
+func (m *metricNexusDashboardInsightsStatus) init() {
+	m.data.SetName("nexus_dashboard.insights.status")
+	m.data.SetDescription("Encoded Insights anomaly, advisory, or recommendation status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardInsightsStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardInsightsStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardInsightsStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardInsightsStatus(cfg NexusDashboardInsightsStatusMetricConfig) metricNexusDashboardInsightsStatus {
+	m := metricNexusDashboardInsightsStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardOrchestratorDeploymentCount struct {
+	data     pmetric.Metric                                        // data buffer for generated metric.
+	config   NexusDashboardOrchestratorDeploymentCountMetricConfig // metric config provided by user.
+	capacity int                                                   // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.orchestrator.deployment.count metric with initial data.
+func (m *metricNexusDashboardOrchestratorDeploymentCount) init() {
+	m.data.SetName("nexus_dashboard.orchestrator.deployment.count")
+	m.data.SetDescription("NDO/OneManage deployments grouped by bounded status attributes.")
+	m.data.SetUnit("{deployment}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardOrchestratorDeploymentCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardOrchestratorDeploymentCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardOrchestratorDeploymentCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardOrchestratorDeploymentCount(cfg NexusDashboardOrchestratorDeploymentCountMetricConfig) metricNexusDashboardOrchestratorDeploymentCount {
+	m := metricNexusDashboardOrchestratorDeploymentCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardOrchestratorDeploymentStatus struct {
+	data     pmetric.Metric                                         // data buffer for generated metric.
+	config   NexusDashboardOrchestratorDeploymentStatusMetricConfig // metric config provided by user.
+	capacity int                                                    // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.orchestrator.deployment.status metric with initial data.
+func (m *metricNexusDashboardOrchestratorDeploymentStatus) init() {
+	m.data.SetName("nexus_dashboard.orchestrator.deployment.status")
+	m.data.SetDescription("NDO/OneManage deployment, schema, template, or site-sync status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardOrchestratorDeploymentStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardOrchestratorDeploymentStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardOrchestratorDeploymentStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardOrchestratorDeploymentStatus(cfg NexusDashboardOrchestratorDeploymentStatusMetricConfig) metricNexusDashboardOrchestratorDeploymentStatus {
+	m := metricNexusDashboardOrchestratorDeploymentStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardOrchestratorPolicyDeltaCount struct {
+	data     pmetric.Metric                                         // data buffer for generated metric.
+	config   NexusDashboardOrchestratorPolicyDeltaCountMetricConfig // metric config provided by user.
+	capacity int                                                    // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.orchestrator.policy_delta.count metric with initial data.
+func (m *metricNexusDashboardOrchestratorPolicyDeltaCount) init() {
+	m.data.SetName("nexus_dashboard.orchestrator.policy_delta.count")
+	m.data.SetDescription("Policy delta count reported by NDO/OneManage.")
+	m.data.SetUnit("{delta}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardOrchestratorPolicyDeltaCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardOrchestratorPolicyDeltaCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardOrchestratorPolicyDeltaCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardOrchestratorPolicyDeltaCount(cfg NexusDashboardOrchestratorPolicyDeltaCountMetricConfig) metricNexusDashboardOrchestratorPolicyDeltaCount {
+	m := metricNexusDashboardOrchestratorPolicyDeltaCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardResourceCount struct {
+	data     pmetric.Metric                          // data buffer for generated metric.
+	config   NexusDashboardResourceCountMetricConfig // metric config provided by user.
+	capacity int                                     // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.resource.count metric with initial data.
+func (m *metricNexusDashboardResourceCount) init() {
+	m.data.SetName("nexus_dashboard.resource.count")
+	m.data.SetDescription("Controller resources grouped by bounded product, group, type, status, and severity.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardResourceCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardResourceCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardResourceCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardResourceCount(cfg NexusDashboardResourceCountMetricConfig) metricNexusDashboardResourceCount {
+	m := metricNexusDashboardResourceCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardResourceInfo struct {
+	data     pmetric.Metric                         // data buffer for generated metric.
+	config   NexusDashboardResourceInfoMetricConfig // metric config provided by user.
+	capacity int                                    // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.resource.info metric with initial data.
+func (m *metricNexusDashboardResourceInfo) init() {
+	m.data.SetName("nexus_dashboard.resource.info")
+	m.data.SetDescription("Bounded metadata for controller resources.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardResourceInfo) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardResourceInfo) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardResourceInfo) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardResourceInfo(cfg NexusDashboardResourceInfoMetricConfig) metricNexusDashboardResourceInfo {
+	m := metricNexusDashboardResourceInfo{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardResourceStatus struct {
+	data     pmetric.Metric                           // data buffer for generated metric.
+	config   NexusDashboardResourceStatusMetricConfig // metric config provided by user.
+	capacity int                                      // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.resource.status metric with initial data.
+func (m *metricNexusDashboardResourceStatus) init() {
+	m.data.SetName("nexus_dashboard.resource.status")
+	m.data.SetDescription("Encoded status with the original status string retained as an attribute.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardResourceStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardResourceStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardResourceStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardResourceStatus(cfg NexusDashboardResourceStatusMetricConfig) metricNexusDashboardResourceStatus {
+	m := metricNexusDashboardResourceStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardScrapeLastSuccess struct {
+	data     pmetric.Metric                              // data buffer for generated metric.
+	config   NexusDashboardScrapeLastSuccessMetricConfig // metric config provided by user.
+	capacity int                                         // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.scrape.last_success metric with initial data.
+func (m *metricNexusDashboardScrapeLastSuccess) init() {
+	m.data.SetName("nexus_dashboard.scrape.last_success")
+	m.data.SetDescription("Unix timestamp of the most recent fully successful Nexus Dashboard scrape.")
+	m.data.SetUnit("s")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardScrapeLastSuccess) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardScrapeLastSuccess) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardScrapeLastSuccess) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardScrapeLastSuccess(cfg NexusDashboardScrapeLastSuccessMetricConfig) metricNexusDashboardScrapeLastSuccess {
+	m := metricNexusDashboardScrapeLastSuccess{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardScrapePartialSuccess struct {
+	data     pmetric.Metric                                 // data buffer for generated metric.
+	config   NexusDashboardScrapePartialSuccessMetricConfig // metric config provided by user.
+	capacity int                                            // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.scrape.partial_success metric with initial data.
+func (m *metricNexusDashboardScrapePartialSuccess) init() {
+	m.data.SetName("nexus_dashboard.scrape.partial_success")
+	m.data.SetDescription("Whether one or more endpoint families failed or were skipped.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardScrapePartialSuccess) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardScrapePartialSuccess) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardScrapePartialSuccess) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardScrapePartialSuccess(cfg NexusDashboardScrapePartialSuccessMetricConfig) metricNexusDashboardScrapePartialSuccess {
+	m := metricNexusDashboardScrapePartialSuccess{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardServiceHealth struct {
+	data     pmetric.Metric                          // data buffer for generated metric.
+	config   NexusDashboardServiceHealthMetricConfig // metric config provided by user.
+	capacity int                                     // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.service.health metric with initial data.
+func (m *metricNexusDashboardServiceHealth) init() {
+	m.data.SetName("nexus_dashboard.service.health")
+	m.data.SetDescription("Encoded Nexus Dashboard service health.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardServiceHealth) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardServiceHealth) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardServiceHealth) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardServiceHealth(cfg NexusDashboardServiceHealthMetricConfig) metricNexusDashboardServiceHealth {
+	m := metricNexusDashboardServiceHealth{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardServiceSkipped struct {
+	data     pmetric.Metric                           // data buffer for generated metric.
+	config   NexusDashboardServiceSkippedMetricConfig // metric config provided by user.
+	capacity int                                      // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.service.skipped metric with initial data.
+func (m *metricNexusDashboardServiceSkipped) init() {
+	m.data.SetName("nexus_dashboard.service.skipped")
+	m.data.SetDescription("ND endpoint family skipped because target scope was not configured.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardServiceSkipped) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardServiceSkipped) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardServiceSkipped) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardServiceSkipped(cfg NexusDashboardServiceSkippedMetricConfig) metricNexusDashboardServiceSkipped {
+	m := metricNexusDashboardServiceSkipped{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardServiceUnavailable struct {
+	data     pmetric.Metric                               // data buffer for generated metric.
+	config   NexusDashboardServiceUnavailableMetricConfig // metric config provided by user.
+	capacity int                                          // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.service.unavailable metric with initial data.
+func (m *metricNexusDashboardServiceUnavailable) init() {
+	m.data.SetName("nexus_dashboard.service.unavailable")
+	m.data.SetDescription("ND service endpoint unavailable, disabled, unauthorized, or not installed.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardServiceUnavailable) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardServiceUnavailable) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardServiceUnavailable) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardServiceUnavailable(cfg NexusDashboardServiceUnavailableMetricConfig) metricNexusDashboardServiceUnavailable {
+	m := metricNexusDashboardServiceUnavailable{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardStorageUtilization struct {
+	data     pmetric.Metric                               // data buffer for generated metric.
+	config   NexusDashboardStorageUtilizationMetricConfig // metric config provided by user.
+	capacity int                                          // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.storage.utilization metric with initial data.
+func (m *metricNexusDashboardStorageUtilization) init() {
+	m.data.SetName("nexus_dashboard.storage.utilization")
+	m.data.SetDescription("Nexus Dashboard storage utilization as a ratio.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardStorageUtilization) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardStorageUtilization) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardStorageUtilization) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardStorageUtilization(cfg NexusDashboardStorageUtilizationMetricConfig) metricNexusDashboardStorageUtilization {
+	m := metricNexusDashboardStorageUtilization{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricNexusDashboardVpcPeerCount struct {
+	data     pmetric.Metric                         // data buffer for generated metric.
+	config   NexusDashboardVpcPeerCountMetricConfig // metric config provided by user.
+	capacity int                                    // max observed number of data points added to the metric.
+}
+
+// init fills nexus_dashboard.vpc.peer.count metric with initial data.
+func (m *metricNexusDashboardVpcPeerCount) init() {
+	m.data.SetName("nexus_dashboard.vpc.peer.count")
+	m.data.SetDescription("vPC peer count reported by NDFC.")
+	m.data.SetUnit("{peer}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricNexusDashboardVpcPeerCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricNexusDashboardVpcPeerCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricNexusDashboardVpcPeerCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricNexusDashboardVpcPeerCount(cfg NexusDashboardVpcPeerCountMetricConfig) metricNexusDashboardVpcPeerCount {
+	m := metricNexusDashboardVpcPeerCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanAPIRateLimited struct {
+	data     pmetric.Metric                  // data buffer for generated metric.
+	config   SdwanAPIRateLimitedMetricConfig // metric config provided by user.
+	capacity int                             // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.api.rate_limited metric with initial data.
+func (m *metricSdwanAPIRateLimited) init() {
+	m.data.SetName("sdwan.api.rate_limited")
+	m.data.SetDescription("Requests that received HTTP 429.")
+	m.data.SetUnit("{request}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricSdwanAPIRateLimited) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanAPIRateLimited) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanAPIRateLimited) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanAPIRateLimited(cfg SdwanAPIRateLimitedMetricConfig) metricSdwanAPIRateLimited {
+	m := metricSdwanAPIRateLimited{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanAPIRequestDuration struct {
+	data     pmetric.Metric                      // data buffer for generated metric.
+	config   SdwanAPIRequestDurationMetricConfig // metric config provided by user.
+	capacity int                                 // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.api.request.duration metric with initial data.
+func (m *metricSdwanAPIRequestDuration) init() {
+	m.data.SetName("sdwan.api.request.duration")
+	m.data.SetDescription("Average duration of SD-WAN Manager API request attempts within the scrape for each matching request-attribute set.")
+	m.data.SetUnit("s")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanAPIRequestDuration) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanAPIRequestDuration) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanAPIRequestDuration) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanAPIRequestDuration(cfg SdwanAPIRequestDurationMetricConfig) metricSdwanAPIRequestDuration {
+	m := metricSdwanAPIRequestDuration{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanAPIRequestErrors struct {
+	data     pmetric.Metric                    // data buffer for generated metric.
+	config   SdwanAPIRequestErrorsMetricConfig // metric config provided by user.
+	capacity int                               // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.api.request.errors metric with initial data.
+func (m *metricSdwanAPIRequestErrors) init() {
+	m.data.SetName("sdwan.api.request.errors")
+	m.data.SetDescription("API, auth, permission, timeout, or decode failures.")
+	m.data.SetUnit("{error}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricSdwanAPIRequestErrors) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanAPIRequestErrors) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanAPIRequestErrors) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanAPIRequestErrors(cfg SdwanAPIRequestErrorsMetricConfig) metricSdwanAPIRequestErrors {
+	m := metricSdwanAPIRequestErrors{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanAppRouteJitter struct {
+	data     pmetric.Metric                  // data buffer for generated metric.
+	config   SdwanAppRouteJitterMetricConfig // metric config provided by user.
+	capacity int                             // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.app_route.jitter metric with initial data.
+func (m *metricSdwanAppRouteJitter) init() {
+	m.data.SetName("sdwan.app_route.jitter")
+	m.data.SetDescription("Application-aware routing jitter.")
+	m.data.SetUnit("ms")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanAppRouteJitter) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanAppRouteJitter) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanAppRouteJitter) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanAppRouteJitter(cfg SdwanAppRouteJitterMetricConfig) metricSdwanAppRouteJitter {
+	m := metricSdwanAppRouteJitter{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanAppRouteLatency struct {
+	data     pmetric.Metric                   // data buffer for generated metric.
+	config   SdwanAppRouteLatencyMetricConfig // metric config provided by user.
+	capacity int                              // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.app_route.latency metric with initial data.
+func (m *metricSdwanAppRouteLatency) init() {
+	m.data.SetName("sdwan.app_route.latency")
+	m.data.SetDescription("Application-aware routing latency.")
+	m.data.SetUnit("ms")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanAppRouteLatency) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanAppRouteLatency) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanAppRouteLatency) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanAppRouteLatency(cfg SdwanAppRouteLatencyMetricConfig) metricSdwanAppRouteLatency {
+	m := metricSdwanAppRouteLatency{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanAppRouteLoss struct {
+	data     pmetric.Metric                // data buffer for generated metric.
+	config   SdwanAppRouteLossMetricConfig // metric config provided by user.
+	capacity int                           // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.app_route.loss metric with initial data.
+func (m *metricSdwanAppRouteLoss) init() {
+	m.data.SetName("sdwan.app_route.loss")
+	m.data.SetDescription("Application-aware routing loss.")
+	m.data.SetUnit("%")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanAppRouteLoss) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanAppRouteLoss) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanAppRouteLoss) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanAppRouteLoss(cfg SdwanAppRouteLossMetricConfig) metricSdwanAppRouteLoss {
+	m := metricSdwanAppRouteLoss{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanAppRouteSLAStatus struct {
+	data     pmetric.Metric                     // data buffer for generated metric.
+	config   SdwanAppRouteSLAStatusMetricConfig // metric config provided by user.
+	capacity int                                // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.app_route.sla.status metric with initial data.
+func (m *metricSdwanAppRouteSLAStatus) init() {
+	m.data.SetName("sdwan.app_route.sla.status")
+	m.data.SetDescription("Encoded app-route SLA state.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanAppRouteSLAStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanAppRouteSLAStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanAppRouteSLAStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanAppRouteSLAStatus(cfg SdwanAppRouteSLAStatusMetricConfig) metricSdwanAppRouteSLAStatus {
+	m := metricSdwanAppRouteSLAStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanBfdSessionCount struct {
+	data     pmetric.Metric                   // data buffer for generated metric.
+	config   SdwanBfdSessionCountMetricConfig // metric config provided by user.
+	capacity int                              // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.bfd.session.count metric with initial data.
+func (m *metricSdwanBfdSessionCount) init() {
+	m.data.SetName("sdwan.bfd.session.count")
+	m.data.SetDescription("BFD session count grouped by status and path attributes.")
+	m.data.SetUnit("{item}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanBfdSessionCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanBfdSessionCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanBfdSessionCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanBfdSessionCount(cfg SdwanBfdSessionCountMetricConfig) metricSdwanBfdSessionCount {
+	m := metricSdwanBfdSessionCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanBfdSessionFlapCount struct {
+	data     pmetric.Metric                       // data buffer for generated metric.
+	config   SdwanBfdSessionFlapCountMetricConfig // metric config provided by user.
+	capacity int                                  // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.bfd.session.flap.count metric with initial data.
+func (m *metricSdwanBfdSessionFlapCount) init() {
+	m.data.SetName("sdwan.bfd.session.flap.count")
+	m.data.SetDescription("BFD flap count where exposed.")
+	m.data.SetUnit("{flap}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricSdwanBfdSessionFlapCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanBfdSessionFlapCount) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanBfdSessionFlapCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanBfdSessionFlapCount(cfg SdwanBfdSessionFlapCountMetricConfig) metricSdwanBfdSessionFlapCount {
+	m := metricSdwanBfdSessionFlapCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanBfdSessionStatus struct {
+	data     pmetric.Metric                    // data buffer for generated metric.
+	config   SdwanBfdSessionStatusMetricConfig // metric config provided by user.
+	capacity int                               // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.bfd.session.status metric with initial data.
+func (m *metricSdwanBfdSessionStatus) init() {
+	m.data.SetName("sdwan.bfd.session.status")
+	m.data.SetDescription("Encoded BFD session status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanBfdSessionStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanBfdSessionStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanBfdSessionStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanBfdSessionStatus(cfg SdwanBfdSessionStatusMetricConfig) metricSdwanBfdSessionStatus {
+	m := metricSdwanBfdSessionStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanBfdSessionTransitions struct {
+	data     pmetric.Metric                         // data buffer for generated metric.
+	config   SdwanBfdSessionTransitionsMetricConfig // metric config provided by user.
+	capacity int                                    // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.bfd.session.transitions metric with initial data.
+func (m *metricSdwanBfdSessionTransitions) init() {
+	m.data.SetName("sdwan.bfd.session.transitions")
+	m.data.SetDescription("BFD session transition count.")
+	m.data.SetUnit("{transition}")
+	m.data.SetEmptySum()
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+}
+
+func (m *metricSdwanBfdSessionTransitions) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanBfdSessionTransitions) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanBfdSessionTransitions) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanBfdSessionTransitions(cfg SdwanBfdSessionTransitionsMetricConfig) metricSdwanBfdSessionTransitions {
+	m := metricSdwanBfdSessionTransitions{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanCollectionObjectCount struct {
+	data     pmetric.Metric                         // data buffer for generated metric.
+	config   SdwanCollectionObjectCountMetricConfig // metric config provided by user.
+	capacity int                                    // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.collection.object.count metric with initial data.
+func (m *metricSdwanCollectionObjectCount) init() {
+	m.data.SetName("sdwan.collection.object.count")
+	m.data.SetDescription("Object count from opt-in product feature groups.")
+	m.data.SetUnit("{item}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanCollectionObjectCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanCollectionObjectCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanCollectionObjectCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanCollectionObjectCount(cfg SdwanCollectionObjectCountMetricConfig) metricSdwanCollectionObjectCount {
+	m := metricSdwanCollectionObjectCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanControlActualConnections struct {
+	data     pmetric.Metric                            // data buffer for generated metric.
+	config   SdwanControlActualConnectionsMetricConfig // metric config provided by user.
+	capacity int                                       // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.control.actual_connections metric with initial data.
+func (m *metricSdwanControlActualConnections) init() {
+	m.data.SetName("sdwan.control.actual_connections")
+	m.data.SetDescription("Actual control connections when exposed.")
+	m.data.SetUnit("{connection}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanControlActualConnections) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanControlActualConnections) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanControlActualConnections) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanControlActualConnections(cfg SdwanControlActualConnectionsMetricConfig) metricSdwanControlActualConnections {
+	m := metricSdwanControlActualConnections{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanControlConnectionCount struct {
+	data     pmetric.Metric                          // data buffer for generated metric.
+	config   SdwanControlConnectionCountMetricConfig // metric config provided by user.
+	capacity int                                     // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.control.connection.count metric with initial data.
+func (m *metricSdwanControlConnectionCount) init() {
+	m.data.SetName("sdwan.control.connection.count")
+	m.data.SetDescription("Control connection count grouped by status and path attributes.")
+	m.data.SetUnit("{item}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanControlConnectionCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanControlConnectionCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanControlConnectionCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanControlConnectionCount(cfg SdwanControlConnectionCountMetricConfig) metricSdwanControlConnectionCount {
+	m := metricSdwanControlConnectionCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanControlConnectionStatus struct {
+	data     pmetric.Metric                           // data buffer for generated metric.
+	config   SdwanControlConnectionStatusMetricConfig // metric config provided by user.
+	capacity int                                      // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.control.connection.status metric with initial data.
+func (m *metricSdwanControlConnectionStatus) init() {
+	m.data.SetName("sdwan.control.connection.status")
+	m.data.SetDescription("Encoded control connection status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanControlConnectionStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanControlConnectionStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanControlConnectionStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanControlConnectionStatus(cfg SdwanControlConnectionStatusMetricConfig) metricSdwanControlConnectionStatus {
+	m := metricSdwanControlConnectionStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanControlExpectedConnections struct {
+	data     pmetric.Metric                              // data buffer for generated metric.
+	config   SdwanControlExpectedConnectionsMetricConfig // metric config provided by user.
+	capacity int                                         // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.control.expected_connections metric with initial data.
+func (m *metricSdwanControlExpectedConnections) init() {
+	m.data.SetName("sdwan.control.expected_connections")
+	m.data.SetDescription("Expected control connections when exposed.")
+	m.data.SetUnit("{connection}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanControlExpectedConnections) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanControlExpectedConnections) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanControlExpectedConnections) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanControlExpectedConnections(cfg SdwanControlExpectedConnectionsMetricConfig) metricSdwanControlExpectedConnections {
+	m := metricSdwanControlExpectedConnections{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanDeviceCertificateStatus struct {
+	data     pmetric.Metric                           // data buffer for generated metric.
+	config   SdwanDeviceCertificateStatusMetricConfig // metric config provided by user.
+	capacity int                                      // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.device.certificate.status metric with initial data.
+func (m *metricSdwanDeviceCertificateStatus) init() {
+	m.data.SetName("sdwan.device.certificate.status")
+	m.data.SetDescription("Encoded certificate validity state.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanDeviceCertificateStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanDeviceCertificateStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanDeviceCertificateStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanDeviceCertificateStatus(cfg SdwanDeviceCertificateStatusMetricConfig) metricSdwanDeviceCertificateStatus {
+	m := metricSdwanDeviceCertificateStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanDeviceReachabilityStatus struct {
+	data     pmetric.Metric                            // data buffer for generated metric.
+	config   SdwanDeviceReachabilityStatusMetricConfig // metric config provided by user.
+	capacity int                                       // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.device.reachability.status metric with initial data.
+func (m *metricSdwanDeviceReachabilityStatus) init() {
+	m.data.SetName("sdwan.device.reachability.status")
+	m.data.SetDescription("Encoded SD-WAN device reachability.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanDeviceReachabilityStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanDeviceReachabilityStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanDeviceReachabilityStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanDeviceReachabilityStatus(cfg SdwanDeviceReachabilityStatusMetricConfig) metricSdwanDeviceReachabilityStatus {
+	m := metricSdwanDeviceReachabilityStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanDeviceValidityStatus struct {
+	data     pmetric.Metric                        // data buffer for generated metric.
+	config   SdwanDeviceValidityStatusMetricConfig // metric config provided by user.
+	capacity int                                   // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.device.validity.status metric with initial data.
+func (m *metricSdwanDeviceValidityStatus) init() {
+	m.data.SetName("sdwan.device.validity.status")
+	m.data.SetDescription("Encoded device validity state.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanDeviceValidityStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanDeviceValidityStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanDeviceValidityStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanDeviceValidityStatus(cfg SdwanDeviceValidityStatusMetricConfig) metricSdwanDeviceValidityStatus {
+	m := metricSdwanDeviceValidityStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanEventCount struct {
+	data     pmetric.Metric              // data buffer for generated metric.
+	config   SdwanEventCountMetricConfig // metric config provided by user.
+	capacity int                         // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.event.count metric with initial data.
+func (m *metricSdwanEventCount) init() {
+	m.data.SetName("sdwan.event.count")
+	m.data.SetDescription("Alarm, event, and audit counts grouped by bounded attributes.")
+	m.data.SetUnit("{item}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanEventCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanEventCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanEventCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanEventCount(cfg SdwanEventCountMetricConfig) metricSdwanEventCount {
+	m := metricSdwanEventCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanInventoryDeviceCount struct {
+	data     pmetric.Metric                        // data buffer for generated metric.
+	config   SdwanInventoryDeviceCountMetricConfig // metric config provided by user.
+	capacity int                                   // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.inventory.device.count metric with initial data.
+func (m *metricSdwanInventoryDeviceCount) init() {
+	m.data.SetName("sdwan.inventory.device.count")
+	m.data.SetDescription("Device inventory count after target and shared selection.")
+	m.data.SetUnit("{device}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanInventoryDeviceCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanInventoryDeviceCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanInventoryDeviceCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanInventoryDeviceCount(cfg SdwanInventoryDeviceCountMetricConfig) metricSdwanInventoryDeviceCount {
+	m := metricSdwanInventoryDeviceCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanManagerEndpointStatus struct {
+	data     pmetric.Metric                         // data buffer for generated metric.
+	config   SdwanManagerEndpointStatusMetricConfig // metric config provided by user.
+	capacity int                                    // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.manager.endpoint.status metric with initial data.
+func (m *metricSdwanManagerEndpointStatus) init() {
+	m.data.SetName("sdwan.manager.endpoint.status")
+	m.data.SetDescription("Whether a Manager endpoint family returned data.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanManagerEndpointStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanManagerEndpointStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanManagerEndpointStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanManagerEndpointStatus(cfg SdwanManagerEndpointStatusMetricConfig) metricSdwanManagerEndpointStatus {
+	m := metricSdwanManagerEndpointStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanManagerHealthScore struct {
+	data     pmetric.Metric                      // data buffer for generated metric.
+	config   SdwanManagerHealthScoreMetricConfig // metric config provided by user.
+	capacity int                                 // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.manager.health.score metric with initial data.
+func (m *metricSdwanManagerHealthScore) init() {
+	m.data.SetName("sdwan.manager.health.score")
+	m.data.SetDescription("Manager cluster or resource health value where exposed.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanManagerHealthScore) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetDoubleValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanManagerHealthScore) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanManagerHealthScore) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanManagerHealthScore(cfg SdwanManagerHealthScoreMetricConfig) metricSdwanManagerHealthScore {
+	m := metricSdwanManagerHealthScore{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanManagerStatus struct {
+	data     pmetric.Metric                 // data buffer for generated metric.
+	config   SdwanManagerStatusMetricConfig // metric config provided by user.
+	capacity int                            // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.manager.status metric with initial data.
+func (m *metricSdwanManagerStatus) init() {
+	m.data.SetName("sdwan.manager.status")
+	m.data.SetDescription("Encoded SD-WAN Manager status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanManagerStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanManagerStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanManagerStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanManagerStatus(cfg SdwanManagerStatusMetricConfig) metricSdwanManagerStatus {
+	m := metricSdwanManagerStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanManagerUp struct {
+	data     pmetric.Metric             // data buffer for generated metric.
+	config   SdwanManagerUpMetricConfig // metric config provided by user.
+	capacity int                        // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.manager.up metric with initial data.
+func (m *metricSdwanManagerUp) init() {
+	m.data.SetName("sdwan.manager.up")
+	m.data.SetDescription("Whether at least one SD-WAN Manager API operation succeeded in the scrape.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanManagerUp) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanManagerUp) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanManagerUp) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanManagerUp(cfg SdwanManagerUpMetricConfig) metricSdwanManagerUp {
+	m := metricSdwanManagerUp{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanResourceInfo struct {
+	data     pmetric.Metric                // data buffer for generated metric.
+	config   SdwanResourceInfoMetricConfig // metric config provided by user.
+	capacity int                           // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.resource.info metric with initial data.
+func (m *metricSdwanResourceInfo) init() {
+	m.data.SetName("sdwan.resource.info")
+	m.data.SetDescription("Stable SD-WAN resource identity.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanResourceInfo) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanResourceInfo) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanResourceInfo) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanResourceInfo(cfg SdwanResourceInfoMetricConfig) metricSdwanResourceInfo {
+	m := metricSdwanResourceInfo{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanResourceStatus struct {
+	data     pmetric.Metric                  // data buffer for generated metric.
+	config   SdwanResourceStatusMetricConfig // metric config provided by user.
+	capacity int                             // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.resource.status metric with initial data.
+func (m *metricSdwanResourceStatus) init() {
+	m.data.SetName("sdwan.resource.status")
+	m.data.SetDescription("Encoded SD-WAN resource or opt-in object status.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanResourceStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanResourceStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanResourceStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanResourceStatus(cfg SdwanResourceStatusMetricConfig) metricSdwanResourceStatus {
+	m := metricSdwanResourceStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanScrapeLastSuccess struct {
+	data     pmetric.Metric                     // data buffer for generated metric.
+	config   SdwanScrapeLastSuccessMetricConfig // metric config provided by user.
+	capacity int                                // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.scrape.last_success metric with initial data.
+func (m *metricSdwanScrapeLastSuccess) init() {
+	m.data.SetName("sdwan.scrape.last_success")
+	m.data.SetDescription("Unix timestamp of the most recent fully successful SD-WAN scrape.")
+	m.data.SetUnit("s")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanScrapeLastSuccess) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanScrapeLastSuccess) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanScrapeLastSuccess) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanScrapeLastSuccess(cfg SdwanScrapeLastSuccessMetricConfig) metricSdwanScrapeLastSuccess {
+	m := metricSdwanScrapeLastSuccess{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanScrapePartialSuccess struct {
+	data     pmetric.Metric                        // data buffer for generated metric.
+	config   SdwanScrapePartialSuccessMetricConfig // metric config provided by user.
+	capacity int                                   // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.scrape.partial_success metric with initial data.
+func (m *metricSdwanScrapePartialSuccess) init() {
+	m.data.SetName("sdwan.scrape.partial_success")
+	m.data.SetDescription("Whether one or more SD-WAN endpoint families failed or were skipped.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanScrapePartialSuccess) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanScrapePartialSuccess) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanScrapePartialSuccess) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanScrapePartialSuccess(cfg SdwanScrapePartialSuccessMetricConfig) metricSdwanScrapePartialSuccess {
+	m := metricSdwanScrapePartialSuccess{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanServiceSkipped struct {
+	data     pmetric.Metric                  // data buffer for generated metric.
+	config   SdwanServiceSkippedMetricConfig // metric config provided by user.
+	capacity int                             // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.service.skipped metric with initial data.
+func (m *metricSdwanServiceSkipped) init() {
+	m.data.SetName("sdwan.service.skipped")
+	m.data.SetDescription("Feature or endpoint was skipped because target scope was missing.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanServiceSkipped) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanServiceSkipped) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanServiceSkipped) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanServiceSkipped(cfg SdwanServiceSkippedMetricConfig) metricSdwanServiceSkipped {
+	m := metricSdwanServiceSkipped{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanServiceUnavailable struct {
+	data     pmetric.Metric                      // data buffer for generated metric.
+	config   SdwanServiceUnavailableMetricConfig // metric config provided by user.
+	capacity int                                 // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.service.unavailable metric with initial data.
+func (m *metricSdwanServiceUnavailable) init() {
+	m.data.SetName("sdwan.service.unavailable")
+	m.data.SetDescription("Feature or endpoint was unavailable, unauthorized, unsupported, or missing.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanServiceUnavailable) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanServiceUnavailable) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanServiceUnavailable) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanServiceUnavailable(cfg SdwanServiceUnavailableMetricConfig) metricSdwanServiceUnavailable {
+	m := metricSdwanServiceUnavailable{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSdwanTransportInterfaceStatus struct {
+	data     pmetric.Metric                            // data buffer for generated metric.
+	config   SdwanTransportInterfaceStatusMetricConfig // metric config provided by user.
+	capacity int                                       // max observed number of data points added to the metric.
+}
+
+// init fills sdwan.transport.interface.status metric with initial data.
+func (m *metricSdwanTransportInterfaceStatus) init() {
+	m.data.SetName("sdwan.transport.interface.status")
+	m.data.SetDescription("SD-WAN transport or service interface state.")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSdwanTransportInterfaceStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSdwanTransportInterfaceStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSdwanTransportInterfaceStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSdwanTransportInterfaceStatus(cfg SdwanTransportInterfaceStatusMetricConfig) metricSdwanTransportInterfaceStatus {
+	m := metricSdwanTransportInterfaceStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSystemCPULogicalCount struct {
+	data     pmetric.Metric                    // data buffer for generated metric.
+	config   SystemCPULogicalCountMetricConfig // metric config provided by user.
+	capacity int                               // max observed number of data points added to the metric.
+}
+
+// init fills system.cpu.logical.count metric with initial data.
+func (m *metricSystemCPULogicalCount) init() {
+	m.data.SetName("system.cpu.logical.count")
+	m.data.SetDescription("CPU core count reported by Intersight.")
+	m.data.SetUnit("{cpu}")
+	m.data.SetEmptyGauge()
+}
+
+func (m *metricSystemCPULogicalCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.config.Enabled {
+		return
+	}
+	dp := m.data.Gauge().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntValue(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricSystemCPULogicalCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricSystemCPULogicalCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricSystemCPULogicalCount(cfg SystemCPULogicalCountMetricConfig) metricSystemCPULogicalCount {
+	m := metricSystemCPULogicalCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
 type metricSystemCPUUtilization struct {
 	data          pmetric.Metric                   // data buffer for generated metric.
 	config        SystemCPUUtilizationMetricConfig // metric config provided by user.
@@ -2426,7 +22692,7 @@ type metricSystemNetworkPacketCount struct {
 // init fills system.network.packet.count metric with initial data.
 func (m *metricSystemNetworkPacketCount) init() {
 	m.data.SetName("system.network.packet.count")
-	m.data.SetDescription("The number of packets transmitted or received, categorized by type")
+	m.data.SetDescription("The number of packets transmitted or received by direction and, when available, packet type")
 	m.data.SetUnit("{packet}")
 	m.data.SetEmptySum()
 	m.data.Sum().SetIsMonotonic(true)
@@ -2660,38 +22926,410 @@ func newMetricSystemUptime(cfg SystemUptimeMetricConfig) metricSystemUptime {
 // MetricsBuilder provides an interface for scrapers to report metrics while taking care of all the transformations
 // required to produce metric representation defined in metadata and user config.
 type MetricsBuilder struct {
-	config                             MetricsBuilderConfig // config of the metrics builder.
-	startTime                          pcommon.Timestamp    // start time that will be applied to all recorded data points.
-	metricsCapacity                    int                  // maximum observed number of metrics per resource.
-	metricsBuffer                      pmetric.Metrics      // accumulates metrics data before emitting.
-	buildInfo                          component.BuildInfo  // contains version information.
-	resourceAttributeIncludeFilter     map[string]filter.Filter
-	resourceAttributeExcludeFilter     map[string]filter.Filter
-	metricCiscoDeviceUp                metricCiscoDeviceUp
-	metricCiscoInterfaceAdminStatus    metricCiscoInterfaceAdminStatus
-	metricCiscoInterfaceIoRate         metricCiscoInterfaceIoRate
-	metricCiscoInterfacePacketRate     metricCiscoInterfacePacketRate
-	metricCiscoInterfaceSpeed          metricCiscoInterfaceSpeed
-	metricCiscoInterfaceUtilization    metricCiscoInterfaceUtilization
-	metricCiscoOpticsEsnr              metricCiscoOpticsEsnr
-	metricCiscoOpticsLaserBiasCurrent  metricCiscoOpticsLaserBiasCurrent
-	metricCiscoOpticsPreFecBer         metricCiscoOpticsPreFecBer
-	metricCiscoOpticsPresent           metricCiscoOpticsPresent
-	metricCiscoOpticsRxPower           metricCiscoOpticsRxPower
-	metricCiscoOpticsTdecq             metricCiscoOpticsTdecq
-	metricCiscoOpticsTecCurrent        metricCiscoOpticsTecCurrent
-	metricCiscoOpticsTecUtilization    metricCiscoOpticsTecUtilization
-	metricCiscoOpticsTemperature       metricCiscoOpticsTemperature
-	metricCiscoOpticsTxPower           metricCiscoOpticsTxPower
-	metricCiscoOpticsVoltage           metricCiscoOpticsVoltage
-	metricSystemCPUUtilization         metricSystemCPUUtilization
-	metricSystemMemoryUtilization      metricSystemMemoryUtilization
-	metricSystemNetworkErrors          metricSystemNetworkErrors
-	metricSystemNetworkInterfaceStatus metricSystemNetworkInterfaceStatus
-	metricSystemNetworkIo              metricSystemNetworkIo
-	metricSystemNetworkPacketCount     metricSystemNetworkPacketCount
-	metricSystemNetworkPacketDropped   metricSystemNetworkPacketDropped
-	metricSystemUptime                 metricSystemUptime
+	config                                                    MetricsBuilderConfig // config of the metrics builder.
+	startTime                                                 pcommon.Timestamp    // start time that will be applied to all recorded data points.
+	metricsCapacity                                           int                  // maximum observed number of metrics per resource.
+	metricsBuffer                                             pmetric.Metrics      // accumulates metrics data before emitting.
+	buildInfo                                                 component.BuildInfo  // contains version information.
+	resourceAttributeIncludeFilter                            map[string]filter.Filter
+	resourceAttributeExcludeFilter                            map[string]filter.Filter
+	metricAciAPIEndpointError                                 metricAciAPIEndpointError
+	metricAciAPIRateLimited                                   metricAciAPIRateLimited
+	metricAciAPIRequestDuration                               metricAciAPIRequestDuration
+	metricAciAPIRequestErrors                                 metricAciAPIRequestErrors
+	metricAciAuditRecordCount                                 metricAciAuditRecordCount
+	metricAciControllerUp                                     metricAciControllerUp
+	metricAciEndpointCount                                    metricAciEndpointCount
+	metricAciEndpointPresent                                  metricAciEndpointPresent
+	metricAciEventCount                                       metricAciEventCount
+	metricAciFabricHealth                                     metricAciFabricHealth
+	metricAciFaultActive                                      metricAciFaultActive
+	metricAciFaultCount                                       metricAciFaultCount
+	metricAciResourceCount                                    metricAciResourceCount
+	metricAciResourceInfo                                     metricAciResourceInfo
+	metricAciResourceStatus                                   metricAciResourceStatus
+	metricAciScrapeLastSuccess                                metricAciScrapeLastSuccess
+	metricAciScrapePartialSuccess                             metricAciScrapePartialSuccess
+	metricAciTenantObjectCount                                metricAciTenantObjectCount
+	metricAciTenantStatus                                     metricAciTenantStatus
+	metricCatalystCenterAPIRateLimited                        metricCatalystCenterAPIRateLimited
+	metricCatalystCenterAPIRequestDuration                    metricCatalystCenterAPIRequestDuration
+	metricCatalystCenterAPIRequestErrors                      metricCatalystCenterAPIRequestErrors
+	metricCatalystCenterClientCount                           metricCatalystCenterClientCount
+	metricCatalystCenterClientDetailHealthScore               metricCatalystCenterClientDetailHealthScore
+	metricCatalystCenterClientHealthScore                     metricCatalystCenterClientHealthScore
+	metricCatalystCenterClientIssueCount                      metricCatalystCenterClientIssueCount
+	metricCatalystCenterClientNetworkIo                       metricCatalystCenterClientNetworkIo
+	metricCatalystCenterClientUniqueCount                     metricCatalystCenterClientUniqueCount
+	metricCatalystCenterClientWirelessRssi                    metricCatalystCenterClientWirelessRssi
+	metricCatalystCenterClientWirelessSnr                     metricCatalystCenterClientWirelessSnr
+	metricCatalystCenterDeviceCollectionStatus                metricCatalystCenterDeviceCollectionStatus
+	metricCatalystCenterDeviceDetailCommunicationStatus       metricCatalystCenterDeviceDetailCommunicationStatus
+	metricCatalystCenterDeviceDetailHealthScore               metricCatalystCenterDeviceDetailHealthScore
+	metricCatalystCenterDeviceInterfaceCount                  metricCatalystCenterDeviceInterfaceCount
+	metricCatalystCenterDeviceReachabilityStatus              metricCatalystCenterDeviceReachabilityStatus
+	metricCatalystCenterDeviceUptime                          metricCatalystCenterDeviceUptime
+	metricCatalystCenterInterfaceCount                        metricCatalystCenterInterfaceCount
+	metricCatalystCenterInventoryDeviceCount                  metricCatalystCenterInventoryDeviceCount
+	metricCatalystCenterIssueActiveCount                      metricCatalystCenterIssueActiveCount
+	metricCatalystCenterIssueCount                            metricCatalystCenterIssueCount
+	metricCatalystCenterNetworkDeviceCount                    metricCatalystCenterNetworkDeviceCount
+	metricCatalystCenterNetworkHealthCategoryScore            metricCatalystCenterNetworkHealthCategoryScore
+	metricCatalystCenterNetworkHealthEntityCount              metricCatalystCenterNetworkHealthEntityCount
+	metricCatalystCenterNetworkHealthEntityScore              metricCatalystCenterNetworkHealthEntityScore
+	metricCatalystCenterNetworkHealthScore                    metricCatalystCenterNetworkHealthScore
+	metricCatalystCenterScrapeLastSuccess                     metricCatalystCenterScrapeLastSuccess
+	metricCatalystCenterScrapePartialSuccess                  metricCatalystCenterScrapePartialSuccess
+	metricCatalystCenterSiteClientCount                       metricCatalystCenterSiteClientCount
+	metricCatalystCenterSiteClientHealthPercentage            metricCatalystCenterSiteClientHealthPercentage
+	metricCatalystCenterSiteHealthCount                       metricCatalystCenterSiteHealthCount
+	metricCatalystCenterSiteIssueCount                        metricCatalystCenterSiteIssueCount
+	metricCatalystCenterSiteNetworkDeviceCount                metricCatalystCenterSiteNetworkDeviceCount
+	metricCatalystCenterSiteNetworkDeviceHealthPercentage     metricCatalystCenterSiteNetworkDeviceHealthPercentage
+	metricCatalystCenterTopologyLinkCount                     metricCatalystCenterTopologyLinkCount
+	metricCatalystCenterTopologyNodeCount                     metricCatalystCenterTopologyNodeCount
+	metricCiscoCatalyst9800ReceiverActiveSubscriptions        metricCiscoCatalyst9800ReceiverActiveSubscriptions
+	metricCiscoCatalyst9800ReceiverCompactGpbPayloads         metricCiscoCatalyst9800ReceiverCompactGpbPayloads
+	metricCiscoCatalyst9800ReceiverDecodeErrors               metricCiscoCatalyst9800ReceiverDecodeErrors
+	metricCiscoCatalyst9800ReceiverDroppedDatapoints          metricCiscoCatalyst9800ReceiverDroppedDatapoints
+	metricCiscoCatalyst9800ReceiverLastSuccessTimestamp       metricCiscoCatalyst9800ReceiverLastSuccessTimestamp
+	metricCiscoCatalyst9800ReceiverReconnects                 metricCiscoCatalyst9800ReceiverReconnects
+	metricCiscoCatalyst9800ReceiverTargetLastSuccessTimestamp metricCiscoCatalyst9800ReceiverTargetLastSuccessTimestamp
+	metricCiscoCatalyst9800ReceiverTargetReconnects           metricCiscoCatalyst9800ReceiverTargetReconnects
+	metricCiscoCatalyst9800ReceiverTargetSubscriptionActive   metricCiscoCatalyst9800ReceiverTargetSubscriptionActive
+	metricCiscoCatalyst9800ReceiverTargetUpdates              metricCiscoCatalyst9800ReceiverTargetUpdates
+	metricCiscoCatalyst9800ReceiverUnsupportedPaths           metricCiscoCatalyst9800ReceiverUnsupportedPaths
+	metricCiscoCatalyst9800ReceiverUpdates                    metricCiscoCatalyst9800ReceiverUpdates
+	metricCiscoDeviceUp                                       metricCiscoDeviceUp
+	metricCiscoInterfaceAdminStatus                           metricCiscoInterfaceAdminStatus
+	metricCiscoInterfaceDropRate                              metricCiscoInterfaceDropRate
+	metricCiscoInterfaceIoRate                                metricCiscoInterfaceIoRate
+	metricCiscoInterfacePacketRate                            metricCiscoInterfacePacketRate
+	metricCiscoInterfaceSpeed                                 metricCiscoInterfaceSpeed
+	metricCiscoInterfaceUtilization                           metricCiscoInterfaceUtilization
+	metricCiscoIosxrReceiverActiveSubscriptions               metricCiscoIosxrReceiverActiveSubscriptions
+	metricCiscoIosxrReceiverCompactGpbPayloads                metricCiscoIosxrReceiverCompactGpbPayloads
+	metricCiscoIosxrReceiverDecodeErrors                      metricCiscoIosxrReceiverDecodeErrors
+	metricCiscoIosxrReceiverDroppedDatapoints                 metricCiscoIosxrReceiverDroppedDatapoints
+	metricCiscoIosxrReceiverLastSuccessTimestamp              metricCiscoIosxrReceiverLastSuccessTimestamp
+	metricCiscoIosxrReceiverReconnects                        metricCiscoIosxrReceiverReconnects
+	metricCiscoIosxrReceiverTargetLastSuccessTimestamp        metricCiscoIosxrReceiverTargetLastSuccessTimestamp
+	metricCiscoIosxrReceiverTargetReconnects                  metricCiscoIosxrReceiverTargetReconnects
+	metricCiscoIosxrReceiverTargetSubscriptionActive          metricCiscoIosxrReceiverTargetSubscriptionActive
+	metricCiscoIosxrReceiverTargetUpdates                     metricCiscoIosxrReceiverTargetUpdates
+	metricCiscoIosxrReceiverUnsupportedPaths                  metricCiscoIosxrReceiverUnsupportedPaths
+	metricCiscoIosxrReceiverUpdates                           metricCiscoIosxrReceiverUpdates
+	metricCiscoOpticsEsnr                                     metricCiscoOpticsEsnr
+	metricCiscoOpticsLaserBiasCurrent                         metricCiscoOpticsLaserBiasCurrent
+	metricCiscoOpticsPreFecBer                                metricCiscoOpticsPreFecBer
+	metricCiscoOpticsPresent                                  metricCiscoOpticsPresent
+	metricCiscoOpticsRxPower                                  metricCiscoOpticsRxPower
+	metricCiscoOpticsTdecq                                    metricCiscoOpticsTdecq
+	metricCiscoOpticsTecCurrent                               metricCiscoOpticsTecCurrent
+	metricCiscoOpticsTecUtilization                           metricCiscoOpticsTecUtilization
+	metricCiscoOpticsTemperature                              metricCiscoOpticsTemperature
+	metricCiscoOpticsTxPower                                  metricCiscoOpticsTxPower
+	metricCiscoOpticsVoltage                                  metricCiscoOpticsVoltage
+	metricCiscoScrapePartialSuccess                           metricCiscoScrapePartialSuccess
+	metricCiscoTopologyNeighborInfo                           metricCiscoTopologyNeighborInfo
+	metricCiscoTransceiverSensor                              metricCiscoTransceiverSensor
+	metricCiscoWlcApCapwapEncryptionEnabled                   metricCiscoWlcApCapwapEncryptionEnabled
+	metricCiscoWlcApCapwapState                               metricCiscoWlcApCapwapState
+	metricCiscoWlcApDisconnect                                metricCiscoWlcApDisconnect
+	metricCiscoWlcApDisconnectReasonInfo                      metricCiscoWlcApDisconnectReasonInfo
+	metricCiscoWlcApJoinFailureReasonInfo                     metricCiscoWlcApJoinFailureReasonInfo
+	metricCiscoWlcApJoinStatus                                metricCiscoWlcApJoinStatus
+	metricCiscoWlcAuthRadiusAccessAcceptCount                 metricCiscoWlcAuthRadiusAccessAcceptCount
+	metricCiscoWlcAuthRadiusAccessRejectCount                 metricCiscoWlcAuthRadiusAccessRejectCount
+	metricCiscoWlcAuthRadiusBadAuthenticatorCount             metricCiscoWlcAuthRadiusBadAuthenticatorCount
+	metricCiscoWlcAuthRadiusResponseCount                     metricCiscoWlcAuthRadiusResponseCount
+	metricCiscoWlcAuthRadiusResponseDelayAvg                  metricCiscoWlcAuthRadiusResponseDelayAvg
+	metricCiscoWlcAuthRadiusResponseDelayMax                  metricCiscoWlcAuthRadiusResponseDelayMax
+	metricCiscoWlcAuthRadiusTimeoutCount                      metricCiscoWlcAuthRadiusTimeoutCount
+	metricCiscoWlcClientAuthFailureReasonInfo                 metricCiscoWlcClientAuthFailureReasonInfo
+	metricCiscoWlcClientConnectionState                       metricCiscoWlcClientConnectionState
+	metricCiscoWlcClientNetworkIo                             metricCiscoWlcClientNetworkIo
+	metricCiscoWlcClientNetworkPackets                        metricCiscoWlcClientNetworkPackets
+	metricCiscoWlcClientRoamCount                             metricCiscoWlcClientRoamCount
+	metricCiscoWlcClientRoamFailureCount                      metricCiscoWlcClientRoamFailureCount
+	metricCiscoWlcClientRoamTypeInfo                          metricCiscoWlcClientRoamTypeInfo
+	metricCiscoWlcClientWirelessRssi                          metricCiscoWlcClientWirelessRssi
+	metricCiscoWlcClientWirelessSnr                           metricCiscoWlcClientWirelessSnr
+	metricCiscoWlcControllerCPUUtilization                    metricCiscoWlcControllerCPUUtilization
+	metricCiscoWlcControllerMemoryBytes                       metricCiscoWlcControllerMemoryBytes
+	metricCiscoWlcControllerReceiverActiveSubscriptions       metricCiscoWlcControllerReceiverActiveSubscriptions
+	metricCiscoWlcControllerReceiverDecodeErrors              metricCiscoWlcControllerReceiverDecodeErrors
+	metricCiscoWlcControllerReceiverSubscriptionActive        metricCiscoWlcControllerReceiverSubscriptionActive
+	metricCiscoWlcControllerReceiverUpdates                   metricCiscoWlcControllerReceiverUpdates
+	metricCiscoWlcHaEnabled                                   metricCiscoWlcHaEnabled
+	metricCiscoWlcHaStandbyFailureCount                       metricCiscoWlcHaStandbyFailureCount
+	metricCiscoWlcHaState                                     metricCiscoWlcHaState
+	metricCiscoWlcHaSwitchoverCount                           metricCiscoWlcHaSwitchoverCount
+	metricCiscoWlcMobilityHandoffCount                        metricCiscoWlcMobilityHandoffCount
+	metricCiscoWlcMobilityHandoffFailureCount                 metricCiscoWlcMobilityHandoffFailureCount
+	metricCiscoWlcMobilityPeerStatus                          metricCiscoWlcMobilityPeerStatus
+	metricCiscoWlcMobilityRoamCount                           metricCiscoWlcMobilityRoamCount
+	metricCiscoWlcRfChannelChangeCount                        metricCiscoWlcRfChannelChangeCount
+	metricCiscoWlcRfChannelRecommended                        metricCiscoWlcRfChannelRecommended
+	metricCiscoWlcRfChannelUtilization                        metricCiscoWlcRfChannelUtilization
+	metricCiscoWlcRfClientCount                               metricCiscoWlcRfClientCount
+	metricCiscoWlcRfNoiseFloor                                metricCiscoWlcRfNoiseFloor
+	metricCiscoWlcSsidChannelUtilization                      metricCiscoWlcSsidChannelUtilization
+	metricCiscoWlcSsidClientCount                             metricCiscoWlcSsidClientCount
+	metricCiscoWlcSsidNetworkIo                               metricCiscoWlcSsidNetworkIo
+	metricCiscoWlcSsidRetryCount                              metricCiscoWlcSsidRetryCount
+	metricFmcAPIEndpointError                                 metricFmcAPIEndpointError
+	metricFmcAPIRateLimited                                   metricFmcAPIRateLimited
+	metricFmcAPIRequestDuration                               metricFmcAPIRequestDuration
+	metricFmcAPIRequestErrors                                 metricFmcAPIRequestErrors
+	metricFmcAuditRecordCount                                 metricFmcAuditRecordCount
+	metricFmcDeploymentPendingCount                           metricFmcDeploymentPendingCount
+	metricFmcDeploymentStatus                                 metricFmcDeploymentStatus
+	metricFmcHaStatus                                         metricFmcHaStatus
+	metricFmcHealthEventCount                                 metricFmcHealthEventCount
+	metricFmcHealthStatus                                     metricFmcHealthStatus
+	metricFmcManagerUp                                        metricFmcManagerUp
+	metricFmcPolicyObjectCount                                metricFmcPolicyObjectCount
+	metricFmcResourceCount                                    metricFmcResourceCount
+	metricFmcResourceInfo                                     metricFmcResourceInfo
+	metricFmcResourceStatus                                   metricFmcResourceStatus
+	metricFmcScrapeLastSuccess                                metricFmcScrapeLastSuccess
+	metricFmcScrapePartialSuccess                             metricFmcScrapePartialSuccess
+	metricFmcVpnTunnelStatus                                  metricFmcVpnTunnelStatus
+	metricIntersightAdvisoryActive                            metricIntersightAdvisoryActive
+	metricIntersightAdvisoryCount                             metricIntersightAdvisoryCount
+	metricIntersightAlarmActive                               metricIntersightAlarmActive
+	metricIntersightAlarmCount                                metricIntersightAlarmCount
+	metricIntersightAPIRateLimited                            metricIntersightAPIRateLimited
+	metricIntersightAPIRequestDuration                        metricIntersightAPIRequestDuration
+	metricIntersightAPIRequestErrors                          metricIntersightAPIRequestErrors
+	metricIntersightAuditRecordCount                          metricIntersightAuditRecordCount
+	metricIntersightComputeAvailableMemory                    metricIntersightComputeAvailableMemory
+	metricIntersightComputeThreadCount                        metricIntersightComputeThreadCount
+	metricIntersightFaultCount                                metricIntersightFaultCount
+	metricIntersightFirmwareBundleInfo                        metricIntersightFirmwareBundleInfo
+	metricIntersightHclStatus                                 metricIntersightHclStatus
+	metricIntersightHclStatusCount                            metricIntersightHclStatusCount
+	metricIntersightHyperflexReadIops                         metricIntersightHyperflexReadIops
+	metricIntersightHyperflexReadLatency                      metricIntersightHyperflexReadLatency
+	metricIntersightHyperflexStatus                           metricIntersightHyperflexStatus
+	metricIntersightHyperflexWriteIops                        metricIntersightHyperflexWriteIops
+	metricIntersightHyperflexWriteLatency                     metricIntersightHyperflexWriteLatency
+	metricIntersightKubernetesClusterConnectionStatus         metricIntersightKubernetesClusterConnectionStatus
+	metricIntersightResourceCount                             metricIntersightResourceCount
+	metricIntersightResourceInfo                              metricIntersightResourceInfo
+	metricIntersightResourceStatus                            metricIntersightResourceStatus
+	metricIntersightScrapeLastSuccess                         metricIntersightScrapeLastSuccess
+	metricIntersightScrapePartialSuccess                      metricIntersightScrapePartialSuccess
+	metricIntersightStorageLifeLeft                           metricIntersightStorageLifeLeft
+	metricIntersightStorageMediaErrorCount                    metricIntersightStorageMediaErrorCount
+	metricIntersightStoragePowerOnHours                       metricIntersightStoragePowerOnHours
+	metricIntersightStoragePredictiveFailureCount             metricIntersightStoragePredictiveFailureCount
+	metricIntersightStorageRebuildRate                        metricIntersightStorageRebuildRate
+	metricIntersightStorageStatus                             metricIntersightStorageStatus
+	metricIntersightStorageTemperature                        metricIntersightStorageTemperature
+	metricIntersightTargetConnectionStatus                    metricIntersightTargetConnectionStatus
+	metricIntersightTaskCount                                 metricIntersightTaskCount
+	metricIntersightTaskStatus                                metricIntersightTaskStatus
+	metricIntersightTechsupportCount                          metricIntersightTechsupportCount
+	metricIntersightTechsupportStatus                         metricIntersightTechsupportStatus
+	metricIntersightTelemetryQueryRows                        metricIntersightTelemetryQueryRows
+	metricIntersightUcsCPUIdleUtilization                     metricIntersightUcsCPUIdleUtilization
+	metricIntersightUcsCPUSystemUtilization                   metricIntersightUcsCPUSystemUtilization
+	metricIntersightUcsCurrent                                metricIntersightUcsCurrent
+	metricIntersightUcsFanSpeed                               metricIntersightUcsFanSpeed
+	metricIntersightUcsFanSpeedRatio                          metricIntersightUcsFanSpeedRatio
+	metricIntersightUcsFanStatus                              metricIntersightUcsFanStatus
+	metricIntersightUcsHostEnergy                             metricIntersightUcsHostEnergy
+	metricIntersightUcsHostPower                              metricIntersightUcsHostPower
+	metricIntersightUcsHostPowerState                         metricIntersightUcsHostPowerState
+	metricIntersightUcsMemoryCached                           metricIntersightUcsMemoryCached
+	metricIntersightUcsMemoryEccCorrectable                   metricIntersightUcsMemoryEccCorrectable
+	metricIntersightUcsMemoryEccUncorrectable                 metricIntersightUcsMemoryEccUncorrectable
+	metricIntersightUcsMemoryFree                             metricIntersightUcsMemoryFree
+	metricIntersightUcsMemoryModuleSize                       metricIntersightUcsMemoryModuleSize
+	metricIntersightUcsMemoryStatus                           metricIntersightUcsMemoryStatus
+	metricIntersightUcsMemoryUsed                             metricIntersightUcsMemoryUsed
+	metricIntersightUcsNetworkInterfaceResets                 metricIntersightUcsNetworkInterfaceResets
+	metricIntersightUcsNetworkLinkStatus                      metricIntersightUcsNetworkLinkStatus
+	metricIntersightUcsNetworkLinkFailures                    metricIntersightUcsNetworkLinkFailures
+	metricIntersightUcsNetworkReceive                         metricIntersightUcsNetworkReceive
+	metricIntersightUcsNetworkReceiveCrcErrors                metricIntersightUcsNetworkReceiveCrcErrors
+	metricIntersightUcsNetworkReceiveDiscards                 metricIntersightUcsNetworkReceiveDiscards
+	metricIntersightUcsNetworkReceiveDrops                    metricIntersightUcsNetworkReceiveDrops
+	metricIntersightUcsNetworkReceiveErrors                   metricIntersightUcsNetworkReceiveErrors
+	metricIntersightUcsNetworkReceiveNoBuffer                 metricIntersightUcsNetworkReceiveNoBuffer
+	metricIntersightUcsNetworkReceivePackets                  metricIntersightUcsNetworkReceivePackets
+	metricIntersightUcsNetworkReceivePauseFrames              metricIntersightUcsNetworkReceivePauseFrames
+	metricIntersightUcsNetworkSignalLosses                    metricIntersightUcsNetworkSignalLosses
+	metricIntersightUcsNetworkSpeed                           metricIntersightUcsNetworkSpeed
+	metricIntersightUcsNetworkTransmit                        metricIntersightUcsNetworkTransmit
+	metricIntersightUcsNetworkTransmitDiscards                metricIntersightUcsNetworkTransmitDiscards
+	metricIntersightUcsNetworkTransmitDrops                   metricIntersightUcsNetworkTransmitDrops
+	metricIntersightUcsNetworkTransmitErrors                  metricIntersightUcsNetworkTransmitErrors
+	metricIntersightUcsNetworkTransmitPackets                 metricIntersightUcsNetworkTransmitPackets
+	metricIntersightUcsNetworkTransmitPauseFrames             metricIntersightUcsNetworkTransmitPauseFrames
+	metricIntersightUcsNetworkUtilization                     metricIntersightUcsNetworkUtilization
+	metricIntersightUcsPowerSupplyOutputPower                 metricIntersightUcsPowerSupplyOutputPower
+	metricIntersightUcsPowerSupplyStatus                      metricIntersightUcsPowerSupplyStatus
+	metricIntersightUcsPowerSupplyUtilization                 metricIntersightUcsPowerSupplyUtilization
+	metricIntersightUcsSignalPowerReceive                     metricIntersightUcsSignalPowerReceive
+	metricIntersightUcsSignalPowerTransmit                    metricIntersightUcsSignalPowerTransmit
+	metricIntersightUcsTemperature                            metricIntersightUcsTemperature
+	metricIntersightUcsTemperatureLimitHighCritical           metricIntersightUcsTemperatureLimitHighCritical
+	metricIntersightUcsTemperatureLimitLowCritical            metricIntersightUcsTemperatureLimitLowCritical
+	metricIntersightUcsTemperatureStatus                      metricIntersightUcsTemperatureStatus
+	metricIntersightUcsVoltage                                metricIntersightUcsVoltage
+	metricIntersightVirtualMachineCount                       metricIntersightVirtualMachineCount
+	metricIntersightVirtualMachineCPUCount                    metricIntersightVirtualMachineCPUCount
+	metricIntersightVirtualMachineMemory                      metricIntersightVirtualMachineMemory
+	metricIntersightVirtualMachinePowerState                  metricIntersightVirtualMachinePowerState
+	metricIntersightWorkflowCount                             metricIntersightWorkflowCount
+	metricIntersightWorkflowStatus                            metricIntersightWorkflowStatus
+	metricIseAccountingSessionCount                           metricIseAccountingSessionCount
+	metricIseAlarmCount                                       metricIseAlarmCount
+	metricIseAPIEndpointError                                 metricIseAPIEndpointError
+	metricIseAPIRateLimited                                   metricIseAPIRateLimited
+	metricIseAPIRequestDuration                               metricIseAPIRequestDuration
+	metricIseAPIRequestErrors                                 metricIseAPIRequestErrors
+	metricIseAuthFailureReasonInfo                            metricIseAuthFailureReasonInfo
+	metricIseCertificateCount                                 metricIseCertificateCount
+	metricIseCertificateExpiration                            metricIseCertificateExpiration
+	metricIseControllerUp                                     metricIseControllerUp
+	metricIseDataconnectQueryDuration                         metricIseDataconnectQueryDuration
+	metricIseDataconnectQueryErrors                           metricIseDataconnectQueryErrors
+	metricIseDataconnectQueryRows                             metricIseDataconnectQueryRows
+	metricIseDataconnectRowCount                              metricIseDataconnectRowCount
+	metricIseDeploymentNodeCount                              metricIseDeploymentNodeCount
+	metricIseDeploymentNodeStatus                             metricIseDeploymentNodeStatus
+	metricIseEndpointCount                                    metricIseEndpointCount
+	metricIseEndpointPostureCount                             metricIseEndpointPostureCount
+	metricIseEndpointPostureStatus                            metricIseEndpointPostureStatus
+	metricIseEndpointProfileCount                             metricIseEndpointProfileCount
+	metricIseEndpointStatus                                   metricIseEndpointStatus
+	metricIseLicenseCount                                     metricIseLicenseCount
+	metricIseLicenseStatus                                    metricIseLicenseStatus
+	metricIseNetworkDeviceCount                               metricIseNetworkDeviceCount
+	metricIseNetworkDeviceStatus                              metricIseNetworkDeviceStatus
+	metricIsePolicyObjectCount                                metricIsePolicyObjectCount
+	metricIsePolicyStatus                                     metricIsePolicyStatus
+	metricIseProfilerPolicyStatus                             metricIseProfilerPolicyStatus
+	metricIsePxgridMessageCount                               metricIsePxgridMessageCount
+	metricIsePxgridServiceStatus                              metricIsePxgridServiceStatus
+	metricIsePxgridSubscriptionStatus                         metricIsePxgridSubscriptionStatus
+	metricIseRadiusFailureCount                               metricIseRadiusFailureCount
+	metricIseResourceInfo                                     metricIseResourceInfo
+	metricIseResourceStatus                                   metricIseResourceStatus
+	metricIseScrapeLastSuccess                                metricIseScrapeLastSuccess
+	metricIseScrapePartialSuccess                             metricIseScrapePartialSuccess
+	metricIseServiceSkipped                                   metricIseServiceSkipped
+	metricIseServiceUnavailable                               metricIseServiceUnavailable
+	metricIseSessionActiveCount                               metricIseSessionActiveCount
+	metricIseSessionCount                                     metricIseSessionCount
+	metricIseTacacsFailureCount                               metricIseTacacsFailureCount
+	metricIseTrustsecResourceCount                            metricIseTrustsecResourceCount
+	metricIseTrustsecResourceStatus                           metricIseTrustsecResourceStatus
+	metricIseWebhookDeliveryCount                             metricIseWebhookDeliveryCount
+	metricMerakiAPIRequestDuration                            metricMerakiAPIRequestDuration
+	metricMerakiAPIRequestErrors                              metricMerakiAPIRequestErrors
+	metricMerakiAPIRequestRateLimited                         metricMerakiAPIRequestRateLimited
+	metricMerakiAppliancePerformanceScore                     metricMerakiAppliancePerformanceScore
+	metricMerakiControllerUp                                  metricMerakiControllerUp
+	metricMerakiDeviceStatus                                  metricMerakiDeviceStatus
+	metricMerakiPowerModuleStatus                             metricMerakiPowerModuleStatus
+	metricMerakiScrapeLastSuccess                             metricMerakiScrapeLastSuccess
+	metricMerakiSwitchPortAlertActive                         metricMerakiSwitchPortAlertActive
+	metricMerakiSwitchPortPoeAllocated                        metricMerakiSwitchPortPoeAllocated
+	metricMerakiSwitchPortUsage                               metricMerakiSwitchPortUsage
+	metricMerakiUplinkCellularSignalRsrp                      metricMerakiUplinkCellularSignalRsrp
+	metricMerakiUplinkCellularSignalRsrq                      metricMerakiUplinkCellularSignalRsrq
+	metricMerakiUplinkLatency                                 metricMerakiUplinkLatency
+	metricMerakiUplinkLoss                                    metricMerakiUplinkLoss
+	metricMerakiUplinkStatus                                  metricMerakiUplinkStatus
+	metricMerakiVpnPeerJitter                                 metricMerakiVpnPeerJitter
+	metricMerakiVpnPeerLatency                                metricMerakiVpnPeerLatency
+	metricMerakiVpnPeerLoss                                   metricMerakiVpnPeerLoss
+	metricMerakiVpnPeerMos                                    metricMerakiVpnPeerMos
+	metricMerakiVpnPeerStatus                                 metricMerakiVpnPeerStatus
+	metricMerakiVpnPeerUsage                                  metricMerakiVpnPeerUsage
+	metricMerakiWirelessChannelUtilization                    metricMerakiWirelessChannelUtilization
+	metricMerakiWirelessClientCount                           metricMerakiWirelessClientCount
+	metricMerakiWirelessPacketCount                           metricMerakiWirelessPacketCount
+	metricMerakiWirelessPacketLoss                            metricMerakiWirelessPacketLoss
+	metricMerakiWirelessPacketLossPercentage                  metricMerakiWirelessPacketLossPercentage
+	metricMerakiWirelessSsidStatus                            metricMerakiWirelessSsidStatus
+	metricNexusDashboardAPIEndpointError                      metricNexusDashboardAPIEndpointError
+	metricNexusDashboardAPIRateLimited                        metricNexusDashboardAPIRateLimited
+	metricNexusDashboardAPIRequestDuration                    metricNexusDashboardAPIRequestDuration
+	metricNexusDashboardAPIRequestErrors                      metricNexusDashboardAPIRequestErrors
+	metricNexusDashboardAuditRecordCount                      metricNexusDashboardAuditRecordCount
+	metricNexusDashboardConfigCompliance                      metricNexusDashboardConfigCompliance
+	metricNexusDashboardDataBrokerRuleCount                   metricNexusDashboardDataBrokerRuleCount
+	metricNexusDashboardDataBrokerSessionCount                metricNexusDashboardDataBrokerSessionCount
+	metricNexusDashboardDataBrokerStatus                      metricNexusDashboardDataBrokerStatus
+	metricNexusDashboardDeploymentStatus                      metricNexusDashboardDeploymentStatus
+	metricNexusDashboardEndpointCount                         metricNexusDashboardEndpointCount
+	metricNexusDashboardEventCount                            metricNexusDashboardEventCount
+	metricNexusDashboardFabricHealth                          metricNexusDashboardFabricHealth
+	metricNexusDashboardInsightsAnomalyActive                 metricNexusDashboardInsightsAnomalyActive
+	metricNexusDashboardInsightsAnomalyCount                  metricNexusDashboardInsightsAnomalyCount
+	metricNexusDashboardInsightsConfidence                    metricNexusDashboardInsightsConfidence
+	metricNexusDashboardInsightsScore                         metricNexusDashboardInsightsScore
+	metricNexusDashboardInsightsStatus                        metricNexusDashboardInsightsStatus
+	metricNexusDashboardOrchestratorDeploymentCount           metricNexusDashboardOrchestratorDeploymentCount
+	metricNexusDashboardOrchestratorDeploymentStatus          metricNexusDashboardOrchestratorDeploymentStatus
+	metricNexusDashboardOrchestratorPolicyDeltaCount          metricNexusDashboardOrchestratorPolicyDeltaCount
+	metricNexusDashboardResourceCount                         metricNexusDashboardResourceCount
+	metricNexusDashboardResourceInfo                          metricNexusDashboardResourceInfo
+	metricNexusDashboardResourceStatus                        metricNexusDashboardResourceStatus
+	metricNexusDashboardScrapeLastSuccess                     metricNexusDashboardScrapeLastSuccess
+	metricNexusDashboardScrapePartialSuccess                  metricNexusDashboardScrapePartialSuccess
+	metricNexusDashboardServiceHealth                         metricNexusDashboardServiceHealth
+	metricNexusDashboardServiceSkipped                        metricNexusDashboardServiceSkipped
+	metricNexusDashboardServiceUnavailable                    metricNexusDashboardServiceUnavailable
+	metricNexusDashboardStorageUtilization                    metricNexusDashboardStorageUtilization
+	metricNexusDashboardVpcPeerCount                          metricNexusDashboardVpcPeerCount
+	metricSdwanAPIRateLimited                                 metricSdwanAPIRateLimited
+	metricSdwanAPIRequestDuration                             metricSdwanAPIRequestDuration
+	metricSdwanAPIRequestErrors                               metricSdwanAPIRequestErrors
+	metricSdwanAppRouteJitter                                 metricSdwanAppRouteJitter
+	metricSdwanAppRouteLatency                                metricSdwanAppRouteLatency
+	metricSdwanAppRouteLoss                                   metricSdwanAppRouteLoss
+	metricSdwanAppRouteSLAStatus                              metricSdwanAppRouteSLAStatus
+	metricSdwanBfdSessionCount                                metricSdwanBfdSessionCount
+	metricSdwanBfdSessionFlapCount                            metricSdwanBfdSessionFlapCount
+	metricSdwanBfdSessionStatus                               metricSdwanBfdSessionStatus
+	metricSdwanBfdSessionTransitions                          metricSdwanBfdSessionTransitions
+	metricSdwanCollectionObjectCount                          metricSdwanCollectionObjectCount
+	metricSdwanControlActualConnections                       metricSdwanControlActualConnections
+	metricSdwanControlConnectionCount                         metricSdwanControlConnectionCount
+	metricSdwanControlConnectionStatus                        metricSdwanControlConnectionStatus
+	metricSdwanControlExpectedConnections                     metricSdwanControlExpectedConnections
+	metricSdwanDeviceCertificateStatus                        metricSdwanDeviceCertificateStatus
+	metricSdwanDeviceReachabilityStatus                       metricSdwanDeviceReachabilityStatus
+	metricSdwanDeviceValidityStatus                           metricSdwanDeviceValidityStatus
+	metricSdwanEventCount                                     metricSdwanEventCount
+	metricSdwanInventoryDeviceCount                           metricSdwanInventoryDeviceCount
+	metricSdwanManagerEndpointStatus                          metricSdwanManagerEndpointStatus
+	metricSdwanManagerHealthScore                             metricSdwanManagerHealthScore
+	metricSdwanManagerStatus                                  metricSdwanManagerStatus
+	metricSdwanManagerUp                                      metricSdwanManagerUp
+	metricSdwanResourceInfo                                   metricSdwanResourceInfo
+	metricSdwanResourceStatus                                 metricSdwanResourceStatus
+	metricSdwanScrapeLastSuccess                              metricSdwanScrapeLastSuccess
+	metricSdwanScrapePartialSuccess                           metricSdwanScrapePartialSuccess
+	metricSdwanServiceSkipped                                 metricSdwanServiceSkipped
+	metricSdwanServiceUnavailable                             metricSdwanServiceUnavailable
+	metricSdwanTransportInterfaceStatus                       metricSdwanTransportInterfaceStatus
+	metricSystemCPULogicalCount                               metricSystemCPULogicalCount
+	metricSystemCPUUtilization                                metricSystemCPUUtilization
+	metricSystemMemoryUtilization                             metricSystemMemoryUtilization
+	metricSystemNetworkErrors                                 metricSystemNetworkErrors
+	metricSystemNetworkInterfaceStatus                        metricSystemNetworkInterfaceStatus
+	metricSystemNetworkIo                                     metricSystemNetworkIo
+	metricSystemNetworkPacketCount                            metricSystemNetworkPacketCount
+	metricSystemNetworkPacketDropped                          metricSystemNetworkPacketDropped
+	metricSystemUptime                                        metricSystemUptime
 }
 
 // MetricBuilderOption applies changes to default metrics builder.
@@ -2713,37 +23351,409 @@ func WithStartTime(startTime pcommon.Timestamp) MetricBuilderOption {
 }
 func NewMetricsBuilder(mbc MetricsBuilderConfig, settings receiver.Settings, options ...MetricBuilderOption) *MetricsBuilder {
 	mb := &MetricsBuilder{
-		config:                             mbc,
-		startTime:                          pcommon.NewTimestampFromTime(time.Now()),
-		metricsBuffer:                      pmetric.NewMetrics(),
-		buildInfo:                          settings.BuildInfo,
-		metricCiscoDeviceUp:                newMetricCiscoDeviceUp(mbc.Metrics.CiscoDeviceUp),
-		metricCiscoInterfaceAdminStatus:    newMetricCiscoInterfaceAdminStatus(mbc.Metrics.CiscoInterfaceAdminStatus),
-		metricCiscoInterfaceIoRate:         newMetricCiscoInterfaceIoRate(mbc.Metrics.CiscoInterfaceIoRate),
-		metricCiscoInterfacePacketRate:     newMetricCiscoInterfacePacketRate(mbc.Metrics.CiscoInterfacePacketRate),
-		metricCiscoInterfaceSpeed:          newMetricCiscoInterfaceSpeed(mbc.Metrics.CiscoInterfaceSpeed),
-		metricCiscoInterfaceUtilization:    newMetricCiscoInterfaceUtilization(mbc.Metrics.CiscoInterfaceUtilization),
-		metricCiscoOpticsEsnr:              newMetricCiscoOpticsEsnr(mbc.Metrics.CiscoOpticsEsnr),
-		metricCiscoOpticsLaserBiasCurrent:  newMetricCiscoOpticsLaserBiasCurrent(mbc.Metrics.CiscoOpticsLaserBiasCurrent),
-		metricCiscoOpticsPreFecBer:         newMetricCiscoOpticsPreFecBer(mbc.Metrics.CiscoOpticsPreFecBer),
-		metricCiscoOpticsPresent:           newMetricCiscoOpticsPresent(mbc.Metrics.CiscoOpticsPresent),
-		metricCiscoOpticsRxPower:           newMetricCiscoOpticsRxPower(mbc.Metrics.CiscoOpticsRxPower),
-		metricCiscoOpticsTdecq:             newMetricCiscoOpticsTdecq(mbc.Metrics.CiscoOpticsTdecq),
-		metricCiscoOpticsTecCurrent:        newMetricCiscoOpticsTecCurrent(mbc.Metrics.CiscoOpticsTecCurrent),
-		metricCiscoOpticsTecUtilization:    newMetricCiscoOpticsTecUtilization(mbc.Metrics.CiscoOpticsTecUtilization),
-		metricCiscoOpticsTemperature:       newMetricCiscoOpticsTemperature(mbc.Metrics.CiscoOpticsTemperature),
-		metricCiscoOpticsTxPower:           newMetricCiscoOpticsTxPower(mbc.Metrics.CiscoOpticsTxPower),
-		metricCiscoOpticsVoltage:           newMetricCiscoOpticsVoltage(mbc.Metrics.CiscoOpticsVoltage),
-		metricSystemCPUUtilization:         newMetricSystemCPUUtilization(mbc.Metrics.SystemCPUUtilization),
-		metricSystemMemoryUtilization:      newMetricSystemMemoryUtilization(mbc.Metrics.SystemMemoryUtilization),
-		metricSystemNetworkErrors:          newMetricSystemNetworkErrors(mbc.Metrics.SystemNetworkErrors),
-		metricSystemNetworkInterfaceStatus: newMetricSystemNetworkInterfaceStatus(mbc.Metrics.SystemNetworkInterfaceStatus),
-		metricSystemNetworkIo:              newMetricSystemNetworkIo(mbc.Metrics.SystemNetworkIo),
-		metricSystemNetworkPacketCount:     newMetricSystemNetworkPacketCount(mbc.Metrics.SystemNetworkPacketCount),
-		metricSystemNetworkPacketDropped:   newMetricSystemNetworkPacketDropped(mbc.Metrics.SystemNetworkPacketDropped),
-		metricSystemUptime:                 newMetricSystemUptime(mbc.Metrics.SystemUptime),
-		resourceAttributeIncludeFilter:     make(map[string]filter.Filter),
-		resourceAttributeExcludeFilter:     make(map[string]filter.Filter),
+		config:                                                    mbc,
+		startTime:                                                 pcommon.NewTimestampFromTime(time.Now()),
+		metricsBuffer:                                             pmetric.NewMetrics(),
+		buildInfo:                                                 settings.BuildInfo,
+		metricAciAPIEndpointError:                                 newMetricAciAPIEndpointError(mbc.Metrics.AciAPIEndpointError),
+		metricAciAPIRateLimited:                                   newMetricAciAPIRateLimited(mbc.Metrics.AciAPIRateLimited),
+		metricAciAPIRequestDuration:                               newMetricAciAPIRequestDuration(mbc.Metrics.AciAPIRequestDuration),
+		metricAciAPIRequestErrors:                                 newMetricAciAPIRequestErrors(mbc.Metrics.AciAPIRequestErrors),
+		metricAciAuditRecordCount:                                 newMetricAciAuditRecordCount(mbc.Metrics.AciAuditRecordCount),
+		metricAciControllerUp:                                     newMetricAciControllerUp(mbc.Metrics.AciControllerUp),
+		metricAciEndpointCount:                                    newMetricAciEndpointCount(mbc.Metrics.AciEndpointCount),
+		metricAciEndpointPresent:                                  newMetricAciEndpointPresent(mbc.Metrics.AciEndpointPresent),
+		metricAciEventCount:                                       newMetricAciEventCount(mbc.Metrics.AciEventCount),
+		metricAciFabricHealth:                                     newMetricAciFabricHealth(mbc.Metrics.AciFabricHealth),
+		metricAciFaultActive:                                      newMetricAciFaultActive(mbc.Metrics.AciFaultActive),
+		metricAciFaultCount:                                       newMetricAciFaultCount(mbc.Metrics.AciFaultCount),
+		metricAciResourceCount:                                    newMetricAciResourceCount(mbc.Metrics.AciResourceCount),
+		metricAciResourceInfo:                                     newMetricAciResourceInfo(mbc.Metrics.AciResourceInfo),
+		metricAciResourceStatus:                                   newMetricAciResourceStatus(mbc.Metrics.AciResourceStatus),
+		metricAciScrapeLastSuccess:                                newMetricAciScrapeLastSuccess(mbc.Metrics.AciScrapeLastSuccess),
+		metricAciScrapePartialSuccess:                             newMetricAciScrapePartialSuccess(mbc.Metrics.AciScrapePartialSuccess),
+		metricAciTenantObjectCount:                                newMetricAciTenantObjectCount(mbc.Metrics.AciTenantObjectCount),
+		metricAciTenantStatus:                                     newMetricAciTenantStatus(mbc.Metrics.AciTenantStatus),
+		metricCatalystCenterAPIRateLimited:                        newMetricCatalystCenterAPIRateLimited(mbc.Metrics.CatalystCenterAPIRateLimited),
+		metricCatalystCenterAPIRequestDuration:                    newMetricCatalystCenterAPIRequestDuration(mbc.Metrics.CatalystCenterAPIRequestDuration),
+		metricCatalystCenterAPIRequestErrors:                      newMetricCatalystCenterAPIRequestErrors(mbc.Metrics.CatalystCenterAPIRequestErrors),
+		metricCatalystCenterClientCount:                           newMetricCatalystCenterClientCount(mbc.Metrics.CatalystCenterClientCount),
+		metricCatalystCenterClientDetailHealthScore:               newMetricCatalystCenterClientDetailHealthScore(mbc.Metrics.CatalystCenterClientDetailHealthScore),
+		metricCatalystCenterClientHealthScore:                     newMetricCatalystCenterClientHealthScore(mbc.Metrics.CatalystCenterClientHealthScore),
+		metricCatalystCenterClientIssueCount:                      newMetricCatalystCenterClientIssueCount(mbc.Metrics.CatalystCenterClientIssueCount),
+		metricCatalystCenterClientNetworkIo:                       newMetricCatalystCenterClientNetworkIo(mbc.Metrics.CatalystCenterClientNetworkIo),
+		metricCatalystCenterClientUniqueCount:                     newMetricCatalystCenterClientUniqueCount(mbc.Metrics.CatalystCenterClientUniqueCount),
+		metricCatalystCenterClientWirelessRssi:                    newMetricCatalystCenterClientWirelessRssi(mbc.Metrics.CatalystCenterClientWirelessRssi),
+		metricCatalystCenterClientWirelessSnr:                     newMetricCatalystCenterClientWirelessSnr(mbc.Metrics.CatalystCenterClientWirelessSnr),
+		metricCatalystCenterDeviceCollectionStatus:                newMetricCatalystCenterDeviceCollectionStatus(mbc.Metrics.CatalystCenterDeviceCollectionStatus),
+		metricCatalystCenterDeviceDetailCommunicationStatus:       newMetricCatalystCenterDeviceDetailCommunicationStatus(mbc.Metrics.CatalystCenterDeviceDetailCommunicationStatus),
+		metricCatalystCenterDeviceDetailHealthScore:               newMetricCatalystCenterDeviceDetailHealthScore(mbc.Metrics.CatalystCenterDeviceDetailHealthScore),
+		metricCatalystCenterDeviceInterfaceCount:                  newMetricCatalystCenterDeviceInterfaceCount(mbc.Metrics.CatalystCenterDeviceInterfaceCount),
+		metricCatalystCenterDeviceReachabilityStatus:              newMetricCatalystCenterDeviceReachabilityStatus(mbc.Metrics.CatalystCenterDeviceReachabilityStatus),
+		metricCatalystCenterDeviceUptime:                          newMetricCatalystCenterDeviceUptime(mbc.Metrics.CatalystCenterDeviceUptime),
+		metricCatalystCenterInterfaceCount:                        newMetricCatalystCenterInterfaceCount(mbc.Metrics.CatalystCenterInterfaceCount),
+		metricCatalystCenterInventoryDeviceCount:                  newMetricCatalystCenterInventoryDeviceCount(mbc.Metrics.CatalystCenterInventoryDeviceCount),
+		metricCatalystCenterIssueActiveCount:                      newMetricCatalystCenterIssueActiveCount(mbc.Metrics.CatalystCenterIssueActiveCount),
+		metricCatalystCenterIssueCount:                            newMetricCatalystCenterIssueCount(mbc.Metrics.CatalystCenterIssueCount),
+		metricCatalystCenterNetworkDeviceCount:                    newMetricCatalystCenterNetworkDeviceCount(mbc.Metrics.CatalystCenterNetworkDeviceCount),
+		metricCatalystCenterNetworkHealthCategoryScore:            newMetricCatalystCenterNetworkHealthCategoryScore(mbc.Metrics.CatalystCenterNetworkHealthCategoryScore),
+		metricCatalystCenterNetworkHealthEntityCount:              newMetricCatalystCenterNetworkHealthEntityCount(mbc.Metrics.CatalystCenterNetworkHealthEntityCount),
+		metricCatalystCenterNetworkHealthEntityScore:              newMetricCatalystCenterNetworkHealthEntityScore(mbc.Metrics.CatalystCenterNetworkHealthEntityScore),
+		metricCatalystCenterNetworkHealthScore:                    newMetricCatalystCenterNetworkHealthScore(mbc.Metrics.CatalystCenterNetworkHealthScore),
+		metricCatalystCenterScrapeLastSuccess:                     newMetricCatalystCenterScrapeLastSuccess(mbc.Metrics.CatalystCenterScrapeLastSuccess),
+		metricCatalystCenterScrapePartialSuccess:                  newMetricCatalystCenterScrapePartialSuccess(mbc.Metrics.CatalystCenterScrapePartialSuccess),
+		metricCatalystCenterSiteClientCount:                       newMetricCatalystCenterSiteClientCount(mbc.Metrics.CatalystCenterSiteClientCount),
+		metricCatalystCenterSiteClientHealthPercentage:            newMetricCatalystCenterSiteClientHealthPercentage(mbc.Metrics.CatalystCenterSiteClientHealthPercentage),
+		metricCatalystCenterSiteHealthCount:                       newMetricCatalystCenterSiteHealthCount(mbc.Metrics.CatalystCenterSiteHealthCount),
+		metricCatalystCenterSiteIssueCount:                        newMetricCatalystCenterSiteIssueCount(mbc.Metrics.CatalystCenterSiteIssueCount),
+		metricCatalystCenterSiteNetworkDeviceCount:                newMetricCatalystCenterSiteNetworkDeviceCount(mbc.Metrics.CatalystCenterSiteNetworkDeviceCount),
+		metricCatalystCenterSiteNetworkDeviceHealthPercentage:     newMetricCatalystCenterSiteNetworkDeviceHealthPercentage(mbc.Metrics.CatalystCenterSiteNetworkDeviceHealthPercentage),
+		metricCatalystCenterTopologyLinkCount:                     newMetricCatalystCenterTopologyLinkCount(mbc.Metrics.CatalystCenterTopologyLinkCount),
+		metricCatalystCenterTopologyNodeCount:                     newMetricCatalystCenterTopologyNodeCount(mbc.Metrics.CatalystCenterTopologyNodeCount),
+		metricCiscoCatalyst9800ReceiverActiveSubscriptions:        newMetricCiscoCatalyst9800ReceiverActiveSubscriptions(mbc.Metrics.CiscoCatalyst9800ReceiverActiveSubscriptions),
+		metricCiscoCatalyst9800ReceiverCompactGpbPayloads:         newMetricCiscoCatalyst9800ReceiverCompactGpbPayloads(mbc.Metrics.CiscoCatalyst9800ReceiverCompactGpbPayloads),
+		metricCiscoCatalyst9800ReceiverDecodeErrors:               newMetricCiscoCatalyst9800ReceiverDecodeErrors(mbc.Metrics.CiscoCatalyst9800ReceiverDecodeErrors),
+		metricCiscoCatalyst9800ReceiverDroppedDatapoints:          newMetricCiscoCatalyst9800ReceiverDroppedDatapoints(mbc.Metrics.CiscoCatalyst9800ReceiverDroppedDatapoints),
+		metricCiscoCatalyst9800ReceiverLastSuccessTimestamp:       newMetricCiscoCatalyst9800ReceiverLastSuccessTimestamp(mbc.Metrics.CiscoCatalyst9800ReceiverLastSuccessTimestamp),
+		metricCiscoCatalyst9800ReceiverReconnects:                 newMetricCiscoCatalyst9800ReceiverReconnects(mbc.Metrics.CiscoCatalyst9800ReceiverReconnects),
+		metricCiscoCatalyst9800ReceiverTargetLastSuccessTimestamp: newMetricCiscoCatalyst9800ReceiverTargetLastSuccessTimestamp(mbc.Metrics.CiscoCatalyst9800ReceiverTargetLastSuccessTimestamp),
+		metricCiscoCatalyst9800ReceiverTargetReconnects:           newMetricCiscoCatalyst9800ReceiverTargetReconnects(mbc.Metrics.CiscoCatalyst9800ReceiverTargetReconnects),
+		metricCiscoCatalyst9800ReceiverTargetSubscriptionActive:   newMetricCiscoCatalyst9800ReceiverTargetSubscriptionActive(mbc.Metrics.CiscoCatalyst9800ReceiverTargetSubscriptionActive),
+		metricCiscoCatalyst9800ReceiverTargetUpdates:              newMetricCiscoCatalyst9800ReceiverTargetUpdates(mbc.Metrics.CiscoCatalyst9800ReceiverTargetUpdates),
+		metricCiscoCatalyst9800ReceiverUnsupportedPaths:           newMetricCiscoCatalyst9800ReceiverUnsupportedPaths(mbc.Metrics.CiscoCatalyst9800ReceiverUnsupportedPaths),
+		metricCiscoCatalyst9800ReceiverUpdates:                    newMetricCiscoCatalyst9800ReceiverUpdates(mbc.Metrics.CiscoCatalyst9800ReceiverUpdates),
+		metricCiscoDeviceUp:                                       newMetricCiscoDeviceUp(mbc.Metrics.CiscoDeviceUp),
+		metricCiscoInterfaceAdminStatus:                           newMetricCiscoInterfaceAdminStatus(mbc.Metrics.CiscoInterfaceAdminStatus),
+		metricCiscoInterfaceDropRate:                              newMetricCiscoInterfaceDropRate(mbc.Metrics.CiscoInterfaceDropRate),
+		metricCiscoInterfaceIoRate:                                newMetricCiscoInterfaceIoRate(mbc.Metrics.CiscoInterfaceIoRate),
+		metricCiscoInterfacePacketRate:                            newMetricCiscoInterfacePacketRate(mbc.Metrics.CiscoInterfacePacketRate),
+		metricCiscoInterfaceSpeed:                                 newMetricCiscoInterfaceSpeed(mbc.Metrics.CiscoInterfaceSpeed),
+		metricCiscoInterfaceUtilization:                           newMetricCiscoInterfaceUtilization(mbc.Metrics.CiscoInterfaceUtilization),
+		metricCiscoIosxrReceiverActiveSubscriptions:               newMetricCiscoIosxrReceiverActiveSubscriptions(mbc.Metrics.CiscoIosxrReceiverActiveSubscriptions),
+		metricCiscoIosxrReceiverCompactGpbPayloads:                newMetricCiscoIosxrReceiverCompactGpbPayloads(mbc.Metrics.CiscoIosxrReceiverCompactGpbPayloads),
+		metricCiscoIosxrReceiverDecodeErrors:                      newMetricCiscoIosxrReceiverDecodeErrors(mbc.Metrics.CiscoIosxrReceiverDecodeErrors),
+		metricCiscoIosxrReceiverDroppedDatapoints:                 newMetricCiscoIosxrReceiverDroppedDatapoints(mbc.Metrics.CiscoIosxrReceiverDroppedDatapoints),
+		metricCiscoIosxrReceiverLastSuccessTimestamp:              newMetricCiscoIosxrReceiverLastSuccessTimestamp(mbc.Metrics.CiscoIosxrReceiverLastSuccessTimestamp),
+		metricCiscoIosxrReceiverReconnects:                        newMetricCiscoIosxrReceiverReconnects(mbc.Metrics.CiscoIosxrReceiverReconnects),
+		metricCiscoIosxrReceiverTargetLastSuccessTimestamp:        newMetricCiscoIosxrReceiverTargetLastSuccessTimestamp(mbc.Metrics.CiscoIosxrReceiverTargetLastSuccessTimestamp),
+		metricCiscoIosxrReceiverTargetReconnects:                  newMetricCiscoIosxrReceiverTargetReconnects(mbc.Metrics.CiscoIosxrReceiverTargetReconnects),
+		metricCiscoIosxrReceiverTargetSubscriptionActive:          newMetricCiscoIosxrReceiverTargetSubscriptionActive(mbc.Metrics.CiscoIosxrReceiverTargetSubscriptionActive),
+		metricCiscoIosxrReceiverTargetUpdates:                     newMetricCiscoIosxrReceiverTargetUpdates(mbc.Metrics.CiscoIosxrReceiverTargetUpdates),
+		metricCiscoIosxrReceiverUnsupportedPaths:                  newMetricCiscoIosxrReceiverUnsupportedPaths(mbc.Metrics.CiscoIosxrReceiverUnsupportedPaths),
+		metricCiscoIosxrReceiverUpdates:                           newMetricCiscoIosxrReceiverUpdates(mbc.Metrics.CiscoIosxrReceiverUpdates),
+		metricCiscoOpticsEsnr:                                     newMetricCiscoOpticsEsnr(mbc.Metrics.CiscoOpticsEsnr),
+		metricCiscoOpticsLaserBiasCurrent:                         newMetricCiscoOpticsLaserBiasCurrent(mbc.Metrics.CiscoOpticsLaserBiasCurrent),
+		metricCiscoOpticsPreFecBer:                                newMetricCiscoOpticsPreFecBer(mbc.Metrics.CiscoOpticsPreFecBer),
+		metricCiscoOpticsPresent:                                  newMetricCiscoOpticsPresent(mbc.Metrics.CiscoOpticsPresent),
+		metricCiscoOpticsRxPower:                                  newMetricCiscoOpticsRxPower(mbc.Metrics.CiscoOpticsRxPower),
+		metricCiscoOpticsTdecq:                                    newMetricCiscoOpticsTdecq(mbc.Metrics.CiscoOpticsTdecq),
+		metricCiscoOpticsTecCurrent:                               newMetricCiscoOpticsTecCurrent(mbc.Metrics.CiscoOpticsTecCurrent),
+		metricCiscoOpticsTecUtilization:                           newMetricCiscoOpticsTecUtilization(mbc.Metrics.CiscoOpticsTecUtilization),
+		metricCiscoOpticsTemperature:                              newMetricCiscoOpticsTemperature(mbc.Metrics.CiscoOpticsTemperature),
+		metricCiscoOpticsTxPower:                                  newMetricCiscoOpticsTxPower(mbc.Metrics.CiscoOpticsTxPower),
+		metricCiscoOpticsVoltage:                                  newMetricCiscoOpticsVoltage(mbc.Metrics.CiscoOpticsVoltage),
+		metricCiscoScrapePartialSuccess:                           newMetricCiscoScrapePartialSuccess(mbc.Metrics.CiscoScrapePartialSuccess),
+		metricCiscoTopologyNeighborInfo:                           newMetricCiscoTopologyNeighborInfo(mbc.Metrics.CiscoTopologyNeighborInfo),
+		metricCiscoTransceiverSensor:                              newMetricCiscoTransceiverSensor(mbc.Metrics.CiscoTransceiverSensor),
+		metricCiscoWlcApCapwapEncryptionEnabled:                   newMetricCiscoWlcApCapwapEncryptionEnabled(mbc.Metrics.CiscoWlcApCapwapEncryptionEnabled),
+		metricCiscoWlcApCapwapState:                               newMetricCiscoWlcApCapwapState(mbc.Metrics.CiscoWlcApCapwapState),
+		metricCiscoWlcApDisconnect:                                newMetricCiscoWlcApDisconnect(mbc.Metrics.CiscoWlcApDisconnect),
+		metricCiscoWlcApDisconnectReasonInfo:                      newMetricCiscoWlcApDisconnectReasonInfo(mbc.Metrics.CiscoWlcApDisconnectReasonInfo),
+		metricCiscoWlcApJoinFailureReasonInfo:                     newMetricCiscoWlcApJoinFailureReasonInfo(mbc.Metrics.CiscoWlcApJoinFailureReasonInfo),
+		metricCiscoWlcApJoinStatus:                                newMetricCiscoWlcApJoinStatus(mbc.Metrics.CiscoWlcApJoinStatus),
+		metricCiscoWlcAuthRadiusAccessAcceptCount:                 newMetricCiscoWlcAuthRadiusAccessAcceptCount(mbc.Metrics.CiscoWlcAuthRadiusAccessAcceptCount),
+		metricCiscoWlcAuthRadiusAccessRejectCount:                 newMetricCiscoWlcAuthRadiusAccessRejectCount(mbc.Metrics.CiscoWlcAuthRadiusAccessRejectCount),
+		metricCiscoWlcAuthRadiusBadAuthenticatorCount:             newMetricCiscoWlcAuthRadiusBadAuthenticatorCount(mbc.Metrics.CiscoWlcAuthRadiusBadAuthenticatorCount),
+		metricCiscoWlcAuthRadiusResponseCount:                     newMetricCiscoWlcAuthRadiusResponseCount(mbc.Metrics.CiscoWlcAuthRadiusResponseCount),
+		metricCiscoWlcAuthRadiusResponseDelayAvg:                  newMetricCiscoWlcAuthRadiusResponseDelayAvg(mbc.Metrics.CiscoWlcAuthRadiusResponseDelayAvg),
+		metricCiscoWlcAuthRadiusResponseDelayMax:                  newMetricCiscoWlcAuthRadiusResponseDelayMax(mbc.Metrics.CiscoWlcAuthRadiusResponseDelayMax),
+		metricCiscoWlcAuthRadiusTimeoutCount:                      newMetricCiscoWlcAuthRadiusTimeoutCount(mbc.Metrics.CiscoWlcAuthRadiusTimeoutCount),
+		metricCiscoWlcClientAuthFailureReasonInfo:                 newMetricCiscoWlcClientAuthFailureReasonInfo(mbc.Metrics.CiscoWlcClientAuthFailureReasonInfo),
+		metricCiscoWlcClientConnectionState:                       newMetricCiscoWlcClientConnectionState(mbc.Metrics.CiscoWlcClientConnectionState),
+		metricCiscoWlcClientNetworkIo:                             newMetricCiscoWlcClientNetworkIo(mbc.Metrics.CiscoWlcClientNetworkIo),
+		metricCiscoWlcClientNetworkPackets:                        newMetricCiscoWlcClientNetworkPackets(mbc.Metrics.CiscoWlcClientNetworkPackets),
+		metricCiscoWlcClientRoamCount:                             newMetricCiscoWlcClientRoamCount(mbc.Metrics.CiscoWlcClientRoamCount),
+		metricCiscoWlcClientRoamFailureCount:                      newMetricCiscoWlcClientRoamFailureCount(mbc.Metrics.CiscoWlcClientRoamFailureCount),
+		metricCiscoWlcClientRoamTypeInfo:                          newMetricCiscoWlcClientRoamTypeInfo(mbc.Metrics.CiscoWlcClientRoamTypeInfo),
+		metricCiscoWlcClientWirelessRssi:                          newMetricCiscoWlcClientWirelessRssi(mbc.Metrics.CiscoWlcClientWirelessRssi),
+		metricCiscoWlcClientWirelessSnr:                           newMetricCiscoWlcClientWirelessSnr(mbc.Metrics.CiscoWlcClientWirelessSnr),
+		metricCiscoWlcControllerCPUUtilization:                    newMetricCiscoWlcControllerCPUUtilization(mbc.Metrics.CiscoWlcControllerCPUUtilization),
+		metricCiscoWlcControllerMemoryBytes:                       newMetricCiscoWlcControllerMemoryBytes(mbc.Metrics.CiscoWlcControllerMemoryBytes),
+		metricCiscoWlcControllerReceiverActiveSubscriptions:       newMetricCiscoWlcControllerReceiverActiveSubscriptions(mbc.Metrics.CiscoWlcControllerReceiverActiveSubscriptions),
+		metricCiscoWlcControllerReceiverDecodeErrors:              newMetricCiscoWlcControllerReceiverDecodeErrors(mbc.Metrics.CiscoWlcControllerReceiverDecodeErrors),
+		metricCiscoWlcControllerReceiverSubscriptionActive:        newMetricCiscoWlcControllerReceiverSubscriptionActive(mbc.Metrics.CiscoWlcControllerReceiverSubscriptionActive),
+		metricCiscoWlcControllerReceiverUpdates:                   newMetricCiscoWlcControllerReceiverUpdates(mbc.Metrics.CiscoWlcControllerReceiverUpdates),
+		metricCiscoWlcHaEnabled:                                   newMetricCiscoWlcHaEnabled(mbc.Metrics.CiscoWlcHaEnabled),
+		metricCiscoWlcHaStandbyFailureCount:                       newMetricCiscoWlcHaStandbyFailureCount(mbc.Metrics.CiscoWlcHaStandbyFailureCount),
+		metricCiscoWlcHaState:                                     newMetricCiscoWlcHaState(mbc.Metrics.CiscoWlcHaState),
+		metricCiscoWlcHaSwitchoverCount:                           newMetricCiscoWlcHaSwitchoverCount(mbc.Metrics.CiscoWlcHaSwitchoverCount),
+		metricCiscoWlcMobilityHandoffCount:                        newMetricCiscoWlcMobilityHandoffCount(mbc.Metrics.CiscoWlcMobilityHandoffCount),
+		metricCiscoWlcMobilityHandoffFailureCount:                 newMetricCiscoWlcMobilityHandoffFailureCount(mbc.Metrics.CiscoWlcMobilityHandoffFailureCount),
+		metricCiscoWlcMobilityPeerStatus:                          newMetricCiscoWlcMobilityPeerStatus(mbc.Metrics.CiscoWlcMobilityPeerStatus),
+		metricCiscoWlcMobilityRoamCount:                           newMetricCiscoWlcMobilityRoamCount(mbc.Metrics.CiscoWlcMobilityRoamCount),
+		metricCiscoWlcRfChannelChangeCount:                        newMetricCiscoWlcRfChannelChangeCount(mbc.Metrics.CiscoWlcRfChannelChangeCount),
+		metricCiscoWlcRfChannelRecommended:                        newMetricCiscoWlcRfChannelRecommended(mbc.Metrics.CiscoWlcRfChannelRecommended),
+		metricCiscoWlcRfChannelUtilization:                        newMetricCiscoWlcRfChannelUtilization(mbc.Metrics.CiscoWlcRfChannelUtilization),
+		metricCiscoWlcRfClientCount:                               newMetricCiscoWlcRfClientCount(mbc.Metrics.CiscoWlcRfClientCount),
+		metricCiscoWlcRfNoiseFloor:                                newMetricCiscoWlcRfNoiseFloor(mbc.Metrics.CiscoWlcRfNoiseFloor),
+		metricCiscoWlcSsidChannelUtilization:                      newMetricCiscoWlcSsidChannelUtilization(mbc.Metrics.CiscoWlcSsidChannelUtilization),
+		metricCiscoWlcSsidClientCount:                             newMetricCiscoWlcSsidClientCount(mbc.Metrics.CiscoWlcSsidClientCount),
+		metricCiscoWlcSsidNetworkIo:                               newMetricCiscoWlcSsidNetworkIo(mbc.Metrics.CiscoWlcSsidNetworkIo),
+		metricCiscoWlcSsidRetryCount:                              newMetricCiscoWlcSsidRetryCount(mbc.Metrics.CiscoWlcSsidRetryCount),
+		metricFmcAPIEndpointError:                                 newMetricFmcAPIEndpointError(mbc.Metrics.FmcAPIEndpointError),
+		metricFmcAPIRateLimited:                                   newMetricFmcAPIRateLimited(mbc.Metrics.FmcAPIRateLimited),
+		metricFmcAPIRequestDuration:                               newMetricFmcAPIRequestDuration(mbc.Metrics.FmcAPIRequestDuration),
+		metricFmcAPIRequestErrors:                                 newMetricFmcAPIRequestErrors(mbc.Metrics.FmcAPIRequestErrors),
+		metricFmcAuditRecordCount:                                 newMetricFmcAuditRecordCount(mbc.Metrics.FmcAuditRecordCount),
+		metricFmcDeploymentPendingCount:                           newMetricFmcDeploymentPendingCount(mbc.Metrics.FmcDeploymentPendingCount),
+		metricFmcDeploymentStatus:                                 newMetricFmcDeploymentStatus(mbc.Metrics.FmcDeploymentStatus),
+		metricFmcHaStatus:                                         newMetricFmcHaStatus(mbc.Metrics.FmcHaStatus),
+		metricFmcHealthEventCount:                                 newMetricFmcHealthEventCount(mbc.Metrics.FmcHealthEventCount),
+		metricFmcHealthStatus:                                     newMetricFmcHealthStatus(mbc.Metrics.FmcHealthStatus),
+		metricFmcManagerUp:                                        newMetricFmcManagerUp(mbc.Metrics.FmcManagerUp),
+		metricFmcPolicyObjectCount:                                newMetricFmcPolicyObjectCount(mbc.Metrics.FmcPolicyObjectCount),
+		metricFmcResourceCount:                                    newMetricFmcResourceCount(mbc.Metrics.FmcResourceCount),
+		metricFmcResourceInfo:                                     newMetricFmcResourceInfo(mbc.Metrics.FmcResourceInfo),
+		metricFmcResourceStatus:                                   newMetricFmcResourceStatus(mbc.Metrics.FmcResourceStatus),
+		metricFmcScrapeLastSuccess:                                newMetricFmcScrapeLastSuccess(mbc.Metrics.FmcScrapeLastSuccess),
+		metricFmcScrapePartialSuccess:                             newMetricFmcScrapePartialSuccess(mbc.Metrics.FmcScrapePartialSuccess),
+		metricFmcVpnTunnelStatus:                                  newMetricFmcVpnTunnelStatus(mbc.Metrics.FmcVpnTunnelStatus),
+		metricIntersightAdvisoryActive:                            newMetricIntersightAdvisoryActive(mbc.Metrics.IntersightAdvisoryActive),
+		metricIntersightAdvisoryCount:                             newMetricIntersightAdvisoryCount(mbc.Metrics.IntersightAdvisoryCount),
+		metricIntersightAlarmActive:                               newMetricIntersightAlarmActive(mbc.Metrics.IntersightAlarmActive),
+		metricIntersightAlarmCount:                                newMetricIntersightAlarmCount(mbc.Metrics.IntersightAlarmCount),
+		metricIntersightAPIRateLimited:                            newMetricIntersightAPIRateLimited(mbc.Metrics.IntersightAPIRateLimited),
+		metricIntersightAPIRequestDuration:                        newMetricIntersightAPIRequestDuration(mbc.Metrics.IntersightAPIRequestDuration),
+		metricIntersightAPIRequestErrors:                          newMetricIntersightAPIRequestErrors(mbc.Metrics.IntersightAPIRequestErrors),
+		metricIntersightAuditRecordCount:                          newMetricIntersightAuditRecordCount(mbc.Metrics.IntersightAuditRecordCount),
+		metricIntersightComputeAvailableMemory:                    newMetricIntersightComputeAvailableMemory(mbc.Metrics.IntersightComputeAvailableMemory),
+		metricIntersightComputeThreadCount:                        newMetricIntersightComputeThreadCount(mbc.Metrics.IntersightComputeThreadCount),
+		metricIntersightFaultCount:                                newMetricIntersightFaultCount(mbc.Metrics.IntersightFaultCount),
+		metricIntersightFirmwareBundleInfo:                        newMetricIntersightFirmwareBundleInfo(mbc.Metrics.IntersightFirmwareBundleInfo),
+		metricIntersightHclStatus:                                 newMetricIntersightHclStatus(mbc.Metrics.IntersightHclStatus),
+		metricIntersightHclStatusCount:                            newMetricIntersightHclStatusCount(mbc.Metrics.IntersightHclStatusCount),
+		metricIntersightHyperflexReadIops:                         newMetricIntersightHyperflexReadIops(mbc.Metrics.IntersightHyperflexReadIops),
+		metricIntersightHyperflexReadLatency:                      newMetricIntersightHyperflexReadLatency(mbc.Metrics.IntersightHyperflexReadLatency),
+		metricIntersightHyperflexStatus:                           newMetricIntersightHyperflexStatus(mbc.Metrics.IntersightHyperflexStatus),
+		metricIntersightHyperflexWriteIops:                        newMetricIntersightHyperflexWriteIops(mbc.Metrics.IntersightHyperflexWriteIops),
+		metricIntersightHyperflexWriteLatency:                     newMetricIntersightHyperflexWriteLatency(mbc.Metrics.IntersightHyperflexWriteLatency),
+		metricIntersightKubernetesClusterConnectionStatus:         newMetricIntersightKubernetesClusterConnectionStatus(mbc.Metrics.IntersightKubernetesClusterConnectionStatus),
+		metricIntersightResourceCount:                             newMetricIntersightResourceCount(mbc.Metrics.IntersightResourceCount),
+		metricIntersightResourceInfo:                              newMetricIntersightResourceInfo(mbc.Metrics.IntersightResourceInfo),
+		metricIntersightResourceStatus:                            newMetricIntersightResourceStatus(mbc.Metrics.IntersightResourceStatus),
+		metricIntersightScrapeLastSuccess:                         newMetricIntersightScrapeLastSuccess(mbc.Metrics.IntersightScrapeLastSuccess),
+		metricIntersightScrapePartialSuccess:                      newMetricIntersightScrapePartialSuccess(mbc.Metrics.IntersightScrapePartialSuccess),
+		metricIntersightStorageLifeLeft:                           newMetricIntersightStorageLifeLeft(mbc.Metrics.IntersightStorageLifeLeft),
+		metricIntersightStorageMediaErrorCount:                    newMetricIntersightStorageMediaErrorCount(mbc.Metrics.IntersightStorageMediaErrorCount),
+		metricIntersightStoragePowerOnHours:                       newMetricIntersightStoragePowerOnHours(mbc.Metrics.IntersightStoragePowerOnHours),
+		metricIntersightStoragePredictiveFailureCount:             newMetricIntersightStoragePredictiveFailureCount(mbc.Metrics.IntersightStoragePredictiveFailureCount),
+		metricIntersightStorageRebuildRate:                        newMetricIntersightStorageRebuildRate(mbc.Metrics.IntersightStorageRebuildRate),
+		metricIntersightStorageStatus:                             newMetricIntersightStorageStatus(mbc.Metrics.IntersightStorageStatus),
+		metricIntersightStorageTemperature:                        newMetricIntersightStorageTemperature(mbc.Metrics.IntersightStorageTemperature),
+		metricIntersightTargetConnectionStatus:                    newMetricIntersightTargetConnectionStatus(mbc.Metrics.IntersightTargetConnectionStatus),
+		metricIntersightTaskCount:                                 newMetricIntersightTaskCount(mbc.Metrics.IntersightTaskCount),
+		metricIntersightTaskStatus:                                newMetricIntersightTaskStatus(mbc.Metrics.IntersightTaskStatus),
+		metricIntersightTechsupportCount:                          newMetricIntersightTechsupportCount(mbc.Metrics.IntersightTechsupportCount),
+		metricIntersightTechsupportStatus:                         newMetricIntersightTechsupportStatus(mbc.Metrics.IntersightTechsupportStatus),
+		metricIntersightTelemetryQueryRows:                        newMetricIntersightTelemetryQueryRows(mbc.Metrics.IntersightTelemetryQueryRows),
+		metricIntersightUcsCPUIdleUtilization:                     newMetricIntersightUcsCPUIdleUtilization(mbc.Metrics.IntersightUcsCPUIdleUtilization),
+		metricIntersightUcsCPUSystemUtilization:                   newMetricIntersightUcsCPUSystemUtilization(mbc.Metrics.IntersightUcsCPUSystemUtilization),
+		metricIntersightUcsCurrent:                                newMetricIntersightUcsCurrent(mbc.Metrics.IntersightUcsCurrent),
+		metricIntersightUcsFanSpeed:                               newMetricIntersightUcsFanSpeed(mbc.Metrics.IntersightUcsFanSpeed),
+		metricIntersightUcsFanSpeedRatio:                          newMetricIntersightUcsFanSpeedRatio(mbc.Metrics.IntersightUcsFanSpeedRatio),
+		metricIntersightUcsFanStatus:                              newMetricIntersightUcsFanStatus(mbc.Metrics.IntersightUcsFanStatus),
+		metricIntersightUcsHostEnergy:                             newMetricIntersightUcsHostEnergy(mbc.Metrics.IntersightUcsHostEnergy),
+		metricIntersightUcsHostPower:                              newMetricIntersightUcsHostPower(mbc.Metrics.IntersightUcsHostPower),
+		metricIntersightUcsHostPowerState:                         newMetricIntersightUcsHostPowerState(mbc.Metrics.IntersightUcsHostPowerState),
+		metricIntersightUcsMemoryCached:                           newMetricIntersightUcsMemoryCached(mbc.Metrics.IntersightUcsMemoryCached),
+		metricIntersightUcsMemoryEccCorrectable:                   newMetricIntersightUcsMemoryEccCorrectable(mbc.Metrics.IntersightUcsMemoryEccCorrectable),
+		metricIntersightUcsMemoryEccUncorrectable:                 newMetricIntersightUcsMemoryEccUncorrectable(mbc.Metrics.IntersightUcsMemoryEccUncorrectable),
+		metricIntersightUcsMemoryFree:                             newMetricIntersightUcsMemoryFree(mbc.Metrics.IntersightUcsMemoryFree),
+		metricIntersightUcsMemoryModuleSize:                       newMetricIntersightUcsMemoryModuleSize(mbc.Metrics.IntersightUcsMemoryModuleSize),
+		metricIntersightUcsMemoryStatus:                           newMetricIntersightUcsMemoryStatus(mbc.Metrics.IntersightUcsMemoryStatus),
+		metricIntersightUcsMemoryUsed:                             newMetricIntersightUcsMemoryUsed(mbc.Metrics.IntersightUcsMemoryUsed),
+		metricIntersightUcsNetworkInterfaceResets:                 newMetricIntersightUcsNetworkInterfaceResets(mbc.Metrics.IntersightUcsNetworkInterfaceResets),
+		metricIntersightUcsNetworkLinkStatus:                      newMetricIntersightUcsNetworkLinkStatus(mbc.Metrics.IntersightUcsNetworkLinkStatus),
+		metricIntersightUcsNetworkLinkFailures:                    newMetricIntersightUcsNetworkLinkFailures(mbc.Metrics.IntersightUcsNetworkLinkFailures),
+		metricIntersightUcsNetworkReceive:                         newMetricIntersightUcsNetworkReceive(mbc.Metrics.IntersightUcsNetworkReceive),
+		metricIntersightUcsNetworkReceiveCrcErrors:                newMetricIntersightUcsNetworkReceiveCrcErrors(mbc.Metrics.IntersightUcsNetworkReceiveCrcErrors),
+		metricIntersightUcsNetworkReceiveDiscards:                 newMetricIntersightUcsNetworkReceiveDiscards(mbc.Metrics.IntersightUcsNetworkReceiveDiscards),
+		metricIntersightUcsNetworkReceiveDrops:                    newMetricIntersightUcsNetworkReceiveDrops(mbc.Metrics.IntersightUcsNetworkReceiveDrops),
+		metricIntersightUcsNetworkReceiveErrors:                   newMetricIntersightUcsNetworkReceiveErrors(mbc.Metrics.IntersightUcsNetworkReceiveErrors),
+		metricIntersightUcsNetworkReceiveNoBuffer:                 newMetricIntersightUcsNetworkReceiveNoBuffer(mbc.Metrics.IntersightUcsNetworkReceiveNoBuffer),
+		metricIntersightUcsNetworkReceivePackets:                  newMetricIntersightUcsNetworkReceivePackets(mbc.Metrics.IntersightUcsNetworkReceivePackets),
+		metricIntersightUcsNetworkReceivePauseFrames:              newMetricIntersightUcsNetworkReceivePauseFrames(mbc.Metrics.IntersightUcsNetworkReceivePauseFrames),
+		metricIntersightUcsNetworkSignalLosses:                    newMetricIntersightUcsNetworkSignalLosses(mbc.Metrics.IntersightUcsNetworkSignalLosses),
+		metricIntersightUcsNetworkSpeed:                           newMetricIntersightUcsNetworkSpeed(mbc.Metrics.IntersightUcsNetworkSpeed),
+		metricIntersightUcsNetworkTransmit:                        newMetricIntersightUcsNetworkTransmit(mbc.Metrics.IntersightUcsNetworkTransmit),
+		metricIntersightUcsNetworkTransmitDiscards:                newMetricIntersightUcsNetworkTransmitDiscards(mbc.Metrics.IntersightUcsNetworkTransmitDiscards),
+		metricIntersightUcsNetworkTransmitDrops:                   newMetricIntersightUcsNetworkTransmitDrops(mbc.Metrics.IntersightUcsNetworkTransmitDrops),
+		metricIntersightUcsNetworkTransmitErrors:                  newMetricIntersightUcsNetworkTransmitErrors(mbc.Metrics.IntersightUcsNetworkTransmitErrors),
+		metricIntersightUcsNetworkTransmitPackets:                 newMetricIntersightUcsNetworkTransmitPackets(mbc.Metrics.IntersightUcsNetworkTransmitPackets),
+		metricIntersightUcsNetworkTransmitPauseFrames:             newMetricIntersightUcsNetworkTransmitPauseFrames(mbc.Metrics.IntersightUcsNetworkTransmitPauseFrames),
+		metricIntersightUcsNetworkUtilization:                     newMetricIntersightUcsNetworkUtilization(mbc.Metrics.IntersightUcsNetworkUtilization),
+		metricIntersightUcsPowerSupplyOutputPower:                 newMetricIntersightUcsPowerSupplyOutputPower(mbc.Metrics.IntersightUcsPowerSupplyOutputPower),
+		metricIntersightUcsPowerSupplyStatus:                      newMetricIntersightUcsPowerSupplyStatus(mbc.Metrics.IntersightUcsPowerSupplyStatus),
+		metricIntersightUcsPowerSupplyUtilization:                 newMetricIntersightUcsPowerSupplyUtilization(mbc.Metrics.IntersightUcsPowerSupplyUtilization),
+		metricIntersightUcsSignalPowerReceive:                     newMetricIntersightUcsSignalPowerReceive(mbc.Metrics.IntersightUcsSignalPowerReceive),
+		metricIntersightUcsSignalPowerTransmit:                    newMetricIntersightUcsSignalPowerTransmit(mbc.Metrics.IntersightUcsSignalPowerTransmit),
+		metricIntersightUcsTemperature:                            newMetricIntersightUcsTemperature(mbc.Metrics.IntersightUcsTemperature),
+		metricIntersightUcsTemperatureLimitHighCritical:           newMetricIntersightUcsTemperatureLimitHighCritical(mbc.Metrics.IntersightUcsTemperatureLimitHighCritical),
+		metricIntersightUcsTemperatureLimitLowCritical:            newMetricIntersightUcsTemperatureLimitLowCritical(mbc.Metrics.IntersightUcsTemperatureLimitLowCritical),
+		metricIntersightUcsTemperatureStatus:                      newMetricIntersightUcsTemperatureStatus(mbc.Metrics.IntersightUcsTemperatureStatus),
+		metricIntersightUcsVoltage:                                newMetricIntersightUcsVoltage(mbc.Metrics.IntersightUcsVoltage),
+		metricIntersightVirtualMachineCount:                       newMetricIntersightVirtualMachineCount(mbc.Metrics.IntersightVirtualMachineCount),
+		metricIntersightVirtualMachineCPUCount:                    newMetricIntersightVirtualMachineCPUCount(mbc.Metrics.IntersightVirtualMachineCPUCount),
+		metricIntersightVirtualMachineMemory:                      newMetricIntersightVirtualMachineMemory(mbc.Metrics.IntersightVirtualMachineMemory),
+		metricIntersightVirtualMachinePowerState:                  newMetricIntersightVirtualMachinePowerState(mbc.Metrics.IntersightVirtualMachinePowerState),
+		metricIntersightWorkflowCount:                             newMetricIntersightWorkflowCount(mbc.Metrics.IntersightWorkflowCount),
+		metricIntersightWorkflowStatus:                            newMetricIntersightWorkflowStatus(mbc.Metrics.IntersightWorkflowStatus),
+		metricIseAccountingSessionCount:                           newMetricIseAccountingSessionCount(mbc.Metrics.IseAccountingSessionCount),
+		metricIseAlarmCount:                                       newMetricIseAlarmCount(mbc.Metrics.IseAlarmCount),
+		metricIseAPIEndpointError:                                 newMetricIseAPIEndpointError(mbc.Metrics.IseAPIEndpointError),
+		metricIseAPIRateLimited:                                   newMetricIseAPIRateLimited(mbc.Metrics.IseAPIRateLimited),
+		metricIseAPIRequestDuration:                               newMetricIseAPIRequestDuration(mbc.Metrics.IseAPIRequestDuration),
+		metricIseAPIRequestErrors:                                 newMetricIseAPIRequestErrors(mbc.Metrics.IseAPIRequestErrors),
+		metricIseAuthFailureReasonInfo:                            newMetricIseAuthFailureReasonInfo(mbc.Metrics.IseAuthFailureReasonInfo),
+		metricIseCertificateCount:                                 newMetricIseCertificateCount(mbc.Metrics.IseCertificateCount),
+		metricIseCertificateExpiration:                            newMetricIseCertificateExpiration(mbc.Metrics.IseCertificateExpiration),
+		metricIseControllerUp:                                     newMetricIseControllerUp(mbc.Metrics.IseControllerUp),
+		metricIseDataconnectQueryDuration:                         newMetricIseDataconnectQueryDuration(mbc.Metrics.IseDataconnectQueryDuration),
+		metricIseDataconnectQueryErrors:                           newMetricIseDataconnectQueryErrors(mbc.Metrics.IseDataconnectQueryErrors),
+		metricIseDataconnectQueryRows:                             newMetricIseDataconnectQueryRows(mbc.Metrics.IseDataconnectQueryRows),
+		metricIseDataconnectRowCount:                              newMetricIseDataconnectRowCount(mbc.Metrics.IseDataconnectRowCount),
+		metricIseDeploymentNodeCount:                              newMetricIseDeploymentNodeCount(mbc.Metrics.IseDeploymentNodeCount),
+		metricIseDeploymentNodeStatus:                             newMetricIseDeploymentNodeStatus(mbc.Metrics.IseDeploymentNodeStatus),
+		metricIseEndpointCount:                                    newMetricIseEndpointCount(mbc.Metrics.IseEndpointCount),
+		metricIseEndpointPostureCount:                             newMetricIseEndpointPostureCount(mbc.Metrics.IseEndpointPostureCount),
+		metricIseEndpointPostureStatus:                            newMetricIseEndpointPostureStatus(mbc.Metrics.IseEndpointPostureStatus),
+		metricIseEndpointProfileCount:                             newMetricIseEndpointProfileCount(mbc.Metrics.IseEndpointProfileCount),
+		metricIseEndpointStatus:                                   newMetricIseEndpointStatus(mbc.Metrics.IseEndpointStatus),
+		metricIseLicenseCount:                                     newMetricIseLicenseCount(mbc.Metrics.IseLicenseCount),
+		metricIseLicenseStatus:                                    newMetricIseLicenseStatus(mbc.Metrics.IseLicenseStatus),
+		metricIseNetworkDeviceCount:                               newMetricIseNetworkDeviceCount(mbc.Metrics.IseNetworkDeviceCount),
+		metricIseNetworkDeviceStatus:                              newMetricIseNetworkDeviceStatus(mbc.Metrics.IseNetworkDeviceStatus),
+		metricIsePolicyObjectCount:                                newMetricIsePolicyObjectCount(mbc.Metrics.IsePolicyObjectCount),
+		metricIsePolicyStatus:                                     newMetricIsePolicyStatus(mbc.Metrics.IsePolicyStatus),
+		metricIseProfilerPolicyStatus:                             newMetricIseProfilerPolicyStatus(mbc.Metrics.IseProfilerPolicyStatus),
+		metricIsePxgridMessageCount:                               newMetricIsePxgridMessageCount(mbc.Metrics.IsePxgridMessageCount),
+		metricIsePxgridServiceStatus:                              newMetricIsePxgridServiceStatus(mbc.Metrics.IsePxgridServiceStatus),
+		metricIsePxgridSubscriptionStatus:                         newMetricIsePxgridSubscriptionStatus(mbc.Metrics.IsePxgridSubscriptionStatus),
+		metricIseRadiusFailureCount:                               newMetricIseRadiusFailureCount(mbc.Metrics.IseRadiusFailureCount),
+		metricIseResourceInfo:                                     newMetricIseResourceInfo(mbc.Metrics.IseResourceInfo),
+		metricIseResourceStatus:                                   newMetricIseResourceStatus(mbc.Metrics.IseResourceStatus),
+		metricIseScrapeLastSuccess:                                newMetricIseScrapeLastSuccess(mbc.Metrics.IseScrapeLastSuccess),
+		metricIseScrapePartialSuccess:                             newMetricIseScrapePartialSuccess(mbc.Metrics.IseScrapePartialSuccess),
+		metricIseServiceSkipped:                                   newMetricIseServiceSkipped(mbc.Metrics.IseServiceSkipped),
+		metricIseServiceUnavailable:                               newMetricIseServiceUnavailable(mbc.Metrics.IseServiceUnavailable),
+		metricIseSessionActiveCount:                               newMetricIseSessionActiveCount(mbc.Metrics.IseSessionActiveCount),
+		metricIseSessionCount:                                     newMetricIseSessionCount(mbc.Metrics.IseSessionCount),
+		metricIseTacacsFailureCount:                               newMetricIseTacacsFailureCount(mbc.Metrics.IseTacacsFailureCount),
+		metricIseTrustsecResourceCount:                            newMetricIseTrustsecResourceCount(mbc.Metrics.IseTrustsecResourceCount),
+		metricIseTrustsecResourceStatus:                           newMetricIseTrustsecResourceStatus(mbc.Metrics.IseTrustsecResourceStatus),
+		metricIseWebhookDeliveryCount:                             newMetricIseWebhookDeliveryCount(mbc.Metrics.IseWebhookDeliveryCount),
+		metricMerakiAPIRequestDuration:                            newMetricMerakiAPIRequestDuration(mbc.Metrics.MerakiAPIRequestDuration),
+		metricMerakiAPIRequestErrors:                              newMetricMerakiAPIRequestErrors(mbc.Metrics.MerakiAPIRequestErrors),
+		metricMerakiAPIRequestRateLimited:                         newMetricMerakiAPIRequestRateLimited(mbc.Metrics.MerakiAPIRequestRateLimited),
+		metricMerakiAppliancePerformanceScore:                     newMetricMerakiAppliancePerformanceScore(mbc.Metrics.MerakiAppliancePerformanceScore),
+		metricMerakiControllerUp:                                  newMetricMerakiControllerUp(mbc.Metrics.MerakiControllerUp),
+		metricMerakiDeviceStatus:                                  newMetricMerakiDeviceStatus(mbc.Metrics.MerakiDeviceStatus),
+		metricMerakiPowerModuleStatus:                             newMetricMerakiPowerModuleStatus(mbc.Metrics.MerakiPowerModuleStatus),
+		metricMerakiScrapeLastSuccess:                             newMetricMerakiScrapeLastSuccess(mbc.Metrics.MerakiScrapeLastSuccess),
+		metricMerakiSwitchPortAlertActive:                         newMetricMerakiSwitchPortAlertActive(mbc.Metrics.MerakiSwitchPortAlertActive),
+		metricMerakiSwitchPortPoeAllocated:                        newMetricMerakiSwitchPortPoeAllocated(mbc.Metrics.MerakiSwitchPortPoeAllocated),
+		metricMerakiSwitchPortUsage:                               newMetricMerakiSwitchPortUsage(mbc.Metrics.MerakiSwitchPortUsage),
+		metricMerakiUplinkCellularSignalRsrp:                      newMetricMerakiUplinkCellularSignalRsrp(mbc.Metrics.MerakiUplinkCellularSignalRsrp),
+		metricMerakiUplinkCellularSignalRsrq:                      newMetricMerakiUplinkCellularSignalRsrq(mbc.Metrics.MerakiUplinkCellularSignalRsrq),
+		metricMerakiUplinkLatency:                                 newMetricMerakiUplinkLatency(mbc.Metrics.MerakiUplinkLatency),
+		metricMerakiUplinkLoss:                                    newMetricMerakiUplinkLoss(mbc.Metrics.MerakiUplinkLoss),
+		metricMerakiUplinkStatus:                                  newMetricMerakiUplinkStatus(mbc.Metrics.MerakiUplinkStatus),
+		metricMerakiVpnPeerJitter:                                 newMetricMerakiVpnPeerJitter(mbc.Metrics.MerakiVpnPeerJitter),
+		metricMerakiVpnPeerLatency:                                newMetricMerakiVpnPeerLatency(mbc.Metrics.MerakiVpnPeerLatency),
+		metricMerakiVpnPeerLoss:                                   newMetricMerakiVpnPeerLoss(mbc.Metrics.MerakiVpnPeerLoss),
+		metricMerakiVpnPeerMos:                                    newMetricMerakiVpnPeerMos(mbc.Metrics.MerakiVpnPeerMos),
+		metricMerakiVpnPeerStatus:                                 newMetricMerakiVpnPeerStatus(mbc.Metrics.MerakiVpnPeerStatus),
+		metricMerakiVpnPeerUsage:                                  newMetricMerakiVpnPeerUsage(mbc.Metrics.MerakiVpnPeerUsage),
+		metricMerakiWirelessChannelUtilization:                    newMetricMerakiWirelessChannelUtilization(mbc.Metrics.MerakiWirelessChannelUtilization),
+		metricMerakiWirelessClientCount:                           newMetricMerakiWirelessClientCount(mbc.Metrics.MerakiWirelessClientCount),
+		metricMerakiWirelessPacketCount:                           newMetricMerakiWirelessPacketCount(mbc.Metrics.MerakiWirelessPacketCount),
+		metricMerakiWirelessPacketLoss:                            newMetricMerakiWirelessPacketLoss(mbc.Metrics.MerakiWirelessPacketLoss),
+		metricMerakiWirelessPacketLossPercentage:                  newMetricMerakiWirelessPacketLossPercentage(mbc.Metrics.MerakiWirelessPacketLossPercentage),
+		metricMerakiWirelessSsidStatus:                            newMetricMerakiWirelessSsidStatus(mbc.Metrics.MerakiWirelessSsidStatus),
+		metricNexusDashboardAPIEndpointError:                      newMetricNexusDashboardAPIEndpointError(mbc.Metrics.NexusDashboardAPIEndpointError),
+		metricNexusDashboardAPIRateLimited:                        newMetricNexusDashboardAPIRateLimited(mbc.Metrics.NexusDashboardAPIRateLimited),
+		metricNexusDashboardAPIRequestDuration:                    newMetricNexusDashboardAPIRequestDuration(mbc.Metrics.NexusDashboardAPIRequestDuration),
+		metricNexusDashboardAPIRequestErrors:                      newMetricNexusDashboardAPIRequestErrors(mbc.Metrics.NexusDashboardAPIRequestErrors),
+		metricNexusDashboardAuditRecordCount:                      newMetricNexusDashboardAuditRecordCount(mbc.Metrics.NexusDashboardAuditRecordCount),
+		metricNexusDashboardConfigCompliance:                      newMetricNexusDashboardConfigCompliance(mbc.Metrics.NexusDashboardConfigCompliance),
+		metricNexusDashboardDataBrokerRuleCount:                   newMetricNexusDashboardDataBrokerRuleCount(mbc.Metrics.NexusDashboardDataBrokerRuleCount),
+		metricNexusDashboardDataBrokerSessionCount:                newMetricNexusDashboardDataBrokerSessionCount(mbc.Metrics.NexusDashboardDataBrokerSessionCount),
+		metricNexusDashboardDataBrokerStatus:                      newMetricNexusDashboardDataBrokerStatus(mbc.Metrics.NexusDashboardDataBrokerStatus),
+		metricNexusDashboardDeploymentStatus:                      newMetricNexusDashboardDeploymentStatus(mbc.Metrics.NexusDashboardDeploymentStatus),
+		metricNexusDashboardEndpointCount:                         newMetricNexusDashboardEndpointCount(mbc.Metrics.NexusDashboardEndpointCount),
+		metricNexusDashboardEventCount:                            newMetricNexusDashboardEventCount(mbc.Metrics.NexusDashboardEventCount),
+		metricNexusDashboardFabricHealth:                          newMetricNexusDashboardFabricHealth(mbc.Metrics.NexusDashboardFabricHealth),
+		metricNexusDashboardInsightsAnomalyActive:                 newMetricNexusDashboardInsightsAnomalyActive(mbc.Metrics.NexusDashboardInsightsAnomalyActive),
+		metricNexusDashboardInsightsAnomalyCount:                  newMetricNexusDashboardInsightsAnomalyCount(mbc.Metrics.NexusDashboardInsightsAnomalyCount),
+		metricNexusDashboardInsightsConfidence:                    newMetricNexusDashboardInsightsConfidence(mbc.Metrics.NexusDashboardInsightsConfidence),
+		metricNexusDashboardInsightsScore:                         newMetricNexusDashboardInsightsScore(mbc.Metrics.NexusDashboardInsightsScore),
+		metricNexusDashboardInsightsStatus:                        newMetricNexusDashboardInsightsStatus(mbc.Metrics.NexusDashboardInsightsStatus),
+		metricNexusDashboardOrchestratorDeploymentCount:           newMetricNexusDashboardOrchestratorDeploymentCount(mbc.Metrics.NexusDashboardOrchestratorDeploymentCount),
+		metricNexusDashboardOrchestratorDeploymentStatus:          newMetricNexusDashboardOrchestratorDeploymentStatus(mbc.Metrics.NexusDashboardOrchestratorDeploymentStatus),
+		metricNexusDashboardOrchestratorPolicyDeltaCount:          newMetricNexusDashboardOrchestratorPolicyDeltaCount(mbc.Metrics.NexusDashboardOrchestratorPolicyDeltaCount),
+		metricNexusDashboardResourceCount:                         newMetricNexusDashboardResourceCount(mbc.Metrics.NexusDashboardResourceCount),
+		metricNexusDashboardResourceInfo:                          newMetricNexusDashboardResourceInfo(mbc.Metrics.NexusDashboardResourceInfo),
+		metricNexusDashboardResourceStatus:                        newMetricNexusDashboardResourceStatus(mbc.Metrics.NexusDashboardResourceStatus),
+		metricNexusDashboardScrapeLastSuccess:                     newMetricNexusDashboardScrapeLastSuccess(mbc.Metrics.NexusDashboardScrapeLastSuccess),
+		metricNexusDashboardScrapePartialSuccess:                  newMetricNexusDashboardScrapePartialSuccess(mbc.Metrics.NexusDashboardScrapePartialSuccess),
+		metricNexusDashboardServiceHealth:                         newMetricNexusDashboardServiceHealth(mbc.Metrics.NexusDashboardServiceHealth),
+		metricNexusDashboardServiceSkipped:                        newMetricNexusDashboardServiceSkipped(mbc.Metrics.NexusDashboardServiceSkipped),
+		metricNexusDashboardServiceUnavailable:                    newMetricNexusDashboardServiceUnavailable(mbc.Metrics.NexusDashboardServiceUnavailable),
+		metricNexusDashboardStorageUtilization:                    newMetricNexusDashboardStorageUtilization(mbc.Metrics.NexusDashboardStorageUtilization),
+		metricNexusDashboardVpcPeerCount:                          newMetricNexusDashboardVpcPeerCount(mbc.Metrics.NexusDashboardVpcPeerCount),
+		metricSdwanAPIRateLimited:                                 newMetricSdwanAPIRateLimited(mbc.Metrics.SdwanAPIRateLimited),
+		metricSdwanAPIRequestDuration:                             newMetricSdwanAPIRequestDuration(mbc.Metrics.SdwanAPIRequestDuration),
+		metricSdwanAPIRequestErrors:                               newMetricSdwanAPIRequestErrors(mbc.Metrics.SdwanAPIRequestErrors),
+		metricSdwanAppRouteJitter:                                 newMetricSdwanAppRouteJitter(mbc.Metrics.SdwanAppRouteJitter),
+		metricSdwanAppRouteLatency:                                newMetricSdwanAppRouteLatency(mbc.Metrics.SdwanAppRouteLatency),
+		metricSdwanAppRouteLoss:                                   newMetricSdwanAppRouteLoss(mbc.Metrics.SdwanAppRouteLoss),
+		metricSdwanAppRouteSLAStatus:                              newMetricSdwanAppRouteSLAStatus(mbc.Metrics.SdwanAppRouteSLAStatus),
+		metricSdwanBfdSessionCount:                                newMetricSdwanBfdSessionCount(mbc.Metrics.SdwanBfdSessionCount),
+		metricSdwanBfdSessionFlapCount:                            newMetricSdwanBfdSessionFlapCount(mbc.Metrics.SdwanBfdSessionFlapCount),
+		metricSdwanBfdSessionStatus:                               newMetricSdwanBfdSessionStatus(mbc.Metrics.SdwanBfdSessionStatus),
+		metricSdwanBfdSessionTransitions:                          newMetricSdwanBfdSessionTransitions(mbc.Metrics.SdwanBfdSessionTransitions),
+		metricSdwanCollectionObjectCount:                          newMetricSdwanCollectionObjectCount(mbc.Metrics.SdwanCollectionObjectCount),
+		metricSdwanControlActualConnections:                       newMetricSdwanControlActualConnections(mbc.Metrics.SdwanControlActualConnections),
+		metricSdwanControlConnectionCount:                         newMetricSdwanControlConnectionCount(mbc.Metrics.SdwanControlConnectionCount),
+		metricSdwanControlConnectionStatus:                        newMetricSdwanControlConnectionStatus(mbc.Metrics.SdwanControlConnectionStatus),
+		metricSdwanControlExpectedConnections:                     newMetricSdwanControlExpectedConnections(mbc.Metrics.SdwanControlExpectedConnections),
+		metricSdwanDeviceCertificateStatus:                        newMetricSdwanDeviceCertificateStatus(mbc.Metrics.SdwanDeviceCertificateStatus),
+		metricSdwanDeviceReachabilityStatus:                       newMetricSdwanDeviceReachabilityStatus(mbc.Metrics.SdwanDeviceReachabilityStatus),
+		metricSdwanDeviceValidityStatus:                           newMetricSdwanDeviceValidityStatus(mbc.Metrics.SdwanDeviceValidityStatus),
+		metricSdwanEventCount:                                     newMetricSdwanEventCount(mbc.Metrics.SdwanEventCount),
+		metricSdwanInventoryDeviceCount:                           newMetricSdwanInventoryDeviceCount(mbc.Metrics.SdwanInventoryDeviceCount),
+		metricSdwanManagerEndpointStatus:                          newMetricSdwanManagerEndpointStatus(mbc.Metrics.SdwanManagerEndpointStatus),
+		metricSdwanManagerHealthScore:                             newMetricSdwanManagerHealthScore(mbc.Metrics.SdwanManagerHealthScore),
+		metricSdwanManagerStatus:                                  newMetricSdwanManagerStatus(mbc.Metrics.SdwanManagerStatus),
+		metricSdwanManagerUp:                                      newMetricSdwanManagerUp(mbc.Metrics.SdwanManagerUp),
+		metricSdwanResourceInfo:                                   newMetricSdwanResourceInfo(mbc.Metrics.SdwanResourceInfo),
+		metricSdwanResourceStatus:                                 newMetricSdwanResourceStatus(mbc.Metrics.SdwanResourceStatus),
+		metricSdwanScrapeLastSuccess:                              newMetricSdwanScrapeLastSuccess(mbc.Metrics.SdwanScrapeLastSuccess),
+		metricSdwanScrapePartialSuccess:                           newMetricSdwanScrapePartialSuccess(mbc.Metrics.SdwanScrapePartialSuccess),
+		metricSdwanServiceSkipped:                                 newMetricSdwanServiceSkipped(mbc.Metrics.SdwanServiceSkipped),
+		metricSdwanServiceUnavailable:                             newMetricSdwanServiceUnavailable(mbc.Metrics.SdwanServiceUnavailable),
+		metricSdwanTransportInterfaceStatus:                       newMetricSdwanTransportInterfaceStatus(mbc.Metrics.SdwanTransportInterfaceStatus),
+		metricSystemCPULogicalCount:                               newMetricSystemCPULogicalCount(mbc.Metrics.SystemCPULogicalCount),
+		metricSystemCPUUtilization:                                newMetricSystemCPUUtilization(mbc.Metrics.SystemCPUUtilization),
+		metricSystemMemoryUtilization:                             newMetricSystemMemoryUtilization(mbc.Metrics.SystemMemoryUtilization),
+		metricSystemNetworkErrors:                                 newMetricSystemNetworkErrors(mbc.Metrics.SystemNetworkErrors),
+		metricSystemNetworkInterfaceStatus:                        newMetricSystemNetworkInterfaceStatus(mbc.Metrics.SystemNetworkInterfaceStatus),
+		metricSystemNetworkIo:                                     newMetricSystemNetworkIo(mbc.Metrics.SystemNetworkIo),
+		metricSystemNetworkPacketCount:                            newMetricSystemNetworkPacketCount(mbc.Metrics.SystemNetworkPacketCount),
+		metricSystemNetworkPacketDropped:                          newMetricSystemNetworkPacketDropped(mbc.Metrics.SystemNetworkPacketDropped),
+		metricSystemUptime:                                        newMetricSystemUptime(mbc.Metrics.SystemUptime),
+		resourceAttributeIncludeFilter:                            make(map[string]filter.Filter),
+		resourceAttributeExcludeFilter:                            make(map[string]filter.Filter),
 	}
 	if mbc.ResourceAttributes.CiscoOsName.MetricsInclude != nil {
 		mb.resourceAttributeIncludeFilter["cisco.os.name"] = filter.CreateFilter(mbc.ResourceAttributes.CiscoOsName.MetricsInclude)
@@ -2886,12 +23896,92 @@ func (mb *MetricsBuilder) EmitForResource(options ...ResourceMetricsOption) {
 	ils.Scope().SetName(ScopeName)
 	ils.Scope().SetVersion(mb.buildInfo.Version)
 	ils.Metrics().EnsureCapacity(mb.metricsCapacity)
+	mb.metricAciAPIEndpointError.emit(ils.Metrics())
+	mb.metricAciAPIRateLimited.emit(ils.Metrics())
+	mb.metricAciAPIRequestDuration.emit(ils.Metrics())
+	mb.metricAciAPIRequestErrors.emit(ils.Metrics())
+	mb.metricAciAuditRecordCount.emit(ils.Metrics())
+	mb.metricAciControllerUp.emit(ils.Metrics())
+	mb.metricAciEndpointCount.emit(ils.Metrics())
+	mb.metricAciEndpointPresent.emit(ils.Metrics())
+	mb.metricAciEventCount.emit(ils.Metrics())
+	mb.metricAciFabricHealth.emit(ils.Metrics())
+	mb.metricAciFaultActive.emit(ils.Metrics())
+	mb.metricAciFaultCount.emit(ils.Metrics())
+	mb.metricAciResourceCount.emit(ils.Metrics())
+	mb.metricAciResourceInfo.emit(ils.Metrics())
+	mb.metricAciResourceStatus.emit(ils.Metrics())
+	mb.metricAciScrapeLastSuccess.emit(ils.Metrics())
+	mb.metricAciScrapePartialSuccess.emit(ils.Metrics())
+	mb.metricAciTenantObjectCount.emit(ils.Metrics())
+	mb.metricAciTenantStatus.emit(ils.Metrics())
+	mb.metricCatalystCenterAPIRateLimited.emit(ils.Metrics())
+	mb.metricCatalystCenterAPIRequestDuration.emit(ils.Metrics())
+	mb.metricCatalystCenterAPIRequestErrors.emit(ils.Metrics())
+	mb.metricCatalystCenterClientCount.emit(ils.Metrics())
+	mb.metricCatalystCenterClientDetailHealthScore.emit(ils.Metrics())
+	mb.metricCatalystCenterClientHealthScore.emit(ils.Metrics())
+	mb.metricCatalystCenterClientIssueCount.emit(ils.Metrics())
+	mb.metricCatalystCenterClientNetworkIo.emit(ils.Metrics())
+	mb.metricCatalystCenterClientUniqueCount.emit(ils.Metrics())
+	mb.metricCatalystCenterClientWirelessRssi.emit(ils.Metrics())
+	mb.metricCatalystCenterClientWirelessSnr.emit(ils.Metrics())
+	mb.metricCatalystCenterDeviceCollectionStatus.emit(ils.Metrics())
+	mb.metricCatalystCenterDeviceDetailCommunicationStatus.emit(ils.Metrics())
+	mb.metricCatalystCenterDeviceDetailHealthScore.emit(ils.Metrics())
+	mb.metricCatalystCenterDeviceInterfaceCount.emit(ils.Metrics())
+	mb.metricCatalystCenterDeviceReachabilityStatus.emit(ils.Metrics())
+	mb.metricCatalystCenterDeviceUptime.emit(ils.Metrics())
+	mb.metricCatalystCenterInterfaceCount.emit(ils.Metrics())
+	mb.metricCatalystCenterInventoryDeviceCount.emit(ils.Metrics())
+	mb.metricCatalystCenterIssueActiveCount.emit(ils.Metrics())
+	mb.metricCatalystCenterIssueCount.emit(ils.Metrics())
+	mb.metricCatalystCenterNetworkDeviceCount.emit(ils.Metrics())
+	mb.metricCatalystCenterNetworkHealthCategoryScore.emit(ils.Metrics())
+	mb.metricCatalystCenterNetworkHealthEntityCount.emit(ils.Metrics())
+	mb.metricCatalystCenterNetworkHealthEntityScore.emit(ils.Metrics())
+	mb.metricCatalystCenterNetworkHealthScore.emit(ils.Metrics())
+	mb.metricCatalystCenterScrapeLastSuccess.emit(ils.Metrics())
+	mb.metricCatalystCenterScrapePartialSuccess.emit(ils.Metrics())
+	mb.metricCatalystCenterSiteClientCount.emit(ils.Metrics())
+	mb.metricCatalystCenterSiteClientHealthPercentage.emit(ils.Metrics())
+	mb.metricCatalystCenterSiteHealthCount.emit(ils.Metrics())
+	mb.metricCatalystCenterSiteIssueCount.emit(ils.Metrics())
+	mb.metricCatalystCenterSiteNetworkDeviceCount.emit(ils.Metrics())
+	mb.metricCatalystCenterSiteNetworkDeviceHealthPercentage.emit(ils.Metrics())
+	mb.metricCatalystCenterTopologyLinkCount.emit(ils.Metrics())
+	mb.metricCatalystCenterTopologyNodeCount.emit(ils.Metrics())
+	mb.metricCiscoCatalyst9800ReceiverActiveSubscriptions.emit(ils.Metrics())
+	mb.metricCiscoCatalyst9800ReceiverCompactGpbPayloads.emit(ils.Metrics())
+	mb.metricCiscoCatalyst9800ReceiverDecodeErrors.emit(ils.Metrics())
+	mb.metricCiscoCatalyst9800ReceiverDroppedDatapoints.emit(ils.Metrics())
+	mb.metricCiscoCatalyst9800ReceiverLastSuccessTimestamp.emit(ils.Metrics())
+	mb.metricCiscoCatalyst9800ReceiverReconnects.emit(ils.Metrics())
+	mb.metricCiscoCatalyst9800ReceiverTargetLastSuccessTimestamp.emit(ils.Metrics())
+	mb.metricCiscoCatalyst9800ReceiverTargetReconnects.emit(ils.Metrics())
+	mb.metricCiscoCatalyst9800ReceiverTargetSubscriptionActive.emit(ils.Metrics())
+	mb.metricCiscoCatalyst9800ReceiverTargetUpdates.emit(ils.Metrics())
+	mb.metricCiscoCatalyst9800ReceiverUnsupportedPaths.emit(ils.Metrics())
+	mb.metricCiscoCatalyst9800ReceiverUpdates.emit(ils.Metrics())
 	mb.metricCiscoDeviceUp.emit(ils.Metrics())
 	mb.metricCiscoInterfaceAdminStatus.emit(ils.Metrics())
+	mb.metricCiscoInterfaceDropRate.emit(ils.Metrics())
 	mb.metricCiscoInterfaceIoRate.emit(ils.Metrics())
 	mb.metricCiscoInterfacePacketRate.emit(ils.Metrics())
 	mb.metricCiscoInterfaceSpeed.emit(ils.Metrics())
 	mb.metricCiscoInterfaceUtilization.emit(ils.Metrics())
+	mb.metricCiscoIosxrReceiverActiveSubscriptions.emit(ils.Metrics())
+	mb.metricCiscoIosxrReceiverCompactGpbPayloads.emit(ils.Metrics())
+	mb.metricCiscoIosxrReceiverDecodeErrors.emit(ils.Metrics())
+	mb.metricCiscoIosxrReceiverDroppedDatapoints.emit(ils.Metrics())
+	mb.metricCiscoIosxrReceiverLastSuccessTimestamp.emit(ils.Metrics())
+	mb.metricCiscoIosxrReceiverReconnects.emit(ils.Metrics())
+	mb.metricCiscoIosxrReceiverTargetLastSuccessTimestamp.emit(ils.Metrics())
+	mb.metricCiscoIosxrReceiverTargetReconnects.emit(ils.Metrics())
+	mb.metricCiscoIosxrReceiverTargetSubscriptionActive.emit(ils.Metrics())
+	mb.metricCiscoIosxrReceiverTargetUpdates.emit(ils.Metrics())
+	mb.metricCiscoIosxrReceiverUnsupportedPaths.emit(ils.Metrics())
+	mb.metricCiscoIosxrReceiverUpdates.emit(ils.Metrics())
 	mb.metricCiscoOpticsEsnr.emit(ils.Metrics())
 	mb.metricCiscoOpticsLaserBiasCurrent.emit(ils.Metrics())
 	mb.metricCiscoOpticsPreFecBer.emit(ils.Metrics())
@@ -2903,6 +23993,298 @@ func (mb *MetricsBuilder) EmitForResource(options ...ResourceMetricsOption) {
 	mb.metricCiscoOpticsTemperature.emit(ils.Metrics())
 	mb.metricCiscoOpticsTxPower.emit(ils.Metrics())
 	mb.metricCiscoOpticsVoltage.emit(ils.Metrics())
+	mb.metricCiscoScrapePartialSuccess.emit(ils.Metrics())
+	mb.metricCiscoTopologyNeighborInfo.emit(ils.Metrics())
+	mb.metricCiscoTransceiverSensor.emit(ils.Metrics())
+	mb.metricCiscoWlcApCapwapEncryptionEnabled.emit(ils.Metrics())
+	mb.metricCiscoWlcApCapwapState.emit(ils.Metrics())
+	mb.metricCiscoWlcApDisconnect.emit(ils.Metrics())
+	mb.metricCiscoWlcApDisconnectReasonInfo.emit(ils.Metrics())
+	mb.metricCiscoWlcApJoinFailureReasonInfo.emit(ils.Metrics())
+	mb.metricCiscoWlcApJoinStatus.emit(ils.Metrics())
+	mb.metricCiscoWlcAuthRadiusAccessAcceptCount.emit(ils.Metrics())
+	mb.metricCiscoWlcAuthRadiusAccessRejectCount.emit(ils.Metrics())
+	mb.metricCiscoWlcAuthRadiusBadAuthenticatorCount.emit(ils.Metrics())
+	mb.metricCiscoWlcAuthRadiusResponseCount.emit(ils.Metrics())
+	mb.metricCiscoWlcAuthRadiusResponseDelayAvg.emit(ils.Metrics())
+	mb.metricCiscoWlcAuthRadiusResponseDelayMax.emit(ils.Metrics())
+	mb.metricCiscoWlcAuthRadiusTimeoutCount.emit(ils.Metrics())
+	mb.metricCiscoWlcClientAuthFailureReasonInfo.emit(ils.Metrics())
+	mb.metricCiscoWlcClientConnectionState.emit(ils.Metrics())
+	mb.metricCiscoWlcClientNetworkIo.emit(ils.Metrics())
+	mb.metricCiscoWlcClientNetworkPackets.emit(ils.Metrics())
+	mb.metricCiscoWlcClientRoamCount.emit(ils.Metrics())
+	mb.metricCiscoWlcClientRoamFailureCount.emit(ils.Metrics())
+	mb.metricCiscoWlcClientRoamTypeInfo.emit(ils.Metrics())
+	mb.metricCiscoWlcClientWirelessRssi.emit(ils.Metrics())
+	mb.metricCiscoWlcClientWirelessSnr.emit(ils.Metrics())
+	mb.metricCiscoWlcControllerCPUUtilization.emit(ils.Metrics())
+	mb.metricCiscoWlcControllerMemoryBytes.emit(ils.Metrics())
+	mb.metricCiscoWlcControllerReceiverActiveSubscriptions.emit(ils.Metrics())
+	mb.metricCiscoWlcControllerReceiverDecodeErrors.emit(ils.Metrics())
+	mb.metricCiscoWlcControllerReceiverSubscriptionActive.emit(ils.Metrics())
+	mb.metricCiscoWlcControllerReceiverUpdates.emit(ils.Metrics())
+	mb.metricCiscoWlcHaEnabled.emit(ils.Metrics())
+	mb.metricCiscoWlcHaStandbyFailureCount.emit(ils.Metrics())
+	mb.metricCiscoWlcHaState.emit(ils.Metrics())
+	mb.metricCiscoWlcHaSwitchoverCount.emit(ils.Metrics())
+	mb.metricCiscoWlcMobilityHandoffCount.emit(ils.Metrics())
+	mb.metricCiscoWlcMobilityHandoffFailureCount.emit(ils.Metrics())
+	mb.metricCiscoWlcMobilityPeerStatus.emit(ils.Metrics())
+	mb.metricCiscoWlcMobilityRoamCount.emit(ils.Metrics())
+	mb.metricCiscoWlcRfChannelChangeCount.emit(ils.Metrics())
+	mb.metricCiscoWlcRfChannelRecommended.emit(ils.Metrics())
+	mb.metricCiscoWlcRfChannelUtilization.emit(ils.Metrics())
+	mb.metricCiscoWlcRfClientCount.emit(ils.Metrics())
+	mb.metricCiscoWlcRfNoiseFloor.emit(ils.Metrics())
+	mb.metricCiscoWlcSsidChannelUtilization.emit(ils.Metrics())
+	mb.metricCiscoWlcSsidClientCount.emit(ils.Metrics())
+	mb.metricCiscoWlcSsidNetworkIo.emit(ils.Metrics())
+	mb.metricCiscoWlcSsidRetryCount.emit(ils.Metrics())
+	mb.metricFmcAPIEndpointError.emit(ils.Metrics())
+	mb.metricFmcAPIRateLimited.emit(ils.Metrics())
+	mb.metricFmcAPIRequestDuration.emit(ils.Metrics())
+	mb.metricFmcAPIRequestErrors.emit(ils.Metrics())
+	mb.metricFmcAuditRecordCount.emit(ils.Metrics())
+	mb.metricFmcDeploymentPendingCount.emit(ils.Metrics())
+	mb.metricFmcDeploymentStatus.emit(ils.Metrics())
+	mb.metricFmcHaStatus.emit(ils.Metrics())
+	mb.metricFmcHealthEventCount.emit(ils.Metrics())
+	mb.metricFmcHealthStatus.emit(ils.Metrics())
+	mb.metricFmcManagerUp.emit(ils.Metrics())
+	mb.metricFmcPolicyObjectCount.emit(ils.Metrics())
+	mb.metricFmcResourceCount.emit(ils.Metrics())
+	mb.metricFmcResourceInfo.emit(ils.Metrics())
+	mb.metricFmcResourceStatus.emit(ils.Metrics())
+	mb.metricFmcScrapeLastSuccess.emit(ils.Metrics())
+	mb.metricFmcScrapePartialSuccess.emit(ils.Metrics())
+	mb.metricFmcVpnTunnelStatus.emit(ils.Metrics())
+	mb.metricIntersightAdvisoryActive.emit(ils.Metrics())
+	mb.metricIntersightAdvisoryCount.emit(ils.Metrics())
+	mb.metricIntersightAlarmActive.emit(ils.Metrics())
+	mb.metricIntersightAlarmCount.emit(ils.Metrics())
+	mb.metricIntersightAPIRateLimited.emit(ils.Metrics())
+	mb.metricIntersightAPIRequestDuration.emit(ils.Metrics())
+	mb.metricIntersightAPIRequestErrors.emit(ils.Metrics())
+	mb.metricIntersightAuditRecordCount.emit(ils.Metrics())
+	mb.metricIntersightComputeAvailableMemory.emit(ils.Metrics())
+	mb.metricIntersightComputeThreadCount.emit(ils.Metrics())
+	mb.metricIntersightFaultCount.emit(ils.Metrics())
+	mb.metricIntersightFirmwareBundleInfo.emit(ils.Metrics())
+	mb.metricIntersightHclStatus.emit(ils.Metrics())
+	mb.metricIntersightHclStatusCount.emit(ils.Metrics())
+	mb.metricIntersightHyperflexReadIops.emit(ils.Metrics())
+	mb.metricIntersightHyperflexReadLatency.emit(ils.Metrics())
+	mb.metricIntersightHyperflexStatus.emit(ils.Metrics())
+	mb.metricIntersightHyperflexWriteIops.emit(ils.Metrics())
+	mb.metricIntersightHyperflexWriteLatency.emit(ils.Metrics())
+	mb.metricIntersightKubernetesClusterConnectionStatus.emit(ils.Metrics())
+	mb.metricIntersightResourceCount.emit(ils.Metrics())
+	mb.metricIntersightResourceInfo.emit(ils.Metrics())
+	mb.metricIntersightResourceStatus.emit(ils.Metrics())
+	mb.metricIntersightScrapeLastSuccess.emit(ils.Metrics())
+	mb.metricIntersightScrapePartialSuccess.emit(ils.Metrics())
+	mb.metricIntersightStorageLifeLeft.emit(ils.Metrics())
+	mb.metricIntersightStorageMediaErrorCount.emit(ils.Metrics())
+	mb.metricIntersightStoragePowerOnHours.emit(ils.Metrics())
+	mb.metricIntersightStoragePredictiveFailureCount.emit(ils.Metrics())
+	mb.metricIntersightStorageRebuildRate.emit(ils.Metrics())
+	mb.metricIntersightStorageStatus.emit(ils.Metrics())
+	mb.metricIntersightStorageTemperature.emit(ils.Metrics())
+	mb.metricIntersightTargetConnectionStatus.emit(ils.Metrics())
+	mb.metricIntersightTaskCount.emit(ils.Metrics())
+	mb.metricIntersightTaskStatus.emit(ils.Metrics())
+	mb.metricIntersightTechsupportCount.emit(ils.Metrics())
+	mb.metricIntersightTechsupportStatus.emit(ils.Metrics())
+	mb.metricIntersightTelemetryQueryRows.emit(ils.Metrics())
+	mb.metricIntersightUcsCPUIdleUtilization.emit(ils.Metrics())
+	mb.metricIntersightUcsCPUSystemUtilization.emit(ils.Metrics())
+	mb.metricIntersightUcsCurrent.emit(ils.Metrics())
+	mb.metricIntersightUcsFanSpeed.emit(ils.Metrics())
+	mb.metricIntersightUcsFanSpeedRatio.emit(ils.Metrics())
+	mb.metricIntersightUcsFanStatus.emit(ils.Metrics())
+	mb.metricIntersightUcsHostEnergy.emit(ils.Metrics())
+	mb.metricIntersightUcsHostPower.emit(ils.Metrics())
+	mb.metricIntersightUcsHostPowerState.emit(ils.Metrics())
+	mb.metricIntersightUcsMemoryCached.emit(ils.Metrics())
+	mb.metricIntersightUcsMemoryEccCorrectable.emit(ils.Metrics())
+	mb.metricIntersightUcsMemoryEccUncorrectable.emit(ils.Metrics())
+	mb.metricIntersightUcsMemoryFree.emit(ils.Metrics())
+	mb.metricIntersightUcsMemoryModuleSize.emit(ils.Metrics())
+	mb.metricIntersightUcsMemoryStatus.emit(ils.Metrics())
+	mb.metricIntersightUcsMemoryUsed.emit(ils.Metrics())
+	mb.metricIntersightUcsNetworkInterfaceResets.emit(ils.Metrics())
+	mb.metricIntersightUcsNetworkLinkStatus.emit(ils.Metrics())
+	mb.metricIntersightUcsNetworkLinkFailures.emit(ils.Metrics())
+	mb.metricIntersightUcsNetworkReceive.emit(ils.Metrics())
+	mb.metricIntersightUcsNetworkReceiveCrcErrors.emit(ils.Metrics())
+	mb.metricIntersightUcsNetworkReceiveDiscards.emit(ils.Metrics())
+	mb.metricIntersightUcsNetworkReceiveDrops.emit(ils.Metrics())
+	mb.metricIntersightUcsNetworkReceiveErrors.emit(ils.Metrics())
+	mb.metricIntersightUcsNetworkReceiveNoBuffer.emit(ils.Metrics())
+	mb.metricIntersightUcsNetworkReceivePackets.emit(ils.Metrics())
+	mb.metricIntersightUcsNetworkReceivePauseFrames.emit(ils.Metrics())
+	mb.metricIntersightUcsNetworkSignalLosses.emit(ils.Metrics())
+	mb.metricIntersightUcsNetworkSpeed.emit(ils.Metrics())
+	mb.metricIntersightUcsNetworkTransmit.emit(ils.Metrics())
+	mb.metricIntersightUcsNetworkTransmitDiscards.emit(ils.Metrics())
+	mb.metricIntersightUcsNetworkTransmitDrops.emit(ils.Metrics())
+	mb.metricIntersightUcsNetworkTransmitErrors.emit(ils.Metrics())
+	mb.metricIntersightUcsNetworkTransmitPackets.emit(ils.Metrics())
+	mb.metricIntersightUcsNetworkTransmitPauseFrames.emit(ils.Metrics())
+	mb.metricIntersightUcsNetworkUtilization.emit(ils.Metrics())
+	mb.metricIntersightUcsPowerSupplyOutputPower.emit(ils.Metrics())
+	mb.metricIntersightUcsPowerSupplyStatus.emit(ils.Metrics())
+	mb.metricIntersightUcsPowerSupplyUtilization.emit(ils.Metrics())
+	mb.metricIntersightUcsSignalPowerReceive.emit(ils.Metrics())
+	mb.metricIntersightUcsSignalPowerTransmit.emit(ils.Metrics())
+	mb.metricIntersightUcsTemperature.emit(ils.Metrics())
+	mb.metricIntersightUcsTemperatureLimitHighCritical.emit(ils.Metrics())
+	mb.metricIntersightUcsTemperatureLimitLowCritical.emit(ils.Metrics())
+	mb.metricIntersightUcsTemperatureStatus.emit(ils.Metrics())
+	mb.metricIntersightUcsVoltage.emit(ils.Metrics())
+	mb.metricIntersightVirtualMachineCount.emit(ils.Metrics())
+	mb.metricIntersightVirtualMachineCPUCount.emit(ils.Metrics())
+	mb.metricIntersightVirtualMachineMemory.emit(ils.Metrics())
+	mb.metricIntersightVirtualMachinePowerState.emit(ils.Metrics())
+	mb.metricIntersightWorkflowCount.emit(ils.Metrics())
+	mb.metricIntersightWorkflowStatus.emit(ils.Metrics())
+	mb.metricIseAccountingSessionCount.emit(ils.Metrics())
+	mb.metricIseAlarmCount.emit(ils.Metrics())
+	mb.metricIseAPIEndpointError.emit(ils.Metrics())
+	mb.metricIseAPIRateLimited.emit(ils.Metrics())
+	mb.metricIseAPIRequestDuration.emit(ils.Metrics())
+	mb.metricIseAPIRequestErrors.emit(ils.Metrics())
+	mb.metricIseAuthFailureReasonInfo.emit(ils.Metrics())
+	mb.metricIseCertificateCount.emit(ils.Metrics())
+	mb.metricIseCertificateExpiration.emit(ils.Metrics())
+	mb.metricIseControllerUp.emit(ils.Metrics())
+	mb.metricIseDataconnectQueryDuration.emit(ils.Metrics())
+	mb.metricIseDataconnectQueryErrors.emit(ils.Metrics())
+	mb.metricIseDataconnectQueryRows.emit(ils.Metrics())
+	mb.metricIseDataconnectRowCount.emit(ils.Metrics())
+	mb.metricIseDeploymentNodeCount.emit(ils.Metrics())
+	mb.metricIseDeploymentNodeStatus.emit(ils.Metrics())
+	mb.metricIseEndpointCount.emit(ils.Metrics())
+	mb.metricIseEndpointPostureCount.emit(ils.Metrics())
+	mb.metricIseEndpointPostureStatus.emit(ils.Metrics())
+	mb.metricIseEndpointProfileCount.emit(ils.Metrics())
+	mb.metricIseEndpointStatus.emit(ils.Metrics())
+	mb.metricIseLicenseCount.emit(ils.Metrics())
+	mb.metricIseLicenseStatus.emit(ils.Metrics())
+	mb.metricIseNetworkDeviceCount.emit(ils.Metrics())
+	mb.metricIseNetworkDeviceStatus.emit(ils.Metrics())
+	mb.metricIsePolicyObjectCount.emit(ils.Metrics())
+	mb.metricIsePolicyStatus.emit(ils.Metrics())
+	mb.metricIseProfilerPolicyStatus.emit(ils.Metrics())
+	mb.metricIsePxgridMessageCount.emit(ils.Metrics())
+	mb.metricIsePxgridServiceStatus.emit(ils.Metrics())
+	mb.metricIsePxgridSubscriptionStatus.emit(ils.Metrics())
+	mb.metricIseRadiusFailureCount.emit(ils.Metrics())
+	mb.metricIseResourceInfo.emit(ils.Metrics())
+	mb.metricIseResourceStatus.emit(ils.Metrics())
+	mb.metricIseScrapeLastSuccess.emit(ils.Metrics())
+	mb.metricIseScrapePartialSuccess.emit(ils.Metrics())
+	mb.metricIseServiceSkipped.emit(ils.Metrics())
+	mb.metricIseServiceUnavailable.emit(ils.Metrics())
+	mb.metricIseSessionActiveCount.emit(ils.Metrics())
+	mb.metricIseSessionCount.emit(ils.Metrics())
+	mb.metricIseTacacsFailureCount.emit(ils.Metrics())
+	mb.metricIseTrustsecResourceCount.emit(ils.Metrics())
+	mb.metricIseTrustsecResourceStatus.emit(ils.Metrics())
+	mb.metricIseWebhookDeliveryCount.emit(ils.Metrics())
+	mb.metricMerakiAPIRequestDuration.emit(ils.Metrics())
+	mb.metricMerakiAPIRequestErrors.emit(ils.Metrics())
+	mb.metricMerakiAPIRequestRateLimited.emit(ils.Metrics())
+	mb.metricMerakiAppliancePerformanceScore.emit(ils.Metrics())
+	mb.metricMerakiControllerUp.emit(ils.Metrics())
+	mb.metricMerakiDeviceStatus.emit(ils.Metrics())
+	mb.metricMerakiPowerModuleStatus.emit(ils.Metrics())
+	mb.metricMerakiScrapeLastSuccess.emit(ils.Metrics())
+	mb.metricMerakiSwitchPortAlertActive.emit(ils.Metrics())
+	mb.metricMerakiSwitchPortPoeAllocated.emit(ils.Metrics())
+	mb.metricMerakiSwitchPortUsage.emit(ils.Metrics())
+	mb.metricMerakiUplinkCellularSignalRsrp.emit(ils.Metrics())
+	mb.metricMerakiUplinkCellularSignalRsrq.emit(ils.Metrics())
+	mb.metricMerakiUplinkLatency.emit(ils.Metrics())
+	mb.metricMerakiUplinkLoss.emit(ils.Metrics())
+	mb.metricMerakiUplinkStatus.emit(ils.Metrics())
+	mb.metricMerakiVpnPeerJitter.emit(ils.Metrics())
+	mb.metricMerakiVpnPeerLatency.emit(ils.Metrics())
+	mb.metricMerakiVpnPeerLoss.emit(ils.Metrics())
+	mb.metricMerakiVpnPeerMos.emit(ils.Metrics())
+	mb.metricMerakiVpnPeerStatus.emit(ils.Metrics())
+	mb.metricMerakiVpnPeerUsage.emit(ils.Metrics())
+	mb.metricMerakiWirelessChannelUtilization.emit(ils.Metrics())
+	mb.metricMerakiWirelessClientCount.emit(ils.Metrics())
+	mb.metricMerakiWirelessPacketCount.emit(ils.Metrics())
+	mb.metricMerakiWirelessPacketLoss.emit(ils.Metrics())
+	mb.metricMerakiWirelessPacketLossPercentage.emit(ils.Metrics())
+	mb.metricMerakiWirelessSsidStatus.emit(ils.Metrics())
+	mb.metricNexusDashboardAPIEndpointError.emit(ils.Metrics())
+	mb.metricNexusDashboardAPIRateLimited.emit(ils.Metrics())
+	mb.metricNexusDashboardAPIRequestDuration.emit(ils.Metrics())
+	mb.metricNexusDashboardAPIRequestErrors.emit(ils.Metrics())
+	mb.metricNexusDashboardAuditRecordCount.emit(ils.Metrics())
+	mb.metricNexusDashboardConfigCompliance.emit(ils.Metrics())
+	mb.metricNexusDashboardDataBrokerRuleCount.emit(ils.Metrics())
+	mb.metricNexusDashboardDataBrokerSessionCount.emit(ils.Metrics())
+	mb.metricNexusDashboardDataBrokerStatus.emit(ils.Metrics())
+	mb.metricNexusDashboardDeploymentStatus.emit(ils.Metrics())
+	mb.metricNexusDashboardEndpointCount.emit(ils.Metrics())
+	mb.metricNexusDashboardEventCount.emit(ils.Metrics())
+	mb.metricNexusDashboardFabricHealth.emit(ils.Metrics())
+	mb.metricNexusDashboardInsightsAnomalyActive.emit(ils.Metrics())
+	mb.metricNexusDashboardInsightsAnomalyCount.emit(ils.Metrics())
+	mb.metricNexusDashboardInsightsConfidence.emit(ils.Metrics())
+	mb.metricNexusDashboardInsightsScore.emit(ils.Metrics())
+	mb.metricNexusDashboardInsightsStatus.emit(ils.Metrics())
+	mb.metricNexusDashboardOrchestratorDeploymentCount.emit(ils.Metrics())
+	mb.metricNexusDashboardOrchestratorDeploymentStatus.emit(ils.Metrics())
+	mb.metricNexusDashboardOrchestratorPolicyDeltaCount.emit(ils.Metrics())
+	mb.metricNexusDashboardResourceCount.emit(ils.Metrics())
+	mb.metricNexusDashboardResourceInfo.emit(ils.Metrics())
+	mb.metricNexusDashboardResourceStatus.emit(ils.Metrics())
+	mb.metricNexusDashboardScrapeLastSuccess.emit(ils.Metrics())
+	mb.metricNexusDashboardScrapePartialSuccess.emit(ils.Metrics())
+	mb.metricNexusDashboardServiceHealth.emit(ils.Metrics())
+	mb.metricNexusDashboardServiceSkipped.emit(ils.Metrics())
+	mb.metricNexusDashboardServiceUnavailable.emit(ils.Metrics())
+	mb.metricNexusDashboardStorageUtilization.emit(ils.Metrics())
+	mb.metricNexusDashboardVpcPeerCount.emit(ils.Metrics())
+	mb.metricSdwanAPIRateLimited.emit(ils.Metrics())
+	mb.metricSdwanAPIRequestDuration.emit(ils.Metrics())
+	mb.metricSdwanAPIRequestErrors.emit(ils.Metrics())
+	mb.metricSdwanAppRouteJitter.emit(ils.Metrics())
+	mb.metricSdwanAppRouteLatency.emit(ils.Metrics())
+	mb.metricSdwanAppRouteLoss.emit(ils.Metrics())
+	mb.metricSdwanAppRouteSLAStatus.emit(ils.Metrics())
+	mb.metricSdwanBfdSessionCount.emit(ils.Metrics())
+	mb.metricSdwanBfdSessionFlapCount.emit(ils.Metrics())
+	mb.metricSdwanBfdSessionStatus.emit(ils.Metrics())
+	mb.metricSdwanBfdSessionTransitions.emit(ils.Metrics())
+	mb.metricSdwanCollectionObjectCount.emit(ils.Metrics())
+	mb.metricSdwanControlActualConnections.emit(ils.Metrics())
+	mb.metricSdwanControlConnectionCount.emit(ils.Metrics())
+	mb.metricSdwanControlConnectionStatus.emit(ils.Metrics())
+	mb.metricSdwanControlExpectedConnections.emit(ils.Metrics())
+	mb.metricSdwanDeviceCertificateStatus.emit(ils.Metrics())
+	mb.metricSdwanDeviceReachabilityStatus.emit(ils.Metrics())
+	mb.metricSdwanDeviceValidityStatus.emit(ils.Metrics())
+	mb.metricSdwanEventCount.emit(ils.Metrics())
+	mb.metricSdwanInventoryDeviceCount.emit(ils.Metrics())
+	mb.metricSdwanManagerEndpointStatus.emit(ils.Metrics())
+	mb.metricSdwanManagerHealthScore.emit(ils.Metrics())
+	mb.metricSdwanManagerStatus.emit(ils.Metrics())
+	mb.metricSdwanManagerUp.emit(ils.Metrics())
+	mb.metricSdwanResourceInfo.emit(ils.Metrics())
+	mb.metricSdwanResourceStatus.emit(ils.Metrics())
+	mb.metricSdwanScrapeLastSuccess.emit(ils.Metrics())
+	mb.metricSdwanScrapePartialSuccess.emit(ils.Metrics())
+	mb.metricSdwanServiceSkipped.emit(ils.Metrics())
+	mb.metricSdwanServiceUnavailable.emit(ils.Metrics())
+	mb.metricSdwanTransportInterfaceStatus.emit(ils.Metrics())
+	mb.metricSystemCPULogicalCount.emit(ils.Metrics())
 	mb.metricSystemCPUUtilization.emit(ils.Metrics())
 	mb.metricSystemMemoryUtilization.emit(ils.Metrics())
 	mb.metricSystemNetworkErrors.emit(ils.Metrics())
@@ -2942,6 +24324,341 @@ func (mb *MetricsBuilder) Emit(options ...ResourceMetricsOption) pmetric.Metrics
 	return metrics
 }
 
+// RecordAciAPIEndpointErrorDataPoint adds a data point to aci.api.endpoint.error metric.
+func (mb *MetricsBuilder) RecordAciAPIEndpointErrorDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricAciAPIEndpointError.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordAciAPIRateLimitedDataPoint adds a data point to aci.api.rate_limited metric.
+func (mb *MetricsBuilder) RecordAciAPIRateLimitedDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricAciAPIRateLimited.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordAciAPIRequestDurationDataPoint adds a data point to aci.api.request.duration metric.
+func (mb *MetricsBuilder) RecordAciAPIRequestDurationDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricAciAPIRequestDuration.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordAciAPIRequestErrorsDataPoint adds a data point to aci.api.request.errors metric.
+func (mb *MetricsBuilder) RecordAciAPIRequestErrorsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricAciAPIRequestErrors.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordAciAuditRecordCountDataPoint adds a data point to aci.audit.record.count metric.
+func (mb *MetricsBuilder) RecordAciAuditRecordCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricAciAuditRecordCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordAciControllerUpDataPoint adds a data point to aci.controller.up metric.
+func (mb *MetricsBuilder) RecordAciControllerUpDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricAciControllerUp.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordAciEndpointCountDataPoint adds a data point to aci.endpoint.count metric.
+func (mb *MetricsBuilder) RecordAciEndpointCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricAciEndpointCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordAciEndpointPresentDataPoint adds a data point to aci.endpoint.present metric.
+func (mb *MetricsBuilder) RecordAciEndpointPresentDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricAciEndpointPresent.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordAciEventCountDataPoint adds a data point to aci.event.count metric.
+func (mb *MetricsBuilder) RecordAciEventCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricAciEventCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordAciFabricHealthDataPoint adds a data point to aci.fabric.health metric.
+func (mb *MetricsBuilder) RecordAciFabricHealthDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricAciFabricHealth.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordAciFaultActiveDataPoint adds a data point to aci.fault.active metric.
+func (mb *MetricsBuilder) RecordAciFaultActiveDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricAciFaultActive.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordAciFaultCountDataPoint adds a data point to aci.fault.count metric.
+func (mb *MetricsBuilder) RecordAciFaultCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricAciFaultCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordAciResourceCountDataPoint adds a data point to aci.resource.count metric.
+func (mb *MetricsBuilder) RecordAciResourceCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricAciResourceCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordAciResourceInfoDataPoint adds a data point to aci.resource.info metric.
+func (mb *MetricsBuilder) RecordAciResourceInfoDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricAciResourceInfo.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordAciResourceStatusDataPoint adds a data point to aci.resource.status metric.
+func (mb *MetricsBuilder) RecordAciResourceStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricAciResourceStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordAciScrapeLastSuccessDataPoint adds a data point to aci.scrape.last_success metric.
+func (mb *MetricsBuilder) RecordAciScrapeLastSuccessDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricAciScrapeLastSuccess.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordAciScrapePartialSuccessDataPoint adds a data point to aci.scrape.partial_success metric.
+func (mb *MetricsBuilder) RecordAciScrapePartialSuccessDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricAciScrapePartialSuccess.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordAciTenantObjectCountDataPoint adds a data point to aci.tenant.object.count metric.
+func (mb *MetricsBuilder) RecordAciTenantObjectCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricAciTenantObjectCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordAciTenantStatusDataPoint adds a data point to aci.tenant.status metric.
+func (mb *MetricsBuilder) RecordAciTenantStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricAciTenantStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterAPIRateLimitedDataPoint adds a data point to catalyst_center.api.rate_limited metric.
+func (mb *MetricsBuilder) RecordCatalystCenterAPIRateLimitedDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterAPIRateLimited.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterAPIRequestDurationDataPoint adds a data point to catalyst_center.api.request.duration metric.
+func (mb *MetricsBuilder) RecordCatalystCenterAPIRequestDurationDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricCatalystCenterAPIRequestDuration.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterAPIRequestErrorsDataPoint adds a data point to catalyst_center.api.request.errors metric.
+func (mb *MetricsBuilder) RecordCatalystCenterAPIRequestErrorsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterAPIRequestErrors.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterClientCountDataPoint adds a data point to catalyst_center.client.count metric.
+func (mb *MetricsBuilder) RecordCatalystCenterClientCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterClientCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterClientDetailHealthScoreDataPoint adds a data point to catalyst_center.client.detail.health.score metric.
+func (mb *MetricsBuilder) RecordCatalystCenterClientDetailHealthScoreDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricCatalystCenterClientDetailHealthScore.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterClientHealthScoreDataPoint adds a data point to catalyst_center.client.health.score metric.
+func (mb *MetricsBuilder) RecordCatalystCenterClientHealthScoreDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricCatalystCenterClientHealthScore.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterClientIssueCountDataPoint adds a data point to catalyst_center.client.issue.count metric.
+func (mb *MetricsBuilder) RecordCatalystCenterClientIssueCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterClientIssueCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterClientNetworkIoDataPoint adds a data point to catalyst_center.client.network.io metric.
+func (mb *MetricsBuilder) RecordCatalystCenterClientNetworkIoDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricCatalystCenterClientNetworkIo.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterClientUniqueCountDataPoint adds a data point to catalyst_center.client.unique.count metric.
+func (mb *MetricsBuilder) RecordCatalystCenterClientUniqueCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterClientUniqueCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterClientWirelessRssiDataPoint adds a data point to catalyst_center.client.wireless.rssi metric.
+func (mb *MetricsBuilder) RecordCatalystCenterClientWirelessRssiDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricCatalystCenterClientWirelessRssi.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterClientWirelessSnrDataPoint adds a data point to catalyst_center.client.wireless.snr metric.
+func (mb *MetricsBuilder) RecordCatalystCenterClientWirelessSnrDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricCatalystCenterClientWirelessSnr.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterDeviceCollectionStatusDataPoint adds a data point to catalyst_center.device.collection.status metric.
+func (mb *MetricsBuilder) RecordCatalystCenterDeviceCollectionStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterDeviceCollectionStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterDeviceDetailCommunicationStatusDataPoint adds a data point to catalyst_center.device.detail.communication.status metric.
+func (mb *MetricsBuilder) RecordCatalystCenterDeviceDetailCommunicationStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterDeviceDetailCommunicationStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterDeviceDetailHealthScoreDataPoint adds a data point to catalyst_center.device.detail.health.score metric.
+func (mb *MetricsBuilder) RecordCatalystCenterDeviceDetailHealthScoreDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricCatalystCenterDeviceDetailHealthScore.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterDeviceInterfaceCountDataPoint adds a data point to catalyst_center.device.interface.count metric.
+func (mb *MetricsBuilder) RecordCatalystCenterDeviceInterfaceCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterDeviceInterfaceCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterDeviceReachabilityStatusDataPoint adds a data point to catalyst_center.device.reachability.status metric.
+func (mb *MetricsBuilder) RecordCatalystCenterDeviceReachabilityStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterDeviceReachabilityStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterDeviceUptimeDataPoint adds a data point to catalyst_center.device.uptime metric.
+func (mb *MetricsBuilder) RecordCatalystCenterDeviceUptimeDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterDeviceUptime.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterInterfaceCountDataPoint adds a data point to catalyst_center.interface.count metric.
+func (mb *MetricsBuilder) RecordCatalystCenterInterfaceCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterInterfaceCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterInventoryDeviceCountDataPoint adds a data point to catalyst_center.inventory.device.count metric.
+func (mb *MetricsBuilder) RecordCatalystCenterInventoryDeviceCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterInventoryDeviceCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterIssueActiveCountDataPoint adds a data point to catalyst_center.issue.active.count metric.
+func (mb *MetricsBuilder) RecordCatalystCenterIssueActiveCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterIssueActiveCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterIssueCountDataPoint adds a data point to catalyst_center.issue.count metric.
+func (mb *MetricsBuilder) RecordCatalystCenterIssueCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterIssueCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterNetworkDeviceCountDataPoint adds a data point to catalyst_center.network.device.count metric.
+func (mb *MetricsBuilder) RecordCatalystCenterNetworkDeviceCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterNetworkDeviceCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterNetworkHealthCategoryScoreDataPoint adds a data point to catalyst_center.network.health.category.score metric.
+func (mb *MetricsBuilder) RecordCatalystCenterNetworkHealthCategoryScoreDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricCatalystCenterNetworkHealthCategoryScore.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterNetworkHealthEntityCountDataPoint adds a data point to catalyst_center.network.health.entity.count metric.
+func (mb *MetricsBuilder) RecordCatalystCenterNetworkHealthEntityCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterNetworkHealthEntityCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterNetworkHealthEntityScoreDataPoint adds a data point to catalyst_center.network.health.entity.score metric.
+func (mb *MetricsBuilder) RecordCatalystCenterNetworkHealthEntityScoreDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterNetworkHealthEntityScore.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterNetworkHealthScoreDataPoint adds a data point to catalyst_center.network.health.score metric.
+func (mb *MetricsBuilder) RecordCatalystCenterNetworkHealthScoreDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterNetworkHealthScore.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterScrapeLastSuccessDataPoint adds a data point to catalyst_center.scrape.last_success metric.
+func (mb *MetricsBuilder) RecordCatalystCenterScrapeLastSuccessDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterScrapeLastSuccess.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterScrapePartialSuccessDataPoint adds a data point to catalyst_center.scrape.partial_success metric.
+func (mb *MetricsBuilder) RecordCatalystCenterScrapePartialSuccessDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterScrapePartialSuccess.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterSiteClientCountDataPoint adds a data point to catalyst_center.site.client.count metric.
+func (mb *MetricsBuilder) RecordCatalystCenterSiteClientCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterSiteClientCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterSiteClientHealthPercentageDataPoint adds a data point to catalyst_center.site.client.health.percentage metric.
+func (mb *MetricsBuilder) RecordCatalystCenterSiteClientHealthPercentageDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricCatalystCenterSiteClientHealthPercentage.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterSiteHealthCountDataPoint adds a data point to catalyst_center.site.health.count metric.
+func (mb *MetricsBuilder) RecordCatalystCenterSiteHealthCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterSiteHealthCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterSiteIssueCountDataPoint adds a data point to catalyst_center.site.issue.count metric.
+func (mb *MetricsBuilder) RecordCatalystCenterSiteIssueCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterSiteIssueCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterSiteNetworkDeviceCountDataPoint adds a data point to catalyst_center.site.network_device.count metric.
+func (mb *MetricsBuilder) RecordCatalystCenterSiteNetworkDeviceCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterSiteNetworkDeviceCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterSiteNetworkDeviceHealthPercentageDataPoint adds a data point to catalyst_center.site.network_device.health.percentage metric.
+func (mb *MetricsBuilder) RecordCatalystCenterSiteNetworkDeviceHealthPercentageDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricCatalystCenterSiteNetworkDeviceHealthPercentage.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterTopologyLinkCountDataPoint adds a data point to catalyst_center.topology.link.count metric.
+func (mb *MetricsBuilder) RecordCatalystCenterTopologyLinkCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterTopologyLinkCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCatalystCenterTopologyNodeCountDataPoint adds a data point to catalyst_center.topology.node.count metric.
+func (mb *MetricsBuilder) RecordCatalystCenterTopologyNodeCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCatalystCenterTopologyNodeCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoCatalyst9800ReceiverActiveSubscriptionsDataPoint adds a data point to cisco.catalyst9800.receiver.active_subscriptions metric.
+func (mb *MetricsBuilder) RecordCiscoCatalyst9800ReceiverActiveSubscriptionsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoCatalyst9800ReceiverActiveSubscriptions.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoCatalyst9800ReceiverCompactGpbPayloadsDataPoint adds a data point to cisco.catalyst9800.receiver.compact_gpb_payloads metric.
+func (mb *MetricsBuilder) RecordCiscoCatalyst9800ReceiverCompactGpbPayloadsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoCatalyst9800ReceiverCompactGpbPayloads.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoCatalyst9800ReceiverDecodeErrorsDataPoint adds a data point to cisco.catalyst9800.receiver.decode_errors metric.
+func (mb *MetricsBuilder) RecordCiscoCatalyst9800ReceiverDecodeErrorsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoCatalyst9800ReceiverDecodeErrors.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoCatalyst9800ReceiverDroppedDatapointsDataPoint adds a data point to cisco.catalyst9800.receiver.dropped_datapoints metric.
+func (mb *MetricsBuilder) RecordCiscoCatalyst9800ReceiverDroppedDatapointsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoCatalyst9800ReceiverDroppedDatapoints.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoCatalyst9800ReceiverLastSuccessTimestampDataPoint adds a data point to cisco.catalyst9800.receiver.last_success_timestamp metric.
+func (mb *MetricsBuilder) RecordCiscoCatalyst9800ReceiverLastSuccessTimestampDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoCatalyst9800ReceiverLastSuccessTimestamp.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoCatalyst9800ReceiverReconnectsDataPoint adds a data point to cisco.catalyst9800.receiver.reconnects metric.
+func (mb *MetricsBuilder) RecordCiscoCatalyst9800ReceiverReconnectsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoCatalyst9800ReceiverReconnects.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoCatalyst9800ReceiverTargetLastSuccessTimestampDataPoint adds a data point to cisco.catalyst9800.receiver.target.last_success_timestamp metric.
+func (mb *MetricsBuilder) RecordCiscoCatalyst9800ReceiverTargetLastSuccessTimestampDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoCatalyst9800ReceiverTargetLastSuccessTimestamp.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoCatalyst9800ReceiverTargetReconnectsDataPoint adds a data point to cisco.catalyst9800.receiver.target.reconnects metric.
+func (mb *MetricsBuilder) RecordCiscoCatalyst9800ReceiverTargetReconnectsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoCatalyst9800ReceiverTargetReconnects.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoCatalyst9800ReceiverTargetSubscriptionActiveDataPoint adds a data point to cisco.catalyst9800.receiver.target.subscription.active metric.
+func (mb *MetricsBuilder) RecordCiscoCatalyst9800ReceiverTargetSubscriptionActiveDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoCatalyst9800ReceiverTargetSubscriptionActive.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoCatalyst9800ReceiverTargetUpdatesDataPoint adds a data point to cisco.catalyst9800.receiver.target.updates metric.
+func (mb *MetricsBuilder) RecordCiscoCatalyst9800ReceiverTargetUpdatesDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoCatalyst9800ReceiverTargetUpdates.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoCatalyst9800ReceiverUnsupportedPathsDataPoint adds a data point to cisco.catalyst9800.receiver.unsupported_paths metric.
+func (mb *MetricsBuilder) RecordCiscoCatalyst9800ReceiverUnsupportedPathsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoCatalyst9800ReceiverUnsupportedPaths.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoCatalyst9800ReceiverUpdatesDataPoint adds a data point to cisco.catalyst9800.receiver.updates metric.
+func (mb *MetricsBuilder) RecordCiscoCatalyst9800ReceiverUpdatesDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoCatalyst9800ReceiverUpdates.recordDataPoint(mb.startTime, ts, val)
+}
+
 // RecordCiscoDeviceUpDataPoint adds a data point to cisco.device.up metric.
 func (mb *MetricsBuilder) RecordCiscoDeviceUpDataPoint(ts pcommon.Timestamp, val int64) {
 	mb.metricCiscoDeviceUp.recordDataPoint(mb.startTime, ts, val)
@@ -2950,6 +24667,11 @@ func (mb *MetricsBuilder) RecordCiscoDeviceUpDataPoint(ts pcommon.Timestamp, val
 // RecordCiscoInterfaceAdminStatusDataPoint adds a data point to cisco.interface.admin.status metric.
 func (mb *MetricsBuilder) RecordCiscoInterfaceAdminStatusDataPoint(ts pcommon.Timestamp, val int64, networkInterfaceNameAttributeValue string) {
 	mb.metricCiscoInterfaceAdminStatus.recordDataPoint(mb.startTime, ts, val, networkInterfaceNameAttributeValue)
+}
+
+// RecordCiscoInterfaceDropRateDataPoint adds a data point to cisco.interface.drop.rate metric.
+func (mb *MetricsBuilder) RecordCiscoInterfaceDropRateDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricCiscoInterfaceDropRate.recordDataPoint(mb.startTime, ts, val)
 }
 
 // RecordCiscoInterfaceIoRateDataPoint adds a data point to cisco.interface.io.rate metric.
@@ -2970,6 +24692,66 @@ func (mb *MetricsBuilder) RecordCiscoInterfaceSpeedDataPoint(ts pcommon.Timestam
 // RecordCiscoInterfaceUtilizationDataPoint adds a data point to cisco.interface.utilization metric.
 func (mb *MetricsBuilder) RecordCiscoInterfaceUtilizationDataPoint(ts pcommon.Timestamp, val float64, networkIoDirectionAttributeValue AttributeNetworkIoDirection, networkInterfaceNameAttributeValue string) {
 	mb.metricCiscoInterfaceUtilization.recordDataPoint(mb.startTime, ts, val, networkIoDirectionAttributeValue.String(), networkInterfaceNameAttributeValue)
+}
+
+// RecordCiscoIosxrReceiverActiveSubscriptionsDataPoint adds a data point to cisco.iosxr.receiver.active_subscriptions metric.
+func (mb *MetricsBuilder) RecordCiscoIosxrReceiverActiveSubscriptionsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoIosxrReceiverActiveSubscriptions.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoIosxrReceiverCompactGpbPayloadsDataPoint adds a data point to cisco.iosxr.receiver.compact_gpb_payloads metric.
+func (mb *MetricsBuilder) RecordCiscoIosxrReceiverCompactGpbPayloadsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoIosxrReceiverCompactGpbPayloads.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoIosxrReceiverDecodeErrorsDataPoint adds a data point to cisco.iosxr.receiver.decode_errors metric.
+func (mb *MetricsBuilder) RecordCiscoIosxrReceiverDecodeErrorsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoIosxrReceiverDecodeErrors.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoIosxrReceiverDroppedDatapointsDataPoint adds a data point to cisco.iosxr.receiver.dropped_datapoints metric.
+func (mb *MetricsBuilder) RecordCiscoIosxrReceiverDroppedDatapointsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoIosxrReceiverDroppedDatapoints.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoIosxrReceiverLastSuccessTimestampDataPoint adds a data point to cisco.iosxr.receiver.last_success_timestamp metric.
+func (mb *MetricsBuilder) RecordCiscoIosxrReceiverLastSuccessTimestampDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoIosxrReceiverLastSuccessTimestamp.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoIosxrReceiverReconnectsDataPoint adds a data point to cisco.iosxr.receiver.reconnects metric.
+func (mb *MetricsBuilder) RecordCiscoIosxrReceiverReconnectsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoIosxrReceiverReconnects.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoIosxrReceiverTargetLastSuccessTimestampDataPoint adds a data point to cisco.iosxr.receiver.target.last_success_timestamp metric.
+func (mb *MetricsBuilder) RecordCiscoIosxrReceiverTargetLastSuccessTimestampDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoIosxrReceiverTargetLastSuccessTimestamp.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoIosxrReceiverTargetReconnectsDataPoint adds a data point to cisco.iosxr.receiver.target.reconnects metric.
+func (mb *MetricsBuilder) RecordCiscoIosxrReceiverTargetReconnectsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoIosxrReceiverTargetReconnects.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoIosxrReceiverTargetSubscriptionActiveDataPoint adds a data point to cisco.iosxr.receiver.target.subscription.active metric.
+func (mb *MetricsBuilder) RecordCiscoIosxrReceiverTargetSubscriptionActiveDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoIosxrReceiverTargetSubscriptionActive.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoIosxrReceiverTargetUpdatesDataPoint adds a data point to cisco.iosxr.receiver.target.updates metric.
+func (mb *MetricsBuilder) RecordCiscoIosxrReceiverTargetUpdatesDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoIosxrReceiverTargetUpdates.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoIosxrReceiverUnsupportedPathsDataPoint adds a data point to cisco.iosxr.receiver.unsupported_paths metric.
+func (mb *MetricsBuilder) RecordCiscoIosxrReceiverUnsupportedPathsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoIosxrReceiverUnsupportedPaths.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoIosxrReceiverUpdatesDataPoint adds a data point to cisco.iosxr.receiver.updates metric.
+func (mb *MetricsBuilder) RecordCiscoIosxrReceiverUpdatesDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoIosxrReceiverUpdates.recordDataPoint(mb.startTime, ts, val)
 }
 
 // RecordCiscoOpticsEsnrDataPoint adds a data point to cisco.optics.esnr metric.
@@ -3025,6 +24807,1466 @@ func (mb *MetricsBuilder) RecordCiscoOpticsTxPowerDataPoint(ts pcommon.Timestamp
 // RecordCiscoOpticsVoltageDataPoint adds a data point to cisco.optics.voltage metric.
 func (mb *MetricsBuilder) RecordCiscoOpticsVoltageDataPoint(ts pcommon.Timestamp, val float64, networkInterfaceNameAttributeValue string, ciscoOpticsLaneAttributeValue string, ciscoOpticsSensorAttributeValue string, ciscoOpticsProfileAttributeValue AttributeCiscoOpticsProfile, ciscoOpticsExperimentalAttributeValue bool) {
 	mb.metricCiscoOpticsVoltage.recordDataPoint(mb.startTime, ts, val, networkInterfaceNameAttributeValue, ciscoOpticsLaneAttributeValue, ciscoOpticsSensorAttributeValue, ciscoOpticsProfileAttributeValue.String(), ciscoOpticsExperimentalAttributeValue)
+}
+
+// RecordCiscoScrapePartialSuccessDataPoint adds a data point to cisco.scrape.partial_success metric.
+func (mb *MetricsBuilder) RecordCiscoScrapePartialSuccessDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoScrapePartialSuccess.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoTopologyNeighborInfoDataPoint adds a data point to cisco.topology.neighbor.info metric.
+func (mb *MetricsBuilder) RecordCiscoTopologyNeighborInfoDataPoint(ts pcommon.Timestamp, val int64, ciscoTopologyProtocolAttributeValue string, networkInterfaceNameAttributeValue string, ciscoTopologyNeighborNameAttributeValue string, ciscoTopologyNeighborInterfaceAttributeValue string, ciscoTopologyNeighborPlatformAttributeValue string, ciscoTopologyNeighborAddressAttributeValue string, networkPeerNameAttributeValue string, networkPeerAddressAttributeValue string, networkProtocolNameAttributeValue string) {
+	mb.metricCiscoTopologyNeighborInfo.recordDataPoint(mb.startTime, ts, val, ciscoTopologyProtocolAttributeValue, networkInterfaceNameAttributeValue, ciscoTopologyNeighborNameAttributeValue, ciscoTopologyNeighborInterfaceAttributeValue, ciscoTopologyNeighborPlatformAttributeValue, ciscoTopologyNeighborAddressAttributeValue, networkPeerNameAttributeValue, networkPeerAddressAttributeValue, networkProtocolNameAttributeValue)
+}
+
+// RecordCiscoTransceiverSensorDataPoint adds a data point to cisco.transceiver.sensor metric.
+func (mb *MetricsBuilder) RecordCiscoTransceiverSensorDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricCiscoTransceiverSensor.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcApCapwapEncryptionEnabledDataPoint adds a data point to cisco.wlc.ap.capwap.encryption.enabled metric.
+func (mb *MetricsBuilder) RecordCiscoWlcApCapwapEncryptionEnabledDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcApCapwapEncryptionEnabled.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcApCapwapStateDataPoint adds a data point to cisco.wlc.ap.capwap.state metric.
+func (mb *MetricsBuilder) RecordCiscoWlcApCapwapStateDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcApCapwapState.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcApDisconnectDataPoint adds a data point to cisco.wlc.ap.disconnect metric.
+func (mb *MetricsBuilder) RecordCiscoWlcApDisconnectDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcApDisconnect.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcApDisconnectReasonInfoDataPoint adds a data point to cisco.wlc.ap.disconnect.reason.info metric.
+func (mb *MetricsBuilder) RecordCiscoWlcApDisconnectReasonInfoDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricCiscoWlcApDisconnectReasonInfo.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcApJoinFailureReasonInfoDataPoint adds a data point to cisco.wlc.ap.join.failure.reason.info metric.
+func (mb *MetricsBuilder) RecordCiscoWlcApJoinFailureReasonInfoDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricCiscoWlcApJoinFailureReasonInfo.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcApJoinStatusDataPoint adds a data point to cisco.wlc.ap.join.status metric.
+func (mb *MetricsBuilder) RecordCiscoWlcApJoinStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcApJoinStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcAuthRadiusAccessAcceptCountDataPoint adds a data point to cisco.wlc.auth.radius.access.accept.count metric.
+func (mb *MetricsBuilder) RecordCiscoWlcAuthRadiusAccessAcceptCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcAuthRadiusAccessAcceptCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcAuthRadiusAccessRejectCountDataPoint adds a data point to cisco.wlc.auth.radius.access.reject.count metric.
+func (mb *MetricsBuilder) RecordCiscoWlcAuthRadiusAccessRejectCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcAuthRadiusAccessRejectCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcAuthRadiusBadAuthenticatorCountDataPoint adds a data point to cisco.wlc.auth.radius.bad_authenticator.count metric.
+func (mb *MetricsBuilder) RecordCiscoWlcAuthRadiusBadAuthenticatorCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcAuthRadiusBadAuthenticatorCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcAuthRadiusResponseCountDataPoint adds a data point to cisco.wlc.auth.radius.response.count metric.
+func (mb *MetricsBuilder) RecordCiscoWlcAuthRadiusResponseCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcAuthRadiusResponseCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcAuthRadiusResponseDelayAvgDataPoint adds a data point to cisco.wlc.auth.radius.response_delay.avg metric.
+func (mb *MetricsBuilder) RecordCiscoWlcAuthRadiusResponseDelayAvgDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricCiscoWlcAuthRadiusResponseDelayAvg.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcAuthRadiusResponseDelayMaxDataPoint adds a data point to cisco.wlc.auth.radius.response_delay.max metric.
+func (mb *MetricsBuilder) RecordCiscoWlcAuthRadiusResponseDelayMaxDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricCiscoWlcAuthRadiusResponseDelayMax.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcAuthRadiusTimeoutCountDataPoint adds a data point to cisco.wlc.auth.radius.timeout.count metric.
+func (mb *MetricsBuilder) RecordCiscoWlcAuthRadiusTimeoutCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcAuthRadiusTimeoutCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcClientAuthFailureReasonInfoDataPoint adds a data point to cisco.wlc.client.auth.failure.reason.info metric.
+func (mb *MetricsBuilder) RecordCiscoWlcClientAuthFailureReasonInfoDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricCiscoWlcClientAuthFailureReasonInfo.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcClientConnectionStateDataPoint adds a data point to cisco.wlc.client.connection.state metric.
+func (mb *MetricsBuilder) RecordCiscoWlcClientConnectionStateDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcClientConnectionState.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcClientNetworkIoDataPoint adds a data point to cisco.wlc.client.network.io metric.
+func (mb *MetricsBuilder) RecordCiscoWlcClientNetworkIoDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcClientNetworkIo.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcClientNetworkPacketsDataPoint adds a data point to cisco.wlc.client.network.packets metric.
+func (mb *MetricsBuilder) RecordCiscoWlcClientNetworkPacketsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcClientNetworkPackets.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcClientRoamCountDataPoint adds a data point to cisco.wlc.client.roam.count metric.
+func (mb *MetricsBuilder) RecordCiscoWlcClientRoamCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcClientRoamCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcClientRoamFailureCountDataPoint adds a data point to cisco.wlc.client.roam.failure.count metric.
+func (mb *MetricsBuilder) RecordCiscoWlcClientRoamFailureCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcClientRoamFailureCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcClientRoamTypeInfoDataPoint adds a data point to cisco.wlc.client.roam.type.info metric.
+func (mb *MetricsBuilder) RecordCiscoWlcClientRoamTypeInfoDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricCiscoWlcClientRoamTypeInfo.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcClientWirelessRssiDataPoint adds a data point to cisco.wlc.client.wireless.rssi metric.
+func (mb *MetricsBuilder) RecordCiscoWlcClientWirelessRssiDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricCiscoWlcClientWirelessRssi.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcClientWirelessSnrDataPoint adds a data point to cisco.wlc.client.wireless.snr metric.
+func (mb *MetricsBuilder) RecordCiscoWlcClientWirelessSnrDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricCiscoWlcClientWirelessSnr.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcControllerCPUUtilizationDataPoint adds a data point to cisco.wlc.controller.cpu.utilization metric.
+func (mb *MetricsBuilder) RecordCiscoWlcControllerCPUUtilizationDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricCiscoWlcControllerCPUUtilization.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcControllerMemoryBytesDataPoint adds a data point to cisco.wlc.controller.memory.bytes metric.
+func (mb *MetricsBuilder) RecordCiscoWlcControllerMemoryBytesDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcControllerMemoryBytes.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcControllerReceiverActiveSubscriptionsDataPoint adds a data point to cisco.wlc.controller.receiver.active_subscriptions metric.
+func (mb *MetricsBuilder) RecordCiscoWlcControllerReceiverActiveSubscriptionsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcControllerReceiverActiveSubscriptions.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcControllerReceiverDecodeErrorsDataPoint adds a data point to cisco.wlc.controller.receiver.decode_errors metric.
+func (mb *MetricsBuilder) RecordCiscoWlcControllerReceiverDecodeErrorsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcControllerReceiverDecodeErrors.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcControllerReceiverSubscriptionActiveDataPoint adds a data point to cisco.wlc.controller.receiver.subscription.active metric.
+func (mb *MetricsBuilder) RecordCiscoWlcControllerReceiverSubscriptionActiveDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcControllerReceiverSubscriptionActive.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcControllerReceiverUpdatesDataPoint adds a data point to cisco.wlc.controller.receiver.updates metric.
+func (mb *MetricsBuilder) RecordCiscoWlcControllerReceiverUpdatesDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcControllerReceiverUpdates.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcHaEnabledDataPoint adds a data point to cisco.wlc.ha.enabled metric.
+func (mb *MetricsBuilder) RecordCiscoWlcHaEnabledDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcHaEnabled.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcHaStandbyFailureCountDataPoint adds a data point to cisco.wlc.ha.standby.failure.count metric.
+func (mb *MetricsBuilder) RecordCiscoWlcHaStandbyFailureCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcHaStandbyFailureCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcHaStateDataPoint adds a data point to cisco.wlc.ha.state metric.
+func (mb *MetricsBuilder) RecordCiscoWlcHaStateDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcHaState.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcHaSwitchoverCountDataPoint adds a data point to cisco.wlc.ha.switchover.count metric.
+func (mb *MetricsBuilder) RecordCiscoWlcHaSwitchoverCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcHaSwitchoverCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcMobilityHandoffCountDataPoint adds a data point to cisco.wlc.mobility.handoff.count metric.
+func (mb *MetricsBuilder) RecordCiscoWlcMobilityHandoffCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcMobilityHandoffCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcMobilityHandoffFailureCountDataPoint adds a data point to cisco.wlc.mobility.handoff.failure.count metric.
+func (mb *MetricsBuilder) RecordCiscoWlcMobilityHandoffFailureCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcMobilityHandoffFailureCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcMobilityPeerStatusDataPoint adds a data point to cisco.wlc.mobility.peer.status metric.
+func (mb *MetricsBuilder) RecordCiscoWlcMobilityPeerStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcMobilityPeerStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcMobilityRoamCountDataPoint adds a data point to cisco.wlc.mobility.roam.count metric.
+func (mb *MetricsBuilder) RecordCiscoWlcMobilityRoamCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcMobilityRoamCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcRfChannelChangeCountDataPoint adds a data point to cisco.wlc.rf.channel.change.count metric.
+func (mb *MetricsBuilder) RecordCiscoWlcRfChannelChangeCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcRfChannelChangeCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcRfChannelRecommendedDataPoint adds a data point to cisco.wlc.rf.channel.recommended metric.
+func (mb *MetricsBuilder) RecordCiscoWlcRfChannelRecommendedDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcRfChannelRecommended.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcRfChannelUtilizationDataPoint adds a data point to cisco.wlc.rf.channel.utilization metric.
+func (mb *MetricsBuilder) RecordCiscoWlcRfChannelUtilizationDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricCiscoWlcRfChannelUtilization.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcRfClientCountDataPoint adds a data point to cisco.wlc.rf.client.count metric.
+func (mb *MetricsBuilder) RecordCiscoWlcRfClientCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcRfClientCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcRfNoiseFloorDataPoint adds a data point to cisco.wlc.rf.noise_floor metric.
+func (mb *MetricsBuilder) RecordCiscoWlcRfNoiseFloorDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricCiscoWlcRfNoiseFloor.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcSsidChannelUtilizationDataPoint adds a data point to cisco.wlc.ssid.channel.utilization metric.
+func (mb *MetricsBuilder) RecordCiscoWlcSsidChannelUtilizationDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricCiscoWlcSsidChannelUtilization.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcSsidClientCountDataPoint adds a data point to cisco.wlc.ssid.client.count metric.
+func (mb *MetricsBuilder) RecordCiscoWlcSsidClientCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcSsidClientCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcSsidNetworkIoDataPoint adds a data point to cisco.wlc.ssid.network.io metric.
+func (mb *MetricsBuilder) RecordCiscoWlcSsidNetworkIoDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcSsidNetworkIo.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordCiscoWlcSsidRetryCountDataPoint adds a data point to cisco.wlc.ssid.retry.count metric.
+func (mb *MetricsBuilder) RecordCiscoWlcSsidRetryCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricCiscoWlcSsidRetryCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordFmcAPIEndpointErrorDataPoint adds a data point to fmc.api.endpoint.error metric.
+func (mb *MetricsBuilder) RecordFmcAPIEndpointErrorDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricFmcAPIEndpointError.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordFmcAPIRateLimitedDataPoint adds a data point to fmc.api.rate_limited metric.
+func (mb *MetricsBuilder) RecordFmcAPIRateLimitedDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricFmcAPIRateLimited.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordFmcAPIRequestDurationDataPoint adds a data point to fmc.api.request.duration metric.
+func (mb *MetricsBuilder) RecordFmcAPIRequestDurationDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricFmcAPIRequestDuration.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordFmcAPIRequestErrorsDataPoint adds a data point to fmc.api.request.errors metric.
+func (mb *MetricsBuilder) RecordFmcAPIRequestErrorsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricFmcAPIRequestErrors.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordFmcAuditRecordCountDataPoint adds a data point to fmc.audit.record.count metric.
+func (mb *MetricsBuilder) RecordFmcAuditRecordCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricFmcAuditRecordCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordFmcDeploymentPendingCountDataPoint adds a data point to fmc.deployment.pending.count metric.
+func (mb *MetricsBuilder) RecordFmcDeploymentPendingCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricFmcDeploymentPendingCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordFmcDeploymentStatusDataPoint adds a data point to fmc.deployment.status metric.
+func (mb *MetricsBuilder) RecordFmcDeploymentStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricFmcDeploymentStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordFmcHaStatusDataPoint adds a data point to fmc.ha.status metric.
+func (mb *MetricsBuilder) RecordFmcHaStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricFmcHaStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordFmcHealthEventCountDataPoint adds a data point to fmc.health.event.count metric.
+func (mb *MetricsBuilder) RecordFmcHealthEventCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricFmcHealthEventCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordFmcHealthStatusDataPoint adds a data point to fmc.health.status metric.
+func (mb *MetricsBuilder) RecordFmcHealthStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricFmcHealthStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordFmcManagerUpDataPoint adds a data point to fmc.manager.up metric.
+func (mb *MetricsBuilder) RecordFmcManagerUpDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricFmcManagerUp.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordFmcPolicyObjectCountDataPoint adds a data point to fmc.policy.object.count metric.
+func (mb *MetricsBuilder) RecordFmcPolicyObjectCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricFmcPolicyObjectCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordFmcResourceCountDataPoint adds a data point to fmc.resource.count metric.
+func (mb *MetricsBuilder) RecordFmcResourceCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricFmcResourceCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordFmcResourceInfoDataPoint adds a data point to fmc.resource.info metric.
+func (mb *MetricsBuilder) RecordFmcResourceInfoDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricFmcResourceInfo.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordFmcResourceStatusDataPoint adds a data point to fmc.resource.status metric.
+func (mb *MetricsBuilder) RecordFmcResourceStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricFmcResourceStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordFmcScrapeLastSuccessDataPoint adds a data point to fmc.scrape.last_success metric.
+func (mb *MetricsBuilder) RecordFmcScrapeLastSuccessDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricFmcScrapeLastSuccess.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordFmcScrapePartialSuccessDataPoint adds a data point to fmc.scrape.partial_success metric.
+func (mb *MetricsBuilder) RecordFmcScrapePartialSuccessDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricFmcScrapePartialSuccess.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordFmcVpnTunnelStatusDataPoint adds a data point to fmc.vpn.tunnel.status metric.
+func (mb *MetricsBuilder) RecordFmcVpnTunnelStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricFmcVpnTunnelStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightAdvisoryActiveDataPoint adds a data point to intersight.advisory.active metric.
+func (mb *MetricsBuilder) RecordIntersightAdvisoryActiveDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightAdvisoryActive.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightAdvisoryCountDataPoint adds a data point to intersight.advisory.count metric.
+func (mb *MetricsBuilder) RecordIntersightAdvisoryCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightAdvisoryCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightAlarmActiveDataPoint adds a data point to intersight.alarm.active metric.
+func (mb *MetricsBuilder) RecordIntersightAlarmActiveDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightAlarmActive.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightAlarmCountDataPoint adds a data point to intersight.alarm.count metric.
+func (mb *MetricsBuilder) RecordIntersightAlarmCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightAlarmCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightAPIRateLimitedDataPoint adds a data point to intersight.api.rate_limited metric.
+func (mb *MetricsBuilder) RecordIntersightAPIRateLimitedDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightAPIRateLimited.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightAPIRequestDurationDataPoint adds a data point to intersight.api.request.duration metric.
+func (mb *MetricsBuilder) RecordIntersightAPIRequestDurationDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightAPIRequestDuration.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightAPIRequestErrorsDataPoint adds a data point to intersight.api.request.errors metric.
+func (mb *MetricsBuilder) RecordIntersightAPIRequestErrorsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightAPIRequestErrors.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightAuditRecordCountDataPoint adds a data point to intersight.audit.record.count metric.
+func (mb *MetricsBuilder) RecordIntersightAuditRecordCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightAuditRecordCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightComputeAvailableMemoryDataPoint adds a data point to intersight.compute.available_memory metric.
+func (mb *MetricsBuilder) RecordIntersightComputeAvailableMemoryDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightComputeAvailableMemory.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightComputeThreadCountDataPoint adds a data point to intersight.compute.thread.count metric.
+func (mb *MetricsBuilder) RecordIntersightComputeThreadCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightComputeThreadCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightFaultCountDataPoint adds a data point to intersight.fault.count metric.
+func (mb *MetricsBuilder) RecordIntersightFaultCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightFaultCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightFirmwareBundleInfoDataPoint adds a data point to intersight.firmware.bundle.info metric.
+func (mb *MetricsBuilder) RecordIntersightFirmwareBundleInfoDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightFirmwareBundleInfo.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightHclStatusDataPoint adds a data point to intersight.hcl.status metric.
+func (mb *MetricsBuilder) RecordIntersightHclStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightHclStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightHclStatusCountDataPoint adds a data point to intersight.hcl.status.count metric.
+func (mb *MetricsBuilder) RecordIntersightHclStatusCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightHclStatusCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightHyperflexReadIopsDataPoint adds a data point to intersight.hyperflex.read.iops metric.
+func (mb *MetricsBuilder) RecordIntersightHyperflexReadIopsDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightHyperflexReadIops.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightHyperflexReadLatencyDataPoint adds a data point to intersight.hyperflex.read.latency metric.
+func (mb *MetricsBuilder) RecordIntersightHyperflexReadLatencyDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightHyperflexReadLatency.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightHyperflexStatusDataPoint adds a data point to intersight.hyperflex.status metric.
+func (mb *MetricsBuilder) RecordIntersightHyperflexStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightHyperflexStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightHyperflexWriteIopsDataPoint adds a data point to intersight.hyperflex.write.iops metric.
+func (mb *MetricsBuilder) RecordIntersightHyperflexWriteIopsDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightHyperflexWriteIops.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightHyperflexWriteLatencyDataPoint adds a data point to intersight.hyperflex.write.latency metric.
+func (mb *MetricsBuilder) RecordIntersightHyperflexWriteLatencyDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightHyperflexWriteLatency.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightKubernetesClusterConnectionStatusDataPoint adds a data point to intersight.kubernetes.cluster.connection_status metric.
+func (mb *MetricsBuilder) RecordIntersightKubernetesClusterConnectionStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightKubernetesClusterConnectionStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightResourceCountDataPoint adds a data point to intersight.resource.count metric.
+func (mb *MetricsBuilder) RecordIntersightResourceCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightResourceCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightResourceInfoDataPoint adds a data point to intersight.resource.info metric.
+func (mb *MetricsBuilder) RecordIntersightResourceInfoDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightResourceInfo.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightResourceStatusDataPoint adds a data point to intersight.resource.status metric.
+func (mb *MetricsBuilder) RecordIntersightResourceStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightResourceStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightScrapeLastSuccessDataPoint adds a data point to intersight.scrape.last_success metric.
+func (mb *MetricsBuilder) RecordIntersightScrapeLastSuccessDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightScrapeLastSuccess.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightScrapePartialSuccessDataPoint adds a data point to intersight.scrape.partial_success metric.
+func (mb *MetricsBuilder) RecordIntersightScrapePartialSuccessDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightScrapePartialSuccess.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightStorageLifeLeftDataPoint adds a data point to intersight.storage.life_left metric.
+func (mb *MetricsBuilder) RecordIntersightStorageLifeLeftDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightStorageLifeLeft.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightStorageMediaErrorCountDataPoint adds a data point to intersight.storage.media_error.count metric.
+func (mb *MetricsBuilder) RecordIntersightStorageMediaErrorCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightStorageMediaErrorCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightStoragePowerOnHoursDataPoint adds a data point to intersight.storage.power_on.hours metric.
+func (mb *MetricsBuilder) RecordIntersightStoragePowerOnHoursDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightStoragePowerOnHours.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightStoragePredictiveFailureCountDataPoint adds a data point to intersight.storage.predictive_failure.count metric.
+func (mb *MetricsBuilder) RecordIntersightStoragePredictiveFailureCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightStoragePredictiveFailureCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightStorageRebuildRateDataPoint adds a data point to intersight.storage.rebuild.rate metric.
+func (mb *MetricsBuilder) RecordIntersightStorageRebuildRateDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightStorageRebuildRate.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightStorageStatusDataPoint adds a data point to intersight.storage.status metric.
+func (mb *MetricsBuilder) RecordIntersightStorageStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightStorageStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightStorageTemperatureDataPoint adds a data point to intersight.storage.temperature metric.
+func (mb *MetricsBuilder) RecordIntersightStorageTemperatureDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightStorageTemperature.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightTargetConnectionStatusDataPoint adds a data point to intersight.target.connection_status metric.
+func (mb *MetricsBuilder) RecordIntersightTargetConnectionStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightTargetConnectionStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightTaskCountDataPoint adds a data point to intersight.task.count metric.
+func (mb *MetricsBuilder) RecordIntersightTaskCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightTaskCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightTaskStatusDataPoint adds a data point to intersight.task.status metric.
+func (mb *MetricsBuilder) RecordIntersightTaskStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightTaskStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightTechsupportCountDataPoint adds a data point to intersight.techsupport.count metric.
+func (mb *MetricsBuilder) RecordIntersightTechsupportCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightTechsupportCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightTechsupportStatusDataPoint adds a data point to intersight.techsupport.status metric.
+func (mb *MetricsBuilder) RecordIntersightTechsupportStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightTechsupportStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightTelemetryQueryRowsDataPoint adds a data point to intersight.telemetry.query.rows metric.
+func (mb *MetricsBuilder) RecordIntersightTelemetryQueryRowsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightTelemetryQueryRows.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsCPUIdleUtilizationDataPoint adds a data point to intersight.ucs.cpu.idle.utilization metric.
+func (mb *MetricsBuilder) RecordIntersightUcsCPUIdleUtilizationDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsCPUIdleUtilization.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsCPUSystemUtilizationDataPoint adds a data point to intersight.ucs.cpu.system.utilization metric.
+func (mb *MetricsBuilder) RecordIntersightUcsCPUSystemUtilizationDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsCPUSystemUtilization.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsCurrentDataPoint adds a data point to intersight.ucs.current metric.
+func (mb *MetricsBuilder) RecordIntersightUcsCurrentDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsCurrent.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsFanSpeedDataPoint adds a data point to intersight.ucs.fan.speed metric.
+func (mb *MetricsBuilder) RecordIntersightUcsFanSpeedDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsFanSpeed.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsFanSpeedRatioDataPoint adds a data point to intersight.ucs.fan.speed_ratio metric.
+func (mb *MetricsBuilder) RecordIntersightUcsFanSpeedRatioDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsFanSpeedRatio.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsFanStatusDataPoint adds a data point to intersight.ucs.fan.status metric.
+func (mb *MetricsBuilder) RecordIntersightUcsFanStatusDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsFanStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsHostEnergyDataPoint adds a data point to intersight.ucs.host.energy metric.
+func (mb *MetricsBuilder) RecordIntersightUcsHostEnergyDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsHostEnergy.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsHostPowerDataPoint adds a data point to intersight.ucs.host.power metric.
+func (mb *MetricsBuilder) RecordIntersightUcsHostPowerDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsHostPower.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsHostPowerStateDataPoint adds a data point to intersight.ucs.host.power_state metric.
+func (mb *MetricsBuilder) RecordIntersightUcsHostPowerStateDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsHostPowerState.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsMemoryCachedDataPoint adds a data point to intersight.ucs.memory.cached metric.
+func (mb *MetricsBuilder) RecordIntersightUcsMemoryCachedDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsMemoryCached.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsMemoryEccCorrectableDataPoint adds a data point to intersight.ucs.memory.ecc.correctable metric.
+func (mb *MetricsBuilder) RecordIntersightUcsMemoryEccCorrectableDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsMemoryEccCorrectable.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsMemoryEccUncorrectableDataPoint adds a data point to intersight.ucs.memory.ecc.uncorrectable metric.
+func (mb *MetricsBuilder) RecordIntersightUcsMemoryEccUncorrectableDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsMemoryEccUncorrectable.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsMemoryFreeDataPoint adds a data point to intersight.ucs.memory.free metric.
+func (mb *MetricsBuilder) RecordIntersightUcsMemoryFreeDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsMemoryFree.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsMemoryModuleSizeDataPoint adds a data point to intersight.ucs.memory.module.size metric.
+func (mb *MetricsBuilder) RecordIntersightUcsMemoryModuleSizeDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsMemoryModuleSize.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsMemoryStatusDataPoint adds a data point to intersight.ucs.memory.status metric.
+func (mb *MetricsBuilder) RecordIntersightUcsMemoryStatusDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsMemoryStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsMemoryUsedDataPoint adds a data point to intersight.ucs.memory.used metric.
+func (mb *MetricsBuilder) RecordIntersightUcsMemoryUsedDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsMemoryUsed.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsNetworkInterfaceResetsDataPoint adds a data point to intersight.ucs.network.interface_resets metric.
+func (mb *MetricsBuilder) RecordIntersightUcsNetworkInterfaceResetsDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsNetworkInterfaceResets.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsNetworkLinkStatusDataPoint adds a data point to intersight.ucs.network.link.status metric.
+func (mb *MetricsBuilder) RecordIntersightUcsNetworkLinkStatusDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsNetworkLinkStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsNetworkLinkFailuresDataPoint adds a data point to intersight.ucs.network.link_failures metric.
+func (mb *MetricsBuilder) RecordIntersightUcsNetworkLinkFailuresDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsNetworkLinkFailures.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsNetworkReceiveDataPoint adds a data point to intersight.ucs.network.receive metric.
+func (mb *MetricsBuilder) RecordIntersightUcsNetworkReceiveDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsNetworkReceive.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsNetworkReceiveCrcErrorsDataPoint adds a data point to intersight.ucs.network.receive.crc_errors metric.
+func (mb *MetricsBuilder) RecordIntersightUcsNetworkReceiveCrcErrorsDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsNetworkReceiveCrcErrors.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsNetworkReceiveDiscardsDataPoint adds a data point to intersight.ucs.network.receive.discards metric.
+func (mb *MetricsBuilder) RecordIntersightUcsNetworkReceiveDiscardsDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsNetworkReceiveDiscards.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsNetworkReceiveDropsDataPoint adds a data point to intersight.ucs.network.receive.drops metric.
+func (mb *MetricsBuilder) RecordIntersightUcsNetworkReceiveDropsDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsNetworkReceiveDrops.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsNetworkReceiveErrorsDataPoint adds a data point to intersight.ucs.network.receive.errors metric.
+func (mb *MetricsBuilder) RecordIntersightUcsNetworkReceiveErrorsDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsNetworkReceiveErrors.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsNetworkReceiveNoBufferDataPoint adds a data point to intersight.ucs.network.receive.no_buffer metric.
+func (mb *MetricsBuilder) RecordIntersightUcsNetworkReceiveNoBufferDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsNetworkReceiveNoBuffer.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsNetworkReceivePacketsDataPoint adds a data point to intersight.ucs.network.receive.packets metric.
+func (mb *MetricsBuilder) RecordIntersightUcsNetworkReceivePacketsDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsNetworkReceivePackets.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsNetworkReceivePauseFramesDataPoint adds a data point to intersight.ucs.network.receive.pause_frames metric.
+func (mb *MetricsBuilder) RecordIntersightUcsNetworkReceivePauseFramesDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsNetworkReceivePauseFrames.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsNetworkSignalLossesDataPoint adds a data point to intersight.ucs.network.signal_losses metric.
+func (mb *MetricsBuilder) RecordIntersightUcsNetworkSignalLossesDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsNetworkSignalLosses.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsNetworkSpeedDataPoint adds a data point to intersight.ucs.network.speed metric.
+func (mb *MetricsBuilder) RecordIntersightUcsNetworkSpeedDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsNetworkSpeed.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsNetworkTransmitDataPoint adds a data point to intersight.ucs.network.transmit metric.
+func (mb *MetricsBuilder) RecordIntersightUcsNetworkTransmitDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsNetworkTransmit.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsNetworkTransmitDiscardsDataPoint adds a data point to intersight.ucs.network.transmit.discards metric.
+func (mb *MetricsBuilder) RecordIntersightUcsNetworkTransmitDiscardsDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsNetworkTransmitDiscards.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsNetworkTransmitDropsDataPoint adds a data point to intersight.ucs.network.transmit.drops metric.
+func (mb *MetricsBuilder) RecordIntersightUcsNetworkTransmitDropsDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsNetworkTransmitDrops.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsNetworkTransmitErrorsDataPoint adds a data point to intersight.ucs.network.transmit.errors metric.
+func (mb *MetricsBuilder) RecordIntersightUcsNetworkTransmitErrorsDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsNetworkTransmitErrors.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsNetworkTransmitPacketsDataPoint adds a data point to intersight.ucs.network.transmit.packets metric.
+func (mb *MetricsBuilder) RecordIntersightUcsNetworkTransmitPacketsDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsNetworkTransmitPackets.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsNetworkTransmitPauseFramesDataPoint adds a data point to intersight.ucs.network.transmit.pause_frames metric.
+func (mb *MetricsBuilder) RecordIntersightUcsNetworkTransmitPauseFramesDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsNetworkTransmitPauseFrames.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsNetworkUtilizationDataPoint adds a data point to intersight.ucs.network.utilization metric.
+func (mb *MetricsBuilder) RecordIntersightUcsNetworkUtilizationDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsNetworkUtilization.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsPowerSupplyOutputPowerDataPoint adds a data point to intersight.ucs.power_supply.output_power metric.
+func (mb *MetricsBuilder) RecordIntersightUcsPowerSupplyOutputPowerDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsPowerSupplyOutputPower.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsPowerSupplyStatusDataPoint adds a data point to intersight.ucs.power_supply.status metric.
+func (mb *MetricsBuilder) RecordIntersightUcsPowerSupplyStatusDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsPowerSupplyStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsPowerSupplyUtilizationDataPoint adds a data point to intersight.ucs.power_supply.utilization metric.
+func (mb *MetricsBuilder) RecordIntersightUcsPowerSupplyUtilizationDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsPowerSupplyUtilization.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsSignalPowerReceiveDataPoint adds a data point to intersight.ucs.signal_power.receive metric.
+func (mb *MetricsBuilder) RecordIntersightUcsSignalPowerReceiveDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsSignalPowerReceive.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsSignalPowerTransmitDataPoint adds a data point to intersight.ucs.signal_power.transmit metric.
+func (mb *MetricsBuilder) RecordIntersightUcsSignalPowerTransmitDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsSignalPowerTransmit.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsTemperatureDataPoint adds a data point to intersight.ucs.temperature metric.
+func (mb *MetricsBuilder) RecordIntersightUcsTemperatureDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsTemperature.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsTemperatureLimitHighCriticalDataPoint adds a data point to intersight.ucs.temperature.limit_high_critical metric.
+func (mb *MetricsBuilder) RecordIntersightUcsTemperatureLimitHighCriticalDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsTemperatureLimitHighCritical.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsTemperatureLimitLowCriticalDataPoint adds a data point to intersight.ucs.temperature.limit_low_critical metric.
+func (mb *MetricsBuilder) RecordIntersightUcsTemperatureLimitLowCriticalDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsTemperatureLimitLowCritical.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsTemperatureStatusDataPoint adds a data point to intersight.ucs.temperature.status metric.
+func (mb *MetricsBuilder) RecordIntersightUcsTemperatureStatusDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsTemperatureStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightUcsVoltageDataPoint adds a data point to intersight.ucs.voltage metric.
+func (mb *MetricsBuilder) RecordIntersightUcsVoltageDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIntersightUcsVoltage.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightVirtualMachineCountDataPoint adds a data point to intersight.virtual_machine.count metric.
+func (mb *MetricsBuilder) RecordIntersightVirtualMachineCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightVirtualMachineCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightVirtualMachineCPUCountDataPoint adds a data point to intersight.virtual_machine.cpu.count metric.
+func (mb *MetricsBuilder) RecordIntersightVirtualMachineCPUCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightVirtualMachineCPUCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightVirtualMachineMemoryDataPoint adds a data point to intersight.virtual_machine.memory metric.
+func (mb *MetricsBuilder) RecordIntersightVirtualMachineMemoryDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightVirtualMachineMemory.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightVirtualMachinePowerStateDataPoint adds a data point to intersight.virtual_machine.power_state metric.
+func (mb *MetricsBuilder) RecordIntersightVirtualMachinePowerStateDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightVirtualMachinePowerState.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightWorkflowCountDataPoint adds a data point to intersight.workflow.count metric.
+func (mb *MetricsBuilder) RecordIntersightWorkflowCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightWorkflowCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIntersightWorkflowStatusDataPoint adds a data point to intersight.workflow.status metric.
+func (mb *MetricsBuilder) RecordIntersightWorkflowStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIntersightWorkflowStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseAccountingSessionCountDataPoint adds a data point to ise.accounting.session.count metric.
+func (mb *MetricsBuilder) RecordIseAccountingSessionCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseAccountingSessionCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseAlarmCountDataPoint adds a data point to ise.alarm.count metric.
+func (mb *MetricsBuilder) RecordIseAlarmCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseAlarmCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseAPIEndpointErrorDataPoint adds a data point to ise.api.endpoint.error metric.
+func (mb *MetricsBuilder) RecordIseAPIEndpointErrorDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseAPIEndpointError.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseAPIRateLimitedDataPoint adds a data point to ise.api.rate_limited metric.
+func (mb *MetricsBuilder) RecordIseAPIRateLimitedDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseAPIRateLimited.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseAPIRequestDurationDataPoint adds a data point to ise.api.request.duration metric.
+func (mb *MetricsBuilder) RecordIseAPIRequestDurationDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIseAPIRequestDuration.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseAPIRequestErrorsDataPoint adds a data point to ise.api.request.errors metric.
+func (mb *MetricsBuilder) RecordIseAPIRequestErrorsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseAPIRequestErrors.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseAuthFailureReasonInfoDataPoint adds a data point to ise.auth.failure.reason.info metric.
+func (mb *MetricsBuilder) RecordIseAuthFailureReasonInfoDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseAuthFailureReasonInfo.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseCertificateCountDataPoint adds a data point to ise.certificate.count metric.
+func (mb *MetricsBuilder) RecordIseCertificateCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseCertificateCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseCertificateExpirationDataPoint adds a data point to ise.certificate.expiration metric.
+func (mb *MetricsBuilder) RecordIseCertificateExpirationDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseCertificateExpiration.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseControllerUpDataPoint adds a data point to ise.controller.up metric.
+func (mb *MetricsBuilder) RecordIseControllerUpDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseControllerUp.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseDataconnectQueryDurationDataPoint adds a data point to ise.dataconnect.query.duration metric.
+func (mb *MetricsBuilder) RecordIseDataconnectQueryDurationDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIseDataconnectQueryDuration.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseDataconnectQueryErrorsDataPoint adds a data point to ise.dataconnect.query.errors metric.
+func (mb *MetricsBuilder) RecordIseDataconnectQueryErrorsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseDataconnectQueryErrors.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseDataconnectQueryRowsDataPoint adds a data point to ise.dataconnect.query.rows metric.
+func (mb *MetricsBuilder) RecordIseDataconnectQueryRowsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseDataconnectQueryRows.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseDataconnectRowCountDataPoint adds a data point to ise.dataconnect.row.count metric.
+func (mb *MetricsBuilder) RecordIseDataconnectRowCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseDataconnectRowCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseDeploymentNodeCountDataPoint adds a data point to ise.deployment.node.count metric.
+func (mb *MetricsBuilder) RecordIseDeploymentNodeCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseDeploymentNodeCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseDeploymentNodeStatusDataPoint adds a data point to ise.deployment.node.status metric.
+func (mb *MetricsBuilder) RecordIseDeploymentNodeStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseDeploymentNodeStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseEndpointCountDataPoint adds a data point to ise.endpoint.count metric.
+func (mb *MetricsBuilder) RecordIseEndpointCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseEndpointCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseEndpointPostureCountDataPoint adds a data point to ise.endpoint.posture.count metric.
+func (mb *MetricsBuilder) RecordIseEndpointPostureCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseEndpointPostureCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseEndpointPostureStatusDataPoint adds a data point to ise.endpoint.posture.status metric.
+func (mb *MetricsBuilder) RecordIseEndpointPostureStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseEndpointPostureStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseEndpointProfileCountDataPoint adds a data point to ise.endpoint.profile.count metric.
+func (mb *MetricsBuilder) RecordIseEndpointProfileCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseEndpointProfileCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseEndpointStatusDataPoint adds a data point to ise.endpoint.status metric.
+func (mb *MetricsBuilder) RecordIseEndpointStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseEndpointStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseLicenseCountDataPoint adds a data point to ise.license.count metric.
+func (mb *MetricsBuilder) RecordIseLicenseCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseLicenseCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseLicenseStatusDataPoint adds a data point to ise.license.status metric.
+func (mb *MetricsBuilder) RecordIseLicenseStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseLicenseStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseNetworkDeviceCountDataPoint adds a data point to ise.network_device.count metric.
+func (mb *MetricsBuilder) RecordIseNetworkDeviceCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseNetworkDeviceCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseNetworkDeviceStatusDataPoint adds a data point to ise.network_device.status metric.
+func (mb *MetricsBuilder) RecordIseNetworkDeviceStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseNetworkDeviceStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIsePolicyObjectCountDataPoint adds a data point to ise.policy.object.count metric.
+func (mb *MetricsBuilder) RecordIsePolicyObjectCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIsePolicyObjectCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIsePolicyStatusDataPoint adds a data point to ise.policy.status metric.
+func (mb *MetricsBuilder) RecordIsePolicyStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIsePolicyStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseProfilerPolicyStatusDataPoint adds a data point to ise.profiler.policy.status metric.
+func (mb *MetricsBuilder) RecordIseProfilerPolicyStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseProfilerPolicyStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIsePxgridMessageCountDataPoint adds a data point to ise.pxgrid.message.count metric.
+func (mb *MetricsBuilder) RecordIsePxgridMessageCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIsePxgridMessageCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIsePxgridServiceStatusDataPoint adds a data point to ise.pxgrid.service.status metric.
+func (mb *MetricsBuilder) RecordIsePxgridServiceStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIsePxgridServiceStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIsePxgridSubscriptionStatusDataPoint adds a data point to ise.pxgrid.subscription.status metric.
+func (mb *MetricsBuilder) RecordIsePxgridSubscriptionStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIsePxgridSubscriptionStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseRadiusFailureCountDataPoint adds a data point to ise.radius.failure.count metric.
+func (mb *MetricsBuilder) RecordIseRadiusFailureCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseRadiusFailureCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseResourceInfoDataPoint adds a data point to ise.resource.info metric.
+func (mb *MetricsBuilder) RecordIseResourceInfoDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseResourceInfo.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseResourceStatusDataPoint adds a data point to ise.resource.status metric.
+func (mb *MetricsBuilder) RecordIseResourceStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseResourceStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseScrapeLastSuccessDataPoint adds a data point to ise.scrape.last_success metric.
+func (mb *MetricsBuilder) RecordIseScrapeLastSuccessDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseScrapeLastSuccess.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseScrapePartialSuccessDataPoint adds a data point to ise.scrape.partial_success metric.
+func (mb *MetricsBuilder) RecordIseScrapePartialSuccessDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseScrapePartialSuccess.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseServiceSkippedDataPoint adds a data point to ise.service.skipped metric.
+func (mb *MetricsBuilder) RecordIseServiceSkippedDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseServiceSkipped.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseServiceUnavailableDataPoint adds a data point to ise.service.unavailable metric.
+func (mb *MetricsBuilder) RecordIseServiceUnavailableDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseServiceUnavailable.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseSessionActiveCountDataPoint adds a data point to ise.session.active.count metric.
+func (mb *MetricsBuilder) RecordIseSessionActiveCountDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricIseSessionActiveCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseSessionCountDataPoint adds a data point to ise.session.count metric.
+func (mb *MetricsBuilder) RecordIseSessionCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseSessionCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseTacacsFailureCountDataPoint adds a data point to ise.tacacs.failure.count metric.
+func (mb *MetricsBuilder) RecordIseTacacsFailureCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseTacacsFailureCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseTrustsecResourceCountDataPoint adds a data point to ise.trustsec.resource.count metric.
+func (mb *MetricsBuilder) RecordIseTrustsecResourceCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseTrustsecResourceCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseTrustsecResourceStatusDataPoint adds a data point to ise.trustsec.resource.status metric.
+func (mb *MetricsBuilder) RecordIseTrustsecResourceStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseTrustsecResourceStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordIseWebhookDeliveryCountDataPoint adds a data point to ise.webhook.delivery.count metric.
+func (mb *MetricsBuilder) RecordIseWebhookDeliveryCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricIseWebhookDeliveryCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiAPIRequestDurationDataPoint adds a data point to meraki.api.request.duration metric.
+func (mb *MetricsBuilder) RecordMerakiAPIRequestDurationDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricMerakiAPIRequestDuration.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiAPIRequestErrorsDataPoint adds a data point to meraki.api.request.errors metric.
+func (mb *MetricsBuilder) RecordMerakiAPIRequestErrorsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricMerakiAPIRequestErrors.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiAPIRequestRateLimitedDataPoint adds a data point to meraki.api.request.rate_limited metric.
+func (mb *MetricsBuilder) RecordMerakiAPIRequestRateLimitedDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricMerakiAPIRequestRateLimited.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiAppliancePerformanceScoreDataPoint adds a data point to meraki.appliance.performance.score metric.
+func (mb *MetricsBuilder) RecordMerakiAppliancePerformanceScoreDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricMerakiAppliancePerformanceScore.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiControllerUpDataPoint adds a data point to meraki.controller.up metric.
+func (mb *MetricsBuilder) RecordMerakiControllerUpDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricMerakiControllerUp.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiDeviceStatusDataPoint adds a data point to meraki.device.status metric.
+func (mb *MetricsBuilder) RecordMerakiDeviceStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricMerakiDeviceStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiPowerModuleStatusDataPoint adds a data point to meraki.power.module.status metric.
+func (mb *MetricsBuilder) RecordMerakiPowerModuleStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricMerakiPowerModuleStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiScrapeLastSuccessDataPoint adds a data point to meraki.scrape.last_success metric.
+func (mb *MetricsBuilder) RecordMerakiScrapeLastSuccessDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricMerakiScrapeLastSuccess.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiSwitchPortAlertActiveDataPoint adds a data point to meraki.switch.port.alert.active metric.
+func (mb *MetricsBuilder) RecordMerakiSwitchPortAlertActiveDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricMerakiSwitchPortAlertActive.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiSwitchPortPoeAllocatedDataPoint adds a data point to meraki.switch.port.poe.allocated metric.
+func (mb *MetricsBuilder) RecordMerakiSwitchPortPoeAllocatedDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricMerakiSwitchPortPoeAllocated.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiSwitchPortUsageDataPoint adds a data point to meraki.switch.port.usage metric.
+func (mb *MetricsBuilder) RecordMerakiSwitchPortUsageDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricMerakiSwitchPortUsage.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiUplinkCellularSignalRsrpDataPoint adds a data point to meraki.uplink.cellular.signal.rsrp metric.
+func (mb *MetricsBuilder) RecordMerakiUplinkCellularSignalRsrpDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricMerakiUplinkCellularSignalRsrp.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiUplinkCellularSignalRsrqDataPoint adds a data point to meraki.uplink.cellular.signal.rsrq metric.
+func (mb *MetricsBuilder) RecordMerakiUplinkCellularSignalRsrqDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricMerakiUplinkCellularSignalRsrq.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiUplinkLatencyDataPoint adds a data point to meraki.uplink.latency metric.
+func (mb *MetricsBuilder) RecordMerakiUplinkLatencyDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricMerakiUplinkLatency.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiUplinkLossDataPoint adds a data point to meraki.uplink.loss metric.
+func (mb *MetricsBuilder) RecordMerakiUplinkLossDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricMerakiUplinkLoss.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiUplinkStatusDataPoint adds a data point to meraki.uplink.status metric.
+func (mb *MetricsBuilder) RecordMerakiUplinkStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricMerakiUplinkStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiVpnPeerJitterDataPoint adds a data point to meraki.vpn.peer.jitter metric.
+func (mb *MetricsBuilder) RecordMerakiVpnPeerJitterDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricMerakiVpnPeerJitter.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiVpnPeerLatencyDataPoint adds a data point to meraki.vpn.peer.latency metric.
+func (mb *MetricsBuilder) RecordMerakiVpnPeerLatencyDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricMerakiVpnPeerLatency.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiVpnPeerLossDataPoint adds a data point to meraki.vpn.peer.loss metric.
+func (mb *MetricsBuilder) RecordMerakiVpnPeerLossDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricMerakiVpnPeerLoss.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiVpnPeerMosDataPoint adds a data point to meraki.vpn.peer.mos metric.
+func (mb *MetricsBuilder) RecordMerakiVpnPeerMosDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricMerakiVpnPeerMos.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiVpnPeerStatusDataPoint adds a data point to meraki.vpn.peer.status metric.
+func (mb *MetricsBuilder) RecordMerakiVpnPeerStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricMerakiVpnPeerStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiVpnPeerUsageDataPoint adds a data point to meraki.vpn.peer.usage metric.
+func (mb *MetricsBuilder) RecordMerakiVpnPeerUsageDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricMerakiVpnPeerUsage.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiWirelessChannelUtilizationDataPoint adds a data point to meraki.wireless.channel_utilization metric.
+func (mb *MetricsBuilder) RecordMerakiWirelessChannelUtilizationDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricMerakiWirelessChannelUtilization.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiWirelessClientCountDataPoint adds a data point to meraki.wireless.client.count metric.
+func (mb *MetricsBuilder) RecordMerakiWirelessClientCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricMerakiWirelessClientCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiWirelessPacketCountDataPoint adds a data point to meraki.wireless.packet.count metric.
+func (mb *MetricsBuilder) RecordMerakiWirelessPacketCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricMerakiWirelessPacketCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiWirelessPacketLossDataPoint adds a data point to meraki.wireless.packet.loss metric.
+func (mb *MetricsBuilder) RecordMerakiWirelessPacketLossDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricMerakiWirelessPacketLoss.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiWirelessPacketLossPercentageDataPoint adds a data point to meraki.wireless.packet.loss_percentage metric.
+func (mb *MetricsBuilder) RecordMerakiWirelessPacketLossPercentageDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricMerakiWirelessPacketLossPercentage.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordMerakiWirelessSsidStatusDataPoint adds a data point to meraki.wireless.ssid.status metric.
+func (mb *MetricsBuilder) RecordMerakiWirelessSsidStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricMerakiWirelessSsidStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardAPIEndpointErrorDataPoint adds a data point to nexus_dashboard.api.endpoint.error metric.
+func (mb *MetricsBuilder) RecordNexusDashboardAPIEndpointErrorDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricNexusDashboardAPIEndpointError.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardAPIRateLimitedDataPoint adds a data point to nexus_dashboard.api.rate_limited metric.
+func (mb *MetricsBuilder) RecordNexusDashboardAPIRateLimitedDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricNexusDashboardAPIRateLimited.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardAPIRequestDurationDataPoint adds a data point to nexus_dashboard.api.request.duration metric.
+func (mb *MetricsBuilder) RecordNexusDashboardAPIRequestDurationDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricNexusDashboardAPIRequestDuration.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardAPIRequestErrorsDataPoint adds a data point to nexus_dashboard.api.request.errors metric.
+func (mb *MetricsBuilder) RecordNexusDashboardAPIRequestErrorsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricNexusDashboardAPIRequestErrors.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardAuditRecordCountDataPoint adds a data point to nexus_dashboard.audit.record.count metric.
+func (mb *MetricsBuilder) RecordNexusDashboardAuditRecordCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricNexusDashboardAuditRecordCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardConfigComplianceDataPoint adds a data point to nexus_dashboard.config.compliance metric.
+func (mb *MetricsBuilder) RecordNexusDashboardConfigComplianceDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricNexusDashboardConfigCompliance.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardDataBrokerRuleCountDataPoint adds a data point to nexus_dashboard.data_broker.rule.count metric.
+func (mb *MetricsBuilder) RecordNexusDashboardDataBrokerRuleCountDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricNexusDashboardDataBrokerRuleCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardDataBrokerSessionCountDataPoint adds a data point to nexus_dashboard.data_broker.session.count metric.
+func (mb *MetricsBuilder) RecordNexusDashboardDataBrokerSessionCountDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricNexusDashboardDataBrokerSessionCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardDataBrokerStatusDataPoint adds a data point to nexus_dashboard.data_broker.status metric.
+func (mb *MetricsBuilder) RecordNexusDashboardDataBrokerStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricNexusDashboardDataBrokerStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardDeploymentStatusDataPoint adds a data point to nexus_dashboard.deployment.status metric.
+func (mb *MetricsBuilder) RecordNexusDashboardDeploymentStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricNexusDashboardDeploymentStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardEndpointCountDataPoint adds a data point to nexus_dashboard.endpoint.count metric.
+func (mb *MetricsBuilder) RecordNexusDashboardEndpointCountDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricNexusDashboardEndpointCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardEventCountDataPoint adds a data point to nexus_dashboard.event.count metric.
+func (mb *MetricsBuilder) RecordNexusDashboardEventCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricNexusDashboardEventCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardFabricHealthDataPoint adds a data point to nexus_dashboard.fabric.health metric.
+func (mb *MetricsBuilder) RecordNexusDashboardFabricHealthDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricNexusDashboardFabricHealth.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardInsightsAnomalyActiveDataPoint adds a data point to nexus_dashboard.insights.anomaly.active metric.
+func (mb *MetricsBuilder) RecordNexusDashboardInsightsAnomalyActiveDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricNexusDashboardInsightsAnomalyActive.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardInsightsAnomalyCountDataPoint adds a data point to nexus_dashboard.insights.anomaly.count metric.
+func (mb *MetricsBuilder) RecordNexusDashboardInsightsAnomalyCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricNexusDashboardInsightsAnomalyCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardInsightsConfidenceDataPoint adds a data point to nexus_dashboard.insights.confidence metric.
+func (mb *MetricsBuilder) RecordNexusDashboardInsightsConfidenceDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricNexusDashboardInsightsConfidence.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardInsightsScoreDataPoint adds a data point to nexus_dashboard.insights.score metric.
+func (mb *MetricsBuilder) RecordNexusDashboardInsightsScoreDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricNexusDashboardInsightsScore.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardInsightsStatusDataPoint adds a data point to nexus_dashboard.insights.status metric.
+func (mb *MetricsBuilder) RecordNexusDashboardInsightsStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricNexusDashboardInsightsStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardOrchestratorDeploymentCountDataPoint adds a data point to nexus_dashboard.orchestrator.deployment.count metric.
+func (mb *MetricsBuilder) RecordNexusDashboardOrchestratorDeploymentCountDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricNexusDashboardOrchestratorDeploymentCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardOrchestratorDeploymentStatusDataPoint adds a data point to nexus_dashboard.orchestrator.deployment.status metric.
+func (mb *MetricsBuilder) RecordNexusDashboardOrchestratorDeploymentStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricNexusDashboardOrchestratorDeploymentStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardOrchestratorPolicyDeltaCountDataPoint adds a data point to nexus_dashboard.orchestrator.policy_delta.count metric.
+func (mb *MetricsBuilder) RecordNexusDashboardOrchestratorPolicyDeltaCountDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricNexusDashboardOrchestratorPolicyDeltaCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardResourceCountDataPoint adds a data point to nexus_dashboard.resource.count metric.
+func (mb *MetricsBuilder) RecordNexusDashboardResourceCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricNexusDashboardResourceCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardResourceInfoDataPoint adds a data point to nexus_dashboard.resource.info metric.
+func (mb *MetricsBuilder) RecordNexusDashboardResourceInfoDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricNexusDashboardResourceInfo.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardResourceStatusDataPoint adds a data point to nexus_dashboard.resource.status metric.
+func (mb *MetricsBuilder) RecordNexusDashboardResourceStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricNexusDashboardResourceStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardScrapeLastSuccessDataPoint adds a data point to nexus_dashboard.scrape.last_success metric.
+func (mb *MetricsBuilder) RecordNexusDashboardScrapeLastSuccessDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricNexusDashboardScrapeLastSuccess.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardScrapePartialSuccessDataPoint adds a data point to nexus_dashboard.scrape.partial_success metric.
+func (mb *MetricsBuilder) RecordNexusDashboardScrapePartialSuccessDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricNexusDashboardScrapePartialSuccess.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardServiceHealthDataPoint adds a data point to nexus_dashboard.service.health metric.
+func (mb *MetricsBuilder) RecordNexusDashboardServiceHealthDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricNexusDashboardServiceHealth.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardServiceSkippedDataPoint adds a data point to nexus_dashboard.service.skipped metric.
+func (mb *MetricsBuilder) RecordNexusDashboardServiceSkippedDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricNexusDashboardServiceSkipped.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardServiceUnavailableDataPoint adds a data point to nexus_dashboard.service.unavailable metric.
+func (mb *MetricsBuilder) RecordNexusDashboardServiceUnavailableDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricNexusDashboardServiceUnavailable.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardStorageUtilizationDataPoint adds a data point to nexus_dashboard.storage.utilization metric.
+func (mb *MetricsBuilder) RecordNexusDashboardStorageUtilizationDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricNexusDashboardStorageUtilization.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordNexusDashboardVpcPeerCountDataPoint adds a data point to nexus_dashboard.vpc.peer.count metric.
+func (mb *MetricsBuilder) RecordNexusDashboardVpcPeerCountDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricNexusDashboardVpcPeerCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanAPIRateLimitedDataPoint adds a data point to sdwan.api.rate_limited metric.
+func (mb *MetricsBuilder) RecordSdwanAPIRateLimitedDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanAPIRateLimited.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanAPIRequestDurationDataPoint adds a data point to sdwan.api.request.duration metric.
+func (mb *MetricsBuilder) RecordSdwanAPIRequestDurationDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricSdwanAPIRequestDuration.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanAPIRequestErrorsDataPoint adds a data point to sdwan.api.request.errors metric.
+func (mb *MetricsBuilder) RecordSdwanAPIRequestErrorsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanAPIRequestErrors.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanAppRouteJitterDataPoint adds a data point to sdwan.app_route.jitter metric.
+func (mb *MetricsBuilder) RecordSdwanAppRouteJitterDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricSdwanAppRouteJitter.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanAppRouteLatencyDataPoint adds a data point to sdwan.app_route.latency metric.
+func (mb *MetricsBuilder) RecordSdwanAppRouteLatencyDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricSdwanAppRouteLatency.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanAppRouteLossDataPoint adds a data point to sdwan.app_route.loss metric.
+func (mb *MetricsBuilder) RecordSdwanAppRouteLossDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricSdwanAppRouteLoss.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanAppRouteSLAStatusDataPoint adds a data point to sdwan.app_route.sla.status metric.
+func (mb *MetricsBuilder) RecordSdwanAppRouteSLAStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanAppRouteSLAStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanBfdSessionCountDataPoint adds a data point to sdwan.bfd.session.count metric.
+func (mb *MetricsBuilder) RecordSdwanBfdSessionCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanBfdSessionCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanBfdSessionFlapCountDataPoint adds a data point to sdwan.bfd.session.flap.count metric.
+func (mb *MetricsBuilder) RecordSdwanBfdSessionFlapCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanBfdSessionFlapCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanBfdSessionStatusDataPoint adds a data point to sdwan.bfd.session.status metric.
+func (mb *MetricsBuilder) RecordSdwanBfdSessionStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanBfdSessionStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanBfdSessionTransitionsDataPoint adds a data point to sdwan.bfd.session.transitions metric.
+func (mb *MetricsBuilder) RecordSdwanBfdSessionTransitionsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanBfdSessionTransitions.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanCollectionObjectCountDataPoint adds a data point to sdwan.collection.object.count metric.
+func (mb *MetricsBuilder) RecordSdwanCollectionObjectCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanCollectionObjectCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanControlActualConnectionsDataPoint adds a data point to sdwan.control.actual_connections metric.
+func (mb *MetricsBuilder) RecordSdwanControlActualConnectionsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanControlActualConnections.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanControlConnectionCountDataPoint adds a data point to sdwan.control.connection.count metric.
+func (mb *MetricsBuilder) RecordSdwanControlConnectionCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanControlConnectionCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanControlConnectionStatusDataPoint adds a data point to sdwan.control.connection.status metric.
+func (mb *MetricsBuilder) RecordSdwanControlConnectionStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanControlConnectionStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanControlExpectedConnectionsDataPoint adds a data point to sdwan.control.expected_connections metric.
+func (mb *MetricsBuilder) RecordSdwanControlExpectedConnectionsDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanControlExpectedConnections.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanDeviceCertificateStatusDataPoint adds a data point to sdwan.device.certificate.status metric.
+func (mb *MetricsBuilder) RecordSdwanDeviceCertificateStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanDeviceCertificateStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanDeviceReachabilityStatusDataPoint adds a data point to sdwan.device.reachability.status metric.
+func (mb *MetricsBuilder) RecordSdwanDeviceReachabilityStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanDeviceReachabilityStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanDeviceValidityStatusDataPoint adds a data point to sdwan.device.validity.status metric.
+func (mb *MetricsBuilder) RecordSdwanDeviceValidityStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanDeviceValidityStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanEventCountDataPoint adds a data point to sdwan.event.count metric.
+func (mb *MetricsBuilder) RecordSdwanEventCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanEventCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanInventoryDeviceCountDataPoint adds a data point to sdwan.inventory.device.count metric.
+func (mb *MetricsBuilder) RecordSdwanInventoryDeviceCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanInventoryDeviceCount.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanManagerEndpointStatusDataPoint adds a data point to sdwan.manager.endpoint.status metric.
+func (mb *MetricsBuilder) RecordSdwanManagerEndpointStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanManagerEndpointStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanManagerHealthScoreDataPoint adds a data point to sdwan.manager.health.score metric.
+func (mb *MetricsBuilder) RecordSdwanManagerHealthScoreDataPoint(ts pcommon.Timestamp, val float64) {
+	mb.metricSdwanManagerHealthScore.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanManagerStatusDataPoint adds a data point to sdwan.manager.status metric.
+func (mb *MetricsBuilder) RecordSdwanManagerStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanManagerStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanManagerUpDataPoint adds a data point to sdwan.manager.up metric.
+func (mb *MetricsBuilder) RecordSdwanManagerUpDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanManagerUp.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanResourceInfoDataPoint adds a data point to sdwan.resource.info metric.
+func (mb *MetricsBuilder) RecordSdwanResourceInfoDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanResourceInfo.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanResourceStatusDataPoint adds a data point to sdwan.resource.status metric.
+func (mb *MetricsBuilder) RecordSdwanResourceStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanResourceStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanScrapeLastSuccessDataPoint adds a data point to sdwan.scrape.last_success metric.
+func (mb *MetricsBuilder) RecordSdwanScrapeLastSuccessDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanScrapeLastSuccess.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanScrapePartialSuccessDataPoint adds a data point to sdwan.scrape.partial_success metric.
+func (mb *MetricsBuilder) RecordSdwanScrapePartialSuccessDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanScrapePartialSuccess.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanServiceSkippedDataPoint adds a data point to sdwan.service.skipped metric.
+func (mb *MetricsBuilder) RecordSdwanServiceSkippedDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanServiceSkipped.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanServiceUnavailableDataPoint adds a data point to sdwan.service.unavailable metric.
+func (mb *MetricsBuilder) RecordSdwanServiceUnavailableDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanServiceUnavailable.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSdwanTransportInterfaceStatusDataPoint adds a data point to sdwan.transport.interface.status metric.
+func (mb *MetricsBuilder) RecordSdwanTransportInterfaceStatusDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSdwanTransportInterfaceStatus.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordSystemCPULogicalCountDataPoint adds a data point to system.cpu.logical.count metric.
+func (mb *MetricsBuilder) RecordSystemCPULogicalCountDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricSystemCPULogicalCount.recordDataPoint(mb.startTime, ts, val)
 }
 
 // RecordSystemCPUUtilizationDataPoint adds a data point to system.cpu.utilization metric.

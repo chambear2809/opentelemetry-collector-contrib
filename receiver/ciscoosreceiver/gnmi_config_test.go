@@ -577,6 +577,27 @@ func TestGNMICustomSubscriptionValidation(t *testing.T) {
 		}, errContains: "origin-free path"},
 		{name: "metric name", mutate: func(mapping *GNMIMetricMappingConfig) { mapping.MetricName = "" }, errContains: "metric_name"},
 		{name: "dynamic info", mutate: func(mapping *GNMIMetricMappingConfig) { mapping.MetricName = "cisco.custom_info" }, errContains: "non-info"},
+		{name: "root catalog collision", mutate: func(mapping *GNMIMetricMappingConfig) {
+			mapping.MetricName = "cisco.iosxr.receiver.updates"
+		}, errContains: "reserved by a fixed Cisco OS receiver metric catalog"},
+		{name: "system scraper catalog collision", mutate: func(mapping *GNMIMetricMappingConfig) {
+			mapping.MetricName = "cisco.control_plane.cpu.process.utilization"
+		}, errContains: "reserved by a fixed Cisco OS receiver metric catalog"},
+		{name: "interfaces scraper catalog collision", mutate: func(mapping *GNMIMetricMappingConfig) {
+			mapping.MetricName = "cisco.lacp.errors"
+		}, errContains: "reserved by a fixed Cisco OS receiver metric catalog"},
+		{name: "model-defined YANG collision", mutate: func(mapping *GNMIMetricMappingConfig) {
+			mapping.MetricName = "cisco.iosxr.yang" + ".reserved"
+		}, errContains: "reserved by IOS XR model-defined YANG metrics"},
+		{name: "IOS XR model-defined YANG root collision", mutate: func(mapping *GNMIMetricMappingConfig) {
+			mapping.MetricName = "cisco.iosxr.yang"
+		}, errContains: "reserved by IOS XR model-defined YANG metrics"},
+		{name: "Catalyst model-defined YANG collision", mutate: func(mapping *GNMIMetricMappingConfig) {
+			mapping.MetricName = "cisco.catalyst9800.yang" + ".reserved"
+		}, errContains: "reserved by Catalyst 9800 model-defined YANG metrics"},
+		{name: "Catalyst model-defined YANG root collision", mutate: func(mapping *GNMIMetricMappingConfig) {
+			mapping.MetricName = "cisco.catalyst9800.yang"
+		}, errContains: "reserved by Catalyst 9800 model-defined YANG metrics"},
 		{name: "description", mutate: func(mapping *GNMIMetricMappingConfig) { mapping.Description = "" }, errContains: "description and UCUM"},
 		{name: "unit", mutate: func(mapping *GNMIMetricMappingConfig) { mapping.Unit = "degrees Celsius" }, errContains: "description and UCUM"},
 		{name: "unknown UCUM atom", mutate: func(mapping *GNMIMetricMappingConfig) { mapping.Unit = "bananas" }, errContains: "description and UCUM"},

@@ -102,17 +102,12 @@ var builtinGNMIMetricMetadata = map[string]internalgnmi.MetricMetadata{
 	"cisco.device.up":                 {Name: "cisco.device.up", Description: "Device availability (1 = up, 0 = down)", Unit: "1"},
 	"system.cpu.utilization":          {Name: "system.cpu.utilization", Description: "Ratio of CPU time in use, from 0 to 1.", Unit: "1"},
 	"system.memory.utilization":       {Name: "system.memory.utilization", Description: "Ratio of memory bytes in use, from 0 to 1.", Unit: "1"},
-	"system.uptime":                   {Name: "system.uptime", Description: "The time the Cisco device has been running", Unit: "s"},
 	"system.network.interface.status": {Name: "system.network.interface.status", Description: "Interface operational status (1 = up, 0 = down)", Unit: "1"},
 	"system.network.io":               {Name: "system.network.io", Description: "The number of bytes transmitted and received", Unit: "By"},
 	"system.network.errors":           {Name: "system.network.errors", Description: "The number of errors encountered", Unit: "{error}"},
-	"system.network.packet.count":     {Name: "system.network.packet.count", Description: "The number of packets transmitted or received, categorized by type", Unit: "{packet}"},
+	"system.network.packet.count":     {Name: "system.network.packet.count", Description: "The number of packets transmitted or received by direction and, when available, packet type", Unit: "{packet}"},
 	"system.network.packet.dropped":   {Name: "system.network.packet.dropped", Description: "The number of packets dropped", Unit: "{packet}"},
 	"cisco.interface.admin.status":    {Name: "cisco.interface.admin.status", Description: "Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)", Unit: "1"},
-	"cisco.interface.speed":           {Name: "cisco.interface.speed", Description: "The numeric line speed of a Cisco interface", Unit: "bit/s"},
-	"cisco.interface.io.rate":         {Name: "cisco.interface.io.rate", Description: "The device-reported interface traffic rate", Unit: "bit/s"},
-	"cisco.interface.packet.rate":     {Name: "cisco.interface.packet.rate", Description: "The device-reported interface packet rate", Unit: "{packet}/s"},
-	"cisco.interface.utilization":     {Name: "cisco.interface.utilization", Description: "Cisco interface traffic utilization as a ratio of line speed", Unit: "1"},
 
 	"cisco.optics.temperature":        {Name: "cisco.optics.temperature", Description: "Optical module temperature", Unit: "Cel"},
 	"cisco.optics.voltage":            {Name: "cisco.optics.voltage", Description: "Optical module supply voltage", Unit: "V"},
@@ -126,9 +121,9 @@ var builtinGNMIMetricMetadata = map[string]internalgnmi.MetricMetadata{
 	"cisco.optics.tec_current":        {Name: "cisco.optics.tec_current", Description: "Thermoelectric cooler current when the device reports the sensor in milliamperes", Unit: "mA"},
 	"cisco.optics.tec_utilization":    {Name: "cisco.optics.tec_utilization", Description: "Thermoelectric cooler utilization normalized to a unitless ratio", Unit: "1"},
 
-	"cisco.wlc.ap.join.status":         {Name: "cisco.wlc.ap.join.status", Description: "Catalyst 9800 access point join status", Unit: "1"},
-	"cisco.wlc.rf.channel.utilization": {Name: "cisco.wlc.rf.channel.utilization", Description: "Catalyst 9800 RF channel utilization ratio", Unit: "1"},
-	"cisco.wlc.ssid.client.count":      {Name: "cisco.wlc.ssid.client.count", Description: "Catalyst 9800 associated client count", Unit: "{client}"},
+	"cisco.wlc.ap.join.status":         {Name: "cisco.wlc.ap.join.status", Description: "Whether an AP is joined.", Unit: "1"},
+	"cisco.wlc.rf.channel.utilization": {Name: "cisco.wlc.rf.channel.utilization", Description: "RF/channel utilization normalized to a ratio from 0 to 1.", Unit: "1"},
+	"cisco.wlc.ssid.client.count":      {Name: "cisco.wlc.ssid.client.count", Description: "Associated clients per SSID/BSSID.", Unit: "{client}"},
 }
 
 var (

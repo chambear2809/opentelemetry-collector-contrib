@@ -141,6 +141,21 @@ func TestFactoryWiresControllerLogsProviders(t *testing.T) {
 	}
 }
 
+func TestFactoryDoesNotWireACILogsWithoutExplicitOptIn(t *testing.T) {
+	cfg := factoryACIConfig(t)
+	cfg.ACI.Logs = ACILogsConfig{}
+	require.NoError(t, cfg.Validate())
+
+	rcvr, err := NewFactory().CreateLogs(
+		t.Context(),
+		receivertest.NewNopSettings(metadata.Type),
+		cfg,
+		consumertest.NewNop(),
+	)
+	require.NoError(t, err)
+	require.IsType(t, &nopLogsReceiver{}, rcvr)
+}
+
 func factoryCatalyst9800Config(*testing.T) *Config {
 	cfg := NewFactory().CreateDefaultConfig().(*Config)
 	cfg.Catalyst9800.Enabled = true
@@ -180,6 +195,7 @@ func factoryACIConfig(*testing.T) *Config {
 	cfg.ACI.Controllers = []ACIControllerConfig{{Endpoint: "https://apic.example.test", Name: "apic-1"}}
 	cfg.ACI.Auth.Username = "automation"
 	cfg.ACI.Auth.Password = configopaque.String("secret")
+	cfg.ACI.Logs.Faults.Enabled = true
 	return cfg
 }
 

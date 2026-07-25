@@ -239,9 +239,9 @@ func TestMetricsBuilder(t *testing.T) {
 			mb.RecordCiscoSSHReconnectsDataPoint(ts, 1)
 			defaultMetricsCount++
 			allMetricsCount++
-			mb.RecordCiscoTopologyNeighborInfoDataPoint(ts, 1, "cisco.topology.protocol-val", "network.interface.name-val", "cisco.topology.neighbor.name-val", "cisco.topology.neighbor.interface-val", "cisco.topology.neighbor.platform-val", "cisco.topology.neighbor.address-val")
+			mb.RecordCiscoTopologyNeighborInfoDataPoint(ts, 1, "cisco.topology.protocol-val", "network.interface.name-val", "cisco.topology.neighbor.name-val", "cisco.topology.neighbor.interface-val", "cisco.topology.neighbor.platform-val", "cisco.topology.neighbor.address-val", "network.peer.name-val", "network.peer.address-val", "network.protocol.name-val")
 			if tt.name == "reaggregate_set" {
-				mb.RecordCiscoTopologyNeighborInfoDataPoint(ts, 3, "cisco.topology.protocol-val-2", "network.interface.name-val-2", "cisco.topology.neighbor.name-val-2", "cisco.topology.neighbor.interface-val-2", "cisco.topology.neighbor.platform-val-2", "cisco.topology.neighbor.address-val-2")
+				mb.RecordCiscoTopologyNeighborInfoDataPoint(ts, 3, "cisco.topology.protocol-val-2", "network.interface.name-val-2", "cisco.topology.neighbor.name-val-2", "cisco.topology.neighbor.interface-val-2", "cisco.topology.neighbor.platform-val-2", "cisco.topology.neighbor.address-val-2", "network.peer.name-val-2", "network.peer.address-val-2", "network.protocol.name-val-2")
 			}
 			defaultMetricsCount++
 			allMetricsCount++
@@ -1525,7 +1525,7 @@ func TestMetricsBuilder(t *testing.T) {
 					validatedMetrics["cisco.scrape.partial_success"] = true
 					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-					assert.Equal(t, "Cisco receiver scrape partial success status (1 = partial success, 0 = complete success)", mi.Description())
+					assert.Equal(t, "Whether the scrape completed with at least one command-family failure.", mi.Description())
 					assert.Equal(t, "1", mi.Unit())
 					dp := mi.Gauge().DataPoints().At(0)
 					assert.Equal(t, start, dp.StartTimestamp())
@@ -1552,7 +1552,7 @@ func TestMetricsBuilder(t *testing.T) {
 						validatedMetrics["cisco.topology.neighbor.info"] = true
 						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Cisco LLDP or CDP topology neighbor edge information", mi.Description())
+						assert.Equal(t, "LLDP, CDP, and fabric-link neighbor information.", mi.Description())
 						assert.Equal(t, "1", mi.Unit())
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
@@ -1577,12 +1577,21 @@ func TestMetricsBuilder(t *testing.T) {
 						ciscoTopologyNeighborAddressAttrVal, ok := dp.Attributes().Get("cisco.topology.neighbor.address")
 						assert.True(t, ok)
 						assert.Equal(t, "cisco.topology.neighbor.address-val", ciscoTopologyNeighborAddressAttrVal.Str())
+						networkPeerNameAttrVal, ok := dp.Attributes().Get("network.peer.name")
+						assert.True(t, ok)
+						assert.Equal(t, "network.peer.name-val", networkPeerNameAttrVal.Str())
+						networkPeerAddressAttrVal, ok := dp.Attributes().Get("network.peer.address")
+						assert.True(t, ok)
+						assert.Equal(t, "network.peer.address-val", networkPeerAddressAttrVal.Str())
+						networkProtocolNameAttrVal, ok := dp.Attributes().Get("network.protocol.name")
+						assert.True(t, ok)
+						assert.Equal(t, "network.protocol.name-val", networkProtocolNameAttrVal.Str())
 					} else {
 						assert.False(t, validatedMetrics["cisco.topology.neighbor.info"], "Found a duplicate in the metrics slice: cisco.topology.neighbor.info")
 						validatedMetrics["cisco.topology.neighbor.info"] = true
 						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Cisco LLDP or CDP topology neighbor edge information", mi.Description())
+						assert.Equal(t, "LLDP, CDP, and fabric-link neighbor information.", mi.Description())
 						assert.Equal(t, "1", mi.Unit())
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
@@ -1610,6 +1619,12 @@ func TestMetricsBuilder(t *testing.T) {
 						assert.False(t, ok)
 						_, ok = dp.Attributes().Get("cisco.topology.neighbor.address")
 						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.peer.name")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.peer.address")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("network.protocol.name")
+						assert.False(t, ok)
 					}
 				case "cisco.transceiver.sensor":
 					if tt.name != "reaggregate_set" {
@@ -1617,7 +1632,7 @@ func TestMetricsBuilder(t *testing.T) {
 						validatedMetrics["cisco.transceiver.sensor"] = true
 						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Cisco transceiver digital optical monitoring sensor value. The physical unit varies by sensor type and is carried in the cisco.transceiver.sensor.unit attribute (Cel, V, mA, dBm, or 1 when unitless).", mi.Description())
+						assert.Equal(t, "Digital optical monitoring sensor values, such as temperature, voltage, current, or optical receive/transmit power. The actual physical unit is in `cisco.transceiver.sensor.unit`.", mi.Description())
 						assert.Equal(t, "1", mi.Unit())
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
@@ -1641,7 +1656,7 @@ func TestMetricsBuilder(t *testing.T) {
 						validatedMetrics["cisco.transceiver.sensor"] = true
 						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Cisco transceiver digital optical monitoring sensor value. The physical unit varies by sensor type and is carried in the cisco.transceiver.sensor.unit attribute (Cel, V, mA, dBm, or 1 when unitless).", mi.Description())
+						assert.Equal(t, "Digital optical monitoring sensor values, such as temperature, voltage, current, or optical receive/transmit power. The actual physical unit is in `cisco.transceiver.sensor.unit`.", mi.Description())
 						assert.Equal(t, "1", mi.Unit())
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
@@ -1945,7 +1960,7 @@ func TestMetricsBuilder(t *testing.T) {
 						validatedMetrics["system.network.packet.count"] = true
 						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
 						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
-						assert.Equal(t, "The number of packets transmitted or received, categorized by type", mi.Description())
+						assert.Equal(t, "The number of packets transmitted or received by direction and, when available, packet type", mi.Description())
 						assert.Equal(t, "{packet}", mi.Unit())
 						assert.True(t, mi.Sum().IsMonotonic())
 						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
@@ -1977,7 +1992,7 @@ func TestMetricsBuilder(t *testing.T) {
 						validatedMetrics["system.network.packet.count"] = true
 						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
 						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
-						assert.Equal(t, "The number of packets transmitted or received, categorized by type", mi.Description())
+						assert.Equal(t, "The number of packets transmitted or received by direction and, when available, packet type", mi.Description())
 						assert.Equal(t, "{packet}", mi.Unit())
 						assert.True(t, mi.Sum().IsMonotonic())
 						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())

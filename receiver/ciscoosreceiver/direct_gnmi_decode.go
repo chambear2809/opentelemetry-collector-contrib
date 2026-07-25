@@ -203,38 +203,6 @@ func (b *directGNMIDecodeBudget) reserveDatapoint(name string, attrs map[string]
 	return true
 }
 
-func (b *directGNMIDecodeBudget) allowMetricName(base, module string, parts []string, suffix string) bool {
-	if b.exhausted {
-		return false
-	}
-	remaining := b.limits.maxMetricNameBytes - len(base) - len(suffix)
-	consume := func(value string) bool {
-		if value == "" {
-			return true
-		}
-		needed := len(value) + 1 // separator
-		if needed > remaining {
-			b.drop(false)
-			return false
-		}
-		remaining -= needed
-		return true
-	}
-	if remaining < 0 {
-		b.drop(false)
-		return false
-	}
-	if !consume(module) {
-		return false
-	}
-	for _, part := range parts {
-		if !consume(part) {
-			return false
-		}
-	}
-	return true
-}
-
 func (b *directGNMIDecodeBudget) validAttribute(key, value string) bool {
 	return key != "" && len(key) <= b.limits.maxAttributeKeyBytes && len(value) <= b.limits.maxAttributeValueBytes
 }
@@ -285,10 +253,6 @@ func newFinalIndexedMetricBuilder(scope pmetric.ScopeMetrics, budget *finalDatap
 	return builder
 }
 
-func (b *indexedMetricBuilder) getOrCreate(name string, metricType pmetric.MetricType) pmetric.Metric {
-	return b.getOrCreateWithMetadata(name, metricType, "", "")
-}
-
 func (b *indexedMetricBuilder) getOrCreateWithMetadata(name string, metricType pmetric.MetricType, unit, description string) pmetric.Metric {
 	identity := metricStreamIdentity{name: name, metricType: metricType, unit: unit, description: description}
 	if metricType == pmetric.MetricTypeSum {
@@ -327,7 +291,12 @@ func (b *indexedMetricBuilder) appendNumberWithUnit(name string, metricType pmet
 	if b.finalBudget != nil && !b.finalBudget.reserveAliasStringDatapoint(attrs, "", "") {
 		return false
 	}
-	metric := b.getOrCreateWithMetadata(name, metricType, unit, "")
+	valueType := fixedMetricValueTypeDouble
+	if value.isInt {
+		valueType = fixedMetricValueTypeInt
+	}
+	description, unit := governedFixedMetricMetadata(name, metricType, valueType, "", unit)
+	metric := b.getOrCreateWithMetadata(name, metricType, unit, description)
 	var dp pmetric.NumberDataPoint
 	if metricType == pmetric.MetricTypeSum {
 		dp = metric.Sum().DataPoints().AppendEmpty()
@@ -352,7 +321,8 @@ func (b *indexedMetricBuilder) appendInfo(name, value string, ts pcommon.Timesta
 			return false
 		}
 	}
-	metric := b.getOrCreate(name, pmetric.MetricTypeGauge)
+	description, unit := governedFixedMetricMetadata(name, pmetric.MetricTypeGauge, fixedMetricValueTypeDouble, "", "")
+	metric := b.getOrCreateWithMetadata(name, pmetric.MetricTypeGauge, unit, description)
 	dp := metric.Gauge().DataPoints().AppendEmpty()
 	dp.SetDoubleValue(1)
 	dp.SetTimestamp(ts)

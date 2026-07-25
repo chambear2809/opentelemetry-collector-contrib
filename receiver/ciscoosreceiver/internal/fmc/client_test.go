@@ -848,10 +848,26 @@ func encodeEStreamerRecord(netmapID, recordType uint16, timestamp time.Time, dat
 	return payload
 }
 
-func TestNormalizeFQEEventTypesSupportsOperationalAliases(t *testing.T) {
+func TestNormalizeEStreamerEventTypesSupportsOperationalAliases(t *testing.T) {
 	assert.Equal(t,
 		[]string{"connection", "file", "intrusion_packet"},
-		normalizeFQEEventTypes([]string{"security_intelligence", "malware", "IntrusionPacket"}),
+		NormalizeEStreamerEventTypes([]string{"security_intelligence", "malware", "IntrusionPacket"}),
+	)
+	assert.Equal(t,
+		[]string{"connection"},
+		NormalizeEStreamerEventTypes([]string{"traffic", "security_intelligence", "SI", "connection_event"}),
+	)
+	assert.Equal(t,
+		[]string{"file"},
+		NormalizeEStreamerEventTypes([]string{"malware", "malware_event", "file_event", "file_malware", "file_malware_event"}),
+	)
+	assert.Equal(t,
+		[]string{"intrusion", "intrusion_packet"},
+		NormalizeEStreamerEventTypes([]string{"intrusion_event", "intrusion_packet_event"}),
+	)
+	assert.Equal(t,
+		[]string{"connection", "file", "intrusion", "intrusion_packet"},
+		NormalizeEStreamerEventTypes(nil),
 	)
 }
 

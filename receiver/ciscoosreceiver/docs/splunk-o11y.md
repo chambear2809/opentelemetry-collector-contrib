@@ -149,7 +149,7 @@ Charts:
 | FMC policy, deployment, and change evidence | `fmc.policy.object.count`, `fmc.deployment.status`, `fmc.deployment.pending.count`, `fmc.audit.record.count`, and FMC logs by policy, operation, status, severity, and user | Policy drift, an undeployed or failed change, or an administrative action precedes impact. |
 | Catalyst 9800 WLC telemetry trust | `cisco.catalyst9800.receiver.*` and `cisco.wlc.controller.*` by controller and transport | Active subscriptions drop, decode errors rise, paths are unsupported, datapoints are dropped, or controller CPU/memory pressure appears. |
 | Catalyst 9800 wireless user impact | `cisco.wlc.ap.*`, `cisco.wlc.rf.*`, `cisco.wlc.ssid.*`, `cisco.wlc.client.*`, `cisco.wlc.auth.radius.*`, `cisco.wlc.mobility.*`, and `cisco.wlc.ha.*` by AP, SSID, client, and controller | AP joins fail, RF utilization/noise rises, clients fail auth or roam, RADIUS rejects/timeouts appear, mobility peers fail, or HA changes. |
-| IOS XR telemetry trust and model coverage | `cisco.iosxr.receiver.*` plus common `cisco.iosxr.yang.*` interface and model leaves by router, transport, YANG module, and path | Subscriptions stop, updates stall, decode/model errors rise, or common interface/routing/optics path groups stop producing data. |
+| IOS XR telemetry trust and model coverage | `cisco.iosxr.receiver.*` plus common `cisco.iosxr.yang.__v1.*` interface and model leaves by router, transport, YANG module, and path | Subscriptions stop, updates stall, decode/model errors rise, or common interface/routing/optics path groups stop producing data. |
 | Nexus Dashboard API health | `nexus_dashboard.api.request.duration`, rates of `nexus_dashboard.api.request.errors`, `nexus_dashboard.api.endpoint.error`, and `nexus_dashboard.api.rate_limited`, plus `nexus_dashboard.scrape.partial_success` and `nexus_dashboard.scrape.last_success` by operation | Controller API errors, authorization failures, unavailable apps, partial coverage, or stale full-success time repeat. |
 | Nexus Dashboard service coverage | `nexus_dashboard.service.unavailable` and `nexus_dashboard.service.skipped` by product and group | NDFC, Insights, NDO, or Data Broker is unavailable, unauthorized, not installed, or missing target filters. |
 | Nexus Dashboard change and event evidence | `nexus_dashboard.audit.record.count` and `nexus_dashboard.event.count` by product, operation, status, and severity | Controller-side changes, events, anomalies, advisories, alerts, or root causes appear near the incident window. |
@@ -248,7 +248,7 @@ Start with these detectors before adding organization-specific thresholds:
 | APIC fault present | `aci.fault.count` | Critical or major faults greater than 0. |
 | ACI endpoint missing | `aci.endpoint.present` or `aci.endpoint.count` | Important endpoint is missing or endpoint count drops unexpectedly. |
 | IOS XR telemetry stale | `cisco.iosxr.receiver.updates`, `cisco.iosxr.receiver.last_success_timestamp`, or `cisco.iosxr.receiver.reconnects` | Update rate stops, last success stops advancing, or reconnects rise. |
-| IOS XR interface issue | Common `cisco.iosxr.yang.openconfig_interfaces.*` state, error, discard, and octet counters | Admin-up/oper-down, traffic silence, error/discard growth, or one-way traffic appears. |
+| IOS XR interface issue | Common `cisco.iosxr.yang.__v1.m1.s21_openconfig_2Dinterfaces.*` state, error, discard, and octet streams | Admin-up/oper-down, traffic silence, error/discard growth, or one-way traffic appears. |
 
 ## Incident Autopsy Workflow
 

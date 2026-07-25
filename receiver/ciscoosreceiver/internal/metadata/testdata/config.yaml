@@ -1,11 +1,147 @@
 default:
 all_set:
   metrics:
+    aci.api.endpoint.error:
+      enabled: true
+    aci.api.rate_limited:
+      enabled: true
+    aci.api.request.duration:
+      enabled: true
+    aci.api.request.errors:
+      enabled: true
+    aci.audit.record.count:
+      enabled: true
+    aci.controller.up:
+      enabled: true
+    aci.endpoint.count:
+      enabled: true
+    aci.endpoint.present:
+      enabled: true
+    aci.event.count:
+      enabled: true
+    aci.fabric.health:
+      enabled: true
+    aci.fault.active:
+      enabled: true
+    aci.fault.count:
+      enabled: true
+    aci.resource.count:
+      enabled: true
+    aci.resource.info:
+      enabled: true
+    aci.resource.status:
+      enabled: true
+    aci.scrape.last_success:
+      enabled: true
+    aci.scrape.partial_success:
+      enabled: true
+    aci.tenant.object.count:
+      enabled: true
+    aci.tenant.status:
+      enabled: true
+    catalyst_center.api.rate_limited:
+      enabled: true
+    catalyst_center.api.request.duration:
+      enabled: true
+    catalyst_center.api.request.errors:
+      enabled: true
+    catalyst_center.client.count:
+      enabled: true
+    catalyst_center.client.detail.health.score:
+      enabled: true
+    catalyst_center.client.health.score:
+      enabled: true
+    catalyst_center.client.issue.count:
+      enabled: true
+    catalyst_center.client.network.io:
+      enabled: true
+    catalyst_center.client.unique.count:
+      enabled: true
+    catalyst_center.client.wireless.rssi:
+      enabled: true
+    catalyst_center.client.wireless.snr:
+      enabled: true
+    catalyst_center.device.collection.status:
+      enabled: true
+    catalyst_center.device.detail.communication.status:
+      enabled: true
+    catalyst_center.device.detail.health.score:
+      enabled: true
+    catalyst_center.device.interface.count:
+      enabled: true
+    catalyst_center.device.reachability.status:
+      enabled: true
+    catalyst_center.device.uptime:
+      enabled: true
+    catalyst_center.interface.count:
+      enabled: true
+    catalyst_center.inventory.device.count:
+      enabled: true
+    catalyst_center.issue.active.count:
+      enabled: true
+    catalyst_center.issue.count:
+      enabled: true
+    catalyst_center.network.device.count:
+      enabled: true
+    catalyst_center.network.health.category.score:
+      enabled: true
+    catalyst_center.network.health.entity.count:
+      enabled: true
+    catalyst_center.network.health.entity.score:
+      enabled: true
+    catalyst_center.network.health.score:
+      enabled: true
+    catalyst_center.scrape.last_success:
+      enabled: true
+    catalyst_center.scrape.partial_success:
+      enabled: true
+    catalyst_center.site.client.count:
+      enabled: true
+    catalyst_center.site.client.health.percentage:
+      enabled: true
+    catalyst_center.site.health.count:
+      enabled: true
+    catalyst_center.site.issue.count:
+      enabled: true
+    catalyst_center.site.network_device.count:
+      enabled: true
+    catalyst_center.site.network_device.health.percentage:
+      enabled: true
+    catalyst_center.topology.link.count:
+      enabled: true
+    catalyst_center.topology.node.count:
+      enabled: true
+    cisco.catalyst9800.receiver.active_subscriptions:
+      enabled: true
+    cisco.catalyst9800.receiver.compact_gpb_payloads:
+      enabled: true
+    cisco.catalyst9800.receiver.decode_errors:
+      enabled: true
+    cisco.catalyst9800.receiver.dropped_datapoints:
+      enabled: true
+    cisco.catalyst9800.receiver.last_success_timestamp:
+      enabled: true
+    cisco.catalyst9800.receiver.reconnects:
+      enabled: true
+    cisco.catalyst9800.receiver.target.last_success_timestamp:
+      enabled: true
+    cisco.catalyst9800.receiver.target.reconnects:
+      enabled: true
+    cisco.catalyst9800.receiver.target.subscription.active:
+      enabled: true
+    cisco.catalyst9800.receiver.target.updates:
+      enabled: true
+    cisco.catalyst9800.receiver.unsupported_paths:
+      enabled: true
+    cisco.catalyst9800.receiver.updates:
+      enabled: true
     cisco.device.up:
       enabled: true
     cisco.interface.admin.status:
       enabled: true
       attributes: ["network.interface.name"]
+    cisco.interface.drop.rate:
+      enabled: true
     cisco.interface.io.rate:
       enabled: true
       attributes: ["network.io.direction","network.interface.name"]
@@ -18,6 +154,30 @@ all_set:
     cisco.interface.utilization:
       enabled: true
       attributes: ["network.io.direction","network.interface.name"]
+    cisco.iosxr.receiver.active_subscriptions:
+      enabled: true
+    cisco.iosxr.receiver.compact_gpb_payloads:
+      enabled: true
+    cisco.iosxr.receiver.decode_errors:
+      enabled: true
+    cisco.iosxr.receiver.dropped_datapoints:
+      enabled: true
+    cisco.iosxr.receiver.last_success_timestamp:
+      enabled: true
+    cisco.iosxr.receiver.reconnects:
+      enabled: true
+    cisco.iosxr.receiver.target.last_success_timestamp:
+      enabled: true
+    cisco.iosxr.receiver.target.reconnects:
+      enabled: true
+    cisco.iosxr.receiver.target.subscription.active:
+      enabled: true
+    cisco.iosxr.receiver.target.updates:
+      enabled: true
+    cisco.iosxr.receiver.unsupported_paths:
+      enabled: true
+    cisco.iosxr.receiver.updates:
+      enabled: true
     cisco.optics.esnr:
       enabled: true
       attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
@@ -51,6 +211,591 @@ all_set:
     cisco.optics.voltage:
       enabled: true
       attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.scrape.partial_success:
+      enabled: true
+    cisco.topology.neighbor.info:
+      enabled: true
+      attributes: ["cisco.topology.protocol","network.interface.name","cisco.topology.neighbor.name","cisco.topology.neighbor.interface","cisco.topology.neighbor.platform","cisco.topology.neighbor.address","network.peer.name","network.peer.address","network.protocol.name"]
+    cisco.transceiver.sensor:
+      enabled: true
+    cisco.wlc.ap.capwap.encryption.enabled:
+      enabled: true
+    cisco.wlc.ap.capwap.state:
+      enabled: true
+    cisco.wlc.ap.disconnect:
+      enabled: true
+    cisco.wlc.ap.disconnect.reason.info:
+      enabled: true
+    cisco.wlc.ap.join.failure.reason.info:
+      enabled: true
+    cisco.wlc.ap.join.status:
+      enabled: true
+    cisco.wlc.auth.radius.access.accept.count:
+      enabled: true
+    cisco.wlc.auth.radius.access.reject.count:
+      enabled: true
+    cisco.wlc.auth.radius.bad_authenticator.count:
+      enabled: true
+    cisco.wlc.auth.radius.response.count:
+      enabled: true
+    cisco.wlc.auth.radius.response_delay.avg:
+      enabled: true
+    cisco.wlc.auth.radius.response_delay.max:
+      enabled: true
+    cisco.wlc.auth.radius.timeout.count:
+      enabled: true
+    cisco.wlc.client.auth.failure.reason.info:
+      enabled: true
+    cisco.wlc.client.connection.state:
+      enabled: true
+    cisco.wlc.client.network.io:
+      enabled: true
+    cisco.wlc.client.network.packets:
+      enabled: true
+    cisco.wlc.client.roam.count:
+      enabled: true
+    cisco.wlc.client.roam.failure.count:
+      enabled: true
+    cisco.wlc.client.roam.type.info:
+      enabled: true
+    cisco.wlc.client.wireless.rssi:
+      enabled: true
+    cisco.wlc.client.wireless.snr:
+      enabled: true
+    cisco.wlc.controller.cpu.utilization:
+      enabled: true
+    cisco.wlc.controller.memory.bytes:
+      enabled: true
+    cisco.wlc.controller.receiver.active_subscriptions:
+      enabled: true
+    cisco.wlc.controller.receiver.decode_errors:
+      enabled: true
+    cisco.wlc.controller.receiver.subscription.active:
+      enabled: true
+    cisco.wlc.controller.receiver.updates:
+      enabled: true
+    cisco.wlc.ha.enabled:
+      enabled: true
+    cisco.wlc.ha.standby.failure.count:
+      enabled: true
+    cisco.wlc.ha.state:
+      enabled: true
+    cisco.wlc.ha.switchover.count:
+      enabled: true
+    cisco.wlc.mobility.handoff.count:
+      enabled: true
+    cisco.wlc.mobility.handoff.failure.count:
+      enabled: true
+    cisco.wlc.mobility.peer.status:
+      enabled: true
+    cisco.wlc.mobility.roam.count:
+      enabled: true
+    cisco.wlc.rf.channel.change.count:
+      enabled: true
+    cisco.wlc.rf.channel.recommended:
+      enabled: true
+    cisco.wlc.rf.channel.utilization:
+      enabled: true
+    cisco.wlc.rf.client.count:
+      enabled: true
+    cisco.wlc.rf.noise_floor:
+      enabled: true
+    cisco.wlc.ssid.channel.utilization:
+      enabled: true
+    cisco.wlc.ssid.client.count:
+      enabled: true
+    cisco.wlc.ssid.network.io:
+      enabled: true
+    cisco.wlc.ssid.retry.count:
+      enabled: true
+    fmc.api.endpoint.error:
+      enabled: true
+    fmc.api.rate_limited:
+      enabled: true
+    fmc.api.request.duration:
+      enabled: true
+    fmc.api.request.errors:
+      enabled: true
+    fmc.audit.record.count:
+      enabled: true
+    fmc.deployment.pending.count:
+      enabled: true
+    fmc.deployment.status:
+      enabled: true
+    fmc.ha.status:
+      enabled: true
+    fmc.health.event.count:
+      enabled: true
+    fmc.health.status:
+      enabled: true
+    fmc.manager.up:
+      enabled: true
+    fmc.policy.object.count:
+      enabled: true
+    fmc.resource.count:
+      enabled: true
+    fmc.resource.info:
+      enabled: true
+    fmc.resource.status:
+      enabled: true
+    fmc.scrape.last_success:
+      enabled: true
+    fmc.scrape.partial_success:
+      enabled: true
+    fmc.vpn.tunnel.status:
+      enabled: true
+    intersight.advisory.active:
+      enabled: true
+    intersight.advisory.count:
+      enabled: true
+    intersight.alarm.active:
+      enabled: true
+    intersight.alarm.count:
+      enabled: true
+    intersight.api.rate_limited:
+      enabled: true
+    intersight.api.request.duration:
+      enabled: true
+    intersight.api.request.errors:
+      enabled: true
+    intersight.audit.record.count:
+      enabled: true
+    intersight.compute.available_memory:
+      enabled: true
+    intersight.compute.thread.count:
+      enabled: true
+    intersight.fault.count:
+      enabled: true
+    intersight.firmware.bundle.info:
+      enabled: true
+    intersight.hcl.status:
+      enabled: true
+    intersight.hcl.status.count:
+      enabled: true
+    intersight.hyperflex.read.iops:
+      enabled: true
+    intersight.hyperflex.read.latency:
+      enabled: true
+    intersight.hyperflex.status:
+      enabled: true
+    intersight.hyperflex.write.iops:
+      enabled: true
+    intersight.hyperflex.write.latency:
+      enabled: true
+    intersight.kubernetes.cluster.connection_status:
+      enabled: true
+    intersight.resource.count:
+      enabled: true
+    intersight.resource.info:
+      enabled: true
+    intersight.resource.status:
+      enabled: true
+    intersight.scrape.last_success:
+      enabled: true
+    intersight.scrape.partial_success:
+      enabled: true
+    intersight.storage.life_left:
+      enabled: true
+    intersight.storage.media_error.count:
+      enabled: true
+    intersight.storage.power_on.hours:
+      enabled: true
+    intersight.storage.predictive_failure.count:
+      enabled: true
+    intersight.storage.rebuild.rate:
+      enabled: true
+    intersight.storage.status:
+      enabled: true
+    intersight.storage.temperature:
+      enabled: true
+    intersight.target.connection_status:
+      enabled: true
+    intersight.task.count:
+      enabled: true
+    intersight.task.status:
+      enabled: true
+    intersight.techsupport.count:
+      enabled: true
+    intersight.techsupport.status:
+      enabled: true
+    intersight.telemetry.query.rows:
+      enabled: true
+    intersight.ucs.cpu.idle.utilization:
+      enabled: true
+    intersight.ucs.cpu.system.utilization:
+      enabled: true
+    intersight.ucs.current:
+      enabled: true
+    intersight.ucs.fan.speed:
+      enabled: true
+    intersight.ucs.fan.speed_ratio:
+      enabled: true
+    intersight.ucs.fan.status:
+      enabled: true
+    intersight.ucs.host.energy:
+      enabled: true
+    intersight.ucs.host.power:
+      enabled: true
+    intersight.ucs.host.power_state:
+      enabled: true
+    intersight.ucs.memory.cached:
+      enabled: true
+    intersight.ucs.memory.ecc.correctable:
+      enabled: true
+    intersight.ucs.memory.ecc.uncorrectable:
+      enabled: true
+    intersight.ucs.memory.free:
+      enabled: true
+    intersight.ucs.memory.module.size:
+      enabled: true
+    intersight.ucs.memory.status:
+      enabled: true
+    intersight.ucs.memory.used:
+      enabled: true
+    intersight.ucs.network.interface_resets:
+      enabled: true
+    intersight.ucs.network.link.status:
+      enabled: true
+    intersight.ucs.network.link_failures:
+      enabled: true
+    intersight.ucs.network.receive:
+      enabled: true
+    intersight.ucs.network.receive.crc_errors:
+      enabled: true
+    intersight.ucs.network.receive.discards:
+      enabled: true
+    intersight.ucs.network.receive.drops:
+      enabled: true
+    intersight.ucs.network.receive.errors:
+      enabled: true
+    intersight.ucs.network.receive.no_buffer:
+      enabled: true
+    intersight.ucs.network.receive.packets:
+      enabled: true
+    intersight.ucs.network.receive.pause_frames:
+      enabled: true
+    intersight.ucs.network.signal_losses:
+      enabled: true
+    intersight.ucs.network.speed:
+      enabled: true
+    intersight.ucs.network.transmit:
+      enabled: true
+    intersight.ucs.network.transmit.discards:
+      enabled: true
+    intersight.ucs.network.transmit.drops:
+      enabled: true
+    intersight.ucs.network.transmit.errors:
+      enabled: true
+    intersight.ucs.network.transmit.packets:
+      enabled: true
+    intersight.ucs.network.transmit.pause_frames:
+      enabled: true
+    intersight.ucs.network.utilization:
+      enabled: true
+    intersight.ucs.power_supply.output_power:
+      enabled: true
+    intersight.ucs.power_supply.status:
+      enabled: true
+    intersight.ucs.power_supply.utilization:
+      enabled: true
+    intersight.ucs.signal_power.receive:
+      enabled: true
+    intersight.ucs.signal_power.transmit:
+      enabled: true
+    intersight.ucs.temperature:
+      enabled: true
+    intersight.ucs.temperature.limit_high_critical:
+      enabled: true
+    intersight.ucs.temperature.limit_low_critical:
+      enabled: true
+    intersight.ucs.temperature.status:
+      enabled: true
+    intersight.ucs.voltage:
+      enabled: true
+    intersight.virtual_machine.count:
+      enabled: true
+    intersight.virtual_machine.cpu.count:
+      enabled: true
+    intersight.virtual_machine.memory:
+      enabled: true
+    intersight.virtual_machine.power_state:
+      enabled: true
+    intersight.workflow.count:
+      enabled: true
+    intersight.workflow.status:
+      enabled: true
+    ise.accounting.session.count:
+      enabled: true
+    ise.alarm.count:
+      enabled: true
+    ise.api.endpoint.error:
+      enabled: true
+    ise.api.rate_limited:
+      enabled: true
+    ise.api.request.duration:
+      enabled: true
+    ise.api.request.errors:
+      enabled: true
+    ise.auth.failure.reason.info:
+      enabled: true
+    ise.certificate.count:
+      enabled: true
+    ise.certificate.expiration:
+      enabled: true
+    ise.controller.up:
+      enabled: true
+    ise.dataconnect.query.duration:
+      enabled: true
+    ise.dataconnect.query.errors:
+      enabled: true
+    ise.dataconnect.query.rows:
+      enabled: true
+    ise.dataconnect.row.count:
+      enabled: true
+    ise.deployment.node.count:
+      enabled: true
+    ise.deployment.node.status:
+      enabled: true
+    ise.endpoint.count:
+      enabled: true
+    ise.endpoint.posture.count:
+      enabled: true
+    ise.endpoint.posture.status:
+      enabled: true
+    ise.endpoint.profile.count:
+      enabled: true
+    ise.endpoint.status:
+      enabled: true
+    ise.license.count:
+      enabled: true
+    ise.license.status:
+      enabled: true
+    ise.network_device.count:
+      enabled: true
+    ise.network_device.status:
+      enabled: true
+    ise.policy.object.count:
+      enabled: true
+    ise.policy.status:
+      enabled: true
+    ise.profiler.policy.status:
+      enabled: true
+    ise.pxgrid.message.count:
+      enabled: true
+    ise.pxgrid.service.status:
+      enabled: true
+    ise.pxgrid.subscription.status:
+      enabled: true
+    ise.radius.failure.count:
+      enabled: true
+    ise.resource.info:
+      enabled: true
+    ise.resource.status:
+      enabled: true
+    ise.scrape.last_success:
+      enabled: true
+    ise.scrape.partial_success:
+      enabled: true
+    ise.service.skipped:
+      enabled: true
+    ise.service.unavailable:
+      enabled: true
+    ise.session.active.count:
+      enabled: true
+    ise.session.count:
+      enabled: true
+    ise.tacacs.failure.count:
+      enabled: true
+    ise.trustsec.resource.count:
+      enabled: true
+    ise.trustsec.resource.status:
+      enabled: true
+    ise.webhook.delivery.count:
+      enabled: true
+    meraki.api.request.duration:
+      enabled: true
+    meraki.api.request.errors:
+      enabled: true
+    meraki.api.request.rate_limited:
+      enabled: true
+    meraki.appliance.performance.score:
+      enabled: true
+    meraki.controller.up:
+      enabled: true
+    meraki.device.status:
+      enabled: true
+    meraki.power.module.status:
+      enabled: true
+    meraki.scrape.last_success:
+      enabled: true
+    meraki.switch.port.alert.active:
+      enabled: true
+    meraki.switch.port.poe.allocated:
+      enabled: true
+    meraki.switch.port.usage:
+      enabled: true
+    meraki.uplink.cellular.signal.rsrp:
+      enabled: true
+    meraki.uplink.cellular.signal.rsrq:
+      enabled: true
+    meraki.uplink.latency:
+      enabled: true
+    meraki.uplink.loss:
+      enabled: true
+    meraki.uplink.status:
+      enabled: true
+    meraki.vpn.peer.jitter:
+      enabled: true
+    meraki.vpn.peer.latency:
+      enabled: true
+    meraki.vpn.peer.loss:
+      enabled: true
+    meraki.vpn.peer.mos:
+      enabled: true
+    meraki.vpn.peer.status:
+      enabled: true
+    meraki.vpn.peer.usage:
+      enabled: true
+    meraki.wireless.channel_utilization:
+      enabled: true
+    meraki.wireless.client.count:
+      enabled: true
+    meraki.wireless.packet.count:
+      enabled: true
+    meraki.wireless.packet.loss:
+      enabled: true
+    meraki.wireless.packet.loss_percentage:
+      enabled: true
+    meraki.wireless.ssid.status:
+      enabled: true
+    nexus_dashboard.api.endpoint.error:
+      enabled: true
+    nexus_dashboard.api.rate_limited:
+      enabled: true
+    nexus_dashboard.api.request.duration:
+      enabled: true
+    nexus_dashboard.api.request.errors:
+      enabled: true
+    nexus_dashboard.audit.record.count:
+      enabled: true
+    nexus_dashboard.config.compliance:
+      enabled: true
+    nexus_dashboard.data_broker.rule.count:
+      enabled: true
+    nexus_dashboard.data_broker.session.count:
+      enabled: true
+    nexus_dashboard.data_broker.status:
+      enabled: true
+    nexus_dashboard.deployment.status:
+      enabled: true
+    nexus_dashboard.endpoint.count:
+      enabled: true
+    nexus_dashboard.event.count:
+      enabled: true
+    nexus_dashboard.fabric.health:
+      enabled: true
+    nexus_dashboard.insights.anomaly.active:
+      enabled: true
+    nexus_dashboard.insights.anomaly.count:
+      enabled: true
+    nexus_dashboard.insights.confidence:
+      enabled: true
+    nexus_dashboard.insights.score:
+      enabled: true
+    nexus_dashboard.insights.status:
+      enabled: true
+    nexus_dashboard.orchestrator.deployment.count:
+      enabled: true
+    nexus_dashboard.orchestrator.deployment.status:
+      enabled: true
+    nexus_dashboard.orchestrator.policy_delta.count:
+      enabled: true
+    nexus_dashboard.resource.count:
+      enabled: true
+    nexus_dashboard.resource.info:
+      enabled: true
+    nexus_dashboard.resource.status:
+      enabled: true
+    nexus_dashboard.scrape.last_success:
+      enabled: true
+    nexus_dashboard.scrape.partial_success:
+      enabled: true
+    nexus_dashboard.service.health:
+      enabled: true
+    nexus_dashboard.service.skipped:
+      enabled: true
+    nexus_dashboard.service.unavailable:
+      enabled: true
+    nexus_dashboard.storage.utilization:
+      enabled: true
+    nexus_dashboard.vpc.peer.count:
+      enabled: true
+    sdwan.api.rate_limited:
+      enabled: true
+    sdwan.api.request.duration:
+      enabled: true
+    sdwan.api.request.errors:
+      enabled: true
+    sdwan.app_route.jitter:
+      enabled: true
+    sdwan.app_route.latency:
+      enabled: true
+    sdwan.app_route.loss:
+      enabled: true
+    sdwan.app_route.sla.status:
+      enabled: true
+    sdwan.bfd.session.count:
+      enabled: true
+    sdwan.bfd.session.flap.count:
+      enabled: true
+    sdwan.bfd.session.status:
+      enabled: true
+    sdwan.bfd.session.transitions:
+      enabled: true
+    sdwan.collection.object.count:
+      enabled: true
+    sdwan.control.actual_connections:
+      enabled: true
+    sdwan.control.connection.count:
+      enabled: true
+    sdwan.control.connection.status:
+      enabled: true
+    sdwan.control.expected_connections:
+      enabled: true
+    sdwan.device.certificate.status:
+      enabled: true
+    sdwan.device.reachability.status:
+      enabled: true
+    sdwan.device.validity.status:
+      enabled: true
+    sdwan.event.count:
+      enabled: true
+    sdwan.inventory.device.count:
+      enabled: true
+    sdwan.manager.endpoint.status:
+      enabled: true
+    sdwan.manager.health.score:
+      enabled: true
+    sdwan.manager.status:
+      enabled: true
+    sdwan.manager.up:
+      enabled: true
+    sdwan.resource.info:
+      enabled: true
+    sdwan.resource.status:
+      enabled: true
+    sdwan.scrape.last_success:
+      enabled: true
+    sdwan.scrape.partial_success:
+      enabled: true
+    sdwan.service.skipped:
+      enabled: true
+    sdwan.service.unavailable:
+      enabled: true
+    sdwan.transport.interface.status:
+      enabled: true
+    system.cpu.logical.count:
+      enabled: true
     system.cpu.utilization:
       enabled: true
       attributes: ["cisco.node.name"]
@@ -101,11 +846,147 @@ all_set:
       enabled: true
 reaggregate_set:
   metrics:
+    aci.api.endpoint.error:
+      enabled: true
+    aci.api.rate_limited:
+      enabled: true
+    aci.api.request.duration:
+      enabled: true
+    aci.api.request.errors:
+      enabled: true
+    aci.audit.record.count:
+      enabled: true
+    aci.controller.up:
+      enabled: true
+    aci.endpoint.count:
+      enabled: true
+    aci.endpoint.present:
+      enabled: true
+    aci.event.count:
+      enabled: true
+    aci.fabric.health:
+      enabled: true
+    aci.fault.active:
+      enabled: true
+    aci.fault.count:
+      enabled: true
+    aci.resource.count:
+      enabled: true
+    aci.resource.info:
+      enabled: true
+    aci.resource.status:
+      enabled: true
+    aci.scrape.last_success:
+      enabled: true
+    aci.scrape.partial_success:
+      enabled: true
+    aci.tenant.object.count:
+      enabled: true
+    aci.tenant.status:
+      enabled: true
+    catalyst_center.api.rate_limited:
+      enabled: true
+    catalyst_center.api.request.duration:
+      enabled: true
+    catalyst_center.api.request.errors:
+      enabled: true
+    catalyst_center.client.count:
+      enabled: true
+    catalyst_center.client.detail.health.score:
+      enabled: true
+    catalyst_center.client.health.score:
+      enabled: true
+    catalyst_center.client.issue.count:
+      enabled: true
+    catalyst_center.client.network.io:
+      enabled: true
+    catalyst_center.client.unique.count:
+      enabled: true
+    catalyst_center.client.wireless.rssi:
+      enabled: true
+    catalyst_center.client.wireless.snr:
+      enabled: true
+    catalyst_center.device.collection.status:
+      enabled: true
+    catalyst_center.device.detail.communication.status:
+      enabled: true
+    catalyst_center.device.detail.health.score:
+      enabled: true
+    catalyst_center.device.interface.count:
+      enabled: true
+    catalyst_center.device.reachability.status:
+      enabled: true
+    catalyst_center.device.uptime:
+      enabled: true
+    catalyst_center.interface.count:
+      enabled: true
+    catalyst_center.inventory.device.count:
+      enabled: true
+    catalyst_center.issue.active.count:
+      enabled: true
+    catalyst_center.issue.count:
+      enabled: true
+    catalyst_center.network.device.count:
+      enabled: true
+    catalyst_center.network.health.category.score:
+      enabled: true
+    catalyst_center.network.health.entity.count:
+      enabled: true
+    catalyst_center.network.health.entity.score:
+      enabled: true
+    catalyst_center.network.health.score:
+      enabled: true
+    catalyst_center.scrape.last_success:
+      enabled: true
+    catalyst_center.scrape.partial_success:
+      enabled: true
+    catalyst_center.site.client.count:
+      enabled: true
+    catalyst_center.site.client.health.percentage:
+      enabled: true
+    catalyst_center.site.health.count:
+      enabled: true
+    catalyst_center.site.issue.count:
+      enabled: true
+    catalyst_center.site.network_device.count:
+      enabled: true
+    catalyst_center.site.network_device.health.percentage:
+      enabled: true
+    catalyst_center.topology.link.count:
+      enabled: true
+    catalyst_center.topology.node.count:
+      enabled: true
+    cisco.catalyst9800.receiver.active_subscriptions:
+      enabled: true
+    cisco.catalyst9800.receiver.compact_gpb_payloads:
+      enabled: true
+    cisco.catalyst9800.receiver.decode_errors:
+      enabled: true
+    cisco.catalyst9800.receiver.dropped_datapoints:
+      enabled: true
+    cisco.catalyst9800.receiver.last_success_timestamp:
+      enabled: true
+    cisco.catalyst9800.receiver.reconnects:
+      enabled: true
+    cisco.catalyst9800.receiver.target.last_success_timestamp:
+      enabled: true
+    cisco.catalyst9800.receiver.target.reconnects:
+      enabled: true
+    cisco.catalyst9800.receiver.target.subscription.active:
+      enabled: true
+    cisco.catalyst9800.receiver.target.updates:
+      enabled: true
+    cisco.catalyst9800.receiver.unsupported_paths:
+      enabled: true
+    cisco.catalyst9800.receiver.updates:
+      enabled: true
     cisco.device.up:
       enabled: true
     cisco.interface.admin.status:
       enabled: true
       attributes: []
+    cisco.interface.drop.rate:
+      enabled: true
     cisco.interface.io.rate:
       enabled: true
       attributes: []
@@ -118,6 +999,30 @@ reaggregate_set:
     cisco.interface.utilization:
       enabled: true
       attributes: []
+    cisco.iosxr.receiver.active_subscriptions:
+      enabled: true
+    cisco.iosxr.receiver.compact_gpb_payloads:
+      enabled: true
+    cisco.iosxr.receiver.decode_errors:
+      enabled: true
+    cisco.iosxr.receiver.dropped_datapoints:
+      enabled: true
+    cisco.iosxr.receiver.last_success_timestamp:
+      enabled: true
+    cisco.iosxr.receiver.reconnects:
+      enabled: true
+    cisco.iosxr.receiver.target.last_success_timestamp:
+      enabled: true
+    cisco.iosxr.receiver.target.reconnects:
+      enabled: true
+    cisco.iosxr.receiver.target.subscription.active:
+      enabled: true
+    cisco.iosxr.receiver.target.updates:
+      enabled: true
+    cisco.iosxr.receiver.unsupported_paths:
+      enabled: true
+    cisco.iosxr.receiver.updates:
+      enabled: true
     cisco.optics.esnr:
       enabled: true
       attributes: []
@@ -151,6 +1056,591 @@ reaggregate_set:
     cisco.optics.voltage:
       enabled: true
       attributes: []
+    cisco.scrape.partial_success:
+      enabled: true
+    cisco.topology.neighbor.info:
+      enabled: true
+      attributes: []
+    cisco.transceiver.sensor:
+      enabled: true
+    cisco.wlc.ap.capwap.encryption.enabled:
+      enabled: true
+    cisco.wlc.ap.capwap.state:
+      enabled: true
+    cisco.wlc.ap.disconnect:
+      enabled: true
+    cisco.wlc.ap.disconnect.reason.info:
+      enabled: true
+    cisco.wlc.ap.join.failure.reason.info:
+      enabled: true
+    cisco.wlc.ap.join.status:
+      enabled: true
+    cisco.wlc.auth.radius.access.accept.count:
+      enabled: true
+    cisco.wlc.auth.radius.access.reject.count:
+      enabled: true
+    cisco.wlc.auth.radius.bad_authenticator.count:
+      enabled: true
+    cisco.wlc.auth.radius.response.count:
+      enabled: true
+    cisco.wlc.auth.radius.response_delay.avg:
+      enabled: true
+    cisco.wlc.auth.radius.response_delay.max:
+      enabled: true
+    cisco.wlc.auth.radius.timeout.count:
+      enabled: true
+    cisco.wlc.client.auth.failure.reason.info:
+      enabled: true
+    cisco.wlc.client.connection.state:
+      enabled: true
+    cisco.wlc.client.network.io:
+      enabled: true
+    cisco.wlc.client.network.packets:
+      enabled: true
+    cisco.wlc.client.roam.count:
+      enabled: true
+    cisco.wlc.client.roam.failure.count:
+      enabled: true
+    cisco.wlc.client.roam.type.info:
+      enabled: true
+    cisco.wlc.client.wireless.rssi:
+      enabled: true
+    cisco.wlc.client.wireless.snr:
+      enabled: true
+    cisco.wlc.controller.cpu.utilization:
+      enabled: true
+    cisco.wlc.controller.memory.bytes:
+      enabled: true
+    cisco.wlc.controller.receiver.active_subscriptions:
+      enabled: true
+    cisco.wlc.controller.receiver.decode_errors:
+      enabled: true
+    cisco.wlc.controller.receiver.subscription.active:
+      enabled: true
+    cisco.wlc.controller.receiver.updates:
+      enabled: true
+    cisco.wlc.ha.enabled:
+      enabled: true
+    cisco.wlc.ha.standby.failure.count:
+      enabled: true
+    cisco.wlc.ha.state:
+      enabled: true
+    cisco.wlc.ha.switchover.count:
+      enabled: true
+    cisco.wlc.mobility.handoff.count:
+      enabled: true
+    cisco.wlc.mobility.handoff.failure.count:
+      enabled: true
+    cisco.wlc.mobility.peer.status:
+      enabled: true
+    cisco.wlc.mobility.roam.count:
+      enabled: true
+    cisco.wlc.rf.channel.change.count:
+      enabled: true
+    cisco.wlc.rf.channel.recommended:
+      enabled: true
+    cisco.wlc.rf.channel.utilization:
+      enabled: true
+    cisco.wlc.rf.client.count:
+      enabled: true
+    cisco.wlc.rf.noise_floor:
+      enabled: true
+    cisco.wlc.ssid.channel.utilization:
+      enabled: true
+    cisco.wlc.ssid.client.count:
+      enabled: true
+    cisco.wlc.ssid.network.io:
+      enabled: true
+    cisco.wlc.ssid.retry.count:
+      enabled: true
+    fmc.api.endpoint.error:
+      enabled: true
+    fmc.api.rate_limited:
+      enabled: true
+    fmc.api.request.duration:
+      enabled: true
+    fmc.api.request.errors:
+      enabled: true
+    fmc.audit.record.count:
+      enabled: true
+    fmc.deployment.pending.count:
+      enabled: true
+    fmc.deployment.status:
+      enabled: true
+    fmc.ha.status:
+      enabled: true
+    fmc.health.event.count:
+      enabled: true
+    fmc.health.status:
+      enabled: true
+    fmc.manager.up:
+      enabled: true
+    fmc.policy.object.count:
+      enabled: true
+    fmc.resource.count:
+      enabled: true
+    fmc.resource.info:
+      enabled: true
+    fmc.resource.status:
+      enabled: true
+    fmc.scrape.last_success:
+      enabled: true
+    fmc.scrape.partial_success:
+      enabled: true
+    fmc.vpn.tunnel.status:
+      enabled: true
+    intersight.advisory.active:
+      enabled: true
+    intersight.advisory.count:
+      enabled: true
+    intersight.alarm.active:
+      enabled: true
+    intersight.alarm.count:
+      enabled: true
+    intersight.api.rate_limited:
+      enabled: true
+    intersight.api.request.duration:
+      enabled: true
+    intersight.api.request.errors:
+      enabled: true
+    intersight.audit.record.count:
+      enabled: true
+    intersight.compute.available_memory:
+      enabled: true
+    intersight.compute.thread.count:
+      enabled: true
+    intersight.fault.count:
+      enabled: true
+    intersight.firmware.bundle.info:
+      enabled: true
+    intersight.hcl.status:
+      enabled: true
+    intersight.hcl.status.count:
+      enabled: true
+    intersight.hyperflex.read.iops:
+      enabled: true
+    intersight.hyperflex.read.latency:
+      enabled: true
+    intersight.hyperflex.status:
+      enabled: true
+    intersight.hyperflex.write.iops:
+      enabled: true
+    intersight.hyperflex.write.latency:
+      enabled: true
+    intersight.kubernetes.cluster.connection_status:
+      enabled: true
+    intersight.resource.count:
+      enabled: true
+    intersight.resource.info:
+      enabled: true
+    intersight.resource.status:
+      enabled: true
+    intersight.scrape.last_success:
+      enabled: true
+    intersight.scrape.partial_success:
+      enabled: true
+    intersight.storage.life_left:
+      enabled: true
+    intersight.storage.media_error.count:
+      enabled: true
+    intersight.storage.power_on.hours:
+      enabled: true
+    intersight.storage.predictive_failure.count:
+      enabled: true
+    intersight.storage.rebuild.rate:
+      enabled: true
+    intersight.storage.status:
+      enabled: true
+    intersight.storage.temperature:
+      enabled: true
+    intersight.target.connection_status:
+      enabled: true
+    intersight.task.count:
+      enabled: true
+    intersight.task.status:
+      enabled: true
+    intersight.techsupport.count:
+      enabled: true
+    intersight.techsupport.status:
+      enabled: true
+    intersight.telemetry.query.rows:
+      enabled: true
+    intersight.ucs.cpu.idle.utilization:
+      enabled: true
+    intersight.ucs.cpu.system.utilization:
+      enabled: true
+    intersight.ucs.current:
+      enabled: true
+    intersight.ucs.fan.speed:
+      enabled: true
+    intersight.ucs.fan.speed_ratio:
+      enabled: true
+    intersight.ucs.fan.status:
+      enabled: true
+    intersight.ucs.host.energy:
+      enabled: true
+    intersight.ucs.host.power:
+      enabled: true
+    intersight.ucs.host.power_state:
+      enabled: true
+    intersight.ucs.memory.cached:
+      enabled: true
+    intersight.ucs.memory.ecc.correctable:
+      enabled: true
+    intersight.ucs.memory.ecc.uncorrectable:
+      enabled: true
+    intersight.ucs.memory.free:
+      enabled: true
+    intersight.ucs.memory.module.size:
+      enabled: true
+    intersight.ucs.memory.status:
+      enabled: true
+    intersight.ucs.memory.used:
+      enabled: true
+    intersight.ucs.network.interface_resets:
+      enabled: true
+    intersight.ucs.network.link.status:
+      enabled: true
+    intersight.ucs.network.link_failures:
+      enabled: true
+    intersight.ucs.network.receive:
+      enabled: true
+    intersight.ucs.network.receive.crc_errors:
+      enabled: true
+    intersight.ucs.network.receive.discards:
+      enabled: true
+    intersight.ucs.network.receive.drops:
+      enabled: true
+    intersight.ucs.network.receive.errors:
+      enabled: true
+    intersight.ucs.network.receive.no_buffer:
+      enabled: true
+    intersight.ucs.network.receive.packets:
+      enabled: true
+    intersight.ucs.network.receive.pause_frames:
+      enabled: true
+    intersight.ucs.network.signal_losses:
+      enabled: true
+    intersight.ucs.network.speed:
+      enabled: true
+    intersight.ucs.network.transmit:
+      enabled: true
+    intersight.ucs.network.transmit.discards:
+      enabled: true
+    intersight.ucs.network.transmit.drops:
+      enabled: true
+    intersight.ucs.network.transmit.errors:
+      enabled: true
+    intersight.ucs.network.transmit.packets:
+      enabled: true
+    intersight.ucs.network.transmit.pause_frames:
+      enabled: true
+    intersight.ucs.network.utilization:
+      enabled: true
+    intersight.ucs.power_supply.output_power:
+      enabled: true
+    intersight.ucs.power_supply.status:
+      enabled: true
+    intersight.ucs.power_supply.utilization:
+      enabled: true
+    intersight.ucs.signal_power.receive:
+      enabled: true
+    intersight.ucs.signal_power.transmit:
+      enabled: true
+    intersight.ucs.temperature:
+      enabled: true
+    intersight.ucs.temperature.limit_high_critical:
+      enabled: true
+    intersight.ucs.temperature.limit_low_critical:
+      enabled: true
+    intersight.ucs.temperature.status:
+      enabled: true
+    intersight.ucs.voltage:
+      enabled: true
+    intersight.virtual_machine.count:
+      enabled: true
+    intersight.virtual_machine.cpu.count:
+      enabled: true
+    intersight.virtual_machine.memory:
+      enabled: true
+    intersight.virtual_machine.power_state:
+      enabled: true
+    intersight.workflow.count:
+      enabled: true
+    intersight.workflow.status:
+      enabled: true
+    ise.accounting.session.count:
+      enabled: true
+    ise.alarm.count:
+      enabled: true
+    ise.api.endpoint.error:
+      enabled: true
+    ise.api.rate_limited:
+      enabled: true
+    ise.api.request.duration:
+      enabled: true
+    ise.api.request.errors:
+      enabled: true
+    ise.auth.failure.reason.info:
+      enabled: true
+    ise.certificate.count:
+      enabled: true
+    ise.certificate.expiration:
+      enabled: true
+    ise.controller.up:
+      enabled: true
+    ise.dataconnect.query.duration:
+      enabled: true
+    ise.dataconnect.query.errors:
+      enabled: true
+    ise.dataconnect.query.rows:
+      enabled: true
+    ise.dataconnect.row.count:
+      enabled: true
+    ise.deployment.node.count:
+      enabled: true
+    ise.deployment.node.status:
+      enabled: true
+    ise.endpoint.count:
+      enabled: true
+    ise.endpoint.posture.count:
+      enabled: true
+    ise.endpoint.posture.status:
+      enabled: true
+    ise.endpoint.profile.count:
+      enabled: true
+    ise.endpoint.status:
+      enabled: true
+    ise.license.count:
+      enabled: true
+    ise.license.status:
+      enabled: true
+    ise.network_device.count:
+      enabled: true
+    ise.network_device.status:
+      enabled: true
+    ise.policy.object.count:
+      enabled: true
+    ise.policy.status:
+      enabled: true
+    ise.profiler.policy.status:
+      enabled: true
+    ise.pxgrid.message.count:
+      enabled: true
+    ise.pxgrid.service.status:
+      enabled: true
+    ise.pxgrid.subscription.status:
+      enabled: true
+    ise.radius.failure.count:
+      enabled: true
+    ise.resource.info:
+      enabled: true
+    ise.resource.status:
+      enabled: true
+    ise.scrape.last_success:
+      enabled: true
+    ise.scrape.partial_success:
+      enabled: true
+    ise.service.skipped:
+      enabled: true
+    ise.service.unavailable:
+      enabled: true
+    ise.session.active.count:
+      enabled: true
+    ise.session.count:
+      enabled: true
+    ise.tacacs.failure.count:
+      enabled: true
+    ise.trustsec.resource.count:
+      enabled: true
+    ise.trustsec.resource.status:
+      enabled: true
+    ise.webhook.delivery.count:
+      enabled: true
+    meraki.api.request.duration:
+      enabled: true
+    meraki.api.request.errors:
+      enabled: true
+    meraki.api.request.rate_limited:
+      enabled: true
+    meraki.appliance.performance.score:
+      enabled: true
+    meraki.controller.up:
+      enabled: true
+    meraki.device.status:
+      enabled: true
+    meraki.power.module.status:
+      enabled: true
+    meraki.scrape.last_success:
+      enabled: true
+    meraki.switch.port.alert.active:
+      enabled: true
+    meraki.switch.port.poe.allocated:
+      enabled: true
+    meraki.switch.port.usage:
+      enabled: true
+    meraki.uplink.cellular.signal.rsrp:
+      enabled: true
+    meraki.uplink.cellular.signal.rsrq:
+      enabled: true
+    meraki.uplink.latency:
+      enabled: true
+    meraki.uplink.loss:
+      enabled: true
+    meraki.uplink.status:
+      enabled: true
+    meraki.vpn.peer.jitter:
+      enabled: true
+    meraki.vpn.peer.latency:
+      enabled: true
+    meraki.vpn.peer.loss:
+      enabled: true
+    meraki.vpn.peer.mos:
+      enabled: true
+    meraki.vpn.peer.status:
+      enabled: true
+    meraki.vpn.peer.usage:
+      enabled: true
+    meraki.wireless.channel_utilization:
+      enabled: true
+    meraki.wireless.client.count:
+      enabled: true
+    meraki.wireless.packet.count:
+      enabled: true
+    meraki.wireless.packet.loss:
+      enabled: true
+    meraki.wireless.packet.loss_percentage:
+      enabled: true
+    meraki.wireless.ssid.status:
+      enabled: true
+    nexus_dashboard.api.endpoint.error:
+      enabled: true
+    nexus_dashboard.api.rate_limited:
+      enabled: true
+    nexus_dashboard.api.request.duration:
+      enabled: true
+    nexus_dashboard.api.request.errors:
+      enabled: true
+    nexus_dashboard.audit.record.count:
+      enabled: true
+    nexus_dashboard.config.compliance:
+      enabled: true
+    nexus_dashboard.data_broker.rule.count:
+      enabled: true
+    nexus_dashboard.data_broker.session.count:
+      enabled: true
+    nexus_dashboard.data_broker.status:
+      enabled: true
+    nexus_dashboard.deployment.status:
+      enabled: true
+    nexus_dashboard.endpoint.count:
+      enabled: true
+    nexus_dashboard.event.count:
+      enabled: true
+    nexus_dashboard.fabric.health:
+      enabled: true
+    nexus_dashboard.insights.anomaly.active:
+      enabled: true
+    nexus_dashboard.insights.anomaly.count:
+      enabled: true
+    nexus_dashboard.insights.confidence:
+      enabled: true
+    nexus_dashboard.insights.score:
+      enabled: true
+    nexus_dashboard.insights.status:
+      enabled: true
+    nexus_dashboard.orchestrator.deployment.count:
+      enabled: true
+    nexus_dashboard.orchestrator.deployment.status:
+      enabled: true
+    nexus_dashboard.orchestrator.policy_delta.count:
+      enabled: true
+    nexus_dashboard.resource.count:
+      enabled: true
+    nexus_dashboard.resource.info:
+      enabled: true
+    nexus_dashboard.resource.status:
+      enabled: true
+    nexus_dashboard.scrape.last_success:
+      enabled: true
+    nexus_dashboard.scrape.partial_success:
+      enabled: true
+    nexus_dashboard.service.health:
+      enabled: true
+    nexus_dashboard.service.skipped:
+      enabled: true
+    nexus_dashboard.service.unavailable:
+      enabled: true
+    nexus_dashboard.storage.utilization:
+      enabled: true
+    nexus_dashboard.vpc.peer.count:
+      enabled: true
+    sdwan.api.rate_limited:
+      enabled: true
+    sdwan.api.request.duration:
+      enabled: true
+    sdwan.api.request.errors:
+      enabled: true
+    sdwan.app_route.jitter:
+      enabled: true
+    sdwan.app_route.latency:
+      enabled: true
+    sdwan.app_route.loss:
+      enabled: true
+    sdwan.app_route.sla.status:
+      enabled: true
+    sdwan.bfd.session.count:
+      enabled: true
+    sdwan.bfd.session.flap.count:
+      enabled: true
+    sdwan.bfd.session.status:
+      enabled: true
+    sdwan.bfd.session.transitions:
+      enabled: true
+    sdwan.collection.object.count:
+      enabled: true
+    sdwan.control.actual_connections:
+      enabled: true
+    sdwan.control.connection.count:
+      enabled: true
+    sdwan.control.connection.status:
+      enabled: true
+    sdwan.control.expected_connections:
+      enabled: true
+    sdwan.device.certificate.status:
+      enabled: true
+    sdwan.device.reachability.status:
+      enabled: true
+    sdwan.device.validity.status:
+      enabled: true
+    sdwan.event.count:
+      enabled: true
+    sdwan.inventory.device.count:
+      enabled: true
+    sdwan.manager.endpoint.status:
+      enabled: true
+    sdwan.manager.health.score:
+      enabled: true
+    sdwan.manager.status:
+      enabled: true
+    sdwan.manager.up:
+      enabled: true
+    sdwan.resource.info:
+      enabled: true
+    sdwan.resource.status:
+      enabled: true
+    sdwan.scrape.last_success:
+      enabled: true
+    sdwan.scrape.partial_success:
+      enabled: true
+    sdwan.service.skipped:
+      enabled: true
+    sdwan.service.unavailable:
+      enabled: true
+    sdwan.transport.interface.status:
+      enabled: true
+    system.cpu.logical.count:
+      enabled: true
     system.cpu.utilization:
       enabled: true
       attributes: []
@@ -201,11 +1691,147 @@ reaggregate_set:
       enabled: true
 none_set:
   metrics:
+    aci.api.endpoint.error:
+      enabled: false
+    aci.api.rate_limited:
+      enabled: false
+    aci.api.request.duration:
+      enabled: false
+    aci.api.request.errors:
+      enabled: false
+    aci.audit.record.count:
+      enabled: false
+    aci.controller.up:
+      enabled: false
+    aci.endpoint.count:
+      enabled: false
+    aci.endpoint.present:
+      enabled: false
+    aci.event.count:
+      enabled: false
+    aci.fabric.health:
+      enabled: false
+    aci.fault.active:
+      enabled: false
+    aci.fault.count:
+      enabled: false
+    aci.resource.count:
+      enabled: false
+    aci.resource.info:
+      enabled: false
+    aci.resource.status:
+      enabled: false
+    aci.scrape.last_success:
+      enabled: false
+    aci.scrape.partial_success:
+      enabled: false
+    aci.tenant.object.count:
+      enabled: false
+    aci.tenant.status:
+      enabled: false
+    catalyst_center.api.rate_limited:
+      enabled: false
+    catalyst_center.api.request.duration:
+      enabled: false
+    catalyst_center.api.request.errors:
+      enabled: false
+    catalyst_center.client.count:
+      enabled: false
+    catalyst_center.client.detail.health.score:
+      enabled: false
+    catalyst_center.client.health.score:
+      enabled: false
+    catalyst_center.client.issue.count:
+      enabled: false
+    catalyst_center.client.network.io:
+      enabled: false
+    catalyst_center.client.unique.count:
+      enabled: false
+    catalyst_center.client.wireless.rssi:
+      enabled: false
+    catalyst_center.client.wireless.snr:
+      enabled: false
+    catalyst_center.device.collection.status:
+      enabled: false
+    catalyst_center.device.detail.communication.status:
+      enabled: false
+    catalyst_center.device.detail.health.score:
+      enabled: false
+    catalyst_center.device.interface.count:
+      enabled: false
+    catalyst_center.device.reachability.status:
+      enabled: false
+    catalyst_center.device.uptime:
+      enabled: false
+    catalyst_center.interface.count:
+      enabled: false
+    catalyst_center.inventory.device.count:
+      enabled: false
+    catalyst_center.issue.active.count:
+      enabled: false
+    catalyst_center.issue.count:
+      enabled: false
+    catalyst_center.network.device.count:
+      enabled: false
+    catalyst_center.network.health.category.score:
+      enabled: false
+    catalyst_center.network.health.entity.count:
+      enabled: false
+    catalyst_center.network.health.entity.score:
+      enabled: false
+    catalyst_center.network.health.score:
+      enabled: false
+    catalyst_center.scrape.last_success:
+      enabled: false
+    catalyst_center.scrape.partial_success:
+      enabled: false
+    catalyst_center.site.client.count:
+      enabled: false
+    catalyst_center.site.client.health.percentage:
+      enabled: false
+    catalyst_center.site.health.count:
+      enabled: false
+    catalyst_center.site.issue.count:
+      enabled: false
+    catalyst_center.site.network_device.count:
+      enabled: false
+    catalyst_center.site.network_device.health.percentage:
+      enabled: false
+    catalyst_center.topology.link.count:
+      enabled: false
+    catalyst_center.topology.node.count:
+      enabled: false
+    cisco.catalyst9800.receiver.active_subscriptions:
+      enabled: false
+    cisco.catalyst9800.receiver.compact_gpb_payloads:
+      enabled: false
+    cisco.catalyst9800.receiver.decode_errors:
+      enabled: false
+    cisco.catalyst9800.receiver.dropped_datapoints:
+      enabled: false
+    cisco.catalyst9800.receiver.last_success_timestamp:
+      enabled: false
+    cisco.catalyst9800.receiver.reconnects:
+      enabled: false
+    cisco.catalyst9800.receiver.target.last_success_timestamp:
+      enabled: false
+    cisco.catalyst9800.receiver.target.reconnects:
+      enabled: false
+    cisco.catalyst9800.receiver.target.subscription.active:
+      enabled: false
+    cisco.catalyst9800.receiver.target.updates:
+      enabled: false
+    cisco.catalyst9800.receiver.unsupported_paths:
+      enabled: false
+    cisco.catalyst9800.receiver.updates:
+      enabled: false
     cisco.device.up:
       enabled: false
     cisco.interface.admin.status:
       enabled: false
       attributes: ["network.interface.name"]
+    cisco.interface.drop.rate:
+      enabled: false
     cisco.interface.io.rate:
       enabled: false
       attributes: ["network.io.direction","network.interface.name"]
@@ -218,6 +1844,30 @@ none_set:
     cisco.interface.utilization:
       enabled: false
       attributes: ["network.io.direction","network.interface.name"]
+    cisco.iosxr.receiver.active_subscriptions:
+      enabled: false
+    cisco.iosxr.receiver.compact_gpb_payloads:
+      enabled: false
+    cisco.iosxr.receiver.decode_errors:
+      enabled: false
+    cisco.iosxr.receiver.dropped_datapoints:
+      enabled: false
+    cisco.iosxr.receiver.last_success_timestamp:
+      enabled: false
+    cisco.iosxr.receiver.reconnects:
+      enabled: false
+    cisco.iosxr.receiver.target.last_success_timestamp:
+      enabled: false
+    cisco.iosxr.receiver.target.reconnects:
+      enabled: false
+    cisco.iosxr.receiver.target.subscription.active:
+      enabled: false
+    cisco.iosxr.receiver.target.updates:
+      enabled: false
+    cisco.iosxr.receiver.unsupported_paths:
+      enabled: false
+    cisco.iosxr.receiver.updates:
+      enabled: false
     cisco.optics.esnr:
       enabled: false
       attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
@@ -251,6 +1901,591 @@ none_set:
     cisco.optics.voltage:
       enabled: false
       attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.scrape.partial_success:
+      enabled: false
+    cisco.topology.neighbor.info:
+      enabled: false
+      attributes: ["cisco.topology.protocol","network.interface.name","cisco.topology.neighbor.name","cisco.topology.neighbor.interface","cisco.topology.neighbor.platform","cisco.topology.neighbor.address","network.peer.name","network.peer.address","network.protocol.name"]
+    cisco.transceiver.sensor:
+      enabled: false
+    cisco.wlc.ap.capwap.encryption.enabled:
+      enabled: false
+    cisco.wlc.ap.capwap.state:
+      enabled: false
+    cisco.wlc.ap.disconnect:
+      enabled: false
+    cisco.wlc.ap.disconnect.reason.info:
+      enabled: false
+    cisco.wlc.ap.join.failure.reason.info:
+      enabled: false
+    cisco.wlc.ap.join.status:
+      enabled: false
+    cisco.wlc.auth.radius.access.accept.count:
+      enabled: false
+    cisco.wlc.auth.radius.access.reject.count:
+      enabled: false
+    cisco.wlc.auth.radius.bad_authenticator.count:
+      enabled: false
+    cisco.wlc.auth.radius.response.count:
+      enabled: false
+    cisco.wlc.auth.radius.response_delay.avg:
+      enabled: false
+    cisco.wlc.auth.radius.response_delay.max:
+      enabled: false
+    cisco.wlc.auth.radius.timeout.count:
+      enabled: false
+    cisco.wlc.client.auth.failure.reason.info:
+      enabled: false
+    cisco.wlc.client.connection.state:
+      enabled: false
+    cisco.wlc.client.network.io:
+      enabled: false
+    cisco.wlc.client.network.packets:
+      enabled: false
+    cisco.wlc.client.roam.count:
+      enabled: false
+    cisco.wlc.client.roam.failure.count:
+      enabled: false
+    cisco.wlc.client.roam.type.info:
+      enabled: false
+    cisco.wlc.client.wireless.rssi:
+      enabled: false
+    cisco.wlc.client.wireless.snr:
+      enabled: false
+    cisco.wlc.controller.cpu.utilization:
+      enabled: false
+    cisco.wlc.controller.memory.bytes:
+      enabled: false
+    cisco.wlc.controller.receiver.active_subscriptions:
+      enabled: false
+    cisco.wlc.controller.receiver.decode_errors:
+      enabled: false
+    cisco.wlc.controller.receiver.subscription.active:
+      enabled: false
+    cisco.wlc.controller.receiver.updates:
+      enabled: false
+    cisco.wlc.ha.enabled:
+      enabled: false
+    cisco.wlc.ha.standby.failure.count:
+      enabled: false
+    cisco.wlc.ha.state:
+      enabled: false
+    cisco.wlc.ha.switchover.count:
+      enabled: false
+    cisco.wlc.mobility.handoff.count:
+      enabled: false
+    cisco.wlc.mobility.handoff.failure.count:
+      enabled: false
+    cisco.wlc.mobility.peer.status:
+      enabled: false
+    cisco.wlc.mobility.roam.count:
+      enabled: false
+    cisco.wlc.rf.channel.change.count:
+      enabled: false
+    cisco.wlc.rf.channel.recommended:
+      enabled: false
+    cisco.wlc.rf.channel.utilization:
+      enabled: false
+    cisco.wlc.rf.client.count:
+      enabled: false
+    cisco.wlc.rf.noise_floor:
+      enabled: false
+    cisco.wlc.ssid.channel.utilization:
+      enabled: false
+    cisco.wlc.ssid.client.count:
+      enabled: false
+    cisco.wlc.ssid.network.io:
+      enabled: false
+    cisco.wlc.ssid.retry.count:
+      enabled: false
+    fmc.api.endpoint.error:
+      enabled: false
+    fmc.api.rate_limited:
+      enabled: false
+    fmc.api.request.duration:
+      enabled: false
+    fmc.api.request.errors:
+      enabled: false
+    fmc.audit.record.count:
+      enabled: false
+    fmc.deployment.pending.count:
+      enabled: false
+    fmc.deployment.status:
+      enabled: false
+    fmc.ha.status:
+      enabled: false
+    fmc.health.event.count:
+      enabled: false
+    fmc.health.status:
+      enabled: false
+    fmc.manager.up:
+      enabled: false
+    fmc.policy.object.count:
+      enabled: false
+    fmc.resource.count:
+      enabled: false
+    fmc.resource.info:
+      enabled: false
+    fmc.resource.status:
+      enabled: false
+    fmc.scrape.last_success:
+      enabled: false
+    fmc.scrape.partial_success:
+      enabled: false
+    fmc.vpn.tunnel.status:
+      enabled: false
+    intersight.advisory.active:
+      enabled: false
+    intersight.advisory.count:
+      enabled: false
+    intersight.alarm.active:
+      enabled: false
+    intersight.alarm.count:
+      enabled: false
+    intersight.api.rate_limited:
+      enabled: false
+    intersight.api.request.duration:
+      enabled: false
+    intersight.api.request.errors:
+      enabled: false
+    intersight.audit.record.count:
+      enabled: false
+    intersight.compute.available_memory:
+      enabled: false
+    intersight.compute.thread.count:
+      enabled: false
+    intersight.fault.count:
+      enabled: false
+    intersight.firmware.bundle.info:
+      enabled: false
+    intersight.hcl.status:
+      enabled: false
+    intersight.hcl.status.count:
+      enabled: false
+    intersight.hyperflex.read.iops:
+      enabled: false
+    intersight.hyperflex.read.latency:
+      enabled: false
+    intersight.hyperflex.status:
+      enabled: false
+    intersight.hyperflex.write.iops:
+      enabled: false
+    intersight.hyperflex.write.latency:
+      enabled: false
+    intersight.kubernetes.cluster.connection_status:
+      enabled: false
+    intersight.resource.count:
+      enabled: false
+    intersight.resource.info:
+      enabled: false
+    intersight.resource.status:
+      enabled: false
+    intersight.scrape.last_success:
+      enabled: false
+    intersight.scrape.partial_success:
+      enabled: false
+    intersight.storage.life_left:
+      enabled: false
+    intersight.storage.media_error.count:
+      enabled: false
+    intersight.storage.power_on.hours:
+      enabled: false
+    intersight.storage.predictive_failure.count:
+      enabled: false
+    intersight.storage.rebuild.rate:
+      enabled: false
+    intersight.storage.status:
+      enabled: false
+    intersight.storage.temperature:
+      enabled: false
+    intersight.target.connection_status:
+      enabled: false
+    intersight.task.count:
+      enabled: false
+    intersight.task.status:
+      enabled: false
+    intersight.techsupport.count:
+      enabled: false
+    intersight.techsupport.status:
+      enabled: false
+    intersight.telemetry.query.rows:
+      enabled: false
+    intersight.ucs.cpu.idle.utilization:
+      enabled: false
+    intersight.ucs.cpu.system.utilization:
+      enabled: false
+    intersight.ucs.current:
+      enabled: false
+    intersight.ucs.fan.speed:
+      enabled: false
+    intersight.ucs.fan.speed_ratio:
+      enabled: false
+    intersight.ucs.fan.status:
+      enabled: false
+    intersight.ucs.host.energy:
+      enabled: false
+    intersight.ucs.host.power:
+      enabled: false
+    intersight.ucs.host.power_state:
+      enabled: false
+    intersight.ucs.memory.cached:
+      enabled: false
+    intersight.ucs.memory.ecc.correctable:
+      enabled: false
+    intersight.ucs.memory.ecc.uncorrectable:
+      enabled: false
+    intersight.ucs.memory.free:
+      enabled: false
+    intersight.ucs.memory.module.size:
+      enabled: false
+    intersight.ucs.memory.status:
+      enabled: false
+    intersight.ucs.memory.used:
+      enabled: false
+    intersight.ucs.network.interface_resets:
+      enabled: false
+    intersight.ucs.network.link.status:
+      enabled: false
+    intersight.ucs.network.link_failures:
+      enabled: false
+    intersight.ucs.network.receive:
+      enabled: false
+    intersight.ucs.network.receive.crc_errors:
+      enabled: false
+    intersight.ucs.network.receive.discards:
+      enabled: false
+    intersight.ucs.network.receive.drops:
+      enabled: false
+    intersight.ucs.network.receive.errors:
+      enabled: false
+    intersight.ucs.network.receive.no_buffer:
+      enabled: false
+    intersight.ucs.network.receive.packets:
+      enabled: false
+    intersight.ucs.network.receive.pause_frames:
+      enabled: false
+    intersight.ucs.network.signal_losses:
+      enabled: false
+    intersight.ucs.network.speed:
+      enabled: false
+    intersight.ucs.network.transmit:
+      enabled: false
+    intersight.ucs.network.transmit.discards:
+      enabled: false
+    intersight.ucs.network.transmit.drops:
+      enabled: false
+    intersight.ucs.network.transmit.errors:
+      enabled: false
+    intersight.ucs.network.transmit.packets:
+      enabled: false
+    intersight.ucs.network.transmit.pause_frames:
+      enabled: false
+    intersight.ucs.network.utilization:
+      enabled: false
+    intersight.ucs.power_supply.output_power:
+      enabled: false
+    intersight.ucs.power_supply.status:
+      enabled: false
+    intersight.ucs.power_supply.utilization:
+      enabled: false
+    intersight.ucs.signal_power.receive:
+      enabled: false
+    intersight.ucs.signal_power.transmit:
+      enabled: false
+    intersight.ucs.temperature:
+      enabled: false
+    intersight.ucs.temperature.limit_high_critical:
+      enabled: false
+    intersight.ucs.temperature.limit_low_critical:
+      enabled: false
+    intersight.ucs.temperature.status:
+      enabled: false
+    intersight.ucs.voltage:
+      enabled: false
+    intersight.virtual_machine.count:
+      enabled: false
+    intersight.virtual_machine.cpu.count:
+      enabled: false
+    intersight.virtual_machine.memory:
+      enabled: false
+    intersight.virtual_machine.power_state:
+      enabled: false
+    intersight.workflow.count:
+      enabled: false
+    intersight.workflow.status:
+      enabled: false
+    ise.accounting.session.count:
+      enabled: false
+    ise.alarm.count:
+      enabled: false
+    ise.api.endpoint.error:
+      enabled: false
+    ise.api.rate_limited:
+      enabled: false
+    ise.api.request.duration:
+      enabled: false
+    ise.api.request.errors:
+      enabled: false
+    ise.auth.failure.reason.info:
+      enabled: false
+    ise.certificate.count:
+      enabled: false
+    ise.certificate.expiration:
+      enabled: false
+    ise.controller.up:
+      enabled: false
+    ise.dataconnect.query.duration:
+      enabled: false
+    ise.dataconnect.query.errors:
+      enabled: false
+    ise.dataconnect.query.rows:
+      enabled: false
+    ise.dataconnect.row.count:
+      enabled: false
+    ise.deployment.node.count:
+      enabled: false
+    ise.deployment.node.status:
+      enabled: false
+    ise.endpoint.count:
+      enabled: false
+    ise.endpoint.posture.count:
+      enabled: false
+    ise.endpoint.posture.status:
+      enabled: false
+    ise.endpoint.profile.count:
+      enabled: false
+    ise.endpoint.status:
+      enabled: false
+    ise.license.count:
+      enabled: false
+    ise.license.status:
+      enabled: false
+    ise.network_device.count:
+      enabled: false
+    ise.network_device.status:
+      enabled: false
+    ise.policy.object.count:
+      enabled: false
+    ise.policy.status:
+      enabled: false
+    ise.profiler.policy.status:
+      enabled: false
+    ise.pxgrid.message.count:
+      enabled: false
+    ise.pxgrid.service.status:
+      enabled: false
+    ise.pxgrid.subscription.status:
+      enabled: false
+    ise.radius.failure.count:
+      enabled: false
+    ise.resource.info:
+      enabled: false
+    ise.resource.status:
+      enabled: false
+    ise.scrape.last_success:
+      enabled: false
+    ise.scrape.partial_success:
+      enabled: false
+    ise.service.skipped:
+      enabled: false
+    ise.service.unavailable:
+      enabled: false
+    ise.session.active.count:
+      enabled: false
+    ise.session.count:
+      enabled: false
+    ise.tacacs.failure.count:
+      enabled: false
+    ise.trustsec.resource.count:
+      enabled: false
+    ise.trustsec.resource.status:
+      enabled: false
+    ise.webhook.delivery.count:
+      enabled: false
+    meraki.api.request.duration:
+      enabled: false
+    meraki.api.request.errors:
+      enabled: false
+    meraki.api.request.rate_limited:
+      enabled: false
+    meraki.appliance.performance.score:
+      enabled: false
+    meraki.controller.up:
+      enabled: false
+    meraki.device.status:
+      enabled: false
+    meraki.power.module.status:
+      enabled: false
+    meraki.scrape.last_success:
+      enabled: false
+    meraki.switch.port.alert.active:
+      enabled: false
+    meraki.switch.port.poe.allocated:
+      enabled: false
+    meraki.switch.port.usage:
+      enabled: false
+    meraki.uplink.cellular.signal.rsrp:
+      enabled: false
+    meraki.uplink.cellular.signal.rsrq:
+      enabled: false
+    meraki.uplink.latency:
+      enabled: false
+    meraki.uplink.loss:
+      enabled: false
+    meraki.uplink.status:
+      enabled: false
+    meraki.vpn.peer.jitter:
+      enabled: false
+    meraki.vpn.peer.latency:
+      enabled: false
+    meraki.vpn.peer.loss:
+      enabled: false
+    meraki.vpn.peer.mos:
+      enabled: false
+    meraki.vpn.peer.status:
+      enabled: false
+    meraki.vpn.peer.usage:
+      enabled: false
+    meraki.wireless.channel_utilization:
+      enabled: false
+    meraki.wireless.client.count:
+      enabled: false
+    meraki.wireless.packet.count:
+      enabled: false
+    meraki.wireless.packet.loss:
+      enabled: false
+    meraki.wireless.packet.loss_percentage:
+      enabled: false
+    meraki.wireless.ssid.status:
+      enabled: false
+    nexus_dashboard.api.endpoint.error:
+      enabled: false
+    nexus_dashboard.api.rate_limited:
+      enabled: false
+    nexus_dashboard.api.request.duration:
+      enabled: false
+    nexus_dashboard.api.request.errors:
+      enabled: false
+    nexus_dashboard.audit.record.count:
+      enabled: false
+    nexus_dashboard.config.compliance:
+      enabled: false
+    nexus_dashboard.data_broker.rule.count:
+      enabled: false
+    nexus_dashboard.data_broker.session.count:
+      enabled: false
+    nexus_dashboard.data_broker.status:
+      enabled: false
+    nexus_dashboard.deployment.status:
+      enabled: false
+    nexus_dashboard.endpoint.count:
+      enabled: false
+    nexus_dashboard.event.count:
+      enabled: false
+    nexus_dashboard.fabric.health:
+      enabled: false
+    nexus_dashboard.insights.anomaly.active:
+      enabled: false
+    nexus_dashboard.insights.anomaly.count:
+      enabled: false
+    nexus_dashboard.insights.confidence:
+      enabled: false
+    nexus_dashboard.insights.score:
+      enabled: false
+    nexus_dashboard.insights.status:
+      enabled: false
+    nexus_dashboard.orchestrator.deployment.count:
+      enabled: false
+    nexus_dashboard.orchestrator.deployment.status:
+      enabled: false
+    nexus_dashboard.orchestrator.policy_delta.count:
+      enabled: false
+    nexus_dashboard.resource.count:
+      enabled: false
+    nexus_dashboard.resource.info:
+      enabled: false
+    nexus_dashboard.resource.status:
+      enabled: false
+    nexus_dashboard.scrape.last_success:
+      enabled: false
+    nexus_dashboard.scrape.partial_success:
+      enabled: false
+    nexus_dashboard.service.health:
+      enabled: false
+    nexus_dashboard.service.skipped:
+      enabled: false
+    nexus_dashboard.service.unavailable:
+      enabled: false
+    nexus_dashboard.storage.utilization:
+      enabled: false
+    nexus_dashboard.vpc.peer.count:
+      enabled: false
+    sdwan.api.rate_limited:
+      enabled: false
+    sdwan.api.request.duration:
+      enabled: false
+    sdwan.api.request.errors:
+      enabled: false
+    sdwan.app_route.jitter:
+      enabled: false
+    sdwan.app_route.latency:
+      enabled: false
+    sdwan.app_route.loss:
+      enabled: false
+    sdwan.app_route.sla.status:
+      enabled: false
+    sdwan.bfd.session.count:
+      enabled: false
+    sdwan.bfd.session.flap.count:
+      enabled: false
+    sdwan.bfd.session.status:
+      enabled: false
+    sdwan.bfd.session.transitions:
+      enabled: false
+    sdwan.collection.object.count:
+      enabled: false
+    sdwan.control.actual_connections:
+      enabled: false
+    sdwan.control.connection.count:
+      enabled: false
+    sdwan.control.connection.status:
+      enabled: false
+    sdwan.control.expected_connections:
+      enabled: false
+    sdwan.device.certificate.status:
+      enabled: false
+    sdwan.device.reachability.status:
+      enabled: false
+    sdwan.device.validity.status:
+      enabled: false
+    sdwan.event.count:
+      enabled: false
+    sdwan.inventory.device.count:
+      enabled: false
+    sdwan.manager.endpoint.status:
+      enabled: false
+    sdwan.manager.health.score:
+      enabled: false
+    sdwan.manager.status:
+      enabled: false
+    sdwan.manager.up:
+      enabled: false
+    sdwan.resource.info:
+      enabled: false
+    sdwan.resource.status:
+      enabled: false
+    sdwan.scrape.last_success:
+      enabled: false
+    sdwan.scrape.partial_success:
+      enabled: false
+    sdwan.service.skipped:
+      enabled: false
+    sdwan.service.unavailable:
+      enabled: false
+    sdwan.transport.interface.status:
+      enabled: false
+    system.cpu.logical.count:
+      enabled: false
     system.cpu.utilization:
       enabled: false
       attributes: ["cisco.node.name"]

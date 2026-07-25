@@ -1,0 +1,7 @@
+change_type: breaking
+component: receiver/cisco_os
+note: Make IOS XR and Catalyst 9800 dynamic YANG metric identities injective and deterministic.
+issues: [42647]
+subtext: |
+  Dynamic YANG metrics now use reversible `cisco.iosxr.yang.__v1.*` and `cisco.catalyst9800.yang.__v1.*` names that separately frame module presence, direct paths, and canonical dial-out encoding/source paths while retaining `cisco.yang.source_path`. Gauge leaves use double datapoints, cumulative monotonic counters use int64 datapoints, present empty strings remain info values, incompatible, unset, or inexact values are dropped and counted, and final encoded names are rejected rather than truncated when they exceed the active limit. This replaces the former sanitized dynamic names; update exact selectors, dashboards, and alerts. Fixed metrics, stable `cisco.wlc.*` aliases, and shared-gNMI normalized profiles are unchanged.
+change_logs: [user]

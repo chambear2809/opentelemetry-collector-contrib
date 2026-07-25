@@ -1,0 +1,7 @@
+change_type: bug_fix
+component: receiver/cisco_os
+note: Complete Cisco OS metric catalogs and enforce deterministic fixed-metric descriptors.
+issues: [0]
+subtext: |
+  Catalogs now cover every fixed receiver metric and reject stale or conflicting entries. On the OTLP wire, the IOS XR and Catalyst 9800 receiver-health families now use their governed integer type; compact-GPB diagnostics are one per-message integer gauge instead of a duplicate gauge/cumulative stream; discrete WLC status, count, counter, and byte aliases preserve exact integers while continuous gauges remain doubles with governed units; numeric dynamic YANG base names ending in _info are dropped and counted so text variants remain descriptor-stable; direct gNMI adds collision-safe cisco.yang.source_path with an injective gNMI-to-JSON boundary and rejects anonymous complex-array occupants even when an array is currently a singleton; and Cisco topology attributes are additive while legacy ACI network.peer.* and network.protocol.name attributes remain. Custom gNMI mappings cannot collide with receiver or scraper catalogs, and generated documentation reflects the runtime descriptor registry.
+change_logs: [user]

@@ -17,6 +17,15 @@ receivers:
       # Verification remains enabled by default. Set this only for an isolated lab.
       insecure_skip_verify: false
       event_lookback: 24h
+      # ACI logs are disabled by default. These explicit opt-ins derive complete
+      # records only from documented fault, audit, and event allowlists.
+      logs:
+        faults:
+          enabled: true
+        audit:
+          enabled: true
+        events:
+          enabled: true
 
 processors:
   memory_limiter:
@@ -54,9 +63,9 @@ service:
       receivers: [cisco_os/aci]
       processors: [memory_limiter, resource/aci, batch]
       exporters: [otlp_http/splunk]
-    # Splunk Observability Cloud's metric ingest is handled above. Keep APIC
-    # fault/audit/event logs local unless a Splunk Platform HEC destination is
-    # configured explicitly.
+    # Splunk Observability Cloud's metric ingest is handled above. The receiver
+    # opt-ins above emit only sanitized APIC records; keep them local
+    # unless a Splunk Platform HEC destination is configured explicitly.
     logs:
       receivers: [cisco_os/aci]
       processors: [memory_limiter, resource/aci, batch]

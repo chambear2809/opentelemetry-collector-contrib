@@ -4,6 +4,57 @@ This guide lists the fixed metrics emitted by the Cisco OS receiver, documents i
 explains in plain language why someone might monitor them. It is written for operators who may not know Cisco or
 networking terms yet.
 
+Fixed-name governance is exact for metric name, description, instrument, numeric type, unit, monotonicity, and
+temporality across the receiver and both child scrapers. Attribute governance is deliberately narrower: required and
+optional attributes are checked for `cisco.topology.neighbor.info`, and shared-gNMI builtin mappings have a typed
+optional-attribute union. Other API, CLI, and direct-telemetry attributes remain source-conditional; the fixed catalog
+does not claim an exhaustive attribute union for those emitters.
+
+The fixed wire contracts use integer datapoints for IOS XR and Catalyst 9800 receiver health and for discrete WLC
+status, count, counter, and byte aliases; continuous WLC measurements remain double gauges with cataloged units.
+Compact-GPB diagnostics are a single per-message integer gauge and carry no receiver-health state. Direct
+gNMI and GPB-KV dynamic datapoints retain an injective raw source identity in `cisco.yang.source_path`. Direct-gNMI
+structured scalar paths are unchanged; JSON descendants use `rawGNMIPath#/escaped/key` framing, with the fragment
+encoded as a JSON Pointer so the structured-to-JSON boundary and arbitrary object keys remain unambiguous. Complex-array
+entries are emitted only when every entry has a recognized stable identity, including singleton arrays, so
+an anonymous occupant cannot silently inherit a prior series identity. The normalized
+`cisco.topology.*` attributes are additive: ACI continues to emit its legacy `network.peer.name`,
+`network.peer.address`, and `network.protocol.name` attributes.
+
+The broad `cisco.catalyst9800.yang.` and `cisco.iosxr.yang.` namespaces are reserved for pattern-governed model output
+and are outside exact fixed-name completeness. Receiver-generated names use the current `__v1` encoding. After the
+product prefix, the common grammar is `__v1.(m0|m1.<segment>)`: `m0` means no module and `m1` is followed by its raw
+module value. Direct gNMI then uses `p<count>.<segment>...`; dial-out uses
+`(e0|e1.e<count>.<segment>...).p<count>.<segment>...`, so canonical nonempty encoding-path containers and raw GPB-KV
+source-path segments are separate tuples. `e0` represents the deliberate absent/empty encoding-path class. A nonempty
+`encoding_path` is accepted only in slash-delimited canonical form, with no surrounding whitespace or slash and no
+empty segment; noncanonical input is rejected rather than normalized. Only a valid `module:local-name` before any
+predicate bracket changes the effective module. Colons in retained predicate values such as MAC or IPv6 identities
+remain segment data. Numeric and info variants
+end in `.n` and `.i`. A segment is `s<byte-count>_<bytes>`, where ASCII letters and digits remain readable and every
+other byte is escaped as `_HH`. These length and count frames preserve case, punctuation, module qualifiers, segment
+boundaries, the dial-out encoding/source boundary, and the transparent `content` segment. Target and list-key values
+remain attributes rather than entering metric names.
+
+For direct gNMI, differing nonempty prefix and relative-path origins are rejected and counted. Otherwise the one
+nonempty effective origin is the module frame before any module-qualified path fallback. Dial-out accepts only raw
+yang_grpc `cisco.*` metrics plus its exact compact-GPB diagnostic; apparent fixed, product, or alias prefixes from a
+device are still framed, and non-`cisco.*` input is rejected. Every dynamic datapoint retains
+`cisco.yang.source_path`. The active final-name budget applies to the completed encoded name and is capped at 1024
+bytes; overflow is rejected without truncation.
+
+Numeric `.n` streams have one deterministic contract per encoded leaf: gauges are finite double datapoints and known
+counters are cumulative monotonic sums with int64 datapoints. Parser-less dial-out gauges are raw carriers and are
+promoted to sums only when deterministic path classification identifies a counter. An incoming sum is never demoted
+to a gauge, and a sum classified as a counter must already be cumulative and monotonic. Exact int-to-double and
+integral double-to-int conversions are accepted, including exactly representable int64 values beyond 2^53; inexact
+gauge integers, fractional or out-of-range counters, incompatible instruments, unset points, and nonnumeric dynamic instruments are
+dropped and counted rather than rounded or silently coerced. Info `.i` streams are double gauges with the original
+text, including a present empty string, on `value`. JSON null remains absent. This is a breaking replacement for the former sanitized dynamic names and mixed source numeric
+representations. Fixed catalogs, stable `cisco.wlc.*` aliases, and normal shared-gNMI profiles are unchanged. Custom
+shared-gNMI mappings remain a separate exact configuration-time contract and cannot claim any fixed name or any
+current/future name in either broad YANG namespace.
+
 The receiver has two SSH scrapers plus API polling and telemetry paths for Meraki, Intersight, Catalyst Center,
 Catalyst 9800 WLCs, Catalyst SD-WAN Manager, Nexus Dashboard/NDFC, APIC, Secure Firewall Management Center, Cisco
 Identity Services Engine, secure normalized gNMI dial-in, and IOS XR MDT:
@@ -106,8 +157,8 @@ Controller/API paths add these correlation attributes when available:
 | `cisco.platform.family` | Legacy shared-gNMI OS-family alias. Older direct Catalyst 9800 and IOS XR telemetry retains its existing platform-family values for compatibility. |
 | `cisco.product.family` | Canonical product family for a live-verified shared-gNMI target. |
 | `cisco.yang.path` | Original gNMI/MDT YANG path or encoding path. Direct gNMI decoding percent-encodes structural bytes such as `/`, `%`, `[`, `]`, and `=` inside individual path components so different wire paths remain distinct. |
-| `cisco.yang.source_path` | Injective GPB-KV field path retained when a normalized metric name could otherwise conflate distinct YANG identifiers. |
-| `cisco.yang.module` | YANG module inferred from the path, such as `wireless-access-point-oper`, `openconfig-interfaces`, or a Cisco native module. |
+| `cisco.yang.source_path` | Injective raw direct-gNMI or GPB-KV field path retained when a normalized metric name could otherwise conflate distinct YANG identifiers. Direct-gNMI JSON descendants use an unambiguous `rawGNMIPath#/JSON-pointer` boundary. Structured scalar paths retain their original form unless gNMI `Path.Target` is set; targeted paths use the injective `@target=<percent-encoded-target>@/rawGNMIPath` frame so identical paths from different targets remain distinct. |
+| `cisco.yang.module` | Effective leaf YANG module encoded in the dynamic metric name, such as `wireless-access-point-oper`, `openconfig-interfaces`, or a Cisco native module. A module-qualified direct-JSON descendant updates this value from its parent module. |
 | `cisco.telemetry.transport` | Direct telemetry direction, such as `gnmi_dial_in` or `mdt_grpc_dial_out`. |
 | `cisco.wlc.ap.mac` | Catalyst 9800 AP radio/base MAC when present in the YANG key or JSON payload. |
 | `cisco.wlc.ssid` | Catalyst 9800 SSID name when present. |
@@ -198,7 +249,7 @@ receivers:
         enabled: false
       cisco.wlc.client.*:
         enabled: false
-      cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.*:
+      cisco.iosxr.yang.__v1.*:
         enabled: false
 ```
 
@@ -552,7 +603,8 @@ register log endpoints until current audit/event routes are verified.
 
 ACI support polls APIC class endpoints directly. This provides controller-side troubleshooting even when SSH to every
 ACI leaf/spine is not practical. Metrics stay bounded around health, state, counts, endpoint presence, interface
-symptoms, and audit/event rollups; high-cardinality fault, audit, and event evidence is emitted as logs.
+symptoms, and audit/event rollups; high-cardinality fault, audit, and event evidence can be emitted through explicit
+signal-specific log opt-ins.
 
 | Metric | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
@@ -567,7 +619,7 @@ symptoms, and audit/event rollups; high-cardinality fault, audit, and event evid
 | `aci.resource.status` | Gauge, int | `1` | Encoded APIC object status with original state attributes. | Normalize state across fabric, tenant, endpoint, and topology classes. |
 | `aci.resource.count` | Gauge, int | `1` | APIC resources grouped by bounded group, class, type, status, and severity. | Track class-query coverage and unexpected inventory changes. |
 | `aci.audit.record.count` | Gauge, int | `1` | Recent APIC audit records by bounded operation, status, and severity attributes. | Correlate APIC-side changes with incidents without high-cardinality labels. |
-| `aci.event.count` | Gauge, int | `1` | Recent APIC event records by bounded operation, status, and severity attributes. | Surface event evidence in dashboards while keeping full event text in logs. |
+| `aci.event.count` | Gauge, int | `1` | Recent APIC event records by bounded operation, status, and severity attributes. | Surface event evidence in dashboards while keeping allowlisted event detail in opt-in logs. |
 | `aci.fabric.health` | Gauge, double | `1` | Fabric, pod, node, or tenant health score where exposed by APIC. | Detect unhealthy ACI domains quickly. |
 | `aci.fault.active` | Gauge, int | `1` | Active APIC fault instance. | Drive fault triage by code, severity, domain, and type. |
 | `aci.fault.count` | Gauge, int | `1` | Active APIC fault counts by bounded attributes. | Build severity and domain rollups. |
@@ -583,9 +635,18 @@ symptoms, and audit/event rollups; high-cardinality fault, audit, and event evid
 | `system.memory.utilization` | Gauge, double | `1` | APIC-reported memory utilization. | Detect controller or node memory pressure. |
 | `cisco.topology.neighbor.info` | Gauge, int | `1` | LLDP, CDP, and fabric-link neighbor information. | Reconstruct physical and logical topology during incidents. |
 
-ACI logs are emitted for active faults, audit/config changes, and event records. Every record includes
-`event.domain=aci`, `event.name`, `aci.group`, `aci.status`, `aci.severity`, `aci.dn`, `aci.class`, `aci.node.id`,
-`cisco.switch.serial`, and `user.name` when present.
+ACI logs default to disabled independently from the enabled metric groups. `aci.logs.faults.enabled`,
+`aci.logs.audit.enabled`, and `aci.logs.events.enabled` opt into the corresponding APIC record class. Bodies contain
+only the signal-specific scalar allowlists in the
+[ACI configuration guide](../README.md#cisco-aciapic-configuration). Resource attributes, event timestamp/severity,
+`aci.status`, `aci.severity`, and `user.name` are derived only from that sanitized envelope plus fixed endpoint and
+configured controller metadata. Raw APIC aliases, `changeSet`, session identifiers, unknown attributes, and nested
+values are neither consulted nor forwarded. Deduplication hashes the complete sanitized semantic record, excludes
+only replica-local audit `id`/`dn` copies when `txId` is present, and remains scoped to a configured controller.
+Without `storage`, deduplication state is process-local and a restart can replay records inside the configured lookback.
+When `storage` is configured, accepted ACI deduplication state is checkpointed across restarts subject to the bounded
+unflushed and fail-open replay windows documented in the receiver's durable-checkpoint guidance. Live ACI restart
+delivery and replay behavior remains unqualified.
 
 ## Cisco ISE Metrics And Logs
 
@@ -694,49 +755,51 @@ shown below describe the source values and must not be used for automatic scalin
 utilization aliases set unit `1`; `cisco.wlc.ssid.network.io`, `cisco.wlc.client.network.io`, and
 `cisco.wlc.client.network.packets` set `By`, `By`, and `{packet}` respectively.
 
+These generic YANG rows describe the pattern-governed contract above, not an enumerable catalog of exact metric names.
+
 | Metric Pattern | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
-| `cisco.catalyst9800.yang.<module>.<path>.<leaf>` | Gauge or sum, int or double | empty | Numeric YANG leaves from Cisco IOS XE wireless/controller models. Integral values are preserved as int64 datapoints when representable; other numeric values use double datapoints. Known counters are cumulative sums; other values are gauges. | Keep full C9800 model coverage without waiting for a custom parser per leaf. |
-| `cisco.catalyst9800.yang.<module>.<path>.<leaf>_info` | Gauge, double | empty | String, enum, identity, and list leaves represented by value `1`, with the original value on the `value` attribute. | Preserve AP, client, HA, CAPWAP, and mobility states as bounded info metrics. |
-| `cisco.wlc.ap.join.status` | Gauge, int or double | `1` | Whether an AP is joined. | Alert on APs that leave the controller. |
+| `cisco.catalyst9800.yang.__v1.<framed-schema-tuple>.n` | Gauge/double or cumulative monotonic sum/int | empty | Numeric YANG leaves from Cisco IOS XE wireless/controller models under the reversible contract above. | Keep full C9800 model coverage without conflating raw identifiers or changing a stream's descriptor. |
+| `cisco.catalyst9800.yang.__v1.<framed-schema-tuple>.i` | Gauge, double | empty | String, enum, identity, and list leaves represented by value `1`, with the original value on the `value` attribute. | Preserve AP, client, HA, CAPWAP, and mobility states as bounded info metrics. |
+| `cisco.wlc.ap.join.status` | Gauge, int | `1` | Whether an AP is joined. | Alert on APs that leave the controller. |
 | `cisco.wlc.ap.join.failure.reason.info` | Gauge, double | `1` | Current AP join failure reason evidence. | Find certificate, discovery, authorization, or CAPWAP join issues. |
-| `cisco.wlc.ap.disconnect` | Sum, int or double | `{disconnect}` | AP disconnect counter. | Detect unstable AP/WLC connectivity. |
+| `cisco.wlc.ap.disconnect` | Sum, int | `{disconnect}` | AP disconnect counter. | Detect unstable AP/WLC connectivity. |
 | `cisco.wlc.ap.disconnect.reason.info` | Gauge, double | `1` | Current AP disconnect reason evidence. | Explain unstable AP/WLC connectivity. |
-| `cisco.wlc.ap.capwap.state` | Gauge, int or double | `1` | CAPWAP/AP operational state with state text as an attribute. | Confirm AP control tunnels are operational. |
+| `cisco.wlc.ap.capwap.state` | Gauge, int | `1` | CAPWAP/AP operational state with state text as an attribute. | Confirm AP control tunnels are operational. |
 | `cisco.wlc.rf.channel.utilization` | Gauge, double | `1` | RF/channel utilization normalized to a ratio from 0 to 1. | Find congested or noisy channels. |
-| `cisco.wlc.rf.noise_floor` | Gauge, int or double | `dBm` | RF noise floor. | Detect interference and RF health problems. |
-| `cisco.wlc.rf.client.count` | Gauge, int or double | `{client}` | Client count per radio/RRM measurement. | Identify overloaded radios. |
-| `cisco.wlc.rf.channel.change.count` | Sum, int or double | `{change}` | DCA/channel change counters. | Spot unstable RF environments. |
-| `cisco.wlc.ssid.client.count` | Gauge, int or double | `{client}` | Associated clients per SSID/BSSID. | Track SSID load. |
+| `cisco.wlc.rf.noise_floor` | Gauge, double | `dBm` | RF noise floor. | Detect interference and RF health problems. |
+| `cisco.wlc.rf.client.count` | Gauge, int | `{client}` | Client count per radio/RRM measurement. | Identify overloaded radios. |
+| `cisco.wlc.rf.channel.change.count` | Sum, int | `{change}` | DCA/channel change counters. | Spot unstable RF environments. |
+| `cisco.wlc.ssid.client.count` | Gauge, int | `{client}` | Associated clients per SSID/BSSID. | Track SSID load. |
 | `cisco.wlc.ssid.channel.utilization` | Gauge, double | `1` | SSID/BSSID channel utilization normalized to a ratio from 0 to 1. | Compare SSID experience across APs and radios. |
-| `cisco.wlc.ssid.network.io` | Sum, int or double | `By` | SSID traffic by direction. | Trend wireless traffic volume by WLAN. |
-| `cisco.wlc.ssid.retry.count` | Sum, int or double | `{retry}` | SSID retry counters. | Detect poor airtime quality or client retries. |
-| `cisco.wlc.client.connection.state` | Gauge, int or double | `1` | Client connection state. | Detect clients stuck before run/connected state. |
+| `cisco.wlc.ssid.network.io` | Sum, int | `By` | SSID traffic by direction. | Trend wireless traffic volume by WLAN. |
+| `cisco.wlc.ssid.retry.count` | Sum, int | `{retry}` | SSID retry counters. | Detect poor airtime quality or client retries. |
+| `cisco.wlc.client.connection.state` | Gauge, int | `1` | Client connection state. | Detect clients stuck before run/connected state. |
 | `cisco.wlc.client.auth.failure.reason.info` | Gauge, double | `1` | Client auth/exclusion failure reason. | Troubleshoot RADIUS, policy, and exclusion problems. |
-| `cisco.wlc.client.roam.count` | Sum, int or double | `{roam}` | Client or mobility roam counter. | Track roaming activity and unexpected churn. |
+| `cisco.wlc.client.roam.count` | Sum, int | `{roam}` | Client or mobility roam counter. | Track roaming activity and unexpected churn. |
 | `cisco.wlc.client.roam.type.info` | Gauge, double | `1` | Current client roam type evidence. | Explain roaming behavior without treating enum values as counters. |
-| `cisco.wlc.client.roam.failure.count` | Sum, int or double | `{failure}` | Client roam failure counters. | Detect roaming issues across APs or mobility peers. |
-| `cisco.wlc.client.wireless.rssi` | Gauge, int or double | `dBm` | Client RSSI. | Find weak-signal clients. |
-| `cisco.wlc.client.wireless.snr` | Gauge, int or double | `dB` | Client SNR. | Diagnose poor client RF quality. |
-| `cisco.wlc.mobility.peer.status` | Gauge, int or double | `1` | Mobility peer/link status. | Alert on broken mobility tunnels or peers. |
-| `cisco.wlc.mobility.roam.count` | Sum, int or double | `{roam}` | L2/L3 mobility roam counters. | Track mobility handoff volume. |
-| `cisco.wlc.mobility.handoff.count` | Sum, int or double | `{handoff}` | Successful handoff counters. | Confirm mobility handoffs are completing. |
-| `cisco.wlc.mobility.handoff.failure.count` | Sum, int or double | `{failure}` | Failed handoff counters. | Detect mobility-domain problems. |
-| `cisco.wlc.ha.state` | Gauge, int or double | `1` | Local or peer HA state. | Confirm active/standby WLC health. |
-| `cisco.wlc.ha.enabled` | Gauge, int or double | `1` | Whether HA is enabled. | Detect missing redundancy. |
-| `cisco.wlc.ha.switchover.count` | Sum, int or double | `{switchover}` | HA switchover counter. | Correlate client/AP events with controller failovers. |
-| `cisco.wlc.ha.standby.failure.count` | Sum, int or double | `{failure}` | Standby failure counter. | Alert on degraded redundancy. |
-| `cisco.wlc.auth.radius.*` | Gauge or sum, int or double | model-defined | RADIUS accepts, rejects, timeouts, delays, responses, and bad authenticators. | Separate WLAN client failures from upstream AAA problems. |
-| `cisco.wlc.controller.*` | Gauge or sum, int or double | model-defined | Controller CPU/memory and receiver health aliases. | Detect WLC or collector-side telemetry health issues. |
-| `cisco.catalyst9800.receiver.*` | Gauge or sum | empty | Receiver active subscriptions, updates, decode errors, unsupported paths, reconnects, dropped datapoints, compact GPB payloads, and last success timestamp. | Confirm the telemetry pipeline is live and bounded. |
-| `cisco.catalyst9800.receiver.target.subscription.active` | Gauge | empty | Whether an individual configured target has an active subscription. | Isolate one failed WLC target from aggregate receiver state. |
-| `cisco.catalyst9800.receiver.target.updates` | Sum, cumulative | empty | Updates received from an individual target. | Detect a target whose stream is connected but silent. |
-| `cisco.catalyst9800.receiver.target.reconnects` | Sum, cumulative | empty | Reconnect attempts for an individual target. | Detect target-specific transport instability. |
-| `cisco.catalyst9800.receiver.target.last_success_timestamp` | Gauge | empty | Unix timestamp of the individual target's last successful update. | Alert on target-specific stale telemetry. |
-| `cisco.wlc.ap.capwap.encryption.enabled` | Gauge | empty | Whether CAPWAP link encryption is enabled. | Detect unexpected control/data tunnel encryption posture. |
-| `cisco.wlc.rf.channel.recommended` | Gauge | empty | Controller-recommended RF channel. | Correlate DCA recommendations with channel changes. |
-| `cisco.wlc.client.network.io` | Sum, int or double, cumulative | `By` | Client traffic volume by direction. | Detect client traffic silence or spikes. |
-| `cisco.wlc.client.network.packets` | Sum, int or double, cumulative | `{packet}` | Client packet volume by direction. | Detect client packet-rate shifts. |
+| `cisco.wlc.client.roam.failure.count` | Sum, int | `{failure}` | Client roam failure counters. | Detect roaming issues across APs or mobility peers. |
+| `cisco.wlc.client.wireless.rssi` | Gauge, double | `dBm` | Client RSSI. | Find weak-signal clients. |
+| `cisco.wlc.client.wireless.snr` | Gauge, double | `dB` | Client SNR. | Diagnose poor client RF quality. |
+| `cisco.wlc.mobility.peer.status` | Gauge, int | `1` | Mobility peer/link status. | Alert on broken mobility tunnels or peers. |
+| `cisco.wlc.mobility.roam.count` | Sum, int | `{roam}` | L2/L3 mobility roam counters. | Track mobility handoff volume. |
+| `cisco.wlc.mobility.handoff.count` | Sum, int | `{handoff}` | Successful handoff counters. | Confirm mobility handoffs are completing. |
+| `cisco.wlc.mobility.handoff.failure.count` | Sum, int | `{failure}` | Failed handoff counters. | Detect mobility-domain problems. |
+| `cisco.wlc.ha.state` | Gauge, int | `1` | Local or peer HA state. | Confirm active/standby WLC health. |
+| `cisco.wlc.ha.enabled` | Gauge, int | `1` | Whether HA is enabled. | Detect missing redundancy. |
+| `cisco.wlc.ha.switchover.count` | Sum, int | `{switchover}` | HA switchover counter. | Correlate client/AP events with controller failovers. |
+| `cisco.wlc.ha.standby.failure.count` | Sum, int | `{failure}` | Standby failure counter. | Alert on degraded redundancy. |
+| `cisco.wlc.auth.radius.*` | Counters: sum, int; delays: gauge, double | cataloged per metric | RADIUS accepts, rejects, timeouts, delays, responses, and bad authenticators. | Separate WLAN client failures from upstream AAA problems. |
+| `cisco.wlc.controller.*` | Gauge or sum, typed per exact metric | cataloged per metric | Controller CPU uses double; memory and receiver health use int. | Detect WLC or collector-side telemetry health issues. |
+| `cisco.catalyst9800.receiver.*` | Gauge or sum, int | empty | Receiver active subscriptions, updates, decode errors, unsupported paths, reconnects, dropped datapoints, compact GPB payloads, and last success timestamp. | Confirm the telemetry pipeline is live and bounded. |
+| `cisco.catalyst9800.receiver.target.subscription.active` | Gauge, int | empty | Whether an individual configured target has an active subscription. | Isolate one failed WLC target from aggregate receiver state. |
+| `cisco.catalyst9800.receiver.target.updates` | Sum, int, cumulative | empty | Updates received from an individual target. | Detect a target whose stream is connected but silent. |
+| `cisco.catalyst9800.receiver.target.reconnects` | Sum, int, cumulative | empty | Reconnect attempts for an individual target. | Detect target-specific transport instability. |
+| `cisco.catalyst9800.receiver.target.last_success_timestamp` | Gauge, int | empty | Unix timestamp of the individual target's last successful update. | Alert on target-specific stale telemetry. |
+| `cisco.wlc.ap.capwap.encryption.enabled` | Gauge, int | empty | Whether CAPWAP link encryption is enabled. | Detect unexpected control/data tunnel encryption posture. |
+| `cisco.wlc.rf.channel.recommended` | Gauge, int | empty | Controller-recommended RF channel. | Correlate DCA recommendations with channel changes. |
+| `cisco.wlc.client.network.io` | Sum, int, cumulative | `By` | Client traffic volume by direction. | Detect client traffic silence or spikes. |
+| `cisco.wlc.client.network.packets` | Sum, int, cumulative | `{packet}` | Client packet volume by direction. | Detect client packet-rate shifts. |
 
 Catalyst 9800 state aliases retain the original enum on the `state` attribute. Use that attribute for detectors:
 unrecognized non-empty states are emitted as informational value `1`, and a numeric `0` can represent an expected
@@ -744,7 +807,7 @@ standby role as well as an unhealthy state. Do not treat every `1` as healthy or
 enum- and role-specific condition.
 
 Catalyst 9800 metrics include `host.*`, `hw.type=network`, `cisco.os.name=ios_xe`,
-`cisco.platform.family=catalyst_9800`, `cisco.yang.path`, `cisco.yang.module`, `cisco.telemetry.transport`, and WLC
+`cisco.platform.family=catalyst_9800`, `cisco.yang.path`, `cisco.yang.source_path`, `cisco.yang.module`, `cisco.telemetry.transport`, and WLC
 correlation attributes such as `cisco.wlc.ap.mac`, `cisco.wlc.ap.name`, `cisco.wlc.radio.slot`,
 `cisco.wlc.wlan.id`, `cisco.wlc.ssid`, `cisco.wlc.client.mac`, and `cisco.wlc.mobility.node_ip`.
 
@@ -758,24 +821,26 @@ Generic IOS XR YANG metrics and direct receiver-health metrics currently have an
 The source model still defines how operators should interpret each value; do not use the descriptor for automatic
 scaling.
 
+These generic YANG rows describe the pattern-governed contract above, not an enumerable catalog of exact metric names.
+
 | Metric Pattern | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
-| `cisco.iosxr.yang.<module>.<path>.<leaf>` | Gauge or sum, int or double | empty | Numeric YANG leaves from OpenConfig or Cisco IOS XR native models. Integral values are preserved as int64 datapoints when representable; other numeric values use double datapoints. Known counters are cumulative sums; other values are gauges. | Build coverage for interfaces, optics, routing, FIB, BGP, ISIS, MPLS, SR/SRv6, QoS, ASIC, and platform health without waiting for a custom parser per leaf. |
-| `cisco.iosxr.yang.<module>.<path>.<leaf>_info` | Gauge, double | empty | String, enum, identity, and list leaves represented by value `1`, with the original value on the `value` attribute. | Preserve states such as admin/oper status, neighbor state, alarm text, and component identity as bounded info metrics. |
+| `cisco.iosxr.yang.__v1.<framed-schema-tuple>.n` | Gauge/double or cumulative monotonic sum/int | empty | Numeric YANG leaves from OpenConfig or Cisco IOS XR native models under the reversible contract above. | Build broad model coverage without conflating raw identifiers or changing a stream's descriptor. |
+| `cisco.iosxr.yang.__v1.<framed-schema-tuple>.i` | Gauge, double | empty | String, enum, identity, and list leaves represented by value `1`, with the original value on the `value` attribute. | Preserve states such as admin/oper status, neighbor state, alarm text, and component identity as bounded info metrics. |
 | `cisco.iosxr.receiver.active_subscriptions` | Gauge, int | empty | Active gNMI dial-in targets. | Detect target selection mistakes or subscriptions that never start. |
 | `cisco.iosxr.receiver.updates` | Sum, int, cumulative | empty | gNMI updates and deletes received. | Confirm that subscriptions are producing telemetry. |
 | `cisco.iosxr.receiver.decode_errors` | Sum, int, cumulative | empty | JSON/YANG decode failures. | Alert when a model or encoding change starts dropping data. |
 | `cisco.iosxr.receiver.unsupported_paths` | Sum, int, cumulative | empty | Paths rejected or pruned by gNMI capabilities. | Catch path groups that are unavailable on a platform, line card, or IOS XR release. |
 | `cisco.iosxr.receiver.reconnects` | Sum, int, cumulative | empty | gNMI reconnect attempts after subscription failures. | Detect unstable telemetry sessions or endpoint availability issues. |
 | `cisco.iosxr.receiver.dropped_datapoints` | Sum, int, cumulative | empty | Datapoints dropped by the receiver cardinality guard. | Tune path groups, intervals, and caps before overwhelming downstream storage. |
-| `cisco.iosxr.receiver.compact_gpb_payloads` | Sum, int, cumulative | empty | MDT compact `data_gpb` rows received but not generically decoded. | Make compact GPB visibility explicit so operators can switch to KV-GPB or add model-specific protobuf decoding. |
+| `cisco.iosxr.receiver.compact_gpb_payloads` | Gauge, int | empty | Compact GPB rows in the current MDT notification that were not generically decoded. | Make compact GPB visibility explicit without carrying one target's notification count into another target. |
 | `cisco.iosxr.receiver.last_success_timestamp` | Gauge, int | empty | Unix timestamp of the last successful gNMI update. | Alert on stale IOS XR telemetry. |
 | `cisco.iosxr.receiver.target.subscription.active` | Gauge, int | empty | Whether an individual configured target has an active subscription. | Isolate one failed router target from aggregate receiver state. |
 | `cisco.iosxr.receiver.target.updates` | Sum, int, cumulative | empty | Updates received from an individual target. | Detect a target whose stream is connected but silent. |
 | `cisco.iosxr.receiver.target.reconnects` | Sum, int, cumulative | empty | Reconnect attempts for an individual target. | Detect target-specific transport instability. |
 | `cisco.iosxr.receiver.target.last_success_timestamp` | Gauge, int | empty | Unix timestamp of the individual target's last successful update. | Alert on target-specific stale telemetry. |
 
-IOS XR metrics include `cisco.yang.path`, `cisco.yang.module`, `cisco.telemetry.transport`, `cisco.platform.family`,
+IOS XR metrics include `cisco.yang.path`, `cisco.yang.source_path`, `cisco.yang.module`, `cisco.telemetry.transport`, `cisco.platform.family`,
 `host.*`, `hw.type=network`, and normalized datapoint keys such as `network.interface.name`, `network.vrf.name`, and
 `network.peer.address` when those keys are present in the YANG path or JSON payload.
 
@@ -1034,28 +1099,24 @@ Enable with `scrapers.interfaces.l2_topology.enabled: true` or an individual `sc
 | `cisco.port_channel.status` | Gauge, int | `1` | Whether the port channel itself is up. | Alert when a bundled link goes down or becomes suspended. |
 | `cisco.vpc.consistency.failures` | Gauge, int | `{failure}` | Number of vPC consistency failures by check. | Finds mismatches between paired switches before they cause outages. |
 | `cisco.vpc.status` | Gauge, int | `1` | vPC peer or member status. | Monitors whether a paired-switch topology is healthy. |
-| `cisco.topology.neighbor.info` | Gauge, int | `1` | LLDP or CDP neighbor edge information for a local interface. | Build topology maps and spot devices connected to the wrong ports. |
+| `cisco.topology.neighbor.info` | Gauge, int | `1` | LLDP, CDP, and fabric-link neighbor information. | Build topology maps and spot devices connected to the wrong ports. |
 
 Common L2 topology attributes:
 
+`cisco.topology.neighbor.info` has no required metric attributes. The following nine catalog attributes are optional because
+LLDP, CDP, fabric-link, Meraki, and APIC sources do not all report every field:
+
 | Attribute | Meaning |
 | --- | --- |
-| `cisco.errdisabled.reason` | Why the device disabled the interface. |
-| `cisco.l2.vlan` | VLAN identifier. |
-| `cisco.l2.stp.state` | STP state. |
-| `cisco.lacp.error.type` | LACP error category. |
-| `cisco.lacp.packet.type` | LACP packet category. |
-| `cisco.port_channel.name` | Port-channel name. |
-| `cisco.port_channel.state` | Port-channel or member state. |
-| `cisco.vpc.check` | vPC consistency check name. |
-| `cisco.vpc.domain` | vPC domain identifier. |
-| `cisco.vpc.peer` | vPC peer or member identifier. |
-| `cisco.vpc.state` | vPC state. |
 | `cisco.topology.protocol` | Discovery protocol, `lldp` or `cdp`. |
+| `network.interface.name` | Local interface on which the neighbor was observed. |
 | `cisco.topology.neighbor.name` | Neighbor system name or device ID. |
 | `cisco.topology.neighbor.interface` | Neighbor interface identifier. |
 | `cisco.topology.neighbor.platform` | Neighbor platform when reported by the device. |
 | `cisco.topology.neighbor.address` | Neighbor management address when reported by the device. |
+| `network.peer.name` | Legacy peer name retained for compatible Meraki and APIC topology sources. |
+| `network.peer.address` | Legacy peer address retained for compatible Meraki and APIC topology sources. |
+| `network.protocol.name` | Legacy discovery protocol name retained for compatible topology sources. |
 
 ## Optional Transceiver Metrics
 

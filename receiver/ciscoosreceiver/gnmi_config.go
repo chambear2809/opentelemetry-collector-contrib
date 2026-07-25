@@ -1340,8 +1340,8 @@ func validateGNMICustomSubscriptions(prefix string, target GNMITargetConfig, con
 			if !normalizedMetricNamePattern.MatchString(mapping.MetricName) || strings.HasSuffix(mapping.MetricName, "_info") {
 				err = multierr.Append(err, fmt.Errorf("%s.metric_name must be a normalized non-info metric name", mappingPrefix))
 				mappingValid = false
-			} else if _, reserved := builtinGNMIMetricMetadata[mapping.MetricName]; reserved {
-				err = multierr.Append(err, fmt.Errorf("%s.metric_name %q is reserved for a built-in metric", mappingPrefix, mapping.MetricName))
+			} else if contract, reserved := governedMetricNameCollision(mapping.MetricName); reserved {
+				err = multierr.Append(err, fmt.Errorf("%s.metric_name %q is reserved by %s", mappingPrefix, mapping.MetricName, contract))
 				mappingValid = false
 			}
 			if strings.TrimSpace(mapping.Description) == "" || !validGNMIUCUMUnit(mapping.Unit) {

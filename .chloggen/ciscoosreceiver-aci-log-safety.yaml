@@ -1,0 +1,11 @@
+change_type: breaking
+component: receiver/cisco_os
+note: Make Cisco ACI logs explicit opt-ins and restrict exported APIC records to signal-specific allowlists.
+issues: [0]
+subtext: |
+  ACI metric defaults are unchanged. Fault, audit, and event logs now default to disabled independently. Complete log
+  records are derived only from documented scalar fields and controlled endpoint metadata; APIC change sets, session
+  identifiers, raw aliases, unknown attributes, and nested values are excluded. Explicit legacy group opt-ins remain
+  compatible when the new log setting is absent. Log opt-ins require a complete ACI target even alongside another
+  provider, while null and other malformed new log settings are rejected and cannot enable collection.
+change_logs: [user]
