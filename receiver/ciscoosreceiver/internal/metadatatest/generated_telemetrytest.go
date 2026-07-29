@@ -162,7 +162,7 @@ func AssertEqualCiscoosreceiverGnmiDuplicateUpdates(t *testing.T, tt *componentt
 func AssertEqualCiscoosreceiverGnmiInvalidTimestamps(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
 	want := metricdata.Metrics{
 		Name:        "otelcol_ciscoosreceiver_gnmi_invalid_timestamps",
-		Description: "Number of invalid Cisco timestamps replaced with receipt time [Development]",
+		Description: "Number of invalid or excessively future-dated Cisco timestamps rejected before cache mutation [Development]",
 		Unit:        "{timestamp}",
 		Data: metricdata.Sum[int64]{
 			Temporality: metricdata.CumulativeTemporality,
@@ -189,10 +189,26 @@ func AssertEqualCiscoosreceiverGnmiLastSuccessUnixtime(t *testing.T, tt *compone
 	metricdatatest.AssertEqual(t, want, got, opts...)
 }
 
+func AssertEqualCiscoosreceiverGnmiOutOfOrderUpdates(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
+	want := metricdata.Metrics{
+		Name:        "otelcol_ciscoosreceiver_gnmi_out_of_order_updates",
+		Description: "Number of stale gNMI cache operations suppressed by source timestamp ordering [Development]",
+		Unit:        "{update}",
+		Data: metricdata.Sum[int64]{
+			Temporality: metricdata.CumulativeTemporality,
+			IsMonotonic: true,
+			DataPoints:  dps,
+		},
+	}
+	got, err := tt.GetMetric("otelcol_ciscoosreceiver_gnmi_out_of_order_updates")
+	require.NoError(t, err)
+	metricdatatest.AssertEqual(t, want, got, opts...)
+}
+
 func AssertEqualCiscoosreceiverGnmiPreflightFailures(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
 	want := metricdata.Metrics{
 		Name:        "otelcol_ciscoosreceiver_gnmi_preflight_failures",
-		Description: "Number of terminal gNMI product qualification failures. This metric emits only identity_missing, identity_ambiguous, product_mismatch, release_mismatch, missing_model, unsupported_encoding, or malformed_identity; profile-degradation reasons in the shared attribute catalog are not emitted here. [Development]",
+		Description: "Number of terminal gNMI product-contract preflight compatibility failures. This metric emits only identity_missing, identity_ambiguous, product_mismatch, release_mismatch, missing_model, unsupported_model_version, unsupported_encoding, unsupported_gnmi_version, unsupported_boot_mode, or malformed_identity; profile-degradation reasons in the shared attribute catalog are not emitted here. [Development]",
 		Unit:        "{failure}",
 		Data: metricdata.Sum[int64]{
 			Temporality: metricdata.CumulativeTemporality,
@@ -208,7 +224,7 @@ func AssertEqualCiscoosreceiverGnmiPreflightFailures(t *testing.T, tt *component
 func AssertEqualCiscoosreceiverGnmiProductVerified(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
 	want := metricdata.Metrics{
 		Name:        "otelcol_ciscoosreceiver_gnmi_product_verified",
-		Description: "Whether the gNMI target passed product, model, release, and capability verification [Development]",
+		Description: "Whether the gNMI target passed product, model, release, required boot-mode, and capability verification [Development]",
 		Unit:        "1",
 		Data: metricdata.Gauge[int64]{
 			DataPoints: dps,

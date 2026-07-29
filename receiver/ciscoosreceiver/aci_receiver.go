@@ -709,7 +709,7 @@ func (*aciMetricsBuilder) recordStatsObject(rb *resourceMetricsBuilder, obj aci.
 		attrs := interfaceAttrs(ifName, "", aci.String(obj, "descr"), aci.String(obj, "speed", "ethpmCfgSpeed"))
 		if status := aciObjectStatus(obj); status != "" {
 			if up, ok := upStatus(status); ok {
-				rb.recordInt("system.network.interface.status", "Interface operational status (1 = up, 0 = down)", "1", up, attrs)
+				rb.recordInt("system.network.interface.status", "Interface operational status (1 = up, 0 = not up)", "1", up, attrs)
 			}
 		}
 		switch strings.ToLower(aci.String(obj, "aci.class")) {

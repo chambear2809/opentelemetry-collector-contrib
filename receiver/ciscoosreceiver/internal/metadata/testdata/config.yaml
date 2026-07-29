@@ -820,6 +820,8 @@ all_set:
     system.uptime:
       enabled: true
   resource_attributes:
+    cisco.os.boot_mode:
+      enabled: true
     cisco.os.name:
       enabled: true
     cisco.platform.family:
@@ -1665,6 +1667,8 @@ reaggregate_set:
     system.uptime:
       enabled: true
   resource_attributes:
+    cisco.os.boot_mode:
+      enabled: true
     cisco.os.name:
       enabled: true
     cisco.platform.family:
@@ -2510,6 +2514,8 @@ none_set:
     system.uptime:
       enabled: false
   resource_attributes:
+    cisco.os.boot_mode:
+      enabled: false
     cisco.os.name:
       enabled: false
     cisco.platform.family:
@@ -2536,6 +2542,10 @@ none_set:
       enabled: false
 filter_set_include:
   resource_attributes:
+    cisco.os.boot_mode:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
     cisco.os.name:
       enabled: true
       metrics_include:
@@ -2586,6 +2596,10 @@ filter_set_include:
         - regexp: ".*"
 filter_set_exclude:
   resource_attributes:
+    cisco.os.boot_mode:
+      enabled: true
+      metrics_exclude:
+        - strict: "cisco.os.boot_mode-val"
     cisco.os.name:
       enabled: true
       metrics_exclude:

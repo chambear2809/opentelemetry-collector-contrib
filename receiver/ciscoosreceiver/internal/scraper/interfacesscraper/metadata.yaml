@@ -166,7 +166,7 @@ metrics:
   cisco.interface.admin.status:
     enabled: true
     stability: development
-    description: Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)
+    description: Cisco interface administrative status (1 = administratively enabled, 0 = not administratively enabled)
     unit: "1"
     gauge:
       value_type: int
@@ -440,7 +440,7 @@ metrics:
   system.network.interface.status:
     enabled: true
     stability: development
-    description: Interface operational status (1 = up, 0 = down)
+    description: Interface operational status (1 = up, 0 = not up)
     unit: "1"
     gauge:
       value_type: int

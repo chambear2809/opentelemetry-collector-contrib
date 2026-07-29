@@ -1,11 +1,12 @@
 change_type: enhancement
 component: receiver/cisco_os
-note: Add product-qualified shared gNMI dial-in for supported Cisco hardware and release trains.
+note: Add product-contract-gated shared gNMI dial-in for supported Cisco hardware and release trains.
 issues: [42647]
 subtext: |
   Adds secure static targets with Capabilities, required-model, and live product/version preflight before Subscribe.
   Curated coverage includes Catalyst 9800 identity, CPU, memory, interfaces, and wireless; ASR 9000 and NCS 5500
   identity, CPU, and interfaces; and Nexus 9000 and Nexus 3500 identity and interfaces. Optional IOS XE and IOS XR
   DOM plus NX-OS DME DOM/VDM optics remain experimental pending exact-hardware qualification. The implementation also
-  provides bounded cache/chunk controls and Kubernetes and VM deployment guidance.
+  provides bounded cache/chunk controls and Kubernetes and VM deployment guidance. Passing implemented preflight is
+  not physical-device or exact-build qualification; retained live qualification is tracked separately.
 change_logs: [user]

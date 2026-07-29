@@ -102,18 +102,18 @@ var builtinGNMIMetricMetadata = map[string]internalgnmi.MetricMetadata{
 	"cisco.device.up":                 {Name: "cisco.device.up", Description: "Device availability (1 = up, 0 = down)", Unit: "1"},
 	"system.cpu.utilization":          {Name: "system.cpu.utilization", Description: "Ratio of CPU time in use, from 0 to 1.", Unit: "1"},
 	"system.memory.utilization":       {Name: "system.memory.utilization", Description: "Ratio of memory bytes in use, from 0 to 1.", Unit: "1"},
-	"system.network.interface.status": {Name: "system.network.interface.status", Description: "Interface operational status (1 = up, 0 = down)", Unit: "1"},
+	"system.network.interface.status": {Name: "system.network.interface.status", Description: "Interface operational status (1 = up, 0 = not up)", Unit: "1"},
 	"system.network.io":               {Name: "system.network.io", Description: "The number of bytes transmitted and received", Unit: "By"},
 	"system.network.errors":           {Name: "system.network.errors", Description: "The number of errors encountered", Unit: "{error}"},
 	"system.network.packet.count":     {Name: "system.network.packet.count", Description: "The number of packets transmitted or received by direction and, when available, packet type", Unit: "{packet}"},
 	"system.network.packet.dropped":   {Name: "system.network.packet.dropped", Description: "The number of packets dropped", Unit: "{packet}"},
-	"cisco.interface.admin.status":    {Name: "cisco.interface.admin.status", Description: "Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)", Unit: "1"},
+	"cisco.interface.admin.status":    {Name: "cisco.interface.admin.status", Description: "Cisco interface administrative status (1 = administratively enabled, 0 = not administratively enabled)", Unit: "1"},
 
 	"cisco.optics.temperature":        {Name: "cisco.optics.temperature", Description: "Optical module temperature", Unit: "Cel"},
 	"cisco.optics.voltage":            {Name: "cisco.optics.voltage", Description: "Optical module supply voltage", Unit: "V"},
 	"cisco.optics.laser_bias_current": {Name: "cisco.optics.laser_bias_current", Description: "Optical transmitter laser bias current", Unit: "mA"},
-	"cisco.optics.rx_power":           {Name: "cisco.optics.rx_power", Description: "Received optical power", Unit: "dB[mW]"},
-	"cisco.optics.tx_power":           {Name: "cisco.optics.tx_power", Description: "Transmitted optical power", Unit: "dB[mW]"},
+	"cisco.optics.rx_power":           {Name: "cisco.optics.rx_power", Description: "Received optical power", Unit: "dB{mW}"},
+	"cisco.optics.tx_power":           {Name: "cisco.optics.tx_power", Description: "Transmitted optical power", Unit: "dB{mW}"},
 	"cisco.optics.present":            {Name: "cisco.optics.present", Description: "Optical module or lane presence (1 = present, 0 = absent)", Unit: "1"},
 	"cisco.optics.esnr":               {Name: "cisco.optics.esnr", Description: "Effective signal-to-noise ratio reported by an allowlisted device VDM sensor", Unit: "dB"},
 	"cisco.optics.tdecq":              {Name: "cisco.optics.tdecq", Description: "Transmitter and dispersion eye closure for PAM4 reported by a sensor explicitly identified as TDECQ in dB", Unit: "dB"},
@@ -127,18 +127,48 @@ var builtinGNMIMetricMetadata = map[string]internalgnmi.MetricMetadata{
 }
 
 var (
-	iosXEBuiltinGNMIProfileCatalog = iosXEBuiltinGNMIProfiles()
-	iosXRBuiltinGNMIProfileCatalog = iosXRBuiltinGNMIProfiles()
-	nxOSBuiltinGNMIProfileCatalog  = nxOSBuiltinGNMIProfiles()
+	iosXEBuiltinGNMIProfileCatalog       = iosXEBuiltinGNMIProfiles()
+	iosXESwitchBuiltinGNMIProfileCatalog = iosXESwitchBuiltinGNMIProfiles()
+	iosXRBuiltinGNMIProfileCatalog       = iosXRBuiltinGNMIProfiles()
+	nxOSBuiltinGNMIProfileCatalog        = nxOSBuiltinGNMIProfiles()
 )
 
+func iosXESwitchBuiltinGNMIProfiles() map[string]builtinGNMIProfileDefinition {
+	profiles := iosXECoreBuiltinGNMIProfiles()
+	system := profiles[builtinGNMIProfileSystem]
+	for pathIndex := range system.Paths {
+		for mappingIndex := range system.Paths[pathIndex].Mappings {
+			mapping := &system.Paths[pathIndex].Mappings[mappingIndex].Mapping
+			switch mapping.Metric.Name {
+			case "system.cpu.utilization", "system.memory.utilization":
+				mapping.SourceBounds = &internalgnmi.NumericBounds{Min: 0, Max: 100}
+			}
+		}
+	}
+	profiles[builtinGNMIProfileSystem] = system
+	return profiles
+}
+
 func iosXEBuiltinGNMIProfiles() map[string]builtinGNMIProfileDefinition {
+	profiles := iosXECoreBuiltinGNMIProfiles()
+	profiles[builtinGNMIProfileCatalyst9800Wireless] = profileDefinition(builtinGNMIProfileCatalyst9800Wireless, false, time.Minute, nil,
+		builtinGNMIPathDefinition{ID: "wireless.ap.join", Origin: builtinGNMIOriginRFC7951, Path: "Cisco-IOS-XE-wireless-ap-global-oper:ap-global-oper-data/ap-join-stats", Mappings: []builtinGNMIMapping{mapping(builtinGNMIOriginRFC7951, []string{"Cisco-IOS-XE-wireless-ap-global-oper:ap-global-oper-data", "ap-join-stats"}, "is-joined", "cisco.wlc.ap.join.status", 1, internalgnmi.GaugeInt, []internalgnmi.KeyAttribute{{Element: "ap-join-stats", Key: "wtp-mac", Attribute: "cisco.wlc.ap.mac"}}, nil)}},
+		builtinGNMIPathDefinition{ID: "wireless.rf", Origin: builtinGNMIOriginRFC7951, Path: "Cisco-IOS-XE-wireless-rrm-oper:rrm-oper-data/rrm-measurement", Mappings: []builtinGNMIMapping{mapping(builtinGNMIOriginRFC7951, []string{"Cisco-IOS-XE-wireless-rrm-oper:rrm-oper-data", "rrm-measurement"}, "cca-util-percentage", "cisco.wlc.rf.channel.utilization", .01, internalgnmi.GaugeDouble, []internalgnmi.KeyAttribute{{Element: "rrm-measurement", Key: "wtp-mac", Attribute: "cisco.wlc.ap.mac"}, {Element: "rrm-measurement", Key: "radio-slot-id", Attribute: "cisco.wlc.radio.slot"}}, nil)}},
+		builtinGNMIPathDefinition{ID: "wireless.ssid", Origin: builtinGNMIOriginRFC7951, Path: "Cisco-IOS-XE-wireless-access-point-oper:access-point-oper-data/ssid-counters", Mappings: []builtinGNMIMapping{mapping(builtinGNMIOriginRFC7951, []string{"Cisco-IOS-XE-wireless-access-point-oper:access-point-oper-data", "ssid-counters"}, "num-assoc-clients", "cisco.wlc.ssid.client.count", 1, internalgnmi.GaugeInt, []internalgnmi.KeyAttribute{{Element: "ssid-counters", Key: "wtp-mac", Attribute: "cisco.wlc.ap.mac"}, {Element: "ssid-counters", Key: "slot-id", Attribute: "cisco.wlc.radio.slot"}, {Element: "ssid-counters", Key: "wlan-id", Attribute: "cisco.wlc.wlan.id"}}, nil)}})
+	return profiles
+}
+
+// iosXECoreBuiltinGNMIProfiles is the deliberately shared wired IOS XE
+// profile source. Live qualification must still validate every product,
+// model/path tuple, release, and topology independently; sharing this immutable
+// catalog transfers no physical-device evidence between product families.
+func iosXECoreBuiltinGNMIProfiles() map[string]builtinGNMIProfileDefinition {
 	return map[string]builtinGNMIProfileDefinition{
 		builtinGNMIProfileIdentity: profileDefinition(builtinGNMIProfileIdentity, true, 5*time.Minute,
 			[]builtinGNMIMapping{availabilityMapping(builtinGNMIPlatformIOSXE)},
 			builtinGNMIPathDefinition{ID: "identity.system", Origin: builtinGNMIOriginRFC7951, Path: "openconfig-system:system/state"}),
 		builtinGNMIProfileSystem: profileDefinition(builtinGNMIProfileSystem, true, time.Minute, nil,
-			builtinGNMIPathDefinition{ID: "system.cpu", Origin: builtinGNMIOriginRFC7951, Path: "Cisco-IOS-XE-process-cpu-oper:cpu-usage/cpu-utilization", Mappings: []builtinGNMIMapping{mapping(builtinGNMIOriginRFC7951, []string{"Cisco-IOS-XE-process-cpu-oper:cpu-usage", "cpu-utilization"}, "five-seconds", "system.cpu.utilization", .01, internalgnmi.GaugeDouble, nil, nil)}},
+			builtinGNMIPathDefinition{ID: "system.cpu", Origin: builtinGNMIOriginRFC7951, Path: "Cisco-IOS-XE-process-cpu-oper:cpu-usage/cpu-utilization/five-seconds", Mappings: []builtinGNMIMapping{mapping(builtinGNMIOriginRFC7951, []string{"Cisco-IOS-XE-process-cpu-oper:cpu-usage", "cpu-utilization"}, "five-seconds", "system.cpu.utilization", .01, internalgnmi.GaugeDouble, nil, nil)}},
 			builtinGNMIPathDefinition{
 				ID:     "system.memory",
 				Origin: builtinGNMIOriginRFC7951,
@@ -163,10 +193,6 @@ func iosXEBuiltinGNMIProfiles() map[string]builtinGNMIProfileDefinition {
 			builtinGNMIPathDefinition{ID: "interfaces.openconfig", Origin: builtinGNMIOriginRFC7951, Path: "openconfig-interfaces:interfaces/interface/state", Mappings: interfaceMappings(builtinGNMIOriginRFC7951, []string{"openconfig-interfaces:interfaces", "interface"})}),
 		builtinGNMIProfileOptics: profileDefinition(builtinGNMIProfileOptics, false, 30*time.Second, nil,
 			builtinGNMIPathDefinition{ID: "optics.dom", Origin: builtinGNMIOriginRFC7951, Path: "Cisco-IOS-XE-transceiver-oper:transceiver-oper-data/transceiver", Experimental: true, Mappings: iosXEDOMMappings()}),
-		builtinGNMIProfileCatalyst9800Wireless: profileDefinition(builtinGNMIProfileCatalyst9800Wireless, false, time.Minute, nil,
-			builtinGNMIPathDefinition{ID: "wireless.ap.join", Origin: builtinGNMIOriginRFC7951, Path: "Cisco-IOS-XE-wireless-ap-global-oper:ap-global-oper-data/ap-join-stats", Mappings: []builtinGNMIMapping{mapping(builtinGNMIOriginRFC7951, []string{"Cisco-IOS-XE-wireless-ap-global-oper:ap-global-oper-data", "ap-join-stats"}, "is-joined", "cisco.wlc.ap.join.status", 1, internalgnmi.GaugeInt, []internalgnmi.KeyAttribute{{Element: "ap-join-stats", Key: "wtp-mac", Attribute: "cisco.wlc.ap.mac"}}, nil)}},
-			builtinGNMIPathDefinition{ID: "wireless.rf", Origin: builtinGNMIOriginRFC7951, Path: "Cisco-IOS-XE-wireless-rrm-oper:rrm-oper-data/rrm-measurement", Mappings: []builtinGNMIMapping{mapping(builtinGNMIOriginRFC7951, []string{"Cisco-IOS-XE-wireless-rrm-oper:rrm-oper-data", "rrm-measurement"}, "cca-util-percentage", "cisco.wlc.rf.channel.utilization", .01, internalgnmi.GaugeDouble, []internalgnmi.KeyAttribute{{Element: "rrm-measurement", Key: "wtp-mac", Attribute: "cisco.wlc.ap.mac"}, {Element: "rrm-measurement", Key: "radio-slot-id", Attribute: "cisco.wlc.radio.slot"}}, nil)}},
-			builtinGNMIPathDefinition{ID: "wireless.ssid", Origin: builtinGNMIOriginRFC7951, Path: "Cisco-IOS-XE-wireless-access-point-oper:access-point-oper-data/ssid-counters", Mappings: []builtinGNMIMapping{mapping(builtinGNMIOriginRFC7951, []string{"Cisco-IOS-XE-wireless-access-point-oper:access-point-oper-data", "ssid-counters"}, "num-assoc-clients", "cisco.wlc.ssid.client.count", 1, internalgnmi.GaugeInt, []internalgnmi.KeyAttribute{{Element: "ssid-counters", Key: "wtp-mac", Attribute: "cisco.wlc.ap.mac"}, {Element: "ssid-counters", Key: "slot-id", Attribute: "cisco.wlc.radio.slot"}, {Element: "ssid-counters", Key: "wlan-id", Attribute: "cisco.wlc.wlan.id"}}, nil)}}),
 	}
 }
 

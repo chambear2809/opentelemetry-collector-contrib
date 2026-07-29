@@ -270,10 +270,10 @@ func (r *catalystCenterMetricsReceiver) scrapeInterfaces(ctx context.Context, bu
 		rb := builder.interfaceResource(*iface)
 		attrs := catalystInterfaceAttrs(*iface)
 		if connected, ok := connectedStatus(iface.Status); ok {
-			rb.recordInt("system.network.interface.status", "Interface operational status (1 = up, 0 = down)", "1", connected, attrs)
+			rb.recordInt("system.network.interface.status", "Interface operational status (1 = up, 0 = not up)", "1", connected, attrs)
 		}
 		if connected, ok := connectedStatus(iface.AdminStatus); ok {
-			rb.recordInt("cisco.interface.admin.status", "Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)", "1", connected, attrs)
+			rb.recordInt("cisco.interface.admin.status", "Cisco interface administrative status (1 = administratively enabled, 0 = not administratively enabled)", "1", connected, attrs)
 		}
 		if speed, speedText := parseCatalystSpeed(iface.Speed); speed > 0 {
 			rb.recordInt("cisco.interface.speed", "The numeric line speed of a Cisco interface", "bit/s", speed, withAttr(attrs, "network.interface.speed", speedText))
@@ -863,7 +863,7 @@ func (b *catalystCenterMetricsBuilder) recordClientDetail(mac string, detail cat
 		recordObjectDouble(rb, detail, "healthScore", "catalyst_center.client.detail.health.score", "Catalyst Center client detail health score.", "1", attrs)
 	}
 	recordObjectInt(rb, detail, "issueCount", "catalyst_center.client.issue.count", "Catalyst Center client issue count.", "{issue}", attrs)
-	recordObjectDouble(rb, detail, "rssi", "catalyst_center.client.wireless.rssi", "Catalyst Center client RSSI.", "dBm", attrs)
+	recordObjectDouble(rb, detail, "rssi", "catalyst_center.client.wireless.rssi", "Catalyst Center client RSSI.", "dB{mW}", attrs)
 	recordObjectDouble(rb, detail, "snr", "catalyst_center.client.wireless.snr", "Catalyst Center client SNR.", "dB", attrs)
 	recordObjectDouble(rb, detail, "txBytes", "catalyst_center.client.network.io", "Catalyst Center client transmitted bytes.", "By", withAttr(attrs, "network.io.direction", "transmit"))
 	recordObjectDouble(rb, detail, "rxBytes", "catalyst_center.client.network.io", "Catalyst Center client received bytes.", "By", withAttr(attrs, "network.io.direction", "receive"))

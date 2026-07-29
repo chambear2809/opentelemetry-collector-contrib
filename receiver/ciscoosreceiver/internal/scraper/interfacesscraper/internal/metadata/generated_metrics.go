@@ -255,7 +255,7 @@ type metricCiscoInterfaceAdminStatus struct {
 // init fills cisco.interface.admin.status metric with initial data.
 func (m *metricCiscoInterfaceAdminStatus) init() {
 	m.data.SetName("cisco.interface.admin.status")
-	m.data.SetDescription("Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)")
+	m.data.SetDescription("Cisco interface administrative status (1 = administratively enabled, 0 = not administratively enabled)")
 	m.data.SetUnit("1")
 	m.data.SetEmptyGauge()
 	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
@@ -2912,7 +2912,7 @@ type metricSystemNetworkInterfaceStatus struct {
 // init fills system.network.interface.status metric with initial data.
 func (m *metricSystemNetworkInterfaceStatus) init() {
 	m.data.SetName("system.network.interface.status")
-	m.data.SetDescription("Interface operational status (1 = up, 0 = down)")
+	m.data.SetDescription("Interface operational status (1 = up, 0 = not up)")
 	m.data.SetUnit("1")
 	m.data.SetEmptyGauge()
 	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)

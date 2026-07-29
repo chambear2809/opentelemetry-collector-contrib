@@ -2,7 +2,7 @@
   "schema": "com.cisco.opentelemetry.ciscoosreceiver.splunk-o11y.dashboard-bundle/v1",
   "group": {
     "name": "Cisco OS Receiver",
-    "description": "Dashboard group for Cisco OS receiver metrics in Splunk Observability Cloud. It includes an overview landing page plus focused pages for telemetry health, interfaces, routing/fabric/redundancy, AI/RDMA/QoS congestion, hardware/optics, secure networking, campus networking, and shared-gNMI operational troubleshooting."
+    "description": "Dashboard group for Cisco OS receiver metrics in Splunk Observability Cloud. It includes an overview landing page plus focused pages for telemetry health, interfaces, routing/fabric/redundancy, AI/RDMA/QoS congestion, hardware/optics, secure networking, campus networking, and shared-gNMI product-contract operational troubleshooting."
   },
   "default_time_range_ms": 3600000,
   "default_tags": [
@@ -1488,8 +1488,8 @@
     },
     {
       "name": "08 Shared gNMI Operational Health",
-      "description": "Value: proves shared-gNMI product qualification, stream delivery, profile health, decode quality, and retained-state capacity before operators trust device telemetry.",
-      "value": "Use this compact operational page to distinguish product or release qualification failures from transport, authentication, subscription, decode, downstream delivery, and cache-pressure failures for the five supported shared-gNMI product contracts.",
+      "description": "Value: proves shared-gNMI session preflight, stream delivery, profile health, decode quality, and retained-state capacity before operators trust device telemetry; it does not establish retained live-device qualification.",
+      "value": "Use this compact operational page to distinguish product-contract or release preflight failures from transport, authentication, subscription, decode, downstream delivery, and cache-pressure failures for the seven implemented shared-gNMI product contracts. Dashboard success is operational evidence for one session, not proof that an exact device build or topology is live-qualified.",
       "chart_density": "HIGH",
       "filters": {
         "variables": [
@@ -1502,7 +1502,7 @@
           "type": "Text",
           "name": "Value Provided",
           "description": "Value: explains how to qualify shared-gNMI evidence before using device metrics. Interpretation: read qualification and connection state first, then freshness, degradation, decode quality, and cache capacity to identify the failing layer.",
-          "markdown": "## Shared gNMI Operational Health\nUse this page before trusting normalized shared-gNMI device metrics. Product verification must be 1, preflight failures and profile degradation must remain zero, required subscriptions must be active, the last-success timestamp must advance, and cache utilization must stay below saturation.\n\nThe Product Family filter scopes verified device telemetry elsewhere in this dashboard group. Use the gNMI Target and gNMI Profile filters on this page to isolate collector self-telemetry for one configured target or subscription profile.",
+          "markdown": "## Shared gNMI Operational Health\nUse this page before trusting normalized shared-gNMI device metrics. Product verification must be 1, preflight failures and profile degradation must remain zero, required subscriptions must be active, the last-success timestamp must advance, and cache utilization must stay below saturation.\n\nThe Catalyst 9300/9500 contract accepts exact IOS XE 17.18.1 in INSTALL mode only. These signals prove the running session passed its implemented contract; they do not replace retained exact-build, physical-topology, security-posture, scale, and backend-delivery qualification. Catalyst 9300/9500 inventory reporting one chassis group does not by itself prove standalone topology.\n\nThe Product Family filter scopes verified device telemetry elsewhere in this dashboard group. Use the gNMI Target and gNMI Profile filters on this page to isolate collector self-telemetry for one configured target or subscription profile.",
           "width": 12,
           "height": 2
         },
@@ -1510,7 +1510,7 @@
           "type": "List",
           "secondary_visualization": "Sparkline",
           "name": "Product Qualification",
-          "description": "Value: shows whether each target passed the configured product, chassis, release, model, and encoding contract. Interpretation: verified must be 1; a preflight failure rate identifies the bounded reason that quarantined a target before subscriptions started.",
+          "description": "Value: shows whether each target passed the configured product, chassis, release, model/version, encoding, and required boot-mode contract. Interpretation: verified must be 1; a preflight failure rate identifies the bounded reason that quarantined a target before subscriptions started. This session preflight is not retained physical-device qualification.",
           "signalflow": "data('otelcol_ciscoosreceiver_gnmi_product_verified').mean(by=['cisco.gnmi.target']).publish(label='Product verified'); data('otelcol_ciscoosreceiver_gnmi_preflight_failures').rate().sum(by=['cisco.gnmi.target', 'cisco.gnmi.reason']).publish(label='Preflight failures/sec')",
           "legend_dimension": "cisco.gnmi.target"
         },
@@ -1551,9 +1551,9 @@
           "legend_dimension": "cisco.gnmi.target"
         },
         {
-          "name": "Mapping And Timestamp Quality",
-          "description": "Value: surfaces decoded values without stable mappings, safely ignored non-scalar value kinds, and invalid device timestamps replaced with receipt time. Interpretation: sustained rates mean telemetry is arriving but its model, value shape, or clock quality is reducing usable coverage.",
-          "signalflow": "data('otelcol_ciscoosreceiver_gnmi_unmapped_values').rate().sum(by=['cisco.gnmi.target', 'cisco.gnmi.profile']).publish(label='Unmapped values/sec'); data('otelcol_ciscoosreceiver_gnmi_unsupported_value_kinds').rate().sum(by=['cisco.gnmi.target', 'cisco.gnmi.profile', 'cisco.gnmi.value_kind']).publish(label='Unsupported values/sec'); data('otelcol_ciscoosreceiver_gnmi_invalid_timestamps').rate().sum(by=['cisco.gnmi.target', 'cisco.gnmi.profile']).publish(label='Invalid timestamps/sec')",
+          "name": "Mapping Timestamp And Ordering Quality",
+          "description": "Value: surfaces decoded values without stable mappings, safely ignored non-scalar value kinds, invalid or excessively future-dated timestamps rejected before cache mutation, and stale cache operations suppressed by source-timestamp ordering. Interpretation: sustained rates mean telemetry is arriving but its model, value shape, clock quality, or delivery order is reducing usable coverage.",
+          "signalflow": "data('otelcol_ciscoosreceiver_gnmi_unmapped_values').rate().sum(by=['cisco.gnmi.target', 'cisco.gnmi.profile']).publish(label='Unmapped values/sec'); data('otelcol_ciscoosreceiver_gnmi_unsupported_value_kinds').rate().sum(by=['cisco.gnmi.target', 'cisco.gnmi.profile', 'cisco.gnmi.value_kind']).publish(label='Unsupported values/sec'); data('otelcol_ciscoosreceiver_gnmi_invalid_timestamps').rate().sum(by=['cisco.gnmi.target', 'cisco.gnmi.profile']).publish(label='Invalid timestamps/sec'); data('otelcol_ciscoosreceiver_gnmi_out_of_order_updates').rate().sum(by=['cisco.gnmi.target', 'cisco.gnmi.profile']).publish(label='Out-of-order updates/sec')",
           "legend_dimension": "cisco.gnmi.target"
         },
         {

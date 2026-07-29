@@ -4,6 +4,6 @@ note: Add per-path gNMI Subscribe modes, list options, encoding preferences, and
 issues: [42647]
 subtext: |
   Preserves the receiver's read-only boundary and isolates rejected stream options without silently downgrading
-  requests. Product-qualified targets accept only their contract-approved JSON encodings; bounded scalar PROTO
+  requests. Product-contract-gated targets accept only their contract-approved JSON encodings; bounded scalar PROTO
   decoding remains available only to deprecated receiver surfaces.
 change_logs: [user]

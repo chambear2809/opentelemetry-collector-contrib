@@ -7,9 +7,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata/metricdatatest"
+
+	"go.opentelemetry.io/collector/component/componenttest"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
 )
@@ -30,6 +31,7 @@ func TestSetupTelemetry(t *testing.T) {
 	tb.CiscoosreceiverGnmiDuplicateUpdates.Add(context.Background(), 1)
 	tb.CiscoosreceiverGnmiInvalidTimestamps.Add(context.Background(), 1)
 	tb.CiscoosreceiverGnmiLastSuccessUnixtime.Record(context.Background(), 1)
+	tb.CiscoosreceiverGnmiOutOfOrderUpdates.Add(context.Background(), 1)
 	tb.CiscoosreceiverGnmiPreflightFailures.Add(context.Background(), 1)
 	tb.CiscoosreceiverGnmiProductVerified.Record(context.Background(), 1)
 	tb.CiscoosreceiverGnmiProfileDegraded.Record(context.Background(), 1)
@@ -69,6 +71,9 @@ func TestSetupTelemetry(t *testing.T) {
 		[]metricdata.DataPoint[int64]{{Value: 1}},
 		metricdatatest.IgnoreTimestamp())
 	AssertEqualCiscoosreceiverGnmiLastSuccessUnixtime(t, testTel,
+		[]metricdata.DataPoint[int64]{{Value: 1}},
+		metricdatatest.IgnoreTimestamp())
+	AssertEqualCiscoosreceiverGnmiOutOfOrderUpdates(t, testTel,
 		[]metricdata.DataPoint[int64]{{Value: 1}},
 		metricdatatest.IgnoreTimestamp())
 	AssertEqualCiscoosreceiverGnmiPreflightFailures(t, testTel,

@@ -185,8 +185,13 @@ type DecodedNotification struct {
 	// could not be decoded or did not match an explicit metric mapping. Cache
 	// state uses it only to invalidate overlapping atomic baselines.
 	Touched []Path
-	Updates []Point
-	Deletes []Path
+	// Undecodable retains canonical wire update paths whose TypedValue could
+	// not produce a scalar point. The registry must establish an exact mapped
+	// source and complete key identity before one of these paths can invalidate
+	// derived cache state.
+	Undecodable []Path
+	Updates     []Point
+	Deletes     []Path
 }
 
 // UnsupportedValueKind is a bounded classification of TypedValue variants

@@ -117,6 +117,53 @@ func TestDecodeNotificationClassifiesBoundedUnsupportedTypedValues(t *testing.T)
 		UnsupportedValueAny:        1,
 		UnsupportedValueProtoBytes: 1,
 	}, stats.UnsupportedValueKinds)
+	require.Len(t, decoded.Undecodable, 4)
+	for index := range decoded.Undecodable {
+		assert.Equal(t, decoded.Touched[index].Key(), decoded.Undecodable[index].Key())
+	}
+}
+
+//nolint:staticcheck // The test covers invalid deprecated decimal wire variants.
+func TestDecodeNotificationRetainsUndecodableScalarPaths(t *testing.T) {
+	receipt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name        string
+		value       *gnmipb.TypedValue
+		unsupported map[UnsupportedValueKind]int
+	}{
+		{name: "nil TypedValue"},
+		{name: "empty TypedValue", value: &gnmipb.TypedValue{}},
+		{name: "non-finite float", value: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_FloatVal{FloatVal: float32(math.NaN())}}},
+		{name: "non-finite double", value: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_DoubleVal{DoubleVal: math.Inf(1)}}},
+		{name: "nil decimal", value: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_DecimalVal{}}},
+		{name: "invalid decimal precision", value: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_DecimalVal{
+			DecimalVal: &gnmipb.Decimal64{Digits: 1, Precision: 309},
+		}}},
+		{
+			name:        "unsupported bytes",
+			value:       &gnmipb.TypedValue{Value: &gnmipb.TypedValue_BytesVal{BytesVal: []byte{1}}},
+			unsupported: map[UnsupportedValueKind]int{UnsupportedValueBytes: 1},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			decoded, stats, err := DecodeNotification("switch-1", &gnmipb.Notification{
+				Timestamp: receipt.UnixNano(),
+				Prefix:    protoPath("system", "state"),
+				Update: []*gnmipb.Update{{
+					Path: protoPath("value"),
+					Val:  test.value,
+				}},
+			}, receipt)
+			require.NoError(t, err)
+			assert.Empty(t, decoded.Updates)
+			require.Len(t, decoded.Touched, 1)
+			require.Len(t, decoded.Undecodable, 1)
+			assert.Equal(t, decoded.Touched[0].Key(), decoded.Undecodable[0].Key())
+			assert.Equal(t, 1, stats.UnmappedValues)
+			assert.Equal(t, test.unsupported, stats.UnsupportedValueKinds)
+		})
+	}
 }
 
 func TestDecodeNotificationRejectsOversizedUnsupportedTypedValues(t *testing.T) {
@@ -279,6 +326,207 @@ func TestDecodeJSONArrayObjectsDerivesDistinctPathKeys(t *testing.T) {
 	assert.NotEqual(t, counters[0].Series.Key(), counters[1].Series.Key())
 	assert.Equal(t, "Ethernet1", counters[0].Series.Elements[2].Keys["name"])
 	assert.Equal(t, "Ethernet2", counters[1].Series.Elements[2].Keys["name"])
+}
+
+func TestDecodeJSONAggregateRetainsExactUndecodableMappedDescendant(t *testing.T) {
+	receipt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	key := []KeyAttribute{{Element: "interface", Key: "name", Attribute: "network.interface.name"}}
+	registry, err := NewRegistry(
+		Mapping{
+			Source: SourcePath{
+				Origin: "openconfig", Elements: []string{"interfaces", "interface", "state"}, Leaf: "oper-status",
+			},
+			Metric:        MetricMetadata{Name: "interface.status", Description: "Interface status.", Unit: "1"},
+			Scale:         1,
+			GaugeType:     GaugeInt,
+			KeyAttributes: key,
+		},
+		Mapping{
+			Source: SourcePath{
+				Origin: "openconfig", Elements: []string{"interfaces", "interface", "state", "counters"}, Leaf: "in-octets",
+			},
+			Metric:        MetricMetadata{Name: "interface.io", Description: "Interface bytes.", Unit: "By"},
+			Scale:         1,
+			GaugeType:     GaugeInt,
+			KeyAttributes: key,
+		},
+	)
+	require.NoError(t, err)
+
+	decoded, stats, err := DecodeNotificationWithRegistry("switch-1", &gnmipb.Notification{
+		Timestamp: receipt.UnixNano(),
+		Prefix:    &gnmipb.Path{Origin: "openconfig"},
+		Update: []*gnmipb.Update{{
+			Path: protoPath("interfaces", "interface"),
+			Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`[
+				{"name":"Ethernet1","state":{"oper-status":null,"counters":{"in-octets":5}}},
+				{"name":"Ethernet2","state":{"oper-status":1,"counters":{"in-octets":7}}}
+			]`)}},
+		}},
+	}, receipt, registry)
+	require.NoError(t, err)
+	assert.Equal(t, 1, stats.UnmappedValues)
+	require.Len(t, decoded.Undecodable, 1)
+	invalid := decoded.Undecodable[0]
+	assert.Equal(t, "interfaces/interface[name=Ethernet1]/state/oper-status", invalid.String())
+	assert.Equal(t, "Ethernet1", invalid.Elements[1].Keys["name"])
+	assert.NotEqual(t, decoded.Touched[0].Key(), invalid.Key(),
+		"an aggregate list container must not become the precise invalidation")
+
+	var counters []Point
+	for _, point := range decoded.Updates {
+		if point.Series.Leaf == "in-octets" {
+			counters = append(counters, point)
+		}
+	}
+	require.Len(t, counters, 2)
+	assert.Equal(t, int64(5), counters[0].Value.Int)
+	assert.Equal(t, int64(7), counters[1].Value.Int)
+
+	transaction, _ := registry.MapNotification(decoded)
+	require.Len(t, transaction.Invalidates, 1)
+	require.Len(t, transaction.Updates, 3,
+		"both counters and the valid sibling status must remain independently mappable")
+	assert.Equal(t, invalid.Key(), transaction.Invalidates[0].Key())
+}
+
+func TestDecodeJSONScalarLeafListDeduplicatesUndecodablePath(t *testing.T) {
+	receipt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	decoded, stats, err := DecodeNotification("switch-1", &gnmipb.Notification{
+		Timestamp: receipt.UnixNano(),
+		Prefix:    protoPath("system", "state"),
+		Update: []*gnmipb.Update{{
+			Path: protoPath("value"),
+			Val:  &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`[null,1,2]`)}},
+		}},
+	}, receipt)
+	require.NoError(t, err)
+	assert.Empty(t, decoded.Updates)
+	assert.Equal(t, 3, stats.UnmappedValues)
+	require.Len(t, decoded.Undecodable, 1,
+		"one scalar leaf-list wire path must consume one invalid-path cardinality slot")
+	assert.Equal(t, decoded.Touched[0].Key(), decoded.Undecodable[0].Key())
+}
+
+func TestDecodeJSONEmptyContainerRetainsExactPathWithoutUnmappedCount(t *testing.T) {
+	receipt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	for _, raw := range []string{`[]`, `{}`} {
+		t.Run(raw, func(t *testing.T) {
+			decoded, stats, err := DecodeNotification("switch-1", &gnmipb.Notification{
+				Timestamp: receipt.UnixNano(),
+				Prefix:    protoPath("system", "state"),
+				Update: []*gnmipb.Update{{
+					Path: protoPath("value"),
+					Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonIetfVal{
+						JsonIetfVal: []byte(raw),
+					}},
+				}},
+			}, receipt)
+			require.NoError(t, err)
+			assert.Empty(t, decoded.Updates)
+			assert.Zero(t, stats.UnmappedValues,
+				"an empty container has no scalar values to count as unmapped")
+			require.Len(t, decoded.Undecodable, 1)
+			assert.Equal(t, decoded.Touched[0].Key(), decoded.Undecodable[0].Key())
+		})
+	}
+}
+
+func TestDecodeJSONEmptyAggregateDescendantsDoNotInvalidateUnmatchedMapping(t *testing.T) {
+	receipt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	registry, err := NewRegistry(Mapping{
+		Source:    SourcePath{Origin: "openconfig", Elements: []string{"system", "state"}, Leaf: "value"},
+		Metric:    MetricMetadata{Name: "system.value", Description: "System value.", Unit: "1"},
+		Scale:     1,
+		GaugeType: GaugeInt,
+	})
+	require.NoError(t, err)
+	decoded, stats, err := DecodeNotificationWithRegistry("switch-1", &gnmipb.Notification{
+		Timestamp: receipt.UnixNano(),
+		Prefix:    &gnmipb.Path{Origin: "openconfig", Elem: []*gnmipb.PathElem{{Name: "interfaces"}}},
+		Update: []*gnmipb.Update{{
+			Path: protoPath("state"),
+			Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonIetfVal{
+				JsonIetfVal: []byte(`{"empty-list":[],"empty-object":{}}`),
+			}},
+		}},
+	}, receipt, registry)
+	require.NoError(t, err)
+	assert.Zero(t, stats.UnmappedValues)
+	require.Len(t, decoded.Undecodable, 2)
+	assert.Equal(t, "interfaces/state/empty-list", decoded.Undecodable[0].String())
+	assert.Equal(t, "interfaces/state/empty-object", decoded.Undecodable[1].String())
+	for _, path := range decoded.Undecodable {
+		assert.NotEqual(t, decoded.Touched[0].Key(), path.Key(),
+			"an empty descendant must not turn its aggregate parent into an invalidation")
+	}
+	transaction, mappingStats := registry.MapNotification(decoded)
+	assert.Empty(t, transaction.Invalidates)
+	assert.Equal(t, MappingStats{}, mappingStats)
+}
+
+func TestDecodeJSONNonemptyContainerAtExactMappedScalarIsUndecodable(t *testing.T) {
+	receipt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	registry, err := NewRegistry(Mapping{
+		Source:    SourcePath{Origin: "openconfig", Elements: []string{"system", "state"}, Leaf: "value"},
+		Metric:    MetricMetadata{Name: "system.value", Description: "System value.", Unit: "1"},
+		Scale:     1,
+		GaugeType: GaugeInt,
+	})
+	require.NoError(t, err)
+	for _, raw := range []string{`{"child":1}`, `[{"child":1}]`} {
+		t.Run(raw, func(t *testing.T) {
+			decoded, stats, err := DecodeNotificationWithRegistry("switch-1", &gnmipb.Notification{
+				Timestamp: receipt.UnixNano(),
+				Prefix:    &gnmipb.Path{Origin: "openconfig", Elem: []*gnmipb.PathElem{{Name: "system"}, {Name: "state"}}},
+				Update: []*gnmipb.Update{{
+					Path: protoPath("value"),
+					Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonIetfVal{
+						JsonIetfVal: []byte(raw),
+					}},
+				}},
+			}, receipt, registry)
+			require.NoError(t, err)
+			assert.Zero(t, stats.UnmappedValues)
+			require.Len(t, decoded.Updates, 1)
+			assert.Equal(t, "child", decoded.Updates[0].Series.Leaf)
+			require.Len(t, decoded.Undecodable, 1)
+			assert.Equal(t, decoded.Touched[0].Key(), decoded.Undecodable[0].Key())
+
+			transaction, _ := registry.MapNotification(decoded)
+			assert.Empty(t, transaction.Updates)
+			require.Len(t, transaction.Invalidates, 1)
+			assert.Equal(t, decoded.Touched[0].Key(), transaction.Invalidates[0].Key())
+		})
+	}
+}
+
+func TestDecodeJSONMappedDescendantDoesNotInvalidateUnmatchedAggregateRoot(t *testing.T) {
+	receipt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	registry, err := NewRegistry(Mapping{
+		Source:    SourcePath{Origin: "openconfig", Elements: []string{"system", "state", "value"}, Leaf: "child"},
+		Metric:    MetricMetadata{Name: "system.value.child", Description: "System child value.", Unit: "1"},
+		Scale:     1,
+		GaugeType: GaugeInt,
+	})
+	require.NoError(t, err)
+	decoded, stats, err := DecodeNotificationWithRegistry("switch-1", &gnmipb.Notification{
+		Timestamp: receipt.UnixNano(),
+		Prefix:    &gnmipb.Path{Origin: "openconfig", Elem: []*gnmipb.PathElem{{Name: "system"}, {Name: "state"}}},
+		Update: []*gnmipb.Update{{
+			Path: protoPath("value"),
+			Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonIetfVal{
+				JsonIetfVal: []byte(`{"child":1}`),
+			}},
+		}},
+	}, receipt, registry)
+	require.NoError(t, err)
+	assert.Zero(t, stats.UnmappedValues)
+	assert.Empty(t, decoded.Undecodable)
+	transaction, mappingStats := registry.MapNotification(decoded)
+	require.Len(t, transaction.Updates, 1)
+	assert.Empty(t, transaction.Invalidates)
+	assert.Equal(t, MappingStats{Mapped: 1}, mappingStats)
 }
 
 func TestDecodeJSONArrayObjectsPreservesIOSXEInstallLocationKeys(t *testing.T) {
@@ -554,6 +802,304 @@ func TestMappingRegistryRequiresExplicitNumericContract(t *testing.T) {
 	require.ErrorContains(t, err, "gauge type")
 	_, err = NewRegistry(Mapping{Source: mapping.Source, Metric: MetricMetadata{Name: "bad", Unit: "1"}, Scale: 1, GaugeType: GaugeInt})
 	require.ErrorContains(t, err, "description")
+}
+
+func TestMappingRegistryEnforcesSourceBoundsAndInvalidatesRejectedValue(t *testing.T) {
+	registry, err := NewRegistry(Mapping{
+		Source:       SourcePath{Origin: "rfc7951", Elements: []string{"system", "state"}, Leaf: "used-percent"},
+		Metric:       MetricMetadata{Name: "system.memory.utilization", Description: "Memory utilization.", Unit: "1"},
+		Scale:        .01,
+		SourceBounds: &NumericBounds{Min: 0, Max: 100},
+		GaugeType:    GaugeDouble,
+	})
+	require.NoError(t, err)
+	series := Series{
+		Target: "switch-1", Origin: "rfc7951",
+		Elements: []PathElem{{Name: "system"}, {Name: "state"}},
+		Leaf:     "used-percent",
+	}
+	for _, test := range []struct {
+		name  string
+		value Value
+		want  float64
+	}{
+		{name: "minimum", value: UintValue(0), want: 0},
+		{name: "maximum", value: UintValue(100), want: 1},
+		{name: "RFC7951 uint64 string", value: StringValue("50"), want: .5},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			mapped, status := registry.MapWithStatus(Point{Series: series, Value: test.value, Timestamp: time.Unix(1, 0)})
+			require.Equal(t, MappingMapped, status)
+			assert.Equal(t, test.want, mapped.DoubleValue)
+		})
+	}
+
+	for _, test := range []struct {
+		name  string
+		value Value
+	}{
+		{name: "below minimum", value: IntValue(-1)},
+		{name: "above maximum", value: UintValue(101)},
+		{name: "boolean false is not a numeric zero", value: BoolValue(false)},
+		{name: "boolean true is not a numeric one", value: BoolValue(true)},
+		{name: "malformed string", value: StringValue("not-a-percent")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, status := registry.MapWithStatus(Point{Series: series, Value: test.value, Timestamp: time.Unix(2, 0)})
+			assert.Equal(t, MappingInvalidValue, status)
+		})
+	}
+
+	cache, err := NewCache(4)
+	require.NoError(t, err)
+	good := DecodedNotification{Timestamp: time.Unix(1, 0), Updates: []Point{{
+		Series: series, Value: UintValue(50), Timestamp: time.Unix(1, 0),
+	}}}
+	goodTransaction, stats := registry.MapNotification(good)
+	require.Equal(t, MappingStats{Mapped: 1}, stats)
+	_, err = cache.Apply(goodTransaction)
+	require.NoError(t, err)
+	require.Len(t, cache.Snapshot(), 1)
+
+	rejected := DecodedNotification{Timestamp: time.Unix(2, 0), Updates: []Point{{
+		Series: series, Value: UintValue(255), Timestamp: time.Unix(2, 0),
+	}}}
+	rejectedTransaction, stats := registry.MapNotification(rejected)
+	require.Equal(t, MappingStats{Unmapped: 1}, stats)
+	assert.Empty(t, rejectedTransaction.Updates)
+	require.Len(t, rejectedTransaction.Invalidates, 1)
+	_, err = cache.Apply(rejectedTransaction)
+	require.NoError(t, err)
+	assert.Empty(t, cache.Snapshot(), "an invalid newer utilization value must withdraw stale cached state")
+	assert.Equal(t, 1, cache.Usage().InvalidationWatermarks)
+}
+
+func TestMappingRegistryMonotonicSumRejectsInvalidCounterValuesAndAllowsCorrection(t *testing.T) {
+	mapping := Mapping{
+		Source:     SourcePath{Origin: "rfc7951", Elements: []string{"interfaces", "interface", "state", "counters"}, Leaf: "in-octets"},
+		Metric:     MetricMetadata{Name: "system.network.io", Description: "Interface bytes.", Unit: "By"},
+		Scale:      1,
+		GaugeType:  GaugeInt,
+		MetricType: MetricSum,
+		Monotonic:  true,
+		KeyAttributes: []KeyAttribute{{
+			Element: "interface", Key: "name", Attribute: "network.interface.name",
+		}},
+	}
+	registry, err := NewRegistry(mapping)
+	require.NoError(t, err)
+	series := Series{
+		Target: "switch-1", Origin: "rfc7951",
+		Elements: []PathElem{
+			{Name: "interfaces"},
+			{Name: "interface", Keys: map[string]string{"name": "Ethernet1"}},
+			{Name: "state"},
+			{Name: "counters"},
+		},
+		Leaf: "in-octets",
+	}
+
+	for _, test := range []struct {
+		name  string
+		value Value
+		want  int64
+	}{
+		{name: "zero signed", value: IntValue(0), want: 0},
+		{name: "positive signed", value: IntValue(5), want: 5},
+		{name: "positive unsigned", value: UintValue(6), want: 6},
+		{name: "integral double", value: DoubleValue(7), want: 7},
+		{name: "canonical RFC7951 uint64 string", value: StringValue("9007199254740993"), want: 9_007_199_254_740_993},
+		{name: "RFC7951 positive-sign string", value: StringValue("+8"), want: 8},
+		{name: "RFC7951 leading-zero string", value: StringValue("009"), want: 9},
+	} {
+		t.Run("accepts "+test.name, func(t *testing.T) {
+			mapped, status := registry.MapWithStatus(Point{Series: series, Value: test.value})
+			require.Equal(t, MappingMapped, status)
+			assert.Equal(t, test.want, mapped.IntValue)
+			assert.True(t, mapped.Monotonic)
+			assert.Equal(t, MetricSum, mapped.MetricType)
+		})
+	}
+
+	for _, test := range []struct {
+		name  string
+		value Value
+	}{
+		{name: "negative signed", value: IntValue(-1)},
+		{name: "negative double", value: DoubleValue(-1)},
+		{name: "negative string", value: StringValue("-1")},
+		{name: "boolean false", value: BoolValue(false)},
+		{name: "boolean true", value: BoolValue(true)},
+		{name: "fractional double", value: DoubleValue(1.5)},
+		{name: "fractional string", value: StringValue("1.0")},
+		{name: "exponent string", value: StringValue("1e3")},
+		{name: "negative zero string", value: StringValue("-0")},
+		{name: "whitespace string", value: StringValue(" 1")},
+		{name: "uint64 beyond OTLP int64 output", value: StringValue("18446744073709551615")},
+		{name: "rounded int64 upper boundary", value: DoubleValue(float64(math.MaxInt64))},
+	} {
+		t.Run("rejects "+test.name, func(t *testing.T) {
+			mapped, status := registry.MapWithStatus(Point{Series: series, Value: test.value})
+			assert.Equal(t, MappingInvalidValue, status)
+			assert.Equal(t, MappedPoint{}, mapped)
+		})
+	}
+
+	t1 := time.Unix(100, 0)
+	t2 := t1.Add(time.Second)
+	cache, err := NewCache(4)
+	require.NoError(t, err)
+	seed, stats := registry.MapNotification(DecodedNotification{
+		Timestamp: t1,
+		Updates:   []Point{{Series: series, Value: UintValue(5), Timestamp: t1}},
+	})
+	require.Equal(t, MappingStats{Mapped: 1}, stats)
+	_, err = cache.Apply(seed)
+	require.NoError(t, err)
+	require.Len(t, cache.Snapshot(), 1)
+
+	withdrawal, stats := registry.MapNotification(DecodedNotification{
+		Timestamp: t2,
+		Updates:   []Point{{Series: series, Value: IntValue(-1), Timestamp: t2}},
+	})
+	require.Equal(t, MappingStats{Unmapped: 1}, stats)
+	assert.Empty(t, withdrawal.Updates)
+	require.Len(t, withdrawal.Invalidates, 1)
+	assert.Equal(t, series.Path().Key(), withdrawal.Invalidates[0].Key())
+	result, err := cache.Apply(withdrawal)
+	require.NoError(t, err)
+	require.Len(t, result.Removed, 1)
+	assert.Empty(t, cache.Snapshot(), "a negative counter must withdraw the exact stale series")
+	assert.Equal(t, 1, cache.Usage().InvalidationWatermarks)
+	assert.False(t, cache.IsStale(series.Path(), t2),
+		"the semantic watermark must admit a valid same-timestamp correction")
+
+	correction, stats := registry.MapNotification(DecodedNotification{
+		Timestamp: t2,
+		Updates:   []Point{{Series: series, Value: UintValue(6), Timestamp: t2}},
+	})
+	require.Equal(t, MappingStats{Mapped: 1}, stats)
+	result, err = cache.Apply(correction)
+	require.NoError(t, err)
+	require.Len(t, result.Applied, 1)
+	snapshot := cache.Snapshot()
+	require.Len(t, snapshot, 1)
+	assert.Equal(t, int64(6), snapshot[0].IntValue)
+	assert.Zero(t, cache.Usage().InvalidationWatermarks)
+}
+
+func TestMappingRegistryMonotonicSumRequiresPositiveScale(t *testing.T) {
+	mapping := Mapping{
+		Source:     SourcePath{Origin: "openconfig", Elements: []string{"system", "state"}, Leaf: "counter"},
+		Metric:     MetricMetadata{Name: "example.counter", Description: "Example counter.", Unit: "{count}"},
+		Scale:      -1,
+		GaugeType:  GaugeInt,
+		MetricType: MetricSum,
+		Monotonic:  true,
+	}
+	_, err := NewRegistry(mapping)
+	require.ErrorContains(t, err, "monotonic sum mapping scale must be positive")
+
+	mapping.MetricType = MetricGauge
+	mapping.Monotonic = false
+	registry, err := NewRegistry(mapping)
+	require.NoError(t, err, "negative scaling remains valid for a custom gauge contract")
+	mapped, status := registry.MapWithStatus(Point{
+		Series: Series{
+			Target: "switch-1", Origin: "openconfig",
+			Elements: []PathElem{{Name: "system"}, {Name: "state"}},
+			Leaf:     "counter",
+		},
+		Value: IntValue(2),
+	})
+	require.Equal(t, MappingMapped, status)
+	assert.Equal(t, int64(-2), mapped.IntValue)
+}
+
+func TestMappingRegistryInvalidatesUndecodableMappedSourceWithCorrectableWatermark(t *testing.T) {
+	registry, err := NewRegistry(Mapping{
+		Source:    SourcePath{Origin: "openconfig", Elements: []string{"system", "state"}, Leaf: "value"},
+		Metric:    MetricMetadata{Name: "system.value", Description: "System value.", Unit: "1"},
+		Scale:     1,
+		GaugeType: GaugeDouble,
+	})
+	require.NoError(t, err)
+	series := Series{
+		Target: "switch-1", Origin: "openconfig",
+		Elements: []PathElem{{Name: "system"}, {Name: "state"}},
+		Leaf:     "value",
+	}
+	path := series.Path()
+	t1 := time.Unix(100, 0)
+	t2 := t1.Add(time.Second)
+
+	cache, err := NewCache(4)
+	require.NoError(t, err)
+	seed, stats := registry.MapNotification(DecodedNotification{
+		Timestamp: t1,
+		Updates:   []Point{{Series: series, Value: UintValue(1), Timestamp: t1}},
+	})
+	require.Equal(t, MappingStats{Mapped: 1}, stats)
+	_, err = cache.Apply(seed)
+	require.NoError(t, err)
+	require.Len(t, cache.Snapshot(), 1)
+
+	withdrawal, stats := registry.MapNotification(DecodedNotification{
+		Timestamp:   t2,
+		Undecodable: []Path{path},
+	})
+	require.Equal(t, MappingStats{Unmapped: 1}, stats)
+	require.Len(t, withdrawal.Invalidates, 1)
+	result, err := cache.Apply(withdrawal)
+	require.NoError(t, err)
+	require.Len(t, result.Removed, 1)
+	assert.Empty(t, cache.Snapshot())
+	assert.Equal(t, 1, cache.Usage().InvalidationWatermarks)
+	assert.True(t, cache.IsStale(path, t1))
+	assert.False(t, cache.IsStale(path, t2))
+
+	correction, stats := registry.MapNotification(DecodedNotification{
+		Timestamp: t2,
+		Updates:   []Point{{Series: series, Value: UintValue(2), Timestamp: t2}},
+	})
+	require.Equal(t, MappingStats{Mapped: 1}, stats)
+	result, err = cache.Apply(correction)
+	require.NoError(t, err)
+	require.Len(t, result.Applied, 1)
+	require.Len(t, cache.Snapshot(), 1)
+	assert.Equal(t, 2.0, cache.Snapshot()[0].DoubleValue)
+	assert.Zero(t, cache.Usage().InvalidationWatermarks)
+
+	atomicBarrier, stats := registry.MapNotification(DecodedNotification{
+		Prefix:      Path{Target: "switch-1", Origin: "openconfig", Elements: []PathElem{{Name: "system"}}},
+		Timestamp:   t2.Add(time.Second),
+		Atomic:      true,
+		Undecodable: []Path{path},
+	})
+	require.Equal(t, MappingStats{Unmapped: 1}, stats)
+	assert.False(t, atomicBarrier.Atomic)
+	assert.Empty(t, atomicBarrier.Updates)
+	require.Len(t, atomicBarrier.Invalidates, 1)
+	assert.Equal(t, "system", atomicBarrier.Invalidates[0].Elements[0].Name)
+}
+
+func TestMappingRegistryRejectsInvalidSourceBounds(t *testing.T) {
+	base := Mapping{
+		Source:    SourcePath{Origin: "rfc7951", Elements: []string{"system", "state"}, Leaf: "value"},
+		Metric:    MetricMetadata{Name: "example.value", Description: "Example value.", Unit: "1"},
+		Scale:     1,
+		GaugeType: GaugeDouble,
+	}
+	for _, bounds := range []*NumericBounds{
+		{Min: math.NaN(), Max: 100},
+		{Min: 0, Max: math.Inf(1)},
+		{Min: 101, Max: 100},
+	} {
+		mapping := base
+		mapping.SourceBounds = bounds
+		_, err := NewRegistry(mapping)
+		require.Error(t, err)
+	}
 }
 
 func TestMappingRegistryRejectsMappingsThatCannotEnterTheBoundedCache(t *testing.T) {

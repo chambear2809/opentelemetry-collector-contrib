@@ -4,7 +4,7 @@ attributes:
     type: string
   cisco.gnmi.reason:
     description: Bounded reason for a gNMI health or degradation event
-    enum: [bisection_limit, cache_limit, identity_ambiguous, identity_missing, incompatible_path_group, malformed_identity, malformed_update, missing_model, product_mismatch, release_mismatch, unsupported_encoding, unsupported_path, unsupported_request_options]
+    enum: [bisection_limit, cache_limit, identity_ambiguous, identity_missing, incompatible_path_group, malformed_identity, malformed_update, missing_model, product_mismatch, release_mismatch, unsupported_boot_mode, unsupported_encoding, unsupported_gnmi_version, unsupported_model_version, unsupported_path, unsupported_request_options]
     type: string
   cisco.gnmi.target:
     description: Static gNMI target name from the receiver configuration
@@ -81,7 +81,7 @@ description: |
   The Cisco OS Receiver is a modular receiver that collects metrics from Cisco network devices via SSH connections,
   Cisco Meraki Dashboard APIs, Cisco Intersight APIs, Cisco Catalyst Center Assurance APIs, Cisco Catalyst SD-WAN
   Manager APIs, Nexus Dashboard/NDFC APIs, Cisco APIC APIs, Cisco Secure Firewall Management Center APIs, Cisco
-  Identity Services Engine APIs, product-qualified secure normalized gNMI dial-in for supported Catalyst, ASR, NCS,
+  Identity Services Engine APIs, product-contract-gated secure normalized gNMI dial-in for explicitly configured Catalyst, ASR, NCS,
   and Nexus products, and IOS XR MDT telemetry. It supports metrics for device, cloud, controller,
   identity, security, core WAN, and infrastructure health plus logs for operational evidence such as faults, anomalies,
   advisories, audits, deployments, workflows, authentication failures, posture, pxGrid session signals, policy changes,
@@ -300,7 +300,7 @@ metrics:
     gauge:
       value_type: double
     stability: development
-    unit: "dBm"
+    unit: "dB{mW}"
   catalyst_center.client.wireless.snr:
     description: "SNR for a targeted wireless client."
     enabled: true
@@ -590,7 +590,7 @@ metrics:
     unit: "1"
   cisco.interface.admin.status:
     attributes: [network.interface.name]
-    description: Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)
+    description: Cisco interface administrative status (1 = administratively enabled, 0 = not administratively enabled)
     enabled: true
     gauge:
       value_type: int
@@ -772,7 +772,7 @@ metrics:
     gauge:
       value_type: double
     stability: development
-    unit: "dB[mW]"
+    unit: "dB{mW}"
   cisco.optics.tdecq:
     attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
     description: Transmitter and dispersion eye closure for PAM4 reported by a sensor explicitly identified as TDECQ in dB
@@ -812,7 +812,7 @@ metrics:
     gauge:
       value_type: double
     stability: development
-    unit: "dB[mW]"
+    unit: "dB{mW}"
   cisco.optics.voltage:
     attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
     description: Optical module supply voltage
@@ -1009,7 +1009,7 @@ metrics:
     gauge:
       value_type: double
     stability: development
-    unit: "dBm"
+    unit: "dB{mW}"
   cisco.wlc.client.wireless.snr:
     description: "Client SNR."
     enabled: true
@@ -1165,7 +1165,7 @@ metrics:
     gauge:
       value_type: double
     stability: development
-    unit: "dBm"
+    unit: "dB{mW}"
   cisco.wlc.ssid.channel.utilization:
     description: "SSID/BSSID channel utilization normalized to a ratio from 0 to 1."
     enabled: true
@@ -1627,7 +1627,7 @@ metrics:
     gauge:
       value_type: double
     stability: development
-    unit: "rpm"
+    unit: "1/min"
   intersight.ucs.fan.speed_ratio:
     description: "Mean fan speed as a percentage of maximum."
     enabled: true
@@ -1879,14 +1879,14 @@ metrics:
     gauge:
       value_type: double
     stability: development
-    unit: "dBm"
+    unit: "dB{mW}"
   intersight.ucs.signal_power.transmit:
     description: "Transceiver transmit optical power."
     enabled: true
     gauge:
       value_type: double
     stability: development
-    unit: "dBm"
+    unit: "dB{mW}"
   intersight.ucs.temperature:
     description: "Mean temperature from Intersight telemetry GroupBy."
     enabled: true
@@ -2367,7 +2367,7 @@ metrics:
     gauge:
       value_type: double
     stability: development
-    unit: "dBm"
+    unit: "dB{mW}"
   meraki.uplink.cellular.signal.rsrq:
     description: "Cellular uplink reference-signal received quality."
     enabled: true
@@ -2970,7 +2970,7 @@ metrics:
     unit: "{error}"
   system.network.interface.status:
     attributes: [network.interface.name]
-    description: Interface operational status (1 = up, 0 = down)
+    description: Interface operational status (1 = up, 0 = not up)
     enabled: true
     gauge:
       value_type: int
@@ -3014,6 +3014,10 @@ metrics:
     stability: development
     unit: s
 resource_attributes:
+  cisco.os.boot_mode:
+    description: Verified IOS XE boot mode when required by the product contract
+    enabled: true
+    type: string
   cisco.os.name:
     description: Normalized Cisco operating-system family
     enabled: true
@@ -3059,7 +3063,7 @@ resource_attributes:
     enabled: true
     type: string
   os.version:
-    description: Device-reported software version; shared gNMI emits the exact live-verified running build
+    description: Device-reported software version; shared gNMI emits the canonical live-verified public release
     enabled: true
     type: string
 status:
@@ -3151,7 +3155,7 @@ telemetry:
       unit: "{update}"
     ciscoosreceiver_gnmi_invalid_timestamps:
       attributes: [cisco.gnmi.target, cisco.gnmi.profile]
-      description: Number of invalid Cisco timestamps replaced with receipt time
+      description: Number of invalid or excessively future-dated Cisco timestamps rejected before cache mutation
       enabled: true
       stability: development
       sum:
@@ -3166,12 +3170,22 @@ telemetry:
         value_type: int
       stability: development
       unit: s
+    ciscoosreceiver_gnmi_out_of_order_updates:
+      attributes: [cisco.gnmi.target, cisco.gnmi.profile]
+      description: Number of stale gNMI cache operations suppressed by source timestamp ordering
+      enabled: true
+      stability: development
+      sum:
+        monotonic: true
+        value_type: int
+      unit: "{update}"
     ciscoosreceiver_gnmi_preflight_failures:
       attributes: [cisco.gnmi.target, cisco.gnmi.reason]
       description: >-
-        Number of terminal gNMI product qualification failures. This metric emits only identity_missing,
-        identity_ambiguous, product_mismatch, release_mismatch, missing_model, unsupported_encoding, or
-        malformed_identity; profile-degradation reasons in the shared attribute catalog are not emitted here.
+        Number of terminal gNMI product-contract preflight compatibility failures. This metric emits only identity_missing,
+        identity_ambiguous, product_mismatch, release_mismatch, missing_model, unsupported_model_version,
+        unsupported_encoding, unsupported_gnmi_version, unsupported_boot_mode, or malformed_identity;
+        profile-degradation reasons in the shared attribute catalog are not emitted here.
       enabled: true
       stability: development
       sum:
@@ -3180,7 +3194,7 @@ telemetry:
       unit: "{failure}"
     ciscoosreceiver_gnmi_product_verified:
       attributes: [cisco.gnmi.target]
-      description: Whether the gNMI target passed product, model, release, and capability verification
+      description: Whether the gNMI target passed product, model, release, required boot-mode, and capability verification
       enabled: true
       gauge:
         value_type: int

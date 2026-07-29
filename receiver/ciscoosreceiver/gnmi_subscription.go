@@ -484,7 +484,7 @@ func buildSharedGNMISubscribeRequest(target GNMITargetConfig, stream sharedGNMIS
 			pathOrigin = path.Origin
 		}
 		if !contract.RequestPolicy.AllowWildcards && gnmiPathContainsWildcard(*path) {
-			return nil, fmt.Errorf("path %q must be explicit and non-wildcard on product %q", path.Path, contract.Product)
+			return nil, fmt.Errorf("path %q contains an explicit asterisk wildcard that is not qualified on product %q", path.Path, contract.Product)
 		}
 		protoPath, err := sharedGNMIPathToProto(pathTarget, pathOrigin, path.Path)
 		if err != nil {

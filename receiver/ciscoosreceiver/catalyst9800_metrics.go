@@ -280,7 +280,7 @@ func appendCatalyst9800AliasesForValueIndexed(builder *indexedMetricBuilder, mod
 			appendPercentageRatio("cisco.wlc.ssid.channel.utilization", map[string]string{"utilization.type": catalyst9800UtilizationType(leaf)})
 		}
 	case "noise_floor", "noise":
-		appendNumber("cisco.wlc.rf.noise_floor", nil, false, "dBm")
+		appendNumber("cisco.wlc.rf.noise_floor", nil, false, "dB{mW}")
 	case "stations", "num_clients", "client_count":
 		appendNumber("cisco.wlc.rf.client.count", nil, false, "{client}")
 	case "chan_changes", "channel_change_count":
@@ -300,7 +300,7 @@ func appendCatalyst9800AliasesForValueIndexed(builder *indexedMetricBuilder, mod
 	case "exclude_reason":
 		appendInfo("cisco.wlc.client.auth.failure.reason.info", "failure.reason", "1")
 	case "most_recent_rssi", "rssi":
-		appendNumber("cisco.wlc.client.wireless.rssi", nil, false, "dBm")
+		appendNumber("cisco.wlc.client.wireless.rssi", nil, false, "dB{mW}")
 	case "most_recent_snr", "snr":
 		appendNumber("cisco.wlc.client.wireless.snr", nil, false, "dB")
 	case "dot11_roam_type", "mm_client_roam_type", "roam_type":

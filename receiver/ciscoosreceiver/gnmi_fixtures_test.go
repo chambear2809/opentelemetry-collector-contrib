@@ -23,8 +23,91 @@ const fixtureGNMITarget = "fixture-target"
 
 var fixtureGNMIReceipt = time.Date(2026, 7, 2, 12, 5, 0, 0, time.UTC)
 
+func runtimeTestCatalystSwitchModelData(names ...string) []*gnmipb.ModelData {
+	models := make([]*gnmipb.ModelData, 0, len(names))
+	for _, name := range names {
+		contract, ok := iosXE17181ModelDataContract[name]
+		if !ok || len(contract.Versions) == 0 {
+			models = append(models, &gnmipb.ModelData{Name: name})
+			continue
+		}
+		models = append(models, &gnmipb.ModelData{
+			Name:         name,
+			Organization: contract.Organization,
+			Version:      contract.Versions[0],
+		})
+	}
+	return models
+}
+
+func TestGNMIFixtureIOSXECatalystSwitchSystem(t *testing.T) {
+	runtime := fixtureGNMIRuntime(t, gnmiPlatformIOSXE, builtinGNMIProfileSystem)
+	assert.Equal(t, gnmiProductCatalyst9300, runtime.contract.Product)
+	stream := fixtureGNMIStream(t, runtime, builtinGNMIOriginRFC7951)
+	response := fixtureGNMIJSONResponse(t, "ios_xe_switch_system.json", builtinGNMIOriginRFC7951, nil, true)
+
+	decoded := fixtureGNMIDecode(t, response.GetUpdate())
+	_, mapped, _ := fixtureGNMIMap(t, runtime, stream, decoded, false)
+	require.Len(t, mapped, 3)
+	assert.ElementsMatch(t, []string{
+		"system.cpu.utilization",
+		"system.memory.utilization",
+		"system.memory.utilization",
+	}, fixtureGNMIMetricNames(mapped))
+	assert.InDelta(t, .37, fixtureGNMIMetric(t, mapped, "system.cpu.utilization").DoubleValue, 0.0001)
+
+	memory := fixtureGNMIMetrics(mapped, "system.memory.utilization")
+	require.Len(t, memory, 2)
+	memoryByFRU := make(map[string]internalgnmi.MappedPoint, len(memory))
+	for _, point := range memory {
+		memoryByFRU[point.Attributes["cisco.location.fru"]] = point
+		assert.Equal(t, "1", point.Attributes["cisco.location.chassis"])
+		assert.Equal(t, "0", point.Attributes["cisco.location.bay"])
+	}
+	assert.InDelta(t, .42, memoryByFRU["fru-rp"].DoubleValue, 0.0001)
+	assert.Equal(t, "0", memoryByFRU["fru-rp"].Attributes["cisco.location.slot"])
+	assert.InDelta(t, .55, memoryByFRU["fru-fp"].DoubleValue, 0.0001)
+	assert.Equal(t, "1", memoryByFRU["fru-fp"].Attributes["cisco.location.slot"])
+}
+
+func TestGNMIFixtureIOSXECatalystSwitchInterfaces(t *testing.T) {
+	runtime := fixtureGNMIRuntime(t, gnmiPlatformIOSXE, builtinGNMIProfileInterfaces)
+	assert.Equal(t, gnmiProductCatalyst9300, runtime.contract.Product)
+	stream := fixtureGNMIStream(t, runtime, builtinGNMIOriginRFC7951)
+	response := fixtureGNMIJSONResponse(t, "ios_xe_switch_interfaces.json", builtinGNMIOriginRFC7951, nil, true)
+
+	decoded := fixtureGNMIDecode(t, response.GetUpdate())
+	_, mapped, _ := fixtureGNMIMap(t, runtime, stream, decoded, false)
+	require.Len(t, mapped, 28)
+
+	oper := fixtureGNMIMetrics(mapped, "system.network.interface.status")
+	admin := fixtureGNMIMetrics(mapped, "cisco.interface.admin.status")
+	require.Len(t, oper, 2)
+	require.Len(t, admin, 2)
+	assert.Equal(t, int64(1), fixtureGNMIInterfaceMetric(t, oper, "GigabitEthernet1/0/1").IntValue)
+	down := fixtureGNMIInterfaceMetric(t, oper, "GigabitEthernet1/0/2")
+	assert.Equal(t, int64(0), down.IntValue)
+	assert.Equal(t, "Interface operational status (1 = up, 0 = not up)", down.Metric.Description)
+	assert.Equal(t, int64(1), fixtureGNMIInterfaceMetric(t, admin, "GigabitEthernet1/0/1").IntValue)
+	notEnabled := fixtureGNMIInterfaceMetric(t, admin, "GigabitEthernet1/0/2")
+	assert.Equal(t, int64(0), notEnabled.IntValue)
+	assert.Equal(t, "Cisco interface administrative status (1 = administratively enabled, 0 = not administratively enabled)", notEnabled.Metric.Description)
+
+	ioPoints := fixtureGNMIMetrics(mapped, "system.network.io")
+	require.Len(t, ioPoints, 4)
+	var receive internalgnmi.MappedPoint
+	for _, point := range ioPoints {
+		if point.Attributes["network.interface.name"] == "GigabitEthernet1/0/1" &&
+			point.Attributes["network.io.direction"] == "receive" {
+			receive = point
+		}
+	}
+	assert.Equal(t, int64(9007199254740993), receive.IntValue, "RFC7951 uint64 strings must retain integer precision")
+}
+
 func TestGNMIFixtureIOSXERFC7951DOM(t *testing.T) {
 	runtime := fixtureGNMIRuntime(t, gnmiPlatformIOSXE, builtinGNMIProfileOptics)
+	assert.Equal(t, gnmiProductCatalyst9300, runtime.contract.Product)
 	stream := fixtureGNMIStream(t, runtime, builtinGNMIOriginRFC7951)
 	response := fixtureGNMIJSONResponse(t, "ios_xe_rfc7951_dom.json", builtinGNMIOriginRFC7951, nil, true)
 
@@ -55,10 +138,10 @@ func TestGNMIFixtureIOSXERFC7951DOM(t *testing.T) {
 	assert.Equal(t, "mA", laserBias.Metric.Unit)
 	assert.InDelta(t, 6.4, laserBias.DoubleValue, 0.0001)
 	rxPower := fixtureGNMIMetric(t, mapped, "cisco.optics.rx_power")
-	assert.Equal(t, "dB[mW]", rxPower.Metric.Unit)
+	assert.Equal(t, "dB{mW}", rxPower.Metric.Unit)
 	assert.InDelta(t, -2.15, rxPower.DoubleValue, 0.0001)
 	txPower := fixtureGNMIMetric(t, mapped, "cisco.optics.tx_power")
-	assert.Equal(t, "dB[mW]", txPower.Metric.Unit)
+	assert.Equal(t, "dB{mW}", txPower.Metric.Unit)
 	assert.InDelta(t, -1.05, txPower.DoubleValue, 0.0001)
 	present := fixtureGNMIMetric(t, mapped, "cisco.optics.present")
 	assert.Equal(t, "1", present.Metric.Unit)
@@ -227,12 +310,15 @@ func fixtureGNMIRuntime(t *testing.T, platform, profile string) *sharedGNMITarge
 	}
 	cache, err := internalgnmi.NewCache(100)
 	require.NoError(t, err)
-	product, version := gnmiProductCatalyst9800, "17.18.1"
+	product, version := gnmiProductCatalyst9300, "17.18.1"
 	switch platform {
 	case gnmiPlatformIOSXR:
 		product, version = gnmiProductASR9000, "24.4.1"
 	case gnmiPlatformNXOS:
 		product, version = gnmiProductNexus9000, "10.6(1)"
+	}
+	if profile == builtinGNMIProfileCatalyst9800Wireless {
+		product = gnmiProductCatalyst9800
 	}
 	runtime, err := newSharedGNMITargetRuntime(GNMITargetConfig{
 		Name: fixtureGNMITarget, Product: product, SoftwareVersion: version, MaxStreams: 8, Profiles: profiles,
@@ -335,6 +421,28 @@ func fixtureGNMIMetric(t *testing.T, points []internalgnmi.MappedPoint, name str
 		}
 	}
 	require.Len(t, matches, 1, "metric %q", name)
+	return matches[0]
+}
+
+func fixtureGNMIMetrics(points []internalgnmi.MappedPoint, name string) []internalgnmi.MappedPoint {
+	var matches []internalgnmi.MappedPoint
+	for i := range points {
+		if points[i].Metric.Name == name {
+			matches = append(matches, points[i])
+		}
+	}
+	return matches
+}
+
+func fixtureGNMIInterfaceMetric(t *testing.T, points []internalgnmi.MappedPoint, interfaceName string) internalgnmi.MappedPoint {
+	t.Helper()
+	var matches []internalgnmi.MappedPoint
+	for i := range points {
+		if points[i].Attributes["network.interface.name"] == interfaceName {
+			matches = append(matches, points[i])
+		}
+	}
+	require.Len(t, matches, 1, "interface %q", interfaceName)
 	return matches[0]
 }
 

@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	gnmiNXOSMinimumSampleInterval = time.Second
-	gnmiNXOSMaximumSampleInterval = 604800 * time.Second
+	gnmiConservativeMinimumSampleInterval = time.Second
+	gnmiConservativeMaximumSampleInterval = 604800 * time.Second
 )
 
 func gnmiProductApprovesEncoding(contract *gnmiProductContract, wanted gnmipb.Encoding) bool {
@@ -75,9 +75,9 @@ func validateGNMIProductPathPolicy(prefix string, contract *gnmiProductContract,
 	return nil
 }
 
-// validateGNMIProductSamplePlan enforces the conservative cadence shared by
-// the qualified Nexus contracts. Cisco documents a 1..604800 second SAMPLE
-// range and one common sample interval for every path in a subscription.
+// validateGNMIProductSamplePlan enforces the conservative cadence used by
+// contracts whose optional subscription behaviors have not been qualified.
+// Every path in one subscription uses the same bounded SAMPLE interval.
 func validateGNMIProductSamplePlan(
 	prefix string,
 	contract *gnmiProductContract,
@@ -87,7 +87,7 @@ func validateGNMIProductSamplePlan(
 	if contract == nil || !contract.RequestPolicy.ConservativeSampleOnly {
 		return nil
 	}
-	if defaultInterval < gnmiNXOSMinimumSampleInterval || defaultInterval > gnmiNXOSMaximumSampleInterval {
+	if defaultInterval < gnmiConservativeMinimumSampleInterval || defaultInterval > gnmiConservativeMaximumSampleInterval {
 		return fmt.Errorf("%s.sample_interval must be between 1s and 604800s on product %s", prefix, contract.Product)
 	}
 	var common time.Duration
@@ -96,7 +96,7 @@ func validateGNMIProductSamplePlan(
 		if options.SampleInterval != nil {
 			effective = *options.SampleInterval
 		}
-		if effective < gnmiNXOSMinimumSampleInterval || effective > gnmiNXOSMaximumSampleInterval {
+		if effective < gnmiConservativeMinimumSampleInterval || effective > gnmiConservativeMaximumSampleInterval {
 			return fmt.Errorf("%s path %d effective sample_interval must be between 1s and 604800s on product %s", prefix, index, contract.Product)
 		}
 		if index == 0 {

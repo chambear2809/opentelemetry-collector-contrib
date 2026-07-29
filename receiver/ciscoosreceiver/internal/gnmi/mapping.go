@@ -56,16 +56,38 @@ type KeyAttribute struct {
 	Attribute string
 }
 
+// NumericBounds constrains the decoded source value before scaling. Bounds are
+// inclusive and are intended for modeled numeric leaves whose OTLP contract is
+// narrower than the wire integer type.
+type NumericBounds struct {
+	Min float64
+	Max float64
+}
+
 // Mapping explicitly maps one numeric source leaf to one gauge metric.
 type Mapping struct {
 	Source        SourcePath
 	Metric        MetricMetadata
 	Scale         float64
+	SourceBounds  *NumericBounds
 	GaugeType     GaugeValueType
 	MetricType    MetricType
 	Monotonic     bool
 	KeyAttributes []KeyAttribute
 }
+
+// MappingStatus distinguishes an unregistered source, malformed key identity,
+// malformed/out-of-contract source value, and a successful mapping. Callers
+// can invalidate only the precise cached series for MappingInvalidValue while
+// preserving the existing bool-only Map API.
+type MappingStatus uint8
+
+const (
+	MappingUnmatched MappingStatus = iota
+	MappingInvalidIdentity
+	MappingInvalidValue
+	MappingMapped
+)
 
 // Registry contains only validated, explicit source mappings.
 type Registry struct {
@@ -130,6 +152,10 @@ func (r *Registry) Register(mapping Mapping) error {
 	}
 	mapping.Source.Elements = append([]string(nil), mapping.Source.Elements...)
 	mapping.KeyAttributes = append([]KeyAttribute(nil), mapping.KeyAttributes...)
+	if mapping.SourceBounds != nil {
+		bounds := *mapping.SourceBounds
+		mapping.SourceBounds = &bounds
+	}
 	r.mappings[key] = mapping
 	r.metrics[mapping.Metric.Name] = contract
 	for _, requirement := range listKeyRequirements {
@@ -200,8 +226,16 @@ func (r *Registry) Len() int {
 // Map emits a point only when its exact source path is registered, all mapped
 // keys are present, and its scalar value can satisfy the configured gauge type.
 func (r *Registry) Map(point Point) (MappedPoint, bool) {
+	mapped, status := r.MapWithStatus(point)
+	return mapped, status == MappingMapped
+}
+
+// MapWithStatus maps one point and classifies why it was not emitted. An
+// invalid value is returned only after exact source and key identity have been
+// established, so its Series path is safe to use as a precise invalidation.
+func (r *Registry) MapWithStatus(point Point) (MappedPoint, MappingStatus) {
 	if r == nil {
-		return MappedPoint{}, false
+		return MappedPoint{}, MappingUnmatched
 	}
 	source := SourcePath{PathTarget: point.Series.PathTarget, Origin: point.Series.Origin, Leaf: point.Series.Leaf, Elements: make([]string, len(point.Series.Elements))}
 	for i, elem := range point.Series.Elements {
@@ -209,7 +243,7 @@ func (r *Registry) Map(point Point) (MappedPoint, bool) {
 	}
 	mapping, ok := r.mappings[sourcePathKey(source)]
 	if !ok {
-		return MappedPoint{}, false
+		return MappedPoint{}, MappingUnmatched
 	}
 
 	attributes := make(map[string]string, len(mapping.KeyAttributes))
@@ -228,15 +262,34 @@ func (r *Registry) Map(point Point) (MappedPoint, bool) {
 				// Element names are not positional selectors. Refuse a point if
 				// more than one same-named element carries the requested key;
 				// choosing the first would collapse distinct source series.
-				return MappedPoint{}, false
+				return MappedPoint{}, MappingInvalidIdentity
 			}
 			value = candidate
 			found = true
 		}
 		if !found {
-			return MappedPoint{}, false
+			return MappedPoint{}, MappingInvalidIdentity
 		}
 		attributes[attr.Attribute] = value
+	}
+
+	monotonicSum := mapping.MetricType == MetricSum && mapping.Monotonic
+	if monotonicSum && !validMonotonicSumSource(point.Value) {
+		return MappedPoint{}, MappingInvalidValue
+	}
+	// SourceBounds are attached only to modeled numeric leaves. Although gauges
+	// can deliberately map boolean state to 0/1, accepting a boolean for a
+	// bounded numeric leaf would silently turn a schema-invalid CPU or memory
+	// sample into plausible telemetry.
+	if mapping.SourceBounds != nil && point.Value.Kind == ValueBool {
+		return MappedPoint{}, MappingInvalidValue
+	}
+	numeric, numericOK := numericValue(point.Value)
+	if !numericOK {
+		return MappedPoint{}, MappingInvalidValue
+	}
+	if mapping.SourceBounds != nil && (numeric < mapping.SourceBounds.Min || numeric > mapping.SourceBounds.Max) {
+		return MappedPoint{}, MappingInvalidValue
 	}
 
 	mapped := MappedPoint{
@@ -251,24 +304,20 @@ func (r *Registry) Map(point Point) (MappedPoint, bool) {
 	switch mapping.GaugeType {
 	case GaugeInt:
 		scaled, ok := scaledIntValue(point.Value, mapping.Scale)
-		if !ok {
-			return MappedPoint{}, false
+		if !ok || (monotonicSum && scaled < 0) {
+			return MappedPoint{}, MappingInvalidValue
 		}
 		mapped.IntValue = scaled
 	case GaugeDouble:
-		numeric, ok := numericValue(point.Value)
-		if !ok {
-			return MappedPoint{}, false
-		}
 		scaled := numeric * mapping.Scale
-		if math.IsNaN(scaled) || math.IsInf(scaled, 0) {
-			return MappedPoint{}, false
+		if math.IsNaN(scaled) || math.IsInf(scaled, 0) || (monotonicSum && scaled < 0) {
+			return MappedPoint{}, MappingInvalidValue
 		}
 		mapped.DoubleValue = scaled
 	default:
-		return MappedPoint{}, false
+		return MappedPoint{}, MappingInvalidValue
 	}
-	return mapped, true
+	return mapped, MappingMapped
 }
 
 // MappingStats summarizes explicit registry matching for one notification.
@@ -294,14 +343,44 @@ func (r *Registry) MapNotification(notification DecodedNotification) (CacheNotif
 		out.Deletes[i] = deleted.Clone()
 	}
 	stats := MappingStats{}
-	for i := range notification.Updates {
-		mapped, ok := r.Map(notification.Updates[i])
-		if !ok {
+	semanticInvalid := false
+	for i := range notification.Undecodable {
+		series, err := notification.Undecodable[i].SplitLeaf()
+		if err != nil {
+			continue
+		}
+		_, status := r.MapWithStatus(Point{Series: series})
+		if status != MappingUnmatched {
 			stats.Unmapped++
+		}
+		switch status {
+		case MappingInvalidValue:
+			out.Invalidates = append(out.Invalidates, notification.Undecodable[i].Clone())
+			semanticInvalid = true
+		case MappingInvalidIdentity:
+			semanticInvalid = true
+		}
+	}
+	for i := range notification.Updates {
+		mapped, status := r.MapWithStatus(notification.Updates[i])
+		if status != MappingMapped {
+			stats.Unmapped++
+			if status == MappingInvalidValue {
+				out.Invalidates = append(out.Invalidates, notification.Updates[i].Series.Path())
+			}
+			if status == MappingInvalidValue || status == MappingInvalidIdentity {
+				semanticInvalid = true
+			}
 			continue
 		}
 		out.Updates = append(out.Updates, mapped)
 		stats.Mapped++
+	}
+	if notification.Atomic && semanticInvalid {
+		out = CacheNotification{
+			Timestamp:   notification.Timestamp,
+			Invalidates: []Path{notification.Prefix.Clone()},
+		}
 	}
 	return out, stats
 }
@@ -384,6 +463,15 @@ func validateMapping(mapping Mapping) error {
 	if mapping.Scale == 0 || math.IsNaN(mapping.Scale) || math.IsInf(mapping.Scale, 0) {
 		return errors.New("mapping scale must be finite and non-zero")
 	}
+	if mapping.SourceBounds != nil {
+		if math.IsNaN(mapping.SourceBounds.Min) || math.IsInf(mapping.SourceBounds.Min, 0) ||
+			math.IsNaN(mapping.SourceBounds.Max) || math.IsInf(mapping.SourceBounds.Max, 0) {
+			return errors.New("mapping source bounds must be finite")
+		}
+		if mapping.SourceBounds.Min > mapping.SourceBounds.Max {
+			return errors.New("mapping source minimum cannot exceed maximum")
+		}
+	}
 	if mapping.GaugeType != GaugeInt && mapping.GaugeType != GaugeDouble {
 		return fmt.Errorf("gauge type must be %q or %q", GaugeInt, GaugeDouble)
 	}
@@ -392,6 +480,9 @@ func validateMapping(mapping Mapping) error {
 	}
 	if mapping.MetricType == MetricGauge && mapping.Monotonic {
 		return errors.New("gauge mappings cannot be monotonic")
+	}
+	if mapping.MetricType == MetricSum && mapping.Monotonic && mapping.Scale < 0 {
+		return errors.New("monotonic sum mapping scale must be positive")
 	}
 	elements := make(map[string]struct{}, len(mapping.Source.Elements))
 	for _, elem := range mapping.Source.Elements {
@@ -478,6 +569,36 @@ func numericValue(value Value) (float64, bool) {
 		return double, true
 	default:
 		return 0, false
+	}
+}
+
+func validMonotonicSumSource(value Value) bool {
+	switch value.Kind {
+	case ValueInt:
+		return value.Int >= 0
+	case ValueUint:
+		return true
+	case ValueDouble:
+		return !math.IsNaN(value.Double) && !math.IsInf(value.Double, 0) && value.Double >= 0
+	case ValueString:
+		// RFC 7951 represents uint64/counter64 leaves as strings. Require the
+		// YANG unsigned-integer lexical form: an optional positive sign followed
+		// by decimal digits. Leading zeroes are valid in an instance encoding;
+		// float, exponent, negative-sign, and whitespace spellings are not.
+		text := strings.TrimPrefix(value.String, "+")
+		if text == "" {
+			return false
+		}
+		for index := range len(text) {
+			if text[index] < '0' || text[index] > '9' {
+				return false
+			}
+		}
+		_, err := strconv.ParseUint(text, 10, 64)
+		return err == nil
+	default:
+		// In particular, boolean presence/state leaves are not counter samples.
+		return false
 	}
 }
 

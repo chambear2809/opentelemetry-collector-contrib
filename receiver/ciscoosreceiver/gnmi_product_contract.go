@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -15,6 +16,8 @@ import (
 )
 
 const (
+	gnmiProductCatalyst9300 = "catalyst_9300"
+	gnmiProductCatalyst9500 = "catalyst_9500"
 	gnmiProductCatalyst9800 = "catalyst_9800"
 	gnmiProductASR9000      = "asr_9000"
 	gnmiProductNCS5500      = "ncs_5500"
@@ -25,6 +28,9 @@ const (
 	gnmiReleaseTrainIOSXR244  = "24.4"
 	gnmiReleaseTrainNXOS106   = "10.6"
 	gnmiReleaseTrainNXOS105   = "10.5"
+
+	gnmiIOSXEBootModeInstall            = "install"
+	gnmiReviewedIOSXESwitchRelease17181 = "17.18.1"
 )
 
 type gnmiProductContractKey struct {
@@ -32,7 +38,7 @@ type gnmiProductContractKey struct {
 	ReleaseTrain string
 }
 
-// gnmiSoftwareVersion is the canonical build identity produced by a strict
+// gnmiSoftwareVersion is the canonical public-release identity produced by a strict
 // OS-family parser. Train remains populated for syntactically valid versions
 // outside a contract's accepted train so live preflight can distinguish a
 // release mismatch from malformed identity.
@@ -58,17 +64,55 @@ type gnmiRequestPolicy struct {
 
 type gnmiVersionParser func(string) (gnmiSoftwareVersion, error)
 
-// gnmiProductContract is the single internal authority for a qualified Cisco
-// product and release train. Catalog maps and slices are immutable after
-// package initialization.
+// gnmiModelDataContract identifies each catalog representation that resolves
+// to one reviewed YANG module. IOS XE implementations have historically
+// advertised either the YANG revision date or the module semantic version in
+// ModelData.version, so both exact representations are retained where the
+// published module proves that they identify the same schema.
+type gnmiModelDataContract struct {
+	Organization string
+	Versions     []string
+}
+
+// gnmiProductContract is the single internal authority for an implemented Cisco
+// product and release train. Physical-device qualification is tracked
+// separately. Catalog maps and slices are immutable after package initialization.
 type gnmiProductContract struct {
 	Product           string
 	ReleaseTrain      string
 	OSFamily          string
 	ChassisPattern    *regexp.Regexp
 	ApprovedEncodings []gnmipb.Encoding
-	IdentityProbes    []gnmiIdentityProbe
-	RequestPolicy     gnmiRequestPolicy
+	// ApprovedGNMIVersions is empty for legacy contracts that predate protocol
+	// version qualification. New contracts must pin every version proven on
+	// device because Capabilities is the only protocol-level preflight.
+	ApprovedGNMIVersions []string
+	// ApprovedSoftwareVersions is empty for legacy train-wide contracts. New
+	// switch contracts enumerate canonical public releases whose exact schema
+	// set has been reviewed; physical build/topology qualification is a
+	// separate gate.
+	ApprovedSoftwareVersions     []string
+	CanonicalizeJSONIETFPathKeys bool
+	// RequiredModelData pins the Capabilities catalog tuple for every reviewed
+	// model used by the built-in contract. This closes the In-Service Model
+	// Update boundary that a base IOS XE release check alone cannot establish.
+	// When this map is non-empty, it is also the complete model allowlist for
+	// the contract: a custom stream cannot weaken tuple admission by naming an
+	// unreviewed module.
+	RequiredModelData map[string]gnmiModelDataContract
+	// RequiresExplicitUnqualifiedOptIn prevents a contract without complete
+	// retained physical-device evidence from being enabled accidentally. Keep
+	// this contract-wide gate until admission can consult a granular model,
+	// exact-build, topology, and profile qualification registry; one successful
+	// row must never qualify the complete allowlist and train.
+	RequiresExplicitUnqualifiedOptIn bool
+	// RequiredIOSXEBootMode is empty when the contract has no boot-mode
+	// boundary. Catalyst switch contracts require INSTALL mode because the
+	// current-version identity semantics have not been qualified in BUNDLE
+	// mode.
+	RequiredIOSXEBootMode string
+	IdentityProbes        []gnmiIdentityProbe
+	RequestPolicy         gnmiRequestPolicy
 
 	profiles      map[string]builtinGNMIProfileDefinition
 	versionParser gnmiVersionParser
@@ -82,38 +126,87 @@ var (
 	gnmiYANGIdentifierPattern  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*$`)
 )
 
-var gnmiProductContracts = map[gnmiProductContractKey]*gnmiProductContract{
-	{Product: gnmiProductCatalyst9800, ReleaseTrain: gnmiReleaseTrainIOSXE1718}: {
-		Product:        gnmiProductCatalyst9800,
-		ReleaseTrain:   gnmiReleaseTrainIOSXE1718,
-		OSFamily:       gnmiPlatformIOSXE,
-		ChassisPattern: regexp.MustCompile(`^(?:C9800-|CAT9800-)[A-Z0-9][A-Z0-9._-]*$`),
-		ApprovedEncodings: []gnmipb.Encoding{
-			gnmipb.Encoding_JSON_IETF,
-			gnmipb.Encoding_JSON,
-		},
-		IdentityProbes: []gnmiIdentityProbe{
-			{
-				Name:         "ios_xe_hardware_inventory",
-				Model:        "Cisco-IOS-XE-device-hardware-oper",
-				PrefixOrigin: builtinGNMIOriginRFC7951,
-				Paths: []sharedGNMIPath{{
-					Path: "Cisco-IOS-XE-device-hardware-oper:device-hardware-data/device-hardware/device-inventory",
-				}},
-			},
-			{
-				Name:         "ios_xe_current_install_version",
-				Model:        "Cisco-IOS-XE-install-oper",
-				PrefixOrigin: builtinGNMIOriginRFC7951,
-				Paths: []sharedGNMIPath{{
-					Path: "Cisco-IOS-XE-install-oper:install-oper-data/install-location-information/install-version-info",
-				}},
-			},
-		},
-		RequestPolicy: gnmiRequestPolicy{UsePathPrefix: true, StreamOnly: true, AllowWildcards: true},
-		profiles:      iosXEBuiltinGNMIProfileCatalog,
-		versionParser: parseIOSXESoftwareVersion,
+var iosXE17181ModelDataContract = map[string]gnmiModelDataContract{
+	"Cisco-IOS-XE-device-hardware-oper": {
+		Organization: "Cisco Systems, Inc.",
+		Versions:     []string{"2025-03-01", "1.12.0"},
 	},
+	"Cisco-IOS-XE-install-oper": {
+		Organization: "Cisco Systems, Inc.",
+		Versions:     []string{"2025-07-01", "2.1.0"},
+	},
+	"Cisco-IOS-XE-platform-software-oper": {
+		Organization: "Cisco Systems, Inc.",
+		Versions:     []string{"2025-07-01", "3.7.1"},
+	},
+	"Cisco-IOS-XE-process-cpu-oper": {
+		Organization: "Cisco Systems, Inc.",
+		Versions:     []string{"2022-11-01", "1.3.0"},
+	},
+	"Cisco-IOS-XE-transceiver-oper": {
+		Organization: "Cisco Systems, Inc.",
+		Versions:     []string{"2025-03-01", "1.7.0"},
+	},
+	"openconfig-interfaces": {
+		Organization: "OpenConfig working group",
+		Versions:     []string{"2018-01-05", "2.3.0"},
+	},
+	"openconfig-system": {
+		Organization: "OpenConfig working group",
+		Versions:     []string{"2021-06-16", "0.10.1"},
+	},
+}
+
+var supportedGNMIProducts = []string{
+	gnmiProductCatalyst9300,
+	gnmiProductCatalyst9500,
+	gnmiProductCatalyst9800,
+	gnmiProductASR9000,
+	gnmiProductNCS5500,
+	gnmiProductNexus9000,
+	gnmiProductNexus3500,
+}
+
+var gnmiProductContracts = map[gnmiProductContractKey]*gnmiProductContract{
+	{Product: gnmiProductCatalyst9300, ReleaseTrain: gnmiReleaseTrainIOSXE1718}: newIOSXEGNMIProductContract(
+		gnmiProductCatalyst9300,
+		`^(?:C9300X-(?:48HX|48TX|48HXN|24HX|12Y|24Y)|C9300-(?:24T|48T|24P|48P|24U|48U|24UX|48UXM|48UN|24UB|24UXB|48UB|24H|48H|24S|48S)|C9300L-(?:24T-4G|24T-4X|48T-4G|48T-4X|24P-4G|24P-4X|48P-4G|48P-4X|48PF-4G|48PF-4X|24UXG-4X|24UXG-2Q|48UXG-4X|48UXG-2Q))$`,
+		[]gnmipb.Encoding{gnmipb.Encoding_JSON_IETF},
+		[]string{"0.4.0"},
+		[]string{gnmiReviewedIOSXESwitchRelease17181},
+		iosXE17181ModelDataContract,
+		true,
+		true,
+		gnmiIOSXEBootModeInstall,
+		gnmiRequestPolicy{UsePathPrefix: true, StreamOnly: true, ConservativeSampleOnly: true},
+		iosXESwitchBuiltinGNMIProfileCatalog,
+	),
+	{Product: gnmiProductCatalyst9500, ReleaseTrain: gnmiReleaseTrainIOSXE1718}: newIOSXEGNMIProductContract(
+		gnmiProductCatalyst9500,
+		`^(?:C9500-(?:12Q|24Q|40X|16X|32C|32QC|48Y4C|24Y4C)|C9500X-(?:28C8D|60L4D))$`,
+		[]gnmipb.Encoding{gnmipb.Encoding_JSON_IETF},
+		[]string{"0.4.0"},
+		[]string{gnmiReviewedIOSXESwitchRelease17181},
+		iosXE17181ModelDataContract,
+		true,
+		true,
+		gnmiIOSXEBootModeInstall,
+		gnmiRequestPolicy{UsePathPrefix: true, StreamOnly: true, ConservativeSampleOnly: true},
+		iosXESwitchBuiltinGNMIProfileCatalog,
+	),
+	{Product: gnmiProductCatalyst9800, ReleaseTrain: gnmiReleaseTrainIOSXE1718}: newIOSXEGNMIProductContract(
+		gnmiProductCatalyst9800,
+		`^(?:C9800-|CAT9800-)[A-Z0-9][A-Z0-9._-]*$`,
+		[]gnmipb.Encoding{gnmipb.Encoding_JSON_IETF, gnmipb.Encoding_JSON},
+		nil,
+		nil,
+		nil,
+		false,
+		false,
+		"",
+		gnmiRequestPolicy{UsePathPrefix: true, StreamOnly: true, AllowWildcards: true},
+		iosXEBuiltinGNMIProfileCatalog,
+	),
 	{Product: gnmiProductASR9000, ReleaseTrain: gnmiReleaseTrainIOSXR244}: {
 		Product:        gnmiProductASR9000,
 		ReleaseTrain:   gnmiReleaseTrainIOSXR244,
@@ -190,20 +283,80 @@ var gnmiProductContracts = map[gnmiProductContractKey]*gnmiProductContract{
 	},
 }
 
+func newIOSXEGNMIProductContract(
+	product string,
+	chassisPattern string,
+	approvedEncodings []gnmipb.Encoding,
+	approvedGNMIVersions []string,
+	approvedSoftwareVersions []string,
+	requiredModelData map[string]gnmiModelDataContract,
+	canonicalizeJSONIETFPathKeys bool,
+	requiresExplicitUnqualifiedOptIn bool,
+	requiredIOSXEBootMode string,
+	requestPolicy gnmiRequestPolicy,
+	profiles map[string]builtinGNMIProfileDefinition,
+) *gnmiProductContract {
+	installIdentityPaths := []sharedGNMIPath{{
+		Path: "Cisco-IOS-XE-install-oper:install-oper-data/install-location-information/install-version-info",
+	}}
+	if requiredIOSXEBootMode != "" {
+		installIdentityPaths = append(installIdentityPaths, sharedGNMIPath{
+			Path: "Cisco-IOS-XE-install-oper:install-oper-data/install-location-information/oper-state/boot-mode",
+		})
+	}
+	return &gnmiProductContract{
+		Product:                          product,
+		ReleaseTrain:                     gnmiReleaseTrainIOSXE1718,
+		OSFamily:                         gnmiPlatformIOSXE,
+		ChassisPattern:                   regexp.MustCompile(chassisPattern),
+		ApprovedEncodings:                append([]gnmipb.Encoding(nil), approvedEncodings...),
+		ApprovedGNMIVersions:             append([]string(nil), approvedGNMIVersions...),
+		ApprovedSoftwareVersions:         append([]string(nil), approvedSoftwareVersions...),
+		RequiredModelData:                cloneGNMIModelDataContract(requiredModelData),
+		CanonicalizeJSONIETFPathKeys:     canonicalizeJSONIETFPathKeys,
+		RequiresExplicitUnqualifiedOptIn: requiresExplicitUnqualifiedOptIn,
+		RequiredIOSXEBootMode:            requiredIOSXEBootMode,
+		IdentityProbes: []gnmiIdentityProbe{
+			{
+				Name:         "ios_xe_hardware_inventory",
+				Model:        "Cisco-IOS-XE-device-hardware-oper",
+				PrefixOrigin: builtinGNMIOriginRFC7951,
+				Paths: []sharedGNMIPath{{
+					Path: "Cisco-IOS-XE-device-hardware-oper:device-hardware-data/device-hardware/device-inventory",
+				}},
+			},
+			{
+				Name:         "ios_xe_current_install_version",
+				Model:        "Cisco-IOS-XE-install-oper",
+				PrefixOrigin: builtinGNMIOriginRFC7951,
+				Paths:        installIdentityPaths,
+			},
+		},
+		RequestPolicy: requestPolicy,
+		profiles:      profiles,
+		versionParser: parseIOSXESoftwareVersion,
+	}
+}
+
+func cloneGNMIModelDataContract(source map[string]gnmiModelDataContract) map[string]gnmiModelDataContract {
+	if len(source) == 0 {
+		return nil
+	}
+	cloned := make(map[string]gnmiModelDataContract, len(source))
+	for name, model := range source {
+		model.Versions = append([]string(nil), model.Versions...)
+		cloned[name] = model
+	}
+	return cloned
+}
+
 func resolveGNMIProductContract(product, softwareVersion string) (*gnmiProductContract, gnmiSoftwareVersion, error) {
 	if strings.EqualFold(strings.TrimSpace(product), "sonic") || strings.EqualFold(strings.TrimSpace(product), "cisco_sonic") {
-		return nil, gnmiSoftwareVersion{}, errors.New("Cisco SONiC has no qualified gNMI product contract")
+		return nil, gnmiSoftwareVersion{}, errors.New("Cisco SONiC has no implemented gNMI product contract")
 	}
 	definition, ok := gnmiProductDefinition(product)
 	if !ok {
-		return nil, gnmiSoftwareVersion{}, fmt.Errorf(
-			"product must be one of %s, %s, %s, %s, or %s",
-			gnmiProductCatalyst9800,
-			gnmiProductASR9000,
-			gnmiProductNCS5500,
-			gnmiProductNexus9000,
-			gnmiProductNexus3500,
-		)
+		return nil, gnmiSoftwareVersion{}, fmt.Errorf("product must be one of %s", strings.Join(supportedGNMIProducts, ", "))
 	}
 	if softwareVersion == "" {
 		return nil, gnmiSoftwareVersion{}, errorsForMissingGNMISoftwareVersion(product)
@@ -222,11 +375,22 @@ func resolveGNMIProductContract(product, softwareVersion string) (*gnmiProductCo
 			definition.releaseTrain,
 		)
 	}
+	if len(contract.ApprovedSoftwareVersions) > 0 {
+		if !slices.Contains(contract.ApprovedSoftwareVersions, parsed.Canonical) {
+			return nil, parsed, fmt.Errorf(
+				"software_version %q canonicalizes to %s, but product %q permits only reviewed release(s): %s",
+				softwareVersion,
+				parsed.Canonical,
+				product,
+				strings.Join(contract.ApprovedSoftwareVersions, ", "),
+			)
+		}
+	}
 	return contract, parsed, nil
 }
 
 func errorsForMissingGNMISoftwareVersion(product string) error {
-	return fmt.Errorf("software_version is required for product %q and must identify the exact expected running build", product)
+	return fmt.Errorf("software_version is required for product %q and must identify the expected canonical public release", product)
 }
 
 func gnmiProductContractForTarget(target GNMITargetConfig) (*gnmiProductContract, gnmiSoftwareVersion, error) {
@@ -254,7 +418,7 @@ type gnmiProductDefinitionEntry struct {
 
 func gnmiProductDefinition(product string) (gnmiProductDefinitionEntry, bool) {
 	switch product {
-	case gnmiProductCatalyst9800:
+	case gnmiProductCatalyst9300, gnmiProductCatalyst9500, gnmiProductCatalyst9800:
 		return gnmiProductDefinitionEntry{releaseTrain: gnmiReleaseTrainIOSXE1718, parser: parseIOSXESoftwareVersion}, true
 	case gnmiProductASR9000, gnmiProductNCS5500:
 		return gnmiProductDefinitionEntry{releaseTrain: gnmiReleaseTrainIOSXR244, parser: parseIOSXRSoftwareVersion}, true
@@ -416,6 +580,22 @@ func requiredGNMIModels(contract *gnmiProductContract, streams []sharedGNMIStrea
 	}
 	sort.Strings(out)
 	return out
+}
+
+// unpinnedGNMIRequiredModels returns required models that escape a contract's
+// exact ModelData tuple boundary. A nil catalog preserves the legacy name-only
+// behavior; a non-empty catalog is deliberately a closed allowlist.
+func unpinnedGNMIRequiredModels(contract *gnmiProductContract, streams []sharedGNMIStream) []string {
+	if contract == nil || len(contract.RequiredModelData) == 0 {
+		return nil
+	}
+	unpinned := make([]string, 0)
+	for _, model := range requiredGNMIModels(contract, streams) {
+		if _, approved := contract.RequiredModelData[model]; !approved {
+			unpinned = append(unpinned, model)
+		}
+	}
+	return unpinned
 }
 
 func splitGNMIQualifiedName(name string) (string, bool) {

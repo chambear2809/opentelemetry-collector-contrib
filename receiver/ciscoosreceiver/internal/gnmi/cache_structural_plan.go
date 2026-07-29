@@ -134,7 +134,7 @@ func (node *tombstonePathIndexNode) isStaleForStructuralPlan(
 	if !budget.consume() {
 		return false, false
 	}
-	if node.tombstoneKey != "" && !timestamp.After(node.tombstoneTimestamp) {
+	if node.tombstoneKey != "" && stateBarrierRejects(node.tombstoneTimestamp, node.tombstoneAllowEqual, timestamp) {
 		return true, true
 	}
 	if index == len(elements) {
@@ -152,6 +152,84 @@ func (node *tombstonePathIndexNode) isStaleForStructuralPlan(
 		element.Keys,
 		func(child *tombstonePathIndexNode) (bool, bool) {
 			return child.isStaleForStructuralPlan(elements, index+1, timestamp, budget)
+		},
+		budget,
+	)
+}
+
+// coversWatermarkForStructuralPlan reports whether an ancestor barrier already
+// carries an equal-or-newer freshness boundary. It deliberately ignores the
+// barrier's equal-timestamp admission policy: a soft child watermark at the
+// same timestamp cannot reject any update that a soft ancestor admits, so
+// retaining it would only consume bounded cache state.
+func (idx *tombstonePrefixIndex) coversWatermarkForStructuralPlan(
+	path Path,
+	timestamp time.Time,
+	budget *cacheStructuralPlanningBudget,
+) (bool, bool) {
+	return idx.coversWatermarkForOwnerForStructuralPlan("", path, timestamp, budget)
+}
+
+func (idx *tombstonePrefixIndex) coversWatermarkForOwnerForStructuralPlan(
+	ownerID string,
+	path Path,
+	timestamp time.Time,
+	budget *cacheStructuralPlanningBudget,
+) (bool, bool) {
+	for _, targetName := range exactAndWildcard(path.Target) {
+		for _, pathTarget := range exactAndWildcard(path.PathTarget) {
+			if !budget.consume() {
+				return false, false
+			}
+			target := idx.targets[tombstoneOwnerScopeKey(ownerID, targetName, pathTarget)]
+			if target == nil {
+				continue
+			}
+			for _, origin := range exactAndWildcard(path.Origin) {
+				if !budget.consume() {
+					return false, false
+				}
+				root := target.origins[origin]
+				if root == nil {
+					continue
+				}
+				covered, complete := root.coversWatermarkForStructuralPlan(path.Elements, 0, timestamp, budget)
+				if !complete || covered {
+					return covered, complete
+				}
+			}
+		}
+	}
+	return false, true
+}
+
+func (node *tombstonePathIndexNode) coversWatermarkForStructuralPlan(
+	elements []PathElem,
+	index int,
+	timestamp time.Time,
+	budget *cacheStructuralPlanningBudget,
+) (bool, bool) {
+	if !budget.consume() {
+		return false, false
+	}
+	if node.tombstoneKey != "" && !node.tombstoneTimestamp.Before(timestamp) {
+		return true, true
+	}
+	if index == len(elements) {
+		return false, true
+	}
+	element := elements[index]
+	if !budget.consume() {
+		return false, false
+	}
+	elementIndex := node.children[element.Name]
+	if elementIndex == nil {
+		return false, true
+	}
+	return elementIndex.forEachSubsetForStructuralPlan(
+		element.Keys,
+		func(child *tombstonePathIndexNode) (bool, bool) {
+			return child.coversWatermarkForStructuralPlan(elements, index+1, timestamp, budget)
 		},
 		budget,
 	)

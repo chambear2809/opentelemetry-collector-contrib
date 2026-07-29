@@ -88,6 +88,12 @@ func (t *gnmiTelemetry) duplicates(ctx context.Context, target, profile string, 
 	}
 }
 
+func (t *gnmiTelemetry) outOfOrder(ctx context.Context, target, profile string, count int) {
+	if t != nil && t.builder != nil && count > 0 {
+		t.builder.CiscoosreceiverGnmiOutOfOrderUpdates.Add(ctx, int64(count), metric.WithAttributes(gnmiProfileAttributes(target, profile)...))
+	}
+}
+
 func (t *gnmiTelemetry) decodeErrors(ctx context.Context, target, profile string, count int) {
 	if t != nil && t.builder != nil && count > 0 {
 		t.builder.CiscoosreceiverGnmiDecodeErrors.Add(ctx, int64(count), metric.WithAttributes(gnmiProfileAttributes(target, profile)...))

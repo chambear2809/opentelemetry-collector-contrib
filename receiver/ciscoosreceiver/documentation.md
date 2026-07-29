@@ -242,7 +242,7 @@ RSSI for a targeted wireless client.
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
-| dBm | Gauge | Double | Development |
+| dB{mW} | Gauge | Double | Development |
 
 ### catalyst_center.client.wireless.snr
 
@@ -558,7 +558,7 @@ Device availability (1 = up, 0 = down)
 
 ### cisco.interface.admin.status
 
-Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)
+Cisco interface administrative status (1 = administratively enabled, 0 = not administratively enabled)
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
@@ -810,7 +810,7 @@ Received optical power
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
-| dB[mW] | Gauge | Double | Development |
+| dB{mW} | Gauge | Double | Development |
 
 #### Attributes
 
@@ -900,7 +900,7 @@ Transmitted optical power
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
-| dB[mW] | Gauge | Double | Development |
+| dB{mW} | Gauge | Double | Development |
 
 #### Attributes
 
@@ -1134,7 +1134,7 @@ Client RSSI.
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
-| dBm | Gauge | Double | Development |
+| dB{mW} | Gauge | Double | Development |
 
 ### cisco.wlc.client.wireless.snr
 
@@ -1294,7 +1294,7 @@ RF noise floor.
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
-| dBm | Gauge | Double | Development |
+| dB{mW} | Gauge | Double | Development |
 
 ### cisco.wlc.ssid.channel.utilization
 
@@ -1806,7 +1806,7 @@ Mean fan speed from Intersight telemetry GroupBy.
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
-| rpm | Gauge | Double | Development |
+| 1/min | Gauge | Double | Development |
 
 ### intersight.ucs.fan.speed_ratio
 
@@ -2094,7 +2094,7 @@ Transceiver receive optical power.
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
-| dBm | Gauge | Double | Development |
+| dB{mW} | Gauge | Double | Development |
 
 ### intersight.ucs.signal_power.transmit
 
@@ -2102,7 +2102,7 @@ Transceiver transmit optical power.
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
-| dBm | Gauge | Double | Development |
+| dB{mW} | Gauge | Double | Development |
 
 ### intersight.ucs.temperature
 
@@ -2638,7 +2638,7 @@ Cellular uplink reference-signal received power.
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
-| dBm | Gauge | Double | Development |
+| dB{mW} | Gauge | Double | Development |
 
 ### meraki.uplink.cellular.signal.rsrq
 
@@ -3328,7 +3328,7 @@ The number of errors encountered
 
 ### system.network.interface.status
 
-Interface operational status (1 = up, 0 = down)
+Interface operational status (1 = up, 0 = not up)
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
@@ -3398,6 +3398,7 @@ The time the Cisco device has been running
 
 | Name | Description | Values | Enabled | Semantic Convention | Stability |
 | ---- | ----------- | ------ | ------- | ------------------- | --------- |
+| cisco.os.boot_mode | Verified IOS XE boot mode when required by the product contract | Any Str | true | - | - |
 | cisco.os.name | Normalized Cisco operating-system family | Any Str | true | - | - |
 | cisco.platform.family | Legacy Cisco platform or operating-system-family compatibility alias whose value depends on the source | Any Str | true | - | - |
 | cisco.product.family | Verified canonical Cisco product family | Any Str | true | - | - |
@@ -3409,7 +3410,7 @@ The time the Cisco device has been running
 | host.name | Configured name of the Cisco target | Any Str | true | - | - |
 | hw.type | Type of the physical hardware | Any Str | true | - | - |
 | os.name | Human-readable Cisco operating-system name | Any Str | true | - | - |
-| os.version | Device-reported software version; shared gNMI emits the exact live-verified running build | Any Str | true | - | - |
+| os.version | Device-reported software version; shared gNMI emits the canonical live-verified public release | Any Str | true | - | - |
 
 ## Internal Telemetry
 
@@ -3548,7 +3549,7 @@ Number of duplicate gNMI leaf updates suppressed by the state cache
 
 ### otelcol_ciscoosreceiver_gnmi_invalid_timestamps
 
-Number of invalid Cisco timestamps replaced with receipt time
+Number of invalid or excessively future-dated Cisco timestamps rejected before cache mutation
 
 | Unit | Metric Type | Value Type | Monotonic | Stability |
 | ---- | ----------- | ---------- | --------- | --------- |
@@ -3576,9 +3577,24 @@ Unix time of the most recent successfully decoded gNMI notification
 | cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
 | cisco.gnmi.profile | gNMI subscription profile name | Any Str | - |
 
+### otelcol_ciscoosreceiver_gnmi_out_of_order_updates
+
+Number of stale gNMI cache operations suppressed by source timestamp ordering
+
+| Unit | Metric Type | Value Type | Monotonic | Stability |
+| ---- | ----------- | ---------- | --------- | --------- |
+| {update} | Sum | Int | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Semantic Convention |
+| ---- | ----------- | ------ | ------------------- |
+| cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
+| cisco.gnmi.profile | gNMI subscription profile name | Any Str | - |
+
 ### otelcol_ciscoosreceiver_gnmi_preflight_failures
 
-Number of terminal gNMI product qualification failures. This metric emits only identity_missing, identity_ambiguous, product_mismatch, release_mismatch, missing_model, unsupported_encoding, or malformed_identity; profile-degradation reasons in the shared attribute catalog are not emitted here.
+Number of terminal gNMI product-contract preflight compatibility failures. This metric emits only identity_missing, identity_ambiguous, product_mismatch, release_mismatch, missing_model, unsupported_model_version, unsupported_encoding, unsupported_gnmi_version, unsupported_boot_mode, or malformed_identity; profile-degradation reasons in the shared attribute catalog are not emitted here.
 
 | Unit | Metric Type | Value Type | Monotonic | Stability |
 | ---- | ----------- | ---------- | --------- | --------- |
@@ -3589,11 +3605,11 @@ Number of terminal gNMI product qualification failures. This metric emits only i
 | Name | Description | Values | Semantic Convention |
 | ---- | ----------- | ------ | ------------------- |
 | cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
-| cisco.gnmi.reason | Bounded reason for a gNMI health or degradation event | Str: ``bisection_limit``, ``cache_limit``, ``identity_ambiguous``, ``identity_missing``, ``incompatible_path_group``, ``malformed_identity``, ``malformed_update``, ``missing_model``, ``product_mismatch``, ``release_mismatch``, ``unsupported_encoding``, ``unsupported_path``, ``unsupported_request_options`` | - |
+| cisco.gnmi.reason | Bounded reason for a gNMI health or degradation event | Str: ``bisection_limit``, ``cache_limit``, ``identity_ambiguous``, ``identity_missing``, ``incompatible_path_group``, ``malformed_identity``, ``malformed_update``, ``missing_model``, ``product_mismatch``, ``release_mismatch``, ``unsupported_boot_mode``, ``unsupported_encoding``, ``unsupported_gnmi_version``, ``unsupported_model_version``, ``unsupported_path``, ``unsupported_request_options`` | - |
 
 ### otelcol_ciscoosreceiver_gnmi_product_verified
 
-Whether the gNMI target passed product, model, release, and capability verification
+Whether the gNMI target passed product, model, release, required boot-mode, and capability verification
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
@@ -3619,7 +3635,7 @@ Whether a gNMI profile is degraded (1 = degraded, 0 = healthy)
 | ---- | ----------- | ------ | ------------------- |
 | cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
 | cisco.gnmi.profile | gNMI subscription profile name | Any Str | - |
-| cisco.gnmi.reason | Bounded reason for a gNMI health or degradation event | Str: ``bisection_limit``, ``cache_limit``, ``identity_ambiguous``, ``identity_missing``, ``incompatible_path_group``, ``malformed_identity``, ``malformed_update``, ``missing_model``, ``product_mismatch``, ``release_mismatch``, ``unsupported_encoding``, ``unsupported_path``, ``unsupported_request_options`` | - |
+| cisco.gnmi.reason | Bounded reason for a gNMI health or degradation event | Str: ``bisection_limit``, ``cache_limit``, ``identity_ambiguous``, ``identity_missing``, ``incompatible_path_group``, ``malformed_identity``, ``malformed_update``, ``missing_model``, ``product_mismatch``, ``release_mismatch``, ``unsupported_boot_mode``, ``unsupported_encoding``, ``unsupported_gnmi_version``, ``unsupported_model_version``, ``unsupported_path``, ``unsupported_request_options`` | - |
 
 ### otelcol_ciscoosreceiver_gnmi_reconnects
 

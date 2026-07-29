@@ -55,7 +55,7 @@ const (
 	// One mapped NX optical series can retain one sensor identity plus one
 	// optical source, presence count, and attribute-map entry.
 	sharedGNMIAuxiliaryEntriesPerCachedSeries = 4
-	// sharedGNMIAuxiliaryRetainedBytes is independent from the 1.25 GiB cache
+	// sharedGNMIAuxiliaryRetainedBytes is independent from the 1.5 GiB cache
 	// ceiling. It bounds receiver-owned NX sensor and optical-presence state.
 	sharedGNMIAuxiliaryRetainedBytes int64 = 256 * 1024 * 1024
 
@@ -549,7 +549,10 @@ func (e *sharedGNMIUnsupportedError) Unwrap() error { return e.err }
 
 type sharedGNMIProfileStopError struct{ err error }
 
-var errSharedGNMINotificationIgnored = errors.New("gNMI notification was ignored before qualification progress")
+var (
+	errSharedGNMINotificationIgnored = errors.New("gNMI notification was ignored before qualification progress")
+	errSharedGNMIStaleIgnored        = errors.New("out-of-order gNMI notification was ignored before qualification progress")
+)
 
 func (e *sharedGNMIProfileStopError) Error() string { return e.err.Error() }
 func (e *sharedGNMIProfileStopError) Unwrap() error { return e.err }
@@ -917,6 +920,10 @@ func (r *sharedGNMIReceiver) serveTarget(ctx context.Context, target *sharedGNMI
 			)
 		}
 		return false, false, fmt.Errorf("capabilities: %w", err)
+	}
+	if validationErr := validateGNMIProtocolVersion(target.contract, capabilities); validationErr != nil {
+		r.responseAdmission.release(capabilities)
+		return false, false, validationErr
 	}
 	identityEncoding, identityEncodingAvailable := sharedGNMIIdentityEncoding(target.contract, capabilities)
 	if !identityEncodingAvailable {
@@ -1629,7 +1636,14 @@ func validateSharedGNMIProbeUpdate(
 	if target == nil || notification == nil {
 		return &sharedGNMIUnsupportedError{err: errors.New("gNMI diagnostic probe returned an empty update")}
 	}
-	decoded, _, err := internalgnmi.DecodeNotificationWithRegistry(target.config.Name, notification, time.Now(), stream.registry)
+	var err error
+	if target.contract != nil && target.contract.CanonicalizeJSONIETFPathKeys && stream.encoding == gnmipb.Encoding_JSON_IETF {
+		err = canonicalizeIOSXERFC7951JSONIETFWireNotificationKeys(notification)
+	}
+	var decoded internalgnmi.DecodedNotification
+	if err == nil {
+		decoded, _, err = internalgnmi.DecodeNotificationWithRegistry(target.config.Name, notification, time.Now(), stream.registry)
+	}
 	if err == nil && target.config.Platform == gnmiPlatformNXOS && stream.Optics {
 		err = normalizeNXNotificationPaths(&decoded)
 	}
@@ -1820,6 +1834,9 @@ func (r *sharedGNMIReceiver) handleSubscribeResponse(
 				r.markSharedGNMIStreamMalformed(ctx, target, stream)
 				return false, nil
 			}
+			if errors.Is(err, errSharedGNMIStaleIgnored) {
+				return false, nil
+			}
 			return false, err
 		}
 		if target.streamStopped(stream) {
@@ -1886,8 +1903,22 @@ func (r *sharedGNMIReceiver) processNotification(
 		return nil
 	}
 	receiptTime := time.Now()
+	if target.contract != nil && target.contract.CanonicalizeJSONIETFPathKeys && stream.encoding == gnmipb.Encoding_JSON_IETF {
+		if err := canonicalizeIOSXERFC7951JSONIETFWireNotificationKeys(notification); err != nil {
+			r.telemetry.decodeErrors(ctx, target.config.Name, stream.Profile, 1)
+			return errSharedGNMINotificationIgnored
+		}
+	}
 	decoded, decodeStats, err := internalgnmi.DecodeNotificationWithRegistry(target.config.Name, notification, receiptTime, stream.registry)
 	if err != nil {
+		r.telemetry.decodeErrors(ctx, target.config.Name, stream.Profile, 1)
+		return errSharedGNMINotificationIgnored
+	}
+	r.telemetry.invalidTimestamps(ctx, target.config.Name, stream.Profile, decodeStats.InvalidTimestamps)
+	if decodeStats.InvalidTimestamps > 0 {
+		// Receipt-time fallback is useful to keep decoding bounded, but it must
+		// never enter cache freshness ordering: a delayed malformed notification
+		// could otherwise overwrite valid device-time state.
 		r.telemetry.decodeErrors(ctx, target.config.Name, stream.Profile, 1)
 		return errSharedGNMINotificationIgnored
 	}
@@ -1907,9 +1938,12 @@ func (r *sharedGNMIReceiver) processNotification(
 		r.telemetry.decodeErrors(ctx, target.config.Name, stream.Profile, 1)
 		return errSharedGNMINotificationIgnored
 	}
-	normalizeGNMIStateValues(&decoded)
+	invalidatedPaths, malformedStatePath := normalizeGNMIStateValuesChecked(&decoded)
+	if malformedStatePath && !decoded.Atomic {
+		r.telemetry.decodeErrors(ctx, target.config.Name, stream.Profile, 1)
+		return errSharedGNMINotificationIgnored
+	}
 	r.telemetry.updates(ctx, target.config.Name, stream.Profile, len(decoded.Updates))
-	r.telemetry.invalidTimestamps(ctx, target.config.Name, stream.Profile, decodeStats.InvalidTimestamps)
 	for kind, count := range decodeStats.UnsupportedValueKinds {
 		r.telemetry.unsupportedValueKind(ctx, target.config.Name, stream.Profile, string(kind), count)
 	}
@@ -1919,16 +1953,56 @@ func (r *sharedGNMIReceiver) processNotification(
 		OwnerID: sharedGNMICacheOwnerID(stream),
 		Prefix:  decoded.Prefix, Timestamp: decoded.Timestamp, Atomic: decoded.Atomic, Deletes: decoded.Deletes,
 	}
+	for _, invalidated := range invalidatedPaths {
+		cacheNotification.Invalidates = append(cacheNotification.Invalidates, invalidated.Clone())
+	}
 	for _, touched := range decoded.Touched {
 		cacheNotification.Touched = append(cacheNotification.Touched, touched.Clone())
 	}
 	unmapped := decodeStats.UnmappedValues
+	semanticInvalidatedPaths := make(map[string]struct{}, len(invalidatedPaths))
+	for _, invalidated := range invalidatedPaths {
+		semanticInvalidatedPaths[invalidated.Key()] = struct{}{}
+	}
+	semanticInvalidValues := len(semanticInvalidatedPaths)
+	if malformedStatePath {
+		semanticInvalidValues++
+	}
+	for pathIndex := range decoded.Undecodable {
+		undecodable := decoded.Undecodable[pathIndex]
+		series, splitErr := undecodable.SplitLeaf()
+		if splitErr != nil {
+			continue
+		}
+		_, status := stream.registry.MapWithStatus(internalgnmi.Point{Series: series})
+		switch status {
+		case internalgnmi.MappingInvalidValue:
+			if _, exists := semanticInvalidatedPaths[undecodable.Key()]; !exists {
+				cacheNotification.Invalidates = append(cacheNotification.Invalidates, undecodable.Clone())
+				semanticInvalidatedPaths[undecodable.Key()] = struct{}{}
+				semanticInvalidValues++
+			}
+		case internalgnmi.MappingInvalidIdentity:
+			semanticInvalidValues++
+		}
+	}
 	for pointIndex := range decoded.Updates {
 		point := &decoded.Updates[pointIndex]
-		mapped, ok := stream.registry.Map(*point)
-		if !ok {
+		mapped, status := stream.registry.MapWithStatus(*point)
+		if status != internalgnmi.MappingMapped {
 			if !stream.HealthOnly {
 				unmapped++
+			}
+			switch status {
+			case internalgnmi.MappingInvalidValue:
+				invalidated := point.Series.Path()
+				if _, exists := semanticInvalidatedPaths[invalidated.Key()]; !exists {
+					cacheNotification.Invalidates = append(cacheNotification.Invalidates, invalidated)
+					semanticInvalidatedPaths[invalidated.Key()] = struct{}{}
+					semanticInvalidValues++
+				}
+			case internalgnmi.MappingInvalidIdentity:
+				semanticInvalidValues++
 			}
 			continue
 		}
@@ -1936,7 +2010,30 @@ func (r *sharedGNMIReceiver) processNotification(
 		cacheNotification.Updates = append(cacheNotification.Updates, mapped)
 	}
 	r.telemetry.unmapped(ctx, target.config.Name, stream.Profile, unmapped)
+	semanticRejected := semanticInvalidValues > 0
+	if semanticRejected {
+		r.telemetry.decodeErrors(ctx, target.config.Name, stream.Profile, semanticInvalidValues)
+	}
+	atomicSemanticInvalid := decoded.Atomic && semanticInvalidValues > 0
+	if atomicSemanticInvalid {
+		// An atomic notification is all-or-nothing. Withdraw the complete
+		// owner-scoped snapshot and retain a same-timestamp-correctable semantic
+		// watermark at its prefix; this blocks a delayed older atomic snapshot
+		// from resurrecting state while admitting a corrected redelivery.
+		cacheNotification = internalgnmi.CacheNotification{
+			OwnerID:     sharedGNMICacheOwnerID(stream),
+			Timestamp:   decoded.Timestamp,
+			Invalidates: []internalgnmi.Path{decoded.Prefix.Clone()},
+		}
+		if nxTransaction != nil {
+			nxTransaction.rollback()
+			nxTransaction = nil
+		}
+	}
 	if stream.HealthOnly {
+		if semanticRejected {
+			return errSharedGNMINotificationIgnored
+		}
 		r.telemetry.success(ctx, target.config.Name, stream.Profile, receiptTime)
 		return nil
 	}
@@ -1967,7 +2064,14 @@ func (r *sharedGNMIReceiver) processNotification(
 			nxTransaction = nil
 		}
 		r.telemetry.duplicates(ctx, target.config.Name, stream.Profile, result.Duplicates)
+		r.telemetry.outOfOrder(ctx, target.config.Name, stream.Profile, result.OutOfOrder)
 		r.recordTargetStateUtilization(ctx, target)
+		if result.OutOfOrder > 0 {
+			return errSharedGNMIStaleIgnored
+		}
+		if semanticRejected {
+			return errSharedGNMINotificationIgnored
+		}
 		r.telemetry.success(ctx, target.config.Name, stream.Profile, receiptTime)
 		return nil
 	}
@@ -2061,7 +2165,11 @@ func (r *sharedGNMIReceiver) processNotification(
 	}
 	target.stateMu.RUnlock()
 	r.telemetry.duplicates(ctx, target.config.Name, stream.Profile, result.Duplicates)
+	r.telemetry.outOfOrder(ctx, target.config.Name, stream.Profile, result.OutOfOrder)
 	r.recordTargetStateUtilization(ctx, target)
+	if semanticRejected {
+		return errSharedGNMINotificationIgnored
+	}
 	r.telemetry.success(ctx, target.config.Name, stream.Profile, receiptTime)
 	return nil
 }
@@ -2240,6 +2348,9 @@ func decorateSharedGNMIResources(metrics pmetric.Metrics, target GNMITargetConfi
 			attributes.PutStr("device.manufacturer", "Cisco")
 			attributes.PutStr("device.model.identifier", identity.ModelIdentifier)
 			attributes.PutStr("os.version", identity.SoftwareVersion)
+			if identity.BootMode != "" {
+				attributes.PutStr("cisco.os.boot_mode", identity.BootMode)
+			}
 		}
 		if osName != "" {
 			attributes.PutStr("os.name", osName)
@@ -2976,6 +3087,11 @@ func normalizeNXNotificationPaths(notification *internalgnmi.DecodedNotification
 			return err
 		}
 	}
+	for i := range notification.Undecodable {
+		if err := normalizeAndValidateNXDMEPath("undecodable value path", &notification.Undecodable[i]); err != nil {
+			return err
+		}
+	}
 	for i := range notification.Touched {
 		if err := normalizeAndValidateNXDMEPath("touched path", &notification.Touched[i]); err != nil {
 			return err
@@ -3082,6 +3198,14 @@ func preflightNXDMENormalization(notification internalgnmi.DecodedNotification) 
 		}
 		if err := validateNXDMEExpansion(notification.Updates[index].Series.Elements, sharedGNMIMaxSeriesElements); err != nil {
 			return fmt.Errorf("normalize NX DME update: %w", err)
+		}
+	}
+	for index := range notification.Undecodable {
+		if notification.Undecodable[index].Origin != builtinGNMIOriginDME {
+			continue
+		}
+		if err := validateNXDMEExpansion(notification.Undecodable[index].Elements, sharedGNMIMaxPathElements); err != nil {
+			return fmt.Errorf("normalize NX DME undecodable value path: %w", err)
 		}
 	}
 	for index := range notification.Touched {
@@ -3234,26 +3358,145 @@ func splitNXDMEElement(value string) []string {
 	return parts
 }
 
-func normalizeGNMIStateValues(notification *internalgnmi.DecodedNotification) {
+var gnmiStateEnumTokenReplacer = strings.NewReplacer("-", "_", " ", "_")
+
+func normalizeGNMIStateValues(notification *internalgnmi.DecodedNotification) []internalgnmi.Path {
+	invalidated, _ := normalizeGNMIStateValuesChecked(notification)
+	return invalidated
+}
+
+func normalizeGNMIStateValuesChecked(notification *internalgnmi.DecodedNotification) ([]internalgnmi.Path, bool) {
+	var invalidated []internalgnmi.Path
+	malformedStatePath := false
 	for i := range notification.Updates {
 		point := &notification.Updates[i]
+		leaf := normalizeGNMILeaf(point.Series.Leaf)
+		if leaf == "oper-status" || leaf == "admin-status" {
+			selector, governed, addressable := governedGNMIInterfaceStateSelector(point.Series, leaf)
+			if !governed {
+				continue
+			}
+			if !addressable {
+				// A missing canonical interface name cannot be converted into a
+				// safe selector and must not flow through the registry as an
+				// empty-cardinality status series. The caller ignores the whole
+				// notification so sibling updates remain transactional.
+				point.Value = internalgnmi.Value{}
+				malformedStatePath = true
+				continue
+			}
+			if point.Value.Kind == internalgnmi.ValueString {
+				if value, ok := normalizedGNMIStateBoolean(leaf, point.Value.String); ok {
+					point.Value = internalgnmi.BoolValue(value)
+					continue
+				}
+			}
+			// The governed interface status metrics are strictly binary. A
+			// malformed or future wire representation must not emit an
+			// arbitrary integer or leave a stale UP value in the cache.
+			point.Value = internalgnmi.Value{}
+			invalidated = append(invalidated, selector)
+			continue
+		}
 		if point.Value.Kind != internalgnmi.ValueString {
 			continue
 		}
-		switch normalizeGNMILeaf(point.Series.Leaf) {
-		case "oper-status", "admin-status", "present", "is-joined":
-			value := strings.TrimSpace(point.Value.String)
-			if separator := strings.LastIndexByte(value, ':'); separator >= 0 {
-				value = value[separator+1:]
-			}
-			switch strings.ToLower(value) {
-			case "up", "on", "true", "active", "enabled", "present", "joined", "ok":
-				point.Value = internalgnmi.BoolValue(true)
-			case "down", "off", "false", "inactive", "disabled", "absent", "not-present", "not joined", "failed":
-				point.Value = internalgnmi.BoolValue(false)
-			}
+		if value, ok := normalizedGNMIStateBoolean(leaf, point.Value.String); ok {
+			point.Value = internalgnmi.BoolValue(value)
 		}
 	}
+	return invalidated, malformedStatePath
+}
+
+func governedGNMIInterfaceStateSelector(
+	series internalgnmi.Series,
+	leaf string,
+) (internalgnmi.Path, bool, bool) {
+	if len(series.Elements) != 3 ||
+		series.Elements[1].Name != "interface" ||
+		series.Elements[2].Name != "state" {
+		return internalgnmi.Path{}, false, false
+	}
+	switch series.Origin {
+	case builtinGNMIOriginRFC7951:
+		if series.Elements[0].Name != "openconfig-interfaces:interfaces" {
+			return internalgnmi.Path{}, false, false
+		}
+	case "openconfig-interfaces", builtinGNMIOriginOpenConfig:
+		if series.Elements[0].Name != "interfaces" {
+			return internalgnmi.Path{}, false, false
+		}
+	default:
+		return internalgnmi.Path{}, false, false
+	}
+	name, addressable := series.Elements[1].Keys["name"]
+	if !addressable || name == "" {
+		return internalgnmi.Path{}, true, false
+	}
+	return internalgnmi.Path{
+		Target:     series.Target,
+		PathTarget: series.PathTarget,
+		Origin:     series.Origin,
+		Elements: []internalgnmi.PathElem{
+			{Name: series.Elements[0].Name},
+			{Name: series.Elements[1].Name, Keys: map[string]string{"name": name}},
+			{Name: series.Elements[2].Name},
+			{Name: leaf},
+		},
+	}, true, true
+}
+
+// normalizedGNMIStateBoolean applies leaf-specific enum contracts. In
+// particular, OpenConfig interface operational status is binary at the OTLP
+// boundary: UP is 1 and every other defined enum is 0. The caller rejects an
+// unknown interface enum so a future value cannot silently acquire an
+// incorrect meaning or leave a stale cached status.
+func normalizedGNMIStateBoolean(leaf, raw string) (bool, bool) {
+	value := strings.TrimSpace(raw)
+	if separator := strings.LastIndexByte(value, ':'); separator >= 0 {
+		if strings.IndexByte(value, ':') != separator {
+			return false, false
+		}
+		qualifier := value[:separator]
+		if (leaf == "oper-status" || leaf == "admin-status") && qualifier != "openconfig-interfaces" {
+			return false, false
+		}
+		value = value[separator+1:]
+	}
+	value = strings.ToUpper(strings.TrimSpace(value))
+	value = gnmiStateEnumTokenReplacer.Replace(value)
+
+	switch leaf {
+	case "oper-status":
+		switch value {
+		case "UP":
+			return true, true
+		case "DOWN", "TESTING", "UNKNOWN", "DORMANT", "NOT_PRESENT", "LOWER_LAYER_DOWN":
+			return false, true
+		}
+	case "admin-status":
+		switch value {
+		case "UP":
+			return true, true
+		case "DOWN", "TESTING":
+			return false, true
+		}
+	case "present":
+		switch value {
+		case "UP", "ON", "TRUE", "ACTIVE", "ENABLED", "PRESENT", "JOINED", "OK":
+			return true, true
+		case "DOWN", "OFF", "FALSE", "INACTIVE", "DISABLED", "ABSENT", "NOT_PRESENT", "NOT_JOINED", "FAILED":
+			return false, true
+		}
+	case "is-joined":
+		switch value {
+		case "UP", "ON", "TRUE", "ACTIVE", "ENABLED", "PRESENT", "JOINED", "OK":
+			return true, true
+		case "DOWN", "OFF", "FALSE", "INACTIVE", "DISABLED", "ABSENT", "NOT_PRESENT", "NOT_JOINED", "FAILED":
+			return false, true
+		}
+	}
+	return false, false
 }
 
 func normalizeGNMILeaf(value string) string {

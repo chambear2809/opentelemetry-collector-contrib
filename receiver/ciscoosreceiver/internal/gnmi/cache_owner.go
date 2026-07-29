@@ -251,12 +251,13 @@ func (c *Cache) ownerIndexRetainedBytesLocked() int64 {
 // Removed is populated only by the explicitly named reconciliation variants;
 // counts-only resets avoid materializing retained points at reconnect scale.
 type CacheOwnerResetResult struct {
-	OwnerID         string
-	Removed         []MappedPoint
-	Entries         int
-	AtomicBaselines int
-	Tombstones      int
-	RetainedBytes   int64
+	OwnerID                string
+	Removed                []MappedPoint
+	Entries                int
+	AtomicBaselines        int
+	Tombstones             int
+	InvalidationWatermarks int
+	RetainedBytes          int64
 }
 
 // CacheOwnerResetTransaction owns the cache write lock until Commit or
@@ -369,6 +370,9 @@ func (c *Cache) prepareResetOwner(
 			if !ok || entry.ownerID != ownerID {
 				return nil, fmt.Errorf("cache owner %q entry index is inconsistent for %q", ownerID, key)
 			}
+			if entry.sourceKey == "" || c.sources[entry.sourceKey] != key {
+				return nil, fmt.Errorf("cache owner %q source index is inconsistent for %q", ownerID, key)
+			}
 			result.Entries++
 			removedBytes = saturatingRetainedByteAdd(removedBytes, entry.retainedBytes)
 		}
@@ -385,7 +389,11 @@ func (c *Cache) prepareResetOwner(
 			if !ok || tombstone.ownerID != ownerID {
 				return nil, fmt.Errorf("cache owner %q tombstone index is inconsistent for %q", ownerID, key)
 			}
-			result.Tombstones++
+			if tombstone.allowEqual {
+				result.InvalidationWatermarks++
+			} else {
+				result.Tombstones++
+			}
 			removedBytes = saturatingRetainedByteAdd(removedBytes, tombstone.retainedBytes)
 		}
 	}
@@ -410,6 +418,7 @@ func (c *Cache) prepareResetOwner(
 	transaction.commitPlan = func() {
 		for key, kinds := range owner.items {
 			if kinds&cacheOwnerEntry != 0 {
+				delete(c.sources, c.entries[key].sourceKey)
 				delete(c.entries, key)
 			}
 			if kinds&cacheOwnerAtomicBaseline != 0 {

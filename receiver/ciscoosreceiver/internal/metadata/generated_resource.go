@@ -21,6 +21,13 @@ func NewResourceBuilder(rac ResourceAttributesConfig) *ResourceBuilder {
 	}
 }
 
+// SetCiscoOsBootMode sets provided value as "cisco.os.boot_mode" attribute.
+func (rb *ResourceBuilder) SetCiscoOsBootMode(val string) {
+	if rb.config.CiscoOsBootMode.Enabled {
+		rb.res.Attributes().PutStr("cisco.os.boot_mode", val)
+	}
+}
+
 // SetCiscoOsName sets provided value as "cisco.os.name" attribute.
 func (rb *ResourceBuilder) SetCiscoOsName(val string) {
 	if rb.config.CiscoOsName.Enabled {

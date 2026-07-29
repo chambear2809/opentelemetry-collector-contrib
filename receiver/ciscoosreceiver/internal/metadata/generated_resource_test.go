@@ -13,6 +13,7 @@ func TestResourceBuilder(t *testing.T) {
 		t.Run(tt, func(t *testing.T) {
 			cfg := loadResourceAttributesConfig(t, tt)
 			rb := NewResourceBuilder(cfg)
+			rb.SetCiscoOsBootMode("cisco.os.boot_mode-val")
 			rb.SetCiscoOsName("cisco.os.name-val")
 			rb.SetCiscoPlatformFamily("cisco.platform.family-val")
 			rb.SetCiscoProductFamily("cisco.product.family-val")
@@ -31,14 +32,19 @@ func TestResourceBuilder(t *testing.T) {
 
 			switch tt {
 			case "default":
-				assert.Equal(t, 12, res.Attributes().Len())
+				assert.Equal(t, 13, res.Attributes().Len())
 			case "all_set":
-				assert.Equal(t, 12, res.Attributes().Len())
+				assert.Equal(t, 13, res.Attributes().Len())
 			case "none_set":
 				assert.Equal(t, 0, res.Attributes().Len())
 				return
 			default:
 				assert.Failf(t, "unexpected test case: %s", tt)
+			}
+			ciscoOsBootModeAttrVal, ok := res.Attributes().Get("cisco.os.boot_mode")
+			assert.True(t, ok)
+			if ok {
+				assert.Equal(t, "cisco.os.boot_mode-val", ciscoOsBootModeAttrVal.Str())
 			}
 			ciscoOsNameAttrVal, ok := res.Attributes().Get("cisco.os.name")
 			assert.True(t, ok)

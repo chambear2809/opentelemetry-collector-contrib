@@ -72,9 +72,10 @@ Identity Services Engine, secure normalized gNMI dial-in, and IOS XR MDT:
 - `ise`: Cisco Identity Services Engine REST/OpenAPI/ERS/MnT polling for deployment, network-device, endpoint, session,
   authentication, posture, profiler, policy, TrustSec, alarm, certificate, license, and webhook evidence, with opt-in
   pxGrid streaming and Data Connect queries.
-- `gnmi`: Product-qualified secure gNMI dial-in for Catalyst 9800 17.18.x, ASR 9000/NCS 5500 24.4.x, Nexus 9000
-  10.6(x), and Nexus 3500 10.5(x), with bounded preflight, cache, path-group, stream, and cardinality controls plus
-  receiver self-telemetry for qualification, subscription health, and retained-state pressure.
+- `gnmi`: Product-contract-gated secure gNMI dial-in for Catalyst 9300/9500 on exact IOS XE 17.18.1, Catalyst 9800
+  on IOS XE 17.18.x, ASR 9000/NCS 5500 on 24.4.x, Nexus 9000 on 10.6(x), and Nexus 3500 on 10.5(x), with bounded
+  preflight, cache, path-group, stream, and cardinality controls plus receiver self-telemetry for qualification,
+  subscription health, and retained-state pressure.
 - `ios_xr`: IOS XR gNMI dial-in and MDT gRPC dial-out telemetry for ASR 9000 and NCS routers, normalized from YANG paths into generic `cisco.iosxr.*` metrics.
 
 Device-scoped SSH metrics include the following resource attributes. API account, controller, organization, network,
@@ -95,10 +96,11 @@ Shared gNMI emits device telemetry only after live identity verification. Its ve
 
 | Attribute | Meaning |
 | --- | --- |
-| `cisco.product.family` | Canonical configured and verified family: `catalyst_9800`, `asr_9000`, `ncs_5500`, `nexus_9000`, or `nexus_3500`. |
+| `cisco.product.family` | Canonical configured and verified family: `catalyst_9300`, `catalyst_9500`, `catalyst_9800`, `asr_9000`, `ncs_5500`, `nexus_9000`, or `nexus_3500`. |
 | `device.manufacturer` | `Cisco`. |
 | `device.model.identifier` | Unambiguous chassis model returned by the product-specific identity probe. |
-| `os.version` | Exact canonical running build, verified against required `software_version`. |
+| `os.version` | Canonical running software release identifier compared with required `software_version`. For IOS XE this is the public release label; it excludes the internal install build, `version-extension`, and SMU state. |
+| `cisco.os.boot_mode` | Verified IOS XE boot mode when the product contract requires it. Catalyst 9300/9500 contracts accept only `install`. |
 | `cisco.os.name` | Derived Cisco OS family. |
 | `os.name` | Human-readable derived OS name. |
 | `cisco.platform.family` | Legacy shared-gNMI OS-family alias retained for compatibility; use `cisco.product.family` for product grouping. |
@@ -255,10 +257,12 @@ receivers:
 
 ## Shared gNMI Normalized Profile Metrics
 
-The product-qualified `gnmi.targets` catalog is deliberately narrower than the receiver's complete metric inventory:
+The product-contract-gated `gnmi.targets` catalog is deliberately narrower than the receiver's complete metric
+inventory:
 
 | Products | Default normalized metrics |
 | --- | --- |
+| Catalyst 9300 and Catalyst 9500 (exact IOS XE 17.18.1, INSTALL mode) | `cisco.device.up`, `system.cpu.utilization`, per-location `system.memory.utilization`, interface status, and cumulative interface counters |
 | Catalyst 9800 | `cisco.device.up`, `system.cpu.utilization`, per-location `system.memory.utilization`, interface status, and cumulative interface counters |
 | ASR 9000 and NCS 5500 | `cisco.device.up`, per-node `system.cpu.utilization`, interface status, and cumulative interface counters; no memory or uptime |
 | Nexus 9000 and Nexus 3500 | `cisco.device.up`, interface status, and cumulative interface counters; no system profile |
@@ -267,6 +271,14 @@ Interface status is `system.network.interface.status` and `cisco.interface.admin
 `system.network.io`, `system.network.errors`, `system.network.packet.count`, and
 `system.network.packet.dropped`. Shared gNMI does not emit interface speed, rates, or utilization and does not emit
 `system.uptime`.
+
+These rows describe implemented mappings, not retained live-device qualification. Catalyst 9300 and Catalyst 9500
+exact-build qualification is `Not run`; one chassis group in gNMI hardware inventory does not prove standalone
+topology, so qualification must retain an external topology record and treat standalone, StackWise, and StackWise
+Virtual as separate evidence scopes. Their target configurations therefore require the explicit
+`allow_unqualified: true` acknowledgement until retained physical-device qualification is complete.
+The contract rejects every other IOS XE release and rejects BUNDLE, unknown, ambiguous, or missing boot-mode
+identity; this is an implemented preflight boundary, not evidence that a physical device has been qualified.
 
 ## Shared gNMI Collector Self-Telemetry
 
@@ -280,7 +292,7 @@ Observability Cloud. Prometheus-style export exposes the `otelcol_`-prefixed nam
 | `otelcol_ciscoosreceiver_gnmi_subscriptions` | Gauge | Active subscription streams by target and profile. |
 | `otelcol_ciscoosreceiver_gnmi_updates` | Cumulative sum | Decoded leaf updates by target and profile. |
 | `otelcol_ciscoosreceiver_gnmi_last_success_unixtime` | Gauge | Unix time of the most recent successfully decoded notification. |
-| `otelcol_ciscoosreceiver_gnmi_preflight_failures` | Cumulative sum | Terminal qualification failures by target and bounded reason. |
+| `otelcol_ciscoosreceiver_gnmi_preflight_failures` | Cumulative sum | Terminal product-contract preflight compatibility failures by target and bounded reason. |
 | `otelcol_ciscoosreceiver_gnmi_product_verified` | Gauge | Whether the target passed product, model, release, and capability verification. |
 | `otelcol_ciscoosreceiver_gnmi_reconnects` | Cumulative sum | Transport reconnect attempts by target. |
 | `otelcol_ciscoosreceiver_gnmi_authentication_failures` | Cumulative sum | Authentication or authorization failures by target. |
@@ -290,14 +302,18 @@ Observability Cloud. Prometheus-style export exposes the `otelcol_`-prefixed nam
 | `otelcol_ciscoosreceiver_gnmi_unmapped_values` | Cumulative sum | Decoded values without an explicit stable metric mapping. |
 | `otelcol_ciscoosreceiver_gnmi_deletes` | Cumulative sum | Delete paths applied to retained state. |
 | `otelcol_ciscoosreceiver_gnmi_duplicate_updates` | Cumulative sum | Duplicate updates suppressed by retained state. |
-| `otelcol_ciscoosreceiver_gnmi_invalid_timestamps` | Cumulative sum | Invalid device timestamps replaced with receipt time. |
+| `otelcol_ciscoosreceiver_gnmi_invalid_timestamps` | Cumulative sum | Invalid or excessively future-dated device timestamps rejected before cache mutation. |
+| `otelcol_ciscoosreceiver_gnmi_out_of_order_updates` | Cumulative sum | Stale cache operations suppressed by source-timestamp ordering. |
 | `otelcol_ciscoosreceiver_gnmi_cache_owner_resets` | Cumulative sum | Silent owner-scoped cache resets before an updates-only stream reconnects. |
 | `otelcol_ciscoosreceiver_gnmi_unsupported_value_kinds` | Cumulative sum | Bounded opaque or aggregate typed values ignored by kind. |
 | `otelcol_ciscoosreceiver_gnmi_cache_utilization` | Gauge | Maximum entry or byte utilization of the target's cache partition. |
 | `otelcol_ciscoosreceiver_gnmi_auxiliary_state_utilization` | Gauge | Maximum entry or byte utilization of the target's auxiliary-state partition. |
 
 Preflight-failure reasons are bounded to `identity_missing`, `identity_ambiguous`, `product_mismatch`,
-`release_mismatch`, `missing_model`, `unsupported_encoding`, and `malformed_identity`. Compatibility failures
+`release_mismatch`, `missing_model`, `unsupported_model_version`, `unsupported_gnmi_version`,
+`unsupported_encoding`, `unsupported_boot_mode`, and `malformed_identity`. `unsupported_model_version` means an
+advertised model name was present but its organization/version tuple did not match the pinned contract;
+`unsupported_boot_mode` means a boot-mode-gated contract did not resolve to its required mode. Compatibility failures
 quarantine only the affected target until receiver restart; transport, authentication, and temporary RPC failures
 remain retryable.
 
@@ -320,7 +336,7 @@ Meraki-specific gauges for cloud-only or windowed values.
 | `meraki.switch.port.usage` | Gauge, double | `kBy` | Windowed switch port usage. | See recent port usage without treating it as a cumulative counter. |
 | `meraki.switch.port.alert.active` | Gauge, int | `1` | Current port warning or error state by severity and reason. | Alert on persistent port faults without incrementing a synthetic counter on every poll. |
 | `meraki.switch.port.poe.allocated` | Gauge, int | `1` | Whether Dashboard reports that PoE is allocated to the switch port. | Find access devices affected by missing port power. |
-| `meraki.uplink.cellular.signal.rsrp` | Gauge, double | `dBm` | Cellular uplink reference-signal received power. | Detect weak LTE/5G backup coverage. |
+| `meraki.uplink.cellular.signal.rsrp` | Gauge, double | `dB{mW}` | Cellular uplink reference-signal received power. | Detect weak LTE/5G backup coverage. |
 | `meraki.uplink.cellular.signal.rsrq` | Gauge, double | `dB` | Cellular uplink reference-signal received quality. | Detect noisy or degraded cellular backup paths. |
 | `meraki.wireless.client.count` | Gauge, int | `{client}` | Wireless client counts by status. | Monitor AP load and client connectivity. |
 | `meraki.wireless.channel_utilization` | Gauge, double | `%` | Wi-Fi, non-Wi-Fi, and total channel utilization by band. | Find RF congestion. |
@@ -390,7 +406,7 @@ fields such as descriptions, affected object names, failure reasons, and audit p
 | `intersight.virtual_machine.cpu.count` | Gauge, int | `{cpu}` | vCPU count for a VM. | Correlate VM sizing with host and cluster health. |
 | `intersight.virtual_machine.memory` | Gauge, int | `MBy` | VM configured memory. | Correlate VM sizing with memory pressure. |
 | `intersight.virtual_machine.power_state` | Gauge, int | `1` | Encoded VM power state. | Spot powered-off or unexpectedly running VMs. |
-| `intersight.ucs.fan.speed` | Gauge, double | `rpm` | Mean fan speed from Intersight telemetry GroupBy. | Detect cooling issues and fan anomalies. |
+| `intersight.ucs.fan.speed` | Gauge, double | `1/min` | Mean fan speed from Intersight telemetry GroupBy. | Detect cooling issues and fan anomalies. |
 | `intersight.ucs.fan.speed_ratio` | Gauge, double | `%` | Mean fan speed as a percentage of maximum. | Identify abnormal fan duty cycles. |
 | `intersight.ucs.host.power` | Gauge, double | `W` | Mean host power from Intersight telemetry GroupBy. | Watch power draw and capacity. |
 | `intersight.ucs.host.energy` | Gauge, double | `J` | Host energy consumption from Intersight telemetry. | Track energy use across managed hosts. |
@@ -434,8 +450,8 @@ fields such as descriptions, affected object names, failure reasons, and audit p
 | `intersight.ucs.fan.status` | Gauge, double | `1` | Fan operational status from Intersight telemetry. | Identify failed or unhealthy fans. |
 | `intersight.ucs.memory.status` | Gauge, double | `1` | Memory module operational status from Intersight telemetry. | Identify unhealthy DIMMs. |
 | `intersight.ucs.temperature.status` | Gauge, double | `1` | Temperature sensor operational status from Intersight telemetry. | Identify unhealthy thermal sensors. |
-| `intersight.ucs.signal_power.receive` | Gauge, double | `dBm` | Transceiver receive optical power. | Detect weak or dirty optical paths. |
-| `intersight.ucs.signal_power.transmit` | Gauge, double | `dBm` | Transceiver transmit optical power. | Detect transceiver or fiber degradation. |
+| `intersight.ucs.signal_power.receive` | Gauge, double | `dB{mW}` | Transceiver receive optical power. | Detect weak or dirty optical paths. |
+| `intersight.ucs.signal_power.transmit` | Gauge, double | `dB{mW}` | Transceiver transmit optical power. | Detect transceiver or fiber degradation. |
 | `intersight.hyperflex.read.iops` | Gauge, double | `{operation}/s` | HyperFlex read IOPS. | Detect storage load and imbalance. |
 | `intersight.hyperflex.write.iops` | Gauge, double | `{operation}/s` | HyperFlex write IOPS. | Detect storage load and imbalance. |
 | `intersight.hyperflex.read.latency` | Gauge, double | `ms` | HyperFlex read latency. | Alert on storage latency. |
@@ -488,7 +504,7 @@ without turning every endpoint into a high-cardinality metric series.
 | `catalyst_center.device.detail.communication.status` | Gauge, int | `1` | Targeted device communication status. | Explain stale or missing detail data for an affected device. |
 | `catalyst_center.client.detail.health.score` | Gauge, double | `1` | Targeted client-detail health score by client, health type, and reason. | Troubleshoot a known affected client MAC address. |
 | `catalyst_center.client.issue.count` | Gauge, int | `{issue}` | Issue count for a targeted client detail lookup. | Confirm whether Catalyst Center has client-specific issue evidence. |
-| `catalyst_center.client.wireless.rssi` | Gauge, double | `dBm` | RSSI for a targeted wireless client. | Diagnose weak RF or roaming symptoms. |
+| `catalyst_center.client.wireless.rssi` | Gauge, double | `dB{mW}` | RSSI for a targeted wireless client. | Diagnose weak RF or roaming symptoms. |
 | `catalyst_center.client.wireless.snr` | Gauge, double | `dB` | SNR for a targeted wireless client. | Diagnose interference or poor wireless quality. |
 | `catalyst_center.client.network.io` | Gauge, double | `By` | Client transmit and receive bytes. | Correlate client traffic silence or spikes with access symptoms. |
 
@@ -767,7 +783,7 @@ These generic YANG rows describe the pattern-governed contract above, not an enu
 | `cisco.wlc.ap.disconnect.reason.info` | Gauge, double | `1` | Current AP disconnect reason evidence. | Explain unstable AP/WLC connectivity. |
 | `cisco.wlc.ap.capwap.state` | Gauge, int | `1` | CAPWAP/AP operational state with state text as an attribute. | Confirm AP control tunnels are operational. |
 | `cisco.wlc.rf.channel.utilization` | Gauge, double | `1` | RF/channel utilization normalized to a ratio from 0 to 1. | Find congested or noisy channels. |
-| `cisco.wlc.rf.noise_floor` | Gauge, double | `dBm` | RF noise floor. | Detect interference and RF health problems. |
+| `cisco.wlc.rf.noise_floor` | Gauge, double | `dB{mW}` | RF noise floor. | Detect interference and RF health problems. |
 | `cisco.wlc.rf.client.count` | Gauge, int | `{client}` | Client count per radio/RRM measurement. | Identify overloaded radios. |
 | `cisco.wlc.rf.channel.change.count` | Sum, int | `{change}` | DCA/channel change counters. | Spot unstable RF environments. |
 | `cisco.wlc.ssid.client.count` | Gauge, int | `{client}` | Associated clients per SSID/BSSID. | Track SSID load. |
@@ -779,7 +795,7 @@ These generic YANG rows describe the pattern-governed contract above, not an enu
 | `cisco.wlc.client.roam.count` | Sum, int | `{roam}` | Client or mobility roam counter. | Track roaming activity and unexpected churn. |
 | `cisco.wlc.client.roam.type.info` | Gauge, double | `1` | Current client roam type evidence. | Explain roaming behavior without treating enum values as counters. |
 | `cisco.wlc.client.roam.failure.count` | Sum, int | `{failure}` | Client roam failure counters. | Detect roaming issues across APs or mobility peers. |
-| `cisco.wlc.client.wireless.rssi` | Gauge, double | `dBm` | Client RSSI. | Find weak-signal clients. |
+| `cisco.wlc.client.wireless.rssi` | Gauge, double | `dB{mW}` | Client RSSI. | Find weak-signal clients. |
 | `cisco.wlc.client.wireless.snr` | Gauge, double | `dB` | Client SNR. | Diagnose poor client RF quality. |
 | `cisco.wlc.mobility.peer.status` | Gauge, int | `1` | Mobility peer/link status. | Alert on broken mobility tunnels or peers. |
 | `cisco.wlc.mobility.roam.count` | Sum, int | `{roam}` | L2/L3 mobility roam counters. | Track mobility handoff volume. |
@@ -1138,17 +1154,21 @@ Common transceiver attributes:
 
 ## Normalized gNMI Optics Metrics
 
-Shared gNMI optical profiles emit stable metrics across supported IOS XE, IOS XR, and NX-OS paths. All optics profiles
-remain experimental and are disabled by default. IOS XE and IOS XR expose DOM metrics; IOS XR is limited to controller
-and lane DOM mappings and has no coherent profile. NX DME exposes allowlisted DOM and VDM sensor mappings. All metrics
-are gauges and use `network.interface.name`, `cisco.optics.lane`, `cisco.optics.profile`, and
-`cisco.optics.experimental`; sensor-bearing metrics also include the normalized allowlisted `cisco.optics.sensor`.
+Shared gNMI optical profiles define stable metrics for the implemented IOS XE, IOS XR, and NX-OS path contracts. All
+optics profiles remain experimental, disabled by default, and independently subject to physical qualification. IOS XE
+and IOS XR expose DOM mappings; IOS XR is limited to controller and lane DOM mappings and has no coherent profile. NX
+DME exposes allowlisted DOM and VDM sensor mappings. All metrics are gauges and use `network.interface.name`,
+`cisco.optics.lane`, `cisco.optics.profile`, and `cisco.optics.experimental`; sensor-bearing metrics also include the
+normalized allowlisted `cisco.optics.sensor`.
+
+`dB{mW}` preserves device-reported dBm-scale values with a valid UCUM annotation. Braced UCUM text is a
+human-readable annotation, not a machine-convertible 1 mW reference.
 
 | Metric | Unit | Operational Use |
 | --- | --- | --- |
 | `cisco.optics.present` | `1` | Detect a missing module or lane before interpreting absent sensor data. |
-| `cisco.optics.rx_power` | `dB[mW]` | Detect weak receive power, dirty fiber, or path loss. |
-| `cisco.optics.tx_power` | `dB[mW]` | Detect transmitter or optical-launch degradation. |
+| `cisco.optics.rx_power` | `dB{mW}` | Detect weak receive power, dirty fiber, or path loss. |
+| `cisco.optics.tx_power` | `dB{mW}` | Detect transmitter or optical-launch degradation. |
 | `cisco.optics.laser_bias_current` | `mA` | Detect transmitter aging or bias drift. |
 | `cisco.optics.voltage` | `V` | Detect module supply instability. |
 | `cisco.optics.temperature` | `Cel` | Detect thermal pressure at the optic. |

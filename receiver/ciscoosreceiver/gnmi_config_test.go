@@ -85,6 +85,8 @@ func TestGNMIDefaults(t *testing.T) {
 
 func TestGNMIProfileDefaultsComeFromSelectedContractCatalog(t *testing.T) {
 	for _, test := range []struct{ product, version string }{
+		{gnmiProductCatalyst9300, "17.18.1"},
+		{gnmiProductCatalyst9500, "17.18.1"},
 		{gnmiProductCatalyst9800, "17.18.1"},
 		{gnmiProductASR9000, "24.4.1"},
 		{gnmiProductNCS5500, "24.4.1"},
@@ -195,6 +197,8 @@ func TestGNMIProductReleaseValidation(t *testing.T) {
 	accepted := []struct {
 		product, version string
 	}{
+		{gnmiProductCatalyst9300, "17.18.1"},
+		{gnmiProductCatalyst9500, "17.18.01"},
 		{gnmiProductCatalyst9800, "17.18.01a"},
 		{gnmiProductASR9000, "24.4.2"},
 		{gnmiProductNCS5500, "24.4.3"},
@@ -206,6 +210,8 @@ func TestGNMIProductReleaseValidation(t *testing.T) {
 			cfg := validGNMITestConfig()
 			cfg.GNMI.Targets[0].Product = test.product
 			cfg.GNMI.Targets[0].SoftwareVersion = test.version
+			cfg.GNMI.Targets[0].AllowUnqualified = test.product == gnmiProductCatalyst9300 ||
+				test.product == gnmiProductCatalyst9500
 			require.NoError(t, cfg.validateGNMI())
 		})
 	}
@@ -229,7 +235,7 @@ func TestGNMIProductReleaseValidation(t *testing.T) {
 		{name: "Cisco SONiC alias is unsupported", mutate: func(target *GNMITargetConfig) {
 			target.Product = "cisco_sonic"
 		}, want: "SONiC"},
-		{name: "missing exact build", mutate: func(target *GNMITargetConfig) { target.SoftwareVersion = "" }, want: "exact expected running build"},
+		{name: "missing canonical release", mutate: func(target *GNMITargetConfig) { target.SoftwareVersion = "" }, want: "expected canonical public release"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -240,10 +246,12 @@ func TestGNMIProductReleaseValidation(t *testing.T) {
 	}
 }
 
-func TestGNMIQualifiedProductsRejectPathTarget(t *testing.T) {
+func TestGNMIProductContractsRejectPathTarget(t *testing.T) {
 	tests := []struct {
 		product, version string
 	}{
+		{gnmiProductCatalyst9300, "17.18.1"},
+		{gnmiProductCatalyst9500, "17.18.1"},
 		{gnmiProductCatalyst9800, "17.18.1"},
 		{gnmiProductASR9000, "24.4.1"},
 		{gnmiProductNCS5500, "24.4.1"},
@@ -260,7 +268,7 @@ func TestGNMIQualifiedProductsRejectPathTarget(t *testing.T) {
 			subscription := validCustomGNMISubscription()
 			subscription.PathTarget = "proxy-target"
 			target.CustomSubscriptions = []GNMICustomSubscriptionConfig{subscription}
-			require.ErrorContains(t, cfg.validateGNMI(), "path_target is not supported by a qualified Cisco product contract")
+			require.ErrorContains(t, cfg.validateGNMI(), "path_target is not supported by a built-in Cisco product contract")
 		})
 	}
 }
@@ -338,6 +346,122 @@ func TestGNMINexusProductsUseProtocolValidatedOptions(t *testing.T) {
 			require.ErrorContains(t, cfg.validateGNMI(), "one common sample_interval")
 		})
 	}
+}
+
+func TestGNMICatalystSwitchProductsUseConservativeContractPolicy(t *testing.T) {
+	for _, product := range []string{gnmiProductCatalyst9300, gnmiProductCatalyst9500} {
+		newConfig := func() *Config {
+			cfg := validGNMITestConfig()
+			target := &cfg.GNMI.Targets[0]
+			target.Product = product
+			target.SoftwareVersion = "17.18.1"
+			target.AllowUnqualified = true
+			target.EncodingPreference = []string{"json_ietf"}
+			return cfg
+		}
+
+		t.Run(product+" accepts contract defaults", func(t *testing.T) {
+			require.NoError(t, newConfig().validateGNMI())
+		})
+
+		t.Run(product+" requires explicit unqualified acknowledgement", func(t *testing.T) {
+			cfg := newConfig()
+			cfg.GNMI.Targets[0].AllowUnqualified = false
+			require.ErrorContains(t, cfg.validateGNMI(), "allow_unqualified must be true")
+		})
+
+		t.Run(product+" rejects other release trains", func(t *testing.T) {
+			cfg := newConfig()
+			cfg.GNMI.Targets[0].SoftwareVersion = "17.17.1"
+			require.ErrorContains(t, cfg.validateGNMI(), "requires release train 17.18")
+		})
+
+		t.Run(product+" rejects unreviewed releases in the accepted train", func(t *testing.T) {
+			cfg := newConfig()
+			cfg.GNMI.Targets[0].SoftwareVersion = "17.18.2"
+			require.ErrorContains(t, cfg.validateGNMI(), "permits only reviewed release(s): 17.18.1")
+		})
+
+		for _, encoding := range []string{"json", "proto"} {
+			t.Run(product+" rejects "+encoding, func(t *testing.T) {
+				cfg := newConfig()
+				cfg.GNMI.Targets[0].EncodingPreference = []string{encoding}
+				require.ErrorContains(t, cfg.validateGNMI(), "not approved for product "+product)
+			})
+		}
+
+		listOptions := []struct {
+			name   string
+			mutate func(*GNMIProfileConfig)
+			want   string
+		}{
+			{name: "updates_only", mutate: func(profile *GNMIProfileConfig) { profile.UpdatesOnly = true }, want: "updates_only must be false"},
+			{name: "aggregation", mutate: func(profile *GNMIProfileConfig) { profile.AllowAggregation = true }, want: "allow_aggregation must be false"},
+			{name: "qos", mutate: func(profile *GNMIProfileConfig) {
+				value := uint32(0)
+				profile.QoSMarking = &value
+			}, want: "qos_marking is not qualified"},
+			{name: "extension", mutate: func(profile *GNMIProfileConfig) {
+				value := uint32(1)
+				profile.GNMIExtensions.Depth = &value
+			}, want: "gnmi_extensions.depth is not qualified"},
+		}
+		for _, option := range listOptions {
+			t.Run(product+" rejects "+option.name, func(t *testing.T) {
+				cfg := newConfig()
+				option.mutate(&cfg.GNMI.Targets[0].Profiles.Interfaces)
+				require.ErrorContains(t, cfg.validateGNMI(), option.want)
+			})
+		}
+
+		heartbeat := time.Minute
+		pathOptions := []struct {
+			name    string
+			options GNMIPathOptionsConfig
+			want    string
+		}{
+			{name: "on_change", options: GNMIPathOptionsConfig{StreamMode: gnmiStreamModeOnChange}, want: "stream_mode must be sample"},
+			{name: "target_defined", options: GNMIPathOptionsConfig{StreamMode: gnmiStreamModeTargetDefined}, want: "stream_mode must be sample"},
+			{name: "heartbeat", options: GNMIPathOptionsConfig{HeartbeatInterval: &heartbeat}, want: "optional subscription flags are not qualified"},
+			{name: "suppress_redundant", options: GNMIPathOptionsConfig{SuppressRedundant: boolPtr(false)}, want: "optional subscription flags are not qualified"},
+		}
+		for _, option := range pathOptions {
+			t.Run(product+" rejects "+option.name, func(t *testing.T) {
+				cfg := newConfig()
+				cfg.GNMI.Targets[0].Profiles.Interfaces.PathOverrides = map[string]GNMIPathOptionsConfig{
+					"interfaces.openconfig": option.options,
+				}
+				require.ErrorContains(t, cfg.validateGNMI(), option.want)
+			})
+		}
+
+		t.Run(product+" rejects sub-second SAMPLE", func(t *testing.T) {
+			cfg := newConfig()
+			cfg.GNMI.Targets[0].Profiles.Interfaces.SampleInterval = 500 * time.Millisecond
+			require.ErrorContains(t, cfg.validateGNMI(), "between 1s and 604800s")
+		})
+
+		t.Run(product+" rejects mixed SAMPLE cadence", func(t *testing.T) {
+			cfg := newConfig()
+			interval := 30 * time.Second
+			cfg.GNMI.Targets[0].Profiles.System.PathOverrides = map[string]GNMIPathOptionsConfig{
+				"system.cpu": {SampleInterval: &interval},
+			}
+			require.ErrorContains(t, cfg.validateGNMI(), "one common sample_interval")
+		})
+
+		t.Run(product+" rejects wildcard selectors", func(t *testing.T) {
+			cfg := newConfig()
+			subscription := validCustomGNMISubscription()
+			subscription.Mappings[0].Path = "components/component[name=*]/state/temperature/instant"
+			cfg.GNMI.Targets[0].CustomSubscriptions = []GNMICustomSubscriptionConfig{subscription}
+			require.ErrorContains(t, cfg.validateGNMI(), "explicit asterisk wildcard")
+		})
+	}
+
+	cfg := validGNMITestConfig()
+	cfg.GNMI.Targets[0].AllowUnqualified = true
+	require.ErrorContains(t, cfg.validateGNMI(), "valid only when the selected product contract requires explicit acknowledgement")
 }
 
 func TestGNMICredentialModes(t *testing.T) {
@@ -669,6 +793,8 @@ func TestGNMICustomSubscriptionValidation(t *testing.T) {
 	for _, test := range []struct {
 		product, version, want string
 	}{
+		{gnmiProductCatalyst9300, "17.18.1", "SAMPLE STREAM subscriptions"},
+		{gnmiProductCatalyst9500, "17.18.1", "SAMPLE STREAM subscriptions"},
 		{gnmiProductCatalyst9800, "17.18.1", "mode must be stream"},
 		{gnmiProductNexus9000, "10.6(1)", "SAMPLE STREAM subscriptions"},
 		{gnmiProductNexus3500, "10.5(1)", "SAMPLE STREAM subscriptions"},
@@ -697,7 +823,7 @@ func TestGNMICustomSubscriptionValidation(t *testing.T) {
 		subscription := validCustomGNMISubscription()
 		subscription.Mappings[0].Path = "components/component[name=*]/state/temperature/instant"
 		cfg.GNMI.Targets[0].CustomSubscriptions = []GNMICustomSubscriptionConfig{subscription}
-		require.ErrorContains(t, cfg.validateGNMI(), "must be explicit and non-wildcard")
+		require.ErrorContains(t, cfg.validateGNMI(), "explicit asterisk wildcard")
 	})
 
 	t.Run("qualified RFC7951 custom path contributes its model", func(t *testing.T) {
@@ -717,6 +843,24 @@ func TestGNMICustomSubscriptionValidation(t *testing.T) {
 		require.NoError(t, err)
 		assert.Contains(t, requiredGNMIModels(contract, streams), "example-custom-model")
 	})
+
+	for _, product := range []string{gnmiProductCatalyst9300, gnmiProductCatalyst9500} {
+		t.Run(product+" rejects custom models outside pinned catalog", func(t *testing.T) {
+			cfg := validGNMITestConfig()
+			target := &cfg.GNMI.Targets[0]
+			target.Product = product
+			target.SoftwareVersion = "17.18.1"
+			target.AllowUnqualified = true
+			target.MaxStreams = 5
+			subscription := validCustomGNMISubscription()
+			subscription.Origin = builtinGNMIOriginRFC7951
+			subscription.Mappings[0].Path = "example-custom-model:components/component/state/temperature/instant"
+			target.CustomSubscriptions = []GNMICustomSubscriptionConfig{subscription}
+
+			require.ErrorContains(t, cfg.validateGNMI(), "outside product")
+			require.ErrorContains(t, cfg.validateGNMI(), "example-custom-model")
+		})
+	}
 }
 
 func TestGNMINXOpenConfigCustomSubscriptionRequiresConcreteModels(t *testing.T) {
@@ -1108,7 +1252,7 @@ func TestGNMIReceiverWideTargetAndFrameLimits(t *testing.T) {
 }
 
 func TestGNMIUCUMValidation(t *testing.T) {
-	for _, unit := range []string{"1", "%", "Cel", "mA", "dB[mW]", "ps/nm", "bit/s", "{packet}/s", "m^2"} {
+	for _, unit := range []string{"1", "%", "Cel", "mA", "dB{mW}", "ps/nm", "bit/s", "{packet}/s", "m^2"} {
 		assert.True(t, validGNMIUCUMUnit(unit), unit)
 	}
 	for _, unit := range []string{"", " bananas", "bananas", "dB[", "m//s", "m/", "m^nope"} {

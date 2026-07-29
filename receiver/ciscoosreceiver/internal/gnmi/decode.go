@@ -56,6 +56,43 @@ type notificationDecodeBudget struct {
 	pathStringBytes int
 }
 
+// undecodablePathCollector retains each exact invalid scalar path once. Its
+// paths share the decoded notification's point and path/string budgets, while
+// the additional canonical keys used for deduplication are charged explicitly.
+// Aggregate object and list-container paths are never added merely because a
+// descendant is invalid.
+type undecodablePathCollector struct {
+	budget *notificationDecodeBudget
+	seen   map[string]struct{}
+	paths  []Path
+}
+
+func (c *undecodablePathCollector) add(path Path) error {
+	if c == nil || c.budget == nil {
+		return errors.New("undecodable path collector is not initialized")
+	}
+	pathBytes, err := validatePath(path)
+	if err != nil {
+		return err
+	}
+	key := path.Key()
+	if _, exists := c.seen[key]; exists {
+		return nil
+	}
+	if err := c.budget.reservePathStringBytes(pathBytes); err != nil {
+		return err
+	}
+	if err := c.budget.reservePoint(path, Value{}); err != nil {
+		return err
+	}
+	if c.seen == nil {
+		c.seen = make(map[string]struct{})
+	}
+	c.seen[key] = struct{}{}
+	c.paths = append(c.paths, path)
+	return nil
+}
+
 func (b *notificationDecodeBudget) reservePathStringBytes(amount int) error {
 	if amount < 0 || amount > b.limits.maxPathStringBytes-b.pathStringBytes {
 		return fmt.Errorf("decoded notification exceeds %d aggregate path/string bytes", b.limits.maxPathStringBytes)
@@ -99,8 +136,10 @@ func DecodeNotification(target string, notification *gnmipb.Notification, receip
 }
 
 // DecodeNotificationWithRegistry uses the registry's explicit path-key
-// requirements to recover list identity from aggregated JSON objects. Metric
-// selection remains a separate, exact Registry.Map operation.
+// requirements to recover list identity from aggregated JSON objects and to
+// recognize an exact scalar source whose wire value decoded only as a
+// container. Metric selection remains a separate, exact Registry.Map
+// operation.
 func DecodeNotificationWithRegistry(
 	target string,
 	notification *gnmipb.Notification,
@@ -111,7 +150,7 @@ func DecodeNotificationWithRegistry(
 	if registry != nil {
 		listKeys = registry.jsonListKeys
 	}
-	return decodeNotificationWithOptions(target, notification, receipt, defaultNotificationDecodeLimits(), listKeys)
+	return decodeNotificationWithOptions(target, notification, receipt, defaultNotificationDecodeLimits(), listKeys, registry)
 }
 
 func decodeNotificationWithLimits(
@@ -120,7 +159,7 @@ func decodeNotificationWithLimits(
 	receipt time.Time,
 	limits notificationDecodeLimits,
 ) (DecodedNotification, DecodeStats, error) {
-	return decodeNotificationWithOptions(target, notification, receipt, limits, nil)
+	return decodeNotificationWithOptions(target, notification, receipt, limits, nil, nil)
 }
 
 func decodeNotificationWithOptions(
@@ -129,6 +168,7 @@ func decodeNotificationWithOptions(
 	receipt time.Time,
 	limits notificationDecodeLimits,
 	listKeys jsonListKeySchema,
+	registry *Registry,
 ) (DecodedNotification, DecodeStats, error) {
 	var stats DecodeStats
 	if notification == nil {
@@ -240,6 +280,7 @@ func decodeNotificationWithOptions(
 		seen[key] = struct{}{}
 		resolved = append(resolved, resolvedUpdate{path: full, update: update})
 	}
+	undecodable := &undecodablePathCollector{budget: budget}
 	for _, item := range slices.Backward(resolved) {
 		full := item.path
 		update := item.update
@@ -255,14 +296,58 @@ func decodeNotificationWithOptions(
 		if valueErr != nil {
 			return DecodedNotification{}, stats, fmt.Errorf("decode update value: %w", valueErr)
 		}
-		points, unmapped, err := decodeValue(full, typed, timestamp, budget, &stats, listKeys)
+		points, unmapped, err := decodeValue(full, typed, timestamp, budget, &stats, listKeys, undecodable)
 		stats.UnmappedValues += unmapped
 		if err != nil {
 			return DecodedNotification{}, stats, err
 		}
+		if exactMappedScalarMissing(registry, full, points) {
+			if err := undecodable.add(full); err != nil {
+				return DecodedNotification{}, stats, err
+			}
+		}
 		out.Updates = append(out.Updates, points...)
 	}
+	out.Undecodable = undecodable.paths
 	return out, stats, nil
+}
+
+// exactMappedScalarMissing reports only a fully keyed exact source contract
+// whose wire update produced no scalar at that same path. Descendant points do
+// not satisfy a scalar contract at their aggregate parent, while an unmatched
+// aggregate root remains benign.
+func exactMappedScalarMissing(registry *Registry, path Path, points []Point) bool {
+	if registry == nil {
+		return false
+	}
+	for index := range points {
+		if seriesMatchesExactPath(points[index].Series, path) {
+			return false
+		}
+	}
+	series, err := path.SplitLeaf()
+	if err != nil {
+		return false
+	}
+	_, status := registry.MapWithStatus(Point{Series: series})
+	return status == MappingInvalidValue
+}
+
+func seriesMatchesExactPath(series Series, path Path) bool {
+	if series.Target != path.Target ||
+		series.PathTarget != path.PathTarget ||
+		series.Origin != path.Origin ||
+		len(path.Elements) != len(series.Elements)+1 {
+		return false
+	}
+	for index := range series.Elements {
+		if series.Elements[index].Name != path.Elements[index].Name ||
+			!maps.Equal(series.Elements[index].Keys, path.Elements[index].Keys) {
+			return false
+		}
+	}
+	leaf := path.Elements[len(path.Elements)-1]
+	return leaf.Name == series.Leaf && len(leaf.Keys) == 0
 }
 
 // ResolveUpdateValue returns the current TypedValue representation of an
@@ -307,9 +392,16 @@ func decodeValue(
 	budget *notificationDecodeBudget,
 	stats *DecodeStats,
 	listKeys jsonListKeySchema,
+	undecodable *undecodablePathCollector,
 ) ([]Point, int, error) {
-	if typed == nil {
+	rejectScalar := func() ([]Point, int, error) {
+		if err := undecodable.add(path); err != nil {
+			return nil, 0, err
+		}
 		return nil, 1, nil
+	}
+	if typed == nil {
+		return rejectScalar()
 	}
 	appendScalar := func(value Value) ([]Point, int, error) {
 		if err := budget.reservePoint(path, value); err != nil {
@@ -329,21 +421,21 @@ func decodeValue(
 		return appendScalar(UintValue(value.UintVal))
 	case *gnmipb.TypedValue_FloatVal:
 		if math.IsNaN(float64(value.FloatVal)) || math.IsInf(float64(value.FloatVal), 0) {
-			return nil, 1, nil
+			return rejectScalar()
 		}
 		return appendScalar(DoubleValue(float64(value.FloatVal)))
 	case *gnmipb.TypedValue_DoubleVal:
 		if math.IsNaN(value.DoubleVal) || math.IsInf(value.DoubleVal, 0) {
-			return nil, 1, nil
+			return rejectScalar()
 		}
 		return appendScalar(DoubleValue(value.DoubleVal))
 	case *gnmipb.TypedValue_DecimalVal:
 		if value.DecimalVal == nil || value.DecimalVal.Precision > 308 {
-			return nil, 1, nil
+			return rejectScalar()
 		}
 		decoded := float64(value.DecimalVal.Digits) / math.Pow10(int(value.DecimalVal.Precision))
 		if math.IsNaN(decoded) || math.IsInf(decoded, 0) {
-			return nil, 1, nil
+			return rejectScalar()
 		}
 		return appendScalar(DoubleValue(decoded))
 	case *gnmipb.TypedValue_BoolVal:
@@ -353,37 +445,37 @@ func decodeValue(
 	case *gnmipb.TypedValue_AsciiVal:
 		return appendScalar(StringValue(value.AsciiVal))
 	case *gnmipb.TypedValue_JsonVal:
-		return decodeJSON(path, value.JsonVal, timestamp, budget, listKeys)
+		return decodeJSON(path, value.JsonVal, timestamp, budget, listKeys, undecodable)
 	case *gnmipb.TypedValue_JsonIetfVal:
-		return decodeJSON(path, value.JsonIetfVal, timestamp, budget, listKeys)
+		return decodeJSON(path, value.JsonIetfVal, timestamp, budget, listKeys, undecodable)
 	case *gnmipb.TypedValue_BytesVal:
 		if err := validateUnsupportedTypedValue(typed); err != nil {
 			return nil, 0, fmt.Errorf("decode unsupported bytes value: %w", err)
 		}
 		stats.recordUnsupportedValue(UnsupportedValueBytes)
-		return nil, 1, nil
+		return rejectScalar()
 	case *gnmipb.TypedValue_LeaflistVal:
 		if err := validateUnsupportedTypedValue(typed); err != nil {
 			return nil, 0, fmt.Errorf("decode unsupported leaf-list value: %w", err)
 		}
 		stats.recordUnsupportedValue(UnsupportedValueLeafList)
-		return nil, 1, nil
+		return rejectScalar()
 	case *gnmipb.TypedValue_AnyVal:
 		if err := validateUnsupportedTypedValue(typed); err != nil {
 			return nil, 0, fmt.Errorf("decode unsupported Any value: %w", err)
 		}
 		stats.recordUnsupportedValue(UnsupportedValueAny)
-		return nil, 1, nil
+		return rejectScalar()
 	case *gnmipb.TypedValue_ProtoBytes:
 		if err := validateUnsupportedTypedValue(typed); err != nil {
 			return nil, 0, fmt.Errorf("decode unsupported proto_bytes value: %w", err)
 		}
 		stats.recordUnsupportedValue(UnsupportedValueProtoBytes)
-		return nil, 1, nil
+		return rejectScalar()
 	default:
 		// Future value kinds require an explicit decoder and are never promoted
 		// to ad-hoc metrics.
-		return nil, 1, nil
+		return rejectScalar()
 	}
 }
 
@@ -456,6 +548,7 @@ func decodeJSON(
 	timestamp time.Time,
 	budget *notificationDecodeBudget,
 	listKeys jsonListKeySchema,
+	undecodable *undecodablePathCollector,
 ) ([]Point, int, error) {
 	if len(raw) > maxJSONTypedValueBytes {
 		return nil, 0, fmt.Errorf("decode JSON value: payload exceeds hard limit of %d bytes", maxJSONTypedValueBytes)
@@ -471,7 +564,7 @@ func decodeJSON(
 		return nil, 0, fmt.Errorf("decode JSON value: %w", err)
 	}
 	var points []Point
-	unmapped, err := walkJSON(path, value, timestamp, &points, budget, listKeys)
+	unmapped, err := walkJSON(path, value, timestamp, &points, budget, listKeys, undecodable)
 	return points, unmapped, err
 }
 
@@ -540,12 +633,19 @@ func walkJSON(
 	points *[]Point,
 	budget *notificationDecodeBudget,
 	listKeys jsonListKeySchema,
+	undecodable *undecodablePathCollector,
 ) (int, error) {
 	if err := budget.visitJSONNode(); err != nil {
 		return 0, err
 	}
 	switch value := value.(type) {
 	case map[string]any:
+		if len(value) == 0 {
+			if err := undecodable.add(path); err != nil {
+				return 0, err
+			}
+			return 0, nil
+		}
 		keys := make([]string, 0, len(value))
 		for key := range value {
 			keys = append(keys, key)
@@ -562,7 +662,7 @@ func walkJSON(
 			if budgetErr := budget.reservePathStringBytes(appendedBytes); budgetErr != nil {
 				return 0, budgetErr
 			}
-			childUnmapped, err := walkJSON(path.AppendElements(key), value[key], timestamp, points, budget, listKeys)
+			childUnmapped, err := walkJSON(path.AppendElements(key), value[key], timestamp, points, budget, listKeys, undecodable)
 			if err != nil {
 				return 0, err
 			}
@@ -570,6 +670,12 @@ func walkJSON(
 		}
 		return unmapped, nil
 	case []any:
+		if len(value) == 0 {
+			if err := undecodable.add(path); err != nil {
+				return 0, err
+			}
+			return 0, nil
+		}
 		unmapped := 0
 		var objectPaths map[string]struct{}
 		var requiredListKeys map[string]string
@@ -596,13 +702,13 @@ func walkJSON(
 						return 0, budgetErr
 					}
 				}
-				itemUnmapped, err := walkJSON(keyed, item, timestamp, points, budget, listKeys)
+				itemUnmapped, err := walkJSON(keyed, item, timestamp, points, budget, listKeys, undecodable)
 				if err != nil {
 					return 0, err
 				}
 				unmapped += itemUnmapped
 			case []any:
-				itemUnmapped, err := walkJSON(path, item, timestamp, points, budget, listKeys)
+				itemUnmapped, err := walkJSON(path, item, timestamp, points, budget, listKeys, undecodable)
 				if err != nil {
 					return 0, err
 				}
@@ -612,15 +718,24 @@ func walkJSON(
 				if err := budget.visitJSONNode(); err != nil {
 					return 0, err
 				}
+				if err := undecodable.add(path); err != nil {
+					return 0, err
+				}
 				unmapped++
 			}
 		}
 		return unmapped, nil
 	case nil:
+		if err := undecodable.add(path); err != nil {
+			return 0, err
+		}
 		return 1, nil
 	default:
 		canonical, ok := canonicalJSONScalar(value)
 		if !ok {
+			if err := undecodable.add(path); err != nil {
+				return 0, err
+			}
 			return 1, nil
 		}
 		if err := budget.reservePoint(path, canonical); err != nil {

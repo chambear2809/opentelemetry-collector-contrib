@@ -366,7 +366,7 @@ func TestMetricsBuilder(t *testing.T) {
 						validatedMetrics["cisco.interface.admin.status"] = true
 						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)", mi.Description())
+						assert.Equal(t, "Cisco interface administrative status (1 = administratively enabled, 0 = not administratively enabled)", mi.Description())
 						assert.Equal(t, "1", mi.Unit())
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
@@ -390,7 +390,7 @@ func TestMetricsBuilder(t *testing.T) {
 						validatedMetrics["cisco.interface.admin.status"] = true
 						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)", mi.Description())
+						assert.Equal(t, "Cisco interface administrative status (1 = administratively enabled, 0 = not administratively enabled)", mi.Description())
 						assert.Equal(t, "1", mi.Unit())
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
@@ -1841,7 +1841,7 @@ func TestMetricsBuilder(t *testing.T) {
 						validatedMetrics["system.network.interface.status"] = true
 						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Interface operational status (1 = up, 0 = down)", mi.Description())
+						assert.Equal(t, "Interface operational status (1 = up, 0 = not up)", mi.Description())
 						assert.Equal(t, "1", mi.Unit())
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
@@ -1865,7 +1865,7 @@ func TestMetricsBuilder(t *testing.T) {
 						validatedMetrics["system.network.interface.status"] = true
 						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Interface operational status (1 = up, 0 = down)", mi.Description())
+						assert.Equal(t, "Interface operational status (1 = up, 0 = not up)", mi.Description())
 						assert.Equal(t, "1", mi.Unit())
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())

@@ -232,7 +232,7 @@ func TestIntersightTelemetryRespectsSharedDeviceSelection(t *testing.T) {
 		fieldName:   "hw.fan.speed-Mean",
 		metricName:  "intersight.ucs.fan.speed",
 		description: "Mean fan speed from Intersight telemetry.",
-		unit:        "rpm",
+		unit:        "1/min",
 	}
 	response := []any{
 		map[string]any{"event": map[string]any{"host.name": "ucs-server-1", "deviceId": "included-device", "hw.fan.speed-Mean": 12000}},
@@ -258,7 +258,7 @@ func TestIntersightTelemetryMaxResultsCapsEachQuery(t *testing.T) {
 		fieldName:   "hw.fan.speed-Mean",
 		metricName:  "intersight.ucs.fan.speed",
 		description: "Mean fan speed from Intersight telemetry.",
-		unit:        "rpm",
+		unit:        "1/min",
 	}
 	response := []any{
 		map[string]any{"event": map[string]any{"host.name": "host-1", "hw.fan.speed-Mean": 1000}},
@@ -293,7 +293,7 @@ func TestIntersightTelemetryClassifiesEveryRow(t *testing.T) {
 		fieldName:   "hw.fan.speed-Mean",
 		metricName:  "intersight.ucs.fan.speed",
 		description: "Mean fan speed from Intersight telemetry.",
-		unit:        "rpm",
+		unit:        "1/min",
 	}
 	response := []any{
 		map[string]any{"event": map[string]any{"host.name": "included", "hw.fan.speed-Mean": 1000.0}},

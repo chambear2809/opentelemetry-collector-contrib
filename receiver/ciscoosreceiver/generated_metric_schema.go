@@ -232,7 +232,7 @@ var fixedMetricDescriptors = map[string]fixedMetricDescriptor{
 	},
 	"catalyst_center.client.wireless.rssi": {
 		description: "RSSI for a targeted wireless client.",
-		unit:        "dBm",
+		unit:        "dB{mW}",
 		instrument:  fixedMetricInstrumentGauge,
 		valueType:   fixedMetricValueTypeDouble,
 		monotonic:   false,
@@ -551,7 +551,7 @@ var fixedMetricDescriptors = map[string]fixedMetricDescriptor{
 		temporality: fixedMetricTemporalityUnspecified,
 	},
 	"cisco.interface.admin.status": {
-		description:        "Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)",
+		description:        "Cisco interface administrative status (1 = administratively enabled, 0 = not administratively enabled)",
 		unit:               "1",
 		instrument:         fixedMetricInstrumentGauge,
 		valueType:          fixedMetricValueTypeInt,
@@ -737,7 +737,7 @@ var fixedMetricDescriptors = map[string]fixedMetricDescriptor{
 	},
 	"cisco.optics.rx_power": {
 		description:        "Received optical power",
-		unit:               "dB[mW]",
+		unit:               "dB{mW}",
 		instrument:         fixedMetricInstrumentGauge,
 		valueType:          fixedMetricValueTypeDouble,
 		monotonic:          false,
@@ -782,7 +782,7 @@ var fixedMetricDescriptors = map[string]fixedMetricDescriptor{
 	},
 	"cisco.optics.tx_power": {
 		description:        "Transmitted optical power",
-		unit:               "dB[mW]",
+		unit:               "dB{mW}",
 		instrument:         fixedMetricInstrumentGauge,
 		valueType:          fixedMetricValueTypeDouble,
 		monotonic:          false,
@@ -985,7 +985,7 @@ var fixedMetricDescriptors = map[string]fixedMetricDescriptor{
 	},
 	"cisco.wlc.client.wireless.rssi": {
 		description: "Client RSSI.",
-		unit:        "dBm",
+		unit:        "dB{mW}",
 		instrument:  fixedMetricInstrumentGauge,
 		valueType:   fixedMetricValueTypeDouble,
 		monotonic:   false,
@@ -1145,7 +1145,7 @@ var fixedMetricDescriptors = map[string]fixedMetricDescriptor{
 	},
 	"cisco.wlc.rf.noise_floor": {
 		description: "RF noise floor.",
-		unit:        "dBm",
+		unit:        "dB{mW}",
 		instrument:  fixedMetricInstrumentGauge,
 		valueType:   fixedMetricValueTypeDouble,
 		monotonic:   false,
@@ -1657,7 +1657,7 @@ var fixedMetricDescriptors = map[string]fixedMetricDescriptor{
 	},
 	"intersight.ucs.fan.speed": {
 		description: "Mean fan speed from Intersight telemetry GroupBy.",
-		unit:        "rpm",
+		unit:        "1/min",
 		instrument:  fixedMetricInstrumentGauge,
 		valueType:   fixedMetricValueTypeDouble,
 		monotonic:   false,
@@ -1945,7 +1945,7 @@ var fixedMetricDescriptors = map[string]fixedMetricDescriptor{
 	},
 	"intersight.ucs.signal_power.receive": {
 		description: "Transceiver receive optical power.",
-		unit:        "dBm",
+		unit:        "dB{mW}",
 		instrument:  fixedMetricInstrumentGauge,
 		valueType:   fixedMetricValueTypeDouble,
 		monotonic:   false,
@@ -1953,7 +1953,7 @@ var fixedMetricDescriptors = map[string]fixedMetricDescriptor{
 	},
 	"intersight.ucs.signal_power.transmit": {
 		description: "Transceiver transmit optical power.",
-		unit:        "dBm",
+		unit:        "dB{mW}",
 		instrument:  fixedMetricInstrumentGauge,
 		valueType:   fixedMetricValueTypeDouble,
 		monotonic:   false,
@@ -2489,7 +2489,7 @@ var fixedMetricDescriptors = map[string]fixedMetricDescriptor{
 	},
 	"meraki.uplink.cellular.signal.rsrp": {
 		description: "Cellular uplink reference-signal received power.",
-		unit:        "dBm",
+		unit:        "dB{mW}",
 		instrument:  fixedMetricInstrumentGauge,
 		valueType:   fixedMetricValueTypeDouble,
 		monotonic:   false,
@@ -3163,7 +3163,7 @@ var fixedMetricDescriptors = map[string]fixedMetricDescriptor{
 		optionalAttributes: []string{"network.interface.name", "network.io.direction"},
 	},
 	"system.network.interface.status": {
-		description:        "Interface operational status (1 = up, 0 = down)",
+		description:        "Interface operational status (1 = up, 0 = not up)",
 		unit:               "1",
 		instrument:         fixedMetricInstrumentGauge,
 		valueType:          fixedMetricValueTypeInt,

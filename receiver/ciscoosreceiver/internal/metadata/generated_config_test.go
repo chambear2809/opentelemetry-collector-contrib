@@ -1267,6 +1267,7 @@ func TestMetricsBuilderConfig(t *testing.T) {
 					},
 				},
 				ResourceAttributes: ResourceAttributesConfig{
+					CiscoOsBootMode:         ResourceAttributeConfig{Enabled: true},
 					CiscoOsName:             ResourceAttributeConfig{Enabled: true},
 					CiscoPlatformFamily:     ResourceAttributeConfig{Enabled: true},
 					CiscoProductFamily:      ResourceAttributeConfig{Enabled: true},
@@ -2527,6 +2528,7 @@ func TestMetricsBuilderConfig(t *testing.T) {
 					},
 				},
 				ResourceAttributes: ResourceAttributesConfig{
+					CiscoOsBootMode:         ResourceAttributeConfig{Enabled: false},
 					CiscoOsName:             ResourceAttributeConfig{Enabled: false},
 					CiscoPlatformFamily:     ResourceAttributeConfig{Enabled: false},
 					CiscoProductFamily:      ResourceAttributeConfig{Enabled: false},
@@ -2862,6 +2864,7 @@ func TestResourceAttributesConfig(t *testing.T) {
 		{
 			name: "all_set",
 			want: ResourceAttributesConfig{
+				CiscoOsBootMode:         ResourceAttributeConfig{Enabled: true},
 				CiscoOsName:             ResourceAttributeConfig{Enabled: true},
 				CiscoPlatformFamily:     ResourceAttributeConfig{Enabled: true},
 				CiscoProductFamily:      ResourceAttributeConfig{Enabled: true},
@@ -2879,6 +2882,7 @@ func TestResourceAttributesConfig(t *testing.T) {
 		{
 			name: "none_set",
 			want: ResourceAttributesConfig{
+				CiscoOsBootMode:         ResourceAttributeConfig{Enabled: false},
 				CiscoOsName:             ResourceAttributeConfig{Enabled: false},
 				CiscoPlatformFamily:     ResourceAttributeConfig{Enabled: false},
 				CiscoProductFamily:      ResourceAttributeConfig{Enabled: false},

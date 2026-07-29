@@ -9,16 +9,21 @@ schema, the receiver rejects its configuration.
 
 The implemented receiver uses a static inventory of direct TLS endpoints. One verified session calls Capabilities,
 negotiates only product-approved encodings, validates the contract-required model set, and performs only the product
-contract's bounded STATE identity Gets. After verifying one unambiguous product/model/exact-build identity, the receiver
-launches configured metric Subscribe streams on that verified session. It never calls Set.
+contract's bounded STATE identity Gets. After verifying one unambiguous product and chassis model plus a canonical
+observed software release identifier matching configuration, the receiver launches configured metric Subscribe streams
+on that verified session. Catalyst 9300/9500 additionally require exact IOS XE 17.18.1, INSTALL boot mode, and exact
+tuples for every module required by the enabled plan from a reviewed seven-module Capabilities catalog. For IOS XE,
+the release identifier is the public label; the internal
+install build, `version-extension`, SMU state, and full module/deviation closure remain outside preflight. The receiver
+never calls Set.
 Compatibility failures are terminal for that target until receiver restart and launch zero configured metric streams,
 although bounded identity Gets may already have run.
 
-After qualification, the receiver supports independently planned subscription streams and, where the selected product
-contract permits them, per-path SAMPLE, ON_CHANGE, and TARGET_DEFINED behavior, heartbeat and suppression requests,
+After contract preflight verification, the receiver supports independently planned subscription streams and, where the
+selected product contract permits them, per-path SAMPLE, ON_CHANGE, and TARGET_DEFINED behavior, heartbeat and suppression requests,
 updates-only state ownership, aggregation, QoS, and the typed Depth extension. JSON and JSON_IETF subtree values are
 decoded only through explicit metric mappings. The bounded scalar PROTO decoder remains available only to deprecated
-receiver surfaces; product-qualified contracts reject PROTO. Unsupported opaque value kinds remain bounded and
+receiver surfaces; product-contract-gated targets reject PROTO. Unsupported opaque value kinds remain bounded and
 observable but do not become metrics.
 
 The Nexus 9000 10.6 and Nexus 3500 10.5 contracts use only their conservative common subset: JSON,

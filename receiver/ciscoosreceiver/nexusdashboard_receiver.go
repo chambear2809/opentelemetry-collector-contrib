@@ -732,7 +732,7 @@ func (*nexusDashboardMetricsBuilder) recordPerformanceObject(rb *resourceMetrics
 		attrs := interfaceAttrs(ifName, nexusdashboard.String(obj, "macAddress"), nexusdashboard.String(obj, "description", "descr"), nexusdashboard.String(obj, "speed"))
 		if status := nexusDashboardObjectStatus(obj); status != "" {
 			if up, ok := upStatus(status); ok {
-				rb.recordInt("system.network.interface.status", "Interface operational status (1 = up, 0 = down)", "1", up, attrs)
+				rb.recordInt("system.network.interface.status", "Interface operational status (1 = up, 0 = not up)", "1", up, attrs)
 			}
 		}
 		recordNexusDashboardNumeric(rb, obj, "rxRate", "cisco.interface.io.rate", "Interface traffic rate.", "bit/s", withAttr(attrs, "network.io.direction", "receive"), 1)

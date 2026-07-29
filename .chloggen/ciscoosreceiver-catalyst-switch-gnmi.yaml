@@ -1,0 +1,15 @@
+change_type: enhancement
+component: receiver/cisco_os
+note: Add fail-closed native gNMI contracts for Catalyst 9300 and 9500 switches on exact IOS XE 17.18.1.
+issues: [0]
+subtext: |
+  Require gNMI 0.4.0, JSON_IETF, a closed seven-module IOS XE/OpenConfig ModelData tuple allowlist, the documented base-PID allowlist,
+  exact public release 17.18.1, and verified INSTALL boot mode before conservative STREAM/SAMPLE telemetry is accepted.
+  Model-tuple and boot-mode mismatches fail preflight as `unsupported_model_version` and `unsupported_boot_mode`;
+  verified boot mode is emitted as `cisco.os.boot_mode`. Because retained physical-device qualification is not yet
+  available, Catalyst switch targets must explicitly set `allow_unqualified: true`; that acknowledgement and a
+  successful session preflight are not qualification. The receiver does not retain IOS XE's internal install build,
+  version-extension, or SMU state; those remain live-qualification evidence. Reuse the governed IOS XE system,
+  interface, and experimental DOM profiles, including scoped RFC 7951 list-key interoperability and complete
+  OpenConfig interface-state normalization.
+change_logs: [user]

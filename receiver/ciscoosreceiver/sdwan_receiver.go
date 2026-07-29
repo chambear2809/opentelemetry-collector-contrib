@@ -613,14 +613,14 @@ func (r *sdwanMetricsReceiver) recordInterfaceObject(builder *sdwanMetricsBuilde
 	})
 	status := firstNonEmpty(sdwan.String(obj, "oper-status", "operStatus", "status", "state"), "")
 	if up, ok := upStatus(status); ok {
-		rb.recordInt("system.network.interface.status", "Interface operational status (1 = up, 0 = down)", "1", up, withAttr(attrs, "sdwan.status", status))
+		rb.recordInt("system.network.interface.status", "Interface operational status (1 = up, 0 = not up)", "1", up, withAttr(attrs, "sdwan.status", status))
 	}
 	if code, ok := statusCode(status); ok {
 		rb.recordInt("sdwan.transport.interface.status", "SD-WAN transport or service interface state.", "1", code, withAttr(attrs, "sdwan.status", status))
 	}
 	admin := sdwan.String(obj, "admin-status", "adminStatus", "admin_state")
 	if up, ok := upStatus(admin); ok {
-		rb.recordInt("cisco.interface.admin.status", "Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)", "1", up, withAttr(attrs, "sdwan.status", admin))
+		rb.recordInt("cisco.interface.admin.status", "Cisco interface administrative status (1 = administratively enabled, 0 = not administratively enabled)", "1", up, withAttr(attrs, "sdwan.status", admin))
 	}
 	recordSDWANInterfaceSpeed(rb, obj, attrs)
 	recordSDWANInterfaceRate(rb, obj, "rx-kbps", withAttr(attrs, "network.io.direction", "receive"), "rx-kbps", "rxKbps")

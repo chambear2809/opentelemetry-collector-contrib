@@ -10356,6 +10356,7 @@ func (rac *ResourceAttributeConfig) Unmarshal(parser *confmap.Conf) error {
 
 // ResourceAttributesConfig provides config for cisco_os resource attributes.
 type ResourceAttributesConfig struct {
+	CiscoOsBootMode         ResourceAttributeConfig `mapstructure:"cisco.os.boot_mode"`
 	CiscoOsName             ResourceAttributeConfig `mapstructure:"cisco.os.name"`
 	CiscoPlatformFamily     ResourceAttributeConfig `mapstructure:"cisco.platform.family"`
 	CiscoProductFamily      ResourceAttributeConfig `mapstructure:"cisco.product.family"`
@@ -10372,6 +10373,9 @@ type ResourceAttributesConfig struct {
 
 func DefaultResourceAttributesConfig() ResourceAttributesConfig {
 	return ResourceAttributesConfig{
+		CiscoOsBootMode: ResourceAttributeConfig{
+			Enabled: true,
+		},
 		CiscoOsName: ResourceAttributeConfig{
 			Enabled: true,
 		},

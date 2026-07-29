@@ -21,6 +21,7 @@ func TestLogsBuilderAppendLogRecord(t *testing.T) {
 	lb := NewLogsBuilder(settings)
 
 	rb := lb.NewResourceBuilder()
+	rb.SetCiscoOsBootMode("cisco.os.boot_mode-val")
 	rb.SetCiscoOsName("cisco.os.name-val")
 	rb.SetCiscoPlatformFamily("cisco.platform.family-val")
 	rb.SetCiscoProductFamily("cisco.product.family-val")

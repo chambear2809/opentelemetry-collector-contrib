@@ -10,7 +10,8 @@ import (
 	"time"
 )
 
-// tombstonePrefixIndex is a structural index for removal tombstones. Configured
+// tombstonePrefixIndex is a structural index for authoritative removal
+// tombstones and equal-admitting semantic-invalidation watermarks. Configured
 // subscription owner, target, gNMI path target, and origin form the first four
 // logical levels. Path elements are indexed by name and then by their sorted
 // key constraints, which lets lookups follow only selector key sets that are
@@ -26,9 +27,10 @@ type tombstoneTargetIndex struct {
 }
 
 type tombstonePathIndexNode struct {
-	tombstoneKey       string
-	tombstoneTimestamp time.Time
-	children           map[string]*tombstoneElementIndex
+	tombstoneKey        string
+	tombstoneTimestamp  time.Time
+	tombstoneAllowEqual bool
+	children            map[string]*tombstoneElementIndex
 }
 
 type tombstoneElementIndex struct {
@@ -77,6 +79,7 @@ func (idx *tombstonePrefixIndex) upsert(key string, tombstone stateTombstone) {
 	}
 	node.tombstoneKey = key
 	node.tombstoneTimestamp = tombstone.timestamp
+	node.tombstoneAllowEqual = tombstone.allowEqual
 }
 
 func (idx *tombstonePrefixIndex) remove(key string, path Path) {
@@ -107,6 +110,7 @@ func removeTombstonePath(node *tombstonePathIndexNode, elements []PathElem, inde
 		if node.tombstoneKey == key {
 			node.tombstoneKey = ""
 			node.tombstoneTimestamp = time.Time{}
+			node.tombstoneAllowEqual = false
 		}
 		return
 	}
@@ -153,7 +157,7 @@ func (idx *tombstonePrefixIndex) isStaleForOwner(ownerID string, path Path, time
 }
 
 func (node *tombstonePathIndexNode) isStale(elements []PathElem, index int, timestamp time.Time) bool {
-	if node.tombstoneKey != "" && !timestamp.After(node.tombstoneTimestamp) {
+	if node.tombstoneKey != "" && stateBarrierRejects(node.tombstoneTimestamp, node.tombstoneAllowEqual, timestamp) {
 		return true
 	}
 	if index == len(elements) {
@@ -167,6 +171,10 @@ func (node *tombstonePathIndexNode) isStale(elements []PathElem, index int, time
 	return elementIndex.forEachSubset(element.Keys, func(child *tombstonePathIndexNode) bool {
 		return child.isStale(elements, index+1, timestamp)
 	})
+}
+
+func stateBarrierRejects(barrier time.Time, allowEqual bool, candidate time.Time) bool {
+	return candidate.Before(barrier) || (!allowEqual && candidate.Equal(barrier))
 }
 
 // dominated returns only tombstones whose paths are selected by selector and

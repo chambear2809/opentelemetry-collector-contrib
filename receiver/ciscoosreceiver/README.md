@@ -4,7 +4,7 @@
 The Cisco OS Receiver is a modular receiver that collects metrics from Cisco network devices via SSH connections,
 Cisco Meraki Dashboard APIs, Cisco Intersight APIs, Cisco Catalyst Center Assurance APIs, Cisco Catalyst SD-WAN
 Manager APIs, Nexus Dashboard/NDFC APIs, Cisco APIC APIs, Cisco Secure Firewall Management Center APIs, Cisco
-Identity Services Engine APIs, product-qualified secure normalized gNMI dial-in for supported Catalyst, ASR, NCS,
+Identity Services Engine APIs, product-contract-gated secure normalized gNMI dial-in for explicitly configured Catalyst, ASR, NCS,
 and Nexus products, and IOS XR MDT telemetry. It supports metrics for device, cloud, controller,
 identity, security, core WAN, and infrastructure health plus logs for operational evidence such as faults, anomalies,
 advisories, audits, deployments, workflows, authentication failures, posture, pxGrid session signals, policy changes,
@@ -40,7 +40,7 @@ The following settings are available:
 | `devices` | list | Yes* | List of Cisco SSH devices to monitor |
 | `device_selection` | map | No | Shared include/exclude selector applied across SSH, Meraki, Intersight, Catalyst Center, Catalyst 9800, SD-WAN, Nexus Dashboard, ACI, FMC, ISE, and IOS XR telemetry |
 | `metrics` | map | No | Per-metric forwarding switches for cost-sensitive destinations such as Splunk Observability Cloud |
-| `gnmi` | map | Yes* | Product-qualified secure gNMI dial-in for Catalyst 9800, ASR 9000, NCS 5500, Nexus 9000, and Nexus 3500 targets |
+| `gnmi` | map | Yes* | Secure normalized gNMI dial-in contracts for Catalyst 9300, Catalyst 9500, Catalyst 9800, ASR 9000, NCS 5500, Nexus 9000, and Nexus 3500 targets; exact-build live qualification is tracked separately |
 | `meraki` | map | Yes* | Meraki Dashboard API polling targets |
 | `intersight` | map | Yes* | Cisco Intersight API polling target |
 | `catalyst_center` | map | Yes* | Cisco Catalyst Center Assurance API polling target |
@@ -1065,19 +1065,22 @@ export CISCOOS_E2E_ISE_DATACONNECT_PASSWORD
 (cd receiver/ciscoosreceiver && go test -tags=e2e -run '^TestE2ELiveISEDataConnect$' -count=1 -timeout=5m -v .)
 ```
 
-### Product-Qualified gNMI Dial-In
+### Product-Contract gNMI Dial-In
 
-The root `gnmi` section supports five explicit product/release contracts. It maintains a static target inventory and
+The root `gnmi` section implements seven explicit product/release contracts. It maintains a static target inventory and
 uses read-only gNMI Capabilities, bounded identity Get, and Subscribe RPCs; it never issues Set. A target must pass
-configuration validation, product-approved encoding negotiation, required-model validation, and bounded identity Get
-verification before any configured metric stream is launched. Existing
+configuration validation, product-approved protocol-version and encoding negotiation, required-model validation, and
+bounded identity Get verification before any configured metric stream is launched. An implemented contract is not a
+claim that every admitted SKU, topology, or exact build has passed the live gate; see the validation matrix. Existing
 `ios_xr.dial_out` and `catalyst_9800.dial_out` modes remain available, subject to the production hardening below;
 legacy dial-in targets retain their legacy decoder and metric behavior for one fork release. Every dial-in endpoint has
 one owner across all three target lists; DNS case/trailing-dot variants and equivalent IPv4/IPv6 spellings do not create
 distinct owners.
 
-| Product | Derived OS | Accepted train | Verified identity source |
-|---------|------------|----------------|--------------------------|
+| Product | Derived OS | Accepted release/train | Verified identity source |
+|---------|------------|------------------------|--------------------------|
+| `catalyst_9300` | `ios_xe` | `17.18.1` only | IOS XE hardware inventory, current install version, and INSTALL boot mode |
+| `catalyst_9500` | `ios_xe` | `17.18.1` only | IOS XE hardware inventory, current install version, and INSTALL boot mode |
 | `catalyst_9800` | `ios_xe` | `17.18.x` | IOS XE hardware inventory and current install version |
 | `asr_9000` | `ios_xr` | `24.4.x` | IOS XR install/version chassis PID and release label |
 | `ncs_5500` | `ios_xr` | `24.4.x` | IOS XR install/version chassis PID and release label |
@@ -1088,15 +1091,49 @@ NX-OS uses the generic `openconfig` origin on the wire for its OpenConfig identi
 validation remains module-specific: those streams require the advertised `openconfig-platform`, `openconfig-system`,
 and `openconfig-interfaces` models as applicable. The generic wire origin is not itself a Capabilities model name.
 
-The registry accepts valid builds in the listed train, while required `software_version` is the exact expected running
-build and must canonically match the observed value. Chassis identifiers must match the selected product's anchored
-`C9800-`/`CAT9800-`, `ASR-9`, `NCS-55`, `N9K-`, or `N3K-C35` family. Cisco SONiC is explicitly unsupported.
+The Catalyst 9300/9500 contracts accept exactly the reviewed public release `17.18.1`; other contracts accept
+syntactically valid software release identifiers in their listed train. Required `software_version` is the configured
+expected release identifier, and preflight compares its canonical form with the canonical form derived from the
+observed value. Chassis identifiers must match the selected product's anchored identity rule. Catalyst 9300/9500 use
+the explicit documented base-PID allowlists in the
+[gNMI dial-in guide](docs/gnmi-dial-in.md#admitted-catalyst-switch-pids); the other products use anchored
+`C9800-`/`CAT9800-`, `ASR-9`, `NCS-55`, `N9K-`, or `N3K-C35` family patterns. These rules are fail-closed identity
+boundaries, not evidence that every admitted SKU has been physically qualified. Cisco SONiC is explicitly unsupported.
 `platform`, including `platform: sonic`, remains a decoder-only migration field that always fails validation; it is
 never a contract selector.
 
-For IOS XE, `software_version` is the exact public release label (for example, `17.18.1a`). The live internal
-install-version value is normalized to that label without appending its separate opaque `version-extension`; this does
-not attest SMUs or bit-for-bit image identity. Documented NX-OS maintenance suffixes such as `10.6(2n)F` are accepted.
+For Catalyst 9300/9500, the configured `software_version` forms `17.18.1`, `17.18.01`, and `017.018.001` all
+canonicalize to the sole accepted release identity `17.18.1`; prefer the canonical form shown in the examples. These
+forms do not admit another maintenance release. The train-wide Catalyst 9800 contract may use another canonical 17.18
+public release label (for example, `17.18.1a`). Preflight normalizes the observed internal install-version value to that
+public label and compares the two canonical labels. The receiver does not retain the
+internal install build suffix or the separate opaque `version-extension` in `os.version`; preflight therefore does not
+attest the exact image build, installed SMUs, or bit-for-bit image identity. Those details must be retained separately
+as live-qualification evidence. Catalyst 9300/9500 also require INSTALL boot mode and exact Capabilities
+`ModelData(name, organization, version)` matches for every module required by the enabled plan, drawn from a seven-entry
+reviewed IOS XE/OpenConfig catalog. That catalog is closed for these two contracts: custom origins, explicit model
+declarations, selectors, and mapped descendants cannot introduce an eighth module. See the
+[schema provenance and remaining deviation-set gate](docs/gnmi-dial-in.md#ios-xe-17181-schema-provenance). The
+Catalyst 9300/9500 contracts canonicalize only the
+identity- and built-in-profile JSON_IETF list keys covered by the switch path contract from Cisco's documented
+JSON-string-in-string form before identity comparison, response-scope checks, mapping, or caching. Custom-model keys
+and legacy product contracts keep standard gNMI PathElem string semantics.
+
+The initial Catalyst 9300/9500 identity boundary requires exactly one reported `hw-type-chassis` inventory group, one
+consistent exact current-image identity across every reported current install location, and an unambiguous INSTALL
+boot-mode value. Identical `(version, version-extension)` records at multiple locations are accepted; missing or
+different records fail closed. It rejects BUNDLE, UNKNOWN, missing, or conflicting boot mode rather than inferring
+support. A single reported chassis does not itself
+prove that a target is standalone: C9300 StackWise and C9500 StackWise Virtual remain separate, unqualified topology
+rows and must not be treated as supported until sanitized live evidence establishes their inventory and failover
+behavior. The external topology label does not relax identity admission: every run must still satisfy the exactly-one
+`hw-type-chassis` boundary. If a StackWise or StackWise Virtual device reports multiple chassis groups, the current
+contract rejects it and the qualification row remains failed/unqualified until real captures justify a separate
+identity contract.
+Because both physical-device qualification rows are still `Not run`, Catalyst 9300/9500 configuration also requires
+`allow_unqualified: true`. This deliberately conspicuous acknowledgement prevents those contracts from being enabled
+accidentally; it is rejected when a selected contract does not require it and does not constitute qualification.
+Documented NX-OS maintenance suffixes such as `10.6(2n)F` are accepted.
 
 Across `gnmi.targets`, `ios_xr.dial_in.targets`, and `catalyst_9800.dial_in.targets`, at most 256 target definitions may
 be configured. Dial-in targets admitted by `device_selection` and both enabled dial-out servers share one 512 MiB
@@ -1109,8 +1146,9 @@ ceiling but do not consume the runtime envelope.
 |---------|------|----------|-------------|
 | `gnmi.targets` | list | Yes | Static targets with unique names and endpoints. Each target has exactly one active collector owner; this list and both deprecated dial-in target lists may contain at most 256 definitions in total. |
 | `gnmi.targets[].endpoint` | string | Yes | Direct-device TCP endpoint in strict `host:port` form. The port must be numeric from `1` through `65535`; unspecified IPs and malformed DNS names are rejected. Canonically equivalent endpoints must be unique across shared, IOS XR legacy, and Catalyst 9800 legacy dial-in lists. |
-| `gnmi.targets[].product` | string | Yes | One of `catalyst_9800`, `asr_9000`, `ncs_5500`, `nexus_9000`, or `nexus_3500`. The receiver derives the OS family. Cisco SONiC is unsupported. |
-| `gnmi.targets[].software_version` | string | Yes | Exact expected running build in the accepted product train; canonical configured and observed versions must match. |
+| `gnmi.targets[].product` | string | Yes | One of `catalyst_9300`, `catalyst_9500`, `catalyst_9800`, `asr_9000`, `ncs_5500`, `nexus_9000`, or `nexus_3500`. The receiver derives the OS family. Cisco SONiC is unsupported. |
+| `gnmi.targets[].software_version` | string | Yes | Expected software release identifier; Catalyst 9300/9500 accept `17.18.1` plus zero-padded numeric forms such as `17.18.01` and `017.018.001`, all canonicalized to the sole accepted identity `17.18.1`. Other contracts use their accepted train. Preflight compares canonical configured and observed forms. For IOS XE this is the public release label, not the internal image build or SMU state. |
+| `gnmi.targets[].allow_unqualified` | bool | Catalyst 9300/9500 only | Must be `true` for Catalyst 9300/9500 while retained physical-device qualification is `Not run`; rejected when the selected contract does not require explicit acknowledgement. This acknowledgement is not qualification. |
 | `gnmi.targets[].platform` | string | Rejected | Decoder-only migration field. Any use returns an actionable error; there is no OS-family fallback, including for custom-only targets. |
 | `gnmi.targets[].credentials.mode` | string | No | `username_password`, `mtls`, or `mtls_username_password`. |
 | `gnmi.targets[].credentials.username` | string | Mode-dependent | Read-only AAA service account. |
@@ -1122,7 +1160,7 @@ ceiling but do not consume the runtime envelope.
 | `gnmi.targets[].tls.reload_interval` | duration | No | Reload client certificate/key material for later TLS handshakes. CA changes require a reconnect or rollout. |
 | `gnmi.targets[].max_recv_msg_size_mib` | int | No | Per-target receive limit, from 1 through 16 MiB. Defaults to `16`; larger single notifications are rejected before protobuf object expansion can exhaust the collector. All selected dial-in targets and enabled dial-out servers must fit the combined 512 MiB envelope described above. |
 | `gnmi.targets[].max_streams` | int | No | Compatible-stream cap; defaults to 4 and may be raised to at most 8 after qualification. IOS XR uses two baseline streams and three with optics. |
-| `gnmi.targets[].encoding_preference` | list | No | Target-wide ordered preference of at most three entries containing only encodings approved by the product contract. Catalyst 9800, ASR 9000, and NCS 5500 accept `json_ietf` or `json`; both Nexus contracts accept only `json`. `proto` is rejected. |
+| `gnmi.targets[].encoding_preference` | list | No | Target-wide ordered preference of at most three entries containing only encodings approved by the product contract. Catalyst 9300 and Catalyst 9500 accept only `json_ietf`; Catalyst 9800, ASR 9000, and NCS 5500 accept `json_ietf` or `json`; both Nexus contracts accept only `json`. `proto` is rejected because IOS XE supports it only for Subscribe while identity preflight also requires Get. |
 | `gnmi.targets[].keepalive.time` | duration | No | HTTP/2 client keepalive interval. Defaults to 30 seconds. |
 | `gnmi.targets[].profiles` | map | No | Product-specific subset of `identity`, `system`, `interfaces`, `optics`, and `catalyst_9800_wireless`. Nexus has no system profile; wireless is Catalyst 9800-only; every optics profile remains experimental pending separate qualification. |
 | `gnmi.targets[].profiles.<name>.encoding_preference` | list | No | Ordered encoding preference for physical streams produced by this profile. |
@@ -1133,20 +1171,20 @@ ceiling but do not consume the runtime envelope.
 | `gnmi.targets[].profiles.<name>.path_overrides` | map | No | At most 64 per-path STREAM behaviors keyed by a stable catalog path ID such as `interfaces.openconfig`. Overrides cannot replace catalog paths or metric mappings. |
 | `gnmi.targets[].custom_subscriptions[]` | list | No | Up to eight explicitly mapped custom subscription streams per target. They support the same encoding, list-option, and Depth fields as profiles. |
 | `gnmi.targets[].custom_subscriptions[].origin` | string | Yes | Explicit wire origin for every custom stream. NX-OS OpenConfig streams use generic `openconfig`; DME streams use `DME`. |
-| `gnmi.targets[].custom_subscriptions[].models` | list | Origin-dependent | Up to 32 unique, whitespace-free valid YANG module identifiers. The list is optional for non-generic origins and required and non-empty for `origin: openconfig`. An NX-OS OpenConfig stream lists concrete, case-sensitive Capabilities models such as `[openconfig-platform]`; `openconfig` is not a model name. Every explicit model participates in preflight validation and is not sent as the path origin. |
-| `gnmi.targets[].custom_subscriptions[].path_target` | string | Rejected | Decoder-only migration field retained for an actionable error. Qualified direct-target product contracts never add a proxy target prefix to a request; custom subscriptions require an explicit wire origin. |
+| `gnmi.targets[].custom_subscriptions[].models` | list | Origin-dependent | Up to 32 unique, whitespace-free valid YANG module identifiers. The list is optional for non-generic origins and required and non-empty for `origin: openconfig`. An NX-OS OpenConfig stream lists concrete, case-sensitive Capabilities models such as `[openconfig-platform]`; `openconfig` is not a model name. Every explicit model participates in preflight validation and is not sent as the path origin. C9300/C9500 reject any custom-plan module outside their seven-entry reviewed catalog. |
+| `gnmi.targets[].custom_subscriptions[].path_target` | string | Rejected | Decoder-only migration field retained for an actionable error. Built-in direct-device product contracts never add a proxy target prefix to a request; custom subscriptions require an explicit wire origin. |
 | `gnmi.targets[].custom_subscriptions[].paths` | list | No | Up to 256 explicit subscription selectors with `path` and optional STREAM path settings. When omitted, one exact selector is derived from every mapping, and the same 256-selector limit applies. |
 | `gnmi.targets[].custom_subscriptions[].mappings` | list | Yes | Up to 1024 explicit scalar mappings per stream. A mapping may expose at most 64 configured path-key attributes and must satisfy the bounded cache metadata contract during configuration validation. |
 | `gnmi.max_datapoints_per_chunk` | int | No | Lossless consumer-call chunk bound. Defaults to `10000`. |
-| `gnmi.max_cached_series` | int | No | Receiver-wide count ceiling for mapped series, atomic baselines, and delete tombstones. Defaults to `500000`. The separate auxiliary entry ceiling is four times this value so each cached NX optical series can retain a sensor identity plus optical source, presence-count, and attribute entries. Both count ceilings are deterministically partitioned across selected targets. |
+| `gnmi.max_cached_series` | int | No | Receiver-wide count ceiling for mapped series, atomic baselines, authoritative delete tombstones, and semantic-invalidation watermarks. Defaults to `500000`. The separate auxiliary entry ceiling is four times this value so each cached NX optical series can retain a sensor identity plus optical source, presence-count, and attribute entries. Both count ceilings are deterministically partitioned across selected targets. |
 
 Across all targets, custom plans may contain at most 4096 effective request paths, 16384 mappings, and 4096 profile
 path overrides. Strings retained by custom subscription and profile plans may total at most 64 MiB receiver-wide.
 These configuration-owned limits are enforced before request protobufs or mapping registries are built.
 
 Migrate an existing shared target by replacing `platform: nx_os` (or another OS family) with both a canonical product
-and exact build, for example `product: nexus_9000` plus `software_version: "10.6(1)"`. `platform` is never used as a
-fallback contract selector.
+and expected software release identifier, for example `product: nexus_9000` plus `software_version: "10.6(1)"`.
+`platform` is never used as a fallback contract selector.
 
 Each physical subscription stream negotiates its encoding from the single Capabilities response. Target preferences are
 overridden by profile or custom-subscription preferences. Omitted fields preserve the previous request bytes:
@@ -1154,9 +1192,19 @@ STREAM/SAMPLE with existing sample intervals, no list options or extensions, and
 DME streams use JSON. Shared product contracts never select PROTO. The receiver does not try another
 encoding or silently remove options after the target rejects an actual Subscribe request.
 
+Catalyst 9300 and Catalyst 9500 use the conservative IOS XE 17.18.1 contract: Capabilities must report gNMI `0.4.0`;
+identity Get and metric Subscribe use only JSON_IETF; requests use an RFC7951 prefix, top-level STREAM, per-path SAMPLE,
+one common 1-to-604800-second interval, no optional list/path flags, and no literal `*` selectors. Three built-in
+selectors deliberately leave list keys unspecified: system memory omits
+`control-process[fru,slot,bay,chassis]`, interfaces omit `interface[name]`, and experimental optics omit
+`transceiver[name]`. Their implicit list expansion remains an exact-build live Subscribe gate because Cisco's wildcard
+documentation is specific to Get. The CPU selector is narrowed to the scalar `five-seconds` leaf. Optics remains
+disabled by default until both path shape and returned volume are physically qualified. IOS XE PROTO is not selected
+because Cisco documents it for Subscribe but the same negotiated encoding must also support identity Get.
+
 Both Nexus contracts use the conservative subset common to Nexus 9000 10.6 and Nexus 3500 10.5: JSON encoding,
-STREAM/SAMPLE subscriptions, explicit non-wildcard paths, no subscription-list prefix, and no optional subscription
-flags. Nexus configurations that request JSON_IETF, PROTO, ON_CHANGE, TARGET_DEFINED, ONCE, POLL, aggregation,
+STREAM/SAMPLE subscriptions, no literal `*` selectors, no subscription-list prefix, and no optional subscription flags.
+Nexus configurations that request JSON_IETF, PROTO, ON_CHANGE, TARGET_DEFINED, ONCE, POLL, aggregation,
 updates-only, QoS, Depth, heartbeat, or suppression fail validation. Every path in one Nexus subscription must use the
 same effective sample interval, between 1 and 604800 seconds.
 
@@ -1165,13 +1213,13 @@ Built-in streams retain their individual required models separately from that wi
 generic OpenConfig origin must declare every concrete required module in `models`; preflight rejects the target if
 Capabilities omits any declared model.
 
-For non-Nexus STREAM selectors, `stream_mode` accepts `sample`, `on_change`, or `target_defined`. SAMPLE inherits the stream's
-existing sample interval when `sample_interval` is omitted; an explicit `0s` asks for the target's fastest supported
-interval. SAMPLE also permits `suppress_redundant` and a positive `heartbeat_interval`. ON_CHANGE permits a positive
-heartbeat but rejects sample interval and suppression. TARGET_DEFINED rejects all three timing/suppression fields.
-ONCE and POLL are available only to the ASR 9000 and NCS 5500 contracts. They leave per-path mode and timing fields at
-protobuf defaults; path overrides and `updates_only` are rejected, while POLL retains its client-side `poll_interval`.
-Catalyst 9800 and both Nexus contracts are STREAM-only.
+For contracts outside Catalyst 9300, Catalyst 9500, and Nexus, STREAM selectors may use `sample`, `on_change`, or
+`target_defined`. SAMPLE inherits the stream's existing sample interval when `sample_interval` is omitted; an explicit
+`0s` asks for the target's fastest supported interval. SAMPLE also permits `suppress_redundant` and a positive
+`heartbeat_interval`. ON_CHANGE permits a positive heartbeat but rejects sample interval and suppression.
+TARGET_DEFINED rejects all three timing/suppression fields. ONCE and POLL are available only to the ASR 9000 and
+NCS 5500 contracts. They leave per-path mode and timing fields at protobuf defaults; path overrides and `updates_only`
+are rejected, while POLL retains its client-side `poll_interval`. All Catalyst and Nexus contracts are STREAM-only.
 
 When custom `paths` are present, each mapping must equal or descend from at least one selector. Selector keys must be a
 subset of the corresponding mapped-path keys, and duplicate or conflicting selectors are rejected. Unknown built-in
@@ -1183,8 +1231,9 @@ explicit mappings. The bounded scalar PROTO decoder remains for deprecated recei
 contracts reject PROTO. Leaf lists, `bytes_val`, `any_val`, and experimental `proto_bytes` are recognized, bounded, and
 counted by value kind, but are not emitted as metrics.
 
-If `updates_only` is enabled, reconnect setup silently removes cache entries, atomic baselines, and tombstones owned by
-that stream before launching the new target session. This reset does not emit deletion or optical-presence signals.
+If `updates_only` is enabled, reconnect setup silently removes cache entries, atomic baselines, authoritative delete
+tombstones, and semantic-invalidation watermarks owned by that stream before launching the new target session. This
+reset does not emit deletion or optical-presence signals.
 Streams without `updates_only` preserve their existing cross-reconnect cache behavior.
 
 An `InvalidArgument` or `Unimplemented` rejection of a non-baseline request triggers one bounded, discard-only baseline
@@ -1197,13 +1246,20 @@ qualification obligation and withdraws a previously emitted `cisco.device.up=1` 
 diagnostic probe has a finite deadline capped at 15 seconds.
 
 Each new session uses one connection to call Capabilities, negotiate product-approved encodings, validate the required
-model set, perform bounded STATE identity Gets, and verify the exact product/model/software identity. Required-model
+model set, perform bounded STATE identity Gets, and verify the product, chassis model, canonical software release
+identifier, and any required boot mode. Required-model
 derivation preserves YANG module-name case and includes built-in contract models, non-generic custom origins, every
 explicit custom `models` entry, and every valid RFC7951 module qualifier in selectors and mapped descendants. Generic
 NX-OS `openconfig` is a wire origin, not a model. Only then does it
 launch configured Subscribe streams on that verified session. Missing, ambiguous, malformed, or oversized identity,
-product/release mismatch, missing models, unsupported encodings, and deterministic malformed or unimplemented
-Capabilities responses are terminal compatibility failures. The receiver
+product/release mismatch, missing models, unsupported protocol versions or encodings, and deterministic malformed or
+unimplemented Capabilities responses are terminal compatibility failures. Required-model admission uses the
+case-sensitive model name. Catalyst 9300/9500 additionally require an exact reviewed organization and either the exact
+YANG revision date or its corresponding published semantic module version for each required enabled module in the
+seven-entry closed catalog; a plan-derived module outside that catalog and conflicting same-name catalog entries both
+fail closed. A disabled profile does not make its direct
+module a runtime requirement. The full Capabilities catalog, platform manifest/module-set identifier, and
+applicable deviations must still be retained during live qualification. The receiver
 emits `cisco.device.up=0`, increments
 `otelcol_ciscoosreceiver_gnmi_preflight_failures`, leaves
 `otelcol_ciscoosreceiver_gnmi_product_verified=0`, launches no configured metric stream, and quarantines only that target
@@ -1211,8 +1267,8 @@ until receiver restart.
 An actual request rejection never causes an encoding fallback. Transport, authentication, and temporary RPC failures
 retain bounded backoff. No live qualification passes while an enabled curated profile is degraded.
 
-The receiver also has two independent, non-configurable retained-byte ceilings: 1.25 GiB for cache correctness state and
-256 MiB for auxiliary NX sensor and optical-presence state, for a 1.5 GiB combined accounted ceiling. Count and byte
+The receiver also has two independent, non-configurable retained-byte ceilings: 1.5 GiB for cache correctness state and
+256 MiB for auxiliary NX sensor and optical-presence state, for a 1.75 GiB combined accounted ceiling. Count and byte
 budgets are divided as evenly as possible among selected targets, with any remainder assigned in configuration order,
 so one target cannot consume another target's partition. Conservative estimates include retained keys, paths, strings,
 attributes, and sparse-map overhead; either the count or byte partition can stop the affected profile first. The
@@ -1234,12 +1290,20 @@ all chunks are accepted. A refusal aborts staged state and reconnects the subscr
 redelivery. When a later chunk is refused after earlier chunks were accepted, the complete notification is retried and
 those earlier chunks are intentionally at-least-once; downstream consumers must tolerate duplicate datapoints.
 
+Device timestamps are normalized from seconds, milliseconds, microseconds, or nanoseconds. A timestamp up to five
+seconds ahead of receipt time is clamped to receipt time without poisoning source ordering. A timestamp farther in the
+future, zero, before year 2000, or otherwise invalid is rejected and counted; it is not cached under a fallback
+timestamp, and the curated profile remains qualification-degraded until receiver restart. Device clocks are therefore
+an operational prerequisite and must stay synchronized within five seconds. Out-of-order updates are ignored for
+state, counted separately, and do not advance stream success or availability.
+
 Identity defaults to a five-minute interval, while supported system and interface profiles default to 60 seconds and
 optics to 30 seconds. Safe product-specific baseline profiles default on. Optics is disabled by default and remains
 experimental for every product because its shape and cardinality depend on the chassis, line card, and optic.
 
 | Product family | Default normalized profiles | Optional profiles |
 | --- | --- | --- |
+| Catalyst 9300 / Catalyst 9500 | Identity, CPU, per-location memory utilization, interface state, and cumulative interface counters | Experimental IOS XE DOM optics |
 | Catalyst 9800 | Identity, CPU, per-location memory utilization, interface state, and cumulative interface counters | Catalyst wireless; experimental IOS XE DOM optics |
 | ASR 9000 / NCS 5500 | Identity, per-node CPU, interface state, and cumulative interface counters | Experimental IOS XR controller/lane DOM optics |
 | Nexus 9000 / Nexus 3500 | Identity, interface state, and cumulative interface counters; no system profile | Experimental NX DME DOM/VDM optics |
@@ -1248,17 +1312,22 @@ The interface profile emits operational/admin status plus cumulative byte, packe
 emit interface speed, rates, or utilization. No shared-gNMI profile emits `system.uptime`; IOS XR emits no normalized
 memory metric, and Nexus has no normalized system profile. The profiles reuse existing normalized metric names rather
 than creating OS-specific duplicates. Optics uses explicit `cisco.optics.*` gauges with UCUM units, including
-`dB[mW]` for optical power, and emits `cisco.optics.present=0` when removal is semantically known. Dashboards and
+`dB{mW}` for optical power, and emits `cisco.optics.present=0` when removal is semantically known. Dashboards and
 models must require presence and freshness.
 
-Verified shared-gNMI resources add `cisco.product.family`, `device.model.identifier`, and exact `os.version`.
+Verified shared-gNMI resources add `cisco.product.family`, `device.model.identifier`, canonical `os.version`, and,
+when the selected contract verifies it, `cisco.os.boot_mode`.
+For IOS XE, `os.version` is the public release label and excludes the internal install build, `version-extension`, and
+SMU state.
 They also add `device.manufacturer=Cisco`. `cisco.os.name` and `os.name` remain available;
 `cisco.platform.family` is retained as a legacy OS-family alias for compatibility. Internal product/preflight telemetry
 is bounded by target and, for failures, one of `identity_missing`, `identity_ambiguous`, `product_mismatch`,
-`release_mismatch`, `missing_model`, `unsupported_encoding`, or `malformed_identity`. Post-preflight stream degradation
+`release_mismatch`, `missing_model`, `unsupported_model_version`, `unsupported_boot_mode`,
+`unsupported_gnmi_version`, `unsupported_encoding`, or `malformed_identity`.
+Post-preflight stream degradation
 uses bounded `bisection_limit`, `cache_limit`, `incompatible_path_group`, `unsupported_path`, and
-`unsupported_request_options` reasons; unsupported value kinds and updates-only owner resets are counted without
-device-controlled labels.
+`unsupported_request_options` reasons; rejected invalid timestamps, out-of-order updates, unsupported value kinds, and
+updates-only owner resets are counted without device-controlled labels.
 
 All shared-gNMI optics profiles remain experimental pending qualification on the exact chassis, line card, optic, and
 software build. IOS XR currently exposes only controller and lane DOM mappings; it has no coherent profile. NX's
@@ -1269,15 +1338,46 @@ NX optical collection uses the `DME` distinguished-name family under `sys/intf`,
 `Cisco-NX-OS-device:System/.../fcotdd-items` YANG representation. Treat the broad DME subscription as experimental
 until its object volume and path shape are qualified on the deployed NX-OS release and Nexus hardware.
 
-Production requires verified server TLS, a unique certificate/key per device, TLS 1.2 or newer, and a read-only AAA
-account per collector shard. Authorize Capabilities, the bounded identity Get paths, and Subscribe; deny Set and any
-other Get path. The receiver has no configurable general-purpose Get path and no Set configuration, write credential, transaction
-retry, or commit/arbitration path. Optional mTLS uses one short-lived client identity per shard only after
-certificate-to-user authorization is validated. Management VRFs, ACLs, NetworkPolicies, and firewalls are defense in
-depth, not substitutes for TLS and AAA.
+Production requires verified server TLS, a unique certificate/key per device, TLS 1.2 or newer, and a dedicated AAA
+account per collector shard. The IOS XE password-authenticated baseline is:
+
+```text
+gnxi
+gnxi secure-trustpoint <device-server-trustpoint>
+gnxi secure-password-auth
+gnxi secure-port 9339
+gnxi secure-server
+no gnxi server
+gnxi read-only
+no gnxi enable-gnoi
+```
+
+Use `secure-client-auth` instead of or together with `secure-password-auth` for the selected mTLS mode. The pinned IOS XE
+17.18.1 `Cisco-IOS-XE-gnmi-cfg` model defaults `enable-gnoi=true` and `read-only=false`; `gnxi read-only` makes Set return
+`PERMISSION_DENIED` and disables gNOI, while `no gnxi enable-gnoi` is an independent service-disable gate. Verify the
+effective flags, ports, and services with `show gnxi state detail` and `show gnxi state stats`, retain the gNXI running
+configuration, and independently read the model's effective `read-only=true` and `enable-gnoi=false` leaves. Do not
+infer effective state from the presence of `secure-server`.
+
+The receiver has no configurable general-purpose Get path and no Set configuration, write credential, transaction retry,
+or commit/arbitration path. The secure gNXI endpoint can nevertheless expose mutating gNOI operations, and current Cisco
+documentation does not establish reliable gNMI path-level data authorization. C9300/C9500 qualification must therefore
+bind `CISCOOS_E2E_GNMI_AUTHORIZATION_EVIDENCE_SHA256` to an independently produced, sanitized artifact proving server
+read-only state, gNOI disablement, Set `PERMISSION_DENIED`, and gNOI `PERMISSION_DENIED` or `UNIMPLEMENTED` with the exact
+collector identity. The receiver harness never makes those calls. Follow the
+[controlled disposable-device procedure](docs/gnmi-dial-in.md#controlled-catalyst-authorization-test); use
+management-plane ACL/firewall controls and a verified device-specific VRF restriction where the deployed software
+supports it. Optional mTLS uses one short-lived client identity per shard only after certificate-to-user authorization
+is validated. Management VRFs, ACLs, NetworkPolicies, and firewalls are defense in depth, not substitutes for TLS and
+AAA.
+
+The reviewed Catalyst switch release `17.18.1` predates Cisco's `gnxi secure-vrf` feature, which Cisco documents for
+17.18.2 and later. Do not assume that command is present or broaden this contract to 17.18.2 merely to obtain it; use
+verified ACL, firewall, and control-plane isolation until a new release contract is reviewed and qualified.
 
 See the [complete security, operations, metric, and qualification guide](docs/gnmi-dial-in.md), the
 [protocol roadmap](docs/gnmi-protocol-roadmap.md), and the
+[Catalyst switch configuration](examples/gnmi-catalyst-switches.yaml),
 [secure configuration](examples/gnmi-secure.yaml),
 [Kubernetes shard](examples/kubernetes-gnmi-shard.yaml), and
 [systemd shard](examples/cisco-os-gnmi.service) references.
@@ -1678,7 +1778,7 @@ state, NX-OS NVE/EVPN fabric metrics, vPC, LACP counters, and detailed QoS queue
 - `system.network.errors` - Number of errors encountered (with `network.io.direction` attribute: `receive` or `transmit`)
 - `system.network.packet.dropped` - Number of packets dropped (with `network.io.direction` attribute: `receive` or `transmit`)
 - `system.network.packet.count` - Number of packets transmitted or received, categorized by direction and, when the source exposes it, packet type (with `network.packet.type` attribute: `unicast`, `multicast`, or `broadcast`)
-- `system.network.interface.status` - Interface operational status (1 = up, 0 = down)
+- `system.network.interface.status` - Interface operational status (1 = up, 0 = not up)
 - `cisco.interface.admin.status` - Interface administrative status (1 = enabled/up, 0 = disabled/down), useful for distinguishing intentionally disabled ports from failed ports.
 - `cisco.interface.speed` - Numeric interface line speed in `bit/s` when the device reports an explicit speed.
 - `cisco.interface.utilization` - Interface input/output utilization from device-reported rate divided by explicit line speed.

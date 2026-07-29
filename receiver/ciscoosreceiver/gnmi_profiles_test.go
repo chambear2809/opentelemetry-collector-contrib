@@ -16,6 +16,8 @@ import (
 
 func TestBuiltinGNMIProfileCoverageAndDefaults(t *testing.T) {
 	expected := map[string][]string{
+		gnmiProductCatalyst9300: {builtinGNMIProfileIdentity, builtinGNMIProfileSystem, builtinGNMIProfileInterfaces, builtinGNMIProfileOptics},
+		gnmiProductCatalyst9500: {builtinGNMIProfileIdentity, builtinGNMIProfileSystem, builtinGNMIProfileInterfaces, builtinGNMIProfileOptics},
 		gnmiProductCatalyst9800: {builtinGNMIProfileIdentity, builtinGNMIProfileSystem, builtinGNMIProfileInterfaces, builtinGNMIProfileOptics, builtinGNMIProfileCatalyst9800Wireless},
 		gnmiProductASR9000:      {builtinGNMIProfileIdentity, builtinGNMIProfileSystem, builtinGNMIProfileInterfaces, builtinGNMIProfileOptics},
 		gnmiProductNCS5500:      {builtinGNMIProfileIdentity, builtinGNMIProfileSystem, builtinGNMIProfileInterfaces, builtinGNMIProfileOptics},
@@ -49,12 +51,50 @@ func TestBuiltinGNMIProfileCoverageAndDefaults(t *testing.T) {
 }
 
 func TestBuiltinGNMIPlatformOriginsAndOpticalSources(t *testing.T) {
-	for _, profile := range builtinGNMIProfiles(profileTestContract(t, gnmiProductCatalyst9800)) {
-		for _, path := range profile.Paths {
-			assert.Equal(t, builtinGNMIOriginRFC7951, path.Origin, path.ID)
-			first := strings.Split(path.Path, "/")[0]
-			assert.Contains(t, first, ":", path.ID)
-		}
+	for _, product := range []string{gnmiProductCatalyst9300, gnmiProductCatalyst9500, gnmiProductCatalyst9800} {
+		t.Run(product, func(t *testing.T) {
+			for _, profile := range builtinGNMIProfiles(profileTestContract(t, product)) {
+				for _, path := range profile.Paths {
+					assert.Equal(t, builtinGNMIOriginRFC7951, path.Origin, path.ID)
+					first := strings.Split(path.Path, "/")[0]
+					assert.Contains(t, first, ":", path.ID)
+				}
+			}
+		})
+	}
+
+	for _, product := range []string{gnmiProductCatalyst9300, gnmiProductCatalyst9500} {
+		t.Run(product+" excludes wireless-only paths", func(t *testing.T) {
+			switchContract := profileTestContract(t, product)
+			controllerContract := profileTestContract(t, gnmiProductCatalyst9800)
+			_, ok := builtinGNMIProfile(switchContract, builtinGNMIProfileCatalyst9800Wireless)
+			assert.False(t, ok)
+			for _, profileName := range []string{
+				builtinGNMIProfileIdentity,
+				builtinGNMIProfileSystem,
+				builtinGNMIProfileInterfaces,
+				builtinGNMIProfileOptics,
+			} {
+				switchProfile, switchOK := builtinGNMIProfile(switchContract, profileName)
+				controllerProfile, controllerOK := builtinGNMIProfile(controllerContract, profileName)
+				require.True(t, switchOK, profileName)
+				require.True(t, controllerOK, profileName)
+				if profileName == builtinGNMIProfileSystem {
+					switchProfile.Paths = append([]builtinGNMIPathDefinition(nil), switchProfile.Paths...)
+					for pathIndex := range switchProfile.Paths {
+						switchProfile.Paths[pathIndex].Mappings = append(
+							[]builtinGNMIMapping(nil),
+							switchProfile.Paths[pathIndex].Mappings...,
+						)
+						for mappingIndex := range switchProfile.Paths[pathIndex].Mappings {
+							switchProfile.Paths[pathIndex].Mappings[mappingIndex].Mapping.SourceBounds = nil
+						}
+					}
+				}
+				assert.Equal(t, controllerProfile, switchProfile, profileName,
+					"wired path profiles must remain shared apart from the switch-only utilization bounds")
+			}
+		})
 	}
 
 	xrContract := profileTestContract(t, gnmiProductASR9000)
@@ -96,6 +136,8 @@ func TestBuiltinGNMIMappingsValidateAndReuseBaselineContract(t *testing.T) {
 		"system.network.packet.count", "system.network.packet.dropped", "cisco.interface.admin.status",
 	}
 	expected := map[string][]string{
+		gnmiProductCatalyst9300: append([]string{"cisco.device.up", "system.cpu.utilization", "system.memory.utilization"}, interfaceMetrics...),
+		gnmiProductCatalyst9500: append([]string{"cisco.device.up", "system.cpu.utilization", "system.memory.utilization"}, interfaceMetrics...),
 		gnmiProductCatalyst9800: append([]string{"cisco.device.up", "system.cpu.utilization", "system.memory.utilization"}, interfaceMetrics...),
 		gnmiProductASR9000:      append([]string{"cisco.device.up", "system.cpu.utilization"}, interfaceMetrics...),
 		gnmiProductNexus9000:    append([]string{"cisco.device.up"}, interfaceMetrics...),
@@ -130,8 +172,8 @@ func TestBuiltinGNMIOpticsMetricUnitsAndExperimentalState(t *testing.T) {
 		"cisco.optics.temperature":        "Cel",
 		"cisco.optics.voltage":            "V",
 		"cisco.optics.laser_bias_current": "mA",
-		"cisco.optics.rx_power":           "dB[mW]",
-		"cisco.optics.tx_power":           "dB[mW]",
+		"cisco.optics.rx_power":           "dB{mW}",
+		"cisco.optics.tx_power":           "dB{mW}",
 		"cisco.optics.present":            "1",
 		"cisco.optics.esnr":               "dB",
 		"cisco.optics.tdecq":              "dB",
@@ -141,7 +183,13 @@ func TestBuiltinGNMIOpticsMetricUnitsAndExperimentalState(t *testing.T) {
 	}
 
 	got := map[string]string{}
-	for _, product := range []string{gnmiProductCatalyst9800, gnmiProductASR9000, gnmiProductNexus9000} {
+	for _, product := range []string{
+		gnmiProductCatalyst9300,
+		gnmiProductCatalyst9500,
+		gnmiProductCatalyst9800,
+		gnmiProductASR9000,
+		gnmiProductNexus9000,
+	} {
 		profile, ok := builtinGNMIProfile(profileTestContract(t, product), builtinGNMIProfileOptics)
 		require.True(t, ok)
 		for _, path := range profile.Paths {
@@ -179,6 +227,12 @@ func TestBuiltinGNMIExactTrainSystemSources(t *testing.T) {
 	xePaths := pathsByID(xe)
 	assert.ElementsMatch(t, []string{"system.cpu", "system.memory"}, []string{xe.Paths[0].ID, xe.Paths[1].ID})
 	assert.NotContains(t, xePaths, "system.uptime")
+	assertPathDefinition(t, xePaths["system.cpu"], builtinGNMIOriginRFC7951, "Cisco-IOS-XE-process-cpu-oper:cpu-usage/cpu-utilization/five-seconds", false)
+	require.Len(t, xePaths["system.cpu"].Mappings, 1)
+	xeCPU := xePaths["system.cpu"].Mappings[0].Mapping
+	assert.Equal(t, []string{"Cisco-IOS-XE-process-cpu-oper:cpu-usage", "cpu-utilization"}, xeCPU.Source.Elements)
+	assert.Equal(t, "five-seconds", xeCPU.Source.Leaf)
+	assert.Equal(t, .01, xeCPU.Scale)
 	assertPathDefinition(t, xePaths["system.memory"], builtinGNMIOriginRFC7951, "Cisco-IOS-XE-platform-software-oper:cisco-platform-software/control-processes/control-process/memory-stats", false)
 	require.Len(t, xePaths["system.memory"].Mappings, 1)
 	xeMemory := xePaths["system.memory"].Mappings[0].Mapping
@@ -206,13 +260,39 @@ func TestBuiltinGNMIExactTrainSystemSources(t *testing.T) {
 	assert.False(t, ok, "Cisco-NX-OS-device has no conservative common CPU/memory source in 10.5 and 10.6")
 }
 
+func TestCatalystSwitchUtilizationMappingsBoundSourcePercent(t *testing.T) {
+	expected := &internalgnmi.NumericBounds{Min: 0, Max: 100}
+	for _, product := range []string{gnmiProductCatalyst9300, gnmiProductCatalyst9500} {
+		profile, ok := builtinGNMIProfile(profileTestContract(t, product), builtinGNMIProfileSystem)
+		require.True(t, ok)
+		paths := pathsByID(profile)
+		assert.Equal(t, expected, paths["system.cpu"].Mappings[0].Mapping.SourceBounds)
+		assert.Equal(t, expected, paths["system.memory"].Mappings[0].Mapping.SourceBounds)
+	}
+
+	legacy, ok := builtinGNMIProfile(profileTestContract(t, gnmiProductCatalyst9800), builtinGNMIProfileSystem)
+	require.True(t, ok)
+	for _, path := range legacy.Paths {
+		for _, mapping := range path.Mappings {
+			assert.Nil(t, mapping.Mapping.SourceBounds,
+				"the production switch range policy must not silently change the legacy C9800 contract")
+		}
+	}
+}
+
 func TestBuiltinGNMIExactTrainOpenConfigInterfaceSources(t *testing.T) {
 	expectedLeaves := []string{
 		"oper-status", "admin-status", "in-octets", "out-octets", "in-errors", "out-errors",
 		"in-discards", "out-discards", "in-unicast-pkts", "in-multicast-pkts", "in-broadcast-pkts",
 		"out-unicast-pkts", "out-multicast-pkts", "out-broadcast-pkts",
 	}
-	for _, product := range []string{gnmiProductCatalyst9800, gnmiProductASR9000, gnmiProductNexus9000} {
+	for _, product := range []string{
+		gnmiProductCatalyst9300,
+		gnmiProductCatalyst9500,
+		gnmiProductCatalyst9800,
+		gnmiProductASR9000,
+		gnmiProductNexus9000,
+	} {
 		profile, ok := builtinGNMIProfile(profileTestContract(t, product), builtinGNMIProfileInterfaces)
 		require.True(t, ok)
 		require.Len(t, profile.Paths, 1)
@@ -254,8 +334,11 @@ func TestBuiltinGNMIExactTrainOpticsSources(t *testing.T) {
 		"Cisco-IOS-XE-transceiver-oper:transceiver-oper-data/transceiver/output-power/instant":       {metric: "cisco.optics.tx_power", scale: 1},
 		"Cisco-IOS-XE-transceiver-oper:transceiver-oper-data/transceiver/present":                    {metric: "cisco.optics.present", scale: 1},
 	}
-	xe, _ := builtinGNMIProfile(profileTestContract(t, gnmiProductCatalyst9800), builtinGNMIProfileOptics)
-	assertSources(t, pathsByID(xe)["optics.dom"].Mappings, xeExpected)
+	for _, product := range []string{gnmiProductCatalyst9300, gnmiProductCatalyst9500, gnmiProductCatalyst9800} {
+		xe, ok := builtinGNMIProfile(profileTestContract(t, product), builtinGNMIProfileOptics)
+		require.True(t, ok)
+		assertSources(t, pathsByID(xe)["optics.dom"].Mappings, xeExpected)
+	}
 
 	xrExpected := map[string]sourceContract{
 		"optics-oper/optics-ports/optics-port/optics-info/temperature":                                {metric: "cisco.optics.temperature", scale: .01},
@@ -306,7 +389,7 @@ func TestNormalizeNXOpticsSensorStrictAllowlist(t *testing.T) {
 		ok                                                         bool
 	}{
 		{name: "temperature", description: "Temperature", sourceUnit: "Cel", metric: "cisco.optics.temperature", outputUnit: "Cel", profile: "dom", ok: true},
-		{name: "power converts UCUM spelling", description: "RX Power", sourceUnit: "dBm", metric: "cisco.optics.rx_power", outputUnit: "dB[mW]", profile: "dom", ok: true},
+		{name: "power converts UCUM spelling", description: "RX Power", sourceUnit: "dBm", metric: "cisco.optics.rx_power", outputUnit: "dB{mW}", profile: "dom", ok: true},
 		{name: "TDECQ exact description", description: "  TdEcQ  ", sourceUnit: "dB", metric: "cisco.optics.tdecq", outputUnit: "dB", profile: "vdm", ok: true},
 		{name: "TEC current", description: "TEC Current", sourceUnit: "mA", metric: "cisco.optics.tec_current", outputUnit: "mA", profile: "vdm", ok: true},
 		{name: "TEC utilization", description: "TEC Utilization", sourceUnit: "1", metric: "cisco.optics.tec_utilization", outputUnit: "1", profile: "vdm", ok: true},
@@ -367,6 +450,8 @@ func mappingsForContract(contract *gnmiProductContract) []builtinGNMIMapping {
 func profileTestContract(t *testing.T, product string) *gnmiProductContract {
 	t.Helper()
 	version := map[string]string{
+		gnmiProductCatalyst9300: "17.18.1",
+		gnmiProductCatalyst9500: "17.18.1",
 		gnmiProductCatalyst9800: "17.18.1",
 		gnmiProductASR9000:      "24.4.1",
 		gnmiProductNCS5500:      "24.4.1",

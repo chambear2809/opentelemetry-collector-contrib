@@ -92,7 +92,7 @@ var gnmiUCUMPrefixes = []string{
 }
 
 var gnmiUCUMSpecialUnits = map[string]struct{}{
-	"1": {}, "%": {}, "dB[mW]": {}, "B[SPL]": {}, "B[V]": {}, "B[mV]": {}, "B[uV]": {}, "B[W]": {}, "B[kW]": {},
+	"1": {}, "%": {}, "dB{mW}": {}, "B[SPL]": {}, "B[V]": {}, "B[mV]": {}, "B[uV]": {}, "B[W]": {}, "B[kW]": {},
 }
 
 // GNMICredentialsConfig configures the deliberately small set of supported
@@ -206,13 +206,13 @@ type GNMIMetricMappingConfig struct {
 // GNMICustomSubscriptionConfig defines explicitly mapped custom scalar paths.
 // Origin is independent of every path; raw origin:path strings are rejected by
 // the path parser. PathTarget is decoder-only and always rejected because every
-// qualified direct-device product contract forbids proxy target prefixes.
+// built-in direct-device product contract forbids proxy target prefixes.
 type GNMICustomSubscriptionConfig struct {
 	_ struct{} `mapstructure:"-"`
 
 	Name string `mapstructure:"name"`
 	// PathTarget is a decoder-only migration field retained so validation can
-	// return an actionable error. It is never added to a qualified request.
+	// return an actionable error. It is never added to a contract-governed request.
 	PathTarget string `mapstructure:"path_target"`
 	Origin     string `mapstructure:"origin"`
 	// Models lists exact Capabilities ModelData names required by this stream.
@@ -239,12 +239,19 @@ type GNMITargetConfig struct {
 	Name string `mapstructure:"name"`
 	// Endpoint is a direct-device TCP endpoint in strict host:port form.
 	Endpoint string `mapstructure:"endpoint"`
-	// Product is one of the canonical product contracts: catalyst_9800,
-	// asr_9000, ncs_5500, nexus_9000, or nexus_3500.
+	// Product is one of the canonical product contracts: catalyst_9300,
+	// catalyst_9500, catalyst_9800, asr_9000, ncs_5500, nexus_9000, or
+	// nexus_3500.
 	Product string `mapstructure:"product"`
-	// SoftwareVersion is the exact expected running build. Its canonical form
-	// must match the version observed during product identity preflight.
+	// SoftwareVersion is the expected public release label. OS-specific parsers
+	// canonicalize numeric components before comparing it with the release
+	// observed during product identity preflight.
 	SoftwareVersion string `mapstructure:"software_version"`
+	// AllowUnqualified explicitly acknowledges that the selected product
+	// contract requires an opt-in because retained physical-device
+	// qualification is incomplete. It is rejected for contracts that do not
+	// require this acknowledgement.
+	AllowUnqualified bool `mapstructure:"allow_unqualified"`
 	// Platform remains decoder-only so configurations from the OS-family
 	// preview receive an actionable migration error instead of an unknown-key
 	// diagnostic. It is never used to select profiles or runtime behavior.
@@ -892,8 +899,20 @@ func validateGNMITarget(prefix string, target GNMITargetConfig) error {
 		))
 	}
 	contract, _, contractErr := gnmiProductContractForTarget(target)
-	if contractErr != nil {
+	switch {
+	case contractErr != nil:
 		err = multierr.Append(err, fmt.Errorf("%s: %w", prefix, contractErr))
+	case contract.RequiresExplicitUnqualifiedOptIn && !target.AllowUnqualified:
+		err = multierr.Append(err, fmt.Errorf(
+			"%s.allow_unqualified must be true because product contract %q requires explicit acknowledgement until retained physical-device qualification is complete",
+			prefix,
+			contract.Product,
+		))
+	case !contract.RequiresExplicitUnqualifiedOptIn && target.AllowUnqualified:
+		err = multierr.Append(err, fmt.Errorf(
+			"%s.allow_unqualified is valid only when the selected product contract requires explicit acknowledgement",
+			prefix,
+		))
 	}
 	if target.MaxRecvMsgSizeMiB <= 0 {
 		err = multierr.Append(err, fmt.Errorf("%s.max_recv_msg_size_mib must be positive", prefix))
@@ -915,12 +934,35 @@ func validateGNMITarget(prefix string, target GNMITargetConfig) error {
 	err = multierr.Append(err, validateGNMITLS(prefix, target.TLS))
 	err = multierr.Append(err, validateGNMIProfiles(prefix, target, contract))
 	err = multierr.Append(err, validateGNMICustomSubscriptions(prefix, target, contract))
+	err = multierr.Append(err, validateGNMIPinnedModelBoundary(prefix, target, contract))
 	if streams := estimateGNMIStreamsForContract(target, contract); streams == 0 {
 		err = multierr.Append(err, fmt.Errorf("%s requires at least one enabled profile or custom subscription", prefix))
 	} else if streams > target.MaxStreams {
 		err = multierr.Append(err, fmt.Errorf("%s requires %d compatible subscription streams, exceeding max_streams %d", prefix, streams, target.MaxStreams))
 	}
 	return err
+}
+
+func validateGNMIPinnedModelBoundary(prefix string, target GNMITargetConfig, contract *gnmiProductContract) error {
+	if contract == nil || len(contract.RequiredModelData) == 0 {
+		return nil
+	}
+	streams, err := buildSharedGNMIStreams(target)
+	if err != nil {
+		// The field-level validators report malformed streams with their exact
+		// configuration paths. Avoid replacing those diagnostics with a derived
+		// model-boundary error.
+		return nil
+	}
+	if unpinned := unpinnedGNMIRequiredModels(contract, streams); len(unpinned) > 0 {
+		return fmt.Errorf(
+			"%s requires models outside product %q's reviewed ModelData allowlist: %s",
+			prefix,
+			contract.Product,
+			strings.Join(unpinned, ", "),
+		)
+	}
+	return nil
 }
 
 func validateGNMICredentials(prefix string, target GNMITargetConfig) error {
@@ -1329,7 +1371,7 @@ func validateGNMICustomSubscriptions(prefix string, target GNMITargetConfig, con
 			}
 			if contract != nil && !contract.RequestPolicy.AllowWildcards &&
 				gnmiPathContainsWildcard(sharedGNMIPath{PathTarget: subscription.PathTarget, Origin: subscription.Origin, Path: path}) {
-				err = multierr.Append(err, fmt.Errorf("%s.path must be explicit and non-wildcard on product %s", mappingPrefix, contract.Product))
+				err = multierr.Append(err, fmt.Errorf("%s.path contains an explicit asterisk wildcard that is not qualified on product %s", mappingPrefix, contract.Product))
 				mappingValid = false
 			}
 			if _, duplicate := paths[path]; duplicate {
@@ -1465,7 +1507,7 @@ func validateGNMICustomSubscriptionAddress(
 	}
 	var err error
 	if pathTarget != "" {
-		err = multierr.Append(err, fmt.Errorf("%s.path_target is not supported by a qualified Cisco product contract", prefix))
+		err = multierr.Append(err, fmt.Errorf("%s.path_target is not supported by a built-in Cisco product contract", prefix))
 	}
 	if origin == "" {
 		err = multierr.Append(err, fmt.Errorf("%s.origin cannot be empty", prefix))
@@ -1545,7 +1587,7 @@ func validateGNMICustomSubscriptionPaths(prefix string, subscription GNMICustomS
 		}
 		if contract != nil && !contract.RequestPolicy.AllowWildcards &&
 			gnmiPathContainsWildcard(sharedGNMIPath{PathTarget: subscription.PathTarget, Origin: subscription.Origin, Path: path}) {
-			err = multierr.Append(err, fmt.Errorf("%s.path must be explicit and non-wildcard on product %s", pathPrefix, contract.Product))
+			err = multierr.Append(err, fmt.Errorf("%s.path contains an explicit asterisk wildcard that is not qualified on product %s", pathPrefix, contract.Product))
 			continue
 		}
 		err = multierr.Append(err, validateGNMIPathOptions(pathPrefix, subscription.Mode, configured.GNMIPathOptionsConfig))

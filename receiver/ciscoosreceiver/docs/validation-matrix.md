@@ -34,7 +34,7 @@ campaigns in [Consolidated Validation Campaigns](#consolidated-validation-campai
 | Cisco Secure FMC | `fmc`; HTTPS/eStreamer metrics/logs | `Not run` | Automated coverage exists; no retained live qualification. | Run a bounded live campaign with verified TLS and destination delivery. |
 | Cisco Identity Services Engine | `ise`; REST, OpenAPI, ERS, MnT, pxGrid, Data Connect | `Passed (limited scope)` | [ISE 3.4 campaign](#ise-3-4-campaign): REST/MnT/OpenAPI, ERS, pxGrid queries/polling logs/idle stream, all 19 default Data Connect views, and a bounded REST/ERS/pxGrid-polling metric profile delivered to Splunk; polling logs were validated locally. | Unique pxGrid identity, secondary port-443 API Gateway, live pxGrid events/ACKs, searchable backend logs, failover, soak, and scale. |
 | Cisco IOS XR | `ios_xr`; gNMI/MDT metrics | `Passed (limited scope)` | [XRd 25.3.1 campaign](#ios-xr-xrd-25-3-1-campaign): verified-TLS eight-target dial-in, bounded soak and target-isolated recovery, path-compatibility inventory, and backend-confirmed hardened 30-second MDT dial-out. | Qualify shared `gnmi` on exact physical ASR 9000/NCS 5500 builds with least privilege, VDM/coherent/FEC optics, 5,000-port scale, and a production soak. |
-| Product-qualified shared gNMI | `gnmi`; secure Get/Subscribe metrics | `Run with findings` for Nexus 9000; otherwise `Not run` | Nexus 9000 reached semantic identity validation; XRd verified IOS XR model/identity failures quarantine before Subscribe. Neither is a success-path qualification. | Run exact physical product/build success paths with verified TLS, least privilege, required profiles, and backend assertion. |
+| Product-contract shared gNMI | `gnmi`; secure Get/Subscribe metrics | `Run with findings` for Nexus 9000; otherwise `Not run` | Nexus 9000 reached semantic identity validation; XRd verified IOS XR model/identity failures quarantine before Subscribe. Catalyst 9300/9500 have implementation-only coverage. None is a success-path qualification. | Run exact physical product/build and topology success paths with verified TLS, least privilege, required profiles, and backend assertion. |
 | VAST VMS and CSI | Standard Prometheus receivers | `Not run` | Adjacent example/dashboard coverage only; not a `cisco_os` source. | Run the documented manual checklist if this adjacent integration is in scope. |
 
 `Not run` does not mean unimplemented: automated coverage or a harness may exist without retained live evidence. The
@@ -271,13 +271,15 @@ focused tests but was not present in the streaming-disabled backend binary.
 
 ## Shared gNMI Product/Train Implementation Status
 
-This table records deterministic implementation coverage. `Implemented` means the product/train contract, strict
-version and chassis matching, Capabilities/model validation, bounded identity Get preflight, permitted metric
-Subscribe shape, zero Set calls, metrics, and verified resource attributes have automated coverage. It does not mean
-that any physical device or exact build has passed live qualification.
+This table records deterministic implementation coverage. `Implemented` means the product/train contract, canonical
+software-release identifier and chassis matching, Capabilities/model validation, bounded identity Get preflight,
+permitted metric Subscribe shape, zero Set calls, metrics, and verified resource attributes have automated coverage.
+It does not mean that any physical device or exact build has passed live qualification.
 
-| `product` | Derived OS | Accepted train | Chassis family | Implemented curated catalog | Implementation status |
+| `product` | Derived OS | Accepted release/train | Chassis admission | Implemented curated catalog | Implementation status |
 | --- | --- | --- | --- | --- | --- |
+| `catalyst_9300` | `ios_xe` | `17.18.1` only; INSTALL boot mode | Explicit documented C9300/C9300L/C9300X base-PID allowlist; C9300LM excluded | Identity; CPU; per-location memory; interface status/cumulative counters; experimental DOM optics | `Implemented; explicit unqualified opt-in required` |
+| `catalyst_9500` | `ios_xe` | `17.18.1` only; INSTALL boot mode | Explicit documented C9500/C9500X base-PID allowlist | Identity; CPU; per-location memory; interface status/cumulative counters; experimental DOM optics | `Implemented; explicit unqualified opt-in required` |
 | `catalyst_9800` | `ios_xe` | `17.18.x` | `C9800-` or `CAT9800-` | Identity; CPU; per-location memory; interface status/cumulative counters; optional wireless; experimental DOM optics | `Implemented` |
 | `asr_9000` | `ios_xr` | `24.4.x` | `ASR-9` | Identity; per-node CPU; interface status/cumulative counters; experimental controller/lane DOM optics | `Implemented` |
 | `ncs_5500` | `ios_xr` | `24.4.x` | `NCS-55` | Identity; per-node CPU; interface status/cumulative counters; experimental controller/lane DOM optics | `Implemented` |
@@ -293,16 +295,73 @@ the identity validator accepts the omission only for the built-in NX-OS OpenConf
 every explicit mismatched origin.
 Cisco SONiC is explicitly unsupported and has no product/train implementation or live-qualification row.
 
+The Catalyst 9300 and Catalyst 9500 contracts deliberately use a conservative IOS XE 17.18.1 subset: advertised gNMI
+version `0.4.0`, JSON_IETF, an RFC7951 subscription prefix, STREAM/SAMPLE, one 1-to-604800-second cadence per request,
+no optional subscription flags, and no literal `*` selectors. Preflight requires exact reviewed
+`ModelData(name, organization, version)` tuples for every required enabled module from a seven-entry closed direct
+catalog. Custom origins, explicit model declarations, selectors, and mapped descendants cannot introduce another
+module. Preflight also requires one consistent exact current-image identity across all current install locations and
+INSTALL boot mode. Built-in
+memory, interface, and experimental transceiver selectors use implicit list expansion,
+which remains an exact-build live Subscribe gate. Explicit base-PID admission and synthetic test coverage establish an
+implementation boundary only; they do not qualify every admitted SKU. Both contracts require
+`allow_unqualified: true` while their physical-device rows are `Not run`; that acknowledgement does not change either
+row's status. The `0.4.0` protocol pin comes from Cisco's 17.18 documentation; a public C9300 lab capture advertises
+`0.7.0` but lacks the exact-build identity needed to qualify or admit that value. Retain the raw 17.18.1 Capabilities
+response for each platform and update only the closed version allowlist after a separate compatibility review.
+
+### Cat9000v non-qualification compatibility probe — 2026-07-29
+
+This read-only probe exercised the contract-shaped gNMI requests against Cisco's shared
+`devnetsandboxiosxec9k.cisco.com` Cat9000v sandbox. It validates transport interoperability and observed IOS XE
+wire shapes only. The target is a virtual 17.15.1 C9KV rather than a physical C9300 or C9500 on 17.18.1, so this result
+does not change either physical qualification row, remove `allow_unqualified: true`, or expand any closed contract
+allowlist. Cisco's
+[2026 sandbox material](https://www.ciscolive.com/c/dam/r/ciscolive/emea/docs/2026/pdf/DEVNET-2295.pdf)
+identifies this target as a virtual Catalyst 9000 UADP eight-port switch running IOS XE 17.15.1 with gNMI access.
+
+| Probe area | Observed result | C9300/C9500 17.18.1 contract disposition |
+| --- | --- | --- |
+| Reachability and authentication | TCP ports 22, 443, 830, and 9339 were reachable. Generated credentials authenticated to RESTCONF and gNMI; the SSH service rejected the same account, and NETCONF was not authenticated beyond TCP reachability. | Transport reachability alone is not qualification. |
+| TLS | gNMI negotiated TLS 1.3. The peer certificate was self-signed, had no subject alternative name, and had SHA-256 fingerprint `FF:B7:89:9D:68:7A:87:E2:6B:B7:B3:B9:19:44:B6:84:1B:08:B9:5E:F5:21:39:45:EA:64:B5:00:B3:22:24:A1`. | The lab probe required explicit certificate-verification bypass. The verified-TLS qualification harness was not run. |
+| Capabilities | Advertised gNMI `0.7.0` with JSON, JSON_IETF, and PROTO. | Fails first with `unsupported_gnmi_version`; the closed switch contract accepts `0.4.0` only. |
+| Device and release identity | Hardware inventory reported virtual PID `C9KV-UADP-8P`. RESTCONF reported IOS XE `17.15`; Cisco's sandbox material identifies the exact release as 17.15.1. | Fails physical PID admission and the exact 17.18.1 release requirement. |
+| Install identity | The contract-shaped Get returned `{}` for `install-version-info` and an empty `boot-mode`. | Cannot establish one current image or required INSTALL mode; identity remains unqualified. |
+| Required ModelData | `device-hardware-oper` and `install-oper` advertised `2024-03-01`; `platform-software-oper` and `transceiver-oper` advertised `2023-11-01`. CPU advertised `2022-11-01`, OpenConfig interfaces `2.3.0`, and OpenConfig system `0.10.1`. | Four required Cisco tuples differ from the pinned 17.18.1 catalog and would fail with `unsupported_model_version`; the other three tuples match an accepted representation. |
+| Identity profile | The RFC7951 STREAM/SAMPLE request for `openconfig-system:system/state` returned JSON_IETF state and a successful sync marker. | Request and aggregate-subtree wire shape observed; no physical identity qualification. |
+| System profile | The combined 60-second STREAM/SAMPLE request returned the CPU `five-seconds` scalar and per-location memory `used-percent` with `fru`, `slot`, `bay`, and `chassis` keys. IOS XE emitted a valid sync marker for each requested path. | CPU and memory selectors and aggregate JSON_IETF shapes interoperated. Repeated true sync markers are tolerated by the STREAM receive loop. |
+| Interfaces profile | The 60-second STREAM/SAMPLE request returned keyed OpenConfig interface-state aggregates containing administrative/operational state and cumulative counters, followed by sync. | Curated selector and decoder input shape interoperated; shared mutable sandbox scale is not qualification evidence. |
+| Experimental optics | The 30-second STREAM/SAMPLE transceiver request was accepted and synchronized but returned no transceiver values. | Expected on a virtual switch; DOM remains unqualified and experimental. |
+| Mutation and backend scope | Only Capabilities, Get, Subscribe, and RESTCONF GET operations were used. No Set, configuration RPC, mutating gNOI operation, AWS resource, or external backend assertion endpoint was invoked. | Provides client read-only behavior evidence only; it does not satisfy authorization or backend-delivery qualification gates. |
+
+The bounded STREAM commands intentionally ended after receiving initial updates and sync; the client's final
+`DeadlineExceeded` status was the local observation deadline, not a target rejection. No generated credentials,
+passwords, or hardware serial numbers are retained in this repository. No immutable raw response artifact or backend
+delivery result was captured, so the result is `Run with findings; not qualification`.
+
+This target also exposed a documentation/runtime discrepancy: Cisco's
+[IOS XE 17.18 gNMI guide](https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/prog/configuration/1718/b-1718-programmability-cg/gnmi.html)
+documents and demonstrates gNMI `0.4.0`, while the 17.15.1 Cat9000v advertised `0.7.0`. The virtual result is not
+evidence to admit `0.7.0` for either physical 17.18.1 product. Retain an exact physical C9300 and C9500 Capabilities
+response and perform a separate compatibility review before changing the version allowlist.
+
 ## Shared gNMI Exact-Build Live Qualification Status
 
 A live result applies only to the recorded model, exact canonical build, topology/scale, authentication and TLS posture,
-and enabled profiles. Qualification requires verified TLS, no preflight failures, no degraded enabled profile, active
-subscriptions, `cisco.device.up=1`, correct `cisco.product.family`, `device.model.identifier`, and `os.version`, backend
-delivery, and at least three successful collection intervals. Cisco contracts also require
-`device.manufacturer=Cisco`.
+and enabled profiles. Qualification requires verified TLS, no preflight, decode, unsupported-value, invalid-timestamp,
+out-of-order, consumer-refusal, authentication, reconnect, or cache-owner-reset loss signal; no degraded or stopped
+enabled profile; unexhausted cache and auxiliary-state capacity; `cisco.device.up=1`; correct
+`cisco.product.family`, `device.model.identifier`, and `os.version`; backend delivery; and at least three successful
+collection intervals. Cisco contracts also require `device.manufacturer=Cisco`. The bounded `unmapped_values` counter
+is retained as explicit evidence but is not required to be zero. C9300/C9500 additionally require independently
+produced, content-addressed authorization evidence that proves effective server read-only state, disabled gNOI, Set
+`PERMISSION_DENIED`, and gNOI `PERMISSION_DENIED` or `UNIMPLEMENTED` for the exact collector identity. A zero receiver Set-call
+count proves client behavior only and cannot satisfy this device-authorization gate.
 
 | `product` | Exact model | Exact software build | Profiles and topology | Retained evidence | Status |
 | --- | --- | --- | --- | --- | --- |
+| `catalyst_9300` | Not recorded | Not recorded | Identity, CPU, memory, and interfaces; INSTALL boot mode; external inventory must identify standalone or StackWise topology | None | `Not run` |
+| `catalyst_9500` | Not recorded | Not recorded | Identity, CPU, memory, and interfaces; INSTALL boot mode; external inventory must identify standalone or StackWise Virtual topology | None | `Not run` |
 | `catalyst_9800` | Not recorded | Not recorded | Identity, CPU, memory, interfaces, and `catalyst_9800_wireless`; representative AP/client state required | None | `Not run` |
 | `asr_9000` | Not recorded | Not recorded | Identity, per-node CPU, and interfaces | None | `Not run` |
 | `ncs_5500` | Not recorded | Not recorded | Identity, per-node CPU, and interfaces | None | `Not run` |
@@ -312,22 +371,43 @@ delivery, and at least three successful collection intervals. Cisco contracts al
 Every optional optics profile requires separate physical qualification and does not become qualified when the baseline
 product row passes: IOS XE DOM, IOS XR controller/lane DOM, and NX-OS DME DOM/VDM all remain experimental.
 
-The opt-in live harness must be given the expected product, exact software version, model identifier, required metric
-names, and backend-delivery assertion. Retained sanitized output must show zero preflight failures, no degraded enabled
-profiles, active subscriptions, and the same required metric series delivered in at least three distinct wall-clock
-collection intervals before a row changes from `Not run`.
+For Catalyst 9300 and Catalyst 9500, one `hw-type-chassis` inventory group, one consistent exact current-image identity
+across all current install locations, and INSTALL boot mode are necessary for unambiguous identity but do not prove
+standalone topology. Retained qualification evidence must include an external physical inventory and scope results
+separately to standalone, C9300 StackWise, or
+C9500 StackWise Virtual. It must retain complete Capabilities tuples and independently captured
+YANG-library/module-set/import/deviation closure; neither the seven-entry reviewed direct catalog nor the subset
+enforced by one enabled plan attests the full CAT9K deviation set. A standalone result cannot qualify stack/SVL
+member identity, scale, switchover, reconnect behavior, or
+another admitted PID. The topology label scopes retained evidence and never relaxes the exactly-one
+`hw-type-chassis` preflight: if a stack/SVL target reports multiple chassis groups, the current contract rejects it and
+the topology remains unqualified pending capture-driven identity semantics.
+
+`allow_unqualified: true` is currently contract-wide. A successful row for one exact PID/build/topology does not remove
+that requirement or qualify the rest of the allowlist; removing it requires a granular qualification registry and
+separate evidence for each admitted combination.
+
+The opt-in live harness must be given the expected product, configured canonical software release identifier, model
+identifier, and backend-delivery assertion. The harness always restores the selected product's immutable baseline
+metric set; `CISCOOS_E2E_GNMI_REQUIRED_METRICS` can only add exact metric names. Retained sanitized output must show
+every local and backend self-telemetry gate below, active subscriptions for the exact stream plan, and the same required
+metric series delivered in at least three distinct wall-clock collection intervals before a row changes from `Not run`.
 
 Every harness invocation creates a random run ID and a unique `host.name`, and asks the backend to consider only
 observations at or after the local run start. The assertion endpoint must echo `run_id`, `target`, and
 `window_start_unix_nano`, and must return `first_observation_unix_nano` within that window; stale retained history is
-not valid evidence for a new run. For IOS XE, the verified `os.version` is the exact public Cisco release label (for
-example, `17.18.1a`) normalized from the internal install-version record. It does not attest SMUs or bit-for-bit image
-identity.
+not valid evidence for a new run. For the switch contracts, configured `17.18.1`, `17.18.01`, and `017.018.001` all
+canonicalize to the sole accepted verified `os.version` identity `17.18.1`; they do not admit another release. The
+train-wide C9800 contract may use another canonical public Cisco label such as `17.18.1a`. The verified value excludes
+the internal install build suffix, separate `version-extension`, and SMU state and therefore cannot populate the
+table's exact-software-build column by itself. Retain the exact image filename, internal install version,
+`version-extension`, installed SMUs, and schema evidence in an independently captured sanitized artifact. Digest that
+artifact and bind the digest to the harness and backend result.
 
 ### Reproducing exact-build shared-gNMI qualification
 
 No completed shared-gNMI qualification is retained in this repository. The `nexus_9000` row records staged
-TLS-bypass preflight findings and remains unqualified; the other four exact-build rows remain `Not run`. Run the
+TLS-bypass preflight findings and remains unqualified; the other six exact-build rows remain `Not run`. Run the
 opt-in harness against one direct device at a time with a read-only account and verified TLS:
 
 ```shell
@@ -340,8 +420,13 @@ export CISCOOS_E2E_GNMI_SERVER_NAME=nexus01.example.net
 export CISCOOS_E2E_GNMI_PRODUCT=nexus_9000
 export CISCOOS_E2E_GNMI_SOFTWARE_VERSION='10.6(1)'
 export CISCOOS_E2E_GNMI_MODEL_IDENTIFIER=N9K-C93180YC-FX3
-export CISCOOS_E2E_GNMI_REQUIRED_METRICS='system.network.interface.status,system.network.io'
+export CISCOOS_E2E_GNMI_IMAGE_EVIDENCE_SHA256=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+# Required for C9300/C9500 only, from the controlled external authorization test:
+# export CISCOOS_E2E_GNMI_AUTHORIZATION_EVIDENCE_SHA256=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 export CISCOOS_E2E_GNMI_BACKEND_ASSERT_URL=https://telemetry-evidence.example.net/assert
+
+# Optional exact metric additions; the immutable product baseline is always required:
+# export CISCOOS_E2E_GNMI_REQUIRED_METRICS='site.custom.metric'
 
 # Optional when the assertion service requires bearer authentication:
 read -rs CISCOOS_E2E_GNMI_BACKEND_BEARER_TOKEN
@@ -352,22 +437,49 @@ export CISCOOS_E2E_GNMI_BACKEND_BEARER_TOKEN
 
 `CISCOOS_E2E_GNMI_CA_FILE` may be omitted when the device certificate chains to the system roots. Optional mutual TLS
 uses both `CISCOOS_E2E_GNMI_CLIENT_CERT_FILE` and `CISCOOS_E2E_GNMI_CLIENT_KEY_FILE`. The harness has no insecure TLS
-mode. `CISCOOS_E2E_GNMI_SAMPLE_INTERVAL` defaults to `10s` and accepts `1s` through `5m`;
+mode. Replace the sanitized digest example with `sha256:` plus the 64 lowercase hexadecimal characters produced by
+hashing the independently captured device build/SMU/schema evidence artifact; an arbitrary operator string is not
+evidence. `CISCOOS_E2E_GNMI_SAMPLE_INTERVAL` defaults to `10s` and accepts `1s` through `5m`;
 `CISCOOS_E2E_GNMI_WAIT_TIMEOUT` defaults to `3m`, must cover at least three sample intervals, and cannot exceed `30m`.
+For Catalyst 9300, `CISCOOS_E2E_GNMI_TOPOLOGY` is mandatory and must be exactly `standalone` or `stackwise`. For
+Catalyst 9500 it is mandatory and must be exactly `standalone` or `stackwise_virtual`. Set it only after checking the
+external physical inventory; the label is bound to the backend assertion but does not independently discover topology,
+select a different identity contract, or bypass the single-chassis preflight.
 
-Use metrics that the selected baseline actually emits. Catalyst 9800 can require
-`system.cpu.utilization,system.memory.utilization,system.network.io`; the harness also requires its three wireless
-metrics and positive representative AP/client state. ASR 9000 and NCS 5500 can require
-`system.cpu.utilization,system.network.io`. Nexus can require
-`system.network.interface.status,system.network.io`; it has no system profile. Do not include optics in a baseline row,
-because the harness deliberately leaves the experimental optics profile disabled.
+Produce the C9300/C9500 authorization artifact outside the receiver on a disposable or fully isolated exact-build
+switch with no production traffic, out-of-band access, a saved configuration, and rollback protection. Apply and verify
+`gnxi read-only` plus `no gnxi enable-gnoi`; retain gNXI running configuration, `show gnxi state detail`/`stats`, and an
+administrative read proving the effective `read-only=true` and `enable-gnoi=false` model leaves. With a separate tool
+using the exact collector identity, require `PERMISSION_DENIED` from a syntactically valid same-value Set against a
+reversible test-only leaf and independently confirm no configuration change. Call only a non-mutating gNOI read
+operation and require `PERMISSION_DENIED` or `UNIMPLEMENTED`; transport timeout, generic `UNAVAILABLE`, and listener
+failure are not proof. Never test a mutating gNOI operation. Sanitize but retain operation/path, status, timestamps,
+identity fingerprint, effective state, and before/after configuration digest; hash the immutable artifact and set
+`CISCOOS_E2E_GNMI_AUTHORIZATION_EVIDENCE_SHA256`. See the
+[full controlled procedure](gnmi-dial-in.md#controlled-catalyst-authorization-test). The live harness only validates
+that digest and backend attestations; it never calls Set or gNOI.
+
+The immutable Catalyst 9300/9500 baseline is CPU, memory, interface status, interface administrative status, interface
+I/O, errors, packet count, and dropped packets. Catalyst 9800 adds its three wireless metrics and requires positive
+representative AP/client state. The ASR 9000/NCS 5500 baseline is CPU plus the complete interface family; the Nexus
+9000/3500 baseline is the complete interface family and has no system profile. Here, the complete interface family is
+`system.network.interface.status`, `cisco.interface.admin.status`, `system.network.io`, `system.network.errors`,
+`system.network.packet.count`, and `system.network.packet.dropped`. The optional
+`CISCOOS_E2E_GNMI_REQUIRED_METRICS` list adds to, but cannot remove from, those baselines. Do not include optics in a
+baseline row because the harness deliberately leaves the experimental optics profile disabled. Catalyst 9300/9500
+results must also retain the external topology evidence described above.
 
 The backend assertion URL must be absolute HTTPS. The harness retries the assertion within the remaining qualification
 window to allow for exporter latency. Each GET includes `product`, canonical `software_version`, `model_identifier`,
-unique `target`, random `run_id`, `not_before_unix_nano`, `interval_unix_nano`, `minimum_intervals=3`, one repeated
-`periodic_metric` parameter per required profile metric, and `latest_metric=cisco.device.up`. The service must filter
-by the exact identity and current time window, count intervals independently for every periodic metric, and return
-HTTP 200 with a JSON body like:
+content-addressed `image_evidence_sha256`, optional required `boot_mode`, unique `target`, random `run_id`,
+`not_before_unix_nano`, `interval_unix_nano`, `minimum_intervals=3`, one repeated `periodic_metric` parameter per
+required baseline or added metric, `latest_metric=cisco.device.up`, one repeated `self_telemetry_metric` parameter for
+each required receiver self-telemetry value, and one repeated `self_telemetry_profile` parameter for every planned
+profile. Catalyst 9300/9500 requests also include INSTALL `boot_mode`, the operator-verified `topology`, and
+`authorization_evidence_sha256`; the response must echo all three exactly. The assertion service must be able to query
+both the exported device metrics and Collector internal telemetry for the unique current-run target, and independently
+resolve the switch authorization artifact by its digest. It must filter by the exact identity and current time window,
+return strictly increasing cadence bucket numbers for every periodic metric, and return HTTP 200 with a JSON body like:
 
 ```json
 {
@@ -377,26 +489,82 @@ HTTP 200 with a JSON body like:
   "product": "nexus_9000",
   "software_version": "10.6(1)",
   "model_identifier": "N9K-C93180YC-FX3",
+  "image_evidence_sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "boot_mode": "",
   "window_start_unix_nano": 1783180800000000000,
   "first_observation_unix_nano": 1783180801000000000,
   "last_observation_unix_nano": 1783180831000000000,
-  "metric_intervals": {
-    "system.network.interface.status": 3,
-    "system.network.io": 3
+  "minimum_intervals": 3,
+  "interval_unix_nano": 10000000000,
+  "metric_interval_buckets": {
+    "system.network.interface.status": [0, 1, 2],
+    "system.network.io": [0, 1, 2]
   },
   "latest_metric_values": {
     "cisco.device.up": 1
+  },
+  "latest_metric_timestamps_unix_nano": {
+    "cisco.device.up": 1783180831000000000
+  },
+  "self_telemetry_values": {
+    "otelcol_ciscoosreceiver_gnmi_authentication_failures": 0,
+    "otelcol_ciscoosreceiver_gnmi_auxiliary_state_utilization": 0.001,
+    "otelcol_ciscoosreceiver_gnmi_cache_owner_resets": 0,
+    "otelcol_ciscoosreceiver_gnmi_cache_utilization": 0.004,
+    "otelcol_ciscoosreceiver_gnmi_connections": 1,
+    "otelcol_ciscoosreceiver_gnmi_consumer_refusals": 0,
+    "otelcol_ciscoosreceiver_gnmi_decode_errors": 0,
+    "otelcol_ciscoosreceiver_gnmi_invalid_timestamps": 0,
+    "otelcol_ciscoosreceiver_gnmi_out_of_order_updates": 0,
+    "otelcol_ciscoosreceiver_gnmi_preflight_failures": 0,
+    "otelcol_ciscoosreceiver_gnmi_product_verified": 1,
+    "otelcol_ciscoosreceiver_gnmi_profile_degraded": 0,
+    "otelcol_ciscoosreceiver_gnmi_reconnects": 0,
+    "otelcol_ciscoosreceiver_gnmi_unmapped_values": 12,
+    "otelcol_ciscoosreceiver_gnmi_unsupported_value_kinds": 0
+  },
+  "active_subscriptions": {
+    "identity": 1,
+    "interfaces": 1
   }
 }
 ```
 
-The identity fields and `window_start_unix_nano` must exactly echo the request, `first_observation_unix_nano` must be
-at or after the requested window, every periodic metric must have at least three intervals, and the latest availability
-value must be 1. `cisco.device.up` is presence/current-state evidence rather than a periodic metric, so it is not
-incorrectly required in three intervals. This contract prevents retained historical telemetry or aggregate counts from
-satisfying a new qualification run. Retain only a sanitized result containing the receiver revision, exact
-product/model/build, enabled profiles, topology and scale, TLS/authentication posture, per-metric interval counts,
-self-telemetry gates, and backend assertion outcome.
+For C9300/C9500 the same response must additionally contain:
+
+```json
+{
+  "authorization_evidence_sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "server_read_only": true,
+  "gnoi_disabled": true,
+  "negative_set_permission_denied": true,
+  "negative_gnoi_permission_denied_or_unimplemented": true
+}
+```
+
+The identity, image-evidence, switch authorization-evidence, boot-mode, interval-contract, and
+`window_start_unix_nano` fields must exactly echo the request where applicable. Every switch authorization boolean must
+be explicitly present and true; missing, `null`, or false values fail qualification. `first_observation_unix_nano` must
+be at or after the requested window. Every periodic metric must contain at least three consecutive, unique cadence
+buckets reaching the current or immediately preceding bucket; timestamps and buckets outside the bounded current-run
+window are rejected. The latest availability value must be 1 and its timestamp must fall within the current run.
+`cisco.device.up` is presence/current-state evidence rather than a periodic metric, so it is not incorrectly required
+in three intervals.
+
+The assertion service must return every requested self-telemetry map key explicitly, including zero-valued monotonic
+counters that have no current-run sample. It aggregates counters across their bounded reason/profile/value-kind
+dimensions, treats any `profile_degraded=1` series as degraded, returns current connection/product/capacity gauges, and
+returns the active subscription count separately for every requested profile. All values must be finite and
+nonnegative; integer counters and subscription counts must be exact JSON integers no larger than `2^53 - 1`.
+`product_verified` and `connections` must equal 1, all disqualifying counters and `profile_degraded` must equal zero,
+the active-subscription map must exactly match the planned streams, and both capacity-utilization gauges must remain
+below 1. `unmapped_values` may be nonzero but must remain a bounded exact counter and is retained in the evidence.
+
+This contract prevents retained historical telemetry, aggregate interval counts, missing map keys, or stale buckets
+from satisfying a new qualification run. Retain only a sanitized result containing the receiver revision, exact
+product/model/build artifact digest, separate switch authorization artifact digest and four attestations where
+applicable, enabled profiles, boot mode, topology and scale, TLS/authentication posture, per-metric bucket evidence, the
+complete local and backend self-telemetry maps, and the backend assertion outcome.
 
 ## Splunk Observability Dashboard Validation
 

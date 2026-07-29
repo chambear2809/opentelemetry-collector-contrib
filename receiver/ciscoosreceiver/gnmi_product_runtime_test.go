@@ -5,6 +5,7 @@ package ciscoosreceiver
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -29,13 +30,45 @@ func TestSharedGNMIProductContractsPreflightBeforeSubscribe(t *testing.T) {
 	tests := []struct {
 		name, product, version, model, osFamily string
 		metric, updateOrigin, updatePath        string
+		gnmiVersion, iosXEIdentityVersion       string
+		wantInterface                           string
+		wantDecodeErrors                        int64
 		encoding                                gnmipb.Encoding
+		updateValue                             *gnmipb.TypedValue
+		wantValue                               int64
 		requiredModels                          []string
 	}{
 		{
+			name: "catalyst 9300", product: gnmiProductCatalyst9300, version: "17.18.1", model: "C9300-48UXM", osFamily: gnmiPlatformIOSXE,
+			gnmiVersion: "0.4.0", iosXEIdentityVersion: "17.18.01.0.1186",
+			encoding: gnmipb.Encoding_JSON_IETF, metric: "system.network.interface.status", updateOrigin: builtinGNMIOriginRFC7951,
+			updatePath:       "openconfig-interfaces:interfaces/interface[name=GigabitEthernet1/0/1]/state/oper-status",
+			updateValue:      &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`"LOWER_LAYER_DOWN"`)}},
+			wantInterface:    "GigabitEthernet1/0/1",
+			wantDecodeErrors: 2,
+			requiredModels: []string{
+				"Cisco-IOS-XE-device-hardware-oper", "Cisco-IOS-XE-install-oper", "openconfig-interfaces",
+			},
+		},
+		{
+			name: "catalyst 9500", product: gnmiProductCatalyst9500, version: "17.18.1", model: "C9500-48Y4C", osFamily: gnmiPlatformIOSXE,
+			gnmiVersion: "0.4.0", iosXEIdentityVersion: "17.18.01.0.1186",
+			encoding: gnmipb.Encoding_JSON_IETF, metric: "system.network.interface.status", updateOrigin: builtinGNMIOriginRFC7951,
+			updatePath:    "openconfig-interfaces:interfaces/interface[name=FortyGigabitEthernet1/0/1]/state/oper-status",
+			updateValue:   &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonIetfVal{JsonIetfVal: []byte(`"openconfig-interfaces:UP"`)}},
+			wantValue:     1,
+			wantInterface: "FortyGigabitEthernet1/0/1",
+			requiredModels: []string{
+				"Cisco-IOS-XE-device-hardware-oper", "Cisco-IOS-XE-install-oper", "openconfig-interfaces",
+			},
+		},
+		{
 			name: "catalyst 9800", product: gnmiProductCatalyst9800, version: "17.18.1a", model: "C9800-40-K9", osFamily: gnmiPlatformIOSXE,
+			gnmiVersion: "0.7.0", iosXEIdentityVersion: "17.18.01a.0.1186",
 			encoding: gnmipb.Encoding_JSON_IETF, metric: "cisco.wlc.ap.join.status", updateOrigin: builtinGNMIOriginRFC7951,
-			updatePath: "Cisco-IOS-XE-wireless-ap-global-oper:ap-global-oper-data/ap-join-stats[wtp-mac=ap-1]/is-joined",
+			updatePath:  "Cisco-IOS-XE-wireless-ap-global-oper:ap-global-oper-data/ap-join-stats[wtp-mac=ap-1]/is-joined",
+			updateValue: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_IntVal{IntVal: 1}},
+			wantValue:   1,
 			requiredModels: []string{
 				"Cisco-IOS-XE-device-hardware-oper", "Cisco-IOS-XE-install-oper",
 				"Cisco-IOS-XE-wireless-access-point-oper", "Cisco-IOS-XE-wireless-ap-global-oper", "Cisco-IOS-XE-wireless-rrm-oper",
@@ -43,26 +76,38 @@ func TestSharedGNMIProductContractsPreflightBeforeSubscribe(t *testing.T) {
 		},
 		{
 			name: "asr 9000", product: gnmiProductASR9000, version: "24.4.1", model: "ASR-9904", osFamily: gnmiPlatformIOSXR,
-			encoding: gnmipb.Encoding_JSON_IETF, metric: "system.network.interface.status", updateOrigin: "openconfig-interfaces",
+			gnmiVersion: "0.7.0",
+			encoding:    gnmipb.Encoding_JSON_IETF, metric: "system.network.interface.status", updateOrigin: "openconfig-interfaces",
 			updatePath:     "interfaces/interface[name=Ethernet1]/state/oper-status",
+			updateValue:    &gnmipb.TypedValue{Value: &gnmipb.TypedValue_StringVal{StringVal: "UP"}},
+			wantValue:      1,
 			requiredModels: []string{"Cisco-IOS-XR-install-oper", "openconfig-interfaces"},
 		},
 		{
 			name: "ncs 5500", product: gnmiProductNCS5500, version: "24.4.2", model: "NCS-5501-SE", osFamily: gnmiPlatformIOSXR,
-			encoding: gnmipb.Encoding_JSON_IETF, metric: "system.network.interface.status", updateOrigin: "openconfig-interfaces",
+			gnmiVersion: "0.7.0",
+			encoding:    gnmipb.Encoding_JSON_IETF, metric: "system.network.interface.status", updateOrigin: "openconfig-interfaces",
 			updatePath:     "interfaces/interface[name=Ethernet1]/state/oper-status",
+			updateValue:    &gnmipb.TypedValue{Value: &gnmipb.TypedValue_StringVal{StringVal: "UP"}},
+			wantValue:      1,
 			requiredModels: []string{"Cisco-IOS-XR-install-oper", "openconfig-interfaces"},
 		},
 		{
 			name: "nexus 9000", product: gnmiProductNexus9000, version: "10.6(1)F", model: "N9K-C93180YC-FX3", osFamily: gnmiPlatformNXOS,
-			encoding: gnmipb.Encoding_JSON, metric: "system.network.interface.status", updateOrigin: "openconfig",
+			gnmiVersion: "0.7.0",
+			encoding:    gnmipb.Encoding_JSON, metric: "system.network.interface.status", updateOrigin: "openconfig",
 			updatePath:     "interfaces/interface[name=Ethernet1]/state/oper-status",
+			updateValue:    &gnmipb.TypedValue{Value: &gnmipb.TypedValue_StringVal{StringVal: "UP"}},
+			wantValue:      1,
 			requiredModels: []string{"openconfig-platform", "openconfig-interfaces"},
 		},
 		{
 			name: "nexus 3500", product: gnmiProductNexus3500, version: "10.5(3)M", model: "N3K-C3548P-10GX", osFamily: gnmiPlatformNXOS,
-			encoding: gnmipb.Encoding_JSON, metric: "system.network.interface.status", updateOrigin: "openconfig",
+			gnmiVersion: "0.7.0",
+			encoding:    gnmipb.Encoding_JSON, metric: "system.network.interface.status", updateOrigin: "openconfig",
 			updatePath:     "interfaces/interface[name=Ethernet1]/state/oper-status",
+			updateValue:    &gnmipb.TypedValue{Value: &gnmipb.TypedValue_StringVal{StringVal: "UP"}},
+			wantValue:      1,
 			requiredModels: []string{"openconfig-platform", "openconfig-interfaces"},
 		},
 	}
@@ -72,14 +117,18 @@ func TestSharedGNMIProductContractsPreflightBeforeSubscribe(t *testing.T) {
 			material := runtimeTestTLSMaterial(t)
 			fake := &runtimeTestGNMIServer{}
 			models := make([]*gnmipb.ModelData, 0, len(test.requiredModels))
-			for _, name := range test.requiredModels {
-				models = append(models, &gnmipb.ModelData{Name: name})
+			if test.product == gnmiProductCatalyst9300 || test.product == gnmiProductCatalyst9500 {
+				models = runtimeTestCatalystSwitchModelData(test.requiredModels...)
+			} else {
+				for _, name := range test.requiredModels {
+					models = append(models, &gnmipb.ModelData{Name: name})
+				}
 			}
 			fake.capabilities = func(context.Context) (*gnmipb.CapabilityResponse, error) {
 				return &gnmipb.CapabilityResponse{
 					SupportedEncodings: []gnmipb.Encoding{gnmipb.Encoding_PROTO, test.encoding},
 					SupportedModels:    models,
-					GNMIVersion:        "0.7.0",
+					GNMIVersion:        test.gnmiVersion,
 				}, nil
 			}
 			var identityProbeCalls atomic.Int64
@@ -88,12 +137,23 @@ func TestSharedGNMIProductContractsPreflightBeforeSubscribe(t *testing.T) {
 				switch test.osFamily {
 				case gnmiPlatformIOSXE:
 					if call == 1 {
-						return runtimeTestXEHardwareIdentityResponse(test.model), nil
+						response := runtimeTestXEHardwareIdentityResponse(test.model)
+						if test.product == gnmiProductCatalyst9300 || test.product == gnmiProductCatalyst9500 {
+							runtimeTestQuoteGNMIPathKeyValues(response.GetNotification()[0].GetUpdate()[0].GetPath())
+						}
+						return response, nil
 					}
 					// IOS XE exposes an internal install-version key and a
 					// separate opaque version-extension, not the public release
 					// string used by configuration and os.version.
-					return runtimeTestXEVersionIdentityResponseWithExtension("17.18.01a.0.1186", "1750000000"), nil
+					response := runtimeTestXEVersionIdentityResponseWithExtension(test.iosXEIdentityVersion, "1750000000")
+					if test.product == gnmiProductCatalyst9300 || test.product == gnmiProductCatalyst9500 {
+						runtimeTestAppendXEInstallBootMode(response, "install-boot-mode-install")
+						for _, update := range response.GetNotification()[0].GetUpdate() {
+							runtimeTestQuoteGNMIPathKeyValues(update.GetPath())
+						}
+					}
+					return response, nil
 				case gnmiPlatformIOSXR:
 					return runtimeTestXRIdentityResponse(test.model, test.version), nil
 				default:
@@ -106,15 +166,57 @@ func TestSharedGNMIProductContractsPreflightBeforeSubscribe(t *testing.T) {
 					return err
 				}
 				fake.recordRequest(request)
-				if err := stream.Send(&gnmipb.SubscribeResponse{Response: &gnmipb.SubscribeResponse_Update{Update: &gnmipb.Notification{
-					Timestamp: time.Now().UnixNano(),
-					Prefix:    &gnmipb.Path{Origin: test.updateOrigin},
-					Update: []*gnmipb.Update{{
-						Path: runtimeTestProtoPath(t, test.updatePath),
-						Val:  &gnmipb.TypedValue{Value: &gnmipb.TypedValue_IntVal{IntVal: 1}},
-					}},
-				}}}); err != nil {
+				wireTimestamp := time.Now().UnixNano()
+				sendUpdateWithAtomic := func(path *gnmipb.Path, value *gnmipb.TypedValue, atomic bool) error {
+					return stream.Send(&gnmipb.SubscribeResponse{Response: &gnmipb.SubscribeResponse_Update{Update: &gnmipb.Notification{
+						Timestamp: wireTimestamp,
+						Prefix:    &gnmipb.Path{Origin: test.updateOrigin},
+						Atomic:    atomic,
+						Update: []*gnmipb.Update{{
+							Path: path,
+							Val:  value,
+						}},
+					}}})
+				}
+				sendUpdate := func(path *gnmipb.Path, value *gnmipb.TypedValue) error {
+					return sendUpdateWithAtomic(path, value, false)
+				}
+				updatePath := runtimeTestProtoPath(t, test.updatePath)
+				if test.product == gnmiProductCatalyst9300 || test.product == gnmiProductCatalyst9500 {
+					runtimeTestQuoteGNMIPathKeyValues(updatePath)
+				}
+				if err := sendUpdate(updatePath, test.updateValue); err != nil {
 					return err
+				}
+				if test.wantDecodeErrors > 0 {
+					malformedPath := runtimeTestProtoPath(t, test.updatePath)
+					for _, element := range malformedPath.GetElem() {
+						if element.GetName() == "interface" {
+							element.Key["name"] = `"unterminated`
+						}
+					}
+					if err := sendUpdate(malformedPath, test.updateValue); err != nil {
+						return err
+					}
+					// Model a malformed value followed by a corrected value at
+					// the same source timestamp. The initial valid value is one
+					// nanosecond older so the malformed value must withdraw it
+					// and establish the equal-admitting semantic watermark.
+					wireTimestamp++
+					invalidStatePath := runtimeTestProtoPath(t, test.updatePath)
+					runtimeTestQuoteGNMIPathKeyValues(invalidStatePath)
+					if err := sendUpdateWithAtomic(invalidStatePath, &gnmipb.TypedValue{
+						Value: &gnmipb.TypedValue_IntVal{IntVal: 6},
+					}, false); err != nil {
+						return err
+					}
+					recoveryPath := runtimeTestProtoPath(t, test.updatePath)
+					runtimeTestQuoteGNMIPathKeyValues(recoveryPath)
+					if err := sendUpdate(recoveryPath, &gnmipb.TypedValue{
+						Value: &gnmipb.TypedValue_StringVal{StringVal: "UP"},
+					}); err != nil {
+						return err
+					}
 				}
 				if err := stream.Send(&gnmipb.SubscribeResponse{Response: &gnmipb.SubscribeResponse_SyncResponse{SyncResponse: true}}); err != nil {
 					return err
@@ -143,9 +245,13 @@ func TestSharedGNMIProductContractsPreflightBeforeSubscribe(t *testing.T) {
 			settings.MeterProvider = provider
 			runtimeTestStartReceiver(t, settings, target, 10, sink)
 
+			wantMetricPoints := 1
+			if test.wantDecodeErrors > 0 {
+				wantMetricPoints = 2
+			}
 			require.Eventually(t, func() bool {
-				return runtimeTestMetricPointCountAll(sink.AllMetrics(), test.metric) == 1 &&
-					runtimeTestMetricPointCountAll(sink.AllMetrics(), "cisco.device.up") == 1
+				return runtimeTestMetricPointCountAll(sink.AllMetrics(), test.metric) >= wantMetricPoints &&
+					runtimeTestMetricPointCountAll(sink.AllMetrics(), "cisco.device.up") >= 1
 			}, 5*time.Second, 10*time.Millisecond)
 
 			snapshot := fake.snapshot()
@@ -161,6 +267,7 @@ func TestSharedGNMIProductContractsPreflightBeforeSubscribe(t *testing.T) {
 			assert.Equal(t, len(contract.IdentityProbes), snapshot.getCalls)
 			assert.Zero(t, snapshot.identitySubscribeCalls)
 			assert.Equal(t, 1, snapshot.subscribeCalls)
+			assert.Zero(t, snapshot.setCalls)
 			expectedRPCOrder := []string{"Capabilities"}
 			for range contract.IdentityProbes {
 				expectedRPCOrder = append(expectedRPCOrder, "Get")
@@ -172,7 +279,7 @@ func TestSharedGNMIProductContractsPreflightBeforeSubscribe(t *testing.T) {
 			for index, getRequest := range snapshot.getRequests {
 				assert.Equal(t, gnmipb.GetRequest_STATE, getRequest.GetType())
 				assert.Equal(t, test.encoding, getRequest.GetEncoding())
-				require.Len(t, getRequest.GetPath(), 1)
+				require.Len(t, getRequest.GetPath(), len(contract.IdentityProbes[index].Paths))
 				assert.Equal(t, runtimeTestUsername, runtimeTestMetadataValue(snapshot.getMetadata[index], "username"))
 				assert.Equal(t, runtimeTestPassword, runtimeTestMetadataValue(snapshot.getMetadata[index], "password"))
 			}
@@ -197,6 +304,14 @@ func TestSharedGNMIProductContractsPreflightBeforeSubscribe(t *testing.T) {
 
 			batches := runtimeTestMetricBatches(sink.AllMetrics(), test.metric)
 			require.NotEmpty(t, batches)
+			assertSingleIntGaugeMetric(t, batches[0], test.metric, test.wantValue)
+			if test.wantDecodeErrors > 0 {
+				assertSingleIntGaugeMetric(t, batches[len(batches)-1], test.metric, 1)
+			}
+			if test.wantInterface != "" {
+				point := mustFindIOSXRMetric(t, batches[0], test.metric).Gauge().DataPoints().At(0)
+				assert.Equal(t, test.wantInterface, attrValue(t, point.Attributes(), "network.interface.name"))
+			}
 			attrs := batches[0].ResourceMetrics().At(0).Resource().Attributes()
 			assert.Equal(t, test.product, attrValue(t, attrs, "cisco.product.family"))
 			assert.Equal(t, test.osFamily, attrValue(t, attrs, "cisco.platform.family"))
@@ -205,7 +320,12 @@ func TestSharedGNMIProductContractsPreflightBeforeSubscribe(t *testing.T) {
 			assert.Equal(t, test.model, attrValue(t, attrs, "device.model.identifier"))
 			assert.Equal(t, contract.OSFamily, test.osFamily)
 			assert.Equal(t, canonical.Canonical, attrValue(t, attrs, "os.version"))
+			if contract.RequiredIOSXEBootMode != "" {
+				assert.Equal(t, contract.RequiredIOSXEBootMode, attrValue(t, attrs, "cisco.os.boot_mode"))
+			}
 			assert.Equal(t, int64(1), runtimeTestTelemetryIntGauge(t, reader, "otelcol_ciscoosreceiver_gnmi_product_verified"))
+			assert.Equal(t, test.wantDecodeErrors, runtimeTestTelemetryIntSum(t, reader, "otelcol_ciscoosreceiver_gnmi_decode_errors"),
+				"malformed path identity and mapped semantic failures must be counted without leaking response admission or blocking correction")
 		})
 	}
 }
@@ -341,6 +461,67 @@ func TestSharedGNMICompatibilityFailuresQuarantineOnceWithoutSubscribe(t *testin
 			assert.Equal(t, int64(1), runtimeTestTelemetryPreflightReason(t, reader, test.reason))
 		})
 	}
+}
+
+func TestCatalystSwitchBundleBootModeQuarantinesOnceWithoutSubscribe(t *testing.T) {
+	material := runtimeTestTLSMaterial(t)
+	fake := &runtimeTestGNMIServer{}
+	fake.capabilities = func(context.Context) (*gnmipb.CapabilityResponse, error) {
+		return &gnmipb.CapabilityResponse{
+			SupportedEncodings: []gnmipb.Encoding{gnmipb.Encoding_JSON_IETF},
+			SupportedModels: runtimeTestCatalystSwitchModelData(
+				"Cisco-IOS-XE-device-hardware-oper",
+				"Cisco-IOS-XE-install-oper",
+				"openconfig-interfaces",
+			),
+			GNMIVersion: "0.4.0",
+		}, nil
+	}
+	var identityProbeCalls atomic.Int64
+	fake.get = func(context.Context, *gnmipb.GetRequest) (*gnmipb.GetResponse, error) {
+		if identityProbeCalls.Add(1) == 1 {
+			response := runtimeTestXEHardwareIdentityResponse("C9300-48UXM")
+			runtimeTestQuoteGNMIPathKeyValues(response.GetNotification()[0].GetUpdate()[0].GetPath())
+			return response, nil
+		}
+		response := runtimeTestXEVersionIdentityResponseWithExtension("17.18.01.0.1186", "1750000000")
+		runtimeTestAppendXEInstallBootMode(response, "install-boot-mode-bundle")
+		for _, update := range response.GetNotification()[0].GetUpdate() {
+			runtimeTestQuoteGNMIPathKeyValues(update.GetPath())
+		}
+		return response, nil
+	}
+	endpoint, listener := runtimeTestStartGNMIServer(t, fake, material.serverTLS(false))
+	target := runtimeTestTarget(endpoint, material.caFile, gnmiModeStream)
+	target.Product = gnmiProductCatalyst9300
+	target.SoftwareVersion = "17.18.1"
+	target.AllowUnqualified = true
+	target.CustomSubscriptions = nil
+	target.Profiles = runtimeTestDisabledProfiles()
+	enabled := true
+	target.Profiles.Interfaces = GNMIProfileConfig{Enabled: &enabled, Required: true, SampleInterval: time.Second}
+	target.MaxStreams = 4
+
+	reader := metric.NewManualReader()
+	provider := metric.NewMeterProvider(metric.WithReader(reader))
+	t.Cleanup(func() { require.NoError(t, provider.Shutdown(context.WithoutCancel(t.Context()))) })
+	settings := receivertest.NewNopSettings(componentmetadata.Type)
+	settings.MeterProvider = provider
+	sink := &consumertest.MetricsSink{}
+	receiver := runtimeTestStartReceiver(t, settings, target, 10, sink)
+	runtimeTestWaitDone(t, receiver)
+
+	snapshot := fake.snapshot()
+	assert.Equal(t, int64(1), listener.accepts.Load(), "terminal compatibility failure must not reconnect")
+	assert.Equal(t, 1, snapshot.capabilitiesCalls)
+	assert.Equal(t, 2, snapshot.getCalls)
+	assert.Zero(t, snapshot.identitySubscribeCalls)
+	assert.Zero(t, snapshot.subscribeCalls)
+	assert.Equal(t, []string{"Capabilities", "Get", "Get"}, snapshot.rpcOrder)
+	assert.Equal(t, 1, runtimeTestMetricPointCountAll(sink.AllMetrics(), "cisco.device.up"))
+	assert.Equal(t, int64(1), runtimeTestTelemetryPreflightReason(t, reader, gnmiPreflightUnsupportedBootMode))
+	assert.Equal(t, int64(1), runtimeTestTelemetryIntSum(t, reader, "otelcol_ciscoosreceiver_gnmi_preflight_failures"))
+	assert.Equal(t, int64(0), runtimeTestTelemetryIntGauge(t, reader, "otelcol_ciscoosreceiver_gnmi_product_verified"))
 }
 
 func TestSharedGNMIOversizedIdentityGetQuarantinesWithoutReconnect(t *testing.T) {
@@ -544,4 +725,29 @@ func runtimeTestXEVersionIdentityResponseWithExtension(version, extension string
 			Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_StringVal{StringVal: "install-version-state-provisioned-committed"}},
 		}},
 	}}}
+}
+
+func runtimeTestAppendXEInstallBootMode(response *gnmipb.GetResponse, mode string) {
+	if response == nil || len(response.GetNotification()) == 0 {
+		return
+	}
+	response.Notification[0].Update = append(response.Notification[0].Update, &gnmipb.Update{
+		Path: &gnmipb.Path{Elem: []*gnmipb.PathElem{
+			{Name: "Cisco-IOS-XE-install-oper:install-oper-data"},
+			{Name: "install-location-information", Key: map[string]string{
+				"fru": "fru-rp", "slot": "0", "bay": "0", "chassis": "0",
+			}},
+			{Name: "oper-state"},
+			{Name: "boot-mode"},
+		}},
+		Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_StringVal{StringVal: mode}},
+	})
+}
+
+func runtimeTestQuoteGNMIPathKeyValues(path *gnmipb.Path) {
+	for _, element := range path.GetElem() {
+		for key, value := range element.GetKey() {
+			element.Key[key] = strconv.Quote(value)
+		}
+	}
 }

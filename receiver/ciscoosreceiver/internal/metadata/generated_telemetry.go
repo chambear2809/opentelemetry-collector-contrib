@@ -6,9 +6,10 @@ import (
 	"errors"
 	"sync"
 
-	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
+
+	"go.opentelemetry.io/collector/component"
 )
 
 func Meter(settings component.TelemetrySettings) metric.Meter {
@@ -36,6 +37,7 @@ type TelemetryBuilder struct {
 	CiscoosreceiverGnmiDuplicateUpdates          metric.Int64Counter
 	CiscoosreceiverGnmiInvalidTimestamps         metric.Int64Counter
 	CiscoosreceiverGnmiLastSuccessUnixtime       metric.Int64Gauge
+	CiscoosreceiverGnmiOutOfOrderUpdates         metric.Int64Counter
 	CiscoosreceiverGnmiPreflightFailures         metric.Int64Counter
 	CiscoosreceiverGnmiProductVerified           metric.Int64Gauge
 	CiscoosreceiverGnmiProfileDegraded           metric.Int64Gauge
@@ -131,7 +133,7 @@ func NewTelemetryBuilder(settings component.TelemetrySettings, options ...Teleme
 	errs = errors.Join(errs, err)
 	builder.CiscoosreceiverGnmiInvalidTimestamps, err = builder.meter.Int64Counter(
 		"otelcol_ciscoosreceiver_gnmi_invalid_timestamps",
-		metric.WithDescription("Number of invalid Cisco timestamps replaced with receipt time [Development]"),
+		metric.WithDescription("Number of invalid or excessively future-dated Cisco timestamps rejected before cache mutation [Development]"),
 		metric.WithUnit("{timestamp}"),
 	)
 	errs = errors.Join(errs, err)
@@ -141,15 +143,21 @@ func NewTelemetryBuilder(settings component.TelemetrySettings, options ...Teleme
 		metric.WithUnit("s"),
 	)
 	errs = errors.Join(errs, err)
+	builder.CiscoosreceiverGnmiOutOfOrderUpdates, err = builder.meter.Int64Counter(
+		"otelcol_ciscoosreceiver_gnmi_out_of_order_updates",
+		metric.WithDescription("Number of stale gNMI cache operations suppressed by source timestamp ordering [Development]"),
+		metric.WithUnit("{update}"),
+	)
+	errs = errors.Join(errs, err)
 	builder.CiscoosreceiverGnmiPreflightFailures, err = builder.meter.Int64Counter(
 		"otelcol_ciscoosreceiver_gnmi_preflight_failures",
-		metric.WithDescription("Number of terminal gNMI product qualification failures. This metric emits only identity_missing, identity_ambiguous, product_mismatch, release_mismatch, missing_model, unsupported_encoding, or malformed_identity; profile-degradation reasons in the shared attribute catalog are not emitted here. [Development]"),
+		metric.WithDescription("Number of terminal gNMI product-contract preflight compatibility failures. This metric emits only identity_missing, identity_ambiguous, product_mismatch, release_mismatch, missing_model, unsupported_model_version, unsupported_encoding, unsupported_gnmi_version, unsupported_boot_mode, or malformed_identity; profile-degradation reasons in the shared attribute catalog are not emitted here. [Development]"),
 		metric.WithUnit("{failure}"),
 	)
 	errs = errors.Join(errs, err)
 	builder.CiscoosreceiverGnmiProductVerified, err = builder.meter.Int64Gauge(
 		"otelcol_ciscoosreceiver_gnmi_product_verified",
-		metric.WithDescription("Whether the gNMI target passed product, model, release, and capability verification [Development]"),
+		metric.WithDescription("Whether the gNMI target passed product, model, release, required boot-mode, and capability verification [Development]"),
 		metric.WithUnit("1"),
 	)
 	errs = errors.Join(errs, err)

@@ -33,6 +33,19 @@ func TestShippedCiscoOSReceiverExamplesUnmarshalAndValidate(t *testing.T) {
 			},
 		},
 		{
+			name: "Catalyst switch gNMI",
+			path: filepath.Join("examples", "gnmi-catalyst-switches.yaml"),
+			assertion: func(t *testing.T, cfg *Config) {
+				require.Len(t, cfg.GNMI.Targets, 2)
+				assert.Equal(t, gnmiProductCatalyst9300, cfg.GNMI.Targets[0].Product)
+				assert.Equal(t, gnmiReviewedIOSXESwitchRelease17181, cfg.GNMI.Targets[0].SoftwareVersion)
+				assert.True(t, cfg.GNMI.Targets[0].AllowUnqualified)
+				assert.Equal(t, gnmiProductCatalyst9500, cfg.GNMI.Targets[1].Product)
+				assert.Equal(t, gnmiReviewedIOSXESwitchRelease17181, cfg.GNMI.Targets[1].SoftwareVersion)
+				assert.True(t, cfg.GNMI.Targets[1].AllowUnqualified)
+			},
+		},
+		{
 			name: "Catalyst Center and SD-WAN",
 			path: filepath.Join("examples", "catalyst-sdwan-splunk-platform.yaml"),
 			resolve: func(cfg *Config) {

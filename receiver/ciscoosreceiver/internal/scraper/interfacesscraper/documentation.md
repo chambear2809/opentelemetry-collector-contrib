@@ -14,7 +14,7 @@ metrics:
 
 ### cisco.interface.admin.status
 
-Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)
+Cisco interface administrative status (1 = administratively enabled, 0 = not administratively enabled)
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
@@ -467,7 +467,7 @@ The number of errors encountered
 
 ### system.network.interface.status
 
-Interface operational status (1 = up, 0 = down)
+Interface operational status (1 = up, 0 = not up)
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |

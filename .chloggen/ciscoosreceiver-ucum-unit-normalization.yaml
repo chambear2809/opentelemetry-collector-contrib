@@ -1,0 +1,10 @@
+change_type: breaking
+component: receiver/cisco_os
+note: Normalize optical-power, RF-power, and fan-speed metric units to valid UCUM annotations.
+issues: [0]
+subtext: |
+  Metric units previously emitted as `dBm`, `dB[mW]`, or `rpm` now use `dB{mW}` or `1/min`. Metric values are
+  unchanged. Custom gNMI mappings that used `unit: dB[mW]` must be changed to `unit: dB{mW}`; the old spelling is now
+  rejected. UCUM braces are a human-readable annotation, so `dB{mW}` is not a machine-convertible 1 mW reference.
+  Device-provided transceiver sensor-unit attributes remain source metadata and are not rewritten.
+change_logs: [user]

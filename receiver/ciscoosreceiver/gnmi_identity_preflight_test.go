@@ -225,6 +225,52 @@ func TestIOSXEIdentityAcceptsDocumentedNumericEnums(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestValidateIOSXEHardwareIdentityGroupCorrelatesTypeKeyAndLeaf(t *testing.T) {
+	hardwareGroup := func(key string, leaf internalgnmi.Value) gnmiIdentityGroup {
+		return gnmiIdentityGroup{
+			identityListKeyGroupName("device-inventory", "hw-type"):      {internalgnmi.StringValue(key)},
+			identityListKeyGroupName("device-inventory", "hw-dev-index"): {internalgnmi.StringValue("0")},
+			"hw-type":      {leaf},
+			"hw-dev-index": {internalgnmi.UintValue(0)},
+		}
+	}
+
+	tests := []struct {
+		name        string
+		key         string
+		leaf        internalgnmi.Value
+		wantChassis bool
+		wantError   bool
+	}{
+		{name: "CPU key and chassis int leaf", key: "hw-type-cpu", leaf: internalgnmi.IntValue(1), wantError: true},
+		{name: "CPU key and chassis uint leaf", key: "hw-type-cpu", leaf: internalgnmi.UintValue(1), wantError: true},
+		{name: "CPU key and chassis numeric string leaf", key: "hw-type-cpu", leaf: internalgnmi.StringValue("1"), wantError: true},
+		{name: "chassis key and CPU int leaf", key: "hw-type-chassis", leaf: internalgnmi.IntValue(2), wantError: true},
+		{name: "chassis key and CPU uint leaf", key: "hw-type-chassis", leaf: internalgnmi.UintValue(2), wantError: true},
+		{name: "chassis key and CPU numeric string leaf", key: "hw-type-chassis", leaf: internalgnmi.StringValue("2"), wantError: true},
+		{name: "chassis key and matching int leaf", key: "hw-type-chassis", leaf: internalgnmi.IntValue(1), wantChassis: true},
+		{name: "chassis key and matching uint leaf", key: "hw-type-chassis", leaf: internalgnmi.UintValue(1), wantChassis: true},
+		{name: "chassis key and matching numeric string leaf", key: "hw-type-chassis", leaf: internalgnmi.StringValue("1"), wantChassis: true},
+		{name: "numeric chassis key and matching named leaf", key: "1", leaf: internalgnmi.StringValue("hw-type-chassis"), wantChassis: true},
+		{name: "numeric CPU key and matching int leaf", key: "2", leaf: internalgnmi.IntValue(2)},
+		{name: "numeric CPU key and matching uint leaf", key: "2", leaf: internalgnmi.UintValue(2)},
+		{name: "numeric CPU key and matching numeric string leaf", key: "2", leaf: internalgnmi.StringValue("2")},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			isChassis, err := validateIOSXEHardwareIdentityGroup(hardwareGroup(test.key, test.leaf))
+			if test.wantError {
+				require.ErrorContains(t, err, "hardware type conflicts with its list key")
+				assert.False(t, isChassis)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, test.wantChassis, isChassis)
+		})
+	}
+}
+
 func TestIOSXEIdentitySchemaViolationsAreMalformed(t *testing.T) {
 	contract, _, err := resolveGNMIProductContract(gnmiProductCatalyst9800, "17.18.1")
 	require.NoError(t, err)

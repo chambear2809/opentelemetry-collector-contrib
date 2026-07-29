@@ -41,7 +41,7 @@ func TestSharedGNMIScalarJSONIETFUsesMandatoryIdentityGet(t *testing.T) {
 			Update: []*gnmipb.Update{
 				{Path: runtimeTestProtoPath(t, "system/state/count"), Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_UintVal{UintVal: 9}}},
 				{Path: runtimeTestProtoPath(t, "system/state/enabled"), Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_BoolVal{BoolVal: true}}},
-				{Path: runtimeTestProtoPath(t, "system/state/oper-status"), Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_StringVal{StringVal: "UP"}}},
+				{Path: runtimeTestProtoPath(t, "system/state/oper-status"), Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_IntVal{IntVal: 1}}},
 			},
 		}}}); err != nil {
 			return err

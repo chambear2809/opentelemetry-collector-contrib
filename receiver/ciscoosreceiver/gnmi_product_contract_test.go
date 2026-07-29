@@ -18,6 +18,8 @@ func TestResolveGNMIProductContract(t *testing.T) {
 		product, version, osFamily, train, canonical string
 		encoding                                     gnmipb.Encoding
 	}{
+		{gnmiProductCatalyst9300, "17.18.01", gnmiPlatformIOSXE, gnmiReleaseTrainIOSXE1718, "17.18.1", gnmipb.Encoding_JSON_IETF},
+		{gnmiProductCatalyst9500, "017.018.001", gnmiPlatformIOSXE, gnmiReleaseTrainIOSXE1718, "17.18.1", gnmipb.Encoding_JSON_IETF},
 		{gnmiProductCatalyst9800, "17.18.01a", gnmiPlatformIOSXE, gnmiReleaseTrainIOSXE1718, "17.18.1a", gnmipb.Encoding_JSON_IETF},
 		{gnmiProductASR9000, "24.4.2", gnmiPlatformIOSXR, gnmiReleaseTrainIOSXR244, "24.4.2", gnmipb.Encoding_JSON_IETF},
 		{gnmiProductNCS5500, "24.04.002", gnmiPlatformIOSXR, gnmiReleaseTrainIOSXR244, "24.4.2", gnmipb.Encoding_JSON_IETF},
@@ -40,6 +42,86 @@ func TestResolveGNMIProductContract(t *testing.T) {
 	}
 }
 
+func TestGNMIProductContractRegistryIsInternallyConsistent(t *testing.T) {
+	supported := make(map[string]struct{}, len(supportedGNMIProducts))
+	for _, product := range supportedGNMIProducts {
+		require.NotEmpty(t, product)
+		_, duplicate := supported[product]
+		require.False(t, duplicate, "duplicate supported product %q", product)
+		supported[product] = struct{}{}
+		definition, ok := gnmiProductDefinition(product)
+		require.True(t, ok, "supported product %q has no definition", product)
+		require.NotEmpty(t, definition.releaseTrain)
+		require.NotNil(t, definition.parser)
+	}
+
+	contractProducts := make(map[string]struct{}, len(gnmiProductContracts))
+	for key, contract := range gnmiProductContracts {
+		require.NotNil(t, contract)
+		require.Equal(t, key.Product, contract.Product)
+		require.Equal(t, key.ReleaseTrain, contract.ReleaseTrain)
+		_, supportedProduct := supported[key.Product]
+		require.True(t, supportedProduct, "contract product %q is absent from supportedGNMIProducts", key.Product)
+		definition, ok := gnmiProductDefinition(key.Product)
+		require.True(t, ok)
+		require.Equal(t, definition.releaseTrain, key.ReleaseTrain)
+		require.NotEmpty(t, contract.OSFamily)
+		require.NotNil(t, contract.ChassisPattern)
+		require.NotNil(t, contract.versionParser)
+		require.NotEmpty(t, contract.profiles)
+		require.NotEmpty(t, contract.ApprovedEncodings)
+		require.NotEmpty(t, contract.IdentityProbes)
+		contractProducts[key.Product] = struct{}{}
+
+		encodings := make(map[gnmipb.Encoding]struct{}, len(contract.ApprovedEncodings))
+		for _, encoding := range contract.ApprovedEncodings {
+			_, duplicate := encodings[encoding]
+			require.False(t, duplicate, "%s has duplicate encoding %s", key.Product, encoding)
+			encodings[encoding] = struct{}{}
+		}
+		versions := make(map[string]struct{}, len(contract.ApprovedGNMIVersions))
+		for _, version := range contract.ApprovedGNMIVersions {
+			require.NotEmpty(t, version)
+			_, duplicate := versions[version]
+			require.False(t, duplicate, "%s has duplicate gNMI protocol version %q", key.Product, version)
+			versions[version] = struct{}{}
+		}
+		if key.Product == gnmiProductCatalyst9300 || key.Product == gnmiProductCatalyst9500 {
+			require.Equal(t, []string{"0.4.0"}, contract.ApprovedGNMIVersions)
+			require.Equal(t, []string{gnmiReviewedIOSXESwitchRelease17181}, contract.ApprovedSoftwareVersions)
+			require.Len(t, contract.RequiredModelData, 7)
+			for name, model := range contract.RequiredModelData {
+				require.True(t, gnmiYANGIdentifierPattern.MatchString(name))
+				require.NotEmpty(t, model.Organization)
+				require.NotEmpty(t, model.Versions)
+				versions := make(map[string]struct{}, len(model.Versions))
+				for _, version := range model.Versions {
+					require.NotEmpty(t, version)
+					_, duplicate := versions[version]
+					require.False(t, duplicate, "%s has duplicate ModelData version %q for %s", key.Product, version, name)
+					versions[version] = struct{}{}
+				}
+			}
+		} else {
+			require.Empty(t, contract.RequiredModelData)
+		}
+
+		probeNames := make(map[string]struct{}, len(contract.IdentityProbes))
+		for _, probe := range contract.IdentityProbes {
+			require.NotEmpty(t, probe.Name)
+			require.NotEmpty(t, probe.Model)
+			require.NotEmpty(t, probe.Paths)
+			_, duplicate := probeNames[probe.Name]
+			require.False(t, duplicate, "%s has duplicate identity probe %q", key.Product, probe.Name)
+			probeNames[probe.Name] = struct{}{}
+		}
+		for name, profile := range contract.profiles {
+			require.Equal(t, name, profile.Name)
+		}
+	}
+	assert.Equal(t, supported, contractProducts)
+}
+
 func TestGNMIContractVersionParserDistinguishesMalformedAndWrongTrain(t *testing.T) {
 	contract, _, err := resolveGNMIProductContract(gnmiProductASR9000, "24.4.2")
 	require.NoError(t, err)
@@ -59,6 +141,8 @@ func TestGNMIProductContractAcceptedVersionSyntaxes(t *testing.T) {
 	tests := []struct {
 		product, version, canonical string
 	}{
+		{gnmiProductCatalyst9300, "17.18.1", "17.18.1"},
+		{gnmiProductCatalyst9500, "017.018.001", "17.18.1"},
 		{gnmiProductCatalyst9800, "17.18.0", "17.18.0"},
 		{gnmiProductCatalyst9800, "017.018.001A", "17.18.1a"},
 		{gnmiProductASR9000, "24.4.0", "24.4.0"},
@@ -79,10 +163,25 @@ func TestGNMIProductContractAcceptedVersionSyntaxes(t *testing.T) {
 	}
 }
 
+func TestGNMICatalystSwitchContractsRejectUnreviewedReleaseWithinTrain(t *testing.T) {
+	for _, product := range []string{gnmiProductCatalyst9300, gnmiProductCatalyst9500} {
+		for _, version := range []string{"17.18.0", "17.18.1a", "17.18.2", "17.18.99"} {
+			t.Run(product+"/"+version, func(t *testing.T) {
+				contract, parsed, err := resolveGNMIProductContract(product, version)
+				require.ErrorContains(t, err, "permits only reviewed release(s): 17.18.1")
+				assert.Nil(t, contract)
+				assert.Equal(t, version, parsed.Canonical)
+			})
+		}
+	}
+}
+
 func TestGNMIProductContractRejectsWrongTrainForEveryProduct(t *testing.T) {
 	tests := []struct {
 		product, version, train string
 	}{
+		{gnmiProductCatalyst9300, "17.17.1", gnmiReleaseTrainIOSXE1718},
+		{gnmiProductCatalyst9500, "17.19.1", gnmiReleaseTrainIOSXE1718},
 		{gnmiProductCatalyst9800, "17.17.1", gnmiReleaseTrainIOSXE1718},
 		{gnmiProductASR9000, "24.5.1", gnmiReleaseTrainIOSXR244},
 		{gnmiProductNCS5500, "25.1.1", gnmiReleaseTrainIOSXR244},
@@ -152,6 +251,18 @@ func TestGNMIProductContractChassisFamiliesAreAnchored(t *testing.T) {
 		product, version   string
 		accepted, rejected []string
 	}{
+		{
+			gnmiProductCatalyst9300,
+			"17.18.1",
+			[]string{"C9300-48P", "c9300l-48p-4x", "C9300L-48UXG-2Q", "C9300X-24Y"},
+			[]string{"C9300", "XC9300-48P", "C9300LM-48UX-4Y", "C9300XL-24Y", "C9300-NM-8X", "C9300-0", "C9300-48P-E", "C9500-16X"},
+		},
+		{
+			gnmiProductCatalyst9500,
+			"17.18.1",
+			[]string{"C9500-12Q", "C9500-40X", "C9500-16X", "c9500-24y4c", "C9500-32QC", "C9500X-28C8D", "C9500X-60L4D"},
+			[]string{"C9500", "XC9500-16X", "C9500H-24Y4C", "C9500-NM-8X", "C9500-0", "C9500-48X", "C9500-16X-A", "C9300-48P"},
+		},
 		{gnmiProductCatalyst9800, "17.18.1", []string{"C9800-40-K9", "cat9800-cl"}, []string{"C9800", "X-C9800-40-K9", "C9300-48P"}},
 		{gnmiProductASR9000, "24.4.1", []string{"ASR-9904", "asr-9001"}, []string{"ASR-1000", "XASR-9904"}},
 		{gnmiProductNCS5500, "24.4.1", []string{"NCS-5501-SE", "ncs-55a2-mod-se"}, []string{"NCS-540", "XNCS-5501"}},
@@ -259,6 +370,22 @@ func TestRequiredGNMIModelsCoversEveryEnabledProductProfile(t *testing.T) {
 		models           []string
 	}{
 		{
+			product: gnmiProductCatalyst9300, version: "17.18.1",
+			models: []string{
+				"Cisco-IOS-XE-device-hardware-oper", "Cisco-IOS-XE-install-oper", "Cisco-IOS-XE-platform-software-oper",
+				"Cisco-IOS-XE-process-cpu-oper", "Cisco-IOS-XE-transceiver-oper",
+				"openconfig-interfaces", "openconfig-system",
+			},
+		},
+		{
+			product: gnmiProductCatalyst9500, version: "17.18.1",
+			models: []string{
+				"Cisco-IOS-XE-device-hardware-oper", "Cisco-IOS-XE-install-oper", "Cisco-IOS-XE-platform-software-oper",
+				"Cisco-IOS-XE-process-cpu-oper", "Cisco-IOS-XE-transceiver-oper",
+				"openconfig-interfaces", "openconfig-system",
+			},
+		},
+		{
 			product: gnmiProductCatalyst9800, version: "17.18.1",
 			models: []string{
 				"Cisco-IOS-XE-device-hardware-oper", "Cisco-IOS-XE-install-oper", "Cisco-IOS-XE-platform-software-oper",
@@ -313,6 +440,12 @@ func TestRequiredGNMIModelsCoversEveryEnabledProductProfile(t *testing.T) {
 			models := requiredGNMIModels(contract, streams)
 			assert.Equal(t, test.models, models)
 			assert.NotContains(t, models, "openconfig", "wire origins must not be treated as Capabilities model names")
+			if test.product == gnmiProductCatalyst9300 || test.product == gnmiProductCatalyst9500 {
+				for _, model := range models {
+					assert.Contains(t, contract.RequiredModelData, model,
+						"every built-in switch model must have an exact Capabilities catalog contract")
+				}
+			}
 		})
 	}
 }

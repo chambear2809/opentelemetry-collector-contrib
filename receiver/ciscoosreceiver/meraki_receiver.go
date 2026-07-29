@@ -577,9 +577,9 @@ func (r *merakiMetricsReceiver) scrapeSwitchPorts(ctx context.Context, builder *
 				rb.recordInt("cisco.interface.speed", "The numeric line speed of a Cisco interface", "bit/s", speedBits, interfaceAttrs(port.PortID, sw.MAC, "", speedString))
 			}
 			if connected, ok := connectedStatus(port.Status); ok {
-				rb.recordInt("system.network.interface.status", "Interface operational status (1 = up, 0 = down)", "1", connected, interfaceAttrs(port.PortID, sw.MAC, "", speedString))
+				rb.recordInt("system.network.interface.status", "Interface operational status (1 = up, 0 = not up)", "1", connected, interfaceAttrs(port.PortID, sw.MAC, "", speedString))
 			}
-			rb.recordInt("cisco.interface.admin.status", "Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)", "1", boolToInt(port.Enabled), interfaceAttrs(port.PortID, sw.MAC, "", speedString))
+			rb.recordInt("cisco.interface.admin.status", "Cisco interface administrative status (1 = administratively enabled, 0 = not administratively enabled)", "1", boolToInt(port.Enabled), interfaceAttrs(port.PortID, sw.MAC, "", speedString))
 			rb.recordInt("meraki.switch.port.poe.allocated", "Whether Dashboard reports that PoE is allocated to the switch port.", "1", boolToInt(port.PoE.IsAllocated), interfaceAttrs(port.PortID, sw.MAC, "", speedString))
 			for _, reason := range port.Errors {
 				attrs := interfaceAttrs(port.PortID, sw.MAC, "", speedString)
@@ -681,7 +681,7 @@ func recordMerakiUplinkStatuses(builder *merakiMetricsBuilder, statuses []meraki
 				rb.recordInt("meraki.uplink.status", "WAN/uplink active state.", "1", active, attrs)
 			}
 			if rsrp, ok := parseFloatString(uplink.SignalStat.RSRP); ok {
-				rb.recordDouble("meraki.uplink.cellular.signal.rsrp", "Cellular uplink reference-signal received power.", "dBm", rsrp, attrs)
+				rb.recordDouble("meraki.uplink.cellular.signal.rsrp", "Cellular uplink reference-signal received power.", "dB{mW}", rsrp, attrs)
 			}
 			if rsrq, ok := parseFloatString(uplink.SignalStat.RSRQ); ok {
 				rb.recordDouble("meraki.uplink.cellular.signal.rsrq", "Cellular uplink reference-signal received quality.", "dB", rsrq, attrs)

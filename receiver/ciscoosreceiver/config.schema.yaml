@@ -557,7 +557,7 @@ $defs:
       username:
         type: string
   gnmi_custom_subscription_config:
-    description: GNMICustomSubscriptionConfig defines explicitly mapped custom scalar paths. Origin is independent of every path; raw origin:path strings are rejected by the path parser. PathTarget is decoder-only and always rejected because every qualified direct-device product contract forbids proxy target prefixes.
+    description: GNMICustomSubscriptionConfig defines explicitly mapped custom scalar paths. Origin is independent of every path; raw origin:path strings are rejected by the path parser. PathTarget is decoder-only and always rejected because every built-in direct-device product contract forbids proxy target prefixes.
     type: object
     properties:
       allow_aggregation:
@@ -584,7 +584,7 @@ $defs:
       origin:
         type: string
       path_target:
-        description: PathTarget is a decoder-only migration field retained so validation can return an actionable error. It is never added to a qualified request.
+        description: PathTarget is a decoder-only migration field retained so validation can return an actionable error. It is never added to a contract-governed request.
         type: string
       paths:
         type: array
@@ -732,6 +732,9 @@ $defs:
     description: GNMITargetConfig identifies one statically owned dial-in target.
     type: object
     properties:
+      allow_unqualified:
+        description: AllowUnqualified explicitly acknowledges that the selected product contract requires an opt-in because retained physical-device qualification is incomplete. It is rejected for contracts that do not require this acknowledgement.
+        type: boolean
       capabilities_timeout:
         type: string
         format: duration
@@ -763,12 +766,12 @@ $defs:
         description: Platform remains decoder-only so configurations from the OS-family preview receive an actionable migration error instead of an unknown-key diagnostic. It is never used to select profiles or runtime behavior.
         type: string
       product:
-        description: 'Product is one of the canonical product contracts: catalyst_9800, asr_9000, ncs_5500, nexus_9000, or nexus_3500.'
+        description: 'Product is one of the canonical product contracts: catalyst_9300, catalyst_9500, catalyst_9800, asr_9000, ncs_5500, nexus_9000, or nexus_3500.'
         type: string
       profiles:
         $ref: gnmi_profiles_config
       software_version:
-        description: SoftwareVersion is the exact expected running build. Its canonical form must match the version observed during product identity preflight.
+        description: SoftwareVersion is the expected public release label. OS-specific parsers canonicalize numeric components before comparing it with the release observed during product identity preflight.
         type: string
       tls:
         $ref: gnmitls_config

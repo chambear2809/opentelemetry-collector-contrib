@@ -35,7 +35,10 @@ const (
 	AttributeCiscoGnmiReasonMissingModel
 	AttributeCiscoGnmiReasonProductMismatch
 	AttributeCiscoGnmiReasonReleaseMismatch
+	AttributeCiscoGnmiReasonUnsupportedBootMode
 	AttributeCiscoGnmiReasonUnsupportedEncoding
+	AttributeCiscoGnmiReasonUnsupportedGnmiVersion
+	AttributeCiscoGnmiReasonUnsupportedModelVersion
 	AttributeCiscoGnmiReasonUnsupportedPath
 	AttributeCiscoGnmiReasonUnsupportedRequestOptions
 )
@@ -63,8 +66,14 @@ func (av AttributeCiscoGnmiReason) String() string {
 		return "product_mismatch"
 	case AttributeCiscoGnmiReasonReleaseMismatch:
 		return "release_mismatch"
+	case AttributeCiscoGnmiReasonUnsupportedBootMode:
+		return "unsupported_boot_mode"
 	case AttributeCiscoGnmiReasonUnsupportedEncoding:
 		return "unsupported_encoding"
+	case AttributeCiscoGnmiReasonUnsupportedGnmiVersion:
+		return "unsupported_gnmi_version"
+	case AttributeCiscoGnmiReasonUnsupportedModelVersion:
+		return "unsupported_model_version"
 	case AttributeCiscoGnmiReasonUnsupportedPath:
 		return "unsupported_path"
 	case AttributeCiscoGnmiReasonUnsupportedRequestOptions:
@@ -85,7 +94,10 @@ var MapAttributeCiscoGnmiReason = map[string]AttributeCiscoGnmiReason{
 	"missing_model":               AttributeCiscoGnmiReasonMissingModel,
 	"product_mismatch":            AttributeCiscoGnmiReasonProductMismatch,
 	"release_mismatch":            AttributeCiscoGnmiReasonReleaseMismatch,
+	"unsupported_boot_mode":       AttributeCiscoGnmiReasonUnsupportedBootMode,
 	"unsupported_encoding":        AttributeCiscoGnmiReasonUnsupportedEncoding,
+	"unsupported_gnmi_version":    AttributeCiscoGnmiReasonUnsupportedGnmiVersion,
+	"unsupported_model_version":   AttributeCiscoGnmiReasonUnsupportedModelVersion,
 	"unsupported_path":            AttributeCiscoGnmiReasonUnsupportedPath,
 	"unsupported_request_options": AttributeCiscoGnmiReasonUnsupportedRequestOptions,
 }
@@ -3249,7 +3261,7 @@ type metricCatalystCenterClientWirelessRssi struct {
 func (m *metricCatalystCenterClientWirelessRssi) init() {
 	m.data.SetName("catalyst_center.client.wireless.rssi")
 	m.data.SetDescription("RSSI for a targeted wireless client.")
-	m.data.SetUnit("dBm")
+	m.data.SetUnit("dB{mW}")
 	m.data.SetEmptyGauge()
 }
 
@@ -5263,7 +5275,7 @@ type metricCiscoInterfaceAdminStatus struct {
 // init fills cisco.interface.admin.status metric with initial data.
 func (m *metricCiscoInterfaceAdminStatus) init() {
 	m.data.SetName("cisco.interface.admin.status")
-	m.data.SetDescription("Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)")
+	m.data.SetDescription("Cisco interface administrative status (1 = administratively enabled, 0 = not administratively enabled)")
 	m.data.SetUnit("1")
 	m.data.SetEmptyGauge()
 	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
@@ -6783,7 +6795,7 @@ type metricCiscoOpticsRxPower struct {
 func (m *metricCiscoOpticsRxPower) init() {
 	m.data.SetName("cisco.optics.rx_power")
 	m.data.SetDescription("Received optical power")
-	m.data.SetUnit("dB[mW]")
+	m.data.SetUnit("dB{mW}")
 	m.data.SetEmptyGauge()
 	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
 	m.aggDataPoints = m.aggDataPoints[:0]
@@ -7288,7 +7300,7 @@ type metricCiscoOpticsTxPower struct {
 func (m *metricCiscoOpticsTxPower) init() {
 	m.data.SetName("cisco.optics.tx_power")
 	m.data.SetDescription("Transmitted optical power")
-	m.data.SetUnit("dB[mW]")
+	m.data.SetUnit("dB{mW}")
 	m.data.SetEmptyGauge()
 	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
 	m.aggDataPoints = m.aggDataPoints[:0]
@@ -8722,7 +8734,7 @@ type metricCiscoWlcClientWirelessRssi struct {
 func (m *metricCiscoWlcClientWirelessRssi) init() {
 	m.data.SetName("cisco.wlc.client.wireless.rssi")
 	m.data.SetDescription("Client RSSI.")
-	m.data.SetUnit("dBm")
+	m.data.SetUnit("dB{mW}")
 	m.data.SetEmptyGauge()
 }
 
@@ -9738,7 +9750,7 @@ type metricCiscoWlcRfNoiseFloor struct {
 func (m *metricCiscoWlcRfNoiseFloor) init() {
 	m.data.SetName("cisco.wlc.rf.noise_floor")
 	m.data.SetDescription("RF noise floor.")
-	m.data.SetUnit("dBm")
+	m.data.SetUnit("dB{mW}")
 	m.data.SetEmptyGauge()
 }
 
@@ -12952,7 +12964,7 @@ type metricIntersightUcsFanSpeed struct {
 func (m *metricIntersightUcsFanSpeed) init() {
 	m.data.SetName("intersight.ucs.fan.speed")
 	m.data.SetDescription("Mean fan speed from Intersight telemetry GroupBy.")
-	m.data.SetUnit("rpm")
+	m.data.SetUnit("1/min")
 	m.data.SetEmptyGauge()
 }
 
@@ -14752,7 +14764,7 @@ type metricIntersightUcsSignalPowerReceive struct {
 func (m *metricIntersightUcsSignalPowerReceive) init() {
 	m.data.SetName("intersight.ucs.signal_power.receive")
 	m.data.SetDescription("Transceiver receive optical power.")
-	m.data.SetUnit("dBm")
+	m.data.SetUnit("dB{mW}")
 	m.data.SetEmptyGauge()
 }
 
@@ -14802,7 +14814,7 @@ type metricIntersightUcsSignalPowerTransmit struct {
 func (m *metricIntersightUcsSignalPowerTransmit) init() {
 	m.data.SetName("intersight.ucs.signal_power.transmit")
 	m.data.SetDescription("Transceiver transmit optical power.")
-	m.data.SetUnit("dBm")
+	m.data.SetUnit("dB{mW}")
 	m.data.SetEmptyGauge()
 }
 
@@ -18164,7 +18176,7 @@ type metricMerakiUplinkCellularSignalRsrp struct {
 func (m *metricMerakiUplinkCellularSignalRsrp) init() {
 	m.data.SetName("meraki.uplink.cellular.signal.rsrp")
 	m.data.SetDescription("Cellular uplink reference-signal received power.")
-	m.data.SetUnit("dBm")
+	m.data.SetUnit("dB{mW}")
 	m.data.SetEmptyGauge()
 }
 
@@ -22509,7 +22521,7 @@ type metricSystemNetworkInterfaceStatus struct {
 // init fills system.network.interface.status metric with initial data.
 func (m *metricSystemNetworkInterfaceStatus) init() {
 	m.data.SetName("system.network.interface.status")
-	m.data.SetDescription("Interface operational status (1 = up, 0 = down)")
+	m.data.SetDescription("Interface operational status (1 = up, 0 = not up)")
 	m.data.SetUnit("1")
 	m.data.SetEmptyGauge()
 	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
@@ -23754,6 +23766,12 @@ func NewMetricsBuilder(mbc MetricsBuilderConfig, settings receiver.Settings, opt
 		metricSystemUptime:                                        newMetricSystemUptime(mbc.Metrics.SystemUptime),
 		resourceAttributeIncludeFilter:                            make(map[string]filter.Filter),
 		resourceAttributeExcludeFilter:                            make(map[string]filter.Filter),
+	}
+	if mbc.ResourceAttributes.CiscoOsBootMode.MetricsInclude != nil {
+		mb.resourceAttributeIncludeFilter["cisco.os.boot_mode"] = filter.CreateFilter(mbc.ResourceAttributes.CiscoOsBootMode.MetricsInclude)
+	}
+	if mbc.ResourceAttributes.CiscoOsBootMode.MetricsExclude != nil {
+		mb.resourceAttributeExcludeFilter["cisco.os.boot_mode"] = filter.CreateFilter(mbc.ResourceAttributes.CiscoOsBootMode.MetricsExclude)
 	}
 	if mbc.ResourceAttributes.CiscoOsName.MetricsInclude != nil {
 		mb.resourceAttributeIncludeFilter["cisco.os.name"] = filter.CreateFilter(mbc.ResourceAttributes.CiscoOsName.MetricsInclude)

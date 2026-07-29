@@ -99,7 +99,21 @@ func TestNormalizeTimestampMagnitudesAndBounds(t *testing.T) {
 		})
 	}
 
-	for _, raw := range []int64{0, time.Date(1999, 1, 1, 0, 0, 0, 0, time.UTC).Unix(), receipt.Add(25 * time.Hour).UnixNano()} {
+	atReceipt, valid := NormalizeTimestamp(receipt.UnixNano(), receipt)
+	require.True(t, valid)
+	assert.Equal(t, receipt, atReceipt)
+	for _, skew := range []time.Duration{time.Nanosecond, maximumFutureClockSkew} {
+		clamped, clampedValid := NormalizeTimestamp(receipt.Add(skew).UnixNano(), receipt)
+		require.True(t, clampedValid)
+		assert.Equal(t, receipt, clamped)
+	}
+
+	for _, raw := range []int64{
+		0,
+		time.Date(1999, 1, 1, 0, 0, 0, 0, time.UTC).Unix(),
+		receipt.Add(maximumFutureClockSkew + time.Nanosecond).UnixNano(),
+		receipt.Add(23 * time.Hour).UnixNano(),
+	} {
 		got, valid := NormalizeTimestamp(raw, receipt)
 		assert.False(t, valid)
 		assert.Equal(t, receipt, got)
