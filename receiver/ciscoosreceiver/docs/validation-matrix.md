@@ -38,8 +38,7 @@ campaigns in [Consolidated Validation Campaigns](#consolidated-validation-campai
 
 `Not run` does not mean unimplemented: automated coverage or a harness may exist without retained live evidence. The
 native configuration surfaces are defined in [`config.go`](../config.go), and receiver wiring is defined in
-[`factory.go`](../factory.go). VAST uses standard Collector components; see the
-[VAST Storage guide](vast-storage.md).
+[`factory.go`](../factory.go).
 
 ## Consolidated Validation Campaigns
 
@@ -588,9 +587,9 @@ complete local and backend self-telemetry maps, and the backend assertion outcom
 
 ## Splunk Observability Dashboard Validation
 
-The source tree currently contains 12 Splunk Observability Cloud bundles with 69 dashboards and 530 charts for Cisco
+The source tree currently contains 11 Splunk Observability Cloud bundles with 63 dashboards and 490 charts for Cisco
 OS, Nexus switches, Meraki, Intersight, Catalyst Center, Catalyst 9800, SD-WAN, ISE, FMC, Nexus controllers/ACI,
-IOS XR, and adjacent VAST storage correlation. The 2026-07-04 static validation passed all of these gates:
+and IOS XR. The 2026-07-04 static validation passed all of these gates:
 
 - every bundle parses as JSON and passes the repo-native schema, required-description, chart-type, variable, and
   12-column by 100-row layout checks;
