@@ -339,6 +339,27 @@ The bounded STREAM commands intentionally ended after receiving initial updates 
 passwords, or hardware serial numbers are retained in this repository. No immutable raw response artifact or backend
 delivery result was captured, so the result is `Run with findings; not qualification`.
 
+### Splunk Observability Cloud delivery acceptance — same run, 2026-07-29
+
+The same validation window included a bounded Splunk Observability Cloud `us1` acceptance probe. The repository's
+shared Cisco OS/gNMI dashboard bundle was created, round-trip verified, and deleted through the Splunk dashboard API:
+one dashboard group, nine dashboards, and 109 charts. The exact gNMI device and receiver self-telemetry metric names
+were then submitted to the Splunk SignalFlow datapoint ingest endpoint with a unique validation resource identity;
+Splunk returned HTTP 200, and the metric-timeseries catalog returned active entries for each submitted metric. The
+probe used no Cisco configuration or mutating RPC and retained no token, credential, or response body.
+
+| Splunk acceptance check | Result | Qualification interpretation |
+| --- | --- | --- |
+| Dashboard API smoke test | Created, round-trip verified, and removed 1 group, 9 dashboards, and 109 charts. | Dashboard payloads, SignalFlow, filters, and chart relationships are accepted by the `us1` organization. |
+| gNMI metric-name ingest | HTTP 200 for `cisco.device.up`, `system.cpu.utilization`, `system.memory.utilization`, `system.network.interface.status`, `otelcol_ciscoosreceiver_gnmi_product_verified`, and `otelcol_ciscoosreceiver_gnmi_updates`. | Splunk accepts the names and bounded dimensions used by the gNMI device/self-telemetry contract. |
+| Metric catalog readback | Active metric-timeseries entries were returned for all six submitted names. | Backend catalog acceptance was observed; this was a controlled name/shape probe, not a live collector stream. |
+| OTLP transport note | Direct JSON to `/v2/datapoint/otlp` returned HTTP 415 because that endpoint requires OTLP protobuf; the production `otlphttp` exporter sends protobuf. | Expected protocol behavior; do not use JSON for the OTLP endpoint. |
+
+This proves Splunk organization access, dashboard compatibility, and backend acceptance of the gNMI metric contract, but
+does not qualify C9300/C9500 hardware or prove a live Cisco-to-Collector-to-Splunk stream. The physical rows below
+remain `Not run` until exact-build hardware, verified TLS, authorization evidence, three collection intervals, and a
+backend assertion tied to that same run are retained.
+
 This target also exposed a documentation/runtime discrepancy: Cisco's
 [IOS XE 17.18 gNMI guide](https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/prog/configuration/1718/b-1718-programmability-cg/gnmi.html)
 documents and demonstrates gNMI `0.4.0`, while the 17.15.1 Cat9000v advertised `0.7.0`. The virtual result is not
