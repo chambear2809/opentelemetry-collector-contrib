@@ -1366,7 +1366,7 @@ func enableAllACILogs(cfg *ACIConfig) {
 
 func testACIConfig(endpoint string) *Config {
 	cfg := createDefaultConfig().(*Config)
-	cfg.Timeout = 5 * time.Second
+	cfg.ControllerConfig.Timeout = 5 * time.Second
 	cfg.ACI = defaultACIConfig()
 	cfg.ACI.Enabled = true
 	cfg.ACI.Controllers = []ACIControllerConfig{{Endpoint: endpoint, Name: "apic-1"}}

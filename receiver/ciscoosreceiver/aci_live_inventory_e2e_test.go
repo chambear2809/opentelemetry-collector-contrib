@@ -34,7 +34,7 @@ import (
 // exposing APIC object bodies or credentials.
 func TestE2EACIFullTelemetryInventory(t *testing.T) {
 	cfg := NewFactory().CreateDefaultConfig().(*Config)
-	cfg.Timeout = durationEnv(t, nexusControllerE2ETimeoutEnv, 45*time.Second)
+	cfg.ControllerConfig.Timeout = durationEnv(t, nexusControllerE2ETimeoutEnv, 45*time.Second)
 	cfg.ACI = defaultACIConfig()
 	cfg.ACI.Enabled = true
 	cfg.ACI.Controllers = []ACIControllerConfig{{

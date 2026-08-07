@@ -799,7 +799,7 @@ func newTestNexusDashboardLogsReceiver(t *testing.T, endpoint string) *nexusDash
 
 func testNexusDashboardConfig(endpoint string) *Config {
 	cfg := createDefaultConfig().(*Config)
-	cfg.Timeout = 5 * time.Second
+	cfg.ControllerConfig.Timeout = 5 * time.Second
 	cfg.NexusDashboard = defaultNexusDashboardConfig()
 	cfg.NexusDashboard.Enabled = true
 	cfg.NexusDashboard.Endpoint = endpoint

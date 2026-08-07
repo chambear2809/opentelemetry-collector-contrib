@@ -718,7 +718,7 @@ func TestIntersightCatalogCoversTroubleshootingDomains(t *testing.T) {
 func newTestIntersightMetricsReceiver(t *testing.T, endpoint string, mutate func(*Config)) *intersightMetricsReceiver {
 	t.Helper()
 	cfg := createDefaultConfig().(*Config)
-	cfg.Timeout = 5 * time.Second
+	cfg.ControllerConfig.Timeout = 5 * time.Second
 	cfg.Intersight = defaultIntersightConfig()
 	cfg.Intersight.Enabled = true
 	cfg.Intersight.Endpoint = endpoint
@@ -737,7 +737,7 @@ func newTestIntersightMetricsReceiver(t *testing.T, endpoint string, mutate func
 func newTestIntersightLogsReceiver(t *testing.T, endpoint string) *intersightLogsReceiver {
 	t.Helper()
 	cfg := createDefaultConfig().(*Config)
-	cfg.Timeout = 5 * time.Second
+	cfg.ControllerConfig.Timeout = 5 * time.Second
 	cfg.Intersight = defaultIntersightConfig()
 	cfg.Intersight.Enabled = true
 	cfg.Intersight.Endpoint = endpoint

@@ -228,7 +228,7 @@ func newNexusDashboardClient(conf *Config) (*nexusdashboard.Client, error) {
 		APIKey:             string(conf.NexusDashboard.Auth.APIKey),
 		Domain:             conf.NexusDashboard.Auth.Domain,
 		UserAgent:          conf.NexusDashboard.UserAgent,
-		Timeout:            conf.Timeout,
+		Timeout:            conf.ControllerConfig.Timeout,
 		MaxRetries:         conf.NexusDashboard.MaxRetries,
 		PageSize:           conf.NexusDashboard.PageSize,
 		InsecureSkipVerify: conf.NexusDashboard.InsecureSkipVerify,
@@ -268,7 +268,7 @@ func (r *nexusDashboardMetricsReceiver) Shutdown(ctx context.Context) error {
 func (r *nexusDashboardMetricsReceiver) run(ctx context.Context) {
 	defer close(r.done)
 	r.collect(ctx)
-	ticker := time.NewTicker(r.config.CollectionInterval)
+	ticker := time.NewTicker(r.config.ControllerConfig.CollectionInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -281,7 +281,7 @@ func (r *nexusDashboardMetricsReceiver) run(ctx context.Context) {
 }
 
 func (r *nexusDashboardMetricsReceiver) collect(ctx context.Context) {
-	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
+	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.ControllerConfig.Timeout)
 	defer cancel()
 
 	obsCtx := startMetricsOp(ctx, r.obs)
@@ -438,7 +438,7 @@ func (r *nexusDashboardLogsReceiver) Shutdown(ctx context.Context) error {
 func (r *nexusDashboardLogsReceiver) run(ctx context.Context) {
 	defer close(r.done)
 	r.collect(ctx)
-	ticker := time.NewTicker(r.config.CollectionInterval)
+	ticker := time.NewTicker(r.config.ControllerConfig.CollectionInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -451,7 +451,7 @@ func (r *nexusDashboardLogsReceiver) run(ctx context.Context) {
 }
 
 func (r *nexusDashboardLogsReceiver) collect(ctx context.Context) {
-	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
+	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.ControllerConfig.Timeout)
 	defer cancel()
 
 	r.seen.BeginBatch()

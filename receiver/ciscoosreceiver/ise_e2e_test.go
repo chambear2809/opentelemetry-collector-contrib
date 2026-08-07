@@ -92,7 +92,7 @@ func TestE2ELiveISE(t *testing.T) {
 	previousLastSuccess := metricsReceiver.success.lastSuccess
 	metricsReceiver.success.mu.Unlock()
 
-	metricsCtx, cancelMetrics := context.WithTimeout(t.Context(), cfg.Timeout)
+	metricsCtx, cancelMetrics := context.WithTimeout(t.Context(), cfg.ControllerConfig.Timeout)
 	md, metricResultCounts, metricsErr := scrapeISEE2EMetrics(metricsCtx, metricsReceiver, options.operations)
 	cancelMetrics()
 
@@ -167,7 +167,7 @@ func TestE2ELiveISE(t *testing.T) {
 		logStatsMu.Unlock()
 	}
 
-	logsCtx, cancelLogs := context.WithTimeout(t.Context(), cfg.Timeout)
+	logsCtx, cancelLogs := context.WithTimeout(t.Context(), cfg.ControllerConfig.Timeout)
 	ld, logResultCounts, logsErr := scrapeISEE2ELogs(logsCtx, logsReceiver, options.operations)
 	cancelLogs()
 
@@ -318,8 +318,8 @@ func newISEE2EConfig(t *testing.T) (*Config, []string, iseE2EOptions) {
 	require.LessOrEqual(t, sessionLookback, iseE2EMaxSessionWindow, "%s must be at most %s", iseE2ESessionLookbackEnv, iseE2EMaxSessionWindow)
 
 	cfg := NewFactory().CreateDefaultConfig().(*Config)
-	cfg.Timeout = timeout
-	cfg.CollectionInterval = time.Hour
+	cfg.ControllerConfig.Timeout = timeout
+	cfg.ControllerConfig.CollectionInterval = time.Hour
 	cfg.ISE = defaultISEConfig()
 	cfg.ISE.Enabled = true
 	cfg.ISE.Endpoint = endpoint

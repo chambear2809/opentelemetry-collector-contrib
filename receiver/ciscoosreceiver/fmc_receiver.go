@@ -233,7 +233,7 @@ func newFMCClients(conf *Config) ([]*fmc.Client, error) {
 			Password:           string(conf.FMC.Auth.Password),
 			DomainUUID:         controller.DomainUUID,
 			UserAgent:          conf.FMC.UserAgent,
-			Timeout:            conf.Timeout,
+			Timeout:            conf.ControllerConfig.Timeout,
 			MaxRetries:         conf.FMC.MaxRetries,
 			PageSize:           conf.FMC.PageSize,
 			InsecureSkipVerify: conf.FMC.InsecureSkipVerify,
@@ -274,8 +274,8 @@ func newFMCEStreamerClients(conf *Config) ([]*fmc.EStreamerClient, error) {
 			TLSConfig:       tlsConfig,
 			InitialTime:     initialTime,
 			EventTypes:      conf.FMC.EStreamer.EventTypes,
-			DialTimeout:     conf.Timeout,
-			ReadTimeout:     conf.CollectionInterval * 2,
+			DialTimeout:     conf.ControllerConfig.Timeout,
+			ReadTimeout:     conf.ControllerConfig.CollectionInterval * 2,
 			MaxMessageBytes: conf.FMC.EStreamer.MaxMessageBytes,
 		})
 		if err != nil {
@@ -333,7 +333,7 @@ func (r *fmcMetricsReceiver) Shutdown(ctx context.Context) error {
 func (r *fmcMetricsReceiver) run(ctx context.Context) {
 	defer close(r.done)
 	r.collect(ctx)
-	ticker := time.NewTicker(r.config.CollectionInterval)
+	ticker := time.NewTicker(r.config.ControllerConfig.CollectionInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -346,7 +346,7 @@ func (r *fmcMetricsReceiver) run(ctx context.Context) {
 }
 
 func (r *fmcMetricsReceiver) collect(ctx context.Context) {
-	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
+	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.ControllerConfig.Timeout)
 	defer cancel()
 	obsCtx := startMetricsOp(ctx, r.obs)
 	md, scrapeErr := r.scrape(scrapeCtx)
@@ -794,7 +794,7 @@ func (r *fmcLogsReceiver) Shutdown(ctx context.Context) error {
 func (r *fmcLogsReceiver) run(ctx context.Context) {
 	defer close(r.done)
 	r.collect(ctx)
-	ticker := time.NewTicker(r.config.CollectionInterval)
+	ticker := time.NewTicker(r.config.ControllerConfig.CollectionInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -807,7 +807,7 @@ func (r *fmcLogsReceiver) run(ctx context.Context) {
 }
 
 func (r *fmcLogsReceiver) collect(ctx context.Context) {
-	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
+	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.ControllerConfig.Timeout)
 	defer cancel()
 	r.seen.BeginBatch()
 	obsCtx := startLogsOp(ctx, r.obs)

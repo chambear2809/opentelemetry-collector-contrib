@@ -113,9 +113,9 @@ func createMetricsReceiver(
 
 			switch typedCfg := scraperCfg.(type) {
 			case *systemscraper.Config:
-				freshCfg = cloneSystemScraperConfig(factory, typedCfg, connDevice, conf.Timeout)
+				freshCfg = cloneSystemScraperConfig(factory, typedCfg, connDevice, conf.ControllerConfig.Timeout)
 			case *interfacesscraper.Config:
-				freshCfg = cloneInterfacesScraperConfig(factory, typedCfg, connDevice, conf.Timeout)
+				freshCfg = cloneInterfacesScraperConfig(factory, typedCfg, connDevice, conf.ControllerConfig.Timeout)
 			}
 
 			scraperOptions = append(scraperOptions, scraperhelper.AddFactoryWithConfig(factory, freshCfg))

@@ -168,7 +168,7 @@ func newSDWANClient(conf *Config) (*sdwan.Client, error) {
 		JSessionID:         string(conf.SDWAN.Auth.JSessionID),
 		XSRFToken:          string(conf.SDWAN.Auth.XSRFToken),
 		UserAgent:          conf.SDWAN.UserAgent,
-		Timeout:            conf.Timeout,
+		Timeout:            conf.ControllerConfig.Timeout,
 		MaxRetries:         conf.SDWAN.MaxRetries,
 		PageSize:           conf.SDWAN.PageSize,
 		InsecureSkipVerify: conf.SDWAN.InsecureSkipVerify,
@@ -208,7 +208,7 @@ func (r *sdwanMetricsReceiver) Shutdown(ctx context.Context) error {
 func (r *sdwanMetricsReceiver) run(ctx context.Context) {
 	defer close(r.done)
 	r.collect(ctx)
-	ticker := time.NewTicker(r.config.CollectionInterval)
+	ticker := time.NewTicker(r.config.ControllerConfig.CollectionInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -221,7 +221,7 @@ func (r *sdwanMetricsReceiver) run(ctx context.Context) {
 }
 
 func (r *sdwanMetricsReceiver) collect(ctx context.Context) {
-	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
+	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.ControllerConfig.Timeout)
 	defer cancel()
 
 	obsCtx := startMetricsOp(ctx, r.obs)
@@ -729,7 +729,7 @@ func (r *sdwanLogsReceiver) Shutdown(ctx context.Context) error {
 func (r *sdwanLogsReceiver) run(ctx context.Context) {
 	defer close(r.done)
 	r.collect(ctx)
-	ticker := time.NewTicker(r.config.CollectionInterval)
+	ticker := time.NewTicker(r.config.ControllerConfig.CollectionInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -742,7 +742,7 @@ func (r *sdwanLogsReceiver) run(ctx context.Context) {
 }
 
 func (r *sdwanLogsReceiver) collect(ctx context.Context) {
-	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
+	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.ControllerConfig.Timeout)
 	defer cancel()
 
 	r.seen.BeginBatch()

@@ -191,7 +191,7 @@ func newACIClients(conf *Config) ([]*aci.Client, error) {
 			Password:           string(conf.ACI.Auth.Password),
 			Domain:             conf.ACI.Auth.Domain,
 			UserAgent:          conf.ACI.UserAgent,
-			Timeout:            conf.Timeout,
+			Timeout:            conf.ControllerConfig.Timeout,
 			MaxRetries:         conf.ACI.MaxRetries,
 			PageSize:           conf.ACI.PageSize,
 			CAFile:             conf.ACI.CAFile,
@@ -245,7 +245,7 @@ func (r *aciMetricsReceiver) Shutdown(ctx context.Context) error {
 func (r *aciMetricsReceiver) run(ctx context.Context) {
 	defer close(r.done)
 	r.collect(ctx)
-	ticker := time.NewTicker(r.config.CollectionInterval)
+	ticker := time.NewTicker(r.config.ControllerConfig.CollectionInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -258,7 +258,7 @@ func (r *aciMetricsReceiver) run(ctx context.Context) {
 }
 
 func (r *aciMetricsReceiver) collect(ctx context.Context) {
-	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
+	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.ControllerConfig.Timeout)
 	defer cancel()
 
 	obsCtx := startMetricsOp(ctx, r.obs)
@@ -423,7 +423,7 @@ func (r *aciLogsReceiver) Shutdown(ctx context.Context) error {
 func (r *aciLogsReceiver) run(ctx context.Context) {
 	defer close(r.done)
 	r.collect(ctx)
-	ticker := time.NewTicker(r.config.CollectionInterval)
+	ticker := time.NewTicker(r.config.ControllerConfig.CollectionInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -436,7 +436,7 @@ func (r *aciLogsReceiver) run(ctx context.Context) {
 }
 
 func (r *aciLogsReceiver) collect(ctx context.Context) {
-	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
+	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.ControllerConfig.Timeout)
 	defer cancel()
 
 	r.seen.BeginBatch()

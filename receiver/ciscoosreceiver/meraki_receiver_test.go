@@ -969,7 +969,7 @@ func float64Pointer(value float64) *float64 {
 func newTestMerakiReceiver(t *testing.T, baseURL string, merakiCfg MerakiConfig) *merakiMetricsReceiver {
 	t.Helper()
 	cfg := createDefaultConfig().(*Config)
-	cfg.Timeout = 5 * time.Second
+	cfg.ControllerConfig.Timeout = 5 * time.Second
 	cfg.Meraki = merakiCfg
 	cfg.Meraki.BaseURL = baseURL + "/api/v1"
 	receiver, err := newMerakiMetricsReceiver(receivertest.NewNopSettings(metadata.Type), cfg, consumertest.NewNop())

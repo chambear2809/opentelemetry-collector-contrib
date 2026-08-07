@@ -76,7 +76,7 @@ func newMerakiMetricsReceiver(set receiver.Settings, conf *Config, consumer cons
 		APIKey:             string(conf.Meraki.Auth.APIKey),
 		BaseURL:            conf.Meraki.BaseURL,
 		UserAgent:          conf.Meraki.UserAgent,
-		Timeout:            conf.Timeout,
+		Timeout:            conf.ControllerConfig.Timeout,
 		MaxRetries:         conf.Meraki.MaxRetries,
 		InsecureSkipVerify: conf.Meraki.InsecureSkipVerify,
 	})
@@ -223,7 +223,7 @@ func (r *merakiMetricsReceiver) Shutdown(ctx context.Context) error {
 func (r *merakiMetricsReceiver) run(ctx context.Context) {
 	defer close(r.done)
 	r.collect(ctx)
-	ticker := time.NewTicker(r.config.CollectionInterval)
+	ticker := time.NewTicker(r.config.ControllerConfig.CollectionInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -236,7 +236,7 @@ func (r *merakiMetricsReceiver) run(ctx context.Context) {
 }
 
 func (r *merakiMetricsReceiver) collect(ctx context.Context) {
-	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
+	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.ControllerConfig.Timeout)
 	defer cancel()
 
 	obsCtx := startMetricsOp(ctx, r.obs)

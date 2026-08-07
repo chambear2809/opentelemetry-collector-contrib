@@ -47,8 +47,8 @@ const (
 
 func TestE2ENexusDashboardControllerAPI(t *testing.T) {
 	cfg := NewFactory().CreateDefaultConfig().(*Config)
-	cfg.CollectionInterval = durationEnv(t, nexusControllerE2ECollectionIntEnv, 10*time.Second)
-	cfg.Timeout = durationEnv(t, nexusControllerE2ETimeoutEnv, 45*time.Second)
+	cfg.ControllerConfig.CollectionInterval = durationEnv(t, nexusControllerE2ECollectionIntEnv, 10*time.Second)
+	cfg.ControllerConfig.Timeout = durationEnv(t, nexusControllerE2ETimeoutEnv, 45*time.Second)
 	cfg.NexusDashboard = defaultNexusDashboardConfig()
 	cfg.NexusDashboard.Enabled = true
 	cfg.NexusDashboard.Endpoint = requiredEnvOrSkip(t, nexusDashboardE2EEndpointEnv)
@@ -117,8 +117,8 @@ func TestE2ENexusDashboardControllerAPI(t *testing.T) {
 
 func TestE2EACIControllerAPI(t *testing.T) {
 	cfg := NewFactory().CreateDefaultConfig().(*Config)
-	cfg.CollectionInterval = durationEnv(t, nexusControllerE2ECollectionIntEnv, 10*time.Second)
-	cfg.Timeout = durationEnv(t, nexusControllerE2ETimeoutEnv, 45*time.Second)
+	cfg.ControllerConfig.CollectionInterval = durationEnv(t, nexusControllerE2ECollectionIntEnv, 10*time.Second)
+	cfg.ControllerConfig.Timeout = durationEnv(t, nexusControllerE2ETimeoutEnv, 45*time.Second)
 	cfg.ACI = defaultACIConfig()
 	cfg.ACI.Enabled = true
 	cfg.ACI.Controllers = []ACIControllerConfig{{

@@ -18,7 +18,6 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/confmap"
-	"go.opentelemetry.io/collector/confmap/xconfmap"
 	"go.opentelemetry.io/collector/scraper/scraperhelper"
 	"go.uber.org/multierr"
 
@@ -755,7 +754,7 @@ func (cfg FMCEStreamerConfig) hasTarget() bool {
 
 // Config defines configuration for Cisco OS receiver.
 type Config struct {
-	scraperhelper.ControllerConfig `mapstructure:",squash"`
+	ControllerConfig scraperhelper.ControllerConfig `mapstructure:",squash"`
 
 	// StorageID is an optional Collector storage extension used to persist
 	// delivery-safe receiver checkpoints across restarts.
@@ -807,7 +806,7 @@ type Config struct {
 }
 
 var (
-	_ xconfmap.Validator  = (*Config)(nil)
+	_ confmap.Validator   = (*Config)(nil)
 	_ confmap.Unmarshaler = (*Config)(nil)
 )
 
@@ -815,11 +814,11 @@ var (
 func (cfg *Config) Validate() error {
 	var err error
 
-	if cfg.Timeout <= 0 {
+	if cfg.ControllerConfig.Timeout <= 0 {
 		err = multierr.Append(err, errors.New("timeout must be positive"))
 	}
 
-	if cfg.CollectionInterval <= 0 {
+	if cfg.ControllerConfig.CollectionInterval <= 0 {
 		err = multierr.Append(err, errors.New("collection_interval must be positive"))
 	}
 
@@ -881,6 +880,12 @@ func (cfg *Config) Validate() error {
 	err = multierr.Append(err, cfg.validateISE())
 	err = multierr.Append(err, cfg.validateIOSXR())
 	err = multierr.Append(err, cfg.validateGNMI())
+
+	for _, scraperCfg := range cfg.Scrapers {
+		if validator, ok := scraperCfg.(confmap.Validator); ok {
+			err = multierr.Append(err, validator.Validate())
+		}
+	}
 
 	return err
 }

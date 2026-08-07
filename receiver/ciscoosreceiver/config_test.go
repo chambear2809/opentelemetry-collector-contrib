@@ -17,7 +17,6 @@ import (
 	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
-	"go.opentelemetry.io/collector/confmap/xconfmap"
 	"go.opentelemetry.io/collector/scraper/scraperhelper"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/connection"
@@ -2074,7 +2073,7 @@ func TestConfigValidationIncludesDynamicScrapers(t *testing.T) {
 			cfg := NewFactory().CreateDefaultConfig().(*Config)
 			cfg.Devices = []DeviceConfig{validTestDevice()}
 			cfg.Scrapers = map[component.Type]component.Config{component.MustNewType(tt.name): tt.scraper}
-			require.ErrorContains(t, xconfmap.Validate(cfg), tt.wantErr)
+			require.ErrorContains(t, cfg.Validate(), tt.wantErr)
 		})
 	}
 }

@@ -60,7 +60,7 @@ func newCatalystCenterMetricsReceiver(set receiver.Settings, conf *Config, consu
 		Password:           string(conf.CatalystCenter.Auth.Password),
 		AESCredentials:     string(conf.CatalystCenter.Auth.AESCredentials),
 		UserAgent:          conf.CatalystCenter.UserAgent,
-		Timeout:            conf.Timeout,
+		Timeout:            conf.ControllerConfig.Timeout,
 		MaxRetries:         conf.CatalystCenter.MaxRetries,
 		PageSize:           conf.CatalystCenter.PageSize,
 		InsecureSkipVerify: conf.CatalystCenter.InsecureSkipVerify,
@@ -114,7 +114,7 @@ func (r *catalystCenterMetricsReceiver) Shutdown(ctx context.Context) error {
 func (r *catalystCenterMetricsReceiver) run(ctx context.Context) {
 	defer close(r.done)
 	r.collect(ctx)
-	ticker := time.NewTicker(r.config.CollectionInterval)
+	ticker := time.NewTicker(r.config.ControllerConfig.CollectionInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -127,7 +127,7 @@ func (r *catalystCenterMetricsReceiver) run(ctx context.Context) {
 }
 
 func (r *catalystCenterMetricsReceiver) collect(ctx context.Context) {
-	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
+	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.ControllerConfig.Timeout)
 	defer cancel()
 
 	obsCtx := startMetricsOp(ctx, r.obs)

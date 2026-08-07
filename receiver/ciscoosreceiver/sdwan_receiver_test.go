@@ -583,7 +583,7 @@ func TestSDWANLogsPreserveEventBodies(t *testing.T) {
 func newTestSDWANReceiver(t *testing.T, endpoint string, mutate func(*Config)) *sdwanMetricsReceiver {
 	t.Helper()
 	cfg := createDefaultConfig().(*Config)
-	cfg.Timeout = 10 * time.Second
+	cfg.ControllerConfig.Timeout = 10 * time.Second
 	cfg.SDWAN = defaultSDWANConfig()
 	cfg.SDWAN.Enabled = true
 	cfg.SDWAN.Endpoint = endpoint
@@ -600,7 +600,7 @@ func newTestSDWANReceiver(t *testing.T, endpoint string, mutate func(*Config)) *
 func newTestSDWANLogsReceiver(t *testing.T, endpoint string, mutate func(*Config)) *sdwanLogsReceiver {
 	t.Helper()
 	cfg := createDefaultConfig().(*Config)
-	cfg.Timeout = 10 * time.Second
+	cfg.ControllerConfig.Timeout = 10 * time.Second
 	cfg.SDWAN = defaultSDWANConfig()
 	cfg.SDWAN.Enabled = true
 	cfg.SDWAN.Endpoint = endpoint

@@ -240,7 +240,7 @@ func newISERestClient(conf *Config, iseCfg ISEConfig) (*ise.Client, error) {
 		Username:           iseCfg.Auth.Username,
 		Password:           string(iseCfg.Auth.Password),
 		UserAgent:          iseCfg.UserAgent,
-		Timeout:            conf.Timeout,
+		Timeout:            conf.ControllerConfig.Timeout,
 		MaxRetries:         iseCfg.MaxRetries,
 		PageSize:           iseCfg.PageSize,
 		CAFile:             iseCfg.CAFile,
@@ -266,7 +266,7 @@ func newISEPxGridClient(conf *Config, iseCfg ISEConfig) (*ise.PxGridClient, erro
 		InsecureSkipVerify:    iseCfg.PxGrid.InsecureSkipVerify,
 		AllowedServiceHosts:   iseCfg.PxGrid.AllowedServiceHosts,
 		AllowedServiceOrigins: iseCfg.PxGrid.AllowedServiceOrigins,
-		Timeout:               conf.Timeout,
+		Timeout:               conf.ControllerConfig.Timeout,
 		UserAgent:             iseCfg.UserAgent,
 		MaxRetries:            iseCfg.MaxRetries,
 	})
@@ -360,7 +360,7 @@ func (r *iseMetricsReceiver) close() {
 func (r *iseMetricsReceiver) run(ctx context.Context) {
 	defer close(r.done)
 	r.collect(ctx)
-	ticker := time.NewTicker(r.config.CollectionInterval)
+	ticker := time.NewTicker(r.config.ControllerConfig.CollectionInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -373,7 +373,7 @@ func (r *iseMetricsReceiver) run(ctx context.Context) {
 }
 
 func (r *iseMetricsReceiver) collect(ctx context.Context) {
-	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
+	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.ControllerConfig.Timeout)
 	defer cancel()
 
 	obsCtx := startMetricsOp(ctx, r.obs)
@@ -806,7 +806,7 @@ func waitForISEShutdown(ctx context.Context, workerDone, closeDone <-chan struct
 
 func (r *iseLogsReceiver) run(ctx context.Context) {
 	r.collect(ctx)
-	ticker := time.NewTicker(r.config.CollectionInterval)
+	ticker := time.NewTicker(r.config.ControllerConfig.CollectionInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -832,7 +832,7 @@ func (r *iseLogsReceiver) runCheckpointFlusher(ctx context.Context) {
 }
 
 func (r *iseLogsReceiver) collect(ctx context.Context) {
-	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
+	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.ControllerConfig.Timeout)
 	defer cancel()
 	r.seen.BeginBatch()
 	obsCtx := startLogsOp(ctx, r.obs)

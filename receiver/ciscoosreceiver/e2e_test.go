@@ -240,8 +240,8 @@ func newCiscoOSE2EConfig(t *testing.T) *Config {
 	}
 
 	cfg := NewFactory().CreateDefaultConfig().(*Config)
-	cfg.CollectionInterval = durationEnv(t, ciscoOSE2ECollectionIntEnv, 10*time.Second)
-	cfg.Timeout = durationEnv(t, ciscoOSE2ETimeoutEnv, 45*time.Second)
+	cfg.ControllerConfig.CollectionInterval = durationEnv(t, ciscoOSE2ECollectionIntEnv, 10*time.Second)
+	cfg.ControllerConfig.Timeout = durationEnv(t, ciscoOSE2ETimeoutEnv, 45*time.Second)
 	cfg.Devices = []DeviceConfig{{
 		Name: "ciscoos-e2e",
 		Host: host,

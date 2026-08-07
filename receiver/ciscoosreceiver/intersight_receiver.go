@@ -125,7 +125,7 @@ func newIntersightClient(conf *Config) (*intersight.Client, error) {
 		KeyFile:            conf.Intersight.Auth.KeyFile,
 		Endpoint:           conf.Intersight.Endpoint,
 		UserAgent:          conf.Intersight.UserAgent,
-		Timeout:            conf.Timeout,
+		Timeout:            conf.ControllerConfig.Timeout,
 		MaxRetries:         conf.Intersight.MaxRetries,
 		PageSize:           conf.Intersight.PageSize,
 		InsecureSkipVerify: conf.Intersight.InsecureSkipVerify,
@@ -165,7 +165,7 @@ func (r *intersightMetricsReceiver) Shutdown(ctx context.Context) error {
 func (r *intersightMetricsReceiver) run(ctx context.Context) {
 	defer close(r.done)
 	r.collect(ctx)
-	ticker := time.NewTicker(r.config.CollectionInterval)
+	ticker := time.NewTicker(r.config.ControllerConfig.CollectionInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -178,7 +178,7 @@ func (r *intersightMetricsReceiver) run(ctx context.Context) {
 }
 
 func (r *intersightMetricsReceiver) collect(ctx context.Context) {
-	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
+	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.ControllerConfig.Timeout)
 	defer cancel()
 
 	obsCtx := startMetricsOp(ctx, r.obs)
@@ -369,7 +369,7 @@ func (r *intersightLogsReceiver) Shutdown(ctx context.Context) error {
 func (r *intersightLogsReceiver) run(ctx context.Context) {
 	defer close(r.done)
 	r.collect(ctx)
-	ticker := time.NewTicker(r.config.CollectionInterval)
+	ticker := time.NewTicker(r.config.ControllerConfig.CollectionInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -382,7 +382,7 @@ func (r *intersightLogsReceiver) run(ctx context.Context) {
 }
 
 func (r *intersightLogsReceiver) collect(ctx context.Context) {
-	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
+	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.ControllerConfig.Timeout)
 	defer cancel()
 
 	r.seen.BeginBatch()

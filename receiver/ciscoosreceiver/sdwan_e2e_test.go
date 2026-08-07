@@ -60,7 +60,7 @@ func TestE2ELiveSDWAN(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { assert.NoError(t, metricsReceiver.Shutdown(context.Background())) })
 
-	metricsCtx, cancelMetrics := context.WithTimeout(t.Context(), cfg.Timeout)
+	metricsCtx, cancelMetrics := context.WithTimeout(t.Context(), cfg.ControllerConfig.Timeout)
 	md, metricsErr := metricsReceiver.scrape(metricsCtx)
 	cancelMetrics()
 
@@ -106,7 +106,7 @@ func TestE2ELiveSDWAN(t *testing.T) {
 		logStats = append(logStats, stat)
 		logStatsMu.Unlock()
 	}
-	logsCtx, cancelLogs := context.WithTimeout(t.Context(), cfg.Timeout)
+	logsCtx, cancelLogs := context.WithTimeout(t.Context(), cfg.ControllerConfig.Timeout)
 	ld, logsErr := logsReceiver.scrape(logsCtx)
 	cancelLogs()
 
@@ -142,8 +142,8 @@ func newSDWANE2EConfig(t *testing.T) (*Config, []string) {
 	require.LessOrEqual(t, maxResults, sdwanE2EMaxAllowedMaxResults, "%s must be at most %d", sdwanE2EMaxResultsEnv, sdwanE2EMaxAllowedMaxResults)
 
 	cfg := NewFactory().CreateDefaultConfig().(*Config)
-	cfg.Timeout = timeout
-	cfg.CollectionInterval = time.Hour
+	cfg.ControllerConfig.Timeout = timeout
+	cfg.ControllerConfig.CollectionInterval = time.Hour
 	cfg.SDWAN = defaultSDWANConfig()
 	cfg.SDWAN.Enabled = true
 	cfg.SDWAN.Endpoint = endpoint

@@ -208,7 +208,7 @@ func TestCatalystCenterManagedDeviceUsesInventoryOSIdentity(t *testing.T) {
 func newTestCatalystCenterReceiver(t *testing.T, endpoint string, mutate func(*Config)) *catalystCenterMetricsReceiver {
 	t.Helper()
 	cfg := createDefaultConfig().(*Config)
-	cfg.Timeout = 10 * time.Second
+	cfg.ControllerConfig.Timeout = 10 * time.Second
 	cfg.CatalystCenter = defaultCatalystCenterConfig()
 	cfg.CatalystCenter.Enabled = true
 	cfg.CatalystCenter.Endpoint = endpoint

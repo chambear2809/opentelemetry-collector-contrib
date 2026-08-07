@@ -64,7 +64,7 @@ func TestE2ELiveISEDataConnect(t *testing.T) {
 	previousLastSuccess := receiver.success.lastSuccess
 	receiver.success.mu.Unlock()
 
-	scrapeCtx, cancel := context.WithTimeout(t.Context(), cfg.Timeout)
+	scrapeCtx, cancel := context.WithTimeout(t.Context(), cfg.ControllerConfig.Timeout)
 	md, scrapeErr := receiver.scrape(scrapeCtx)
 	cancel()
 
@@ -146,7 +146,7 @@ func requireISEDataConnectE2ELogs(t *testing.T, cfg *Config, selectedViews []str
 		}
 	}
 	logsReceiver.seen.BeginBatch()
-	scrapeCtx, cancel := context.WithTimeout(t.Context(), cfg.Timeout)
+	scrapeCtx, cancel := context.WithTimeout(t.Context(), cfg.ControllerConfig.Timeout)
 	ld, scrapeErr := logsReceiver.scrape(scrapeCtx)
 	cancel()
 	require.NoError(t, scrapeErr)
@@ -159,7 +159,7 @@ func requireISEDataConnectE2ELogs(t *testing.T, cfg *Config, selectedViews []str
 	require.Equal(t, ld.LogRecordCount(), consumed)
 
 	logsReceiver.seen.BeginBatch()
-	secondCtx, cancelSecond := context.WithTimeout(t.Context(), cfg.Timeout)
+	secondCtx, cancelSecond := context.WithTimeout(t.Context(), cfg.ControllerConfig.Timeout)
 	second, secondErr := logsReceiver.scrape(secondCtx)
 	cancelSecond()
 	require.NoError(t, secondErr)
@@ -223,8 +223,8 @@ func newISEDataConnectE2EConfig(t *testing.T) (*Config, []string, int) {
 	require.LessOrEqual(t, rowLimit, iseE2EDataConnectMaxRows)
 
 	cfg := NewFactory().CreateDefaultConfig().(*Config)
-	cfg.Timeout = timeout
-	cfg.CollectionInterval = time.Hour
+	cfg.ControllerConfig.Timeout = timeout
+	cfg.ControllerConfig.CollectionInterval = time.Hour
 	cfg.ISE = defaultISEConfig()
 	cfg.ISE.Enabled = true
 	cfg.ISE.Endpoint = endpoint

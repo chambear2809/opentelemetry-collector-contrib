@@ -132,7 +132,7 @@ func TestE2ELiveISEPxGrid(t *testing.T) {
 	previousLastSuccess := receiver.success.lastSuccess
 	receiver.success.mu.Unlock()
 
-	scrapeCtx, cancel := context.WithTimeout(t.Context(), cfg.Timeout)
+	scrapeCtx, cancel := context.WithTimeout(t.Context(), cfg.ControllerConfig.Timeout)
 	md, resultCounts, lookupCounts, scrapeErr := scrapeISEPxGridE2EMetrics(scrapeCtx, receiver, options)
 	cancel()
 
@@ -227,8 +227,8 @@ func newISEPxGridE2EConfig(t *testing.T) (*Config, isePxGridE2EOptions) {
 	subscriptions := configureISEPxGridE2ESubscriptions(t, streaming)
 
 	cfg := NewFactory().CreateDefaultConfig().(*Config)
-	cfg.Timeout = timeout
-	cfg.CollectionInterval = time.Hour
+	cfg.ControllerConfig.Timeout = timeout
+	cfg.ControllerConfig.CollectionInterval = time.Hour
 	cfg.ISE = defaultISEConfig()
 	cfg.ISE.Enabled = true
 	// The pxGrid-only receiver does not issue REST/MnT requests. These values
@@ -540,7 +540,7 @@ func requireISEPxGridE2EStreaming(t *testing.T, receiver *iseMetricsReceiver, op
 	if options.streamRequireMessage {
 		received = requireISEPxGridE2EMessageDelivery(t, options, streamCtx, cancel, messages, acknowledged, results)
 	} else {
-		setupTimeout := isePxGridE2EStreamSetupTimeout(receiver.config.Timeout, options.streamTimeout)
+		setupTimeout := isePxGridE2EStreamSetupTimeout(receiver.config.ControllerConfig.Timeout, options.streamTimeout)
 		received = requireISEPxGridE2EIdleWindow(t, options, cancel, setupTimeout, readyTracker, ready, messages, results)
 	}
 
@@ -920,7 +920,7 @@ func TestISEPxGridE2EExactVersionScrapeUpdatesHealth(t *testing.T) {
 	defer server.Close()
 
 	cfg := NewFactory().CreateDefaultConfig().(*Config)
-	cfg.Timeout = time.Second
+	cfg.ControllerConfig.Timeout = time.Second
 	cfg.ISE = defaultISEConfig()
 	cfg.ISE.Enabled = true
 	cfg.ISE.Endpoint = server.URL

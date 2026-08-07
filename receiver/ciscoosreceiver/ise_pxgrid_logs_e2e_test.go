@@ -66,7 +66,7 @@ func TestE2ELiveISEPxGridLogs(t *testing.T) {
 	pollTime := time.Now()
 
 	receiver.seen.BeginBatch()
-	firstCtx, cancelFirst := context.WithTimeout(t.Context(), cfg.Timeout)
+	firstCtx, cancelFirst := context.WithTimeout(t.Context(), cfg.ControllerConfig.Timeout)
 	first := scrapeISEPxGridE2ELogsAt(firstCtx, receiver, options.operations, pollTime)
 	cancelFirst()
 	firstStats := recorder.take()
@@ -97,7 +97,7 @@ func TestE2ELiveISEPxGridLogs(t *testing.T) {
 
 	// Reuse pollTime so both POST bodies contain the exact same startTimestamp.
 	receiver.seen.BeginBatch()
-	secondCtx, cancelSecond := context.WithTimeout(t.Context(), cfg.Timeout)
+	secondCtx, cancelSecond := context.WithTimeout(t.Context(), cfg.ControllerConfig.Timeout)
 	second := scrapeISEPxGridE2ELogsAt(secondCtx, receiver, options.operations, pollTime)
 	cancelSecond()
 	secondStats := recorder.take()
@@ -395,8 +395,8 @@ func TestISEPxGridE2ELogsSuppressReplayAndAllowNewRecord(t *testing.T) {
 	defer controlServer.Close()
 
 	cfg := NewFactory().CreateDefaultConfig().(*Config)
-	cfg.Timeout = 5 * time.Second
-	cfg.CollectionInterval = time.Hour
+	cfg.ControllerConfig.Timeout = 5 * time.Second
+	cfg.ControllerConfig.CollectionInterval = time.Hour
 	cfg.ISE = defaultISEConfig()
 	cfg.ISE.Enabled = true
 	cfg.ISE.Endpoint = controlServer.URL

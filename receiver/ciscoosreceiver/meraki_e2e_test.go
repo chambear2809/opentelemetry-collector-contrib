@@ -63,8 +63,8 @@ func TestE2ELiveMeraki(t *testing.T) {
 	}
 
 	cfg := createDefaultConfig().(*Config)
-	cfg.Timeout = 30 * time.Second
-	cfg.CollectionInterval = 60 * time.Second
+	cfg.ControllerConfig.Timeout = 30 * time.Second
+	cfg.ControllerConfig.CollectionInterval = 60 * time.Second
 	cfg.Meraki.Auth.APIKey = configopaque.String(apiKey)
 	cfg.Meraki.SwitchTransceivers.Enabled = intersightE2EBoolEnv(merakiE2ESwitchTransceiverEnv)
 
@@ -83,7 +83,7 @@ func TestE2ELiveMeraki(t *testing.T) {
 	rcvr, err := newMerakiMetricsReceiver(receivertest.NewNopSettings(metadata.Type), cfg, consumertest.NewNop())
 	require.NoError(t, err)
 	t.Cleanup(rcvr.client.CloseIdleConnections)
-	scrapeCtx, cancel := context.WithTimeout(t.Context(), cfg.Timeout)
+	scrapeCtx, cancel := context.WithTimeout(t.Context(), cfg.ControllerConfig.Timeout)
 	defer cancel()
 	md, err := rcvr.scrape(scrapeCtx)
 	require.NoError(t, err)
@@ -140,8 +140,8 @@ func TestE2ELiveIntersight(t *testing.T) {
 	}
 
 	cfg := createDefaultConfig().(*Config)
-	cfg.Timeout = 30 * time.Second
-	cfg.CollectionInterval = 60 * time.Second
+	cfg.ControllerConfig.Timeout = 30 * time.Second
+	cfg.ControllerConfig.CollectionInterval = 60 * time.Second
 	cfg.Intersight.Enabled = true
 	cfg.Intersight.Auth.KeyID = keyID
 	cfg.Intersight.Auth.KeyFile = keyFile
@@ -156,7 +156,7 @@ func TestE2ELiveIntersight(t *testing.T) {
 	setIntersightE2EMaxResults(&cfg.Intersight, 10)
 	cfg.Intersight.Telemetry.Enabled = intersightE2EBoolEnv(intersightE2ETelemetry)
 	if cfg.Intersight.Telemetry.Enabled {
-		cfg.Timeout = 2 * time.Minute
+		cfg.ControllerConfig.Timeout = 2 * time.Minute
 	}
 
 	rcvr, err := newIntersightMetricsReceiver(receivertest.NewNopSettings(metadata.Type), cfg, consumertest.NewNop())
@@ -200,8 +200,8 @@ func TestE2ELiveCatalystCenter(t *testing.T) {
 	}
 
 	cfg := createDefaultConfig().(*Config)
-	cfg.Timeout = 2 * time.Minute
-	cfg.CollectionInterval = 60 * time.Second
+	cfg.ControllerConfig.Timeout = 2 * time.Minute
+	cfg.ControllerConfig.CollectionInterval = 60 * time.Second
 	cfg.CatalystCenter.Enabled = true
 	cfg.CatalystCenter.Endpoint = endpoint
 	cfg.CatalystCenter.Auth.Username = username
