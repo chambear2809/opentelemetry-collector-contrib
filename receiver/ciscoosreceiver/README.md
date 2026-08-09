@@ -959,181 +959,20 @@ ise:
 Run the bounded REST/MnT live gate with explicit groups. The harness disables every unselected group and always
 disables pxGrid and Data Connect, which require separate credentials and qualification:
 
-```shell
-export CISCOOS_E2E_ISE_ENDPOINT=https://ise.example.com
-export CISCOOS_E2E_ISE_USERNAME=ise-readonly
-export CISCOOS_E2E_ISE_CA_FILE=/etc/otelcol/ise-rest-ca.crt
-export CISCOOS_E2E_ISE_GROUPS=sessions,session_details,licensing
-export CISCOOS_E2E_ISE_MAX_RESULTS=100
-read -rs CISCOOS_E2E_ISE_PASSWORD
-export CISCOOS_E2E_ISE_PASSWORD
+The root `gnmi` section is the normalized, fork-first dial-in path for IOS XE, IOS XR, and NX-OS. Endpoints remain a
+static inventory, but product identity and catalog selection are automatic. Every session calls Capabilities and then
+uses internal Subscribe-ONCE identity probes to discover the OS family, model/PID, software version, and available
+identity details before operational subscriptions are planned. It never issues Get or Set. SupportedModels is only an
+eligibility filter; it is not proof that an operational path works. Existing `ios_xr.dial_out` and
+`catalyst_9800.dial_out` modes remain available, subject to the production hardening below; legacy dial-in targets
+retain their legacy decoder and metric behavior for one fork release and must not duplicate an endpoint in
+`gnmi.targets`.
 
-(cd receiver/ciscoosreceiver && go test -tags=e2e -run '^TestE2ELiveISE$' -count=1 -timeout=5m -v .)
-```
-
-The strict gate requires every selected operation to succeed, `ise.controller.up=1`, zero partial success, no request,
-endpoint, rate-limit, skipped-service, or unavailable-service telemetry, and a current `ise.scrape.last_success`.
-Use `CISCOOS_E2E_ISE_INSECURE_SKIP_VERIFY=true` only for an isolated lab; such a run does not qualify production TLS.
-Set `CISCOOS_E2E_ISE_OPERATIONS` to an exact comma-separated subset for focused release/feature qualification.
-`CISCOOS_E2E_ISE_PAGE_SIZE` independently forces ERS pagination; `CISCOOS_E2E_ISE_REQUIRE_NONEMPTY=true` requires
-each selected operation to return decoded objects; and `CISCOOS_E2E_ISE_REQUIRE_CSRF=true` requires every selected
-ERS request to carry a negotiated token.
-
-Run the separate pxGrid gate with a dedicated pxGrid client identity, an exact top-level operation allowlist, a bounded
-result cap, and verified TLS. The configured control origin is authorized automatically; list every additional
-discovered HTTPS or WSS origin exactly, including its scheme and port. Certificate authentication accepts an
-unencrypted private key or an encrypted PKCS#8 key plus `CISCOOS_E2E_ISE_PXGRID_KEY_PASSWORD`. Password-based pxGrid
-authentication is also supported through `CISCOOS_E2E_ISE_PXGRID_PASSWORD`.
-Leave `CISCOOS_E2E_ISE_PXGRID_SERVER_NAME` unset when the endpoint and discovered origins use certificate-matching
-FQDNs. A configured override applies to every pxGrid REST and WebSocket connection, so every discovered node
-certificate must match that one name.
-
-```shell
-export CISCOOS_E2E_ISE_PXGRID_ENDPOINT=https://ise-pan.example.com:8910/pxgrid
-export CISCOOS_E2E_ISE_PXGRID_NODE_NAME=otel-ciscoosreceiver.example.com
-export CISCOOS_E2E_ISE_PXGRID_CERT_FILE=/etc/otelcol/pxgrid-client.crt
-export CISCOOS_E2E_ISE_PXGRID_KEY_FILE=/etc/otelcol/pxgrid-client.key
-export CISCOOS_E2E_ISE_PXGRID_CA_FILE=/etc/otelcol/ise-pxgrid-ca.crt
-export CISCOOS_E2E_ISE_PXGRID_ALLOWED_SERVICE_ORIGINS=https://ise-psn.example.com:8910,wss://ise-psn.example.com:8910
-export CISCOOS_E2E_ISE_PXGRID_OPERATIONS=pxgrid.version,pxgrid.service_lookup,pxgrid.session.get_sessions
-export CISCOOS_E2E_ISE_PXGRID_SERVICES=com.cisco.ise.session,com.cisco.ise.radius
-export CISCOOS_E2E_ISE_PXGRID_MAX_RESULTS=100
-export CISCOOS_E2E_ISE_EVENT_LOOKBACK=1h
-read -rs CISCOOS_E2E_ISE_PXGRID_KEY_PASSWORD
-export CISCOOS_E2E_ISE_PXGRID_KEY_PASSWORD
-
-(cd receiver/ciscoosreceiver && go test -tags=e2e -run '^TestE2ELiveISEPxGrid$' -count=1 -timeout=5m -v .)
-```
-
-Qualify pxGrid polling logs separately. Keep the endpoint, client identity, key-password, CA, and allowed-origin exports
-from the preceding block, then use exactly one or both of the only supported log operations,
-`pxgrid.session.get_sessions` and `pxgrid.radius.get_failures`. Every selected operation must return at least one log,
-so generate a current session or authentication failure before running its gate. The test enforces
-`CISCOOS_E2E_ISE_PXGRID_REQUIRE_NONEMPTY=true`, commits the first batch through the production deduplicator, and polls
-the same request window again. Any exact replay that is re-emitted fails the gate; genuinely new records are accepted
-and reported only as counts. The second source response must include at least one unchanged first-poll record for every
-selected operation, preventing a vacuous pass when all earlier records disappear or change. Only fixed-size one-way
-dedup fingerprints are retained between polls. Credentials and discovered URLs are never logged; response bodies,
-raw IDs, and raw dedup inputs are not retained between polls.
-
-```shell
-unset CISCOOS_E2E_ISE_PXGRID_SERVICES
-unset CISCOOS_E2E_ISE_PXGRID_AUTO_ACTIVATE
-unset CISCOOS_E2E_ISE_PXGRID_SUBSCRIPTIONS
-export CISCOOS_E2E_ISE_PXGRID_OPERATIONS=pxgrid.session.get_sessions
-export CISCOOS_E2E_ISE_PXGRID_REQUIRE_NONEMPTY=true
-export CISCOOS_E2E_ISE_PXGRID_STREAMING=false
-export CISCOOS_E2E_ISE_PXGRID_MAX_RESULTS=100
-export CISCOOS_E2E_ISE_EVENT_LOOKBACK=1h
-
-(cd receiver/ciscoosreceiver && go test -tags=e2e -run '^TestE2ELiveISEPxGridLogs$' -count=1 -timeout=5m -v .)
-```
-
-The pxGrid gate leaves account activation off by default. Initial enrollment requires both
-`CISCOOS_E2E_ISE_PXGRID_AUTO_ACTIVATE=true` and exact operation `pxgrid.account_activate`; omit both after the account
-is approved. `CISCOOS_E2E_ISE_PXGRID_REQUIRE_NONEMPTY=true` requires every selected operation and named service lookup
-to return an object. Streaming is also off by default. To qualify it, set `CISCOOS_E2E_ISE_PXGRID_STREAMING=true`, set
-`CISCOOS_E2E_ISE_PXGRID_SUBSCRIPTIONS` to an exact subset of `session,radius_failures,endpoint,trustsec`, and generate
-at least one event for every selected subscription before `CISCOOS_E2E_ISE_PXGRID_STREAM_TIMEOUT` expires. This
-message-delivery requirement defaults to `true`. Set `CISCOOS_E2E_ISE_PXGRID_STREAM_REQUIRE_MESSAGE=false` to instead
-qualify an idle stream. Readiness must complete within the lesser of the receiver request timeout and stream timeout:
-every selected stream must receive STOMP `CONNECTED` and successfully write `SUBSCRIBE`. This confirms the client sent
-the subscription but is not a broker receipt. After all streams are ready, each must remain open for a new, full stream
-timeout and stop cleanly on cancellation. Each service must emit exactly one readiness signal; a disconnect, endpoint
-fallback, second readiness signal, or any additional service-lookup/access-secret request after readiness fails the
-continuous-connection gate. Zero delivered messages are accepted in this mode. In message-required mode, the gate
-waits for the handler and the subsequent client ACK write to complete for every selected service; this proves a
-successful client write, not broker processing of the ACK. It never prints or retains message bodies. Use
-`CISCOOS_E2E_ISE_PXGRID_INSECURE_SKIP_VERIFY=true` only for an isolated lab; such a run does not qualify production
-TLS.
-
-Run the separate Data Connect gate with verified TLS and explicitly selected views. Use `none` to validate only REST
-status and the TCPS database ping. Set `CISCOOS_E2E_ISE_DATACONNECT_INCLUDE_LOGS=true` to validate allowlisted logs
-and a second-poll deduplication check without printing row bodies:
-
-```shell
-export CISCOOS_E2E_ISE_DATACONNECT_HOST=ise-mnt.example.com
-export CISCOOS_E2E_ISE_DATACONNECT_SERVICE_NAME=cpm10
-export CISCOOS_E2E_ISE_DATACONNECT_USERNAME=dataconnect
-export CISCOOS_E2E_ISE_DATACONNECT_CA_FILE=/etc/otelcol/ise-mnt-ca.crt
-export CISCOOS_E2E_ISE_DATACONNECT_SERVER_NAME=ise-mnt.example.com
-export CISCOOS_E2E_ISE_DATACONNECT_VIEWS=NODE_LIST,NETWORK_DEVICES,NETWORK_DEVICE_GROUPS
-export CISCOOS_E2E_ISE_DATACONNECT_ROW_LIMIT=25
-read -rs CISCOOS_E2E_ISE_DATACONNECT_PASSWORD
-export CISCOOS_E2E_ISE_DATACONNECT_PASSWORD
-
-(cd receiver/ciscoosreceiver && go test -tags=e2e -run '^TestE2ELiveISEDataConnect$' -count=1 -timeout=5m -v .)
-```
-
-### Product-Contract gNMI Dial-In
-
-The root `gnmi` section implements seven explicit product/release contracts. It maintains a static target inventory and
-uses read-only gNMI Capabilities, bounded identity Get, and Subscribe RPCs; it never issues Set. A target must pass
-configuration validation, product-approved protocol-version and encoding negotiation, required-model validation, and
-bounded identity Get verification before any configured metric stream is launched. An implemented contract is not a
-claim that every admitted SKU, topology, or exact build has passed the live gate; see the validation matrix. Existing
-`ios_xr.dial_out` and `catalyst_9800.dial_out` modes remain available, subject to the production hardening below;
-legacy dial-in targets retain their legacy decoder and metric behavior for one fork release. Every dial-in endpoint has
-one owner across all three target lists; DNS case/trailing-dot variants and equivalent IPv4/IPv6 spellings do not create
-distinct owners.
-
-| Product | Derived OS | Accepted release/train | Verified identity source |
-|---------|------------|------------------------|--------------------------|
-| `catalyst_9300` | `ios_xe` | `17.18.1` only | IOS XE hardware inventory, current install version, and INSTALL boot mode |
-| `catalyst_9500` | `ios_xe` | `17.18.1` only | IOS XE hardware inventory, current install version, and INSTALL boot mode |
-| `catalyst_9800` | `ios_xe` | `17.18.x` | IOS XE hardware inventory and current install version |
-| `asr_9000` | `ios_xr` | `24.4.x` | IOS XR install/version chassis PID and release label |
-| `ncs_5500` | `ios_xr` | `24.4.x` | IOS XR install/version chassis PID and release label |
-| `nexus_9000` | `nx_os` | `10.6(x)` | OpenConfig platform chassis model and software version |
-| `nexus_3500` | `nx_os` | `10.5(x)` | OpenConfig platform chassis model and software version |
-
-NX-OS uses the generic `openconfig` origin on the wire for its OpenConfig identity and interface requests. Capabilities
-validation remains module-specific: those streams require the advertised `openconfig-platform`, `openconfig-system`,
-and `openconfig-interfaces` models as applicable. The generic wire origin is not itself a Capabilities model name.
-
-The Catalyst 9300/9500 contracts accept exactly the reviewed public release `17.18.1`; other contracts accept
-syntactically valid software release identifiers in their listed train. Required `software_version` is the configured
-expected release identifier, and preflight compares its canonical form with the canonical form derived from the
-observed value. Chassis identifiers must match the selected product's anchored identity rule. Catalyst 9300/9500 use
-the explicit documented base-PID allowlists in the
-[gNMI dial-in guide](docs/gnmi-dial-in.md#admitted-catalyst-switch-pids); the other products use anchored
-`C9800-`/`CAT9800-`, `ASR-9`, `NCS-55`, `N9K-`, or `N3K-C35` family patterns. These rules are fail-closed identity
-boundaries, not evidence that every admitted SKU has been physically qualified. Cisco SONiC is explicitly unsupported.
-`platform`, including `platform: sonic`, remains a decoder-only migration field that always fails validation; it is
-never a contract selector.
-
-For Catalyst 9300/9500, the configured `software_version` forms `17.18.1`, `17.18.01`, and `017.018.001` all
-canonicalize to the sole accepted release identity `17.18.1`; prefer the canonical form shown in the examples. These
-forms do not admit another maintenance release. The train-wide Catalyst 9800 contract may use another canonical 17.18
-public release label (for example, `17.18.1a`). Preflight normalizes the observed internal install-version value to that
-public label and compares the two canonical labels. The receiver does not retain the
-internal install build suffix or the separate opaque `version-extension` in `os.version`; preflight therefore does not
-attest the exact image build, installed SMUs, or bit-for-bit image identity. Those details must be retained separately
-as live-qualification evidence. Catalyst 9300/9500 also require INSTALL boot mode and exact Capabilities
-`ModelData(name, organization, version)` matches for every module required by the enabled plan, drawn from a seven-entry
-reviewed IOS XE/OpenConfig catalog. That catalog is closed for these two contracts: custom origins, explicit model
-declarations, selectors, and mapped descendants cannot introduce an eighth module. See the
-[schema provenance and remaining deviation-set gate](docs/gnmi-dial-in.md#ios-xe-17181-schema-provenance). The
-Catalyst 9300/9500 contracts canonicalize only the
-identity- and built-in-profile JSON_IETF list keys covered by the switch path contract from Cisco's documented
-JSON-string-in-string form before identity comparison, response-scope checks, mapping, or caching. Custom-model keys
-and legacy product contracts keep standard gNMI PathElem string semantics.
-
-The initial Catalyst 9300/9500 identity boundary requires exactly one reported `hw-type-chassis` inventory group, one
-consistent exact current-image identity across every reported current install location, and an unambiguous INSTALL
-boot-mode value. Identical `(version, version-extension)` records at multiple locations are accepted; missing or
-different records fail closed. It rejects BUNDLE, UNKNOWN, missing, or conflicting boot mode rather than inferring
-support. A single reported chassis does not itself
-prove that a target is standalone: C9300 StackWise and C9500 StackWise Virtual remain separate, unqualified topology
-rows and must not be treated as supported until sanitized live evidence establishes their inventory and failover
-behavior. The external topology label does not relax identity admission: every run must still satisfy the exactly-one
-`hw-type-chassis` boundary. If a StackWise or StackWise Virtual device reports multiple chassis groups, the current
-contract rejects it and the qualification row remains failed/unqualified until real captures justify a separate
-identity contract.
-Because both physical-device qualification rows are still `Not run`, Catalyst 9300/9500 configuration also requires
-`allow_unqualified: true`. This deliberately conspicuous acknowledgement prevents those contracts from being enabled
-accidentally; it is rejected when a selected contract does not require it and does not constitute qualification.
-Documented NX-OS maintenance suffixes such as `10.6(2n)F` are accepted.
+Coverage claims are exact-row claims. Only a product/release/domain row marked **Live Qualified** in the generated
+[product and domain coverage matrix](docs/gnmi-coverage.md) is supported. `Cataloged`, `Implemented`, fixture-passed,
+and `Findings` rows are not support claims, and neither a Capabilities response nor a qualified sibling SKU promotes a
+row. The generated [metric catalog](docs/gnmi-metrics.md) records metric contracts and catalog uses independently of
+live product qualification.
 
 Across `gnmi.targets`, `ios_xr.dial_in.targets`, and `catalyst_9800.dial_in.targets`, at most 256 target definitions may
 be configured. Dial-in targets admitted by `device_selection` and both enabled dial-out servers share one 512 MiB
@@ -1145,11 +984,8 @@ ceiling but do not consume the runtime envelope.
 | Setting | Type | Required | Description |
 |---------|------|----------|-------------|
 | `gnmi.targets` | list | Yes | Static targets with unique names and endpoints. Each target has exactly one active collector owner; this list and both deprecated dial-in target lists may contain at most 256 definitions in total. |
-| `gnmi.targets[].endpoint` | string | Yes | Direct-device TCP endpoint in strict `host:port` form. The port must be numeric from `1` through `65535`; unspecified IPs and malformed DNS names are rejected. Canonically equivalent endpoints must be unique across shared, IOS XR legacy, and Catalyst 9800 legacy dial-in lists. |
-| `gnmi.targets[].product` | string | Yes | One of `catalyst_9300`, `catalyst_9500`, `catalyst_9800`, `asr_9000`, `ncs_5500`, `nexus_9000`, or `nexus_3500`. The receiver derives the OS family. Cisco SONiC is unsupported. |
-| `gnmi.targets[].software_version` | string | Yes | Expected software release identifier; Catalyst 9300/9500 accept `17.18.1` plus zero-padded numeric forms such as `17.18.01` and `017.018.001`, all canonicalized to the sole accepted identity `17.18.1`. Other contracts use their accepted train. Preflight compares canonical configured and observed forms. For IOS XE this is the public release label, not the internal image build or SMU state. |
-| `gnmi.targets[].allow_unqualified` | bool | Catalyst 9300/9500 only | Must be `true` for Catalyst 9300/9500 while retained physical-device qualification is `Not run`; rejected when the selected contract does not require explicit acknowledgement. This acknowledgement is not qualification. |
-| `gnmi.targets[].platform` | string | Rejected | Decoder-only migration field. Any use returns an actionable error; there is no OS-family fallback, including for custom-only targets. |
+| `gnmi.targets[].platform` | string | No | Optional expected OS family: `ios_xe`, `ios_xr`, or `nx_os`. Omit it for automatic identity discovery; an explicit mismatch fails the target. |
+| `gnmi.targets[].product_family` | string | Conditional | Optional expected generated-catalog family: `ios_xr`, `ios_xe_routing`, `ios_xe_switching`, `ios_xe_wireless`, or `nx_os`. An explicit mismatch fails the target. Required when `max_streams` is greater than 4. |
 | `gnmi.targets[].credentials.mode` | string | No | `username_password`, `mtls`, or `mtls_username_password`. |
 | `gnmi.targets[].credentials.username` | string | Mode-dependent | Read-only AAA service account. |
 | `gnmi.targets[].credentials.password` | string | Mode-dependent | Password, normally supplied through environment expansion. |
@@ -1158,23 +994,14 @@ ceiling but do not consume the runtime envelope.
 | `gnmi.targets[].tls.insecure_skip_verify` | bool | No | Disables server certificate verification for self-signed lab devices. Defaults to `false`; plaintext TLS remains forbidden. Prefer `ca_file` and `server_name_override` whenever possible. |
 | `gnmi.targets[].tls.min_version` | string | No | Minimum TLS version; `1.2` or newer. Plaintext TLS is rejected. |
 | `gnmi.targets[].tls.reload_interval` | duration | No | Reload client certificate/key material for later TLS handshakes. CA changes require a reconnect or rollout. |
+| `gnmi.targets[].encoding_preference` | list | No | Ordered concrete encodings chosen after intersection with the exact product/path capabilities: `proto`, `json_ietf`, and `json`. Defaults to `[json_ietf, json]`. Qualified scalar PROTO does not enable opaque NX DME PROTO. |
+| `gnmi.targets[].sync_timeout` | duration | No | Deadline for identity and initial subscription synchronization. Defaults to `2m`, must be positive, and cannot exceed `30m`; a group may override it. |
 | `gnmi.targets[].max_recv_msg_size_mib` | int | No | Per-target receive limit, from 1 through 16 MiB. Defaults to `16`; larger single notifications are rejected before protobuf object expansion can exhaust the collector. All selected dial-in targets and enabled dial-out servers must fit the combined 512 MiB envelope described above. |
-| `gnmi.targets[].max_streams` | int | No | Compatible-stream cap; defaults to 4 and may be raised to at most 8 after qualification. IOS XR uses two baseline streams and three with optics. |
-| `gnmi.targets[].encoding_preference` | list | No | Target-wide ordered preference of at most three entries containing only encodings approved by the product contract. Catalyst 9300 and Catalyst 9500 accept only `json_ietf`; Catalyst 9800, ASR 9000, and NCS 5500 accept `json_ietf` or `json`; both Nexus contracts accept only `json`. `proto` is rejected because IOS XE supports it only for Subscribe while identity preflight also requires Get. |
-| `gnmi.targets[].keepalive.time` | duration | No | HTTP/2 client keepalive interval. Defaults to 30 seconds. |
-| `gnmi.targets[].profiles` | map | No | Product-specific subset of `identity`, `system`, `interfaces`, `optics`, and `catalyst_9800_wireless`. Nexus has no system profile; wireless is Catalyst 9800-only; every optics profile remains experimental pending separate qualification. |
-| `gnmi.targets[].profiles.<name>.encoding_preference` | list | No | Ordered encoding preference for physical streams produced by this profile. |
-| `gnmi.targets[].profiles.<name>.updates_only` | bool | No | Requests only updates after the target's initial synchronization. Defaults to `false`; reconnect handling is described below. |
-| `gnmi.targets[].profiles.<name>.allow_aggregation` | bool | No | Permits aggregated subtree values. Defaults to `false` and requires JSON or JSON_IETF. |
-| `gnmi.targets[].profiles.<name>.qos_marking` | int | No | Subscription-list QoS marking from `0` through `63`. Omission leaves the protobuf field absent. |
-| `gnmi.targets[].profiles.<name>.gnmi_extensions.depth` | int | No | Typed gNMI Depth extension from `1` through `128`, placed on the top-level Subscribe request. |
-| `gnmi.targets[].profiles.<name>.path_overrides` | map | No | At most 64 per-path STREAM behaviors keyed by a stable catalog path ID such as `interfaces.openconfig`. Overrides cannot replace catalog paths or metric mappings. |
-| `gnmi.targets[].custom_subscriptions[]` | list | No | Up to eight explicitly mapped custom subscription streams per target. They support the same encoding, list-option, and Depth fields as profiles. |
-| `gnmi.targets[].custom_subscriptions[].origin` | string | Yes | Explicit wire origin for every custom stream. NX-OS OpenConfig streams use generic `openconfig`; DME streams use `DME`. |
-| `gnmi.targets[].custom_subscriptions[].models` | list | Origin-dependent | Up to 32 unique, whitespace-free valid YANG module identifiers. The list is optional for non-generic origins and required and non-empty for `origin: openconfig`. An NX-OS OpenConfig stream lists concrete, case-sensitive Capabilities models such as `[openconfig-platform]`; `openconfig` is not a model name. Every explicit model participates in preflight validation and is not sent as the path origin. C9300/C9500 reject any custom-plan module outside their seven-entry reviewed catalog. |
-| `gnmi.targets[].custom_subscriptions[].path_target` | string | Rejected | Decoder-only migration field retained for an actionable error. Built-in direct-device product contracts never add a proxy target prefix to a request; custom subscriptions require an explicit wire origin. |
-| `gnmi.targets[].custom_subscriptions[].paths` | list | No | Up to 256 explicit subscription selectors with `path` and optional STREAM path settings. When omitted, one exact selector is derived from every mapping, and the same 256-selector limit applies. |
-| `gnmi.targets[].custom_subscriptions[].mappings` | list | Yes | Up to 1024 explicit scalar mappings per stream. A mapping may expose at most 64 configured path-key attributes and must satisfy the bounded cache metadata contract during configuration validation. |
+| `gnmi.targets[].max_streams` | int | No | Compatible-stream cap from 1 through 16; defaults to 4. Values above 4 require `product_family` and cannot exceed that generated family ceiling (4 for the current IOS catalog families, 16 for `nx_os`). A catalog ceiling is not live qualification or proof that the device is configured for that concurrency. |
+| `gnmi.targets[].profiles` | map | No | Existing `identity`, `system`, `interfaces`, `optics`, and `catalyst_9800_wireless` profiles plus opt-in `inventory`, `environment`, `l2`, `routing`, `mpls`, `overlay`, `qos`, `acl`, `topology`, `poe`, `time_sync`, `high_availability`, `asic`, and `telemetry_self`. |
+| `gnmi.targets[].profiles.*` | map | No | Profile controls: `enabled`, `required`, `sample_interval`, `stream_mode`, and catalog-declared `groups`. Stream mode is `auto`, `sample`, `on_change`, or `target_defined`. |
+| `gnmi.targets[].profiles.*.groups.*` | map | No | Group overrides: `enabled`, `required`, `sample_interval`, `stream_mode`, `sync_timeout`, `max_entities`, and exact-match `selectors`. A catalog group defaults enabled within an enabled profile; interval/mode inherit the profile, sync timeout inherits the target, and `required` defaults false. Group and selector keys must be declared by the catalog. High-cardinality groups require a positive `max_entities`; wildcard selectors are rejected. `max_entities` bounds both selector request expansion and distinct catalog entity identities in committed cache state; overflow is rolled back before delivery. |
+| `gnmi.targets[].custom_subscriptions[].encoding` | string | No | `auto`, `proto`, `json_ietf`, or `json`; defaults to `auto`. A concrete value remains subject to target capabilities and a declared safe decoder. |
 | `gnmi.max_datapoints_per_chunk` | int | No | Lossless consumer-call chunk bound. Defaults to `10000`. |
 | `gnmi.max_cached_series` | int | No | Receiver-wide count ceiling for mapped series, atomic baselines, authoritative delete tombstones, and semantic-invalidation watermarks. Defaults to `500000`. The separate auxiliary entry ceiling is four times this value so each cached NX optical series can retain a sensor identity plus optical source, presence-count, and attribute entries. Both count ceilings are deterministically partitioned across selected targets. |
 
@@ -1290,12 +1117,11 @@ all chunks are accepted. A refusal aborts staged state and reconnects the subscr
 redelivery. When a later chunk is refused after earlier chunks were accepted, the complete notification is retried and
 those earlier chunks are intentionally at-least-once; downstream consumers must tolerate duplicate datapoints.
 
-Device timestamps are normalized from seconds, milliseconds, microseconds, or nanoseconds. A timestamp up to five
-seconds ahead of receipt time is clamped to receipt time without poisoning source ordering. A timestamp farther in the
-future, zero, before year 2000, or otherwise invalid is rejected and counted; it is not cached under a fallback
-timestamp, and the curated profile remains qualification-degraded until receiver restart. Device clocks are therefore
-an operational prerequisite and must stay synchronized within five seconds. Out-of-order updates are ignored for
-state, counted separately, and do not advance stream success or availability.
+Identity defaults to a five-minute interval, system and interfaces to 60 seconds, and optics to 30 seconds. Identity,
+system, and interfaces retain their existing enabled defaults and SAMPLE mode. Optics, `catalyst_9800_wireless`, and
+every newly added normalized profile are disabled by default. Enabling a profile does not turn a cataloged or Findings
+row into supported coverage; use the generated coverage matrix to verify its exact disposition. Startup also rejects an
+enabled profile for which the generated catalog has no implemented path on the expected platform.
 
 Identity defaults to a five-minute interval, while supported system and interface profiles default to 60 seconds and
 optics to 30 seconds. Safe product-specific baseline profiles default on. Optics is disabled by default and remains
@@ -1341,45 +1167,9 @@ until its object volume and path shape are qualified on the deployed NX-OS relea
 Production requires verified server TLS, a unique certificate/key per device, TLS 1.2 or newer, and a dedicated AAA
 account per collector shard. The IOS XE password-authenticated baseline is:
 
-```text
-gnxi
-gnxi secure-trustpoint <device-server-trustpoint>
-gnxi secure-password-auth
-gnxi secure-port 9339
-gnxi secure-server
-no gnxi server
-gnxi read-only
-no gnxi enable-gnoi
-```
-
-Use `secure-client-auth` instead of or together with `secure-password-auth` for the selected mTLS mode. The pinned IOS XE
-17.18.1 `Cisco-IOS-XE-gnmi-cfg` model defaults `enable-gnoi=true` and `read-only=false`; `gnxi read-only` makes Set return
-`PERMISSION_DENIED` and disables gNOI, while `no gnxi enable-gnoi` is an independent service-disable gate. Verify the
-effective flags, ports, and services with `show gnxi state detail` and `show gnxi state stats`, retain the gNXI running
-configuration, and independently read the model's effective `read-only=true` and `enable-gnoi=false` leaves. Do not
-infer effective state from the presence of `secure-server`.
-
-The receiver has no configurable general-purpose Get path and no Set configuration, write credential, transaction retry,
-or commit/arbitration path. The secure gNXI endpoint can nevertheless expose mutating gNOI operations, and current Cisco
-documentation does not establish reliable gNMI path-level data authorization. C9300/C9500 qualification must therefore
-bind `CISCOOS_E2E_GNMI_AUTHORIZATION_EVIDENCE_SHA256` to an independently produced, sanitized artifact proving server
-read-only state, gNOI disablement, Set `PERMISSION_DENIED`, and gNOI `PERMISSION_DENIED` or `UNIMPLEMENTED` with the exact
-collector identity. The receiver harness never makes those calls. Follow the
-[controlled disposable-device procedure](docs/gnmi-dial-in.md#controlled-catalyst-authorization-test); use
-management-plane ACL/firewall controls and a verified device-specific VRF restriction where the deployed software
-supports it. Optional mTLS uses one short-lived client identity per shard only after certificate-to-user authorization
-is validated. Management VRFs, ACLs, NetworkPolicies, and firewalls are defense in depth, not substitutes for TLS and
-AAA.
-
-The reviewed Catalyst switch release `17.18.1` predates Cisco's `gnxi secure-vrf` feature, which Cisco documents for
-17.18.2 and later. Do not assume that command is present or broaden this contract to 17.18.2 merely to obtain it; use
-verified ACL, firewall, and control-plane isolation until a new release contract is reviewed and qualified.
-
-See the [complete security, operations, metric, and qualification guide](docs/gnmi-dial-in.md), the
-[protocol roadmap](docs/gnmi-protocol-roadmap.md), and the
-[Catalyst switch configuration](examples/gnmi-catalyst-switches.yaml),
-[secure configuration](examples/gnmi-secure.yaml),
-[Kubernetes shard](examples/kubernetes-gnmi-shard.yaml), and
+See the [complete security, operations, metric, and qualification guide](docs/gnmi-dial-in.md), generated
+[coverage matrix](docs/gnmi-coverage.md), generated [metric catalog](docs/gnmi-metrics.md),
+[secure configuration](examples/gnmi-secure.yaml), [Kubernetes shard](examples/kubernetes-gnmi-shard.yaml), and
 [systemd shard](examples/cisco-os-gnmi.service) references.
 
 ### Catalyst 9800 Configuration

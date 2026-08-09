@@ -1,6 +1,8 @@
 # Reference only: replace documentation addresses, image, secret provisioning,
-# target hostnames, and exporter endpoint before deployment. The empty Secrets
-# are ownership stubs for an external secret controller; never commit values.
+# target hostnames, and exporter endpoint before deployment. Enable a domain
+# only when its exact PID/release row is Live Qualified in gnmi-coverage.md.
+# The empty Secrets are ownership stubs for an external secret controller;
+# never commit values.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -51,9 +53,11 @@ data:
             # Shard 01 owns nexus01 exclusively.
             - name: nexus-shard-01
               endpoint: nexus01.example.net:50051
-              product: nexus_9000
-              software_version: "10.6(1)"
+              platform: nx_os
+              product_family: nx_os
               max_recv_msg_size_mib: 16
+              sync_timeout: 2m
+              encoding_preference: [json, json_ietf]
               credentials:
                 mode: username_password
                 username: otel-telemetry-shard-01
@@ -72,8 +76,10 @@ data:
                 interfaces:
                   enabled: true
                 optics:
-                  # Enable only after separate chassis/line-card/optic qualification.
-                  enabled: false
+                  enabled: true
+                  required: true
+                  sample_interval: 30s
+                  stream_mode: sample
     processors:
       memory_limiter:
         check_interval: 1s
@@ -108,9 +114,14 @@ data:
             # Shard 02 owns xr01 exclusively; it does not repeat nexus01.
             - name: xr-shard-02
               endpoint: xr01.example.net:50051
-              product: asr_9000
-              software_version: "24.4.1"
+              platform: ios_xr
+              product_family: ios_xr
               max_recv_msg_size_mib: 16
+              # This optics shard uses one interface and two optical-origin
+              # streams, within the current IOS XR catalog ceiling of four.
+              max_streams: 4
+              sync_timeout: 2m
+              encoding_preference: [json_ietf, json]
               credentials:
                 mode: username_password
                 username: otel-telemetry-shard-02
@@ -124,12 +135,14 @@ data:
                 identity:
                   enabled: true
                 system:
-                  enabled: true
+                  enabled: false
                 interfaces:
                   enabled: true
                 optics:
-                  # Enable only after separate chassis/line-card/optic qualification.
-                  enabled: false
+                  enabled: true
+                  required: true
+                  sample_interval: 30s
+                  stream_mode: sample
     processors:
       memory_limiter:
         check_interval: 1s

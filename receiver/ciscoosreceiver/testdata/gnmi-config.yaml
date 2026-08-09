@@ -6,9 +6,11 @@ receivers:
       targets:
         - name: nexus-shard-01
           endpoint: nexus01.example.net:50051
-          product: nexus_9000
-          software_version: "10.6(1)"
+          platform: nx_os
+          product_family: nx_os
           max_recv_msg_size_mib: 16
+          sync_timeout: 3m
+          encoding_preference: [json, json_ietf]
           credentials:
             mode: username_password
             username: otel-telemetry
@@ -31,3 +33,13 @@ receivers:
               enabled: true
               required: true
               sample_interval: 30s
+              stream_mode: on_change
+              groups:
+                vdm:
+                  enabled: true
+                  sample_interval: 45s
+                  stream_mode: sample
+                  sync_timeout: 1m
+                  max_entities: 128
+                  selectors:
+                    network.interface.name: [Ethernet1/1, Ethernet1/2]

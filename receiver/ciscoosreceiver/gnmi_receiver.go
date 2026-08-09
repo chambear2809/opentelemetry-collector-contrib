@@ -13,7 +13,7 @@ import (
 	"math/rand/v2"
 	"net"
 	"slices"
-	"strconv"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -41,17 +41,18 @@ import (
 )
 
 const (
-	sharedGNMITransport              = "gnmi"
-	sharedGNMIAuthenticationBackoff  = 5 * time.Minute
-	sharedGNMIInitialBackoff         = 5 * time.Second
-	sharedGNMIMaximumBackoff         = time.Minute
-	sharedGNMIBackoffResetAfter      = time.Minute
-	sharedGNMIDiagnosticProbeTimeout = 15 * time.Second
-	sharedGNMIMaxBisectionProbes     = 64
-	sharedGNMIMaxConcurrentDelivery  = 8
-	sharedGNMIMaxNXPlanningWork      = 25_000_000
-	sharedGNMIMaxPathElements        = 128
-	sharedGNMIMaxSeriesElements      = sharedGNMIMaxPathElements - 1
+	sharedGNMITransport             = "gnmi"
+	sharedGNMIAuthenticationBackoff = 5 * time.Minute
+	sharedGNMIInitialBackoff        = 5 * time.Second
+	sharedGNMIMaximumBackoff        = time.Minute
+	sharedGNMIBackoffResetAfter     = time.Minute
+	sharedGNMIMaxBisectionProbes    = 64
+	sharedGNMIMaxConcurrentDelivery = 8
+	sharedGNMINegativeRetryMinimum  = time.Minute
+	sharedGNMINegativeRetryMaximum  = 15 * time.Minute
+	sharedGNMIMaxNXPlanningWork     = 25_000_000
+	sharedGNMIMaxPathElements       = 128
+	sharedGNMIMaxSeriesElements     = sharedGNMIMaxPathElements - 1
 	// One mapped NX optical series can retain one sensor identity plus one
 	// optical source, presence count, and attribute-map entry.
 	sharedGNMIAuxiliaryEntriesPerCachedSeries = 4
@@ -114,30 +115,24 @@ type sharedGNMIDialer interface {
 type sharedGNMIDirectDialer struct{}
 
 type sharedGNMITargetRuntime struct {
-	config            GNMITargetConfig
-	contract          *gnmiProductContract
-	configuredVersion gnmiSoftwareVersion
-	streams           []sharedGNMIRuntimeStream
-	cache             *internalgnmi.Cache
-	deliveryMu        sync.Mutex
-	stateMu           sync.RWMutex
-	isolate           map[string]struct{}
-	stopped           map[string]struct{}
-	rejects           map[string]int
-	// updatesOnlyCacheOwners records physical cache scopes created by runtime
-	// bisection until the next reconnect reset. Logical stream ownership remains
-	// independent so one split group can still stop all of its siblings.
-	updatesOnlyCacheOwners map[string]map[string]struct{}
-	// cacheTopologies retains the last accepted physical owner grouping for each
-	// logical stream across reconnects. deliveryMu serializes all mutations.
-	cacheTopologies map[string]*sharedGNMICacheTopology
-
-	identityMu            sync.RWMutex
-	verifiedIdentity      verifiedGNMIIdentity
-	qualificationMu       sync.Mutex
-	pendingQualification  map[string]struct{}
-	degradedQualification map[string]struct{}
-	anyProgress           bool
+	configured   GNMITargetConfig
+	config       GNMITargetConfig
+	streams      []sharedGNMIRuntimeStream
+	identity     sharedGNMIDeviceIdentity
+	catalog      gnmiCatalogProductDefinition
+	family       gnmiCatalogProductFamilyDefinition
+	fingerprint  string
+	sessionMu    sync.RWMutex
+	cache        *internalgnmi.Cache
+	deliveryMu   sync.Mutex
+	stateMu      sync.RWMutex
+	isolate      map[string]sharedGNMINegativeEntry
+	stopped      map[string]sharedGNMINegativeEntry
+	now          func() time.Time
+	after        func(time.Duration) <-chan time.Time
+	readinessMu  sync.Mutex
+	readiness    *sharedGNMISessionReadiness
+	entityLimits *sharedGNMIEntityLimitManager
 
 	nxMu      sync.Mutex
 	nxSensors map[string]nxSensorState
@@ -150,23 +145,33 @@ type sharedGNMITargetRuntime struct {
 	presenceAttrs  map[string]map[string]string
 }
 
-type sharedGNMIRuntimeStream struct {
-	sharedGNMIStream
-	cacheOwnerID              string
-	cacheTopologyOwners       []string
-	registry                  *internalgnmi.Registry
-	staticAttr                map[string]map[string]string
-	responseSelectors         []internalgnmi.Path
-	encoding                  gnmipb.Encoding
-	baselineEncoding          gnmipb.Encoding
-	baselineEncodingAvailable bool
+type sharedGNMINegativeEntry struct {
+	fingerprint string
+	failures    int
+	retryAt     time.Time
 }
 
-type sharedGNMICacheTopology struct {
-	current   []string
-	candidate []string
-	accepted  map[string]struct{}
-	orphaned  map[string]struct{}
+type sharedGNMINegativeRetryError struct{}
+
+func (*sharedGNMINegativeRetryError) Error() string {
+	return "gNMI negative-capability retry window elapsed"
+}
+
+type sharedGNMIRuntimeStream struct {
+	sharedGNMIStream
+	registry         *internalgnmi.Registry
+	staticAttr       map[string]map[string]string
+	wireEncoding     gnmipb.Encoding
+	variantFallbacks []sharedGNMIRuntimeVariant
+}
+
+type sharedGNMIRuntimeVariant struct {
+	pathSetID        string
+	variantID        string
+	variantOrder     int
+	sourcePreference string
+	stream           sharedGNMIRuntimeStream
+	planningErr      error
 }
 
 type nxSensorState struct {
@@ -542,12 +547,21 @@ type sharedGNMIStreamResult struct {
 	terminal bool
 }
 
+type sharedGNMISessionReadiness struct {
+	required    map[string]bool
+	hasRequired bool
+	anySynced   bool
+}
+
 type sharedGNMIUnsupportedError struct{ err error }
 
 func (e *sharedGNMIUnsupportedError) Error() string { return e.err.Error() }
 func (e *sharedGNMIUnsupportedError) Unwrap() error { return e.err }
 
-type sharedGNMIProfileStopError struct{ err error }
+type sharedGNMIProfileStopError struct {
+	reason string
+	err    error
+}
 
 var (
 	errSharedGNMINotificationIgnored = errors.New("gNMI notification was ignored before qualification progress")
@@ -556,6 +570,79 @@ var (
 
 func (e *sharedGNMIProfileStopError) Error() string { return e.err.Error() }
 func (e *sharedGNMIProfileStopError) Unwrap() error { return e.err }
+
+type sharedGNMISyncTimeoutError struct {
+	profile string
+	timeout time.Duration
+}
+
+func (e *sharedGNMISyncTimeoutError) Error() string {
+	return fmt.Sprintf("gNMI stream %q did not complete sync within %s", e.profile, e.timeout)
+}
+
+type sharedGNMISyncWatchdog struct {
+	mu       sync.Mutex
+	timer    *time.Timer
+	cancel   context.CancelFunc
+	finished bool
+	timedOut bool
+	profile  string
+	timeout  time.Duration
+}
+
+func newSharedGNMISyncWatchdog(
+	profile string,
+	timeout time.Duration,
+	cancel context.CancelFunc,
+) (*sharedGNMISyncWatchdog, error) {
+	if timeout <= 0 {
+		return nil, errors.New("gNMI sync timeout must be positive")
+	}
+	if cancel == nil {
+		return nil, errors.New("gNMI sync watchdog cancel function cannot be nil")
+	}
+	watchdog := &sharedGNMISyncWatchdog{cancel: cancel, profile: profile, timeout: timeout}
+	watchdog.timer = time.AfterFunc(timeout, func() {
+		watchdog.mu.Lock()
+		if watchdog.finished {
+			watchdog.mu.Unlock()
+			return
+		}
+		watchdog.finished = true
+		watchdog.timedOut = true
+		watchdog.mu.Unlock()
+		watchdog.cancel()
+	})
+	return watchdog, nil
+}
+
+func sharedGNMISyncTimeoutForStream(target *sharedGNMITargetRuntime, stream sharedGNMIRuntimeStream) time.Duration {
+	if stream.SyncTimeout > 0 {
+		return stream.SyncTimeout
+	}
+	return target.config.SyncTimeout
+}
+
+// finish stops the watchdog and reports whether its timeout won the race.
+func (w *sharedGNMISyncWatchdog) finish() bool {
+	if w == nil {
+		return false
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.finished {
+		w.finished = true
+		w.timer.Stop()
+	}
+	return w.timedOut
+}
+
+func (w *sharedGNMISyncWatchdog) timeoutError() error {
+	if w == nil {
+		return errors.New("gNMI sync timeout")
+	}
+	return &sharedGNMISyncTimeoutError{profile: w.profile, timeout: w.timeout}
+}
 
 func newSharedGNMIReceiver(
 	set receiver.Settings,
@@ -716,72 +803,262 @@ func newSharedGNMITargetRuntimeWithBudget(
 	cache *internalgnmi.Cache,
 	auxiliaryBudget *sharedGNMIAuxiliaryBudget,
 ) (*sharedGNMITargetRuntime, error) {
-	contract, configuredVersion, err := gnmiProductContractForTarget(target)
-	if err != nil {
-		return nil, err
-	}
-	// Platform is decoder-only in public configuration. Populate the private
-	// runtime copy exclusively from the verified product contract so legacy
-	// OS-family selection can never influence behavior.
-	target.Platform = contract.OSFamily
-	streams, err := buildSharedGNMIStreams(target)
-	if err != nil {
-		return nil, err
-	}
 	if cache == nil {
 		return nil, errors.New("shared gNMI cache cannot be nil")
 	}
 	if auxiliaryBudget == nil || auxiliaryBudget.maximum <= 0 || auxiliaryBudget.maximumBytes <= 0 {
 		return nil, errors.New("shared gNMI auxiliary-state count and byte budgets must be positive")
 	}
+	target = target.withDefaults()
 	runtime := &sharedGNMITargetRuntime{
-		config:                 target,
-		contract:               contract,
-		configuredVersion:      configuredVersion,
-		cache:                  cache,
-		isolate:                map[string]struct{}{},
-		stopped:                map[string]struct{}{},
-		rejects:                map[string]int{},
-		updatesOnlyCacheOwners: map[string]map[string]struct{}{},
-		cacheTopologies:        map[string]*sharedGNMICacheTopology{},
-		nxBudget:               auxiliaryBudget,
-		pendingQualification:   map[string]struct{}{},
-		degradedQualification:  map[string]struct{}{},
+		configured: target,
+		config:     target,
+		cache:      cache,
+		isolate:    map[string]sharedGNMINegativeEntry{},
+		stopped:    map[string]sharedGNMINegativeEntry{},
+		now:        time.Now,
+		after:      time.After,
+		nxBudget:   auxiliaryBudget,
 	}
-	for streamIndex := range streams {
-		stream := streams[streamIndex]
-		mappings := make([]internalgnmi.Mapping, 0, len(stream.Mappings))
-		staticAttrs := make(map[string]map[string]string, len(stream.Mappings))
-		for mappingIndex := range stream.Mappings {
-			mapping := &stream.Mappings[mappingIndex]
-			mappings = append(mappings, mapping.Mapping)
-			if len(mapping.StaticAttributes) > 0 {
-				staticAttrs[sharedGNMISourceKey(mapping.Mapping.Source)] = cloneGNMIAttributes(mapping.StaticAttributes)
-			}
-		}
-		registry, err := internalgnmi.NewRegistry(mappings...)
-		if err != nil {
-			return nil, fmt.Errorf("profile %q mappings: %w", stream.Profile, err)
-		}
-		responseSelectors, err := sharedGNMIResponseSelectors(target.Name, stream.Paths)
-		if err != nil {
-			return nil, fmt.Errorf("profile %q response scope: %w", stream.Profile, err)
-		}
-		runtime.streams = append(runtime.streams, sharedGNMIRuntimeStream{
-			sharedGNMIStream:  stream,
-			cacheOwnerID:      stream.OwnerID,
-			registry:          registry,
-			staticAttr:        staticAttrs,
-			responseSelectors: responseSelectors,
-		})
-		if stream.OwnerID != "" {
-			if _, exists := runtime.cacheTopologies[stream.OwnerID]; !exists {
-				runtime.cacheTopologies[stream.OwnerID] = &sharedGNMICacheTopology{current: []string{stream.OwnerID}}
-			}
-		}
+	// An empty platform is intentionally constructible. Its built-in profile
+	// paths cannot be selected until Subscribe-discovered identity has matched
+	// one exact catalog row. Explicit-platform construction remains eager for
+	// fixture and transaction helpers; live sessions rebuild these streams.
+	if target.Platform == "" {
+		runtime.entityLimits, _ = newSharedGNMIEntityLimitManager(nil, nil)
+		return runtime, nil
+	}
+	streams, err := buildSharedGNMIRuntimeStreams(target)
+	if err != nil {
+		return nil, err
+	}
+	runtime.streams = streams
+	runtime.entityLimits, err = newSharedGNMIEntityLimitManager(streams, cache.Snapshot())
+	if err != nil {
+		return nil, fmt.Errorf("plan gNMI entity limits: %w", err)
 	}
 	runtime.resetSessionQualification()
 	return runtime, nil
+}
+
+func buildSharedGNMIRuntimeStreams(target GNMITargetConfig) ([]sharedGNMIRuntimeStream, error) {
+	streams, err := buildSharedGNMIStreams(target)
+	if err != nil {
+		return nil, err
+	}
+	runtimeStreams := make([]sharedGNMIRuntimeStream, 0, len(streams))
+	for streamIndex := range streams {
+		runtimeStream, err := buildSharedGNMIRuntimeStream(streams[streamIndex])
+		if err != nil {
+			return nil, err
+		}
+		runtimeStreams = append(runtimeStreams, runtimeStream)
+	}
+	return runtimeStreams, nil
+}
+
+func buildSharedGNMIRuntimeStream(stream sharedGNMIStream) (sharedGNMIRuntimeStream, error) {
+	fallbacks := stream.VariantFallbacks
+	stream.VariantFallbacks = nil
+	mappings := make([]internalgnmi.Mapping, 0, len(stream.Mappings))
+	staticAttrs := make(map[string]map[string]string, len(stream.Mappings))
+	for mappingIndex := range stream.Mappings {
+		mapping := &stream.Mappings[mappingIndex]
+		mappings = append(mappings, mapping.Mapping)
+		if len(mapping.StaticAttributes) > 0 {
+			staticAttrs[sharedGNMISourceKey(mapping.Mapping.Source)] = cloneGNMIAttributes(mapping.StaticAttributes)
+		}
+	}
+	registry, err := internalgnmi.NewRegistry(mappings...)
+	if err != nil {
+		return sharedGNMIRuntimeStream{}, fmt.Errorf("profile %q mappings: %w", stream.Profile, err)
+	}
+	runtimeStream := sharedGNMIRuntimeStream{
+		sharedGNMIStream: stream,
+		registry:         registry,
+		staticAttr:       staticAttrs,
+		variantFallbacks: make([]sharedGNMIRuntimeVariant, 0, len(fallbacks)),
+	}
+	for index := range fallbacks {
+		fallback := fallbacks[index]
+		candidate, candidateErr := buildSharedGNMIRuntimeStream(fallback.Stream)
+		if candidateErr != nil {
+			return sharedGNMIRuntimeStream{}, fmt.Errorf(
+				"profile %q path set %q variant %q: %w",
+				stream.Profile,
+				fallback.PathSetID,
+				fallback.VariantID,
+				candidateErr,
+			)
+		}
+		if pathSets := sharedGNMIAtomicPathSets(candidate.Paths); len(pathSets) != 1 {
+			return sharedGNMIRuntimeStream{}, fmt.Errorf(
+				"profile %q path set %q variant %q produced %d atomic path groups",
+				stream.Profile,
+				fallback.PathSetID,
+				fallback.VariantID,
+				len(pathSets),
+			)
+		}
+		runtimeStream.variantFallbacks = append(runtimeStream.variantFallbacks, sharedGNMIRuntimeVariant{
+			pathSetID:        fallback.PathSetID,
+			variantID:        fallback.VariantID,
+			variantOrder:     fallback.VariantOrder,
+			sourcePreference: fallback.SourcePreference,
+			stream:           candidate,
+		})
+	}
+	return runtimeStream, nil
+}
+
+func (target *sharedGNMITargetRuntime) configuredTarget() GNMITargetConfig {
+	target.sessionMu.RLock()
+	defer target.sessionMu.RUnlock()
+	return target.configured
+}
+
+func (target *sharedGNMITargetRuntime) beginDiscoverySession() {
+	target.sessionMu.Lock()
+	target.config = target.configured
+	target.streams = nil
+	target.identity = sharedGNMIDeviceIdentity{}
+	target.catalog = gnmiCatalogProductDefinition{}
+	target.family = gnmiCatalogProductFamilyDefinition{}
+	target.entityLimits = nil
+	target.sessionMu.Unlock()
+}
+
+func (target *sharedGNMITargetRuntime) configureDiscoveredSession(
+	identity sharedGNMIDeviceIdentity,
+	product gnmiCatalogProductDefinition,
+	family gnmiCatalogProductFamilyDefinition,
+	capabilities *gnmipb.CapabilityResponse,
+) error {
+	configured := target.configuredTarget()
+	if family.ID == "" || family.Platform == "" || family.MaxStreams <= 0 {
+		return errors.New("selected generated catalog row has an invalid product family")
+	}
+	if family.Platform != identity.OSFamily {
+		return fmt.Errorf(
+			"selected product family %q belongs to platform %q, not subscribed OS family %q",
+			family.ID,
+			family.Platform,
+			identity.OSFamily,
+		)
+	}
+	if configured.MaxStreams > family.MaxStreams {
+		return fmt.Errorf(
+			"configured max_streams %d exceeds selected catalog family %q ceiling %d",
+			configured.MaxStreams,
+			family.ID,
+			family.MaxStreams,
+		)
+	}
+
+	effective := configured
+	effective.Platform = identity.OSFamily
+	effective.ProductFamily = family.ID
+	streams, err := buildSharedGNMIRuntimeStreams(effective)
+	if err != nil {
+		return err
+	}
+	for index := range streams {
+		if encodingErr := negotiateSharedGNMIRuntimeStreamEncodings(effective, capabilities, &streams[index]); encodingErr != nil {
+			return encodingErr
+		}
+	}
+	identity.ProductFamily = family.ID
+	fingerprint := strings.Join([]string{
+		identity.OSFamily,
+		identity.ModelIdentifier,
+		identity.SoftwareVersion,
+		identity.SerialNumber,
+		identity.Hostname,
+		product.ID,
+		sharedGNMICapabilityFingerprint(capabilities),
+	}, "\x00")
+
+	// Session streams are fully joined before discovery starts, and every cache
+	// or auxiliary-state mutation holds deliveryMu. Keep that publication
+	// boundary here too so a changed device/release cannot observe or be
+	// contaminated by retained state from the previous fingerprint.
+	target.deliveryMu.Lock()
+	defer target.deliveryMu.Unlock()
+	target.sessionMu.RLock()
+	previousFingerprint := target.fingerprint
+	sessionCache := target.cache
+	sessionBudget := target.nxBudget
+	target.sessionMu.RUnlock()
+	if sessionCache == nil {
+		return errors.New("discovered gNMI session has no state cache")
+	}
+	if sessionBudget == nil {
+		return errors.New("discovered gNMI session has no auxiliary-state budget")
+	}
+	changed := previousFingerprint != "" && previousFingerprint != fingerprint
+	if changed {
+		sessionCache, err = internalgnmi.NewCacheWithLimits(
+			sessionCache.Capacity(),
+			sessionCache.RetainedByteCapacity(),
+		)
+		if err != nil {
+			return fmt.Errorf("replace changed-fingerprint gNMI cache: %w", err)
+		}
+		sessionBudget.mu.Lock()
+		maximum, maximumBytes := sessionBudget.maximum, sessionBudget.maximumBytes
+		sessionBudget.mu.Unlock()
+		sessionBudget = newSharedGNMIAuxiliaryBudgetWithLimits(maximum, maximumBytes)
+	}
+	entityLimits, err := newSharedGNMIEntityLimitManager(streams, sessionCache.Snapshot())
+	if err != nil {
+		return fmt.Errorf("plan group entity limits: %w", err)
+	}
+
+	target.sessionMu.Lock()
+	if changed {
+		target.stateMu.Lock()
+		target.nxMu.Lock()
+		target.presenceMu.Lock()
+	}
+	target.config = effective
+	target.streams = streams
+	target.identity = identity
+	target.catalog = product
+	target.family = family
+	target.fingerprint = fingerprint
+	target.cache = sessionCache
+	target.entityLimits = entityLimits
+	if changed {
+		// Negative observations and optional-profile stops are scoped to the
+		// exact PID, release, and capability fingerprint that produced them.
+		// Cache timestamps/tombstones and all optical/NX correlation state have
+		// the same scope and must cross the fingerprint boundary together.
+		target.isolate = map[string]sharedGNMINegativeEntry{}
+		target.stopped = map[string]sharedGNMINegativeEntry{}
+		target.nxSensors = nil
+		target.opticalSources = nil
+		target.presenceCounts = nil
+		target.presenceAttrs = nil
+		target.nxBudget = sessionBudget
+		target.sessionUp.Store(false)
+		target.presenceMu.Unlock()
+		target.nxMu.Unlock()
+		target.stateMu.Unlock()
+	}
+	target.sessionMu.Unlock()
+	return nil
+}
+
+func (target *sharedGNMITargetRuntime) sessionResourceIdentity() (GNMITargetConfig, sharedGNMIDeviceIdentity) {
+	target.sessionMu.RLock()
+	defer target.sessionMu.RUnlock()
+	return target.config, target.identity
+}
+
+func (target *sharedGNMITargetRuntime) sessionEntityLimits() *sharedGNMIEntityLimitManager {
+	target.sessionMu.RLock()
+	defer target.sessionMu.RUnlock()
+	return target.entityLimits
 }
 
 func (r *sharedGNMIReceiver) Start(_ context.Context, host component.Host) error {
@@ -831,44 +1108,42 @@ func (r *sharedGNMIReceiver) runTarget(ctx context.Context, target *sharedGNMITa
 	attempt := 0
 	for ctx.Err() == nil {
 		terminal, resetBackoff, err := r.serveTarget(ctx, target)
-		// Product verification is session-scoped. Clear the gauge as soon as the
-		// session ends instead of leaving a stale 1 throughout reconnect backoff.
-		r.telemetry.productVerified(ctx, target.config.Name, false)
-		var compatibility *sharedGNMICompatibilityError
-		if errors.As(err, &compatibility) {
-			target.setVerifiedIdentity(verifiedGNMIIdentity{})
-			r.telemetry.connection(ctx, target.config.Name, false)
-			r.telemetry.productVerified(ctx, target.config.Name, false)
-			r.telemetry.preflightFailure(ctx, target.config.Name, compatibility.reason)
-			r.emitAvailability(ctx, target, false)
-			r.settings.Logger.Error("Cisco gNMI target quarantined until receiver restart",
-				zap.String("target", target.config.Name),
-				zap.String("endpoint", target.config.Endpoint),
-				zap.String("reason", compatibility.reason),
-				zap.Error(compatibility))
-			return
-		}
-		authenticationFailure := isSharedGNMIAuthenticationError(err)
-		err = sanitizedGNMIRPCError(err)
-		r.telemetry.connection(ctx, target.config.Name, false)
+		sessionConfig, _ := target.sessionResourceIdentity()
+		r.telemetry.connection(ctx, sessionConfig.Name, false)
+		wasUp := target.sessionUp.Swap(false)
 		if resetBackoff {
 			attempt = 0
 		}
-		if terminal || ctx.Err() != nil {
+		if terminal {
+			if wasUp && ctx.Err() == nil {
+				r.emitAvailability(ctx, target, false)
+			}
+			return
+		}
+		if ctx.Err() != nil {
 			return
 		}
 		r.emitAvailability(ctx, target, false)
+		var negativeRetry *sharedGNMINegativeRetryError
+		if errors.As(err, &negativeRetry) {
+			attempt = 0
+			r.telemetry.reconnect(ctx, sessionConfig.Name)
+			r.settings.Logger.Info("Cisco gNMI negative-capability retry window elapsed",
+				zap.String("target", sessionConfig.Name),
+				zap.String("endpoint", sessionConfig.Endpoint))
+			continue
+		}
 		delay := equalJitterGNMIBackoff(attempt)
-		if authenticationFailure {
-			r.telemetry.authenticationFailure(ctx, target.config.Name)
+		if isSharedGNMIAuthenticationError(err) {
+			r.telemetry.authenticationFailure(ctx, sessionConfig.Name)
 			delay = sharedGNMIAuthenticationBackoff
 		} else {
 			attempt++
 		}
-		r.telemetry.reconnect(ctx, target.config.Name)
+		r.telemetry.reconnect(ctx, sessionConfig.Name)
 		r.settings.Logger.Warn("Cisco gNMI target disconnected",
-			zap.String("target", target.config.Name),
-			zap.String("endpoint", target.config.Endpoint),
+			zap.String("target", sessionConfig.Name),
+			zap.String("endpoint", sessionConfig.Endpoint),
 			zap.Duration("retry_delay", delay),
 			zap.Error(err))
 		if !waitSharedGNMIBackoff(ctx, delay) {
@@ -879,26 +1154,20 @@ func (r *sharedGNMIReceiver) runTarget(ctx context.Context, target *sharedGNMITa
 
 func (r *sharedGNMIReceiver) serveTarget(ctx context.Context, target *sharedGNMITargetRuntime) (bool, bool, error) {
 	target.sessionUp.Store(false)
-	target.resetSessionQualification()
-	r.telemetry.productVerified(ctx, target.config.Name, false)
-	if target.config.Platform == gnmiPlatformNXOS {
-		// DME description/unit identity is scoped to a device session. Preserve
-		// mapped cache and tombstones, but require fresh sensor identity before
-		// values from a reconnected session can be mapped.
-		r.clearTargetNXSensorState(ctx, target)
-		defer r.clearTargetNXSensorState(ctx, target)
-	}
-	conn, err := r.dialTarget(ctx, target.config)
+	target.beginDiscoverySession()
+	// DME description/unit identity is scoped to a device session. Clearing is
+	// harmless for non-NX targets and also handles an automatically discovered
+	// endpoint changing OS family between sessions.
+	target.clearNXSensorState()
+	defer target.clearNXSensorState()
+	configured := target.configuredTarget()
+	conn, err := r.dialTarget(ctx, configured)
 	if err != nil {
 		return false, false, err
 	}
-	defer func() {
-		if conn != nil {
-			_ = conn.Close()
-		}
-	}()
-	capCtx, cancel := context.WithTimeout(sharedGNMIOutgoingContext(ctx, target.config), target.config.CapabilitiesTimeout)
-	capabilities, err := invokeGNMICapabilities(capCtx, conn, r.responseAdmission, target.config.MaxRecvMsgSizeMiB)
+	defer conn.Close()
+	capCtx, cancel := context.WithTimeout(sharedGNMIOutgoingContext(ctx, configured), configured.CapabilitiesTimeout)
+	capabilities, err := invokeGNMICapabilities(capCtx, conn, r.responseAdmission, configured.MaxRecvMsgSizeMiB)
 	cancel()
 	if err != nil {
 		// Authentication failures are operational and must keep the target on the
@@ -921,47 +1190,30 @@ func (r *sharedGNMIReceiver) serveTarget(ctx context.Context, target *sharedGNMI
 		}
 		return false, false, fmt.Errorf("capabilities: %w", err)
 	}
-	if validationErr := validateGNMIProtocolVersion(target.contract, capabilities); validationErr != nil {
-		r.responseAdmission.release(capabilities)
-		return false, false, validationErr
+	if capabilities == nil {
+		return false, false, errors.New("capabilities: target returned an empty response")
 	}
-	identityEncoding, identityEncodingAvailable := sharedGNMIIdentityEncoding(target.contract, capabilities)
-	if !identityEncodingAvailable {
-		r.responseAdmission.release(capabilities)
-		return false, false, newSharedGNMICompatibilityError(
-			gnmiPreflightUnsupportedEncoding,
-			fmt.Errorf("target advertises no encoding approved for product %q", target.contract.Product),
-		)
-	}
-	if encodingErr := r.configureSharedGNMIStreamEncodings(target, capabilities); encodingErr != nil {
-		r.responseAdmission.release(capabilities)
-		return false, false, encodingErr
-	}
-	if validationErr := validateGNMIRequiredModels(target.contract, runtimeSharedGNMIStreams(target.streams), capabilities); validationErr != nil {
-		r.responseAdmission.release(capabilities)
-		return false, false, validationErr
-	}
+	// Capability negotiation and identity Subscribe responses share one
+	// admission gate. Retain an independent immutable copy and release the
+	// unary response lease before starting any identity stream, otherwise a
+	// one-slot gate can deadlock the bootstrap.
+	sessionCapabilities := proto.Clone(capabilities).(*gnmipb.CapabilityResponse)
 	r.responseAdmission.release(capabilities)
-	verified, err := runGNMIIdentityPreflight(
-		ctx,
-		conn,
-		r.responseAdmission,
-		target.config,
-		target.contract,
-		target.configuredVersion,
-		identityEncoding,
-	)
+	client := gnmipb.NewGNMIClient(conn)
+	identity, err := discoverSharedGNMIDeviceIdentity(ctx, configured, client, sessionCapabilities, r.responseAdmission)
 	if err != nil {
-		return false, false, err
+		return false, false, fmt.Errorf("discover subscribed identity: %w", err)
 	}
-	target.setVerifiedIdentity(verified)
-	if resetErr := r.resetUpdatesOnlyOwners(ctx, target); resetErr != nil {
-		return false, false, resetErr
+	product, family, err := selectSharedGNMICatalogProduct(identity, configured.Platform, configured.ProductFamily)
+	if err != nil {
+		return false, false, fmt.Errorf("select generated gNMI catalog row: %w", err)
 	}
-	r.telemetry.productVerified(ctx, target.config.Name, true)
-	r.telemetry.connection(ctx, target.config.Name, true)
+	if configureErr := target.configureDiscoveredSession(identity, product, family, sessionCapabilities); configureErr != nil {
+		return false, false, fmt.Errorf("plan discovered gNMI session: %w", configureErr)
+	}
+	r.telemetry.connection(ctx, configured.Name, true)
 	connectedAt := time.Now()
-	terminal, err := r.serveTargetStreams(ctx, target, gnmipb.NewGNMIClient(conn))
+	terminal, err := r.serveTargetStreams(ctx, target, client)
 	resetBackoff := terminal || time.Since(connectedAt) >= sharedGNMIBackoffResetAfter
 	if err == nil && !terminal {
 		return false, resetBackoff, io.ErrUnexpectedEOF
@@ -1179,18 +1431,91 @@ func (r *sharedGNMIReceiver) serveTargetStreams(
 	target.beginCacheTopologySession()
 	streamCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	selectedStreams, err := r.selectSharedGNMIStreamVariants(streamCtx, target, client, target.streams)
+	if err != nil {
+		return false, err
+	}
+	if err := target.applySelectedRuntimeStreams(selectedStreams); err != nil {
+		return false, err
+	}
+	if err := target.beginSessionReadiness(selectedStreams); err != nil {
+		return false, err
+	}
+	defer target.endSessionReadiness()
 	results := make(chan sharedGNMIStreamResult, 32)
+	retryEvents := make(chan uint64, 1)
 	semaphore := make(chan struct{}, target.config.MaxStreams)
 	streamCancels := map[string][]context.CancelFunc{}
 	var wg sync.WaitGroup
 	active := 0
-	launch := func(stream sharedGNMIRuntimeStream) {
-		if target.streamStopped(stream) {
+	var retryGeneration uint64
+	retryScheduled := false
+	scheduleNegativeRetry := func() {
+		retryGeneration++
+		generation := retryGeneration
+		retryAt, ok := target.nextNegativeRetry()
+		retryScheduled = ok
+		if !ok {
 			return
 		}
-		stream.Paths = target.filterIsolated(stream.Paths)
+		_, now := target.negativeContext()
+		delay := max(time.Duration(0), retryAt.Sub(now))
+		wait := target.afterDelay(delay)
+		go func() {
+			select {
+			case <-wait:
+				select {
+				case retryEvents <- generation:
+				case <-streamCtx.Done():
+				}
+			case <-streamCtx.Done():
+			}
+		}()
+	}
+	launch := func(stream sharedGNMIRuntimeStream) error {
+		if len(stream.variantFallbacks) > 0 {
+			if stream.Required {
+				if _, retry := target.nextNegativeRetry(); retry {
+					return nil
+				}
+				return fmt.Errorf("required gNMI profile %q has no usable path-set variant", stream.Profile)
+			}
+			return nil
+		}
+		if target.profileStopped(sharedGNMIStreamSuppressionKey(stream.sharedGNMIStream)) {
+			if stream.Required {
+				return fmt.Errorf("required gNMI profile %q is stopped", stream.Profile)
+			}
+			return nil
+		}
+		stoppedGroups := make([]string, 0, len(stream.Groups))
+		for _, group := range stream.Groups {
+			if target.profileStopped(sharedGNMIGroupSuppressionKey(stream.Profile, group)) {
+				stoppedGroups = append(stoppedGroups, group)
+			}
+		}
+		if len(stoppedGroups) > 0 {
+			filtered, _, available, filterErr := filterSharedGNMIRuntimeGroups(stream, stoppedGroups...)
+			if filterErr != nil {
+				return fmt.Errorf("filter stopped gNMI groups for profile %q: %w", stream.Profile, filterErr)
+			}
+			if !available {
+				if stream.Required {
+					return fmt.Errorf("required gNMI profile %q has no active groups", stream.Profile)
+				}
+				return nil
+			}
+			stream = filtered
+		}
+		stream.Paths = target.filterIsolatedPathSets(stream.Paths)
 		if len(stream.Paths) == 0 {
-			return
+			if stream.Required {
+				if _, retry := target.nextNegativeRetry(); retry {
+					return nil
+				}
+				return fmt.Errorf("required gNMI profile %q has no available subscription paths", stream.Profile)
+			}
+			return nil
 		}
 		target.registerPhysicalCacheOwner(stream)
 		responseSelectors, selectorErr := sharedGNMIResponseSelectors(target.config.Name, stream.Paths)
@@ -1206,8 +1531,12 @@ func (r *sharedGNMIReceiver) serveTargetStreams(
 		}
 		stream.responseSelectors = responseSelectors
 		subscriptionCtx, subscriptionCancel := context.WithCancel(streamCtx)
-		streamKey := sharedGNMIRuntimeStreamKey(stream)
-		streamCancels[streamKey] = append(streamCancels[streamKey], subscriptionCancel)
+		suppressionKey := sharedGNMIStreamSuppressionKey(stream.sharedGNMIStream)
+		profileCancels[suppressionKey] = append(profileCancels[suppressionKey], subscriptionCancel)
+		for _, group := range stream.Groups {
+			groupKey := sharedGNMIGroupSuppressionKey(stream.Profile, group)
+			profileCancels[groupKey] = append(profileCancels[groupKey], subscriptionCancel)
+		}
 		active++
 		wg.Go(func() {
 			defer subscriptionCancel()
@@ -1218,25 +1547,55 @@ func (r *sharedGNMIReceiver) serveTargetStreams(
 				results <- sharedGNMIStreamResult{stream: stream, err: subscriptionCtx.Err()}
 				return
 			}
-			terminal, err := r.runSubscription(subscriptionCtx, target, client, stream, stream.encoding)
+			terminal, err := r.runSubscription(subscriptionCtx, target, client, stream, stream.wireEncoding)
 			results <- sharedGNMIStreamResult{stream: stream, terminal: terminal, err: err}
 		})
+		return nil
 	}
-	for streamIndex := range target.streams {
-		launch(target.streams[streamIndex])
+	for streamIndex := range selectedStreams {
+		if err := launch(selectedStreams[streamIndex]); err != nil {
+			cancel()
+			wg.Wait()
+			return false, err
+		}
 	}
-	if active == 0 {
+	scheduleNegativeRetry()
+	if active == 0 && !retryScheduled {
 		return true, nil
 	}
-	for active > 0 {
+	for active > 0 || retryScheduled {
 		select {
 		case <-ctx.Done():
 			cancel()
 			wg.Wait()
 			return false, ctx.Err()
+		case generation := <-retryEvents:
+			if generation != retryGeneration {
+				continue
+			}
+			cancel()
+			wg.Wait()
+			return false, &sharedGNMINegativeRetryError{}
 		case result := <-results:
 			active--
-			if target.streamStopped(result.stream) {
+			if target.profileStopped(sharedGNMIStreamSuppressionKey(result.stream.sharedGNMIStream)) {
+				continue
+			}
+			stoppedGroups := target.stoppedGroupsForStream(result.stream.sharedGNMIStream)
+			if len(stoppedGroups) > 0 {
+				filtered, _, available, filterErr := filterSharedGNMIRuntimeGroups(result.stream, stoppedGroups...)
+				if filterErr != nil {
+					cancel()
+					wg.Wait()
+					return false, fmt.Errorf("replan profile %q after sibling group suppression: %w", result.stream.Profile, filterErr)
+				}
+				if available {
+					if launchErr := launch(filtered); launchErr != nil {
+						cancel()
+						wg.Wait()
+						return false, launchErr
+					}
+				}
 				continue
 			}
 			if result.err == nil && result.terminal {
@@ -1251,40 +1610,37 @@ func (r *sharedGNMIReceiver) serveTargetStreams(
 					wg.Wait()
 					return false, streamCtx.Err()
 				}
-				probeStream := result.stream
-				probeEncoding := result.stream.encoding
-				restoreOriginalOptions := false
-				if sharedGNMIStreamHasNonBaselineRequest(result.stream.sharedGNMIStream, result.stream.encoding) {
-					if !result.stream.baselineEncodingAvailable {
-						<-semaphore
-						r.stopGNMIProfile(ctx, target, result.stream, "unsupported_request_options", errors.New(
-							"target rejected configured request options and advertises no JSON baseline encoding",
-						), streamCancels)
-						continue
-					}
-					probeStream = sharedGNMIBaselineRuntimeStream(result.stream)
-					probeEncoding = result.stream.baselineEncoding
-					probeErr := r.probeSubscriptionUntilSync(streamCtx, target, client, probeStream, probeEncoding)
-					if probeErr == nil {
-						<-semaphore
-						r.stopGNMIProfile(ctx, target, result.stream, "unsupported_request_options", unsupported, streamCancels)
-						continue
-					}
-					var baselineUnsupported *sharedGNMIUnsupportedError
-					if !errors.As(probeErr, &baselineUnsupported) {
-						<-semaphore
-						cancel()
-						wg.Wait()
-						return false, probeErr
-					}
-					restoreOriginalOptions = true
-				}
-				validGroups, resolutionErr := r.resolveUnsupportedGNMIPaths(streamCtx, target, client, probeStream, probeEncoding)
+				validGroups, resolutionErr := r.resolveUnsupportedGNMIPaths(streamCtx, target, client, result.stream, result.stream.wireEncoding)
 				<-semaphore
 				if resolutionErr != nil {
 					var stopped *sharedGNMIProfileStopError
 					if errors.As(resolutionErr, &stopped) {
-						r.stopGNMIProfile(ctx, target, result.stream, "bisection_limit", stopped, streamCancels)
+						if result.stream.Required {
+							if stopped.reason == "unsupported_path" {
+								scheduleNegativeRetry()
+								if retryScheduled {
+									// Keep the required readiness entry unsynchronized and
+									// the target unavailable until this fingerprint's
+									// negative-capability window expires.
+									continue
+								}
+							}
+							cancel()
+							wg.Wait()
+							return false, fmt.Errorf("required gNMI profile %q failed: %w", result.stream.Profile, stopped)
+						}
+						reason := stopped.reason
+						if reason == "" {
+							reason = "bisection_limit"
+						}
+						r.stopGNMIProfile(ctx, target, result.stream, reason, stopped, profileCancels)
+						scheduleNegativeRetry()
+						continue
+					}
+					var timeout *sharedGNMISyncTimeoutError
+					if errors.As(resolutionErr, &timeout) && !result.stream.Required {
+						r.stopGNMIProfile(ctx, target, result.stream, "sync_timeout", timeout, profileCancels)
+						scheduleNegativeRetry()
 						continue
 					}
 					cancel()
@@ -1296,26 +1652,84 @@ func (r *sharedGNMIReceiver) serveTargetStreams(
 				}
 				if len(validGroups) > 1 {
 					if active+len(validGroups) > target.config.MaxStreams {
-						r.stopGNMIProfile(ctx, target, result.stream, "incompatible_path_group", fmt.Errorf(
+						capacityErr := fmt.Errorf(
 							"the target accepts %d path groups separately, but they would require %d of %d allowed streams",
 							len(validGroups), active+len(validGroups), target.config.MaxStreams,
-						), streamCancels)
+						)
+						if result.stream.Required {
+							cancel()
+							wg.Wait()
+							return false, fmt.Errorf("required gNMI profile %q failed: %w", result.stream.Profile, capacityErr)
+						}
+						r.stopGNMIProfile(ctx, target, result.stream, "incompatible_path_group", capacityErr, profileCancels)
+						scheduleNegativeRetry()
 						continue
 					}
 				}
-				if len(validGroups) == 0 {
-					continue
+				validatedStreams := make([]sharedGNMIRuntimeStream, 0, len(validGroups))
+				for _, validPaths := range validGroups {
+					validated := result.stream
+					validated.Paths = validPaths
+					validatedStreams = append(validatedStreams, validated)
 				}
-				target.replacePendingQualificationStream(result.stream, validGroups)
-				validatedStreams := sharedGNMIResolvedRuntimeStreams(result.stream, validGroups)
-				for streamIndex := range validatedStreams {
-					launch(validatedStreams[streamIndex])
+				if err := target.replaceRequiredRuntimeStream(result.stream, validatedStreams); err != nil {
+					cancel()
+					wg.Wait()
+					return false, err
 				}
+				for validatedIndex := range validatedStreams {
+					if launchErr := launch(validatedStreams[validatedIndex]); launchErr != nil {
+						cancel()
+						wg.Wait()
+						return false, launchErr
+					}
+				}
+				scheduleNegativeRetry()
 				continue
 			}
 			var stopped *sharedGNMIProfileStopError
 			if errors.As(result.err, &stopped) {
-				r.stopGNMIProfile(ctx, target, result.stream, "cache_limit", stopped, streamCancels)
+				if result.stream.Required {
+					cancel()
+					wg.Wait()
+					return false, fmt.Errorf("required gNMI profile %q failed: %w", result.stream.Profile, stopped)
+				}
+				reason := stopped.reason
+				if reason == "" {
+					reason = "cache_limit"
+				}
+				var entityCapacity *sharedGNMIEntityCapacityError
+				if errors.As(stopped, &entityCapacity) {
+					filtered, removedGroups, available, filterErr := filterSharedGNMIRuntimeGroups(result.stream, entityCapacity.Group)
+					if filterErr != nil {
+						cancel()
+						wg.Wait()
+						return false, fmt.Errorf("replan profile %q after max_entities overflow: %w", result.stream.Profile, filterErr)
+					}
+					if len(removedGroups) == 0 {
+						cancel()
+						wg.Wait()
+						return false, fmt.Errorf("max_entities overflow group %q is absent from profile %q stream", entityCapacity.Group, result.stream.Profile)
+					}
+					r.stopGNMIGroups(ctx, target, result.stream, removedGroups, reason, stopped, profileCancels)
+					if available {
+						if launchErr := launch(filtered); launchErr != nil {
+							cancel()
+							wg.Wait()
+							return false, launchErr
+						}
+					}
+					scheduleNegativeRetry()
+					continue
+				}
+				r.stopGNMIProfile(ctx, target, result.stream, reason, stopped, profileCancels)
+				scheduleNegativeRetry()
+				continue
+			}
+			var timeout *sharedGNMISyncTimeoutError
+			if errors.As(result.err, &timeout) && !result.stream.Required {
+				r.stopGNMIProfile(ctx, target, result.stream, "sync_timeout", timeout, profileCancels)
+				scheduleNegativeRetry()
 				continue
 			}
 			cancel()
@@ -1400,48 +1814,49 @@ func (r *sharedGNMIReceiver) resolveUnsupportedGNMIPaths(
 	stream sharedGNMIRuntimeStream,
 	encoding gnmipb.Encoding,
 ) ([][]sharedGNMIPath, error) {
-	rejectionKey, err := sharedGNMIRejectedRequestKey(target.config, stream, encoding)
-	if err != nil {
-		return nil, err
-	}
-	if target.recordRejectedPathSet(rejectionKey) > 1 {
-		return nil, &sharedGNMIProfileStopError{err: errors.New("subscription path set was rejected repeatedly after bisection")}
-	}
 	probes := 0
-	var resolve func([]sharedGNMIPath) ([][]sharedGNMIPath, error)
-	resolve = func(paths []sharedGNMIPath) ([][]sharedGNMIPath, error) {
-		if len(paths) == 0 {
+	var resolve func([][]sharedGNMIPath) ([][]sharedGNMIPath, error)
+	resolve = func(pathSets [][]sharedGNMIPath) ([][]sharedGNMIPath, error) {
+		if len(pathSets) == 0 {
 			return nil, nil
 		}
-		if len(paths) == 1 {
-			target.isolatePath(paths[0])
-			target.markQualificationDegraded(stream)
-			r.emitTargetUnavailable(ctx, target)
-			if !stream.Required {
-				target.recordOptionalStreamStopped(stream)
+		if len(pathSets) == 1 {
+			paths := pathSets[0]
+			for _, path := range paths {
+				target.isolatePath(path)
+				r.telemetry.degraded(ctx, target.config.Name, stream.Profile, "unsupported_path")
+				r.settings.Logger.Warn("Cisco gNMI path suppressed until its retry window expires",
+					zap.String("target", target.config.Name),
+					zap.String("profile", stream.Profile),
+					zap.String("path_set", sharedGNMIAtomicPathSetLabel(paths)),
+					zap.String("origin", path.Origin),
+					zap.String("path", path.Path))
 			}
-			r.telemetry.degraded(ctx, target.config.Name, stream.Profile, "unsupported_path", true)
-			r.settings.Logger.Warn("Cisco gNMI path isolated until receiver restart",
-				zap.String("target", target.config.Name),
-				zap.String("profile", stream.Profile),
-				zap.String("origin", paths[0].Origin),
-				zap.String("path", paths[0].Path))
+			if stream.Required {
+				return nil, &sharedGNMIProfileStopError{
+					reason: "unsupported_path",
+					err:    fmt.Errorf("required subscription path set %q is unsupported", sharedGNMIAtomicPathSetLabel(paths)),
+				}
+			}
 			return nil, nil
 		}
 
-		midpoint := len(paths) / 2
-		halves := [][]sharedGNMIPath{paths[:midpoint], paths[midpoint:]}
+		midpoint := len(pathSets) / 2
+		halves := [][][]sharedGNMIPath{pathSets[:midpoint], pathSets[midpoint:]}
 		validGroups := make([][]sharedGNMIPath, 0, 2)
 		for _, half := range halves {
 			probes++
 			if probes > sharedGNMIMaxBisectionProbes {
-				return nil, &sharedGNMIProfileStopError{err: fmt.Errorf("subscription bisection exceeded %d probes", sharedGNMIMaxBisectionProbes)}
+				return nil, &sharedGNMIProfileStopError{
+					reason: "bisection_limit",
+					err:    fmt.Errorf("subscription bisection exceeded %d probes", sharedGNMIMaxBisectionProbes),
+				}
 			}
 			probe := stream
-			probe.Paths = append([]sharedGNMIPath(nil), half...)
+			probe.Paths = flattenSharedGNMIAtomicPathSets(half)
 			err := r.probeSubscriptionUntilSync(ctx, target, client, probe, encoding)
 			if err == nil {
-				validGroups = append(validGroups, append([]sharedGNMIPath(nil), half...))
+				validGroups = append(validGroups, probe.Paths)
 				continue
 			}
 			var unsupported *sharedGNMIUnsupportedError
@@ -1457,13 +1872,16 @@ func (r *sharedGNMIReceiver) resolveUnsupportedGNMIPaths(
 		if len(validGroups) <= 1 {
 			return validGroups, nil
 		}
-		combined := make([]sharedGNMIPath, 0, len(paths))
+		combined := make([]sharedGNMIPath, 0)
 		for _, group := range validGroups {
 			combined = append(combined, group...)
 		}
 		probes++
 		if probes > sharedGNMIMaxBisectionProbes {
-			return nil, &sharedGNMIProfileStopError{err: fmt.Errorf("subscription bisection exceeded %d probes", sharedGNMIMaxBisectionProbes)}
+			return nil, &sharedGNMIProfileStopError{
+				reason: "bisection_limit",
+				err:    fmt.Errorf("subscription bisection exceeded %d probes", sharedGNMIMaxBisectionProbes),
+			}
 		}
 		probe := stream
 		probe.Paths = combined
@@ -1478,7 +1896,100 @@ func (r *sharedGNMIReceiver) resolveUnsupportedGNMIPaths(
 		return validGroups, nil
 	}
 
-	return resolve(stream.Paths)
+	return resolve(sharedGNMIAtomicPathSets(stream.Paths))
+}
+
+func sharedGNMIAtomicPathSets(paths []sharedGNMIPath) [][]sharedGNMIPath {
+	if len(paths) == 0 {
+		return nil
+	}
+	parents := make([]int, len(paths))
+	for index := range parents {
+		parents[index] = index
+	}
+	var find func(int) int
+	find = func(index int) int {
+		if parents[index] != index {
+			parents[index] = find(parents[index])
+		}
+		return parents[index]
+	}
+	union := func(left, right int) {
+		leftRoot, rightRoot := find(left), find(right)
+		if leftRoot != rightRoot {
+			parents[rightRoot] = leftRoot
+		}
+	}
+	firstByPathSet := map[string]int{}
+	for index, path := range paths {
+		for _, pathSetVariant := range sharedGNMIPathSetVariantKeys(path) {
+			if first, ok := firstByPathSet[pathSetVariant]; ok {
+				union(first, index)
+			} else {
+				firstByPathSet[pathSetVariant] = index
+			}
+		}
+	}
+	groups := make([][]sharedGNMIPath, 0, len(paths))
+	groupByRoot := map[int]int{}
+	for index, path := range paths {
+		root := find(index)
+		groupIndex, ok := groupByRoot[root]
+		if !ok {
+			groupIndex = len(groups)
+			groupByRoot[root] = groupIndex
+			groups = append(groups, nil)
+		}
+		groups[groupIndex] = append(groups[groupIndex], path)
+	}
+	return groups
+}
+
+func sharedGNMIPathSetVariantKeys(path sharedGNMIPath) []string {
+	keys := make([]string, 0, len(path.PathSetVariants)+1)
+	if path.PathSetID != "" {
+		keys = append(keys, path.PathSetID+"\x00"+path.VariantID)
+	}
+	for _, variant := range path.PathSetVariants {
+		key := variant.PathSetID + "\x00" + variant.VariantID
+		if variant.PathSetID != "" && !slices.Contains(keys, key) {
+			keys = append(keys, key)
+		}
+	}
+	return keys
+}
+
+func flattenSharedGNMIAtomicPathSets(pathSets [][]sharedGNMIPath) []sharedGNMIPath {
+	count := 0
+	for _, pathSet := range pathSets {
+		count += len(pathSet)
+	}
+	paths := make([]sharedGNMIPath, 0, count)
+	for _, pathSet := range pathSets {
+		paths = append(paths, pathSet...)
+	}
+	return paths
+}
+
+func sharedGNMIAtomicPathSetLabel(paths []sharedGNMIPath) string {
+	ids := make([]string, 0)
+	for _, path := range paths {
+		for _, key := range sharedGNMIPathSetVariantKeys(path) {
+			pathSetID, variantID, _ := strings.Cut(key, "\x00")
+			id := pathSetID
+			if variantID != "" {
+				id += "@" + variantID
+			}
+			if !slices.Contains(ids, id) {
+				ids = append(ids, id)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return sharedGNMIPathKey(paths[0])
+	}
+	sort.Strings(ids)
+	return strings.Join(ids, ",")
 }
 
 func (r *sharedGNMIReceiver) probeSubscriptionUntilSync(
@@ -1511,39 +2022,63 @@ func (r *sharedGNMIReceiver) probeSubscriptionUntilSync(
 	if err != nil {
 		return classifySharedGNMIStreamError(err)
 	}
-	if err := subscribe.Send(request); err != nil {
-		return classifySharedGNMIStreamError(err)
+	if sendErr := subscribe.Send(request); sendErr != nil {
+		return classifySharedGNMIStreamError(sendErr)
 	}
 	if stream.Mode == gnmiModeOnce {
-		if err := subscribe.CloseSend(); err != nil {
-			return classifySharedGNMIStreamError(err)
+		if closeErr := subscribe.CloseSend(); closeErr != nil {
+			return classifySharedGNMIStreamError(closeErr)
 		}
 	}
 	if stream.Mode == gnmiModeOnce {
-		return receiveSharedGNMIProbeOnce(subscribe, r.responseAdmission, target, stream)
+		watchdog, watchdogErr := newSharedGNMISyncWatchdog(stream.Profile, sharedGNMISyncTimeoutForStream(target, stream), cancel)
+		if watchdogErr != nil {
+			return watchdogErr
+		}
+		return receiveSharedGNMIProbeOnceWithWatchdog(subscribe, r.responseAdmission, watchdog)
 	}
-	if err := receiveSharedGNMIProbeUntilSync(subscribe, r.responseAdmission, target, stream); err != nil {
+	watchdog, err := newSharedGNMISyncWatchdog(stream.Profile, sharedGNMISyncTimeoutForStream(target, stream), cancel)
+	if err != nil {
 		return err
+	}
+	if receiveErr := receiveSharedGNMIProbeUntilSyncWithWatchdog(subscribe, r.responseAdmission, watchdog); receiveErr != nil {
+		return receiveErr
 	}
 	if stream.Mode != gnmiModePoll {
 		return nil
 	}
-	if err := subscribe.Send(&gnmipb.SubscribeRequest{Request: &gnmipb.SubscribeRequest_Poll{Poll: &gnmipb.Poll{}}}); err != nil {
-		return classifySharedGNMIStreamError(err)
+	if sendErr := subscribe.Send(&gnmipb.SubscribeRequest{Request: &gnmipb.SubscribeRequest_Poll{Poll: &gnmipb.Poll{}}}); sendErr != nil {
+		return classifySharedGNMIStreamError(sendErr)
 	}
-	return receiveSharedGNMIProbeUntilSync(subscribe, r.responseAdmission, target, stream)
+	watchdog, err = newSharedGNMISyncWatchdog(stream.Profile, sharedGNMISyncTimeoutForStream(target, stream), cancel)
+	if err != nil {
+		return err
+	}
+	return receiveSharedGNMIProbeUntilSyncWithWatchdog(subscribe, r.responseAdmission, watchdog)
 }
 
-//nolint:staticcheck // Deprecated in-band Error responses remain on the supported gNMI wire protocol.
 func receiveSharedGNMIProbeUntilSync(
 	subscribe grpc.BidiStreamingClient[gnmipb.SubscribeRequest, gnmipb.SubscribeResponse],
 	admission *gnmiResponseAdmission,
 	target *sharedGNMITargetRuntime,
 	stream sharedGNMIRuntimeStream,
 ) error {
+	return receiveSharedGNMIProbeUntilSyncWithWatchdog(subscribe, admission, nil)
+}
+
+//nolint:staticcheck // Deprecated in-band Error responses remain on the supported gNMI wire protocol.
+func receiveSharedGNMIProbeUntilSyncWithWatchdog(
+	subscribe grpc.BidiStreamingClient[gnmipb.SubscribeRequest, gnmipb.SubscribeResponse],
+	admission *gnmiResponseAdmission,
+	watchdog *sharedGNMISyncWatchdog,
+) error {
+	defer watchdog.finish()
 	for {
 		response, err := receiveGNMISubscribeResponse(subscribe, admission)
 		if err != nil {
+			if watchdog.finish() {
+				return watchdog.timeoutError()
+			}
 			if errors.Is(err, io.EOF) {
 				return io.ErrUnexpectedEOF
 			}
@@ -1574,22 +2109,37 @@ func receiveSharedGNMIProbeUntilSync(
 			return responseErr
 		}
 		if synced {
+			if watchdog.finish() {
+				return watchdog.timeoutError()
+			}
 			return nil
 		}
 	}
 }
 
-//nolint:staticcheck // Deprecated in-band Error responses remain on the supported gNMI wire protocol.
 func receiveSharedGNMIProbeOnce(
 	subscribe grpc.BidiStreamingClient[gnmipb.SubscribeRequest, gnmipb.SubscribeResponse],
 	admission *gnmiResponseAdmission,
 	target *sharedGNMITargetRuntime,
 	stream sharedGNMIRuntimeStream,
 ) error {
+	return receiveSharedGNMIProbeOnceWithWatchdog(subscribe, admission, nil)
+}
+
+//nolint:staticcheck // Deprecated in-band Error responses remain on the supported gNMI wire protocol.
+func receiveSharedGNMIProbeOnceWithWatchdog(
+	subscribe grpc.BidiStreamingClient[gnmipb.SubscribeRequest, gnmipb.SubscribeResponse],
+	admission *gnmiResponseAdmission,
+	watchdog *sharedGNMISyncWatchdog,
+) error {
+	defer watchdog.finish()
 	synced := false
 	for {
 		response, err := receiveGNMISubscribeResponse(subscribe, admission)
 		if err != nil {
+			if watchdog.finish() {
+				return watchdog.timeoutError()
+			}
 			if errors.Is(err, io.EOF) {
 				if synced {
 					return nil
@@ -1603,9 +2153,9 @@ func receiveSharedGNMIProbeOnce(
 		case *gnmipb.SubscribeResponse_Update:
 			responseErr = validateSharedGNMIProbeUpdate(target, stream, body.Update)
 		case *gnmipb.SubscribeResponse_SyncResponse:
-			if !body.SyncResponse {
-				responseErr = malformedSharedGNMIProbeResponse()
-			} else {
+			if body.SyncResponse && !synced {
+				// ONCE is complete only after the server closes the stream.
+				// Keep the configured deadline armed through that EOF.
 				synced = true
 			}
 		case *gnmipb.SubscribeResponse_Error:
@@ -1664,22 +2214,44 @@ func (r *sharedGNMIReceiver) stopGNMIProfile(
 	err error,
 	streamCancels map[string][]context.CancelFunc,
 ) {
-	target.stopStream(stream)
-	target.markQualificationDegraded(stream)
-	r.emitTargetUnavailable(ctx, target)
-	if !stream.Required {
-		target.recordOptionalStreamStopped(stream)
-	}
-	for _, streamCancel := range streamCancels[sharedGNMIRuntimeStreamKey(stream)] {
-		streamCancel()
+	suppressionKey := sharedGNMIStreamSuppressionKey(stream.sharedGNMIStream)
+	target.stopProfile(suppressionKey)
+	for _, profileCancel := range profileCancels[suppressionKey] {
+		profileCancel()
 	}
 	if target.config.Platform == gnmiPlatformNXOS && stream.Optics {
 		r.clearTargetNXSensorState(ctx, target)
 	}
-	r.telemetry.degraded(ctx, target.config.Name, stream.Profile, reason, true)
-	r.settings.Logger.Error("Cisco gNMI profile stopped until receiver restart",
+	r.telemetry.degraded(ctx, target.config.Name, stream.Profile, reason)
+	r.settings.Logger.Error("Cisco gNMI profile suppressed until its retry window expires",
 		zap.String("target", target.config.Name),
 		zap.String("profile", stream.Profile),
+		zap.Bool("required", stream.Required),
+		zap.String("reason", reason),
+		zap.Error(err))
+}
+
+func (r *sharedGNMIReceiver) stopGNMIGroups(
+	ctx context.Context,
+	target *sharedGNMITargetRuntime,
+	stream sharedGNMIRuntimeStream,
+	groups []string,
+	reason string,
+	err error,
+	profileCancels map[string][]context.CancelFunc,
+) {
+	for _, group := range groups {
+		groupKey := sharedGNMIGroupSuppressionKey(stream.Profile, group)
+		target.stopProfile(groupKey)
+		for _, profileCancel := range profileCancels[groupKey] {
+			profileCancel()
+		}
+	}
+	r.telemetry.degraded(ctx, target.config.Name, stream.Profile, reason)
+	r.settings.Logger.Error("Cisco gNMI groups suppressed until their retry window expires",
+		zap.String("target", target.config.Name),
+		zap.String("profile", stream.Profile),
+		zap.Strings("groups", groups),
 		zap.Bool("required", stream.Required),
 		zap.String("reason", reason),
 		zap.Error(err))
@@ -1694,13 +2266,15 @@ func (r *sharedGNMIReceiver) runSubscription(
 ) (bool, error) {
 	r.telemetry.subscription(ctx, target.config.Name, stream.Profile, true)
 	defer r.telemetry.subscription(context.Background(), target.config.Name, stream.Profile, false)
+	subscriptionCtx, subscriptionCancel := context.WithCancel(ctx)
+	defer subscriptionCancel()
 	request, err := buildSharedGNMISubscribeRequest(target.config, stream.sharedGNMIStream, encoding)
 	if err != nil {
 		return false, err
 	}
 	subscribe, err := client.Subscribe(
-		sharedGNMIOutgoingContext(ctx, target.config),
-		gnmiResponsePreflightCallOption(target.config.MaxRecvMsgSizeMiB, r.responseAdmission, ctx.Done()),
+		sharedGNMIOutgoingContext(subscriptionCtx, target.config),
+		gnmiResponsePreflightCallOption(target.config.MaxRecvMsgSizeMiB, r.responseAdmission, subscriptionCtx.Done()),
 	)
 	if err != nil {
 		return false, classifySharedGNMIStreamError(err)
@@ -1713,19 +2287,19 @@ func (r *sharedGNMIReceiver) runSubscription(
 		if err := subscribe.CloseSend(); err != nil {
 			return false, classifySharedGNMIStreamError(err)
 		}
-		if err := r.receiveOnceToCompletion(ctx, target, stream, subscribe); err != nil {
+		if err := r.receiveOnceToCompletion(ctx, target, stream, subscribe, subscriptionCancel); err != nil {
 			return false, err
 		}
 		return true, nil
 	case gnmiModePoll:
-		if err := r.receiveUntilSync(ctx, target, stream, subscribe); err != nil {
+		if err := r.receiveUntilSync(ctx, target, stream, subscribe, subscriptionCancel); err != nil {
 			return false, err
 		}
 		for {
 			if err := subscribe.Send(&gnmipb.SubscribeRequest{Request: &gnmipb.SubscribeRequest_Poll{Poll: &gnmipb.Poll{}}}); err != nil {
 				return false, classifySharedGNMIStreamError(err)
 			}
-			if err := r.receiveUntilSync(ctx, target, stream, subscribe); err != nil {
+			if err := r.receiveUntilSync(ctx, target, stream, subscribe, subscriptionCancel); err != nil {
 				return false, err
 			}
 			timer := time.NewTimer(stream.PollInterval)
@@ -1742,6 +2316,9 @@ func (r *sharedGNMIReceiver) runSubscription(
 			}
 		}
 	case gnmiModeStream:
+		if err := r.receiveUntilSync(ctx, target, stream, subscribe, subscriptionCancel); err != nil {
+			return false, err
+		}
 		for {
 			response, err := receiveGNMISubscribeResponse(subscribe, r.responseAdmission)
 			if err != nil {
@@ -1766,13 +2343,25 @@ func (r *sharedGNMIReceiver) receiveOnceToCompletion(
 	target *sharedGNMITargetRuntime,
 	stream sharedGNMIRuntimeStream,
 	subscribe grpc.BidiStreamingClient[gnmipb.SubscribeRequest, gnmipb.SubscribeResponse],
+	cancel context.CancelFunc,
 ) error {
+	watchdog, err := newSharedGNMISyncWatchdog(stream.Profile, sharedGNMISyncTimeoutForStream(target, stream), cancel)
+	if err != nil {
+		return err
+	}
+	defer watchdog.finish()
 	synced := false
 	for {
 		response, err := receiveGNMISubscribeResponse(subscribe, r.responseAdmission)
 		if err != nil {
+			if watchdog.finish() {
+				return watchdog.timeoutError()
+			}
 			if errors.Is(err, io.EOF) {
 				if synced {
+					if syncErr := r.completeRuntimeStreamSync(ctx, target, stream); syncErr != nil {
+						return syncErr
+					}
 					return nil
 				}
 				return io.ErrUnexpectedEOF
@@ -1784,7 +2373,11 @@ func (r *sharedGNMIReceiver) receiveOnceToCompletion(
 		if handleErr != nil {
 			return handleErr
 		}
-		synced = synced || responseSynced
+		if responseSynced && !synced {
+			// Unlike STREAM/POLL, ONCE is not ready until clean EOF follows
+			// sync. Keep both the watchdog and required-readiness gate armed.
+			synced = true
+		}
 	}
 }
 
@@ -1793,10 +2386,19 @@ func (r *sharedGNMIReceiver) receiveUntilSync(
 	target *sharedGNMITargetRuntime,
 	stream sharedGNMIRuntimeStream,
 	subscribe grpc.BidiStreamingClient[gnmipb.SubscribeRequest, gnmipb.SubscribeResponse],
+	cancel context.CancelFunc,
 ) error {
+	watchdog, err := newSharedGNMISyncWatchdog(stream.Profile, sharedGNMISyncTimeoutForStream(target, stream), cancel)
+	if err != nil {
+		return err
+	}
+	defer watchdog.finish()
 	for {
 		response, err := receiveGNMISubscribeResponse(subscribe, r.responseAdmission)
 		if err != nil {
+			if watchdog.finish() {
+				return watchdog.timeoutError()
+			}
 			if errors.Is(err, io.EOF) {
 				return io.ErrUnexpectedEOF
 			}
@@ -1808,6 +2410,12 @@ func (r *sharedGNMIReceiver) receiveUntilSync(
 			return handleErr
 		}
 		if synced {
+			if watchdog.finish() {
+				return watchdog.timeoutError()
+			}
+			if err := r.completeRuntimeStreamSync(ctx, target, stream); err != nil {
+				return err
+			}
 			return nil
 		}
 	}
@@ -1839,26 +2447,9 @@ func (r *sharedGNMIReceiver) handleSubscribeResponse(
 			}
 			return false, err
 		}
-		if target.streamStopped(stream) {
-			return false, nil
-		}
-		if err := r.reconcileCacheTopology(ctx, target, stream); err != nil {
-			return false, err
-		}
-		target.recordStreamProgress(stream)
-		r.emitTargetAvailable(ctx, target)
 		return false, nil
 	case *gnmipb.SubscribeResponse_SyncResponse:
-		if !body.SyncResponse {
-			r.markSharedGNMIStreamMalformed(ctx, target, stream)
-			return false, nil
-		}
-		if err := r.reconcileCacheTopology(ctx, target, stream); err != nil {
-			return false, err
-		}
-		target.recordStreamProgress(stream)
-		r.emitTargetAvailable(ctx, target)
-		return true, nil
+		return body.SyncResponse, nil
 	case *gnmipb.SubscribeResponse_Error:
 		if body.Error == nil {
 			r.markSharedGNMIStreamMalformed(ctx, target, stream)
@@ -1892,41 +2483,32 @@ func (r *sharedGNMIReceiver) processNotification(
 ) error {
 	target.deliveryMu.Lock()
 	defer target.deliveryMu.Unlock()
-	if target.streamStopped(stream) {
+	if target.runtimeStreamStopped(stream.sharedGNMIStream) {
 		return nil
 	}
 	if err := r.acquireNotificationSlot(ctx); err != nil {
 		return err
 	}
 	defer r.releaseNotificationSlot()
-	if target.streamStopped(stream) {
+	if target.runtimeStreamStopped(stream.sharedGNMIStream) {
 		return nil
 	}
 	receiptTime := time.Now()
-	if target.contract != nil && target.contract.CanonicalizeJSONIETFPathKeys && stream.encoding == gnmipb.Encoding_JSON_IETF {
-		if err := canonicalizeIOSXERFC7951JSONIETFWireNotificationKeys(notification); err != nil {
-			r.telemetry.decodeErrors(ctx, target.config.Name, stream.Profile, 1)
-			return errSharedGNMINotificationIgnored
-		}
-	}
-	decoded, decodeStats, err := internalgnmi.DecodeNotificationWithRegistry(target.config.Name, notification, receiptTime, stream.registry)
+	decoded, decodeStats, err := internalgnmi.DecodeNotificationWithSchema(
+		target.config.Name,
+		notification,
+		receiptTime,
+		stream.JSONListKeys,
+	)
 	if err != nil {
 		r.telemetry.decodeErrors(ctx, target.config.Name, stream.Profile, 1)
-		return errSharedGNMINotificationIgnored
-	}
-	r.telemetry.invalidTimestamps(ctx, target.config.Name, stream.Profile, decodeStats.InvalidTimestamps)
-	if decodeStats.InvalidTimestamps > 0 {
-		// Receipt-time fallback is useful to keep decoding bounded, but it must
-		// never enter cache freshness ordering: a delayed malformed notification
-		// could otherwise overwrite valid device-time state.
-		r.telemetry.decodeErrors(ctx, target.config.Name, stream.Profile, 1)
-		return errSharedGNMINotificationIgnored
+		return &sharedGNMIProfileStopError{reason: "decode_error", err: fmt.Errorf("decode gNMI notification: %w", err)}
 	}
 	var nxTransaction *nxSensorTransaction
 	if target.config.Platform == gnmiPlatformNXOS && stream.Optics {
 		decoded, nxTransaction, err = target.prepareNXNotificationForOwner(sharedGNMICacheOwnerID(stream), decoded)
 		if err != nil {
-			return &sharedGNMIProfileStopError{err: err}
+			return &sharedGNMIProfileStopError{reason: "decode_error", err: err}
 		}
 		defer func() {
 			if nxTransaction != nil {
@@ -2041,9 +2623,7 @@ func (r *sharedGNMIReceiver) processNotification(
 	if err != nil {
 		var capacity *internalgnmi.CapacityError
 		if errors.As(err, &capacity) {
-			r.recordTargetCacheUtilization(ctx, target)
-			r.recordTargetAuxiliaryStateUtilization(ctx, target)
-			return &sharedGNMIProfileStopError{err: err}
+			return &sharedGNMIProfileStopError{reason: "cache_limit", err: err}
 		}
 		return err
 	}
@@ -2053,7 +2633,7 @@ func (r *sharedGNMIReceiver) processNotification(
 		}
 	}()
 	result := cacheTransaction.Result()
-	if target.streamStopped(stream) {
+	if target.runtimeStreamStopped(stream.sharedGNMIStream) {
 		return nil
 	}
 	if result.Rejected {
@@ -2075,6 +2655,19 @@ func (r *sharedGNMIReceiver) processNotification(
 		r.telemetry.success(ctx, target.config.Name, stream.Profile, receiptTime)
 		return nil
 	}
+	entityLimitTransaction, err := target.sessionEntityLimits().prepare(result)
+	if err != nil {
+		var capacity *sharedGNMIEntityCapacityError
+		if errors.As(err, &capacity) {
+			return &sharedGNMIProfileStopError{reason: "entity_limit", err: err}
+		}
+		return &sharedGNMIProfileStopError{reason: "entity_accounting", err: err}
+	}
+	defer func() {
+		if entityLimitTransaction != nil {
+			entityLimitTransaction.rollback()
+		}
+	}()
 	points := append([]internalgnmi.MappedPoint(nil), result.Applied...)
 	var presenceTransaction *opticalPresenceTransaction
 	if stream.Optics {
@@ -2094,24 +2687,14 @@ func (r *sharedGNMIReceiver) processNotification(
 		var combined bool
 		auxiliaryDelta, combined = combineSharedGNMIAuxiliaryUsage(auxiliaryDelta, presenceTransaction.budgetDelta)
 		if !combined {
-			return &sharedGNMIProfileStopError{err: errors.New("gNMI auxiliary-state accounting overflow")}
+			return &sharedGNMIProfileStopError{reason: "cache_limit", err: errors.New("gNMI auxiliary-state accounting overflow")}
 		}
 	}
 	var auxiliaryReservation *sharedGNMIAuxiliaryReservation
 	if nxTransaction != nil || presenceTransaction != nil {
 		auxiliaryReservation, err = prepareSharedGNMIAuxiliaryReservation(target.nxBudget, auxiliaryDelta)
 		if err != nil {
-			var capacity *internalgnmi.CapacityError
-			if errors.As(err, &capacity) {
-				// Prepare holds the cache write lock until commit or rollback. This
-				// error path cannot publish state, so release it before collecting
-				// read-locked utilization snapshots.
-				cacheTransaction.Rollback()
-				cacheTransaction = nil
-				r.recordTargetCacheUtilization(ctx, target)
-				r.telemetry.auxiliaryCapacityUtilization(ctx, target.config.Name, capacity)
-			}
-			return &sharedGNMIProfileStopError{err: err}
+			return &sharedGNMIProfileStopError{reason: "cache_limit", err: err}
 		}
 		defer func() {
 			if auxiliaryReservation != nil {
@@ -2121,10 +2704,11 @@ func (r *sharedGNMIReceiver) processNotification(
 	}
 	chunks, err := internalgnmi.BuildMetricChunks(points, r.maxDatapoints)
 	if err != nil {
-		return err
+		return &sharedGNMIProfileStopError{reason: "decode_error", err: err}
 	}
 	for chunkIndex, chunk := range chunks {
-		decorateSharedGNMIResources(chunk, target.config, target.getVerifiedIdentity())
+		config, identity := target.sessionResourceIdentity()
+		decorateSharedGNMIResources(chunk, config, identity)
 		opCtx := startMetricsOp(ctx, r.obs)
 		consumeErr := r.consumer.ConsumeMetrics(opCtx, chunk)
 		endMetricsOp(opCtx, r.obs, chunk.DataPointCount(), consumeErr)
@@ -2144,13 +2728,17 @@ func (r *sharedGNMIReceiver) processNotification(
 	// profile active across the complete cache/NX/presence publication boundary
 	// so a sibling stream cannot publish state after that cleanup boundary.
 	target.stateMu.RLock()
-	_, stopped := target.stopped[sharedGNMIRuntimeStreamKey(stream)]
+	_, stopped := target.stopped[sharedGNMIStreamSuppressionKey(stream.sharedGNMIStream)]
 	if stopped {
 		target.stateMu.RUnlock()
 		return nil
 	}
 	cacheTransaction.Commit()
 	cacheTransaction = nil
+	if entityLimitTransaction != nil {
+		entityLimitTransaction.commit()
+		entityLimitTransaction = nil
+	}
 	if nxTransaction != nil {
 		nxTransaction.commit()
 		nxTransaction = nil
@@ -2251,60 +2839,54 @@ func (target *sharedGNMITargetRuntime) clearNXSensorState() {
 	target.nxBudget.finishChange(delta, reserved, true)
 }
 
-func (r *sharedGNMIReceiver) clearTargetNXSensorState(ctx context.Context, target *sharedGNMITargetRuntime) {
-	if r == nil || target == nil {
-		return
+func (r *sharedGNMIReceiver) completeRuntimeStreamSync(
+	ctx context.Context,
+	target *sharedGNMITargetRuntime,
+	stream sharedGNMIRuntimeStream,
+) error {
+	// A packed sibling can be canceled after another stream suppresses one of
+	// its groups. Do not let a late sync_response from that sibling clear the
+	// group's negative-capability entry or satisfy session readiness.
+	if target.runtimeStreamStopped(stream.sharedGNMIStream) {
+		return nil
 	}
-	target.clearNXSensorState()
-	r.recordTargetAuxiliaryStateUtilization(ctx, target)
+	target.clearNegativeForStream(stream)
+	ready, err := target.markRuntimeStreamSynced(stream)
+	if err != nil {
+		return err
+	}
+	if ready && !r.emitTargetAvailable(ctx, target) {
+		return errors.New("downstream consumer refused Cisco gNMI target availability")
+	}
+	return nil
 }
 
-func (r *sharedGNMIReceiver) emitTargetAvailable(ctx context.Context, target *sharedGNMITargetRuntime) {
-	if !target.sessionQualifiedForAvailability() {
-		// A previously delivered up signal may still need its down transition
-		// retried after a consumer refusal during late degradation.
-		r.emitTargetUnavailable(ctx, target)
-		return
-	}
+func (r *sharedGNMIReceiver) emitTargetAvailable(ctx context.Context, target *sharedGNMITargetRuntime) bool {
 	if target.sessionUp.CompareAndSwap(false, true) {
 		if !r.emitAvailability(ctx, target, true) {
 			// A refused or canceled availability signal was not delivered. Let a
 			// later notification retry it instead of pinning the local state to up.
 			target.sessionUp.CompareAndSwap(true, false)
+			return false
 		}
 	}
-}
-
-// emitTargetUnavailable withdraws a previously published up state when a
-// curated or explicitly required stream becomes degraded while sibling
-// streams remain connected. Qualification is monotonic-fail until restart, so
-// one down transition is sufficient and duplicate degradation is suppressed.
-func (r *sharedGNMIReceiver) emitTargetUnavailable(ctx context.Context, target *sharedGNMITargetRuntime) {
-	if target != nil && target.sessionUp.CompareAndSwap(true, false) {
-		if !r.emitAvailability(ctx, target, false) {
-			// Preserve retry eligibility. Subsequent sibling progress or another
-			// degradation event will attempt the down transition again.
-			target.sessionUp.CompareAndSwap(false, true)
-		}
-	}
+	return target.sessionUp.Load()
 }
 
 func (r *sharedGNMIReceiver) emitAvailability(ctx context.Context, target *sharedGNMITargetRuntime, up bool) bool {
-	if target == nil {
-		return false
-	}
 	if err := r.acquireNotificationSlot(ctx); err != nil {
 		return false
 	}
 	defer r.releaseNotificationSlot()
+	config, identity := target.sessionResourceIdentity()
 	value := int64(0)
 	if up {
 		value = 1
 	}
 	point := internalgnmi.MappedPoint{
 		Source: internalgnmi.Series{
-			Target: target.config.Name, Origin: builtinGNMISyntheticReceiverOrigin,
-			Elements: []internalgnmi.PathElem{{Name: "target"}, {Name: target.config.Platform}}, Leaf: "up",
+			Target: config.Name, Origin: builtinGNMISyntheticReceiverOrigin,
+			Elements: []internalgnmi.PathElem{{Name: "target"}, {Name: config.Platform}}, Leaf: "up",
 		},
 		Metric:     builtinGNMIMetricMetadata["cisco.device.up"],
 		GaugeType:  internalgnmi.GaugeInt,
@@ -2316,21 +2898,21 @@ func (r *sharedGNMIReceiver) emitAvailability(ctx context.Context, target *share
 	if err != nil || len(chunks) == 0 {
 		return false
 	}
-	decorateSharedGNMIResources(chunks[0], target.config, target.getVerifiedIdentity())
+	decorateSharedGNMIResources(chunks[0], config, identity)
 	opCtx := startMetricsOp(ctx, r.obs)
 	consumeErr := r.consumer.ConsumeMetrics(opCtx, chunks[0])
 	endMetricsOp(opCtx, r.obs, chunks[0].DataPointCount(), consumeErr)
 	if consumeErr != nil {
-		r.telemetry.consumerRefusal(ctx, target.config.Name, builtinGNMIProfileIdentity)
+		r.telemetry.consumerRefusal(ctx, config.Name, builtinGNMIProfileIdentity)
 	}
 	return consumeErr == nil
 }
 
-func decorateSharedGNMIResources(metrics pmetric.Metrics, target GNMITargetConfig, verified ...verifiedGNMIIdentity) {
-	identity := verifiedGNMIIdentity{}
-	if len(verified) > 0 {
-		identity = verified[0]
-	}
+func decorateSharedGNMIResources(
+	metrics pmetric.Metrics,
+	target GNMITargetConfig,
+	identity sharedGNMIDeviceIdentity,
+) {
 	osName := map[string]string{
 		gnmiPlatformIOSXE: "Cisco IOS XE",
 		gnmiPlatformIOSXR: "Cisco IOS XR",
@@ -2341,17 +2923,27 @@ func decorateSharedGNMIResources(metrics pmetric.Metrics, target GNMITargetConfi
 		attributes := metrics.ResourceMetrics().At(i).Resource().Attributes()
 		attributes.PutStr("hw.type", "network")
 		attributes.PutStr("cisco.os.name", target.Platform)
-		attributes.PutStr("cisco.platform.family", target.Platform)
-		attributes.PutStr("cisco.telemetry.transport", "gnmi_dial_in")
-		if identity.valid() {
-			attributes.PutStr("cisco.product.family", identity.Product)
-			attributes.PutStr("device.manufacturer", "Cisco")
-			attributes.PutStr("device.model.identifier", identity.ModelIdentifier)
-			attributes.PutStr("os.version", identity.SoftwareVersion)
-			if identity.BootMode != "" {
-				attributes.PutStr("cisco.os.boot_mode", identity.BootMode)
-			}
+		platformFamily := target.ProductFamily
+		if platformFamily == "" {
+			platformFamily = target.Platform
 		}
+		attributes.PutStr("cisco.platform.family", platformFamily)
+		attributes.PutStr("cisco.telemetry.transport", "gnmi_dial_in")
+		putStr(attributes, "device.manufacturer", identity.Manufacturer)
+		putStr(attributes, "device.model.identifier", identity.ModelIdentifier)
+		putStr(attributes, "os.version", identity.SoftwareVersion)
+		putStr(attributes, "hw.serial_number", identity.SerialNumber)
+		putStr(attributes, "host.id", identity.SerialNumber)
+		hostName := identity.Hostname
+		if hostName == "" {
+			hostName = target.Name
+		}
+		putStr(attributes, "host.name", hostName)
+		hostType := identity.Platform
+		if hostType == "" {
+			hostType = identity.ModelIdentifier
+		}
+		putStr(attributes, "host.type", hostType)
 		if osName != "" {
 			attributes.PutStr("os.name", osName)
 		}
@@ -3568,63 +4160,133 @@ func waitSharedGNMIBackoff(ctx context.Context, delay time.Duration) bool {
 	}
 }
 
+func (target *sharedGNMITargetRuntime) beginSessionReadiness(streams []sharedGNMIRuntimeStream) error {
+	readiness := &sharedGNMISessionReadiness{required: map[string]bool{}}
+	for index := range streams {
+		if !streams[index].Required {
+			continue
+		}
+		readiness.hasRequired = true
+		key := sharedGNMIReadinessStreamKey(streams[index])
+		if _, duplicate := readiness.required[key]; duplicate {
+			return fmt.Errorf("duplicate required gNMI runtime stream %q", streams[index].Profile)
+		}
+		readiness.required[key] = false
+	}
+	target.readinessMu.Lock()
+	target.readiness = readiness
+	target.readinessMu.Unlock()
+	return nil
+}
+
+func (target *sharedGNMITargetRuntime) endSessionReadiness() {
+	target.readinessMu.Lock()
+	target.readiness = nil
+	target.readinessMu.Unlock()
+}
+
+func (target *sharedGNMITargetRuntime) replaceRequiredRuntimeStream(
+	previous sharedGNMIRuntimeStream,
+	replacements []sharedGNMIRuntimeStream,
+) error {
+	if !previous.Required {
+		return nil
+	}
+	target.readinessMu.Lock()
+	defer target.readinessMu.Unlock()
+	if target.readiness == nil {
+		return errors.New("gNMI session readiness is not initialized")
+	}
+	previousKey := sharedGNMIReadinessStreamKey(previous)
+	if _, exists := target.readiness.required[previousKey]; !exists {
+		return fmt.Errorf("required gNMI runtime stream %q is not registered", previous.Profile)
+	}
+	delete(target.readiness.required, previousKey)
+	for index := range replacements {
+		key := sharedGNMIReadinessStreamKey(replacements[index])
+		if _, duplicate := target.readiness.required[key]; duplicate {
+			return fmt.Errorf("duplicate replacement for required gNMI runtime stream %q", previous.Profile)
+		}
+		target.readiness.required[key] = false
+	}
+	if len(replacements) == 0 {
+		return fmt.Errorf("required gNMI runtime stream %q has no supported replacement", previous.Profile)
+	}
+	return nil
+}
+
+func (target *sharedGNMITargetRuntime) markRuntimeStreamSynced(stream sharedGNMIRuntimeStream) (bool, error) {
+	target.readinessMu.Lock()
+	defer target.readinessMu.Unlock()
+	if target.readiness == nil {
+		return false, errors.New("gNMI session readiness is not initialized")
+	}
+	if !target.readiness.hasRequired {
+		target.readiness.anySynced = true
+		return true, nil
+	}
+	if !stream.Required {
+		return false, nil
+	}
+	key := sharedGNMIReadinessStreamKey(stream)
+	if _, exists := target.readiness.required[key]; !exists {
+		return false, fmt.Errorf("required gNMI runtime stream %q is not registered", stream.Profile)
+	}
+	target.readiness.required[key] = true
+	for _, synced := range target.readiness.required {
+		if !synced {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func sharedGNMIReadinessStreamKey(stream sharedGNMIRuntimeStream) string {
+	var key strings.Builder
+	key.WriteString(sharedGNMIRejectedPathSetKey(stream))
+	key.WriteByte(0)
+	key.WriteString(stream.StreamMode)
+	key.WriteByte(0)
+	key.WriteString(stream.Encoding)
+	fmt.Fprintf(&key, "\x00%d\x00%d\x00%d", stream.SampleInterval, stream.PollInterval, stream.SyncTimeout)
+	return key.String()
+}
+
 func (target *sharedGNMITargetRuntime) isolatePath(path sharedGNMIPath) {
+	fingerprint, now := target.negativeContext()
 	target.stateMu.Lock()
 	defer target.stateMu.Unlock()
-	target.isolate[sharedGNMIPathKey(path)] = struct{}{}
+	key := sharedGNMIPathKey(path)
+	target.isolate[key] = nextSharedGNMINegativeEntry(target.isolate[key], fingerprint, now)
 }
 
 func (target *sharedGNMITargetRuntime) stopProfile(profile string) {
+	fingerprint, now := target.negativeContext()
 	target.stateMu.Lock()
 	defer target.stateMu.Unlock()
-	matched := false
-	for i := range target.streams {
-		stream := &target.streams[i]
-		if stream.Profile != profile {
-			continue
-		}
-		target.stopped[sharedGNMIRuntimeStreamKey(*stream)] = struct{}{}
-		matched = true
-	}
-	if !matched {
-		// Preserve the small legacy test/helper surface for targets constructed
-		// without normalized runtime streams.
-		target.stopped["profile\x00"+profile] = struct{}{}
-	}
+	target.stopped[profile] = nextSharedGNMINegativeEntry(target.stopped[profile], fingerprint, now)
 }
 
 func (target *sharedGNMITargetRuntime) profileStopped(profile string) bool {
+	fingerprint, now := target.negativeContext()
 	target.stateMu.RLock()
 	defer target.stateMu.RUnlock()
-	if _, stopped := target.stopped["profile\x00"+profile]; stopped {
-		return true
-	}
-	for i := range target.streams {
-		stream := &target.streams[i]
-		if stream.Profile == profile {
-			if _, stopped := target.stopped[sharedGNMIRuntimeStreamKey(*stream)]; stopped {
-				return true
-			}
+	entry, stopped := target.stopped[profile]
+	return stopped && entry.fingerprint == fingerprint && now.Before(entry.retryAt)
+}
+
+func (target *sharedGNMITargetRuntime) stoppedGroupsForStream(stream sharedGNMIStream) []string {
+	groups := make([]string, 0, len(stream.Groups))
+	for _, group := range stream.Groups {
+		if target.profileStopped(sharedGNMIGroupSuppressionKey(stream.Profile, group)) {
+			groups = append(groups, group)
 		}
 	}
-	return false
+	return groups
 }
 
-func (target *sharedGNMITargetRuntime) stopStream(stream sharedGNMIRuntimeStream) {
-	target.stateMu.Lock()
-	defer target.stateMu.Unlock()
-	target.stopped[sharedGNMIRuntimeStreamKey(stream)] = struct{}{}
-}
-
-func (target *sharedGNMITargetRuntime) streamStopped(stream sharedGNMIRuntimeStream) bool {
-	target.stateMu.RLock()
-	defer target.stateMu.RUnlock()
-	_, stopped := target.stopped[sharedGNMIRuntimeStreamKey(stream)]
-	if stopped {
-		return true
-	}
-	_, stopped = target.stopped["profile\x00"+stream.Profile]
-	return stopped
+func (target *sharedGNMITargetRuntime) runtimeStreamStopped(stream sharedGNMIStream) bool {
+	return target.profileStopped(sharedGNMIStreamSuppressionKey(stream)) || len(target.stoppedGroupsForStream(stream)) > 0
 }
 
 func sharedGNMIRuntimeStreamKey(stream sharedGNMIRuntimeStream) string {
@@ -3944,65 +4606,116 @@ func (target *sharedGNMITargetRuntime) removePhysicalCacheOwners(logicalOwnerID 
 }
 
 func (target *sharedGNMITargetRuntime) pathIsolated(path sharedGNMIPath) bool {
+	fingerprint, now := target.negativeContext()
 	target.stateMu.RLock()
 	defer target.stateMu.RUnlock()
-	_, isolated := target.isolate[sharedGNMIPathKey(path)]
-	return isolated
+	entry, isolated := target.isolate[sharedGNMIPathKey(path)]
+	return isolated && entry.fingerprint == fingerprint && now.Before(entry.retryAt)
 }
 
-func (target *sharedGNMITargetRuntime) recordRejectedPathSet(key string) int {
+func (target *sharedGNMITargetRuntime) clearNegativeForStream(stream sharedGNMIRuntimeStream) {
+	fingerprint, _ := target.negativeContext()
 	target.stateMu.Lock()
 	defer target.stateMu.Unlock()
-	target.rejects[key]++
-	return target.rejects[key]
-}
-
-func (target *sharedGNMITargetRuntime) filterIsolated(paths []sharedGNMIPath) []sharedGNMIPath {
-	target.stateMu.RLock()
-	defer target.stateMu.RUnlock()
-	out := make([]sharedGNMIPath, 0, len(paths))
-	for i := range paths {
-		if _, isolated := target.isolate[sharedGNMIPathKey(paths[i])]; !isolated {
-			out = append(out, paths[i])
+	suppressionKey := sharedGNMIStreamSuppressionKey(stream.sharedGNMIStream)
+	if entry, ok := target.stopped[suppressionKey]; ok && entry.fingerprint == fingerprint {
+		delete(target.stopped, suppressionKey)
+	}
+	for _, group := range stream.Groups {
+		key := sharedGNMIGroupSuppressionKey(stream.Profile, group)
+		if entry, ok := target.stopped[key]; ok && entry.fingerprint == fingerprint {
+			delete(target.stopped, key)
 		}
 	}
-	return out
+	for _, path := range stream.Paths {
+		key := sharedGNMIPathKey(path)
+		if entry, ok := target.isolate[key]; ok && entry.fingerprint == fingerprint {
+			delete(target.isolate, key)
+		}
+	}
 }
 
-func sharedGNMIPathKey(path sharedGNMIPath) string {
+func (target *sharedGNMITargetRuntime) nextNegativeRetry() (time.Time, bool) {
+	fingerprint, now := target.negativeContext()
+	target.stateMu.RLock()
+	defer target.stateMu.RUnlock()
+	var earliest time.Time
+	for _, entries := range []map[string]sharedGNMINegativeEntry{target.stopped, target.isolate} {
+		for _, entry := range entries {
+			if entry.fingerprint != fingerprint || !now.Before(entry.retryAt) {
+				continue
+			}
+			if earliest.IsZero() || entry.retryAt.Before(earliest) {
+				earliest = entry.retryAt
+			}
+		}
+	}
+	return earliest, !earliest.IsZero()
+}
+
+func (target *sharedGNMITargetRuntime) negativeContext() (string, time.Time) {
+	target.sessionMu.RLock()
+	fingerprint := target.fingerprint
+	target.sessionMu.RUnlock()
+	now := time.Now()
+	if target.now != nil {
+		now = target.now()
+	}
+	return fingerprint, now
+}
+
+func (target *sharedGNMITargetRuntime) afterDelay(delay time.Duration) <-chan time.Time {
+	if target.after != nil {
+		return target.after(delay)
+	}
+	return time.After(delay)
+}
+
+func nextSharedGNMINegativeEntry(
+	previous sharedGNMINegativeEntry,
+	fingerprint string,
+	now time.Time,
+) sharedGNMINegativeEntry {
+	failures := 1
+	if previous.fingerprint == fingerprint {
+		failures = previous.failures + 1
+	}
+	return sharedGNMINegativeEntry{
+		fingerprint: fingerprint,
+		failures:    failures,
+		retryAt:     now.Add(sharedGNMINegativeRetryDelay(failures)),
+	}
+}
+
+func sharedGNMINegativeRetryDelay(failures int) time.Duration {
+	if failures <= 1 {
+		return sharedGNMINegativeRetryMinimum
+	}
+	delay := sharedGNMINegativeRetryMinimum
+	for range failures - 1 {
+		if delay >= sharedGNMINegativeRetryMaximum/2 {
+			return sharedGNMINegativeRetryMaximum
+		}
+		delay *= 2
+	}
+	return min(delay, sharedGNMINegativeRetryMaximum)
+}
+
+func sharedGNMIPathKey(path sharedGNMIPath) string { return path.Origin + "\x00" + path.Path }
+
+func sharedGNMIStreamSuppressionKey(stream sharedGNMIStream) string {
+	if len(stream.Groups) == 0 {
+		return stream.Profile
+	}
+	return stream.Profile + "\x00" + strings.Join(stream.Groups, "\x00")
+}
+
+func sharedGNMIRejectedPathSetKey(stream sharedGNMIRuntimeStream) string {
 	var key strings.Builder
 	appendSharedGNMIKeyPart(&key, path.PathTarget)
 	appendSharedGNMIKeyPart(&key, path.Origin)
 	appendSharedGNMIKeyPart(&key, path.Path)
 	return key.String()
-}
-
-func sharedGNMIRejectedRequestKey(
-	target GNMITargetConfig,
-	stream sharedGNMIRuntimeStream,
-	encoding gnmipb.Encoding,
-) (string, error) {
-	request, err := buildSharedGNMISubscribeRequest(target, stream.sharedGNMIStream, encoding)
-	if err != nil {
-		return "", err
-	}
-	wire, err := (proto.MarshalOptions{Deterministic: true}).Marshal(request)
-	if err != nil {
-		return "", fmt.Errorf("marshal rejected gNMI request identity: %w", err)
-	}
-	digest := sha256.New()
-	_, _ = digest.Write([]byte(stream.OwnerID))
-	_, _ = digest.Write([]byte{0})
-	_, _ = digest.Write(wire)
-	return fmt.Sprintf("%x", digest.Sum(nil)), nil
-}
-
-func runtimeSharedGNMIStreams(streams []sharedGNMIRuntimeStream) []sharedGNMIStream {
-	out := make([]sharedGNMIStream, len(streams))
-	for i := range streams {
-		out[i] = streams[i].sharedGNMIStream
-	}
-	return out
 }
 
 func sharedGNMISourceKey(source internalgnmi.SourcePath) string {

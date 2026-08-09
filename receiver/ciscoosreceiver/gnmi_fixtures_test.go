@@ -111,7 +111,7 @@ func TestGNMIFixtureIOSXERFC7951DOM(t *testing.T) {
 	stream := fixtureGNMIStream(t, runtime, builtinGNMIOriginRFC7951)
 	response := fixtureGNMIJSONResponse(t, "ios_xe_rfc7951_dom.json", builtinGNMIOriginRFC7951, nil, true)
 
-	decoded := fixtureGNMIDecode(t, response.GetUpdate())
+	decoded := fixtureGNMIDecode(t, response.GetUpdate(), stream.JSONListKeys)
 	_, mapped, _ := fixtureGNMIMap(t, runtime, stream, decoded, false)
 
 	assert.ElementsMatch(t, []string{
@@ -155,7 +155,7 @@ func TestGNMIFixtureIOSXR2441NativeOptics(t *testing.T) {
 	opticsStream := fixtureGNMIStream(t, runtime, opticsOrigin)
 	response := fixtureGNMIJSONResponse(t, "ios_xr_native_optics.json", opticsOrigin, nil, true)
 
-	decoded := fixtureGNMIDecode(t, response.GetUpdate())
+	decoded := fixtureGNMIDecode(t, response.GetUpdate(), opticsStream.JSONListKeys)
 	_, mapped, _ := fixtureGNMIMap(t, runtime, opticsStream, decoded, false)
 	assert.ElementsMatch(t, []string{
 		"cisco.optics.present",
@@ -198,7 +198,7 @@ func TestGNMIFixtureNXDMESensorAllowlist(t *testing.T) {
 	stream := fixtureGNMIStream(t, runtime, builtinGNMIOriginDME)
 	response := fixtureGNMIJSONResponse(t, "nx_dme_sensors.json", builtinGNMIOriginDME, []string{"sys", "intf"}, false)
 
-	decoded := fixtureGNMIDecode(t, response.GetUpdate())
+	decoded := fixtureGNMIDecode(t, response.GetUpdate(), stream.JSONListKeys)
 	normalized, mapped, unmapped := fixtureGNMIMap(t, runtime, stream, decoded, true)
 	assert.Equal(t, 15, unmapped)
 	assert.ElementsMatch(t, []string{"cisco.optics.esnr", "cisco.optics.tdecq", "cisco.optics.temperature"}, fixtureGNMIMetricNames(mapped))
@@ -374,9 +374,13 @@ func fixtureGNMIRead(t *testing.T, name string) []byte {
 	return raw
 }
 
-func fixtureGNMIDecode(t *testing.T, notification *gnmipb.Notification) internalgnmi.DecodedNotification {
+func fixtureGNMIDecode(t *testing.T, notification *gnmipb.Notification, schemas ...*internalgnmi.JSONListKeySchema) internalgnmi.DecodedNotification {
 	t.Helper()
-	decoded, stats, err := internalgnmi.DecodeNotification(fixtureGNMITarget, notification, fixtureGNMIReceipt)
+	var schema *internalgnmi.JSONListKeySchema
+	if len(schemas) > 0 {
+		schema = schemas[0]
+	}
+	decoded, stats, err := internalgnmi.DecodeNotificationWithSchema(fixtureGNMITarget, notification, fixtureGNMIReceipt, schema)
 	require.NoError(t, err)
 	assert.Zero(t, stats.InvalidTimestamps)
 	assert.Zero(t, stats.UnmappedValues)

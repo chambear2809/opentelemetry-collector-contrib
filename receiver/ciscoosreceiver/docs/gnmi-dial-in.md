@@ -1,149 +1,17 @@
 # Product-Contract gNMI Dial-In
 
-The shared `cisco_os.gnmi` client collects normalized metrics only from the product and release-train contracts below.
-It is a static-inventory, read-only client: it uses Capabilities, bounded product-identity Gets, and Subscribe, and never uses Set.
-Configuration alone does not establish support. A target must pass configuration validation, any product-pinned gNMI
-protocol version, product-approved encoding negotiation, required-model validation, and bounded identity Get probes in
-that order. Configured metric streams start only after product, chassis-model, and canonical software-release
-verification succeeds. Target discovery, configurable general-purpose gNMI Get/Set, and
-dial-out metric semantics are outside this feature's implemented scope; receiver-wide transport hardening also applies
-to the existing dial-out servers as described below.
+The shared `cisco_os.gnmi` client collects normalized metrics from IOS XE, IOS XR, and NX-OS. Endpoint ownership is a
+static inventory, while product identity and exact catalog-row selection are automatic. Each session uses Capabilities
+followed by internal Subscribe-ONCE identity probes; it never uses Get or Set. SupportedModels can filter the identity
+probes attempted, but model presence and a successful Capabilities response do not prove any operational path. SONiC,
+dynamic endpoint discovery, configuration mutation, and dial-out metric semantics remain outside this feature's scope;
+receiver-wide transport hardening also applies to the existing dial-out servers as described below.
 
-See the [gNMI protocol roadmap](gnmi-protocol-roadmap.md) for proxy, tunnel, and configurable periodic Get designs that
-are explicitly not implemented. Bounded product-identity Gets are part of the implemented preflight.
-
-| `product` | Derived OS | Accepted release/train | Live identity source |
-| --- | --- | --- | --- |
-| `catalyst_9300` | `ios_xe` | [`17.18.1` only](https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/prog/configuration/1718/b-1718-programmability-cg/gnmi.html) | IOS XE hardware inventory, current install-version entries, and INSTALL boot mode |
-| `catalyst_9500` | `ios_xe` | [`17.18.1` only](https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/prog/configuration/1718/b-1718-programmability-cg/gnmi.html) | IOS XE hardware inventory, current install-version entries, and INSTALL boot mode |
-| `catalyst_9800` | `ios_xe` | [`17.18.x`](https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/prog/configuration/1718/b-1718-programmability-cg/gnmi.html) | IOS XE hardware inventory plus current install-version entries |
-| `asr_9000` | `ios_xr` | [`24.4.x`](https://www.cisco.com/c/en/us/td/docs/routers/asr9000/software/24xx/programmability/configuration/guide/b-programmability-cg-asr9000-24xx/use-grpc-protocol-to-define-network-operation-with-data-models.html) | `Cisco-IOS-XR-install-oper:install/version` chassis PID and release label |
-| `ncs_5500` | `ios_xr` | [`24.4.x`](https://www.cisco.com/c/en/us/td/docs/iosxr/ncs5500/telemetry/24xx/configuration/guide/b-telemetry-cg-ncs5500-24xx/scale-up-your-network-monitoring-strategy-using-telemetry.html) | `Cisco-IOS-XR-install-oper:install/version` chassis PID and release label |
-| `nexus_9000` | `nx_os` | [`10.6(x)`](https://www.cisco.com/c/en/us/td/docs/dcn/nx-os/nexus9000/106x/programmability/cisco-nexus-9000-series-nx-os-programmability-guide-106x/m-gnmi.html) | Generic `openconfig` origin, `openconfig-platform` model, and `components/component/state` path |
-| `nexus_3500` | `nx_os` | [`10.5(x)`](https://www.cisco.com/c/en/us/td/docs/dcn/nx-os/nexus3000/105x/programmability/cisco-nexus-3500-series-nx-os-programmability-guide_105x/m_n3600_gnmi_93x.html) | Generic `openconfig` origin, `openconfig-platform` model, and `components/component/state` path |
-
-On NX-OS, `openconfig` is the generic wire origin for OpenConfig Get and Subscribe paths. It is not a Capabilities
-model name. Preflight still validates the individual `openconfig-platform`, `openconfig-system`, and
-`openconfig-interfaces` models required by the enabled identity and profile paths.
-
-The Catalyst 9300/9500 contracts accept only the reviewed public release `17.18.1`; other contracts accept any
-syntactically valid software release identifier in the listed train. Each target's `software_version` is the configured
-expected release identifier; its canonical form must match the canonical form derived from the observed value.
-Catalyst switch chassis identity uses the explicit base-PID allowlists below; the
-remaining products use anchored `C9800-`/`CAT9800-`, `ASR-9`, `NCS-55`, `N9K-`, or `N3K-C35` family patterns. A
-chassis match is an identity boundary, not live evidence for every admitted SKU. Cisco SONiC is explicitly unsupported.
-`platform`, including `platform: sonic`, remains a decoder-only migration field that always fails validation; no
-OS-family field can select a contract.
-
-### Admitted Catalyst switch PIDs
-
-The hardware inventory `part-number` must equal one of these documented base PIDs, case-insensitively. License,
-Meraki-mode, module, arbitrary suffix, and invented family strings are rejected.
-
-| Contract | Admitted base PIDs |
-| --- | --- |
-| C9300 | `C9300-24T`, `C9300-48T`, `C9300-24P`, `C9300-48P`, `C9300-24U`, `C9300-48U`, `C9300-24UX`, `C9300-48UXM`, `C9300-48UN`, `C9300-24UB`, `C9300-24UXB`, `C9300-48UB`, `C9300-24H`, `C9300-48H`, `C9300-24S`, `C9300-48S` |
-| C9300L | `C9300L-24T-4G`, `C9300L-24T-4X`, `C9300L-48T-4G`, `C9300L-48T-4X`, `C9300L-24P-4G`, `C9300L-24P-4X`, `C9300L-48P-4G`, `C9300L-48P-4X`, `C9300L-48PF-4G`, `C9300L-48PF-4X`, `C9300L-24UXG-4X`, `C9300L-24UXG-2Q`, `C9300L-48UXG-4X`, `C9300L-48UXG-2Q` |
-| C9300X | `C9300X-48HX`, `C9300X-48TX`, `C9300X-48HXN`, `C9300X-24HX`, `C9300X-12Y`, `C9300X-24Y` |
-| C9500 | `C9500-12Q`, `C9500-24Q`, `C9500-40X`, `C9500-16X`, `C9500-32C`, `C9500-32QC`, `C9500-48Y4C`, `C9500-24Y4C` |
-| C9500X | `C9500X-28C8D`, `C9500X-60L4D` |
-
-C9300/C9300L/C9300X base PIDs were reviewed against Cisco's
-[Catalyst 9300 Series data sheet](https://www.cisco.com/c/en/us/products/collateral/switches/catalyst-9300-series-switches/nb-06-cat9300-ser-data-sheet-cte-en.html),
-revision dated 2026-06-22 and accessed 2026-07-29. C9500/C9500X base PIDs were reviewed against Cisco's
-[Catalyst 9500 Series data sheet](https://www.cisco.com/c/en/us/products/collateral/switches/catalyst-9500-series-switches/nb-06-cat9500-ser-data-sheet-cte-en.html),
-revision dated 2026-07-01 and accessed 2026-07-29. These are product-identity sources, not proof that each PID has passed
-the receiver's live qualification. Cisco's official lifecycle notices identify `C9500-12Q`, `C9500-24Q`, and
-`C9500-40X` as end-of-sale with IOS XE 17.18 EM as their last supported train and `17.18.1` as their last maintenance
-release, and identify `C9500-16X` as end-of-sale with 17.18 EM as its last supported train
-([12Q/24Q/40X notice](https://www.cisco.com/c/en/us/products/collateral/switches/catalyst-9500-series-switches/c9500-12q-c9500-24q-c9500-40x-eol.html);
-[16X notice](https://www.cisco.com/c/en/us/products/collateral/switches/catalyst-9500-series-switches/c9500-16x-switch-nm-c9500-nm-8x-nm-2q-eol.html)).
-Admitting those exact legacy chassis identities at the contract's sole reviewed release is not a statement of
-orderability, current vendor support entitlement, or receiver qualification.
-
-C9300LM is not admitted because no retained C9300LM gNMI evidence or platform-specific contract exists. Expanding
-this list requires documented product evidence, contract tests, and the same live qualification gates as the existing
-entries.
-
-For C9300/C9500, the only accepted canonical release identity is `17.18.1`. The configured forms `17.18.1`,
-`17.18.01`, and `017.018.001` all canonicalize to that identity; they do not admit another maintenance release.
-Prefer the canonical `software_version: "17.18.1"` form shown in the examples. The train-wide C9800 contract may use
-another canonical 17.18 public release label, such as `17.18.1a`. Preflight normalizes the device's internal
-install-version form (for example, `17.18.01.0.1186`) to the public label and compares the canonical labels. The receiver
-does not retain the internal install build suffix or separate opaque `version-extension` in `os.version`. Preflight therefore
-does not attest the exact image build, installed SMUs, or bit-for-bit image identity; retain those details separately
-as live-qualification evidence. Before decoding C9300/C9500 JSON_IETF responses, the switch contracts canonicalize
-Cisco's documented JSON-string-in-string PathElem keys only for the identity probes and built-in switch profile
-models/list keys. Deduplication, aggregated list-key reconciliation, identity comparison, scope validation, mapping,
-and caching then see one key representation. Custom-model keys and legacy contracts keep standard gNMI PathElem string
-semantics.
-
-The exact gNMI `0.4.0` protocol pin is derived from Cisco's IOS XE 17.18 programming guide, not from a retained
-17.18.1 C9300/C9500 Capabilities capture. A public
-[C9300 lab capture](https://github.com/jeremycohoe/cisco-ios-xe-gnmi/blob/55b2f0b5dcce11de7614e6aee7c59e9d1db50882/image-6.png)
-advertises `0.7.0`, but it does not retain the PID, software build, boot mode, topology, or raw response needed to
-associate that value with this contract; its visible module dates also predate the 17.18.1 schema set. The receiver
-therefore rejects `0.7.0` rather than treating pre-1.0 semantic versions as a compatible range. Live qualification must
-retain the exact 17.18.1 value from both platforms; a different value requires an explicit wire-compatibility review
-and closed allowlist update before admission.
-
-### IOS XE 17.18.1 schema provenance
-
-The reviewed schema baseline is the Cisco/YangModels IOS XE `17181` publication at immutable commit
-[`63fa41359e1a5d14c844a3a87d8b7d9c000d1e44`](https://github.com/YangModels/yang/tree/63fa41359e1a5d14c844a3a87d8b7d9c000d1e44/vendor/cisco/xe/17181).
-Raw-file SHA-256 values below were verified on 2026-07-29. C9300/C9500 Capabilities must advertise each exact
-`ModelData` name and organization plus either the listed revision date or the corresponding semantic module version
-for every module required by the enabled identity/profile plan. The table is the complete seven-entry reviewed direct
-catalog and a closed required-module allowlist for these two contracts: configuration and runtime preflight reject a
-custom origin, explicit `models` entry, selector, or mapped descendant that introduces another module. A disabled
-profile does not make its module a runtime requirement. Accepting both documented representations does not admit a
-different schema.
-
-| Reviewed direct module | Organization | Accepted `ModelData.version` | Raw-file SHA-256 |
-| --- | --- | --- | --- |
-| [`Cisco-IOS-XE-device-hardware-oper`](https://github.com/YangModels/yang/blob/63fa41359e1a5d14c844a3a87d8b7d9c000d1e44/vendor/cisco/xe/17181/Cisco-IOS-XE-device-hardware-oper.yang) | `Cisco Systems, Inc.` | `2025-03-01` or `1.12.0` | `0086ba926fb8be8295f3362141ca83ae2fa4f9cf572accee9cbfd0989f089379` |
-| [`Cisco-IOS-XE-install-oper`](https://github.com/YangModels/yang/blob/63fa41359e1a5d14c844a3a87d8b7d9c000d1e44/vendor/cisco/xe/17181/Cisco-IOS-XE-install-oper.yang) | `Cisco Systems, Inc.` | `2025-07-01` or `2.1.0` | `1305174ffd5c14796930b5eba231874a1341019da76a19da3e9678a0f6bf0276` |
-| [`Cisco-IOS-XE-platform-software-oper`](https://github.com/YangModels/yang/blob/63fa41359e1a5d14c844a3a87d8b7d9c000d1e44/vendor/cisco/xe/17181/Cisco-IOS-XE-platform-software-oper.yang) | `Cisco Systems, Inc.` | `2025-07-01` or `3.7.1` | `130a7f48ea178646077705e1247de74a74d7d6527e97971e10aea1bdf9e932b5` |
-| [`Cisco-IOS-XE-process-cpu-oper`](https://github.com/YangModels/yang/blob/63fa41359e1a5d14c844a3a87d8b7d9c000d1e44/vendor/cisco/xe/17181/Cisco-IOS-XE-process-cpu-oper.yang) | `Cisco Systems, Inc.` | `2022-11-01` or `1.3.0` | `9436769911329db0343d46b71b435ef222811e6222c4f902c6d677eb9885fad5` |
-| [`Cisco-IOS-XE-transceiver-oper`](https://github.com/YangModels/yang/blob/63fa41359e1a5d14c844a3a87d8b7d9c000d1e44/vendor/cisco/xe/17181/Cisco-IOS-XE-transceiver-oper.yang) | `Cisco Systems, Inc.` | `2025-03-01` or `1.7.0` | `19da5aec067583ac531ba10f9ee8158bd8baa20f2dedfb932765a91283ac01a1` |
-| [`openconfig-interfaces`](https://github.com/YangModels/yang/blob/63fa41359e1a5d14c844a3a87d8b7d9c000d1e44/vendor/cisco/xe/17181/openconfig-interfaces.yang) | `OpenConfig working group` | `2018-01-05` or `2.3.0` | `215d568b14e69b4e13549f912c823f3d8bb0f4cbb1e93bbc238d6458604596b7` |
-| [`openconfig-system`](https://github.com/YangModels/yang/blob/63fa41359e1a5d14c844a3a87d8b7d9c000d1e44/vendor/cisco/xe/17181/openconfig-system.yang) | `OpenConfig working group` | `2021-06-16` or `0.10.1` | `34757fcf70272fcae80f603795543fd0131829630371453bb88105be7ad48269` |
-
-The direct path contract derived from that baseline is:
-
-| Purpose | Selector and keyed list boundary | Source unit / normalization |
-| --- | --- | --- |
-| Chassis identity | `device-hardware-data/device-hardware/device-inventory`; key `hw-type hw-dev-index`; read `part-number` | Identity only |
-| Release and boot mode | `install-oper-data/install-location-information`; key `fru slot bay chassis`; current version key `version version-extension`; read `oper-state/boot-mode` | Identity only; boot mode must be `INSTALL` |
-| Host identity | `openconfig-system:system/state` | Identity only |
-| CPU | `cpu-usage/cpu-utilization/five-seconds` | percent constrained to `[0,100]`, scaled by `0.01` to unit `1` |
-| Memory | `cisco-platform-software/control-processes/control-process/memory-stats`; implicit list key `fru slot bay chassis`; read `used-percent` | percent constrained to `[0,100]`, scaled by `0.01` to unit `1` |
-| Interfaces | `openconfig-interfaces:interfaces/interface/state`; implicit list key `name` | enums plus cumulative octet/packet/error/discard counters |
-| Experimental DOM optics | `transceiver-oper-data/transceiver`; implicit list key `name` | `Cel`, `V`, `mA`, and `dB{mW}`; disabled until separate physical qualification |
-
-The direct tuple gate does not prove the complete platform module/deviation closure. The pinned
-[`capability-cat9k.xml`](https://github.com/YangModels/yang/blob/63fa41359e1a5d14c844a3a87d8b7d9c000d1e44/vendor/cisco/xe/17181/capability-cat9k.xml)
-has raw SHA-256 `8268bd5e85489f9a8685f1d2dd3f2d4e7c15040886b3d69075e4339e286ea448`, declares
-`module-set-id=dac0317e8f6f38441e24acacc5e3de7a`, and associates multiple Cisco deviations with the OpenConfig interface and
-system modules. A live qualification must independently retain and compare the device's full Capabilities tuples,
-YANG-library/module-set identifier, imported modules, and applicable deviations. Until that closure and exact-device
-evidence are retained, `allow_unqualified: true` remains mandatory and the physical rows remain `Not run`.
-
-C9300/C9500 preflight requires exactly one reported `hw-type-chassis` inventory group, one consistent exact
-current-image identity across every reported current install location, and an unambiguous INSTALL boot mode. Identical
-`(version, version-extension)` records at multiple locations are accepted; a missing value or any disagreement within
-or across locations fails closed. Preflight never selects the first of multiple values and rejects BUNDLE, UNKNOWN,
-missing, or conflicting boot modes. One reported chassis does not prove the physical topology.
-Standalone C9300/C9500, C9300 StackWise, and C9500 StackWise Virtual require separate retained live evidence; stack and
-SVL deployment remain unqualified until their inventory shape, member identity, switchover, and reconnect behavior are
-captured. The topology evidence label is not an admission override: a stack/SVL run must still pass the exactly-one
-`hw-type-chassis` check. A device that exposes multiple chassis groups is rejected by the current contract and cannot
-produce a qualifying result without a capture-driven, separately reviewed identity contract. NX-OS accepts documented
-builds such as `10.6(1)F` and `10.6(2n)F`.
-
-The C9300 and C9500 physical-device qualification rows remain `Not run`, so those targets must explicitly set
-`allow_unqualified: true`. The field is a fail-loud acknowledgement required by those contracts, is rejected when a
-selected contract does not require it, and does not turn synthetic evidence into device qualification.
+The generated [product and domain coverage matrix](gnmi-coverage.md) is the source of truth for support claims. Only an
+exact product/release/domain row marked **Live Qualified** is supported. `Cataloged`, `Implemented`, fixture-passed, and
+`Findings` states are not support, and evidence from a sibling PID is not inherited. The generated
+[metric catalog](gnmi-metrics.md) records metric definitions and catalog use; a metric appearing there does not promote
+a product row to Live Qualified.
 
 The fake-server and synthetic implementation gates can be completed without physical devices. Upstream submission still
 requires human code-owner agreement on the configuration, security model, metric contract, and hardware plan. Exact-build
@@ -181,14 +49,15 @@ receivers:
       max_datapoints_per_chunk: 10000
       max_cached_series: 500000
       targets:
-        - name: access-switch-01
-          endpoint: access-switch-01.example.net:9339
-          product: catalyst_9300
-          software_version: "17.18.1"
-          # Required while retained C9300 physical-device qualification is Not run.
-          allow_unqualified: true
+        - name: nexus-shard-01
+          endpoint: nexus01.example.net:50051
+          # Optional expectations. Omit both for automatic identity discovery.
+          platform: nx_os
+          product_family: nx_os
           max_recv_msg_size_mib: 16
-          encoding_preference: [json_ietf]
+          max_streams: 4
+          encoding_preference: [json, json_ietf]
+          sync_timeout: 2m
           credentials:
             mode: username_password
             username: otel-telemetry
@@ -206,26 +75,27 @@ receivers:
             interfaces:
               enabled: true
             optics:
-              # Enable only after separate chassis/line-card/optic qualification.
-              enabled: false
+              enabled: true
+              required: true
+              sample_interval: 30s
+              stream_mode: sample
 ```
 
-`product` must be one of the seven canonical values in the contract table, and `software_version` must be the expected
-software release identifier in that product's accepted train. Preflight compares canonical configured and observed
-forms; for IOS XE this is the public release label rather than the internal image build or SMU state. The OS family is
-derived from the product and is not configurable. Profiles are product-specific rather than a universal list:
+`platform` is an optional expected OS family (`ios_xe`, `ios_xr`, or `nx_os`), not the source of discovered identity.
+`product_family` is an optional expected generated-catalog family (`ios_xr`, `ios_xe_routing`, `ios_xe_switching`,
+`ios_xe_wireless`, or `nx_os`). If either assertion disagrees with Subscribe-ONCE identity, the target fails instead of
+silently selecting a sibling row. The bootstrap stages identity leaves until a true sync response and clean ONCE-stream
+completion, applies the target `sync_timeout`, and publishes no partial identity.
 
-| Product family | Default normalized profiles | Optional profiles |
-| --- | --- | --- |
-| Catalyst 9300 / Catalyst 9500 | Identity, CPU, per-location memory utilization, interface state, and cumulative interface counters | Experimental IOS XE DOM optics |
-| Catalyst 9800 | Identity, CPU, per-location memory utilization, interface state, and cumulative interface counters | `catalyst_9800_wireless`; experimental IOS XE DOM optics |
-| ASR 9000 / NCS 5500 | Identity, per-node CPU, interface state, and cumulative interface counters | Experimental IOS XR controller/lane DOM optics |
-| Nexus 9000 / Nexus 3500 | Identity, interface state, and cumulative interface counters; no system profile | Experimental NX DME DOM/VDM optics |
+Profiles are `identity`, `system`, `interfaces`, `optics`, `catalyst_9800_wireless`, `inventory`, `environment`, `l2`,
+`routing`, `mpls`, `overlay`, `qos`, `acl`, `topology`, `poe`, `time_sync`, `high_availability`, `asic`, and
+`telemetry_self`. Identity defaults to five minutes, system and interfaces to 60 seconds, and optics to 30 seconds.
+Identity, system, and interfaces preserve their existing enabled defaults. Optics, wireless, and every new normalized
+profile are disabled by default.
 
-Identity defaults to five minutes, supported system and interface profiles to 60 seconds, and optics to 30 seconds.
-Safe product-specific baseline profiles default on. `catalyst_9800_wireless` is valid only for `catalyst_9800`.
-Every optics profile is opt-in and remains explicitly experimental until the exact product, release, line card, and
-physical optics are separately qualified.
+The new profile names are a stable opt-in configuration surface for staged catalog expansion. Startup rejects an
+enabled profile that has no implemented path definition for the expected platform; a product/domain row in the
+coverage registry does not create a subscription by itself.
 
 Credentials modes are `username_password`, `mtls`, and `mtls_username_password`. mTLS modes also require
 `tls.cert_file` and `tls.key_file`. TLS is mandatory: plaintext `tls.insecure` and TLS versions below 1.2 are rejected.
@@ -268,181 +138,17 @@ reviewed switch release `17.18.1` predates Cisco's `gnxi secure-vrf` feature, do
 management-plane ACL/firewall/control-plane isolation for 17.18.1; do not configure a later command or broaden the
 product contract without a separate schema and device qualification.
 
-Targets normally use no more than four compatible subscription streams. A target may explicitly raise its maximum to
-eight only after that product and release have been qualified. Origins remain separate from paths: IOS XE uses
-RFC7951 prefixing, IOS XR uses the module origin, and NX-OS uses generic `openconfig` for OpenConfig paths and `DME`
-for the distinguished-name optics family.
-IOS XR baseline collection uses two streams; enabling its experimental optics profile raises the total to three.
+`encoding_preference` is an ordered list of concrete `proto`, `json_ietf`, and `json` choices and defaults to
+`[json_ietf, json]`. Selection happens only after intersecting the preference with the exact catalog path and target
+capabilities. IOS XE scalar PROTO is eligible only on qualified product/release rows; opaque NX DME PROTO remains
+ineligible without a schema decoder. `sync_timeout` defaults to two minutes, must be positive, and cannot exceed 30
+minutes. A group may override it.
 
-The seven Cisco product contracts require an origin for custom subscriptions and reject `path_target`. Catalyst
-9300/9500 and both Nexus contracts reject literal `*` selectors. Unkeyed built-in list ancestors are not literal
-wildcards. Three switch selectors rely on implicit list expansion: memory omits
-`control-process[fru,slot,bay,chassis]`, interfaces omit `interface[name]`, and experimental optics omit
-`transceiver[name]`. Each requires live Subscribe qualification on the exact build; optics remains disabled until its
-path shape, returned volume, and physical readings are separately qualified.
-
-`custom_subscriptions[].models` explicitly separates Capabilities requirements from the wire origin. It is optional
-for non-generic origins, but required and non-empty for `origin: openconfig`. Each custom subscription accepts at most
-32 unique, whitespace-free valid YANG module identifiers, preserving exact case. Every explicit model is included in
-Capabilities validation. Entries must identify concrete modules; the generic name `openconfig` is rejected. For
-C9300/C9500, every model derived from the complete custom plan must also be present in the seven-entry reviewed
-catalog; `allow_unqualified` does not permit an unreviewed custom module. For example:
-
-```yaml
-custom_subscriptions:
-  - name: component_temperature
-    origin: openconfig
-    models: [openconfig-platform]
-    mode: stream
-    sample_interval: 1m
-    encoding_preference: [json]
-    paths:
-      - path: components/component/state/temperature
-        stream_mode: sample
-    mappings:
-      - path: components/component/state/temperature/instant
-        metric_name: example.component.temperature
-        description: Component temperature
-        unit: Cel
-        scale: 1
-        gauge_type: double
-        path_keys:
-          component.name: hw.name
-```
-
-The request carries `openconfig` as its origin; it does not substitute `openconfig-platform` into the path prefix.
-
-`path_target` is a decoder-only migration field: it remains in the schema solely to produce an actionable validation
-error and is never placed on a contract-governed request. Each target accepts at most eight custom streams. A custom stream has
-at most 256 effective request selectors (explicit `paths`, or derived mapping paths when `paths` is omitted), 1024
-mappings, and 64 path-key attributes per mapping. Each profile accepts at most 64 path overrides. Receiver-wide limits
-are 4096 custom request paths, 16384 mappings, 4096 profile path overrides, and 64 MiB of retained custom/profile plan
-strings; validation enforces them before request or mapping construction.
-
-## Subscribe request parity
-
-The receiver plans each physical subscription stream independently from one Capabilities response. A target-wide
-`encoding_preference` can contain only encodings approved by the selected product contract. Catalyst 9300 and Catalyst
-9500 accept JSON_IETF only. Catalyst 9800, ASR 9000, and NCS 5500 accept JSON_IETF or JSON; Nexus 9000 and Nexus 3500
-accept JSON only. PROTO is rejected. When every preference field is omitted, requests use STREAM/SAMPLE, the existing
-profile or custom sample interval, no list options or extensions, and JSON_IETF before JSON where the product contract
-allows both encodings.
-
-The Catalyst 9300 and Catalyst 9500 contracts additionally require the target to advertise gNMI `0.4.0`, use an
-RFC7951 subscription-list prefix, and narrow Subscribe to STREAM/SAMPLE with one effective 1-to-604800-second cadence
-per request. Updates-only, aggregation, QoS, Depth, heartbeat, suppression, ON_CHANGE, TARGET_DEFINED, ONCE, POLL,
-mixed cadences, and literal `*` selectors fail validation. The built-in memory, interface, and experimental transceiver
-selectors intentionally leave their respective list keys unset; those implicit expansions remain exact-build live
-qualification gates. The CPU subscription terminates at the `five-seconds` leaf rather than requesting the entire CPU
-subtree.
-
-The two Nexus contracts deliberately narrow this generic request surface to the subset common to Nexus 9000 10.6 and
-Nexus 3500 10.5: JSON encoding, STREAM/SAMPLE subscriptions, explicit non-wildcard paths, no subscription-list prefix,
-and no optional subscription flags. All paths in one Nexus request must use one effective sample interval in the
-documented 1-to-604800-second range. Nexus configurations that request JSON_IETF, PROTO, ON_CHANGE, TARGET_DEFINED,
-ONCE, POLL, aggregation, updates-only, QoS, Depth, heartbeat, suppression, or mixed/out-of-range cadences fail
-validation.
-
-Profiles accept `encoding_preference`, `updates_only`, `allow_aggregation`, `qos_marking`,
-`gnmi_extensions.depth`, and `path_overrides`. An override key is a stable path ID from the selected product's catalog,
-such as `system.cpu` or `interfaces.openconfig`; an override changes request behavior only and cannot replace the
-catalog path or metric mapping. Unknown path IDs are rejected. Custom subscriptions accept the same list-level and
-extension fields plus `origin`, an origin-dependent `models` list, and an explicit `paths` list. Each path entry has
-`path`, `stream_mode`, `sample_interval`, `heartbeat_interval`, and `suppress_redundant`.
-
-`encoding_preference` order is resolved per stream. `updates_only` and `allow_aggregation` default to `false`.
-`qos_marking` is absent by default and accepts `0` through `63`; `gnmi_extensions.depth` is absent by default and accepts
-`1` through `128`. Depth is encoded as the typed extension on the top-level SubscribeRequest. QoS, aggregation, and
-updates-only are encoded on SubscriptionList. Per-path mode, timing, heartbeat, and suppression are encoded on the
-individual Subscription.
-
-### Path validation
-
-STREAM path options follow the gNMI protocol semantics:
-
-- `sample`: an omitted `sample_interval` inherits the stream's existing interval; explicit `0s` asks for the target's
-  fastest supported interval. `suppress_redundant` and a positive `heartbeat_interval` are permitted.
-- `on_change`: a positive `heartbeat_interval` is permitted; `sample_interval` and `suppress_redundant` are rejected.
-- `target_defined`: sample interval, heartbeat, and suppression are rejected so the target owns the behavior.
-
-ONCE and POLL are available only to the ASR 9000 and NCS 5500 contracts. They leave all per-path mode and timing fields
-at protobuf defaults. `path_overrides` and `updates_only` are rejected in those modes because they do not produce useful
-mapped output; POLL continues to use the client-side `poll_interval`. All Catalyst and Nexus contracts are STREAM-only.
-
-When custom `paths` is omitted, the receiver derives one exact selector from every mapping, preserving existing custom
-configurations. When it is present, every mapping must equal or descend from at least one selector. Keys on a selector
-must be a subset of keys on the mapped path. Duplicate selectors and selectors that assign conflicting behavior are
-rejected.
-
-`allow_aggregation: true` requires a negotiated JSON or JSON_IETF encoding. All shared product contracts reject PROTO.
-Actual support for modes,
-heartbeat, suppression, QoS, aggregation, and Depth remains device- and release-dependent and must be recorded in the
-validation matrix rather than encoded as a generic Cisco capability table.
-
-### Decoding and reconnect state
-
-The bounded primitive scalar PROTO decoder remains for deprecated receiver surfaces, but shared product contracts do
-not negotiate PROTO. Aggregated JSON and JSON_IETF subtrees use the same bounded recursive decoder as non-aggregated
-payloads, and only explicitly mapped descendant leaves become metrics.
-
-`leaflist_val`, `bytes_val`, `any_val`, and experimental `proto_bytes` are recognized and bounded but do not become
-metrics. They increment bounded self-telemetry by value kind. In particular, arbitrary binary protobuf data is never
-guessed or promoted to a dynamically named metric.
-
-Each stream owns its cache entries, atomic baselines, authoritative delete tombstones, and semantic-invalidation
-watermarks. Before a new target session starts, the receiver silently resets only owners belonging to streams configured
-with `updates_only: true`. The reset does not emit delete or optical-presence signals. Streams without `updates_only`
-retain the existing cross-reconnect cache behavior.
-
-### Rejected requests are not downgraded
-
-If a non-baseline Subscribe request returns `InvalidArgument` or `Unimplemented`, the receiver makes one bounded
-diagnostic probe using baseline SAMPLE/JSON semantics and discards all probe data. When the baseline succeeds, the
-receiver classifies the failure as `unsupported_request_options`, stops only that configured stream until reload or
-restart, and does not retry another encoding or remove options. When the baseline also fails, the existing bounded path
-bisection runs with baseline requests; accepted path groups are relaunched with their original requested options.
-
-Other streams remain connected. Any degraded enabled curated profile, whether required or optional, blocks live
-qualification until receiver restart. An optional custom stream is isolated without making the whole target reconnect.
-A custom stream marked `required` is also a qualification obligation; late degradation withdraws a previously emitted
-up signal. Every discard-only diagnostic probe has a finite deadline no longer than 15 seconds.
-Rejected-request identities include paths, every path and list option, encoding, and extensions so repeated failures
-remain bounded without conflating different requests.
-
-## Qualification preflight and quarantine
-
-Every new session completes these steps in order:
-
-1. Call Capabilities once on the target session, validate any product-pinned gNMI protocol version, and determine the
-   product-approved encoding for every planned physical stream. C9300/C9500 require gNMI `0.4.0` and JSON_IETF.
-2. Derive the required model set from the contract's identity probes, every enabled curated-profile path, each
-   non-generic custom origin, every explicit custom `models` entry, and every valid RFC7951 module qualifier in
-   selectors and mapped descendants. The generic NX-OS `openconfig` origin is not treated as a model; its concrete
-   model requirements come from the built-in contract or the custom stream's required `models` list. Preserve exact
-   YANG module-name case and reject a target when any required model is missing. C9300/C9500 also require the exact
-   reviewed organization and revision-date-or-semantic-version tuple for every required enabled module in the pinned
-   seven-entry closed catalog, reject a plan that derives any other module, and reject conflicting same-name catalog
-   entries.
-3. Run only the bounded identity Get probes declared by the selected contract and validate one unambiguous chassis
-   identity plus a canonical observed software release identifier matching the configured identifier. C9300/C9500
-   additionally require one consistent exact current-image identity across all current install locations and INSTALL
-   boot mode.
-4. Build the verified resource identity and launch metric Subscribe streams only after every preceding check passes.
-   The verified session never invokes Set.
-
-An identity that is missing, ambiguous, malformed, or oversized, a product or release mismatch, a missing required
-model, an unsupported pinned model tuple or boot mode, an unsupported product-pinned gNMI protocol version, an
-unsupported encoding, or a deterministic
-malformed/unimplemented Capabilities response is a terminal compatibility failure. The receiver emits
-`cisco.device.up=0`, records one bounded preflight failure,
-launches no configured metric stream, and quarantines only that target until receiver restart. The preflight may have
-issued one or more bounded identity Gets; Set remains zero. A planned stream with no
-product-approved advertised encoding is the terminal `unsupported_encoding` compatibility failure and
-quarantines the target. The receiver does not try another preference after an actual request rejection. Transport
-failures, authentication failures, and temporary RPC failures continue through the existing bounded backoff path.
-
-Post-preflight device errors follow the no-downgrade diagnostic and path-bisection behavior above. A live qualification
-cannot pass while any enabled curated profile is degraded, even when non-degraded profiles continue to produce data.
+Targets normally use no more than four compatible subscription streams. `max_streams` accepts 1 through 16 and defaults
+to 4. A value above 4 requires an explicit `product_family` and cannot exceed its generated catalog ceiling: the current
+IOS catalog families remain capped at 4 and `nx_os` permits at most 16. These are configuration ceilings, not support claims; the exact row and
+device configuration still require live qualification at that concurrency. Origins remain separate from paths: IOS XE
+uses RFC7951 prefixing, IOS XR uses the module origin, and NX-OS assigns `DME`, device, or OpenConfig origin per path.
 
 `max_recv_msg_size_mib` cannot exceed 16 MiB. Larger frames are rejected at transport level, and in-limit responses
 receive a schema-aware raw-wire complexity scan before protobuf objects are materialized; narrow or split device
@@ -460,21 +166,31 @@ subscription is intentionally broad because NX-OS does not provide a portable re
 family. Keep NX optics experimental until the deployed release and hardware have been qualified for returned object
 volume, path shape, and sensor descriptions.
 
+Each profile accepts `enabled`, `required`, `sample_interval`, `stream_mode`, and `groups`. Stream mode is `auto`,
+`sample`, `on_change`, or `target_defined`; existing profiles retain SAMPLE defaults. A group can override `enabled`,
+`required`, `sample_interval`, `stream_mode`, and `sync_timeout`, and can set `max_entities` plus `selectors`. Group names
+and selector keys must be declared by the generated platform/profile catalog. Selector values are exact matches: empty values,
+duplicates, and wildcard syntax are rejected. Enabling a catalog-marked high-cardinality group requires a positive
+`max_entities`. Within an enabled profile, a catalog group is enabled unless its group override sets `enabled: false`;
+sample interval and stream mode inherit the profile, sync timeout inherits the target, and `required` defaults to false.
+For selectors, `max_entities` bounds the configured Cartesian request expansion before any stream starts.
+It also bounds distinct catalog entity identities retained in committed cache state. An entity may own several metric
+leaves while consuming one slot. Overflow rolls back the notification before OTLP delivery. An optional affected
+packed group stream degrades independently; a required group keeps the target unavailable. Deletes and atomic
+replacement release entity capacity transactionally.
+
 Custom subscriptions are accepted only when each scalar numeric source path has an explicit mapping with a metric name,
-description, UCUM unit, scale, gauge type, and path-key-to-attribute mappings. Selectors may subscribe to a mapped
-ancestor for aggregated JSON, but they never authorize arbitrary JSON-to-metric conversion. Unmapped paths, custom sums,
-and dynamic `_info` metrics are rejected. Each custom name is therefore an exact configuration-time descriptor rather
-than part of fixed catalog completeness. Validation rejects collisions with the union of receiver, system-scraper, and
-interface-scraper fixed catalogs and reserves the pattern-governed `cisco.catalyst9800.yang.__v1.*` and
-`cisco.iosxr.yang.__v1.*` generated namespaces (and their broader product YANG namespaces) for model-derived telemetry.
+description, UCUM unit, scale, gauge type, and path-key-to-attribute mappings. Their `encoding` is `auto`, `proto`,
+`json_ietf`, or `json` and defaults to `auto`; a concrete choice remains subject to target capabilities and a declared
+safe decoder. Unmapped paths, custom sums, arbitrary JSON-to-metric conversion, and dynamic `_info` metrics are rejected.
 
 ## Metric contract
 
-The product-specific identity, system, and interface profiles reuse the receiver's existing normalized metrics instead
-of creating platform-specific duplicates. Catalyst 9300, Catalyst 9500, and Catalyst 9800 emit `cisco.device.up`,
-`system.cpu.utilization`, and per-location `system.memory.utilization`. ASR 9000 and NCS 5500 emit
-`cisco.device.up` and per-node `system.cpu.utilization`; they do not emit normalized memory or uptime. Nexus emits
-`cisco.device.up` and has no system profile. No shared-gNMI product emits `system.uptime`.
+The generated [metric catalog](gnmi-metrics.md) is the complete public mapping inventory for the dated catalog snapshot.
+The summary below describes the existing baseline contracts; catalog presence is not a product support claim.
+
+The identity, system, and interfaces profiles reuse the receiver's existing normalized metrics instead of creating
+platform-specific duplicates:
 
 Every product's interface profile emits `system.network.interface.status`, `cisco.interface.admin.status`, and the
 cumulative sums `system.network.io`, `system.network.errors`, `system.network.packet.count`, and
@@ -640,15 +356,9 @@ by assigning the same target to two active collectors.
 
 ## Alerts and runbook
 
-Alert on target inactivity beyond two sample intervals, required-profile degradation, authentication failures,
-decode/unmapped growth, cache or auxiliary-state use above 80 percent, stream churn, consumer refusal, and device or
-collector certificate expiry. Utilization is emitted per target and is the larger of that partition's entry-count and
-retained-byte ratios, so byte pressure cannot remain hidden behind a low entry count.
-
-Also alert when `otelcol_ciscoosreceiver_gnmi_product_verified` is zero or
-`otelcol_ciscoosreceiver_gnmi_preflight_failures` increases. A compatibility failure requires correcting the configured
-product/version, device image, model availability, or encoding contract and restarting the receiver; it is not a
-transport outage to solve with more retries.
+Alert on target inactivity beyond two sample intervals, required profile or group degradation, authentication failures,
+decode/unmapped growth, cache use above 80 percent, stream churn, consumer refusal, and device or collector certificate
+expiry.
 
 For an authentication alert, stop rapid retries, confirm the shard account is not locked, verify Capabilities and
 the bounded identity Get and Subscribe permissions while Set remains denied, rotate the credential, then roll one shard.
@@ -658,71 +368,53 @@ identify the profile and series growth, then split the static inventory without 
 
 ## Acceptance gates
 
-Unit and fake-server coverage must include configuration validation, origin/path construction, all typed encodings,
-scaling and units, atomic/delete behavior, timestamps and out-of-order updates, cache/batch bounds, POLL sequencing,
-reconnect classification, shutdown rollback, TLS trust/SAN/mTLS cases, credentials on every RPC, denied credentials,
-bounded Capabilities, identity Get, and Subscribe responses, required-model derivation, every terminal preflight and degradation reason,
-option rejection versus bad-path bisection, and proof that Set remains zero. Each of the seven contracts requires a
-fake-server path through Capabilities, bounded identity Get, the permitted metric Subscribe shape,
-verified resource attributes, and
-decoded metrics. Negative cases must prove isolation without downgrade; transient network failures must continue
-retrying.
+Unit and fake-server coverage must include configuration validation, Capabilities followed by Subscribe-ONCE identity,
+expected-family mismatches, origin/path construction, per-stream encodings and modes, sync timeouts, scaling and units,
+atomic/delete behavior, timestamps and out-of-order updates, cache/batch bounds, POLL sequencing, reconnect and upgrade
+reselection, shutdown rollback, TLS trust/SAN/mTLS cases, credentials on every RPC, denied credentials, and proof that
+zero Set/Get calls occur.
 
-Implementation coverage is recorded by product and train in the [validation matrix](validation-matrix.md). It does not
-qualify a device. Live qualification is exact-build evidence and requires verified TLS, zero preflight failures, no
-degraded enabled profile, active subscriptions, `cisco.device.up=1`, correct verified resource identity, backend
-delivery, and at least three successful collection intervals. C9300/C9500 additionally require the external
-content-addressed authorization artifact and four positive backend attestations defined above; receiver-side proof that
-Set was never called is not device authorization evidence. Catalyst 9800 qualification must additionally exercise
-`catalyst_9800_wireless` against representative AP and client state.
+Virtual labs can qualify common control-plane behavior only when Cisco documents that behavior across the exact family.
+They do not qualify optics, PoE, environmental sensors, ASICs, supervisors, line cards, stacks, or attached wireless
+hardware. A catalog row, successful fixture, model advertisement, or passing virtual test remains `Findings` or another
+non-live disposition until the exact PID/release/domain row completes live validation. Consult the generated
+[coverage matrix](gnmi-coverage.md); only its Live Qualified rows are supported.
 
-Catalyst 9300 and Catalyst 9500 qualification also requires an external inventory record for the physical topology.
-The current identity probe rejecting multiple reported chassis groups is fail-closed against ambiguous inventory, but
-one reported chassis group does not prove standalone operation. Record standalone, C9300 StackWise, or C9500 StackWise
-Virtual explicitly and qualify each topology separately; stack/SVL support cannot be inferred from a standalone run.
-The live harness enforces that record with `CISCOOS_E2E_GNMI_TOPOLOGY`: C9300 accepts only `standalone` or `stackwise`,
-and C9500 accepts only `standalone` or `stackwise_virtual`. The backend assertion must echo the same label. This label
-scopes evidence only; it neither enables stack/SVL support nor bypasses the single-chassis identity check.
-
-The switch image artifact must also record INSTALL boot mode, the exact image filename, internal install version,
-`version-extension`, installed SMUs, and a digest of that independently captured evidence. Retain the complete gNMI
-Capabilities `ModelData` tuples and independently capture the YANG-library module-set/import/deviation closure. Keep its
-`CISCOOS_E2E_GNMI_IMAGE_EVIDENCE_SHA256` separate from the authorization artifact and
-`CISCOOS_E2E_GNMI_AUTHORIZATION_EVIDENCE_SHA256`; neither digest can substitute for the other. The seven-entry reviewed
-direct catalog—and the subset enforced by a given enabled plan—does not, by itself, attest the complete CAT9K deviation
-set.
-
-Physical qualification is mandatory for every optional optics profile: IOS XE DOM, IOS XR controller/lane DOM, and
-NX-OS DOM/VDM on the deployed chassis, line card, and optic. Capture sanitized Capabilities, identity GetResponse, and metric SubscribeResponse
-fixtures, and record release,
-SKU, optic PID, firmware, origin, path, description, unit, and raw value. Compare simultaneous gNMI and CLI/device
-readings within one documented source resolution. Exercise insert/remove, link failure, reboot, AAA outage and recovery,
-both certificate rotations, supervisor switchover, and a 24-hour soak at 30 seconds. A baseline product qualification
-does not qualify an optional optics profile.
+Physical qualification is mandatory for hardware-dependent domains. Capture sanitized Capabilities and
+SubscribeResponse fixtures tied to the selected model revision and path variant; record the exact PID, release, role,
+hardware class, relevant firmware, origin, path, description, unit, and raw value. Compare representative emitted
+metrics with simultaneous CLI or device-state readings within one documented source resolution. Exercise state
+transitions and deletions, reconnect, AAA outage and recovery, certificate rotations, applicable supervisor or stack
+failover, backend delivery, and a 24-hour soak. Record the tested scale envelope on the exact qualified row.
 
 The scale gate is a synthetic TLS test with at least 100 targets, 5,000 optical ports, up to eight lanes, 500,000 active
 mapped series, and about 16,700 datapoints/second. On 4 vCPU and 4 GiB, require CPU at or below 80 percent, RSS at or
 below 3.2 GiB, p95 notification-to-consumer latency below five seconds, no receiver loss with an accepting consumer,
 bounded cache, and reconnect recovery within 60 seconds.
 
-An opt-in data-plane harness is included for the 100-target/500,000-state-capacity/16,700-point cache, mapping, and
-lossless chunking portion. It holds 450,000 active series and then fills the remaining capacity with 25,000 delete
-tombstones and 25,000 semantic-invalidation watermarks:
+Product-specific qualification adds a 64,000-client wireless scenario, the NX-OS documented 250,000 aggregate-MO
+boundary, and bounded large RIB/FIB, MAC-table, ACL-rule, and QoS-class detail cases. Each run must record the enabled
+features, selected path-set variants, selector and entity limits, retained-state peak, device control-plane impact, and
+the exact PID/release envelope. Passing one scale case does not qualify a different product, hardware class, or domain.
+
+An opt-in data-plane harness is included for the 100-target/500,000-series/16,700-point cache, mapping, and lossless
+chunking portion:
 
 ```sh
 CISCOOS_GNMI_RUN_SCALE_QUALIFICATION=1 GOMAXPROCS=4 go test ./internal/gnmi \
   -run '^TestInternalGNMIScaleQualification_100Targets5000Ports500KStateCapacity$' -count=1 -v
 ```
 
-The 2026-07-29 audited synthetic run used Go 1.25.12 on Darwin arm64, an Apple M3 Pro, 18 GiB host memory, and
-`GOMAXPROCS=4`. It populated 450,000 active series in 3.986 seconds, processed the 16,700-point interval in 152.168 ms,
-and filled the remaining state headroom in 960.387 ms. RSS was 1,662,844,928 bytes; measured four-core burst CPU was
-24.93 percent and projected four-core CPU at the modeled one-second cadence was 3.79 percent. Conservative cache
-accounting retained 1,199,168,900 bytes for active state and 1,439,531,900 bytes after barriers, below the
-1,610,612,736-byte (1.5 GiB) cache ceiling. Chunks contained 10,000 and 6,700 datapoints with no loss. This is
-implementation evidence, not physical-device qualification. The harness does not exercise 100 TLS listeners,
-reconnect recovery, exporter queues, a 4 GiB memory-constrained runtime, or hardware; those portions of the scale gate
-remain mandatory in the deployment environment.
+This opt-in harness uses an explicit 1.25 GiB retained-accounting limit for its deliberately high-overhead synthetic
+series shape. Production retains the fixed 256 MiB cache ceiling described above; that byte ceiling is independent of
+the 500,000-series count ceiling and stops this synthetic shape before all 500,000 series can be retained.
+
+The local qualification run populated 500,000 series in 3.50 seconds and processed the interval in 150 ms, with a
+1,100,820,000-byte conservative retained-state estimate, 1.32 GB RSS, 24.16 percent four-core burst CPU, and 3.63
+percent four-core CPU at the modeled one-second cadence; chunks contained 10,000 and 6,700 datapoints with no loss.
+That harness does not
+exercise 100 TLS listeners, reconnect recovery, exporter queues, or hardware. Those portions of the scale gate remain
+mandatory in the deployment environment.
 
 Splunk Observability Cloud acceptance verifies metric names and dimensions, UCUM units (especially `dB{mW}`),
 presence/freshness behavior, dashboards, and predictive-model inputs. Removal must stop new optical samples, and

@@ -3,14 +3,13 @@
 package metadata
 
 import (
-	"slices"
-	"time"
-
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/filter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver"
+	"slices"
+	"time"
 )
 
 const (
@@ -27,18 +26,11 @@ const (
 	_ AttributeCiscoGnmiReason = iota
 	AttributeCiscoGnmiReasonBisectionLimit
 	AttributeCiscoGnmiReasonCacheLimit
-	AttributeCiscoGnmiReasonIdentityAmbiguous
-	AttributeCiscoGnmiReasonIdentityMissing
+	AttributeCiscoGnmiReasonDecodeError
+	AttributeCiscoGnmiReasonEntityAccounting
+	AttributeCiscoGnmiReasonEntityLimit
 	AttributeCiscoGnmiReasonIncompatiblePathGroup
-	AttributeCiscoGnmiReasonMalformedIdentity
-	AttributeCiscoGnmiReasonMalformedUpdate
-	AttributeCiscoGnmiReasonMissingModel
-	AttributeCiscoGnmiReasonProductMismatch
-	AttributeCiscoGnmiReasonReleaseMismatch
-	AttributeCiscoGnmiReasonUnsupportedBootMode
-	AttributeCiscoGnmiReasonUnsupportedEncoding
-	AttributeCiscoGnmiReasonUnsupportedGnmiVersion
-	AttributeCiscoGnmiReasonUnsupportedModelVersion
+	AttributeCiscoGnmiReasonSyncTimeout
 	AttributeCiscoGnmiReasonUnsupportedPath
 	AttributeCiscoGnmiReasonUnsupportedRequestOptions
 )
@@ -50,30 +42,16 @@ func (av AttributeCiscoGnmiReason) String() string {
 		return "bisection_limit"
 	case AttributeCiscoGnmiReasonCacheLimit:
 		return "cache_limit"
-	case AttributeCiscoGnmiReasonIdentityAmbiguous:
-		return "identity_ambiguous"
-	case AttributeCiscoGnmiReasonIdentityMissing:
-		return "identity_missing"
+	case AttributeCiscoGnmiReasonDecodeError:
+		return "decode_error"
+	case AttributeCiscoGnmiReasonEntityAccounting:
+		return "entity_accounting"
+	case AttributeCiscoGnmiReasonEntityLimit:
+		return "entity_limit"
 	case AttributeCiscoGnmiReasonIncompatiblePathGroup:
 		return "incompatible_path_group"
-	case AttributeCiscoGnmiReasonMalformedIdentity:
-		return "malformed_identity"
-	case AttributeCiscoGnmiReasonMalformedUpdate:
-		return "malformed_update"
-	case AttributeCiscoGnmiReasonMissingModel:
-		return "missing_model"
-	case AttributeCiscoGnmiReasonProductMismatch:
-		return "product_mismatch"
-	case AttributeCiscoGnmiReasonReleaseMismatch:
-		return "release_mismatch"
-	case AttributeCiscoGnmiReasonUnsupportedBootMode:
-		return "unsupported_boot_mode"
-	case AttributeCiscoGnmiReasonUnsupportedEncoding:
-		return "unsupported_encoding"
-	case AttributeCiscoGnmiReasonUnsupportedGnmiVersion:
-		return "unsupported_gnmi_version"
-	case AttributeCiscoGnmiReasonUnsupportedModelVersion:
-		return "unsupported_model_version"
+	case AttributeCiscoGnmiReasonSyncTimeout:
+		return "sync_timeout"
 	case AttributeCiscoGnmiReasonUnsupportedPath:
 		return "unsupported_path"
 	case AttributeCiscoGnmiReasonUnsupportedRequestOptions:
@@ -84,56 +62,14 @@ func (av AttributeCiscoGnmiReason) String() string {
 
 // MapAttributeCiscoGnmiReason is a helper map of string to AttributeCiscoGnmiReason attribute value.
 var MapAttributeCiscoGnmiReason = map[string]AttributeCiscoGnmiReason{
-	"bisection_limit":             AttributeCiscoGnmiReasonBisectionLimit,
-	"cache_limit":                 AttributeCiscoGnmiReasonCacheLimit,
-	"identity_ambiguous":          AttributeCiscoGnmiReasonIdentityAmbiguous,
-	"identity_missing":            AttributeCiscoGnmiReasonIdentityMissing,
-	"incompatible_path_group":     AttributeCiscoGnmiReasonIncompatiblePathGroup,
-	"malformed_identity":          AttributeCiscoGnmiReasonMalformedIdentity,
-	"malformed_update":            AttributeCiscoGnmiReasonMalformedUpdate,
-	"missing_model":               AttributeCiscoGnmiReasonMissingModel,
-	"product_mismatch":            AttributeCiscoGnmiReasonProductMismatch,
-	"release_mismatch":            AttributeCiscoGnmiReasonReleaseMismatch,
-	"unsupported_boot_mode":       AttributeCiscoGnmiReasonUnsupportedBootMode,
-	"unsupported_encoding":        AttributeCiscoGnmiReasonUnsupportedEncoding,
-	"unsupported_gnmi_version":    AttributeCiscoGnmiReasonUnsupportedGnmiVersion,
-	"unsupported_model_version":   AttributeCiscoGnmiReasonUnsupportedModelVersion,
-	"unsupported_path":            AttributeCiscoGnmiReasonUnsupportedPath,
-	"unsupported_request_options": AttributeCiscoGnmiReasonUnsupportedRequestOptions,
-}
-
-// AttributeCiscoGnmiValueKind specifies the value cisco.gnmi.value_kind attribute.
-type AttributeCiscoGnmiValueKind int
-
-const (
-	_ AttributeCiscoGnmiValueKind = iota
-	AttributeCiscoGnmiValueKindAny
-	AttributeCiscoGnmiValueKindBytes
-	AttributeCiscoGnmiValueKindLeaflist
-	AttributeCiscoGnmiValueKindProtoBytes
-)
-
-// String returns the string representation of the AttributeCiscoGnmiValueKind.
-func (av AttributeCiscoGnmiValueKind) String() string {
-	switch av {
-	case AttributeCiscoGnmiValueKindAny:
-		return "any"
-	case AttributeCiscoGnmiValueKindBytes:
-		return "bytes"
-	case AttributeCiscoGnmiValueKindLeaflist:
-		return "leaflist"
-	case AttributeCiscoGnmiValueKindProtoBytes:
-		return "proto_bytes"
-	}
-	return ""
-}
-
-// MapAttributeCiscoGnmiValueKind is a helper map of string to AttributeCiscoGnmiValueKind attribute value.
-var MapAttributeCiscoGnmiValueKind = map[string]AttributeCiscoGnmiValueKind{
-	"any":         AttributeCiscoGnmiValueKindAny,
-	"bytes":       AttributeCiscoGnmiValueKindBytes,
-	"leaflist":    AttributeCiscoGnmiValueKindLeaflist,
-	"proto_bytes": AttributeCiscoGnmiValueKindProtoBytes,
+	"bisection_limit":         AttributeCiscoGnmiReasonBisectionLimit,
+	"cache_limit":             AttributeCiscoGnmiReasonCacheLimit,
+	"decode_error":            AttributeCiscoGnmiReasonDecodeError,
+	"entity_accounting":       AttributeCiscoGnmiReasonEntityAccounting,
+	"entity_limit":            AttributeCiscoGnmiReasonEntityLimit,
+	"incompatible_path_group": AttributeCiscoGnmiReasonIncompatiblePathGroup,
+	"sync_timeout":            AttributeCiscoGnmiReasonSyncTimeout,
+	"unsupported_path":        AttributeCiscoGnmiReasonUnsupportedPath,
 }
 
 // AttributeCiscoOpticsProfile specifies the value cisco.optics.profile attribute.
@@ -526,882 +462,17 @@ var MetricsInfo = metricsInfo{
 		Name:       "cisco.optics.voltage",
 		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
 	},
-	CiscoScrapePartialSuccess: metricInfo{
-		Name: "cisco.scrape.partial_success",
-	},
-	CiscoTopologyNeighborInfo: metricInfo{
-		Name:       "cisco.topology.neighbor.info",
-		Attributes: []string{"cisco.topology.protocol", "network.interface.name", "cisco.topology.neighbor.name", "cisco.topology.neighbor.interface", "cisco.topology.neighbor.platform", "cisco.topology.neighbor.address", "network.peer.name", "network.peer.address", "network.protocol.name"},
-	},
-	CiscoTransceiverSensor: metricInfo{
-		Name: "cisco.transceiver.sensor",
-	},
-	CiscoWlcApCapwapEncryptionEnabled: metricInfo{
-		Name: "cisco.wlc.ap.capwap.encryption.enabled",
-	},
-	CiscoWlcApCapwapState: metricInfo{
-		Name: "cisco.wlc.ap.capwap.state",
-	},
-	CiscoWlcApDisconnect: metricInfo{
-		Name: "cisco.wlc.ap.disconnect",
-	},
-	CiscoWlcApDisconnectReasonInfo: metricInfo{
-		Name: "cisco.wlc.ap.disconnect.reason.info",
-	},
-	CiscoWlcApJoinFailureReasonInfo: metricInfo{
-		Name: "cisco.wlc.ap.join.failure.reason.info",
-	},
 	CiscoWlcApJoinStatus: metricInfo{
-		Name: "cisco.wlc.ap.join.status",
-	},
-	CiscoWlcAuthRadiusAccessAcceptCount: metricInfo{
-		Name: "cisco.wlc.auth.radius.access.accept.count",
-	},
-	CiscoWlcAuthRadiusAccessRejectCount: metricInfo{
-		Name: "cisco.wlc.auth.radius.access.reject.count",
-	},
-	CiscoWlcAuthRadiusBadAuthenticatorCount: metricInfo{
-		Name: "cisco.wlc.auth.radius.bad_authenticator.count",
-	},
-	CiscoWlcAuthRadiusResponseCount: metricInfo{
-		Name: "cisco.wlc.auth.radius.response.count",
-	},
-	CiscoWlcAuthRadiusResponseDelayAvg: metricInfo{
-		Name: "cisco.wlc.auth.radius.response_delay.avg",
-	},
-	CiscoWlcAuthRadiusResponseDelayMax: metricInfo{
-		Name: "cisco.wlc.auth.radius.response_delay.max",
-	},
-	CiscoWlcAuthRadiusTimeoutCount: metricInfo{
-		Name: "cisco.wlc.auth.radius.timeout.count",
-	},
-	CiscoWlcClientAuthFailureReasonInfo: metricInfo{
-		Name: "cisco.wlc.client.auth.failure.reason.info",
-	},
-	CiscoWlcClientConnectionState: metricInfo{
-		Name: "cisco.wlc.client.connection.state",
-	},
-	CiscoWlcClientNetworkIo: metricInfo{
-		Name: "cisco.wlc.client.network.io",
-	},
-	CiscoWlcClientNetworkPackets: metricInfo{
-		Name: "cisco.wlc.client.network.packets",
-	},
-	CiscoWlcClientRoamCount: metricInfo{
-		Name: "cisco.wlc.client.roam.count",
-	},
-	CiscoWlcClientRoamFailureCount: metricInfo{
-		Name: "cisco.wlc.client.roam.failure.count",
-	},
-	CiscoWlcClientRoamTypeInfo: metricInfo{
-		Name: "cisco.wlc.client.roam.type.info",
-	},
-	CiscoWlcClientWirelessRssi: metricInfo{
-		Name: "cisco.wlc.client.wireless.rssi",
-	},
-	CiscoWlcClientWirelessSnr: metricInfo{
-		Name: "cisco.wlc.client.wireless.snr",
-	},
-	CiscoWlcControllerCPUUtilization: metricInfo{
-		Name: "cisco.wlc.controller.cpu.utilization",
-	},
-	CiscoWlcControllerMemoryBytes: metricInfo{
-		Name: "cisco.wlc.controller.memory.bytes",
-	},
-	CiscoWlcControllerReceiverActiveSubscriptions: metricInfo{
-		Name: "cisco.wlc.controller.receiver.active_subscriptions",
-	},
-	CiscoWlcControllerReceiverDecodeErrors: metricInfo{
-		Name: "cisco.wlc.controller.receiver.decode_errors",
-	},
-	CiscoWlcControllerReceiverSubscriptionActive: metricInfo{
-		Name: "cisco.wlc.controller.receiver.subscription.active",
-	},
-	CiscoWlcControllerReceiverUpdates: metricInfo{
-		Name: "cisco.wlc.controller.receiver.updates",
-	},
-	CiscoWlcHaEnabled: metricInfo{
-		Name: "cisco.wlc.ha.enabled",
-	},
-	CiscoWlcHaStandbyFailureCount: metricInfo{
-		Name: "cisco.wlc.ha.standby.failure.count",
-	},
-	CiscoWlcHaState: metricInfo{
-		Name: "cisco.wlc.ha.state",
-	},
-	CiscoWlcHaSwitchoverCount: metricInfo{
-		Name: "cisco.wlc.ha.switchover.count",
-	},
-	CiscoWlcMobilityHandoffCount: metricInfo{
-		Name: "cisco.wlc.mobility.handoff.count",
-	},
-	CiscoWlcMobilityHandoffFailureCount: metricInfo{
-		Name: "cisco.wlc.mobility.handoff.failure.count",
-	},
-	CiscoWlcMobilityPeerStatus: metricInfo{
-		Name: "cisco.wlc.mobility.peer.status",
-	},
-	CiscoWlcMobilityRoamCount: metricInfo{
-		Name: "cisco.wlc.mobility.roam.count",
-	},
-	CiscoWlcRfChannelChangeCount: metricInfo{
-		Name: "cisco.wlc.rf.channel.change.count",
-	},
-	CiscoWlcRfChannelRecommended: metricInfo{
-		Name: "cisco.wlc.rf.channel.recommended",
+		Name:       "cisco.wlc.ap.join.status",
+		Attributes: []string{"cisco.wlc.ap.mac"},
 	},
 	CiscoWlcRfChannelUtilization: metricInfo{
-		Name: "cisco.wlc.rf.channel.utilization",
-	},
-	CiscoWlcRfClientCount: metricInfo{
-		Name: "cisco.wlc.rf.client.count",
-	},
-	CiscoWlcRfNoiseFloor: metricInfo{
-		Name: "cisco.wlc.rf.noise_floor",
-	},
-	CiscoWlcSsidChannelUtilization: metricInfo{
-		Name: "cisco.wlc.ssid.channel.utilization",
+		Name:       "cisco.wlc.rf.channel.utilization",
+		Attributes: []string{"cisco.wlc.ap.mac", "cisco.wlc.radio.slot"},
 	},
 	CiscoWlcSsidClientCount: metricInfo{
-		Name: "cisco.wlc.ssid.client.count",
-	},
-	CiscoWlcSsidNetworkIo: metricInfo{
-		Name: "cisco.wlc.ssid.network.io",
-	},
-	CiscoWlcSsidRetryCount: metricInfo{
-		Name: "cisco.wlc.ssid.retry.count",
-	},
-	FmcAPIEndpointError: metricInfo{
-		Name: "fmc.api.endpoint.error",
-	},
-	FmcAPIRateLimited: metricInfo{
-		Name: "fmc.api.rate_limited",
-	},
-	FmcAPIRequestDuration: metricInfo{
-		Name: "fmc.api.request.duration",
-	},
-	FmcAPIRequestErrors: metricInfo{
-		Name: "fmc.api.request.errors",
-	},
-	FmcAuditRecordCount: metricInfo{
-		Name: "fmc.audit.record.count",
-	},
-	FmcDeploymentPendingCount: metricInfo{
-		Name: "fmc.deployment.pending.count",
-	},
-	FmcDeploymentStatus: metricInfo{
-		Name: "fmc.deployment.status",
-	},
-	FmcHaStatus: metricInfo{
-		Name: "fmc.ha.status",
-	},
-	FmcHealthEventCount: metricInfo{
-		Name: "fmc.health.event.count",
-	},
-	FmcHealthStatus: metricInfo{
-		Name: "fmc.health.status",
-	},
-	FmcManagerUp: metricInfo{
-		Name: "fmc.manager.up",
-	},
-	FmcPolicyObjectCount: metricInfo{
-		Name: "fmc.policy.object.count",
-	},
-	FmcResourceCount: metricInfo{
-		Name: "fmc.resource.count",
-	},
-	FmcResourceInfo: metricInfo{
-		Name: "fmc.resource.info",
-	},
-	FmcResourceStatus: metricInfo{
-		Name: "fmc.resource.status",
-	},
-	FmcScrapeLastSuccess: metricInfo{
-		Name: "fmc.scrape.last_success",
-	},
-	FmcScrapePartialSuccess: metricInfo{
-		Name: "fmc.scrape.partial_success",
-	},
-	FmcVpnTunnelStatus: metricInfo{
-		Name: "fmc.vpn.tunnel.status",
-	},
-	IntersightAdvisoryActive: metricInfo{
-		Name: "intersight.advisory.active",
-	},
-	IntersightAdvisoryCount: metricInfo{
-		Name: "intersight.advisory.count",
-	},
-	IntersightAlarmActive: metricInfo{
-		Name: "intersight.alarm.active",
-	},
-	IntersightAlarmCount: metricInfo{
-		Name: "intersight.alarm.count",
-	},
-	IntersightAPIRateLimited: metricInfo{
-		Name: "intersight.api.rate_limited",
-	},
-	IntersightAPIRequestDuration: metricInfo{
-		Name: "intersight.api.request.duration",
-	},
-	IntersightAPIRequestErrors: metricInfo{
-		Name: "intersight.api.request.errors",
-	},
-	IntersightAuditRecordCount: metricInfo{
-		Name: "intersight.audit.record.count",
-	},
-	IntersightComputeAvailableMemory: metricInfo{
-		Name: "intersight.compute.available_memory",
-	},
-	IntersightComputeThreadCount: metricInfo{
-		Name: "intersight.compute.thread.count",
-	},
-	IntersightFaultCount: metricInfo{
-		Name: "intersight.fault.count",
-	},
-	IntersightFirmwareBundleInfo: metricInfo{
-		Name: "intersight.firmware.bundle.info",
-	},
-	IntersightHclStatus: metricInfo{
-		Name: "intersight.hcl.status",
-	},
-	IntersightHclStatusCount: metricInfo{
-		Name: "intersight.hcl.status.count",
-	},
-	IntersightHyperflexReadIops: metricInfo{
-		Name: "intersight.hyperflex.read.iops",
-	},
-	IntersightHyperflexReadLatency: metricInfo{
-		Name: "intersight.hyperflex.read.latency",
-	},
-	IntersightHyperflexStatus: metricInfo{
-		Name: "intersight.hyperflex.status",
-	},
-	IntersightHyperflexWriteIops: metricInfo{
-		Name: "intersight.hyperflex.write.iops",
-	},
-	IntersightHyperflexWriteLatency: metricInfo{
-		Name: "intersight.hyperflex.write.latency",
-	},
-	IntersightKubernetesClusterConnectionStatus: metricInfo{
-		Name: "intersight.kubernetes.cluster.connection_status",
-	},
-	IntersightResourceCount: metricInfo{
-		Name: "intersight.resource.count",
-	},
-	IntersightResourceInfo: metricInfo{
-		Name: "intersight.resource.info",
-	},
-	IntersightResourceStatus: metricInfo{
-		Name: "intersight.resource.status",
-	},
-	IntersightScrapeLastSuccess: metricInfo{
-		Name: "intersight.scrape.last_success",
-	},
-	IntersightScrapePartialSuccess: metricInfo{
-		Name: "intersight.scrape.partial_success",
-	},
-	IntersightStorageLifeLeft: metricInfo{
-		Name: "intersight.storage.life_left",
-	},
-	IntersightStorageMediaErrorCount: metricInfo{
-		Name: "intersight.storage.media_error.count",
-	},
-	IntersightStoragePowerOnHours: metricInfo{
-		Name: "intersight.storage.power_on.hours",
-	},
-	IntersightStoragePredictiveFailureCount: metricInfo{
-		Name: "intersight.storage.predictive_failure.count",
-	},
-	IntersightStorageRebuildRate: metricInfo{
-		Name: "intersight.storage.rebuild.rate",
-	},
-	IntersightStorageStatus: metricInfo{
-		Name: "intersight.storage.status",
-	},
-	IntersightStorageTemperature: metricInfo{
-		Name: "intersight.storage.temperature",
-	},
-	IntersightTargetConnectionStatus: metricInfo{
-		Name: "intersight.target.connection_status",
-	},
-	IntersightTaskCount: metricInfo{
-		Name: "intersight.task.count",
-	},
-	IntersightTaskStatus: metricInfo{
-		Name: "intersight.task.status",
-	},
-	IntersightTechsupportCount: metricInfo{
-		Name: "intersight.techsupport.count",
-	},
-	IntersightTechsupportStatus: metricInfo{
-		Name: "intersight.techsupport.status",
-	},
-	IntersightTelemetryQueryRows: metricInfo{
-		Name: "intersight.telemetry.query.rows",
-	},
-	IntersightUcsCPUIdleUtilization: metricInfo{
-		Name: "intersight.ucs.cpu.idle.utilization",
-	},
-	IntersightUcsCPUSystemUtilization: metricInfo{
-		Name: "intersight.ucs.cpu.system.utilization",
-	},
-	IntersightUcsCurrent: metricInfo{
-		Name: "intersight.ucs.current",
-	},
-	IntersightUcsFanSpeed: metricInfo{
-		Name: "intersight.ucs.fan.speed",
-	},
-	IntersightUcsFanSpeedRatio: metricInfo{
-		Name: "intersight.ucs.fan.speed_ratio",
-	},
-	IntersightUcsFanStatus: metricInfo{
-		Name: "intersight.ucs.fan.status",
-	},
-	IntersightUcsHostEnergy: metricInfo{
-		Name: "intersight.ucs.host.energy",
-	},
-	IntersightUcsHostPower: metricInfo{
-		Name: "intersight.ucs.host.power",
-	},
-	IntersightUcsHostPowerState: metricInfo{
-		Name: "intersight.ucs.host.power_state",
-	},
-	IntersightUcsMemoryCached: metricInfo{
-		Name: "intersight.ucs.memory.cached",
-	},
-	IntersightUcsMemoryEccCorrectable: metricInfo{
-		Name: "intersight.ucs.memory.ecc.correctable",
-	},
-	IntersightUcsMemoryEccUncorrectable: metricInfo{
-		Name: "intersight.ucs.memory.ecc.uncorrectable",
-	},
-	IntersightUcsMemoryFree: metricInfo{
-		Name: "intersight.ucs.memory.free",
-	},
-	IntersightUcsMemoryModuleSize: metricInfo{
-		Name: "intersight.ucs.memory.module.size",
-	},
-	IntersightUcsMemoryStatus: metricInfo{
-		Name: "intersight.ucs.memory.status",
-	},
-	IntersightUcsMemoryUsed: metricInfo{
-		Name: "intersight.ucs.memory.used",
-	},
-	IntersightUcsNetworkInterfaceResets: metricInfo{
-		Name: "intersight.ucs.network.interface_resets",
-	},
-	IntersightUcsNetworkLinkStatus: metricInfo{
-		Name: "intersight.ucs.network.link.status",
-	},
-	IntersightUcsNetworkLinkFailures: metricInfo{
-		Name: "intersight.ucs.network.link_failures",
-	},
-	IntersightUcsNetworkReceive: metricInfo{
-		Name: "intersight.ucs.network.receive",
-	},
-	IntersightUcsNetworkReceiveCrcErrors: metricInfo{
-		Name: "intersight.ucs.network.receive.crc_errors",
-	},
-	IntersightUcsNetworkReceiveDiscards: metricInfo{
-		Name: "intersight.ucs.network.receive.discards",
-	},
-	IntersightUcsNetworkReceiveDrops: metricInfo{
-		Name: "intersight.ucs.network.receive.drops",
-	},
-	IntersightUcsNetworkReceiveErrors: metricInfo{
-		Name: "intersight.ucs.network.receive.errors",
-	},
-	IntersightUcsNetworkReceiveNoBuffer: metricInfo{
-		Name: "intersight.ucs.network.receive.no_buffer",
-	},
-	IntersightUcsNetworkReceivePackets: metricInfo{
-		Name: "intersight.ucs.network.receive.packets",
-	},
-	IntersightUcsNetworkReceivePauseFrames: metricInfo{
-		Name: "intersight.ucs.network.receive.pause_frames",
-	},
-	IntersightUcsNetworkSignalLosses: metricInfo{
-		Name: "intersight.ucs.network.signal_losses",
-	},
-	IntersightUcsNetworkSpeed: metricInfo{
-		Name: "intersight.ucs.network.speed",
-	},
-	IntersightUcsNetworkTransmit: metricInfo{
-		Name: "intersight.ucs.network.transmit",
-	},
-	IntersightUcsNetworkTransmitDiscards: metricInfo{
-		Name: "intersight.ucs.network.transmit.discards",
-	},
-	IntersightUcsNetworkTransmitDrops: metricInfo{
-		Name: "intersight.ucs.network.transmit.drops",
-	},
-	IntersightUcsNetworkTransmitErrors: metricInfo{
-		Name: "intersight.ucs.network.transmit.errors",
-	},
-	IntersightUcsNetworkTransmitPackets: metricInfo{
-		Name: "intersight.ucs.network.transmit.packets",
-	},
-	IntersightUcsNetworkTransmitPauseFrames: metricInfo{
-		Name: "intersight.ucs.network.transmit.pause_frames",
-	},
-	IntersightUcsNetworkUtilization: metricInfo{
-		Name: "intersight.ucs.network.utilization",
-	},
-	IntersightUcsPowerSupplyOutputPower: metricInfo{
-		Name: "intersight.ucs.power_supply.output_power",
-	},
-	IntersightUcsPowerSupplyStatus: metricInfo{
-		Name: "intersight.ucs.power_supply.status",
-	},
-	IntersightUcsPowerSupplyUtilization: metricInfo{
-		Name: "intersight.ucs.power_supply.utilization",
-	},
-	IntersightUcsSignalPowerReceive: metricInfo{
-		Name: "intersight.ucs.signal_power.receive",
-	},
-	IntersightUcsSignalPowerTransmit: metricInfo{
-		Name: "intersight.ucs.signal_power.transmit",
-	},
-	IntersightUcsTemperature: metricInfo{
-		Name: "intersight.ucs.temperature",
-	},
-	IntersightUcsTemperatureLimitHighCritical: metricInfo{
-		Name: "intersight.ucs.temperature.limit_high_critical",
-	},
-	IntersightUcsTemperatureLimitLowCritical: metricInfo{
-		Name: "intersight.ucs.temperature.limit_low_critical",
-	},
-	IntersightUcsTemperatureStatus: metricInfo{
-		Name: "intersight.ucs.temperature.status",
-	},
-	IntersightUcsVoltage: metricInfo{
-		Name: "intersight.ucs.voltage",
-	},
-	IntersightVirtualMachineCount: metricInfo{
-		Name: "intersight.virtual_machine.count",
-	},
-	IntersightVirtualMachineCPUCount: metricInfo{
-		Name: "intersight.virtual_machine.cpu.count",
-	},
-	IntersightVirtualMachineMemory: metricInfo{
-		Name: "intersight.virtual_machine.memory",
-	},
-	IntersightVirtualMachinePowerState: metricInfo{
-		Name: "intersight.virtual_machine.power_state",
-	},
-	IntersightWorkflowCount: metricInfo{
-		Name: "intersight.workflow.count",
-	},
-	IntersightWorkflowStatus: metricInfo{
-		Name: "intersight.workflow.status",
-	},
-	IseAccountingSessionCount: metricInfo{
-		Name: "ise.accounting.session.count",
-	},
-	IseAlarmCount: metricInfo{
-		Name: "ise.alarm.count",
-	},
-	IseAPIEndpointError: metricInfo{
-		Name: "ise.api.endpoint.error",
-	},
-	IseAPIRateLimited: metricInfo{
-		Name: "ise.api.rate_limited",
-	},
-	IseAPIRequestDuration: metricInfo{
-		Name: "ise.api.request.duration",
-	},
-	IseAPIRequestErrors: metricInfo{
-		Name: "ise.api.request.errors",
-	},
-	IseAuthFailureReasonInfo: metricInfo{
-		Name: "ise.auth.failure.reason.info",
-	},
-	IseCertificateCount: metricInfo{
-		Name: "ise.certificate.count",
-	},
-	IseCertificateExpiration: metricInfo{
-		Name: "ise.certificate.expiration",
-	},
-	IseControllerUp: metricInfo{
-		Name: "ise.controller.up",
-	},
-	IseDataconnectQueryDuration: metricInfo{
-		Name: "ise.dataconnect.query.duration",
-	},
-	IseDataconnectQueryErrors: metricInfo{
-		Name: "ise.dataconnect.query.errors",
-	},
-	IseDataconnectQueryRows: metricInfo{
-		Name: "ise.dataconnect.query.rows",
-	},
-	IseDataconnectRowCount: metricInfo{
-		Name: "ise.dataconnect.row.count",
-	},
-	IseDeploymentNodeCount: metricInfo{
-		Name: "ise.deployment.node.count",
-	},
-	IseDeploymentNodeStatus: metricInfo{
-		Name: "ise.deployment.node.status",
-	},
-	IseEndpointCount: metricInfo{
-		Name: "ise.endpoint.count",
-	},
-	IseEndpointPostureCount: metricInfo{
-		Name: "ise.endpoint.posture.count",
-	},
-	IseEndpointPostureStatus: metricInfo{
-		Name: "ise.endpoint.posture.status",
-	},
-	IseEndpointProfileCount: metricInfo{
-		Name: "ise.endpoint.profile.count",
-	},
-	IseEndpointStatus: metricInfo{
-		Name: "ise.endpoint.status",
-	},
-	IseLicenseCount: metricInfo{
-		Name: "ise.license.count",
-	},
-	IseLicenseStatus: metricInfo{
-		Name: "ise.license.status",
-	},
-	IseNetworkDeviceCount: metricInfo{
-		Name: "ise.network_device.count",
-	},
-	IseNetworkDeviceStatus: metricInfo{
-		Name: "ise.network_device.status",
-	},
-	IsePolicyObjectCount: metricInfo{
-		Name: "ise.policy.object.count",
-	},
-	IsePolicyStatus: metricInfo{
-		Name: "ise.policy.status",
-	},
-	IseProfilerPolicyStatus: metricInfo{
-		Name: "ise.profiler.policy.status",
-	},
-	IsePxgridMessageCount: metricInfo{
-		Name: "ise.pxgrid.message.count",
-	},
-	IsePxgridServiceStatus: metricInfo{
-		Name: "ise.pxgrid.service.status",
-	},
-	IsePxgridSubscriptionStatus: metricInfo{
-		Name: "ise.pxgrid.subscription.status",
-	},
-	IseRadiusFailureCount: metricInfo{
-		Name: "ise.radius.failure.count",
-	},
-	IseResourceInfo: metricInfo{
-		Name: "ise.resource.info",
-	},
-	IseResourceStatus: metricInfo{
-		Name: "ise.resource.status",
-	},
-	IseScrapeLastSuccess: metricInfo{
-		Name: "ise.scrape.last_success",
-	},
-	IseScrapePartialSuccess: metricInfo{
-		Name: "ise.scrape.partial_success",
-	},
-	IseServiceSkipped: metricInfo{
-		Name: "ise.service.skipped",
-	},
-	IseServiceUnavailable: metricInfo{
-		Name: "ise.service.unavailable",
-	},
-	IseSessionActiveCount: metricInfo{
-		Name: "ise.session.active.count",
-	},
-	IseSessionCount: metricInfo{
-		Name: "ise.session.count",
-	},
-	IseTacacsFailureCount: metricInfo{
-		Name: "ise.tacacs.failure.count",
-	},
-	IseTrustsecResourceCount: metricInfo{
-		Name: "ise.trustsec.resource.count",
-	},
-	IseTrustsecResourceStatus: metricInfo{
-		Name: "ise.trustsec.resource.status",
-	},
-	IseWebhookDeliveryCount: metricInfo{
-		Name: "ise.webhook.delivery.count",
-	},
-	MerakiAPIRequestDuration: metricInfo{
-		Name: "meraki.api.request.duration",
-	},
-	MerakiAPIRequestErrors: metricInfo{
-		Name: "meraki.api.request.errors",
-	},
-	MerakiAPIRequestRateLimited: metricInfo{
-		Name: "meraki.api.request.rate_limited",
-	},
-	MerakiAppliancePerformanceScore: metricInfo{
-		Name: "meraki.appliance.performance.score",
-	},
-	MerakiControllerUp: metricInfo{
-		Name: "meraki.controller.up",
-	},
-	MerakiDeviceStatus: metricInfo{
-		Name: "meraki.device.status",
-	},
-	MerakiPowerModuleStatus: metricInfo{
-		Name: "meraki.power.module.status",
-	},
-	MerakiScrapeLastSuccess: metricInfo{
-		Name: "meraki.scrape.last_success",
-	},
-	MerakiSwitchPortAlertActive: metricInfo{
-		Name: "meraki.switch.port.alert.active",
-	},
-	MerakiSwitchPortPoeAllocated: metricInfo{
-		Name: "meraki.switch.port.poe.allocated",
-	},
-	MerakiSwitchPortUsage: metricInfo{
-		Name: "meraki.switch.port.usage",
-	},
-	MerakiUplinkCellularSignalRsrp: metricInfo{
-		Name: "meraki.uplink.cellular.signal.rsrp",
-	},
-	MerakiUplinkCellularSignalRsrq: metricInfo{
-		Name: "meraki.uplink.cellular.signal.rsrq",
-	},
-	MerakiUplinkLatency: metricInfo{
-		Name: "meraki.uplink.latency",
-	},
-	MerakiUplinkLoss: metricInfo{
-		Name: "meraki.uplink.loss",
-	},
-	MerakiUplinkStatus: metricInfo{
-		Name: "meraki.uplink.status",
-	},
-	MerakiVpnPeerJitter: metricInfo{
-		Name: "meraki.vpn.peer.jitter",
-	},
-	MerakiVpnPeerLatency: metricInfo{
-		Name: "meraki.vpn.peer.latency",
-	},
-	MerakiVpnPeerLoss: metricInfo{
-		Name: "meraki.vpn.peer.loss",
-	},
-	MerakiVpnPeerMos: metricInfo{
-		Name: "meraki.vpn.peer.mos",
-	},
-	MerakiVpnPeerStatus: metricInfo{
-		Name: "meraki.vpn.peer.status",
-	},
-	MerakiVpnPeerUsage: metricInfo{
-		Name: "meraki.vpn.peer.usage",
-	},
-	MerakiWirelessChannelUtilization: metricInfo{
-		Name: "meraki.wireless.channel_utilization",
-	},
-	MerakiWirelessClientCount: metricInfo{
-		Name: "meraki.wireless.client.count",
-	},
-	MerakiWirelessPacketCount: metricInfo{
-		Name: "meraki.wireless.packet.count",
-	},
-	MerakiWirelessPacketLoss: metricInfo{
-		Name: "meraki.wireless.packet.loss",
-	},
-	MerakiWirelessPacketLossPercentage: metricInfo{
-		Name: "meraki.wireless.packet.loss_percentage",
-	},
-	MerakiWirelessSsidStatus: metricInfo{
-		Name: "meraki.wireless.ssid.status",
-	},
-	NexusDashboardAPIEndpointError: metricInfo{
-		Name: "nexus_dashboard.api.endpoint.error",
-	},
-	NexusDashboardAPIRateLimited: metricInfo{
-		Name: "nexus_dashboard.api.rate_limited",
-	},
-	NexusDashboardAPIRequestDuration: metricInfo{
-		Name: "nexus_dashboard.api.request.duration",
-	},
-	NexusDashboardAPIRequestErrors: metricInfo{
-		Name: "nexus_dashboard.api.request.errors",
-	},
-	NexusDashboardAuditRecordCount: metricInfo{
-		Name: "nexus_dashboard.audit.record.count",
-	},
-	NexusDashboardConfigCompliance: metricInfo{
-		Name: "nexus_dashboard.config.compliance",
-	},
-	NexusDashboardDataBrokerRuleCount: metricInfo{
-		Name: "nexus_dashboard.data_broker.rule.count",
-	},
-	NexusDashboardDataBrokerSessionCount: metricInfo{
-		Name: "nexus_dashboard.data_broker.session.count",
-	},
-	NexusDashboardDataBrokerStatus: metricInfo{
-		Name: "nexus_dashboard.data_broker.status",
-	},
-	NexusDashboardDeploymentStatus: metricInfo{
-		Name: "nexus_dashboard.deployment.status",
-	},
-	NexusDashboardEndpointCount: metricInfo{
-		Name: "nexus_dashboard.endpoint.count",
-	},
-	NexusDashboardEventCount: metricInfo{
-		Name: "nexus_dashboard.event.count",
-	},
-	NexusDashboardFabricHealth: metricInfo{
-		Name: "nexus_dashboard.fabric.health",
-	},
-	NexusDashboardInsightsAnomalyActive: metricInfo{
-		Name: "nexus_dashboard.insights.anomaly.active",
-	},
-	NexusDashboardInsightsAnomalyCount: metricInfo{
-		Name: "nexus_dashboard.insights.anomaly.count",
-	},
-	NexusDashboardInsightsConfidence: metricInfo{
-		Name: "nexus_dashboard.insights.confidence",
-	},
-	NexusDashboardInsightsScore: metricInfo{
-		Name: "nexus_dashboard.insights.score",
-	},
-	NexusDashboardInsightsStatus: metricInfo{
-		Name: "nexus_dashboard.insights.status",
-	},
-	NexusDashboardOrchestratorDeploymentCount: metricInfo{
-		Name: "nexus_dashboard.orchestrator.deployment.count",
-	},
-	NexusDashboardOrchestratorDeploymentStatus: metricInfo{
-		Name: "nexus_dashboard.orchestrator.deployment.status",
-	},
-	NexusDashboardOrchestratorPolicyDeltaCount: metricInfo{
-		Name: "nexus_dashboard.orchestrator.policy_delta.count",
-	},
-	NexusDashboardResourceCount: metricInfo{
-		Name: "nexus_dashboard.resource.count",
-	},
-	NexusDashboardResourceInfo: metricInfo{
-		Name: "nexus_dashboard.resource.info",
-	},
-	NexusDashboardResourceStatus: metricInfo{
-		Name: "nexus_dashboard.resource.status",
-	},
-	NexusDashboardScrapeLastSuccess: metricInfo{
-		Name: "nexus_dashboard.scrape.last_success",
-	},
-	NexusDashboardScrapePartialSuccess: metricInfo{
-		Name: "nexus_dashboard.scrape.partial_success",
-	},
-	NexusDashboardServiceHealth: metricInfo{
-		Name: "nexus_dashboard.service.health",
-	},
-	NexusDashboardServiceSkipped: metricInfo{
-		Name: "nexus_dashboard.service.skipped",
-	},
-	NexusDashboardServiceUnavailable: metricInfo{
-		Name: "nexus_dashboard.service.unavailable",
-	},
-	NexusDashboardStorageUtilization: metricInfo{
-		Name: "nexus_dashboard.storage.utilization",
-	},
-	NexusDashboardVpcPeerCount: metricInfo{
-		Name: "nexus_dashboard.vpc.peer.count",
-	},
-	SdwanAPIRateLimited: metricInfo{
-		Name: "sdwan.api.rate_limited",
-	},
-	SdwanAPIRequestDuration: metricInfo{
-		Name: "sdwan.api.request.duration",
-	},
-	SdwanAPIRequestErrors: metricInfo{
-		Name: "sdwan.api.request.errors",
-	},
-	SdwanAppRouteJitter: metricInfo{
-		Name: "sdwan.app_route.jitter",
-	},
-	SdwanAppRouteLatency: metricInfo{
-		Name: "sdwan.app_route.latency",
-	},
-	SdwanAppRouteLoss: metricInfo{
-		Name: "sdwan.app_route.loss",
-	},
-	SdwanAppRouteSLAStatus: metricInfo{
-		Name: "sdwan.app_route.sla.status",
-	},
-	SdwanBfdSessionCount: metricInfo{
-		Name: "sdwan.bfd.session.count",
-	},
-	SdwanBfdSessionFlapCount: metricInfo{
-		Name: "sdwan.bfd.session.flap.count",
-	},
-	SdwanBfdSessionStatus: metricInfo{
-		Name: "sdwan.bfd.session.status",
-	},
-	SdwanBfdSessionTransitions: metricInfo{
-		Name: "sdwan.bfd.session.transitions",
-	},
-	SdwanCollectionObjectCount: metricInfo{
-		Name: "sdwan.collection.object.count",
-	},
-	SdwanControlActualConnections: metricInfo{
-		Name: "sdwan.control.actual_connections",
-	},
-	SdwanControlConnectionCount: metricInfo{
-		Name: "sdwan.control.connection.count",
-	},
-	SdwanControlConnectionStatus: metricInfo{
-		Name: "sdwan.control.connection.status",
-	},
-	SdwanControlExpectedConnections: metricInfo{
-		Name: "sdwan.control.expected_connections",
-	},
-	SdwanDeviceCertificateStatus: metricInfo{
-		Name: "sdwan.device.certificate.status",
-	},
-	SdwanDeviceReachabilityStatus: metricInfo{
-		Name: "sdwan.device.reachability.status",
-	},
-	SdwanDeviceValidityStatus: metricInfo{
-		Name: "sdwan.device.validity.status",
-	},
-	SdwanEventCount: metricInfo{
-		Name: "sdwan.event.count",
-	},
-	SdwanInventoryDeviceCount: metricInfo{
-		Name: "sdwan.inventory.device.count",
-	},
-	SdwanManagerEndpointStatus: metricInfo{
-		Name: "sdwan.manager.endpoint.status",
-	},
-	SdwanManagerHealthScore: metricInfo{
-		Name: "sdwan.manager.health.score",
-	},
-	SdwanManagerStatus: metricInfo{
-		Name: "sdwan.manager.status",
-	},
-	SdwanManagerUp: metricInfo{
-		Name: "sdwan.manager.up",
-	},
-	SdwanResourceInfo: metricInfo{
-		Name: "sdwan.resource.info",
-	},
-	SdwanResourceStatus: metricInfo{
-		Name: "sdwan.resource.status",
-	},
-	SdwanScrapeLastSuccess: metricInfo{
-		Name: "sdwan.scrape.last_success",
-	},
-	SdwanScrapePartialSuccess: metricInfo{
-		Name: "sdwan.scrape.partial_success",
-	},
-	SdwanServiceSkipped: metricInfo{
-		Name: "sdwan.service.skipped",
-	},
-	SdwanServiceUnavailable: metricInfo{
-		Name: "sdwan.service.unavailable",
-	},
-	SdwanTransportInterfaceStatus: metricInfo{
-		Name: "sdwan.transport.interface.status",
-	},
-	SystemCPULogicalCount: metricInfo{
-		Name: "system.cpu.logical.count",
+		Name:       "cisco.wlc.ssid.client.count",
+		Attributes: []string{"cisco.wlc.ap.mac", "cisco.wlc.wlan.id"},
 	},
 	SystemCPUUtilization: metricInfo{
 		Name:       "system.cpu.utilization",
@@ -1437,403 +508,39 @@ var MetricsInfo = metricsInfo{
 }
 
 type metricsInfo struct {
-	AciAPIEndpointError                                 metricInfo
-	AciAPIRateLimited                                   metricInfo
-	AciAPIRequestDuration                               metricInfo
-	AciAPIRequestErrors                                 metricInfo
-	AciAuditRecordCount                                 metricInfo
-	AciControllerUp                                     metricInfo
-	AciEndpointCount                                    metricInfo
-	AciEndpointPresent                                  metricInfo
-	AciEventCount                                       metricInfo
-	AciFabricHealth                                     metricInfo
-	AciFaultActive                                      metricInfo
-	AciFaultCount                                       metricInfo
-	AciResourceCount                                    metricInfo
-	AciResourceInfo                                     metricInfo
-	AciResourceStatus                                   metricInfo
-	AciScrapeLastSuccess                                metricInfo
-	AciScrapePartialSuccess                             metricInfo
-	AciTenantObjectCount                                metricInfo
-	AciTenantStatus                                     metricInfo
-	CatalystCenterAPIRateLimited                        metricInfo
-	CatalystCenterAPIRequestDuration                    metricInfo
-	CatalystCenterAPIRequestErrors                      metricInfo
-	CatalystCenterClientCount                           metricInfo
-	CatalystCenterClientDetailHealthScore               metricInfo
-	CatalystCenterClientHealthScore                     metricInfo
-	CatalystCenterClientIssueCount                      metricInfo
-	CatalystCenterClientNetworkIo                       metricInfo
-	CatalystCenterClientUniqueCount                     metricInfo
-	CatalystCenterClientWirelessRssi                    metricInfo
-	CatalystCenterClientWirelessSnr                     metricInfo
-	CatalystCenterDeviceCollectionStatus                metricInfo
-	CatalystCenterDeviceDetailCommunicationStatus       metricInfo
-	CatalystCenterDeviceDetailHealthScore               metricInfo
-	CatalystCenterDeviceInterfaceCount                  metricInfo
-	CatalystCenterDeviceReachabilityStatus              metricInfo
-	CatalystCenterDeviceUptime                          metricInfo
-	CatalystCenterInterfaceCount                        metricInfo
-	CatalystCenterInventoryDeviceCount                  metricInfo
-	CatalystCenterIssueActiveCount                      metricInfo
-	CatalystCenterIssueCount                            metricInfo
-	CatalystCenterNetworkDeviceCount                    metricInfo
-	CatalystCenterNetworkHealthCategoryScore            metricInfo
-	CatalystCenterNetworkHealthEntityCount              metricInfo
-	CatalystCenterNetworkHealthEntityScore              metricInfo
-	CatalystCenterNetworkHealthScore                    metricInfo
-	CatalystCenterScrapeLastSuccess                     metricInfo
-	CatalystCenterScrapePartialSuccess                  metricInfo
-	CatalystCenterSiteClientCount                       metricInfo
-	CatalystCenterSiteClientHealthPercentage            metricInfo
-	CatalystCenterSiteHealthCount                       metricInfo
-	CatalystCenterSiteIssueCount                        metricInfo
-	CatalystCenterSiteNetworkDeviceCount                metricInfo
-	CatalystCenterSiteNetworkDeviceHealthPercentage     metricInfo
-	CatalystCenterTopologyLinkCount                     metricInfo
-	CatalystCenterTopologyNodeCount                     metricInfo
-	CiscoCatalyst9800ReceiverActiveSubscriptions        metricInfo
-	CiscoCatalyst9800ReceiverCompactGpbPayloads         metricInfo
-	CiscoCatalyst9800ReceiverDecodeErrors               metricInfo
-	CiscoCatalyst9800ReceiverDroppedDatapoints          metricInfo
-	CiscoCatalyst9800ReceiverLastSuccessTimestamp       metricInfo
-	CiscoCatalyst9800ReceiverReconnects                 metricInfo
-	CiscoCatalyst9800ReceiverTargetLastSuccessTimestamp metricInfo
-	CiscoCatalyst9800ReceiverTargetReconnects           metricInfo
-	CiscoCatalyst9800ReceiverTargetSubscriptionActive   metricInfo
-	CiscoCatalyst9800ReceiverTargetUpdates              metricInfo
-	CiscoCatalyst9800ReceiverUnsupportedPaths           metricInfo
-	CiscoCatalyst9800ReceiverUpdates                    metricInfo
-	CiscoDeviceUp                                       metricInfo
-	CiscoInterfaceAdminStatus                           metricInfo
-	CiscoInterfaceDropRate                              metricInfo
-	CiscoInterfaceIoRate                                metricInfo
-	CiscoInterfacePacketRate                            metricInfo
-	CiscoInterfaceSpeed                                 metricInfo
-	CiscoInterfaceUtilization                           metricInfo
-	CiscoIosxrReceiverActiveSubscriptions               metricInfo
-	CiscoIosxrReceiverCompactGpbPayloads                metricInfo
-	CiscoIosxrReceiverDecodeErrors                      metricInfo
-	CiscoIosxrReceiverDroppedDatapoints                 metricInfo
-	CiscoIosxrReceiverLastSuccessTimestamp              metricInfo
-	CiscoIosxrReceiverReconnects                        metricInfo
-	CiscoIosxrReceiverTargetLastSuccessTimestamp        metricInfo
-	CiscoIosxrReceiverTargetReconnects                  metricInfo
-	CiscoIosxrReceiverTargetSubscriptionActive          metricInfo
-	CiscoIosxrReceiverTargetUpdates                     metricInfo
-	CiscoIosxrReceiverUnsupportedPaths                  metricInfo
-	CiscoIosxrReceiverUpdates                           metricInfo
-	CiscoOpticsEsnr                                     metricInfo
-	CiscoOpticsLaserBiasCurrent                         metricInfo
-	CiscoOpticsPreFecBer                                metricInfo
-	CiscoOpticsPresent                                  metricInfo
-	CiscoOpticsRxPower                                  metricInfo
-	CiscoOpticsTdecq                                    metricInfo
-	CiscoOpticsTecCurrent                               metricInfo
-	CiscoOpticsTecUtilization                           metricInfo
-	CiscoOpticsTemperature                              metricInfo
-	CiscoOpticsTxPower                                  metricInfo
-	CiscoOpticsVoltage                                  metricInfo
-	CiscoScrapePartialSuccess                           metricInfo
-	CiscoTopologyNeighborInfo                           metricInfo
-	CiscoTransceiverSensor                              metricInfo
-	CiscoWlcApCapwapEncryptionEnabled                   metricInfo
-	CiscoWlcApCapwapState                               metricInfo
-	CiscoWlcApDisconnect                                metricInfo
-	CiscoWlcApDisconnectReasonInfo                      metricInfo
-	CiscoWlcApJoinFailureReasonInfo                     metricInfo
-	CiscoWlcApJoinStatus                                metricInfo
-	CiscoWlcAuthRadiusAccessAcceptCount                 metricInfo
-	CiscoWlcAuthRadiusAccessRejectCount                 metricInfo
-	CiscoWlcAuthRadiusBadAuthenticatorCount             metricInfo
-	CiscoWlcAuthRadiusResponseCount                     metricInfo
-	CiscoWlcAuthRadiusResponseDelayAvg                  metricInfo
-	CiscoWlcAuthRadiusResponseDelayMax                  metricInfo
-	CiscoWlcAuthRadiusTimeoutCount                      metricInfo
-	CiscoWlcClientAuthFailureReasonInfo                 metricInfo
-	CiscoWlcClientConnectionState                       metricInfo
-	CiscoWlcClientNetworkIo                             metricInfo
-	CiscoWlcClientNetworkPackets                        metricInfo
-	CiscoWlcClientRoamCount                             metricInfo
-	CiscoWlcClientRoamFailureCount                      metricInfo
-	CiscoWlcClientRoamTypeInfo                          metricInfo
-	CiscoWlcClientWirelessRssi                          metricInfo
-	CiscoWlcClientWirelessSnr                           metricInfo
-	CiscoWlcControllerCPUUtilization                    metricInfo
-	CiscoWlcControllerMemoryBytes                       metricInfo
-	CiscoWlcControllerReceiverActiveSubscriptions       metricInfo
-	CiscoWlcControllerReceiverDecodeErrors              metricInfo
-	CiscoWlcControllerReceiverSubscriptionActive        metricInfo
-	CiscoWlcControllerReceiverUpdates                   metricInfo
-	CiscoWlcHaEnabled                                   metricInfo
-	CiscoWlcHaStandbyFailureCount                       metricInfo
-	CiscoWlcHaState                                     metricInfo
-	CiscoWlcHaSwitchoverCount                           metricInfo
-	CiscoWlcMobilityHandoffCount                        metricInfo
-	CiscoWlcMobilityHandoffFailureCount                 metricInfo
-	CiscoWlcMobilityPeerStatus                          metricInfo
-	CiscoWlcMobilityRoamCount                           metricInfo
-	CiscoWlcRfChannelChangeCount                        metricInfo
-	CiscoWlcRfChannelRecommended                        metricInfo
-	CiscoWlcRfChannelUtilization                        metricInfo
-	CiscoWlcRfClientCount                               metricInfo
-	CiscoWlcRfNoiseFloor                                metricInfo
-	CiscoWlcSsidChannelUtilization                      metricInfo
-	CiscoWlcSsidClientCount                             metricInfo
-	CiscoWlcSsidNetworkIo                               metricInfo
-	CiscoWlcSsidRetryCount                              metricInfo
-	FmcAPIEndpointError                                 metricInfo
-	FmcAPIRateLimited                                   metricInfo
-	FmcAPIRequestDuration                               metricInfo
-	FmcAPIRequestErrors                                 metricInfo
-	FmcAuditRecordCount                                 metricInfo
-	FmcDeploymentPendingCount                           metricInfo
-	FmcDeploymentStatus                                 metricInfo
-	FmcHaStatus                                         metricInfo
-	FmcHealthEventCount                                 metricInfo
-	FmcHealthStatus                                     metricInfo
-	FmcManagerUp                                        metricInfo
-	FmcPolicyObjectCount                                metricInfo
-	FmcResourceCount                                    metricInfo
-	FmcResourceInfo                                     metricInfo
-	FmcResourceStatus                                   metricInfo
-	FmcScrapeLastSuccess                                metricInfo
-	FmcScrapePartialSuccess                             metricInfo
-	FmcVpnTunnelStatus                                  metricInfo
-	IntersightAdvisoryActive                            metricInfo
-	IntersightAdvisoryCount                             metricInfo
-	IntersightAlarmActive                               metricInfo
-	IntersightAlarmCount                                metricInfo
-	IntersightAPIRateLimited                            metricInfo
-	IntersightAPIRequestDuration                        metricInfo
-	IntersightAPIRequestErrors                          metricInfo
-	IntersightAuditRecordCount                          metricInfo
-	IntersightComputeAvailableMemory                    metricInfo
-	IntersightComputeThreadCount                        metricInfo
-	IntersightFaultCount                                metricInfo
-	IntersightFirmwareBundleInfo                        metricInfo
-	IntersightHclStatus                                 metricInfo
-	IntersightHclStatusCount                            metricInfo
-	IntersightHyperflexReadIops                         metricInfo
-	IntersightHyperflexReadLatency                      metricInfo
-	IntersightHyperflexStatus                           metricInfo
-	IntersightHyperflexWriteIops                        metricInfo
-	IntersightHyperflexWriteLatency                     metricInfo
-	IntersightKubernetesClusterConnectionStatus         metricInfo
-	IntersightResourceCount                             metricInfo
-	IntersightResourceInfo                              metricInfo
-	IntersightResourceStatus                            metricInfo
-	IntersightScrapeLastSuccess                         metricInfo
-	IntersightScrapePartialSuccess                      metricInfo
-	IntersightStorageLifeLeft                           metricInfo
-	IntersightStorageMediaErrorCount                    metricInfo
-	IntersightStoragePowerOnHours                       metricInfo
-	IntersightStoragePredictiveFailureCount             metricInfo
-	IntersightStorageRebuildRate                        metricInfo
-	IntersightStorageStatus                             metricInfo
-	IntersightStorageTemperature                        metricInfo
-	IntersightTargetConnectionStatus                    metricInfo
-	IntersightTaskCount                                 metricInfo
-	IntersightTaskStatus                                metricInfo
-	IntersightTechsupportCount                          metricInfo
-	IntersightTechsupportStatus                         metricInfo
-	IntersightTelemetryQueryRows                        metricInfo
-	IntersightUcsCPUIdleUtilization                     metricInfo
-	IntersightUcsCPUSystemUtilization                   metricInfo
-	IntersightUcsCurrent                                metricInfo
-	IntersightUcsFanSpeed                               metricInfo
-	IntersightUcsFanSpeedRatio                          metricInfo
-	IntersightUcsFanStatus                              metricInfo
-	IntersightUcsHostEnergy                             metricInfo
-	IntersightUcsHostPower                              metricInfo
-	IntersightUcsHostPowerState                         metricInfo
-	IntersightUcsMemoryCached                           metricInfo
-	IntersightUcsMemoryEccCorrectable                   metricInfo
-	IntersightUcsMemoryEccUncorrectable                 metricInfo
-	IntersightUcsMemoryFree                             metricInfo
-	IntersightUcsMemoryModuleSize                       metricInfo
-	IntersightUcsMemoryStatus                           metricInfo
-	IntersightUcsMemoryUsed                             metricInfo
-	IntersightUcsNetworkInterfaceResets                 metricInfo
-	IntersightUcsNetworkLinkStatus                      metricInfo
-	IntersightUcsNetworkLinkFailures                    metricInfo
-	IntersightUcsNetworkReceive                         metricInfo
-	IntersightUcsNetworkReceiveCrcErrors                metricInfo
-	IntersightUcsNetworkReceiveDiscards                 metricInfo
-	IntersightUcsNetworkReceiveDrops                    metricInfo
-	IntersightUcsNetworkReceiveErrors                   metricInfo
-	IntersightUcsNetworkReceiveNoBuffer                 metricInfo
-	IntersightUcsNetworkReceivePackets                  metricInfo
-	IntersightUcsNetworkReceivePauseFrames              metricInfo
-	IntersightUcsNetworkSignalLosses                    metricInfo
-	IntersightUcsNetworkSpeed                           metricInfo
-	IntersightUcsNetworkTransmit                        metricInfo
-	IntersightUcsNetworkTransmitDiscards                metricInfo
-	IntersightUcsNetworkTransmitDrops                   metricInfo
-	IntersightUcsNetworkTransmitErrors                  metricInfo
-	IntersightUcsNetworkTransmitPackets                 metricInfo
-	IntersightUcsNetworkTransmitPauseFrames             metricInfo
-	IntersightUcsNetworkUtilization                     metricInfo
-	IntersightUcsPowerSupplyOutputPower                 metricInfo
-	IntersightUcsPowerSupplyStatus                      metricInfo
-	IntersightUcsPowerSupplyUtilization                 metricInfo
-	IntersightUcsSignalPowerReceive                     metricInfo
-	IntersightUcsSignalPowerTransmit                    metricInfo
-	IntersightUcsTemperature                            metricInfo
-	IntersightUcsTemperatureLimitHighCritical           metricInfo
-	IntersightUcsTemperatureLimitLowCritical            metricInfo
-	IntersightUcsTemperatureStatus                      metricInfo
-	IntersightUcsVoltage                                metricInfo
-	IntersightVirtualMachineCount                       metricInfo
-	IntersightVirtualMachineCPUCount                    metricInfo
-	IntersightVirtualMachineMemory                      metricInfo
-	IntersightVirtualMachinePowerState                  metricInfo
-	IntersightWorkflowCount                             metricInfo
-	IntersightWorkflowStatus                            metricInfo
-	IseAccountingSessionCount                           metricInfo
-	IseAlarmCount                                       metricInfo
-	IseAPIEndpointError                                 metricInfo
-	IseAPIRateLimited                                   metricInfo
-	IseAPIRequestDuration                               metricInfo
-	IseAPIRequestErrors                                 metricInfo
-	IseAuthFailureReasonInfo                            metricInfo
-	IseCertificateCount                                 metricInfo
-	IseCertificateExpiration                            metricInfo
-	IseControllerUp                                     metricInfo
-	IseDataconnectQueryDuration                         metricInfo
-	IseDataconnectQueryErrors                           metricInfo
-	IseDataconnectQueryRows                             metricInfo
-	IseDataconnectRowCount                              metricInfo
-	IseDeploymentNodeCount                              metricInfo
-	IseDeploymentNodeStatus                             metricInfo
-	IseEndpointCount                                    metricInfo
-	IseEndpointPostureCount                             metricInfo
-	IseEndpointPostureStatus                            metricInfo
-	IseEndpointProfileCount                             metricInfo
-	IseEndpointStatus                                   metricInfo
-	IseLicenseCount                                     metricInfo
-	IseLicenseStatus                                    metricInfo
-	IseNetworkDeviceCount                               metricInfo
-	IseNetworkDeviceStatus                              metricInfo
-	IsePolicyObjectCount                                metricInfo
-	IsePolicyStatus                                     metricInfo
-	IseProfilerPolicyStatus                             metricInfo
-	IsePxgridMessageCount                               metricInfo
-	IsePxgridServiceStatus                              metricInfo
-	IsePxgridSubscriptionStatus                         metricInfo
-	IseRadiusFailureCount                               metricInfo
-	IseResourceInfo                                     metricInfo
-	IseResourceStatus                                   metricInfo
-	IseScrapeLastSuccess                                metricInfo
-	IseScrapePartialSuccess                             metricInfo
-	IseServiceSkipped                                   metricInfo
-	IseServiceUnavailable                               metricInfo
-	IseSessionActiveCount                               metricInfo
-	IseSessionCount                                     metricInfo
-	IseTacacsFailureCount                               metricInfo
-	IseTrustsecResourceCount                            metricInfo
-	IseTrustsecResourceStatus                           metricInfo
-	IseWebhookDeliveryCount                             metricInfo
-	MerakiAPIRequestDuration                            metricInfo
-	MerakiAPIRequestErrors                              metricInfo
-	MerakiAPIRequestRateLimited                         metricInfo
-	MerakiAppliancePerformanceScore                     metricInfo
-	MerakiControllerUp                                  metricInfo
-	MerakiDeviceStatus                                  metricInfo
-	MerakiPowerModuleStatus                             metricInfo
-	MerakiScrapeLastSuccess                             metricInfo
-	MerakiSwitchPortAlertActive                         metricInfo
-	MerakiSwitchPortPoeAllocated                        metricInfo
-	MerakiSwitchPortUsage                               metricInfo
-	MerakiUplinkCellularSignalRsrp                      metricInfo
-	MerakiUplinkCellularSignalRsrq                      metricInfo
-	MerakiUplinkLatency                                 metricInfo
-	MerakiUplinkLoss                                    metricInfo
-	MerakiUplinkStatus                                  metricInfo
-	MerakiVpnPeerJitter                                 metricInfo
-	MerakiVpnPeerLatency                                metricInfo
-	MerakiVpnPeerLoss                                   metricInfo
-	MerakiVpnPeerMos                                    metricInfo
-	MerakiVpnPeerStatus                                 metricInfo
-	MerakiVpnPeerUsage                                  metricInfo
-	MerakiWirelessChannelUtilization                    metricInfo
-	MerakiWirelessClientCount                           metricInfo
-	MerakiWirelessPacketCount                           metricInfo
-	MerakiWirelessPacketLoss                            metricInfo
-	MerakiWirelessPacketLossPercentage                  metricInfo
-	MerakiWirelessSsidStatus                            metricInfo
-	NexusDashboardAPIEndpointError                      metricInfo
-	NexusDashboardAPIRateLimited                        metricInfo
-	NexusDashboardAPIRequestDuration                    metricInfo
-	NexusDashboardAPIRequestErrors                      metricInfo
-	NexusDashboardAuditRecordCount                      metricInfo
-	NexusDashboardConfigCompliance                      metricInfo
-	NexusDashboardDataBrokerRuleCount                   metricInfo
-	NexusDashboardDataBrokerSessionCount                metricInfo
-	NexusDashboardDataBrokerStatus                      metricInfo
-	NexusDashboardDeploymentStatus                      metricInfo
-	NexusDashboardEndpointCount                         metricInfo
-	NexusDashboardEventCount                            metricInfo
-	NexusDashboardFabricHealth                          metricInfo
-	NexusDashboardInsightsAnomalyActive                 metricInfo
-	NexusDashboardInsightsAnomalyCount                  metricInfo
-	NexusDashboardInsightsConfidence                    metricInfo
-	NexusDashboardInsightsScore                         metricInfo
-	NexusDashboardInsightsStatus                        metricInfo
-	NexusDashboardOrchestratorDeploymentCount           metricInfo
-	NexusDashboardOrchestratorDeploymentStatus          metricInfo
-	NexusDashboardOrchestratorPolicyDeltaCount          metricInfo
-	NexusDashboardResourceCount                         metricInfo
-	NexusDashboardResourceInfo                          metricInfo
-	NexusDashboardResourceStatus                        metricInfo
-	NexusDashboardScrapeLastSuccess                     metricInfo
-	NexusDashboardScrapePartialSuccess                  metricInfo
-	NexusDashboardServiceHealth                         metricInfo
-	NexusDashboardServiceSkipped                        metricInfo
-	NexusDashboardServiceUnavailable                    metricInfo
-	NexusDashboardStorageUtilization                    metricInfo
-	NexusDashboardVpcPeerCount                          metricInfo
-	SdwanAPIRateLimited                                 metricInfo
-	SdwanAPIRequestDuration                             metricInfo
-	SdwanAPIRequestErrors                               metricInfo
-	SdwanAppRouteJitter                                 metricInfo
-	SdwanAppRouteLatency                                metricInfo
-	SdwanAppRouteLoss                                   metricInfo
-	SdwanAppRouteSLAStatus                              metricInfo
-	SdwanBfdSessionCount                                metricInfo
-	SdwanBfdSessionFlapCount                            metricInfo
-	SdwanBfdSessionStatus                               metricInfo
-	SdwanBfdSessionTransitions                          metricInfo
-	SdwanCollectionObjectCount                          metricInfo
-	SdwanControlActualConnections                       metricInfo
-	SdwanControlConnectionCount                         metricInfo
-	SdwanControlConnectionStatus                        metricInfo
-	SdwanControlExpectedConnections                     metricInfo
-	SdwanDeviceCertificateStatus                        metricInfo
-	SdwanDeviceReachabilityStatus                       metricInfo
-	SdwanDeviceValidityStatus                           metricInfo
-	SdwanEventCount                                     metricInfo
-	SdwanInventoryDeviceCount                           metricInfo
-	SdwanManagerEndpointStatus                          metricInfo
-	SdwanManagerHealthScore                             metricInfo
-	SdwanManagerStatus                                  metricInfo
-	SdwanManagerUp                                      metricInfo
-	SdwanResourceInfo                                   metricInfo
-	SdwanResourceStatus                                 metricInfo
-	SdwanScrapeLastSuccess                              metricInfo
-	SdwanScrapePartialSuccess                           metricInfo
-	SdwanServiceSkipped                                 metricInfo
-	SdwanServiceUnavailable                             metricInfo
-	SdwanTransportInterfaceStatus                       metricInfo
-	SystemCPULogicalCount                               metricInfo
-	SystemCPUUtilization                                metricInfo
-	SystemMemoryUtilization                             metricInfo
-	SystemNetworkErrors                                 metricInfo
-	SystemNetworkInterfaceStatus                        metricInfo
-	SystemNetworkIo                                     metricInfo
-	SystemNetworkPacketCount                            metricInfo
-	SystemNetworkPacketDropped                          metricInfo
-	SystemUptime                                        metricInfo
+	CiscoDeviceUp                  metricInfo
+	CiscoInterfaceAdminStatus      metricInfo
+	CiscoInterfaceIoRate           metricInfo
+	CiscoInterfacePacketRate       metricInfo
+	CiscoInterfaceSpeed            metricInfo
+	CiscoInterfaceUtilization      metricInfo
+	CiscoOpticsChromaticDispersion metricInfo
+	CiscoOpticsDgd                 metricInfo
+	CiscoOpticsEsnr                metricInfo
+	CiscoOpticsLaserBiasCurrent    metricInfo
+	CiscoOpticsOsnr                metricInfo
+	CiscoOpticsPreFecBer           metricInfo
+	CiscoOpticsPresent             metricInfo
+	CiscoOpticsQFactor             metricInfo
+	CiscoOpticsQMargin             metricInfo
+	CiscoOpticsRxPower             metricInfo
+	CiscoOpticsTdecq               metricInfo
+	CiscoOpticsTecCurrent          metricInfo
+	CiscoOpticsTecUtilization      metricInfo
+	CiscoOpticsTemperature         metricInfo
+	CiscoOpticsTxPower             metricInfo
+	CiscoOpticsVoltage             metricInfo
+	CiscoWlcApJoinStatus           metricInfo
+	CiscoWlcRfChannelUtilization   metricInfo
+	CiscoWlcSsidClientCount        metricInfo
+	SystemCPUUtilization           metricInfo
+	SystemMemoryUtilization        metricInfo
+	SystemNetworkErrors            metricInfo
+	SystemNetworkInterfaceStatus   metricInfo
+	SystemNetworkIo                metricInfo
+	SystemNetworkPacketCount       metricInfo
+	SystemNetworkPacketDropped     metricInfo
+	SystemUptime                   metricInfo
 }
 
 type metricInfo struct {
@@ -7491,10 +6198,283 @@ func newMetricCiscoOpticsVoltage(cfg CiscoOpticsVoltageMetricConfig) metricCisco
 	return m
 }
 
-type metricCiscoScrapePartialSuccess struct {
-	data     pmetric.Metric                        // data buffer for generated metric.
-	config   CiscoScrapePartialSuccessMetricConfig // metric config provided by user.
-	capacity int                                   // max observed number of data points added to the metric.
+type metricCiscoWlcApJoinStatus struct {
+	data          pmetric.Metric                   // data buffer for generated metric.
+	config        CiscoWlcApJoinStatusMetricConfig // metric config provided by user.
+	capacity      int                              // max observed number of data points added to the metric.
+	aggDataPoints []int64                          // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.wlc.ap.join.status metric with initial data.
+func (m *metricCiscoWlcApJoinStatus) init() {
+	m.data.SetName("cisco.wlc.ap.join.status")
+	m.data.SetDescription("Catalyst 9800 access point join status")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoWlcApJoinStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoWlcApMacAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoWlcApJoinStatusMetricAttributeKeyCiscoWlcApMac) {
+		dp.Attributes().PutStr("cisco.wlc.ap.mac", ciscoWlcApMacAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcApJoinStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcApJoinStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetIntValue(m.data.Gauge().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcApJoinStatus(cfg CiscoWlcApJoinStatusMetricConfig) metricCiscoWlcApJoinStatus {
+	m := metricCiscoWlcApJoinStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcRfChannelUtilization struct {
+	data          pmetric.Metric                           // data buffer for generated metric.
+	config        CiscoWlcRfChannelUtilizationMetricConfig // metric config provided by user.
+	capacity      int                                      // max observed number of data points added to the metric.
+	aggDataPoints []float64                                // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.wlc.rf.channel.utilization metric with initial data.
+func (m *metricCiscoWlcRfChannelUtilization) init() {
+	m.data.SetName("cisco.wlc.rf.channel.utilization")
+	m.data.SetDescription("Catalyst 9800 RF channel utilization ratio")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoWlcRfChannelUtilization) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64, ciscoWlcApMacAttributeValue string, ciscoWlcRadioSlotAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoWlcRfChannelUtilizationMetricAttributeKeyCiscoWlcApMac) {
+		dp.Attributes().PutStr("cisco.wlc.ap.mac", ciscoWlcApMacAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoWlcRfChannelUtilizationMetricAttributeKeyCiscoWlcRadioSlot) {
+		dp.Attributes().PutStr("cisco.wlc.radio.slot", ciscoWlcRadioSlotAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetDoubleValue(dpi.DoubleValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.DoubleValue() > val {
+					dpi.SetDoubleValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.DoubleValue() < val {
+					dpi.SetDoubleValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetDoubleValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcRfChannelUtilization) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcRfChannelUtilization) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetDoubleValue(m.data.Gauge().DataPoints().At(i).DoubleValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcRfChannelUtilization(cfg CiscoWlcRfChannelUtilizationMetricConfig) metricCiscoWlcRfChannelUtilization {
+	m := metricCiscoWlcRfChannelUtilization{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcSsidClientCount struct {
+	data          pmetric.Metric                      // data buffer for generated metric.
+	config        CiscoWlcSsidClientCountMetricConfig // metric config provided by user.
+	capacity      int                                 // max observed number of data points added to the metric.
+	aggDataPoints []int64                             // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.wlc.ssid.client.count metric with initial data.
+func (m *metricCiscoWlcSsidClientCount) init() {
+	m.data.SetName("cisco.wlc.ssid.client.count")
+	m.data.SetDescription("Catalyst 9800 associated client count")
+	m.data.SetUnit("{client}")
+	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoWlcSsidClientCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoWlcApMacAttributeValue string, ciscoWlcWlanIDAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoWlcSsidClientCountMetricAttributeKeyCiscoWlcApMac) {
+		dp.Attributes().PutStr("cisco.wlc.ap.mac", ciscoWlcApMacAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoWlcSsidClientCountMetricAttributeKeyCiscoWlcWlanID) {
+		dp.Attributes().PutStr("cisco.wlc.wlan.id", ciscoWlcWlanIDAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcSsidClientCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcSsidClientCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetIntValue(m.data.Gauge().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcSsidClientCount(cfg CiscoWlcSsidClientCountMetricConfig) metricCiscoWlcSsidClientCount {
+	m := metricCiscoWlcSsidClientCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricSystemCPUUtilization struct {
+	data     pmetric.Metric                   // data buffer for generated metric.
+	config   SystemCPUUtilizationMetricConfig // metric config provided by user.
+	capacity int                              // max observed number of data points added to the metric.
 }
 
 // init fills cisco.scrape.partial_success metric with initial data.
@@ -22938,410 +21918,46 @@ func newMetricSystemUptime(cfg SystemUptimeMetricConfig) metricSystemUptime {
 // MetricsBuilder provides an interface for scrapers to report metrics while taking care of all the transformations
 // required to produce metric representation defined in metadata and user config.
 type MetricsBuilder struct {
-	config                                                    MetricsBuilderConfig // config of the metrics builder.
-	startTime                                                 pcommon.Timestamp    // start time that will be applied to all recorded data points.
-	metricsCapacity                                           int                  // maximum observed number of metrics per resource.
-	metricsBuffer                                             pmetric.Metrics      // accumulates metrics data before emitting.
-	buildInfo                                                 component.BuildInfo  // contains version information.
-	resourceAttributeIncludeFilter                            map[string]filter.Filter
-	resourceAttributeExcludeFilter                            map[string]filter.Filter
-	metricAciAPIEndpointError                                 metricAciAPIEndpointError
-	metricAciAPIRateLimited                                   metricAciAPIRateLimited
-	metricAciAPIRequestDuration                               metricAciAPIRequestDuration
-	metricAciAPIRequestErrors                                 metricAciAPIRequestErrors
-	metricAciAuditRecordCount                                 metricAciAuditRecordCount
-	metricAciControllerUp                                     metricAciControllerUp
-	metricAciEndpointCount                                    metricAciEndpointCount
-	metricAciEndpointPresent                                  metricAciEndpointPresent
-	metricAciEventCount                                       metricAciEventCount
-	metricAciFabricHealth                                     metricAciFabricHealth
-	metricAciFaultActive                                      metricAciFaultActive
-	metricAciFaultCount                                       metricAciFaultCount
-	metricAciResourceCount                                    metricAciResourceCount
-	metricAciResourceInfo                                     metricAciResourceInfo
-	metricAciResourceStatus                                   metricAciResourceStatus
-	metricAciScrapeLastSuccess                                metricAciScrapeLastSuccess
-	metricAciScrapePartialSuccess                             metricAciScrapePartialSuccess
-	metricAciTenantObjectCount                                metricAciTenantObjectCount
-	metricAciTenantStatus                                     metricAciTenantStatus
-	metricCatalystCenterAPIRateLimited                        metricCatalystCenterAPIRateLimited
-	metricCatalystCenterAPIRequestDuration                    metricCatalystCenterAPIRequestDuration
-	metricCatalystCenterAPIRequestErrors                      metricCatalystCenterAPIRequestErrors
-	metricCatalystCenterClientCount                           metricCatalystCenterClientCount
-	metricCatalystCenterClientDetailHealthScore               metricCatalystCenterClientDetailHealthScore
-	metricCatalystCenterClientHealthScore                     metricCatalystCenterClientHealthScore
-	metricCatalystCenterClientIssueCount                      metricCatalystCenterClientIssueCount
-	metricCatalystCenterClientNetworkIo                       metricCatalystCenterClientNetworkIo
-	metricCatalystCenterClientUniqueCount                     metricCatalystCenterClientUniqueCount
-	metricCatalystCenterClientWirelessRssi                    metricCatalystCenterClientWirelessRssi
-	metricCatalystCenterClientWirelessSnr                     metricCatalystCenterClientWirelessSnr
-	metricCatalystCenterDeviceCollectionStatus                metricCatalystCenterDeviceCollectionStatus
-	metricCatalystCenterDeviceDetailCommunicationStatus       metricCatalystCenterDeviceDetailCommunicationStatus
-	metricCatalystCenterDeviceDetailHealthScore               metricCatalystCenterDeviceDetailHealthScore
-	metricCatalystCenterDeviceInterfaceCount                  metricCatalystCenterDeviceInterfaceCount
-	metricCatalystCenterDeviceReachabilityStatus              metricCatalystCenterDeviceReachabilityStatus
-	metricCatalystCenterDeviceUptime                          metricCatalystCenterDeviceUptime
-	metricCatalystCenterInterfaceCount                        metricCatalystCenterInterfaceCount
-	metricCatalystCenterInventoryDeviceCount                  metricCatalystCenterInventoryDeviceCount
-	metricCatalystCenterIssueActiveCount                      metricCatalystCenterIssueActiveCount
-	metricCatalystCenterIssueCount                            metricCatalystCenterIssueCount
-	metricCatalystCenterNetworkDeviceCount                    metricCatalystCenterNetworkDeviceCount
-	metricCatalystCenterNetworkHealthCategoryScore            metricCatalystCenterNetworkHealthCategoryScore
-	metricCatalystCenterNetworkHealthEntityCount              metricCatalystCenterNetworkHealthEntityCount
-	metricCatalystCenterNetworkHealthEntityScore              metricCatalystCenterNetworkHealthEntityScore
-	metricCatalystCenterNetworkHealthScore                    metricCatalystCenterNetworkHealthScore
-	metricCatalystCenterScrapeLastSuccess                     metricCatalystCenterScrapeLastSuccess
-	metricCatalystCenterScrapePartialSuccess                  metricCatalystCenterScrapePartialSuccess
-	metricCatalystCenterSiteClientCount                       metricCatalystCenterSiteClientCount
-	metricCatalystCenterSiteClientHealthPercentage            metricCatalystCenterSiteClientHealthPercentage
-	metricCatalystCenterSiteHealthCount                       metricCatalystCenterSiteHealthCount
-	metricCatalystCenterSiteIssueCount                        metricCatalystCenterSiteIssueCount
-	metricCatalystCenterSiteNetworkDeviceCount                metricCatalystCenterSiteNetworkDeviceCount
-	metricCatalystCenterSiteNetworkDeviceHealthPercentage     metricCatalystCenterSiteNetworkDeviceHealthPercentage
-	metricCatalystCenterTopologyLinkCount                     metricCatalystCenterTopologyLinkCount
-	metricCatalystCenterTopologyNodeCount                     metricCatalystCenterTopologyNodeCount
-	metricCiscoCatalyst9800ReceiverActiveSubscriptions        metricCiscoCatalyst9800ReceiverActiveSubscriptions
-	metricCiscoCatalyst9800ReceiverCompactGpbPayloads         metricCiscoCatalyst9800ReceiverCompactGpbPayloads
-	metricCiscoCatalyst9800ReceiverDecodeErrors               metricCiscoCatalyst9800ReceiverDecodeErrors
-	metricCiscoCatalyst9800ReceiverDroppedDatapoints          metricCiscoCatalyst9800ReceiverDroppedDatapoints
-	metricCiscoCatalyst9800ReceiverLastSuccessTimestamp       metricCiscoCatalyst9800ReceiverLastSuccessTimestamp
-	metricCiscoCatalyst9800ReceiverReconnects                 metricCiscoCatalyst9800ReceiverReconnects
-	metricCiscoCatalyst9800ReceiverTargetLastSuccessTimestamp metricCiscoCatalyst9800ReceiverTargetLastSuccessTimestamp
-	metricCiscoCatalyst9800ReceiverTargetReconnects           metricCiscoCatalyst9800ReceiverTargetReconnects
-	metricCiscoCatalyst9800ReceiverTargetSubscriptionActive   metricCiscoCatalyst9800ReceiverTargetSubscriptionActive
-	metricCiscoCatalyst9800ReceiverTargetUpdates              metricCiscoCatalyst9800ReceiverTargetUpdates
-	metricCiscoCatalyst9800ReceiverUnsupportedPaths           metricCiscoCatalyst9800ReceiverUnsupportedPaths
-	metricCiscoCatalyst9800ReceiverUpdates                    metricCiscoCatalyst9800ReceiverUpdates
-	metricCiscoDeviceUp                                       metricCiscoDeviceUp
-	metricCiscoInterfaceAdminStatus                           metricCiscoInterfaceAdminStatus
-	metricCiscoInterfaceDropRate                              metricCiscoInterfaceDropRate
-	metricCiscoInterfaceIoRate                                metricCiscoInterfaceIoRate
-	metricCiscoInterfacePacketRate                            metricCiscoInterfacePacketRate
-	metricCiscoInterfaceSpeed                                 metricCiscoInterfaceSpeed
-	metricCiscoInterfaceUtilization                           metricCiscoInterfaceUtilization
-	metricCiscoIosxrReceiverActiveSubscriptions               metricCiscoIosxrReceiverActiveSubscriptions
-	metricCiscoIosxrReceiverCompactGpbPayloads                metricCiscoIosxrReceiverCompactGpbPayloads
-	metricCiscoIosxrReceiverDecodeErrors                      metricCiscoIosxrReceiverDecodeErrors
-	metricCiscoIosxrReceiverDroppedDatapoints                 metricCiscoIosxrReceiverDroppedDatapoints
-	metricCiscoIosxrReceiverLastSuccessTimestamp              metricCiscoIosxrReceiverLastSuccessTimestamp
-	metricCiscoIosxrReceiverReconnects                        metricCiscoIosxrReceiverReconnects
-	metricCiscoIosxrReceiverTargetLastSuccessTimestamp        metricCiscoIosxrReceiverTargetLastSuccessTimestamp
-	metricCiscoIosxrReceiverTargetReconnects                  metricCiscoIosxrReceiverTargetReconnects
-	metricCiscoIosxrReceiverTargetSubscriptionActive          metricCiscoIosxrReceiverTargetSubscriptionActive
-	metricCiscoIosxrReceiverTargetUpdates                     metricCiscoIosxrReceiverTargetUpdates
-	metricCiscoIosxrReceiverUnsupportedPaths                  metricCiscoIosxrReceiverUnsupportedPaths
-	metricCiscoIosxrReceiverUpdates                           metricCiscoIosxrReceiverUpdates
-	metricCiscoOpticsEsnr                                     metricCiscoOpticsEsnr
-	metricCiscoOpticsLaserBiasCurrent                         metricCiscoOpticsLaserBiasCurrent
-	metricCiscoOpticsPreFecBer                                metricCiscoOpticsPreFecBer
-	metricCiscoOpticsPresent                                  metricCiscoOpticsPresent
-	metricCiscoOpticsRxPower                                  metricCiscoOpticsRxPower
-	metricCiscoOpticsTdecq                                    metricCiscoOpticsTdecq
-	metricCiscoOpticsTecCurrent                               metricCiscoOpticsTecCurrent
-	metricCiscoOpticsTecUtilization                           metricCiscoOpticsTecUtilization
-	metricCiscoOpticsTemperature                              metricCiscoOpticsTemperature
-	metricCiscoOpticsTxPower                                  metricCiscoOpticsTxPower
-	metricCiscoOpticsVoltage                                  metricCiscoOpticsVoltage
-	metricCiscoScrapePartialSuccess                           metricCiscoScrapePartialSuccess
-	metricCiscoTopologyNeighborInfo                           metricCiscoTopologyNeighborInfo
-	metricCiscoTransceiverSensor                              metricCiscoTransceiverSensor
-	metricCiscoWlcApCapwapEncryptionEnabled                   metricCiscoWlcApCapwapEncryptionEnabled
-	metricCiscoWlcApCapwapState                               metricCiscoWlcApCapwapState
-	metricCiscoWlcApDisconnect                                metricCiscoWlcApDisconnect
-	metricCiscoWlcApDisconnectReasonInfo                      metricCiscoWlcApDisconnectReasonInfo
-	metricCiscoWlcApJoinFailureReasonInfo                     metricCiscoWlcApJoinFailureReasonInfo
-	metricCiscoWlcApJoinStatus                                metricCiscoWlcApJoinStatus
-	metricCiscoWlcAuthRadiusAccessAcceptCount                 metricCiscoWlcAuthRadiusAccessAcceptCount
-	metricCiscoWlcAuthRadiusAccessRejectCount                 metricCiscoWlcAuthRadiusAccessRejectCount
-	metricCiscoWlcAuthRadiusBadAuthenticatorCount             metricCiscoWlcAuthRadiusBadAuthenticatorCount
-	metricCiscoWlcAuthRadiusResponseCount                     metricCiscoWlcAuthRadiusResponseCount
-	metricCiscoWlcAuthRadiusResponseDelayAvg                  metricCiscoWlcAuthRadiusResponseDelayAvg
-	metricCiscoWlcAuthRadiusResponseDelayMax                  metricCiscoWlcAuthRadiusResponseDelayMax
-	metricCiscoWlcAuthRadiusTimeoutCount                      metricCiscoWlcAuthRadiusTimeoutCount
-	metricCiscoWlcClientAuthFailureReasonInfo                 metricCiscoWlcClientAuthFailureReasonInfo
-	metricCiscoWlcClientConnectionState                       metricCiscoWlcClientConnectionState
-	metricCiscoWlcClientNetworkIo                             metricCiscoWlcClientNetworkIo
-	metricCiscoWlcClientNetworkPackets                        metricCiscoWlcClientNetworkPackets
-	metricCiscoWlcClientRoamCount                             metricCiscoWlcClientRoamCount
-	metricCiscoWlcClientRoamFailureCount                      metricCiscoWlcClientRoamFailureCount
-	metricCiscoWlcClientRoamTypeInfo                          metricCiscoWlcClientRoamTypeInfo
-	metricCiscoWlcClientWirelessRssi                          metricCiscoWlcClientWirelessRssi
-	metricCiscoWlcClientWirelessSnr                           metricCiscoWlcClientWirelessSnr
-	metricCiscoWlcControllerCPUUtilization                    metricCiscoWlcControllerCPUUtilization
-	metricCiscoWlcControllerMemoryBytes                       metricCiscoWlcControllerMemoryBytes
-	metricCiscoWlcControllerReceiverActiveSubscriptions       metricCiscoWlcControllerReceiverActiveSubscriptions
-	metricCiscoWlcControllerReceiverDecodeErrors              metricCiscoWlcControllerReceiverDecodeErrors
-	metricCiscoWlcControllerReceiverSubscriptionActive        metricCiscoWlcControllerReceiverSubscriptionActive
-	metricCiscoWlcControllerReceiverUpdates                   metricCiscoWlcControllerReceiverUpdates
-	metricCiscoWlcHaEnabled                                   metricCiscoWlcHaEnabled
-	metricCiscoWlcHaStandbyFailureCount                       metricCiscoWlcHaStandbyFailureCount
-	metricCiscoWlcHaState                                     metricCiscoWlcHaState
-	metricCiscoWlcHaSwitchoverCount                           metricCiscoWlcHaSwitchoverCount
-	metricCiscoWlcMobilityHandoffCount                        metricCiscoWlcMobilityHandoffCount
-	metricCiscoWlcMobilityHandoffFailureCount                 metricCiscoWlcMobilityHandoffFailureCount
-	metricCiscoWlcMobilityPeerStatus                          metricCiscoWlcMobilityPeerStatus
-	metricCiscoWlcMobilityRoamCount                           metricCiscoWlcMobilityRoamCount
-	metricCiscoWlcRfChannelChangeCount                        metricCiscoWlcRfChannelChangeCount
-	metricCiscoWlcRfChannelRecommended                        metricCiscoWlcRfChannelRecommended
-	metricCiscoWlcRfChannelUtilization                        metricCiscoWlcRfChannelUtilization
-	metricCiscoWlcRfClientCount                               metricCiscoWlcRfClientCount
-	metricCiscoWlcRfNoiseFloor                                metricCiscoWlcRfNoiseFloor
-	metricCiscoWlcSsidChannelUtilization                      metricCiscoWlcSsidChannelUtilization
-	metricCiscoWlcSsidClientCount                             metricCiscoWlcSsidClientCount
-	metricCiscoWlcSsidNetworkIo                               metricCiscoWlcSsidNetworkIo
-	metricCiscoWlcSsidRetryCount                              metricCiscoWlcSsidRetryCount
-	metricFmcAPIEndpointError                                 metricFmcAPIEndpointError
-	metricFmcAPIRateLimited                                   metricFmcAPIRateLimited
-	metricFmcAPIRequestDuration                               metricFmcAPIRequestDuration
-	metricFmcAPIRequestErrors                                 metricFmcAPIRequestErrors
-	metricFmcAuditRecordCount                                 metricFmcAuditRecordCount
-	metricFmcDeploymentPendingCount                           metricFmcDeploymentPendingCount
-	metricFmcDeploymentStatus                                 metricFmcDeploymentStatus
-	metricFmcHaStatus                                         metricFmcHaStatus
-	metricFmcHealthEventCount                                 metricFmcHealthEventCount
-	metricFmcHealthStatus                                     metricFmcHealthStatus
-	metricFmcManagerUp                                        metricFmcManagerUp
-	metricFmcPolicyObjectCount                                metricFmcPolicyObjectCount
-	metricFmcResourceCount                                    metricFmcResourceCount
-	metricFmcResourceInfo                                     metricFmcResourceInfo
-	metricFmcResourceStatus                                   metricFmcResourceStatus
-	metricFmcScrapeLastSuccess                                metricFmcScrapeLastSuccess
-	metricFmcScrapePartialSuccess                             metricFmcScrapePartialSuccess
-	metricFmcVpnTunnelStatus                                  metricFmcVpnTunnelStatus
-	metricIntersightAdvisoryActive                            metricIntersightAdvisoryActive
-	metricIntersightAdvisoryCount                             metricIntersightAdvisoryCount
-	metricIntersightAlarmActive                               metricIntersightAlarmActive
-	metricIntersightAlarmCount                                metricIntersightAlarmCount
-	metricIntersightAPIRateLimited                            metricIntersightAPIRateLimited
-	metricIntersightAPIRequestDuration                        metricIntersightAPIRequestDuration
-	metricIntersightAPIRequestErrors                          metricIntersightAPIRequestErrors
-	metricIntersightAuditRecordCount                          metricIntersightAuditRecordCount
-	metricIntersightComputeAvailableMemory                    metricIntersightComputeAvailableMemory
-	metricIntersightComputeThreadCount                        metricIntersightComputeThreadCount
-	metricIntersightFaultCount                                metricIntersightFaultCount
-	metricIntersightFirmwareBundleInfo                        metricIntersightFirmwareBundleInfo
-	metricIntersightHclStatus                                 metricIntersightHclStatus
-	metricIntersightHclStatusCount                            metricIntersightHclStatusCount
-	metricIntersightHyperflexReadIops                         metricIntersightHyperflexReadIops
-	metricIntersightHyperflexReadLatency                      metricIntersightHyperflexReadLatency
-	metricIntersightHyperflexStatus                           metricIntersightHyperflexStatus
-	metricIntersightHyperflexWriteIops                        metricIntersightHyperflexWriteIops
-	metricIntersightHyperflexWriteLatency                     metricIntersightHyperflexWriteLatency
-	metricIntersightKubernetesClusterConnectionStatus         metricIntersightKubernetesClusterConnectionStatus
-	metricIntersightResourceCount                             metricIntersightResourceCount
-	metricIntersightResourceInfo                              metricIntersightResourceInfo
-	metricIntersightResourceStatus                            metricIntersightResourceStatus
-	metricIntersightScrapeLastSuccess                         metricIntersightScrapeLastSuccess
-	metricIntersightScrapePartialSuccess                      metricIntersightScrapePartialSuccess
-	metricIntersightStorageLifeLeft                           metricIntersightStorageLifeLeft
-	metricIntersightStorageMediaErrorCount                    metricIntersightStorageMediaErrorCount
-	metricIntersightStoragePowerOnHours                       metricIntersightStoragePowerOnHours
-	metricIntersightStoragePredictiveFailureCount             metricIntersightStoragePredictiveFailureCount
-	metricIntersightStorageRebuildRate                        metricIntersightStorageRebuildRate
-	metricIntersightStorageStatus                             metricIntersightStorageStatus
-	metricIntersightStorageTemperature                        metricIntersightStorageTemperature
-	metricIntersightTargetConnectionStatus                    metricIntersightTargetConnectionStatus
-	metricIntersightTaskCount                                 metricIntersightTaskCount
-	metricIntersightTaskStatus                                metricIntersightTaskStatus
-	metricIntersightTechsupportCount                          metricIntersightTechsupportCount
-	metricIntersightTechsupportStatus                         metricIntersightTechsupportStatus
-	metricIntersightTelemetryQueryRows                        metricIntersightTelemetryQueryRows
-	metricIntersightUcsCPUIdleUtilization                     metricIntersightUcsCPUIdleUtilization
-	metricIntersightUcsCPUSystemUtilization                   metricIntersightUcsCPUSystemUtilization
-	metricIntersightUcsCurrent                                metricIntersightUcsCurrent
-	metricIntersightUcsFanSpeed                               metricIntersightUcsFanSpeed
-	metricIntersightUcsFanSpeedRatio                          metricIntersightUcsFanSpeedRatio
-	metricIntersightUcsFanStatus                              metricIntersightUcsFanStatus
-	metricIntersightUcsHostEnergy                             metricIntersightUcsHostEnergy
-	metricIntersightUcsHostPower                              metricIntersightUcsHostPower
-	metricIntersightUcsHostPowerState                         metricIntersightUcsHostPowerState
-	metricIntersightUcsMemoryCached                           metricIntersightUcsMemoryCached
-	metricIntersightUcsMemoryEccCorrectable                   metricIntersightUcsMemoryEccCorrectable
-	metricIntersightUcsMemoryEccUncorrectable                 metricIntersightUcsMemoryEccUncorrectable
-	metricIntersightUcsMemoryFree                             metricIntersightUcsMemoryFree
-	metricIntersightUcsMemoryModuleSize                       metricIntersightUcsMemoryModuleSize
-	metricIntersightUcsMemoryStatus                           metricIntersightUcsMemoryStatus
-	metricIntersightUcsMemoryUsed                             metricIntersightUcsMemoryUsed
-	metricIntersightUcsNetworkInterfaceResets                 metricIntersightUcsNetworkInterfaceResets
-	metricIntersightUcsNetworkLinkStatus                      metricIntersightUcsNetworkLinkStatus
-	metricIntersightUcsNetworkLinkFailures                    metricIntersightUcsNetworkLinkFailures
-	metricIntersightUcsNetworkReceive                         metricIntersightUcsNetworkReceive
-	metricIntersightUcsNetworkReceiveCrcErrors                metricIntersightUcsNetworkReceiveCrcErrors
-	metricIntersightUcsNetworkReceiveDiscards                 metricIntersightUcsNetworkReceiveDiscards
-	metricIntersightUcsNetworkReceiveDrops                    metricIntersightUcsNetworkReceiveDrops
-	metricIntersightUcsNetworkReceiveErrors                   metricIntersightUcsNetworkReceiveErrors
-	metricIntersightUcsNetworkReceiveNoBuffer                 metricIntersightUcsNetworkReceiveNoBuffer
-	metricIntersightUcsNetworkReceivePackets                  metricIntersightUcsNetworkReceivePackets
-	metricIntersightUcsNetworkReceivePauseFrames              metricIntersightUcsNetworkReceivePauseFrames
-	metricIntersightUcsNetworkSignalLosses                    metricIntersightUcsNetworkSignalLosses
-	metricIntersightUcsNetworkSpeed                           metricIntersightUcsNetworkSpeed
-	metricIntersightUcsNetworkTransmit                        metricIntersightUcsNetworkTransmit
-	metricIntersightUcsNetworkTransmitDiscards                metricIntersightUcsNetworkTransmitDiscards
-	metricIntersightUcsNetworkTransmitDrops                   metricIntersightUcsNetworkTransmitDrops
-	metricIntersightUcsNetworkTransmitErrors                  metricIntersightUcsNetworkTransmitErrors
-	metricIntersightUcsNetworkTransmitPackets                 metricIntersightUcsNetworkTransmitPackets
-	metricIntersightUcsNetworkTransmitPauseFrames             metricIntersightUcsNetworkTransmitPauseFrames
-	metricIntersightUcsNetworkUtilization                     metricIntersightUcsNetworkUtilization
-	metricIntersightUcsPowerSupplyOutputPower                 metricIntersightUcsPowerSupplyOutputPower
-	metricIntersightUcsPowerSupplyStatus                      metricIntersightUcsPowerSupplyStatus
-	metricIntersightUcsPowerSupplyUtilization                 metricIntersightUcsPowerSupplyUtilization
-	metricIntersightUcsSignalPowerReceive                     metricIntersightUcsSignalPowerReceive
-	metricIntersightUcsSignalPowerTransmit                    metricIntersightUcsSignalPowerTransmit
-	metricIntersightUcsTemperature                            metricIntersightUcsTemperature
-	metricIntersightUcsTemperatureLimitHighCritical           metricIntersightUcsTemperatureLimitHighCritical
-	metricIntersightUcsTemperatureLimitLowCritical            metricIntersightUcsTemperatureLimitLowCritical
-	metricIntersightUcsTemperatureStatus                      metricIntersightUcsTemperatureStatus
-	metricIntersightUcsVoltage                                metricIntersightUcsVoltage
-	metricIntersightVirtualMachineCount                       metricIntersightVirtualMachineCount
-	metricIntersightVirtualMachineCPUCount                    metricIntersightVirtualMachineCPUCount
-	metricIntersightVirtualMachineMemory                      metricIntersightVirtualMachineMemory
-	metricIntersightVirtualMachinePowerState                  metricIntersightVirtualMachinePowerState
-	metricIntersightWorkflowCount                             metricIntersightWorkflowCount
-	metricIntersightWorkflowStatus                            metricIntersightWorkflowStatus
-	metricIseAccountingSessionCount                           metricIseAccountingSessionCount
-	metricIseAlarmCount                                       metricIseAlarmCount
-	metricIseAPIEndpointError                                 metricIseAPIEndpointError
-	metricIseAPIRateLimited                                   metricIseAPIRateLimited
-	metricIseAPIRequestDuration                               metricIseAPIRequestDuration
-	metricIseAPIRequestErrors                                 metricIseAPIRequestErrors
-	metricIseAuthFailureReasonInfo                            metricIseAuthFailureReasonInfo
-	metricIseCertificateCount                                 metricIseCertificateCount
-	metricIseCertificateExpiration                            metricIseCertificateExpiration
-	metricIseControllerUp                                     metricIseControllerUp
-	metricIseDataconnectQueryDuration                         metricIseDataconnectQueryDuration
-	metricIseDataconnectQueryErrors                           metricIseDataconnectQueryErrors
-	metricIseDataconnectQueryRows                             metricIseDataconnectQueryRows
-	metricIseDataconnectRowCount                              metricIseDataconnectRowCount
-	metricIseDeploymentNodeCount                              metricIseDeploymentNodeCount
-	metricIseDeploymentNodeStatus                             metricIseDeploymentNodeStatus
-	metricIseEndpointCount                                    metricIseEndpointCount
-	metricIseEndpointPostureCount                             metricIseEndpointPostureCount
-	metricIseEndpointPostureStatus                            metricIseEndpointPostureStatus
-	metricIseEndpointProfileCount                             metricIseEndpointProfileCount
-	metricIseEndpointStatus                                   metricIseEndpointStatus
-	metricIseLicenseCount                                     metricIseLicenseCount
-	metricIseLicenseStatus                                    metricIseLicenseStatus
-	metricIseNetworkDeviceCount                               metricIseNetworkDeviceCount
-	metricIseNetworkDeviceStatus                              metricIseNetworkDeviceStatus
-	metricIsePolicyObjectCount                                metricIsePolicyObjectCount
-	metricIsePolicyStatus                                     metricIsePolicyStatus
-	metricIseProfilerPolicyStatus                             metricIseProfilerPolicyStatus
-	metricIsePxgridMessageCount                               metricIsePxgridMessageCount
-	metricIsePxgridServiceStatus                              metricIsePxgridServiceStatus
-	metricIsePxgridSubscriptionStatus                         metricIsePxgridSubscriptionStatus
-	metricIseRadiusFailureCount                               metricIseRadiusFailureCount
-	metricIseResourceInfo                                     metricIseResourceInfo
-	metricIseResourceStatus                                   metricIseResourceStatus
-	metricIseScrapeLastSuccess                                metricIseScrapeLastSuccess
-	metricIseScrapePartialSuccess                             metricIseScrapePartialSuccess
-	metricIseServiceSkipped                                   metricIseServiceSkipped
-	metricIseServiceUnavailable                               metricIseServiceUnavailable
-	metricIseSessionActiveCount                               metricIseSessionActiveCount
-	metricIseSessionCount                                     metricIseSessionCount
-	metricIseTacacsFailureCount                               metricIseTacacsFailureCount
-	metricIseTrustsecResourceCount                            metricIseTrustsecResourceCount
-	metricIseTrustsecResourceStatus                           metricIseTrustsecResourceStatus
-	metricIseWebhookDeliveryCount                             metricIseWebhookDeliveryCount
-	metricMerakiAPIRequestDuration                            metricMerakiAPIRequestDuration
-	metricMerakiAPIRequestErrors                              metricMerakiAPIRequestErrors
-	metricMerakiAPIRequestRateLimited                         metricMerakiAPIRequestRateLimited
-	metricMerakiAppliancePerformanceScore                     metricMerakiAppliancePerformanceScore
-	metricMerakiControllerUp                                  metricMerakiControllerUp
-	metricMerakiDeviceStatus                                  metricMerakiDeviceStatus
-	metricMerakiPowerModuleStatus                             metricMerakiPowerModuleStatus
-	metricMerakiScrapeLastSuccess                             metricMerakiScrapeLastSuccess
-	metricMerakiSwitchPortAlertActive                         metricMerakiSwitchPortAlertActive
-	metricMerakiSwitchPortPoeAllocated                        metricMerakiSwitchPortPoeAllocated
-	metricMerakiSwitchPortUsage                               metricMerakiSwitchPortUsage
-	metricMerakiUplinkCellularSignalRsrp                      metricMerakiUplinkCellularSignalRsrp
-	metricMerakiUplinkCellularSignalRsrq                      metricMerakiUplinkCellularSignalRsrq
-	metricMerakiUplinkLatency                                 metricMerakiUplinkLatency
-	metricMerakiUplinkLoss                                    metricMerakiUplinkLoss
-	metricMerakiUplinkStatus                                  metricMerakiUplinkStatus
-	metricMerakiVpnPeerJitter                                 metricMerakiVpnPeerJitter
-	metricMerakiVpnPeerLatency                                metricMerakiVpnPeerLatency
-	metricMerakiVpnPeerLoss                                   metricMerakiVpnPeerLoss
-	metricMerakiVpnPeerMos                                    metricMerakiVpnPeerMos
-	metricMerakiVpnPeerStatus                                 metricMerakiVpnPeerStatus
-	metricMerakiVpnPeerUsage                                  metricMerakiVpnPeerUsage
-	metricMerakiWirelessChannelUtilization                    metricMerakiWirelessChannelUtilization
-	metricMerakiWirelessClientCount                           metricMerakiWirelessClientCount
-	metricMerakiWirelessPacketCount                           metricMerakiWirelessPacketCount
-	metricMerakiWirelessPacketLoss                            metricMerakiWirelessPacketLoss
-	metricMerakiWirelessPacketLossPercentage                  metricMerakiWirelessPacketLossPercentage
-	metricMerakiWirelessSsidStatus                            metricMerakiWirelessSsidStatus
-	metricNexusDashboardAPIEndpointError                      metricNexusDashboardAPIEndpointError
-	metricNexusDashboardAPIRateLimited                        metricNexusDashboardAPIRateLimited
-	metricNexusDashboardAPIRequestDuration                    metricNexusDashboardAPIRequestDuration
-	metricNexusDashboardAPIRequestErrors                      metricNexusDashboardAPIRequestErrors
-	metricNexusDashboardAuditRecordCount                      metricNexusDashboardAuditRecordCount
-	metricNexusDashboardConfigCompliance                      metricNexusDashboardConfigCompliance
-	metricNexusDashboardDataBrokerRuleCount                   metricNexusDashboardDataBrokerRuleCount
-	metricNexusDashboardDataBrokerSessionCount                metricNexusDashboardDataBrokerSessionCount
-	metricNexusDashboardDataBrokerStatus                      metricNexusDashboardDataBrokerStatus
-	metricNexusDashboardDeploymentStatus                      metricNexusDashboardDeploymentStatus
-	metricNexusDashboardEndpointCount                         metricNexusDashboardEndpointCount
-	metricNexusDashboardEventCount                            metricNexusDashboardEventCount
-	metricNexusDashboardFabricHealth                          metricNexusDashboardFabricHealth
-	metricNexusDashboardInsightsAnomalyActive                 metricNexusDashboardInsightsAnomalyActive
-	metricNexusDashboardInsightsAnomalyCount                  metricNexusDashboardInsightsAnomalyCount
-	metricNexusDashboardInsightsConfidence                    metricNexusDashboardInsightsConfidence
-	metricNexusDashboardInsightsScore                         metricNexusDashboardInsightsScore
-	metricNexusDashboardInsightsStatus                        metricNexusDashboardInsightsStatus
-	metricNexusDashboardOrchestratorDeploymentCount           metricNexusDashboardOrchestratorDeploymentCount
-	metricNexusDashboardOrchestratorDeploymentStatus          metricNexusDashboardOrchestratorDeploymentStatus
-	metricNexusDashboardOrchestratorPolicyDeltaCount          metricNexusDashboardOrchestratorPolicyDeltaCount
-	metricNexusDashboardResourceCount                         metricNexusDashboardResourceCount
-	metricNexusDashboardResourceInfo                          metricNexusDashboardResourceInfo
-	metricNexusDashboardResourceStatus                        metricNexusDashboardResourceStatus
-	metricNexusDashboardScrapeLastSuccess                     metricNexusDashboardScrapeLastSuccess
-	metricNexusDashboardScrapePartialSuccess                  metricNexusDashboardScrapePartialSuccess
-	metricNexusDashboardServiceHealth                         metricNexusDashboardServiceHealth
-	metricNexusDashboardServiceSkipped                        metricNexusDashboardServiceSkipped
-	metricNexusDashboardServiceUnavailable                    metricNexusDashboardServiceUnavailable
-	metricNexusDashboardStorageUtilization                    metricNexusDashboardStorageUtilization
-	metricNexusDashboardVpcPeerCount                          metricNexusDashboardVpcPeerCount
-	metricSdwanAPIRateLimited                                 metricSdwanAPIRateLimited
-	metricSdwanAPIRequestDuration                             metricSdwanAPIRequestDuration
-	metricSdwanAPIRequestErrors                               metricSdwanAPIRequestErrors
-	metricSdwanAppRouteJitter                                 metricSdwanAppRouteJitter
-	metricSdwanAppRouteLatency                                metricSdwanAppRouteLatency
-	metricSdwanAppRouteLoss                                   metricSdwanAppRouteLoss
-	metricSdwanAppRouteSLAStatus                              metricSdwanAppRouteSLAStatus
-	metricSdwanBfdSessionCount                                metricSdwanBfdSessionCount
-	metricSdwanBfdSessionFlapCount                            metricSdwanBfdSessionFlapCount
-	metricSdwanBfdSessionStatus                               metricSdwanBfdSessionStatus
-	metricSdwanBfdSessionTransitions                          metricSdwanBfdSessionTransitions
-	metricSdwanCollectionObjectCount                          metricSdwanCollectionObjectCount
-	metricSdwanControlActualConnections                       metricSdwanControlActualConnections
-	metricSdwanControlConnectionCount                         metricSdwanControlConnectionCount
-	metricSdwanControlConnectionStatus                        metricSdwanControlConnectionStatus
-	metricSdwanControlExpectedConnections                     metricSdwanControlExpectedConnections
-	metricSdwanDeviceCertificateStatus                        metricSdwanDeviceCertificateStatus
-	metricSdwanDeviceReachabilityStatus                       metricSdwanDeviceReachabilityStatus
-	metricSdwanDeviceValidityStatus                           metricSdwanDeviceValidityStatus
-	metricSdwanEventCount                                     metricSdwanEventCount
-	metricSdwanInventoryDeviceCount                           metricSdwanInventoryDeviceCount
-	metricSdwanManagerEndpointStatus                          metricSdwanManagerEndpointStatus
-	metricSdwanManagerHealthScore                             metricSdwanManagerHealthScore
-	metricSdwanManagerStatus                                  metricSdwanManagerStatus
-	metricSdwanManagerUp                                      metricSdwanManagerUp
-	metricSdwanResourceInfo                                   metricSdwanResourceInfo
-	metricSdwanResourceStatus                                 metricSdwanResourceStatus
-	metricSdwanScrapeLastSuccess                              metricSdwanScrapeLastSuccess
-	metricSdwanScrapePartialSuccess                           metricSdwanScrapePartialSuccess
-	metricSdwanServiceSkipped                                 metricSdwanServiceSkipped
-	metricSdwanServiceUnavailable                             metricSdwanServiceUnavailable
-	metricSdwanTransportInterfaceStatus                       metricSdwanTransportInterfaceStatus
-	metricSystemCPULogicalCount                               metricSystemCPULogicalCount
-	metricSystemCPUUtilization                                metricSystemCPUUtilization
-	metricSystemMemoryUtilization                             metricSystemMemoryUtilization
-	metricSystemNetworkErrors                                 metricSystemNetworkErrors
-	metricSystemNetworkInterfaceStatus                        metricSystemNetworkInterfaceStatus
-	metricSystemNetworkIo                                     metricSystemNetworkIo
-	metricSystemNetworkPacketCount                            metricSystemNetworkPacketCount
-	metricSystemNetworkPacketDropped                          metricSystemNetworkPacketDropped
-	metricSystemUptime                                        metricSystemUptime
+	config                               MetricsBuilderConfig // config of the metrics builder.
+	startTime                            pcommon.Timestamp    // start time that will be applied to all recorded data points.
+	metricsCapacity                      int                  // maximum observed number of metrics per resource.
+	metricsBuffer                        pmetric.Metrics      // accumulates metrics data before emitting.
+	buildInfo                            component.BuildInfo  // contains version information.
+	resourceAttributeIncludeFilter       map[string]filter.Filter
+	resourceAttributeExcludeFilter       map[string]filter.Filter
+	metricCiscoDeviceUp                  metricCiscoDeviceUp
+	metricCiscoInterfaceAdminStatus      metricCiscoInterfaceAdminStatus
+	metricCiscoInterfaceIoRate           metricCiscoInterfaceIoRate
+	metricCiscoInterfacePacketRate       metricCiscoInterfacePacketRate
+	metricCiscoInterfaceSpeed            metricCiscoInterfaceSpeed
+	metricCiscoInterfaceUtilization      metricCiscoInterfaceUtilization
+	metricCiscoOpticsChromaticDispersion metricCiscoOpticsChromaticDispersion
+	metricCiscoOpticsDgd                 metricCiscoOpticsDgd
+	metricCiscoOpticsEsnr                metricCiscoOpticsEsnr
+	metricCiscoOpticsLaserBiasCurrent    metricCiscoOpticsLaserBiasCurrent
+	metricCiscoOpticsOsnr                metricCiscoOpticsOsnr
+	metricCiscoOpticsPreFecBer           metricCiscoOpticsPreFecBer
+	metricCiscoOpticsPresent             metricCiscoOpticsPresent
+	metricCiscoOpticsQFactor             metricCiscoOpticsQFactor
+	metricCiscoOpticsQMargin             metricCiscoOpticsQMargin
+	metricCiscoOpticsRxPower             metricCiscoOpticsRxPower
+	metricCiscoOpticsTdecq               metricCiscoOpticsTdecq
+	metricCiscoOpticsTecCurrent          metricCiscoOpticsTecCurrent
+	metricCiscoOpticsTecUtilization      metricCiscoOpticsTecUtilization
+	metricCiscoOpticsTemperature         metricCiscoOpticsTemperature
+	metricCiscoOpticsTxPower             metricCiscoOpticsTxPower
+	metricCiscoOpticsVoltage             metricCiscoOpticsVoltage
+	metricCiscoWlcApJoinStatus           metricCiscoWlcApJoinStatus
+	metricCiscoWlcRfChannelUtilization   metricCiscoWlcRfChannelUtilization
+	metricCiscoWlcSsidClientCount        metricCiscoWlcSsidClientCount
+	metricSystemCPUUtilization           metricSystemCPUUtilization
+	metricSystemMemoryUtilization        metricSystemMemoryUtilization
+	metricSystemNetworkErrors            metricSystemNetworkErrors
+	metricSystemNetworkInterfaceStatus   metricSystemNetworkInterfaceStatus
+	metricSystemNetworkIo                metricSystemNetworkIo
+	metricSystemNetworkPacketCount       metricSystemNetworkPacketCount
+	metricSystemNetworkPacketDropped     metricSystemNetworkPacketDropped
+	metricSystemUptime                   metricSystemUptime
 }
 
 // MetricBuilderOption applies changes to default metrics builder.
@@ -23363,415 +21979,45 @@ func WithStartTime(startTime pcommon.Timestamp) MetricBuilderOption {
 }
 func NewMetricsBuilder(mbc MetricsBuilderConfig, settings receiver.Settings, options ...MetricBuilderOption) *MetricsBuilder {
 	mb := &MetricsBuilder{
-		config:                                                    mbc,
-		startTime:                                                 pcommon.NewTimestampFromTime(time.Now()),
-		metricsBuffer:                                             pmetric.NewMetrics(),
-		buildInfo:                                                 settings.BuildInfo,
-		metricAciAPIEndpointError:                                 newMetricAciAPIEndpointError(mbc.Metrics.AciAPIEndpointError),
-		metricAciAPIRateLimited:                                   newMetricAciAPIRateLimited(mbc.Metrics.AciAPIRateLimited),
-		metricAciAPIRequestDuration:                               newMetricAciAPIRequestDuration(mbc.Metrics.AciAPIRequestDuration),
-		metricAciAPIRequestErrors:                                 newMetricAciAPIRequestErrors(mbc.Metrics.AciAPIRequestErrors),
-		metricAciAuditRecordCount:                                 newMetricAciAuditRecordCount(mbc.Metrics.AciAuditRecordCount),
-		metricAciControllerUp:                                     newMetricAciControllerUp(mbc.Metrics.AciControllerUp),
-		metricAciEndpointCount:                                    newMetricAciEndpointCount(mbc.Metrics.AciEndpointCount),
-		metricAciEndpointPresent:                                  newMetricAciEndpointPresent(mbc.Metrics.AciEndpointPresent),
-		metricAciEventCount:                                       newMetricAciEventCount(mbc.Metrics.AciEventCount),
-		metricAciFabricHealth:                                     newMetricAciFabricHealth(mbc.Metrics.AciFabricHealth),
-		metricAciFaultActive:                                      newMetricAciFaultActive(mbc.Metrics.AciFaultActive),
-		metricAciFaultCount:                                       newMetricAciFaultCount(mbc.Metrics.AciFaultCount),
-		metricAciResourceCount:                                    newMetricAciResourceCount(mbc.Metrics.AciResourceCount),
-		metricAciResourceInfo:                                     newMetricAciResourceInfo(mbc.Metrics.AciResourceInfo),
-		metricAciResourceStatus:                                   newMetricAciResourceStatus(mbc.Metrics.AciResourceStatus),
-		metricAciScrapeLastSuccess:                                newMetricAciScrapeLastSuccess(mbc.Metrics.AciScrapeLastSuccess),
-		metricAciScrapePartialSuccess:                             newMetricAciScrapePartialSuccess(mbc.Metrics.AciScrapePartialSuccess),
-		metricAciTenantObjectCount:                                newMetricAciTenantObjectCount(mbc.Metrics.AciTenantObjectCount),
-		metricAciTenantStatus:                                     newMetricAciTenantStatus(mbc.Metrics.AciTenantStatus),
-		metricCatalystCenterAPIRateLimited:                        newMetricCatalystCenterAPIRateLimited(mbc.Metrics.CatalystCenterAPIRateLimited),
-		metricCatalystCenterAPIRequestDuration:                    newMetricCatalystCenterAPIRequestDuration(mbc.Metrics.CatalystCenterAPIRequestDuration),
-		metricCatalystCenterAPIRequestErrors:                      newMetricCatalystCenterAPIRequestErrors(mbc.Metrics.CatalystCenterAPIRequestErrors),
-		metricCatalystCenterClientCount:                           newMetricCatalystCenterClientCount(mbc.Metrics.CatalystCenterClientCount),
-		metricCatalystCenterClientDetailHealthScore:               newMetricCatalystCenterClientDetailHealthScore(mbc.Metrics.CatalystCenterClientDetailHealthScore),
-		metricCatalystCenterClientHealthScore:                     newMetricCatalystCenterClientHealthScore(mbc.Metrics.CatalystCenterClientHealthScore),
-		metricCatalystCenterClientIssueCount:                      newMetricCatalystCenterClientIssueCount(mbc.Metrics.CatalystCenterClientIssueCount),
-		metricCatalystCenterClientNetworkIo:                       newMetricCatalystCenterClientNetworkIo(mbc.Metrics.CatalystCenterClientNetworkIo),
-		metricCatalystCenterClientUniqueCount:                     newMetricCatalystCenterClientUniqueCount(mbc.Metrics.CatalystCenterClientUniqueCount),
-		metricCatalystCenterClientWirelessRssi:                    newMetricCatalystCenterClientWirelessRssi(mbc.Metrics.CatalystCenterClientWirelessRssi),
-		metricCatalystCenterClientWirelessSnr:                     newMetricCatalystCenterClientWirelessSnr(mbc.Metrics.CatalystCenterClientWirelessSnr),
-		metricCatalystCenterDeviceCollectionStatus:                newMetricCatalystCenterDeviceCollectionStatus(mbc.Metrics.CatalystCenterDeviceCollectionStatus),
-		metricCatalystCenterDeviceDetailCommunicationStatus:       newMetricCatalystCenterDeviceDetailCommunicationStatus(mbc.Metrics.CatalystCenterDeviceDetailCommunicationStatus),
-		metricCatalystCenterDeviceDetailHealthScore:               newMetricCatalystCenterDeviceDetailHealthScore(mbc.Metrics.CatalystCenterDeviceDetailHealthScore),
-		metricCatalystCenterDeviceInterfaceCount:                  newMetricCatalystCenterDeviceInterfaceCount(mbc.Metrics.CatalystCenterDeviceInterfaceCount),
-		metricCatalystCenterDeviceReachabilityStatus:              newMetricCatalystCenterDeviceReachabilityStatus(mbc.Metrics.CatalystCenterDeviceReachabilityStatus),
-		metricCatalystCenterDeviceUptime:                          newMetricCatalystCenterDeviceUptime(mbc.Metrics.CatalystCenterDeviceUptime),
-		metricCatalystCenterInterfaceCount:                        newMetricCatalystCenterInterfaceCount(mbc.Metrics.CatalystCenterInterfaceCount),
-		metricCatalystCenterInventoryDeviceCount:                  newMetricCatalystCenterInventoryDeviceCount(mbc.Metrics.CatalystCenterInventoryDeviceCount),
-		metricCatalystCenterIssueActiveCount:                      newMetricCatalystCenterIssueActiveCount(mbc.Metrics.CatalystCenterIssueActiveCount),
-		metricCatalystCenterIssueCount:                            newMetricCatalystCenterIssueCount(mbc.Metrics.CatalystCenterIssueCount),
-		metricCatalystCenterNetworkDeviceCount:                    newMetricCatalystCenterNetworkDeviceCount(mbc.Metrics.CatalystCenterNetworkDeviceCount),
-		metricCatalystCenterNetworkHealthCategoryScore:            newMetricCatalystCenterNetworkHealthCategoryScore(mbc.Metrics.CatalystCenterNetworkHealthCategoryScore),
-		metricCatalystCenterNetworkHealthEntityCount:              newMetricCatalystCenterNetworkHealthEntityCount(mbc.Metrics.CatalystCenterNetworkHealthEntityCount),
-		metricCatalystCenterNetworkHealthEntityScore:              newMetricCatalystCenterNetworkHealthEntityScore(mbc.Metrics.CatalystCenterNetworkHealthEntityScore),
-		metricCatalystCenterNetworkHealthScore:                    newMetricCatalystCenterNetworkHealthScore(mbc.Metrics.CatalystCenterNetworkHealthScore),
-		metricCatalystCenterScrapeLastSuccess:                     newMetricCatalystCenterScrapeLastSuccess(mbc.Metrics.CatalystCenterScrapeLastSuccess),
-		metricCatalystCenterScrapePartialSuccess:                  newMetricCatalystCenterScrapePartialSuccess(mbc.Metrics.CatalystCenterScrapePartialSuccess),
-		metricCatalystCenterSiteClientCount:                       newMetricCatalystCenterSiteClientCount(mbc.Metrics.CatalystCenterSiteClientCount),
-		metricCatalystCenterSiteClientHealthPercentage:            newMetricCatalystCenterSiteClientHealthPercentage(mbc.Metrics.CatalystCenterSiteClientHealthPercentage),
-		metricCatalystCenterSiteHealthCount:                       newMetricCatalystCenterSiteHealthCount(mbc.Metrics.CatalystCenterSiteHealthCount),
-		metricCatalystCenterSiteIssueCount:                        newMetricCatalystCenterSiteIssueCount(mbc.Metrics.CatalystCenterSiteIssueCount),
-		metricCatalystCenterSiteNetworkDeviceCount:                newMetricCatalystCenterSiteNetworkDeviceCount(mbc.Metrics.CatalystCenterSiteNetworkDeviceCount),
-		metricCatalystCenterSiteNetworkDeviceHealthPercentage:     newMetricCatalystCenterSiteNetworkDeviceHealthPercentage(mbc.Metrics.CatalystCenterSiteNetworkDeviceHealthPercentage),
-		metricCatalystCenterTopologyLinkCount:                     newMetricCatalystCenterTopologyLinkCount(mbc.Metrics.CatalystCenterTopologyLinkCount),
-		metricCatalystCenterTopologyNodeCount:                     newMetricCatalystCenterTopologyNodeCount(mbc.Metrics.CatalystCenterTopologyNodeCount),
-		metricCiscoCatalyst9800ReceiverActiveSubscriptions:        newMetricCiscoCatalyst9800ReceiverActiveSubscriptions(mbc.Metrics.CiscoCatalyst9800ReceiverActiveSubscriptions),
-		metricCiscoCatalyst9800ReceiverCompactGpbPayloads:         newMetricCiscoCatalyst9800ReceiverCompactGpbPayloads(mbc.Metrics.CiscoCatalyst9800ReceiverCompactGpbPayloads),
-		metricCiscoCatalyst9800ReceiverDecodeErrors:               newMetricCiscoCatalyst9800ReceiverDecodeErrors(mbc.Metrics.CiscoCatalyst9800ReceiverDecodeErrors),
-		metricCiscoCatalyst9800ReceiverDroppedDatapoints:          newMetricCiscoCatalyst9800ReceiverDroppedDatapoints(mbc.Metrics.CiscoCatalyst9800ReceiverDroppedDatapoints),
-		metricCiscoCatalyst9800ReceiverLastSuccessTimestamp:       newMetricCiscoCatalyst9800ReceiverLastSuccessTimestamp(mbc.Metrics.CiscoCatalyst9800ReceiverLastSuccessTimestamp),
-		metricCiscoCatalyst9800ReceiverReconnects:                 newMetricCiscoCatalyst9800ReceiverReconnects(mbc.Metrics.CiscoCatalyst9800ReceiverReconnects),
-		metricCiscoCatalyst9800ReceiverTargetLastSuccessTimestamp: newMetricCiscoCatalyst9800ReceiverTargetLastSuccessTimestamp(mbc.Metrics.CiscoCatalyst9800ReceiverTargetLastSuccessTimestamp),
-		metricCiscoCatalyst9800ReceiverTargetReconnects:           newMetricCiscoCatalyst9800ReceiverTargetReconnects(mbc.Metrics.CiscoCatalyst9800ReceiverTargetReconnects),
-		metricCiscoCatalyst9800ReceiverTargetSubscriptionActive:   newMetricCiscoCatalyst9800ReceiverTargetSubscriptionActive(mbc.Metrics.CiscoCatalyst9800ReceiverTargetSubscriptionActive),
-		metricCiscoCatalyst9800ReceiverTargetUpdates:              newMetricCiscoCatalyst9800ReceiverTargetUpdates(mbc.Metrics.CiscoCatalyst9800ReceiverTargetUpdates),
-		metricCiscoCatalyst9800ReceiverUnsupportedPaths:           newMetricCiscoCatalyst9800ReceiverUnsupportedPaths(mbc.Metrics.CiscoCatalyst9800ReceiverUnsupportedPaths),
-		metricCiscoCatalyst9800ReceiverUpdates:                    newMetricCiscoCatalyst9800ReceiverUpdates(mbc.Metrics.CiscoCatalyst9800ReceiverUpdates),
-		metricCiscoDeviceUp:                                       newMetricCiscoDeviceUp(mbc.Metrics.CiscoDeviceUp),
-		metricCiscoInterfaceAdminStatus:                           newMetricCiscoInterfaceAdminStatus(mbc.Metrics.CiscoInterfaceAdminStatus),
-		metricCiscoInterfaceDropRate:                              newMetricCiscoInterfaceDropRate(mbc.Metrics.CiscoInterfaceDropRate),
-		metricCiscoInterfaceIoRate:                                newMetricCiscoInterfaceIoRate(mbc.Metrics.CiscoInterfaceIoRate),
-		metricCiscoInterfacePacketRate:                            newMetricCiscoInterfacePacketRate(mbc.Metrics.CiscoInterfacePacketRate),
-		metricCiscoInterfaceSpeed:                                 newMetricCiscoInterfaceSpeed(mbc.Metrics.CiscoInterfaceSpeed),
-		metricCiscoInterfaceUtilization:                           newMetricCiscoInterfaceUtilization(mbc.Metrics.CiscoInterfaceUtilization),
-		metricCiscoIosxrReceiverActiveSubscriptions:               newMetricCiscoIosxrReceiverActiveSubscriptions(mbc.Metrics.CiscoIosxrReceiverActiveSubscriptions),
-		metricCiscoIosxrReceiverCompactGpbPayloads:                newMetricCiscoIosxrReceiverCompactGpbPayloads(mbc.Metrics.CiscoIosxrReceiverCompactGpbPayloads),
-		metricCiscoIosxrReceiverDecodeErrors:                      newMetricCiscoIosxrReceiverDecodeErrors(mbc.Metrics.CiscoIosxrReceiverDecodeErrors),
-		metricCiscoIosxrReceiverDroppedDatapoints:                 newMetricCiscoIosxrReceiverDroppedDatapoints(mbc.Metrics.CiscoIosxrReceiverDroppedDatapoints),
-		metricCiscoIosxrReceiverLastSuccessTimestamp:              newMetricCiscoIosxrReceiverLastSuccessTimestamp(mbc.Metrics.CiscoIosxrReceiverLastSuccessTimestamp),
-		metricCiscoIosxrReceiverReconnects:                        newMetricCiscoIosxrReceiverReconnects(mbc.Metrics.CiscoIosxrReceiverReconnects),
-		metricCiscoIosxrReceiverTargetLastSuccessTimestamp:        newMetricCiscoIosxrReceiverTargetLastSuccessTimestamp(mbc.Metrics.CiscoIosxrReceiverTargetLastSuccessTimestamp),
-		metricCiscoIosxrReceiverTargetReconnects:                  newMetricCiscoIosxrReceiverTargetReconnects(mbc.Metrics.CiscoIosxrReceiverTargetReconnects),
-		metricCiscoIosxrReceiverTargetSubscriptionActive:          newMetricCiscoIosxrReceiverTargetSubscriptionActive(mbc.Metrics.CiscoIosxrReceiverTargetSubscriptionActive),
-		metricCiscoIosxrReceiverTargetUpdates:                     newMetricCiscoIosxrReceiverTargetUpdates(mbc.Metrics.CiscoIosxrReceiverTargetUpdates),
-		metricCiscoIosxrReceiverUnsupportedPaths:                  newMetricCiscoIosxrReceiverUnsupportedPaths(mbc.Metrics.CiscoIosxrReceiverUnsupportedPaths),
-		metricCiscoIosxrReceiverUpdates:                           newMetricCiscoIosxrReceiverUpdates(mbc.Metrics.CiscoIosxrReceiverUpdates),
-		metricCiscoOpticsEsnr:                                     newMetricCiscoOpticsEsnr(mbc.Metrics.CiscoOpticsEsnr),
-		metricCiscoOpticsLaserBiasCurrent:                         newMetricCiscoOpticsLaserBiasCurrent(mbc.Metrics.CiscoOpticsLaserBiasCurrent),
-		metricCiscoOpticsPreFecBer:                                newMetricCiscoOpticsPreFecBer(mbc.Metrics.CiscoOpticsPreFecBer),
-		metricCiscoOpticsPresent:                                  newMetricCiscoOpticsPresent(mbc.Metrics.CiscoOpticsPresent),
-		metricCiscoOpticsRxPower:                                  newMetricCiscoOpticsRxPower(mbc.Metrics.CiscoOpticsRxPower),
-		metricCiscoOpticsTdecq:                                    newMetricCiscoOpticsTdecq(mbc.Metrics.CiscoOpticsTdecq),
-		metricCiscoOpticsTecCurrent:                               newMetricCiscoOpticsTecCurrent(mbc.Metrics.CiscoOpticsTecCurrent),
-		metricCiscoOpticsTecUtilization:                           newMetricCiscoOpticsTecUtilization(mbc.Metrics.CiscoOpticsTecUtilization),
-		metricCiscoOpticsTemperature:                              newMetricCiscoOpticsTemperature(mbc.Metrics.CiscoOpticsTemperature),
-		metricCiscoOpticsTxPower:                                  newMetricCiscoOpticsTxPower(mbc.Metrics.CiscoOpticsTxPower),
-		metricCiscoOpticsVoltage:                                  newMetricCiscoOpticsVoltage(mbc.Metrics.CiscoOpticsVoltage),
-		metricCiscoScrapePartialSuccess:                           newMetricCiscoScrapePartialSuccess(mbc.Metrics.CiscoScrapePartialSuccess),
-		metricCiscoTopologyNeighborInfo:                           newMetricCiscoTopologyNeighborInfo(mbc.Metrics.CiscoTopologyNeighborInfo),
-		metricCiscoTransceiverSensor:                              newMetricCiscoTransceiverSensor(mbc.Metrics.CiscoTransceiverSensor),
-		metricCiscoWlcApCapwapEncryptionEnabled:                   newMetricCiscoWlcApCapwapEncryptionEnabled(mbc.Metrics.CiscoWlcApCapwapEncryptionEnabled),
-		metricCiscoWlcApCapwapState:                               newMetricCiscoWlcApCapwapState(mbc.Metrics.CiscoWlcApCapwapState),
-		metricCiscoWlcApDisconnect:                                newMetricCiscoWlcApDisconnect(mbc.Metrics.CiscoWlcApDisconnect),
-		metricCiscoWlcApDisconnectReasonInfo:                      newMetricCiscoWlcApDisconnectReasonInfo(mbc.Metrics.CiscoWlcApDisconnectReasonInfo),
-		metricCiscoWlcApJoinFailureReasonInfo:                     newMetricCiscoWlcApJoinFailureReasonInfo(mbc.Metrics.CiscoWlcApJoinFailureReasonInfo),
-		metricCiscoWlcApJoinStatus:                                newMetricCiscoWlcApJoinStatus(mbc.Metrics.CiscoWlcApJoinStatus),
-		metricCiscoWlcAuthRadiusAccessAcceptCount:                 newMetricCiscoWlcAuthRadiusAccessAcceptCount(mbc.Metrics.CiscoWlcAuthRadiusAccessAcceptCount),
-		metricCiscoWlcAuthRadiusAccessRejectCount:                 newMetricCiscoWlcAuthRadiusAccessRejectCount(mbc.Metrics.CiscoWlcAuthRadiusAccessRejectCount),
-		metricCiscoWlcAuthRadiusBadAuthenticatorCount:             newMetricCiscoWlcAuthRadiusBadAuthenticatorCount(mbc.Metrics.CiscoWlcAuthRadiusBadAuthenticatorCount),
-		metricCiscoWlcAuthRadiusResponseCount:                     newMetricCiscoWlcAuthRadiusResponseCount(mbc.Metrics.CiscoWlcAuthRadiusResponseCount),
-		metricCiscoWlcAuthRadiusResponseDelayAvg:                  newMetricCiscoWlcAuthRadiusResponseDelayAvg(mbc.Metrics.CiscoWlcAuthRadiusResponseDelayAvg),
-		metricCiscoWlcAuthRadiusResponseDelayMax:                  newMetricCiscoWlcAuthRadiusResponseDelayMax(mbc.Metrics.CiscoWlcAuthRadiusResponseDelayMax),
-		metricCiscoWlcAuthRadiusTimeoutCount:                      newMetricCiscoWlcAuthRadiusTimeoutCount(mbc.Metrics.CiscoWlcAuthRadiusTimeoutCount),
-		metricCiscoWlcClientAuthFailureReasonInfo:                 newMetricCiscoWlcClientAuthFailureReasonInfo(mbc.Metrics.CiscoWlcClientAuthFailureReasonInfo),
-		metricCiscoWlcClientConnectionState:                       newMetricCiscoWlcClientConnectionState(mbc.Metrics.CiscoWlcClientConnectionState),
-		metricCiscoWlcClientNetworkIo:                             newMetricCiscoWlcClientNetworkIo(mbc.Metrics.CiscoWlcClientNetworkIo),
-		metricCiscoWlcClientNetworkPackets:                        newMetricCiscoWlcClientNetworkPackets(mbc.Metrics.CiscoWlcClientNetworkPackets),
-		metricCiscoWlcClientRoamCount:                             newMetricCiscoWlcClientRoamCount(mbc.Metrics.CiscoWlcClientRoamCount),
-		metricCiscoWlcClientRoamFailureCount:                      newMetricCiscoWlcClientRoamFailureCount(mbc.Metrics.CiscoWlcClientRoamFailureCount),
-		metricCiscoWlcClientRoamTypeInfo:                          newMetricCiscoWlcClientRoamTypeInfo(mbc.Metrics.CiscoWlcClientRoamTypeInfo),
-		metricCiscoWlcClientWirelessRssi:                          newMetricCiscoWlcClientWirelessRssi(mbc.Metrics.CiscoWlcClientWirelessRssi),
-		metricCiscoWlcClientWirelessSnr:                           newMetricCiscoWlcClientWirelessSnr(mbc.Metrics.CiscoWlcClientWirelessSnr),
-		metricCiscoWlcControllerCPUUtilization:                    newMetricCiscoWlcControllerCPUUtilization(mbc.Metrics.CiscoWlcControllerCPUUtilization),
-		metricCiscoWlcControllerMemoryBytes:                       newMetricCiscoWlcControllerMemoryBytes(mbc.Metrics.CiscoWlcControllerMemoryBytes),
-		metricCiscoWlcControllerReceiverActiveSubscriptions:       newMetricCiscoWlcControllerReceiverActiveSubscriptions(mbc.Metrics.CiscoWlcControllerReceiverActiveSubscriptions),
-		metricCiscoWlcControllerReceiverDecodeErrors:              newMetricCiscoWlcControllerReceiverDecodeErrors(mbc.Metrics.CiscoWlcControllerReceiverDecodeErrors),
-		metricCiscoWlcControllerReceiverSubscriptionActive:        newMetricCiscoWlcControllerReceiverSubscriptionActive(mbc.Metrics.CiscoWlcControllerReceiverSubscriptionActive),
-		metricCiscoWlcControllerReceiverUpdates:                   newMetricCiscoWlcControllerReceiverUpdates(mbc.Metrics.CiscoWlcControllerReceiverUpdates),
-		metricCiscoWlcHaEnabled:                                   newMetricCiscoWlcHaEnabled(mbc.Metrics.CiscoWlcHaEnabled),
-		metricCiscoWlcHaStandbyFailureCount:                       newMetricCiscoWlcHaStandbyFailureCount(mbc.Metrics.CiscoWlcHaStandbyFailureCount),
-		metricCiscoWlcHaState:                                     newMetricCiscoWlcHaState(mbc.Metrics.CiscoWlcHaState),
-		metricCiscoWlcHaSwitchoverCount:                           newMetricCiscoWlcHaSwitchoverCount(mbc.Metrics.CiscoWlcHaSwitchoverCount),
-		metricCiscoWlcMobilityHandoffCount:                        newMetricCiscoWlcMobilityHandoffCount(mbc.Metrics.CiscoWlcMobilityHandoffCount),
-		metricCiscoWlcMobilityHandoffFailureCount:                 newMetricCiscoWlcMobilityHandoffFailureCount(mbc.Metrics.CiscoWlcMobilityHandoffFailureCount),
-		metricCiscoWlcMobilityPeerStatus:                          newMetricCiscoWlcMobilityPeerStatus(mbc.Metrics.CiscoWlcMobilityPeerStatus),
-		metricCiscoWlcMobilityRoamCount:                           newMetricCiscoWlcMobilityRoamCount(mbc.Metrics.CiscoWlcMobilityRoamCount),
-		metricCiscoWlcRfChannelChangeCount:                        newMetricCiscoWlcRfChannelChangeCount(mbc.Metrics.CiscoWlcRfChannelChangeCount),
-		metricCiscoWlcRfChannelRecommended:                        newMetricCiscoWlcRfChannelRecommended(mbc.Metrics.CiscoWlcRfChannelRecommended),
-		metricCiscoWlcRfChannelUtilization:                        newMetricCiscoWlcRfChannelUtilization(mbc.Metrics.CiscoWlcRfChannelUtilization),
-		metricCiscoWlcRfClientCount:                               newMetricCiscoWlcRfClientCount(mbc.Metrics.CiscoWlcRfClientCount),
-		metricCiscoWlcRfNoiseFloor:                                newMetricCiscoWlcRfNoiseFloor(mbc.Metrics.CiscoWlcRfNoiseFloor),
-		metricCiscoWlcSsidChannelUtilization:                      newMetricCiscoWlcSsidChannelUtilization(mbc.Metrics.CiscoWlcSsidChannelUtilization),
-		metricCiscoWlcSsidClientCount:                             newMetricCiscoWlcSsidClientCount(mbc.Metrics.CiscoWlcSsidClientCount),
-		metricCiscoWlcSsidNetworkIo:                               newMetricCiscoWlcSsidNetworkIo(mbc.Metrics.CiscoWlcSsidNetworkIo),
-		metricCiscoWlcSsidRetryCount:                              newMetricCiscoWlcSsidRetryCount(mbc.Metrics.CiscoWlcSsidRetryCount),
-		metricFmcAPIEndpointError:                                 newMetricFmcAPIEndpointError(mbc.Metrics.FmcAPIEndpointError),
-		metricFmcAPIRateLimited:                                   newMetricFmcAPIRateLimited(mbc.Metrics.FmcAPIRateLimited),
-		metricFmcAPIRequestDuration:                               newMetricFmcAPIRequestDuration(mbc.Metrics.FmcAPIRequestDuration),
-		metricFmcAPIRequestErrors:                                 newMetricFmcAPIRequestErrors(mbc.Metrics.FmcAPIRequestErrors),
-		metricFmcAuditRecordCount:                                 newMetricFmcAuditRecordCount(mbc.Metrics.FmcAuditRecordCount),
-		metricFmcDeploymentPendingCount:                           newMetricFmcDeploymentPendingCount(mbc.Metrics.FmcDeploymentPendingCount),
-		metricFmcDeploymentStatus:                                 newMetricFmcDeploymentStatus(mbc.Metrics.FmcDeploymentStatus),
-		metricFmcHaStatus:                                         newMetricFmcHaStatus(mbc.Metrics.FmcHaStatus),
-		metricFmcHealthEventCount:                                 newMetricFmcHealthEventCount(mbc.Metrics.FmcHealthEventCount),
-		metricFmcHealthStatus:                                     newMetricFmcHealthStatus(mbc.Metrics.FmcHealthStatus),
-		metricFmcManagerUp:                                        newMetricFmcManagerUp(mbc.Metrics.FmcManagerUp),
-		metricFmcPolicyObjectCount:                                newMetricFmcPolicyObjectCount(mbc.Metrics.FmcPolicyObjectCount),
-		metricFmcResourceCount:                                    newMetricFmcResourceCount(mbc.Metrics.FmcResourceCount),
-		metricFmcResourceInfo:                                     newMetricFmcResourceInfo(mbc.Metrics.FmcResourceInfo),
-		metricFmcResourceStatus:                                   newMetricFmcResourceStatus(mbc.Metrics.FmcResourceStatus),
-		metricFmcScrapeLastSuccess:                                newMetricFmcScrapeLastSuccess(mbc.Metrics.FmcScrapeLastSuccess),
-		metricFmcScrapePartialSuccess:                             newMetricFmcScrapePartialSuccess(mbc.Metrics.FmcScrapePartialSuccess),
-		metricFmcVpnTunnelStatus:                                  newMetricFmcVpnTunnelStatus(mbc.Metrics.FmcVpnTunnelStatus),
-		metricIntersightAdvisoryActive:                            newMetricIntersightAdvisoryActive(mbc.Metrics.IntersightAdvisoryActive),
-		metricIntersightAdvisoryCount:                             newMetricIntersightAdvisoryCount(mbc.Metrics.IntersightAdvisoryCount),
-		metricIntersightAlarmActive:                               newMetricIntersightAlarmActive(mbc.Metrics.IntersightAlarmActive),
-		metricIntersightAlarmCount:                                newMetricIntersightAlarmCount(mbc.Metrics.IntersightAlarmCount),
-		metricIntersightAPIRateLimited:                            newMetricIntersightAPIRateLimited(mbc.Metrics.IntersightAPIRateLimited),
-		metricIntersightAPIRequestDuration:                        newMetricIntersightAPIRequestDuration(mbc.Metrics.IntersightAPIRequestDuration),
-		metricIntersightAPIRequestErrors:                          newMetricIntersightAPIRequestErrors(mbc.Metrics.IntersightAPIRequestErrors),
-		metricIntersightAuditRecordCount:                          newMetricIntersightAuditRecordCount(mbc.Metrics.IntersightAuditRecordCount),
-		metricIntersightComputeAvailableMemory:                    newMetricIntersightComputeAvailableMemory(mbc.Metrics.IntersightComputeAvailableMemory),
-		metricIntersightComputeThreadCount:                        newMetricIntersightComputeThreadCount(mbc.Metrics.IntersightComputeThreadCount),
-		metricIntersightFaultCount:                                newMetricIntersightFaultCount(mbc.Metrics.IntersightFaultCount),
-		metricIntersightFirmwareBundleInfo:                        newMetricIntersightFirmwareBundleInfo(mbc.Metrics.IntersightFirmwareBundleInfo),
-		metricIntersightHclStatus:                                 newMetricIntersightHclStatus(mbc.Metrics.IntersightHclStatus),
-		metricIntersightHclStatusCount:                            newMetricIntersightHclStatusCount(mbc.Metrics.IntersightHclStatusCount),
-		metricIntersightHyperflexReadIops:                         newMetricIntersightHyperflexReadIops(mbc.Metrics.IntersightHyperflexReadIops),
-		metricIntersightHyperflexReadLatency:                      newMetricIntersightHyperflexReadLatency(mbc.Metrics.IntersightHyperflexReadLatency),
-		metricIntersightHyperflexStatus:                           newMetricIntersightHyperflexStatus(mbc.Metrics.IntersightHyperflexStatus),
-		metricIntersightHyperflexWriteIops:                        newMetricIntersightHyperflexWriteIops(mbc.Metrics.IntersightHyperflexWriteIops),
-		metricIntersightHyperflexWriteLatency:                     newMetricIntersightHyperflexWriteLatency(mbc.Metrics.IntersightHyperflexWriteLatency),
-		metricIntersightKubernetesClusterConnectionStatus:         newMetricIntersightKubernetesClusterConnectionStatus(mbc.Metrics.IntersightKubernetesClusterConnectionStatus),
-		metricIntersightResourceCount:                             newMetricIntersightResourceCount(mbc.Metrics.IntersightResourceCount),
-		metricIntersightResourceInfo:                              newMetricIntersightResourceInfo(mbc.Metrics.IntersightResourceInfo),
-		metricIntersightResourceStatus:                            newMetricIntersightResourceStatus(mbc.Metrics.IntersightResourceStatus),
-		metricIntersightScrapeLastSuccess:                         newMetricIntersightScrapeLastSuccess(mbc.Metrics.IntersightScrapeLastSuccess),
-		metricIntersightScrapePartialSuccess:                      newMetricIntersightScrapePartialSuccess(mbc.Metrics.IntersightScrapePartialSuccess),
-		metricIntersightStorageLifeLeft:                           newMetricIntersightStorageLifeLeft(mbc.Metrics.IntersightStorageLifeLeft),
-		metricIntersightStorageMediaErrorCount:                    newMetricIntersightStorageMediaErrorCount(mbc.Metrics.IntersightStorageMediaErrorCount),
-		metricIntersightStoragePowerOnHours:                       newMetricIntersightStoragePowerOnHours(mbc.Metrics.IntersightStoragePowerOnHours),
-		metricIntersightStoragePredictiveFailureCount:             newMetricIntersightStoragePredictiveFailureCount(mbc.Metrics.IntersightStoragePredictiveFailureCount),
-		metricIntersightStorageRebuildRate:                        newMetricIntersightStorageRebuildRate(mbc.Metrics.IntersightStorageRebuildRate),
-		metricIntersightStorageStatus:                             newMetricIntersightStorageStatus(mbc.Metrics.IntersightStorageStatus),
-		metricIntersightStorageTemperature:                        newMetricIntersightStorageTemperature(mbc.Metrics.IntersightStorageTemperature),
-		metricIntersightTargetConnectionStatus:                    newMetricIntersightTargetConnectionStatus(mbc.Metrics.IntersightTargetConnectionStatus),
-		metricIntersightTaskCount:                                 newMetricIntersightTaskCount(mbc.Metrics.IntersightTaskCount),
-		metricIntersightTaskStatus:                                newMetricIntersightTaskStatus(mbc.Metrics.IntersightTaskStatus),
-		metricIntersightTechsupportCount:                          newMetricIntersightTechsupportCount(mbc.Metrics.IntersightTechsupportCount),
-		metricIntersightTechsupportStatus:                         newMetricIntersightTechsupportStatus(mbc.Metrics.IntersightTechsupportStatus),
-		metricIntersightTelemetryQueryRows:                        newMetricIntersightTelemetryQueryRows(mbc.Metrics.IntersightTelemetryQueryRows),
-		metricIntersightUcsCPUIdleUtilization:                     newMetricIntersightUcsCPUIdleUtilization(mbc.Metrics.IntersightUcsCPUIdleUtilization),
-		metricIntersightUcsCPUSystemUtilization:                   newMetricIntersightUcsCPUSystemUtilization(mbc.Metrics.IntersightUcsCPUSystemUtilization),
-		metricIntersightUcsCurrent:                                newMetricIntersightUcsCurrent(mbc.Metrics.IntersightUcsCurrent),
-		metricIntersightUcsFanSpeed:                               newMetricIntersightUcsFanSpeed(mbc.Metrics.IntersightUcsFanSpeed),
-		metricIntersightUcsFanSpeedRatio:                          newMetricIntersightUcsFanSpeedRatio(mbc.Metrics.IntersightUcsFanSpeedRatio),
-		metricIntersightUcsFanStatus:                              newMetricIntersightUcsFanStatus(mbc.Metrics.IntersightUcsFanStatus),
-		metricIntersightUcsHostEnergy:                             newMetricIntersightUcsHostEnergy(mbc.Metrics.IntersightUcsHostEnergy),
-		metricIntersightUcsHostPower:                              newMetricIntersightUcsHostPower(mbc.Metrics.IntersightUcsHostPower),
-		metricIntersightUcsHostPowerState:                         newMetricIntersightUcsHostPowerState(mbc.Metrics.IntersightUcsHostPowerState),
-		metricIntersightUcsMemoryCached:                           newMetricIntersightUcsMemoryCached(mbc.Metrics.IntersightUcsMemoryCached),
-		metricIntersightUcsMemoryEccCorrectable:                   newMetricIntersightUcsMemoryEccCorrectable(mbc.Metrics.IntersightUcsMemoryEccCorrectable),
-		metricIntersightUcsMemoryEccUncorrectable:                 newMetricIntersightUcsMemoryEccUncorrectable(mbc.Metrics.IntersightUcsMemoryEccUncorrectable),
-		metricIntersightUcsMemoryFree:                             newMetricIntersightUcsMemoryFree(mbc.Metrics.IntersightUcsMemoryFree),
-		metricIntersightUcsMemoryModuleSize:                       newMetricIntersightUcsMemoryModuleSize(mbc.Metrics.IntersightUcsMemoryModuleSize),
-		metricIntersightUcsMemoryStatus:                           newMetricIntersightUcsMemoryStatus(mbc.Metrics.IntersightUcsMemoryStatus),
-		metricIntersightUcsMemoryUsed:                             newMetricIntersightUcsMemoryUsed(mbc.Metrics.IntersightUcsMemoryUsed),
-		metricIntersightUcsNetworkInterfaceResets:                 newMetricIntersightUcsNetworkInterfaceResets(mbc.Metrics.IntersightUcsNetworkInterfaceResets),
-		metricIntersightUcsNetworkLinkStatus:                      newMetricIntersightUcsNetworkLinkStatus(mbc.Metrics.IntersightUcsNetworkLinkStatus),
-		metricIntersightUcsNetworkLinkFailures:                    newMetricIntersightUcsNetworkLinkFailures(mbc.Metrics.IntersightUcsNetworkLinkFailures),
-		metricIntersightUcsNetworkReceive:                         newMetricIntersightUcsNetworkReceive(mbc.Metrics.IntersightUcsNetworkReceive),
-		metricIntersightUcsNetworkReceiveCrcErrors:                newMetricIntersightUcsNetworkReceiveCrcErrors(mbc.Metrics.IntersightUcsNetworkReceiveCrcErrors),
-		metricIntersightUcsNetworkReceiveDiscards:                 newMetricIntersightUcsNetworkReceiveDiscards(mbc.Metrics.IntersightUcsNetworkReceiveDiscards),
-		metricIntersightUcsNetworkReceiveDrops:                    newMetricIntersightUcsNetworkReceiveDrops(mbc.Metrics.IntersightUcsNetworkReceiveDrops),
-		metricIntersightUcsNetworkReceiveErrors:                   newMetricIntersightUcsNetworkReceiveErrors(mbc.Metrics.IntersightUcsNetworkReceiveErrors),
-		metricIntersightUcsNetworkReceiveNoBuffer:                 newMetricIntersightUcsNetworkReceiveNoBuffer(mbc.Metrics.IntersightUcsNetworkReceiveNoBuffer),
-		metricIntersightUcsNetworkReceivePackets:                  newMetricIntersightUcsNetworkReceivePackets(mbc.Metrics.IntersightUcsNetworkReceivePackets),
-		metricIntersightUcsNetworkReceivePauseFrames:              newMetricIntersightUcsNetworkReceivePauseFrames(mbc.Metrics.IntersightUcsNetworkReceivePauseFrames),
-		metricIntersightUcsNetworkSignalLosses:                    newMetricIntersightUcsNetworkSignalLosses(mbc.Metrics.IntersightUcsNetworkSignalLosses),
-		metricIntersightUcsNetworkSpeed:                           newMetricIntersightUcsNetworkSpeed(mbc.Metrics.IntersightUcsNetworkSpeed),
-		metricIntersightUcsNetworkTransmit:                        newMetricIntersightUcsNetworkTransmit(mbc.Metrics.IntersightUcsNetworkTransmit),
-		metricIntersightUcsNetworkTransmitDiscards:                newMetricIntersightUcsNetworkTransmitDiscards(mbc.Metrics.IntersightUcsNetworkTransmitDiscards),
-		metricIntersightUcsNetworkTransmitDrops:                   newMetricIntersightUcsNetworkTransmitDrops(mbc.Metrics.IntersightUcsNetworkTransmitDrops),
-		metricIntersightUcsNetworkTransmitErrors:                  newMetricIntersightUcsNetworkTransmitErrors(mbc.Metrics.IntersightUcsNetworkTransmitErrors),
-		metricIntersightUcsNetworkTransmitPackets:                 newMetricIntersightUcsNetworkTransmitPackets(mbc.Metrics.IntersightUcsNetworkTransmitPackets),
-		metricIntersightUcsNetworkTransmitPauseFrames:             newMetricIntersightUcsNetworkTransmitPauseFrames(mbc.Metrics.IntersightUcsNetworkTransmitPauseFrames),
-		metricIntersightUcsNetworkUtilization:                     newMetricIntersightUcsNetworkUtilization(mbc.Metrics.IntersightUcsNetworkUtilization),
-		metricIntersightUcsPowerSupplyOutputPower:                 newMetricIntersightUcsPowerSupplyOutputPower(mbc.Metrics.IntersightUcsPowerSupplyOutputPower),
-		metricIntersightUcsPowerSupplyStatus:                      newMetricIntersightUcsPowerSupplyStatus(mbc.Metrics.IntersightUcsPowerSupplyStatus),
-		metricIntersightUcsPowerSupplyUtilization:                 newMetricIntersightUcsPowerSupplyUtilization(mbc.Metrics.IntersightUcsPowerSupplyUtilization),
-		metricIntersightUcsSignalPowerReceive:                     newMetricIntersightUcsSignalPowerReceive(mbc.Metrics.IntersightUcsSignalPowerReceive),
-		metricIntersightUcsSignalPowerTransmit:                    newMetricIntersightUcsSignalPowerTransmit(mbc.Metrics.IntersightUcsSignalPowerTransmit),
-		metricIntersightUcsTemperature:                            newMetricIntersightUcsTemperature(mbc.Metrics.IntersightUcsTemperature),
-		metricIntersightUcsTemperatureLimitHighCritical:           newMetricIntersightUcsTemperatureLimitHighCritical(mbc.Metrics.IntersightUcsTemperatureLimitHighCritical),
-		metricIntersightUcsTemperatureLimitLowCritical:            newMetricIntersightUcsTemperatureLimitLowCritical(mbc.Metrics.IntersightUcsTemperatureLimitLowCritical),
-		metricIntersightUcsTemperatureStatus:                      newMetricIntersightUcsTemperatureStatus(mbc.Metrics.IntersightUcsTemperatureStatus),
-		metricIntersightUcsVoltage:                                newMetricIntersightUcsVoltage(mbc.Metrics.IntersightUcsVoltage),
-		metricIntersightVirtualMachineCount:                       newMetricIntersightVirtualMachineCount(mbc.Metrics.IntersightVirtualMachineCount),
-		metricIntersightVirtualMachineCPUCount:                    newMetricIntersightVirtualMachineCPUCount(mbc.Metrics.IntersightVirtualMachineCPUCount),
-		metricIntersightVirtualMachineMemory:                      newMetricIntersightVirtualMachineMemory(mbc.Metrics.IntersightVirtualMachineMemory),
-		metricIntersightVirtualMachinePowerState:                  newMetricIntersightVirtualMachinePowerState(mbc.Metrics.IntersightVirtualMachinePowerState),
-		metricIntersightWorkflowCount:                             newMetricIntersightWorkflowCount(mbc.Metrics.IntersightWorkflowCount),
-		metricIntersightWorkflowStatus:                            newMetricIntersightWorkflowStatus(mbc.Metrics.IntersightWorkflowStatus),
-		metricIseAccountingSessionCount:                           newMetricIseAccountingSessionCount(mbc.Metrics.IseAccountingSessionCount),
-		metricIseAlarmCount:                                       newMetricIseAlarmCount(mbc.Metrics.IseAlarmCount),
-		metricIseAPIEndpointError:                                 newMetricIseAPIEndpointError(mbc.Metrics.IseAPIEndpointError),
-		metricIseAPIRateLimited:                                   newMetricIseAPIRateLimited(mbc.Metrics.IseAPIRateLimited),
-		metricIseAPIRequestDuration:                               newMetricIseAPIRequestDuration(mbc.Metrics.IseAPIRequestDuration),
-		metricIseAPIRequestErrors:                                 newMetricIseAPIRequestErrors(mbc.Metrics.IseAPIRequestErrors),
-		metricIseAuthFailureReasonInfo:                            newMetricIseAuthFailureReasonInfo(mbc.Metrics.IseAuthFailureReasonInfo),
-		metricIseCertificateCount:                                 newMetricIseCertificateCount(mbc.Metrics.IseCertificateCount),
-		metricIseCertificateExpiration:                            newMetricIseCertificateExpiration(mbc.Metrics.IseCertificateExpiration),
-		metricIseControllerUp:                                     newMetricIseControllerUp(mbc.Metrics.IseControllerUp),
-		metricIseDataconnectQueryDuration:                         newMetricIseDataconnectQueryDuration(mbc.Metrics.IseDataconnectQueryDuration),
-		metricIseDataconnectQueryErrors:                           newMetricIseDataconnectQueryErrors(mbc.Metrics.IseDataconnectQueryErrors),
-		metricIseDataconnectQueryRows:                             newMetricIseDataconnectQueryRows(mbc.Metrics.IseDataconnectQueryRows),
-		metricIseDataconnectRowCount:                              newMetricIseDataconnectRowCount(mbc.Metrics.IseDataconnectRowCount),
-		metricIseDeploymentNodeCount:                              newMetricIseDeploymentNodeCount(mbc.Metrics.IseDeploymentNodeCount),
-		metricIseDeploymentNodeStatus:                             newMetricIseDeploymentNodeStatus(mbc.Metrics.IseDeploymentNodeStatus),
-		metricIseEndpointCount:                                    newMetricIseEndpointCount(mbc.Metrics.IseEndpointCount),
-		metricIseEndpointPostureCount:                             newMetricIseEndpointPostureCount(mbc.Metrics.IseEndpointPostureCount),
-		metricIseEndpointPostureStatus:                            newMetricIseEndpointPostureStatus(mbc.Metrics.IseEndpointPostureStatus),
-		metricIseEndpointProfileCount:                             newMetricIseEndpointProfileCount(mbc.Metrics.IseEndpointProfileCount),
-		metricIseEndpointStatus:                                   newMetricIseEndpointStatus(mbc.Metrics.IseEndpointStatus),
-		metricIseLicenseCount:                                     newMetricIseLicenseCount(mbc.Metrics.IseLicenseCount),
-		metricIseLicenseStatus:                                    newMetricIseLicenseStatus(mbc.Metrics.IseLicenseStatus),
-		metricIseNetworkDeviceCount:                               newMetricIseNetworkDeviceCount(mbc.Metrics.IseNetworkDeviceCount),
-		metricIseNetworkDeviceStatus:                              newMetricIseNetworkDeviceStatus(mbc.Metrics.IseNetworkDeviceStatus),
-		metricIsePolicyObjectCount:                                newMetricIsePolicyObjectCount(mbc.Metrics.IsePolicyObjectCount),
-		metricIsePolicyStatus:                                     newMetricIsePolicyStatus(mbc.Metrics.IsePolicyStatus),
-		metricIseProfilerPolicyStatus:                             newMetricIseProfilerPolicyStatus(mbc.Metrics.IseProfilerPolicyStatus),
-		metricIsePxgridMessageCount:                               newMetricIsePxgridMessageCount(mbc.Metrics.IsePxgridMessageCount),
-		metricIsePxgridServiceStatus:                              newMetricIsePxgridServiceStatus(mbc.Metrics.IsePxgridServiceStatus),
-		metricIsePxgridSubscriptionStatus:                         newMetricIsePxgridSubscriptionStatus(mbc.Metrics.IsePxgridSubscriptionStatus),
-		metricIseRadiusFailureCount:                               newMetricIseRadiusFailureCount(mbc.Metrics.IseRadiusFailureCount),
-		metricIseResourceInfo:                                     newMetricIseResourceInfo(mbc.Metrics.IseResourceInfo),
-		metricIseResourceStatus:                                   newMetricIseResourceStatus(mbc.Metrics.IseResourceStatus),
-		metricIseScrapeLastSuccess:                                newMetricIseScrapeLastSuccess(mbc.Metrics.IseScrapeLastSuccess),
-		metricIseScrapePartialSuccess:                             newMetricIseScrapePartialSuccess(mbc.Metrics.IseScrapePartialSuccess),
-		metricIseServiceSkipped:                                   newMetricIseServiceSkipped(mbc.Metrics.IseServiceSkipped),
-		metricIseServiceUnavailable:                               newMetricIseServiceUnavailable(mbc.Metrics.IseServiceUnavailable),
-		metricIseSessionActiveCount:                               newMetricIseSessionActiveCount(mbc.Metrics.IseSessionActiveCount),
-		metricIseSessionCount:                                     newMetricIseSessionCount(mbc.Metrics.IseSessionCount),
-		metricIseTacacsFailureCount:                               newMetricIseTacacsFailureCount(mbc.Metrics.IseTacacsFailureCount),
-		metricIseTrustsecResourceCount:                            newMetricIseTrustsecResourceCount(mbc.Metrics.IseTrustsecResourceCount),
-		metricIseTrustsecResourceStatus:                           newMetricIseTrustsecResourceStatus(mbc.Metrics.IseTrustsecResourceStatus),
-		metricIseWebhookDeliveryCount:                             newMetricIseWebhookDeliveryCount(mbc.Metrics.IseWebhookDeliveryCount),
-		metricMerakiAPIRequestDuration:                            newMetricMerakiAPIRequestDuration(mbc.Metrics.MerakiAPIRequestDuration),
-		metricMerakiAPIRequestErrors:                              newMetricMerakiAPIRequestErrors(mbc.Metrics.MerakiAPIRequestErrors),
-		metricMerakiAPIRequestRateLimited:                         newMetricMerakiAPIRequestRateLimited(mbc.Metrics.MerakiAPIRequestRateLimited),
-		metricMerakiAppliancePerformanceScore:                     newMetricMerakiAppliancePerformanceScore(mbc.Metrics.MerakiAppliancePerformanceScore),
-		metricMerakiControllerUp:                                  newMetricMerakiControllerUp(mbc.Metrics.MerakiControllerUp),
-		metricMerakiDeviceStatus:                                  newMetricMerakiDeviceStatus(mbc.Metrics.MerakiDeviceStatus),
-		metricMerakiPowerModuleStatus:                             newMetricMerakiPowerModuleStatus(mbc.Metrics.MerakiPowerModuleStatus),
-		metricMerakiScrapeLastSuccess:                             newMetricMerakiScrapeLastSuccess(mbc.Metrics.MerakiScrapeLastSuccess),
-		metricMerakiSwitchPortAlertActive:                         newMetricMerakiSwitchPortAlertActive(mbc.Metrics.MerakiSwitchPortAlertActive),
-		metricMerakiSwitchPortPoeAllocated:                        newMetricMerakiSwitchPortPoeAllocated(mbc.Metrics.MerakiSwitchPortPoeAllocated),
-		metricMerakiSwitchPortUsage:                               newMetricMerakiSwitchPortUsage(mbc.Metrics.MerakiSwitchPortUsage),
-		metricMerakiUplinkCellularSignalRsrp:                      newMetricMerakiUplinkCellularSignalRsrp(mbc.Metrics.MerakiUplinkCellularSignalRsrp),
-		metricMerakiUplinkCellularSignalRsrq:                      newMetricMerakiUplinkCellularSignalRsrq(mbc.Metrics.MerakiUplinkCellularSignalRsrq),
-		metricMerakiUplinkLatency:                                 newMetricMerakiUplinkLatency(mbc.Metrics.MerakiUplinkLatency),
-		metricMerakiUplinkLoss:                                    newMetricMerakiUplinkLoss(mbc.Metrics.MerakiUplinkLoss),
-		metricMerakiUplinkStatus:                                  newMetricMerakiUplinkStatus(mbc.Metrics.MerakiUplinkStatus),
-		metricMerakiVpnPeerJitter:                                 newMetricMerakiVpnPeerJitter(mbc.Metrics.MerakiVpnPeerJitter),
-		metricMerakiVpnPeerLatency:                                newMetricMerakiVpnPeerLatency(mbc.Metrics.MerakiVpnPeerLatency),
-		metricMerakiVpnPeerLoss:                                   newMetricMerakiVpnPeerLoss(mbc.Metrics.MerakiVpnPeerLoss),
-		metricMerakiVpnPeerMos:                                    newMetricMerakiVpnPeerMos(mbc.Metrics.MerakiVpnPeerMos),
-		metricMerakiVpnPeerStatus:                                 newMetricMerakiVpnPeerStatus(mbc.Metrics.MerakiVpnPeerStatus),
-		metricMerakiVpnPeerUsage:                                  newMetricMerakiVpnPeerUsage(mbc.Metrics.MerakiVpnPeerUsage),
-		metricMerakiWirelessChannelUtilization:                    newMetricMerakiWirelessChannelUtilization(mbc.Metrics.MerakiWirelessChannelUtilization),
-		metricMerakiWirelessClientCount:                           newMetricMerakiWirelessClientCount(mbc.Metrics.MerakiWirelessClientCount),
-		metricMerakiWirelessPacketCount:                           newMetricMerakiWirelessPacketCount(mbc.Metrics.MerakiWirelessPacketCount),
-		metricMerakiWirelessPacketLoss:                            newMetricMerakiWirelessPacketLoss(mbc.Metrics.MerakiWirelessPacketLoss),
-		metricMerakiWirelessPacketLossPercentage:                  newMetricMerakiWirelessPacketLossPercentage(mbc.Metrics.MerakiWirelessPacketLossPercentage),
-		metricMerakiWirelessSsidStatus:                            newMetricMerakiWirelessSsidStatus(mbc.Metrics.MerakiWirelessSsidStatus),
-		metricNexusDashboardAPIEndpointError:                      newMetricNexusDashboardAPIEndpointError(mbc.Metrics.NexusDashboardAPIEndpointError),
-		metricNexusDashboardAPIRateLimited:                        newMetricNexusDashboardAPIRateLimited(mbc.Metrics.NexusDashboardAPIRateLimited),
-		metricNexusDashboardAPIRequestDuration:                    newMetricNexusDashboardAPIRequestDuration(mbc.Metrics.NexusDashboardAPIRequestDuration),
-		metricNexusDashboardAPIRequestErrors:                      newMetricNexusDashboardAPIRequestErrors(mbc.Metrics.NexusDashboardAPIRequestErrors),
-		metricNexusDashboardAuditRecordCount:                      newMetricNexusDashboardAuditRecordCount(mbc.Metrics.NexusDashboardAuditRecordCount),
-		metricNexusDashboardConfigCompliance:                      newMetricNexusDashboardConfigCompliance(mbc.Metrics.NexusDashboardConfigCompliance),
-		metricNexusDashboardDataBrokerRuleCount:                   newMetricNexusDashboardDataBrokerRuleCount(mbc.Metrics.NexusDashboardDataBrokerRuleCount),
-		metricNexusDashboardDataBrokerSessionCount:                newMetricNexusDashboardDataBrokerSessionCount(mbc.Metrics.NexusDashboardDataBrokerSessionCount),
-		metricNexusDashboardDataBrokerStatus:                      newMetricNexusDashboardDataBrokerStatus(mbc.Metrics.NexusDashboardDataBrokerStatus),
-		metricNexusDashboardDeploymentStatus:                      newMetricNexusDashboardDeploymentStatus(mbc.Metrics.NexusDashboardDeploymentStatus),
-		metricNexusDashboardEndpointCount:                         newMetricNexusDashboardEndpointCount(mbc.Metrics.NexusDashboardEndpointCount),
-		metricNexusDashboardEventCount:                            newMetricNexusDashboardEventCount(mbc.Metrics.NexusDashboardEventCount),
-		metricNexusDashboardFabricHealth:                          newMetricNexusDashboardFabricHealth(mbc.Metrics.NexusDashboardFabricHealth),
-		metricNexusDashboardInsightsAnomalyActive:                 newMetricNexusDashboardInsightsAnomalyActive(mbc.Metrics.NexusDashboardInsightsAnomalyActive),
-		metricNexusDashboardInsightsAnomalyCount:                  newMetricNexusDashboardInsightsAnomalyCount(mbc.Metrics.NexusDashboardInsightsAnomalyCount),
-		metricNexusDashboardInsightsConfidence:                    newMetricNexusDashboardInsightsConfidence(mbc.Metrics.NexusDashboardInsightsConfidence),
-		metricNexusDashboardInsightsScore:                         newMetricNexusDashboardInsightsScore(mbc.Metrics.NexusDashboardInsightsScore),
-		metricNexusDashboardInsightsStatus:                        newMetricNexusDashboardInsightsStatus(mbc.Metrics.NexusDashboardInsightsStatus),
-		metricNexusDashboardOrchestratorDeploymentCount:           newMetricNexusDashboardOrchestratorDeploymentCount(mbc.Metrics.NexusDashboardOrchestratorDeploymentCount),
-		metricNexusDashboardOrchestratorDeploymentStatus:          newMetricNexusDashboardOrchestratorDeploymentStatus(mbc.Metrics.NexusDashboardOrchestratorDeploymentStatus),
-		metricNexusDashboardOrchestratorPolicyDeltaCount:          newMetricNexusDashboardOrchestratorPolicyDeltaCount(mbc.Metrics.NexusDashboardOrchestratorPolicyDeltaCount),
-		metricNexusDashboardResourceCount:                         newMetricNexusDashboardResourceCount(mbc.Metrics.NexusDashboardResourceCount),
-		metricNexusDashboardResourceInfo:                          newMetricNexusDashboardResourceInfo(mbc.Metrics.NexusDashboardResourceInfo),
-		metricNexusDashboardResourceStatus:                        newMetricNexusDashboardResourceStatus(mbc.Metrics.NexusDashboardResourceStatus),
-		metricNexusDashboardScrapeLastSuccess:                     newMetricNexusDashboardScrapeLastSuccess(mbc.Metrics.NexusDashboardScrapeLastSuccess),
-		metricNexusDashboardScrapePartialSuccess:                  newMetricNexusDashboardScrapePartialSuccess(mbc.Metrics.NexusDashboardScrapePartialSuccess),
-		metricNexusDashboardServiceHealth:                         newMetricNexusDashboardServiceHealth(mbc.Metrics.NexusDashboardServiceHealth),
-		metricNexusDashboardServiceSkipped:                        newMetricNexusDashboardServiceSkipped(mbc.Metrics.NexusDashboardServiceSkipped),
-		metricNexusDashboardServiceUnavailable:                    newMetricNexusDashboardServiceUnavailable(mbc.Metrics.NexusDashboardServiceUnavailable),
-		metricNexusDashboardStorageUtilization:                    newMetricNexusDashboardStorageUtilization(mbc.Metrics.NexusDashboardStorageUtilization),
-		metricNexusDashboardVpcPeerCount:                          newMetricNexusDashboardVpcPeerCount(mbc.Metrics.NexusDashboardVpcPeerCount),
-		metricSdwanAPIRateLimited:                                 newMetricSdwanAPIRateLimited(mbc.Metrics.SdwanAPIRateLimited),
-		metricSdwanAPIRequestDuration:                             newMetricSdwanAPIRequestDuration(mbc.Metrics.SdwanAPIRequestDuration),
-		metricSdwanAPIRequestErrors:                               newMetricSdwanAPIRequestErrors(mbc.Metrics.SdwanAPIRequestErrors),
-		metricSdwanAppRouteJitter:                                 newMetricSdwanAppRouteJitter(mbc.Metrics.SdwanAppRouteJitter),
-		metricSdwanAppRouteLatency:                                newMetricSdwanAppRouteLatency(mbc.Metrics.SdwanAppRouteLatency),
-		metricSdwanAppRouteLoss:                                   newMetricSdwanAppRouteLoss(mbc.Metrics.SdwanAppRouteLoss),
-		metricSdwanAppRouteSLAStatus:                              newMetricSdwanAppRouteSLAStatus(mbc.Metrics.SdwanAppRouteSLAStatus),
-		metricSdwanBfdSessionCount:                                newMetricSdwanBfdSessionCount(mbc.Metrics.SdwanBfdSessionCount),
-		metricSdwanBfdSessionFlapCount:                            newMetricSdwanBfdSessionFlapCount(mbc.Metrics.SdwanBfdSessionFlapCount),
-		metricSdwanBfdSessionStatus:                               newMetricSdwanBfdSessionStatus(mbc.Metrics.SdwanBfdSessionStatus),
-		metricSdwanBfdSessionTransitions:                          newMetricSdwanBfdSessionTransitions(mbc.Metrics.SdwanBfdSessionTransitions),
-		metricSdwanCollectionObjectCount:                          newMetricSdwanCollectionObjectCount(mbc.Metrics.SdwanCollectionObjectCount),
-		metricSdwanControlActualConnections:                       newMetricSdwanControlActualConnections(mbc.Metrics.SdwanControlActualConnections),
-		metricSdwanControlConnectionCount:                         newMetricSdwanControlConnectionCount(mbc.Metrics.SdwanControlConnectionCount),
-		metricSdwanControlConnectionStatus:                        newMetricSdwanControlConnectionStatus(mbc.Metrics.SdwanControlConnectionStatus),
-		metricSdwanControlExpectedConnections:                     newMetricSdwanControlExpectedConnections(mbc.Metrics.SdwanControlExpectedConnections),
-		metricSdwanDeviceCertificateStatus:                        newMetricSdwanDeviceCertificateStatus(mbc.Metrics.SdwanDeviceCertificateStatus),
-		metricSdwanDeviceReachabilityStatus:                       newMetricSdwanDeviceReachabilityStatus(mbc.Metrics.SdwanDeviceReachabilityStatus),
-		metricSdwanDeviceValidityStatus:                           newMetricSdwanDeviceValidityStatus(mbc.Metrics.SdwanDeviceValidityStatus),
-		metricSdwanEventCount:                                     newMetricSdwanEventCount(mbc.Metrics.SdwanEventCount),
-		metricSdwanInventoryDeviceCount:                           newMetricSdwanInventoryDeviceCount(mbc.Metrics.SdwanInventoryDeviceCount),
-		metricSdwanManagerEndpointStatus:                          newMetricSdwanManagerEndpointStatus(mbc.Metrics.SdwanManagerEndpointStatus),
-		metricSdwanManagerHealthScore:                             newMetricSdwanManagerHealthScore(mbc.Metrics.SdwanManagerHealthScore),
-		metricSdwanManagerStatus:                                  newMetricSdwanManagerStatus(mbc.Metrics.SdwanManagerStatus),
-		metricSdwanManagerUp:                                      newMetricSdwanManagerUp(mbc.Metrics.SdwanManagerUp),
-		metricSdwanResourceInfo:                                   newMetricSdwanResourceInfo(mbc.Metrics.SdwanResourceInfo),
-		metricSdwanResourceStatus:                                 newMetricSdwanResourceStatus(mbc.Metrics.SdwanResourceStatus),
-		metricSdwanScrapeLastSuccess:                              newMetricSdwanScrapeLastSuccess(mbc.Metrics.SdwanScrapeLastSuccess),
-		metricSdwanScrapePartialSuccess:                           newMetricSdwanScrapePartialSuccess(mbc.Metrics.SdwanScrapePartialSuccess),
-		metricSdwanServiceSkipped:                                 newMetricSdwanServiceSkipped(mbc.Metrics.SdwanServiceSkipped),
-		metricSdwanServiceUnavailable:                             newMetricSdwanServiceUnavailable(mbc.Metrics.SdwanServiceUnavailable),
-		metricSdwanTransportInterfaceStatus:                       newMetricSdwanTransportInterfaceStatus(mbc.Metrics.SdwanTransportInterfaceStatus),
-		metricSystemCPULogicalCount:                               newMetricSystemCPULogicalCount(mbc.Metrics.SystemCPULogicalCount),
-		metricSystemCPUUtilization:                                newMetricSystemCPUUtilization(mbc.Metrics.SystemCPUUtilization),
-		metricSystemMemoryUtilization:                             newMetricSystemMemoryUtilization(mbc.Metrics.SystemMemoryUtilization),
-		metricSystemNetworkErrors:                                 newMetricSystemNetworkErrors(mbc.Metrics.SystemNetworkErrors),
-		metricSystemNetworkInterfaceStatus:                        newMetricSystemNetworkInterfaceStatus(mbc.Metrics.SystemNetworkInterfaceStatus),
-		metricSystemNetworkIo:                                     newMetricSystemNetworkIo(mbc.Metrics.SystemNetworkIo),
-		metricSystemNetworkPacketCount:                            newMetricSystemNetworkPacketCount(mbc.Metrics.SystemNetworkPacketCount),
-		metricSystemNetworkPacketDropped:                          newMetricSystemNetworkPacketDropped(mbc.Metrics.SystemNetworkPacketDropped),
-		metricSystemUptime:                                        newMetricSystemUptime(mbc.Metrics.SystemUptime),
-		resourceAttributeIncludeFilter:                            make(map[string]filter.Filter),
-		resourceAttributeExcludeFilter:                            make(map[string]filter.Filter),
-	}
-	if mbc.ResourceAttributes.CiscoOsBootMode.MetricsInclude != nil {
-		mb.resourceAttributeIncludeFilter["cisco.os.boot_mode"] = filter.CreateFilter(mbc.ResourceAttributes.CiscoOsBootMode.MetricsInclude)
-	}
-	if mbc.ResourceAttributes.CiscoOsBootMode.MetricsExclude != nil {
-		mb.resourceAttributeExcludeFilter["cisco.os.boot_mode"] = filter.CreateFilter(mbc.ResourceAttributes.CiscoOsBootMode.MetricsExclude)
+		config:                               mbc,
+		startTime:                            pcommon.NewTimestampFromTime(time.Now()),
+		metricsBuffer:                        pmetric.NewMetrics(),
+		buildInfo:                            settings.BuildInfo,
+		metricCiscoDeviceUp:                  newMetricCiscoDeviceUp(mbc.Metrics.CiscoDeviceUp),
+		metricCiscoInterfaceAdminStatus:      newMetricCiscoInterfaceAdminStatus(mbc.Metrics.CiscoInterfaceAdminStatus),
+		metricCiscoInterfaceIoRate:           newMetricCiscoInterfaceIoRate(mbc.Metrics.CiscoInterfaceIoRate),
+		metricCiscoInterfacePacketRate:       newMetricCiscoInterfacePacketRate(mbc.Metrics.CiscoInterfacePacketRate),
+		metricCiscoInterfaceSpeed:            newMetricCiscoInterfaceSpeed(mbc.Metrics.CiscoInterfaceSpeed),
+		metricCiscoInterfaceUtilization:      newMetricCiscoInterfaceUtilization(mbc.Metrics.CiscoInterfaceUtilization),
+		metricCiscoOpticsChromaticDispersion: newMetricCiscoOpticsChromaticDispersion(mbc.Metrics.CiscoOpticsChromaticDispersion),
+		metricCiscoOpticsDgd:                 newMetricCiscoOpticsDgd(mbc.Metrics.CiscoOpticsDgd),
+		metricCiscoOpticsEsnr:                newMetricCiscoOpticsEsnr(mbc.Metrics.CiscoOpticsEsnr),
+		metricCiscoOpticsLaserBiasCurrent:    newMetricCiscoOpticsLaserBiasCurrent(mbc.Metrics.CiscoOpticsLaserBiasCurrent),
+		metricCiscoOpticsOsnr:                newMetricCiscoOpticsOsnr(mbc.Metrics.CiscoOpticsOsnr),
+		metricCiscoOpticsPreFecBer:           newMetricCiscoOpticsPreFecBer(mbc.Metrics.CiscoOpticsPreFecBer),
+		metricCiscoOpticsPresent:             newMetricCiscoOpticsPresent(mbc.Metrics.CiscoOpticsPresent),
+		metricCiscoOpticsQFactor:             newMetricCiscoOpticsQFactor(mbc.Metrics.CiscoOpticsQFactor),
+		metricCiscoOpticsQMargin:             newMetricCiscoOpticsQMargin(mbc.Metrics.CiscoOpticsQMargin),
+		metricCiscoOpticsRxPower:             newMetricCiscoOpticsRxPower(mbc.Metrics.CiscoOpticsRxPower),
+		metricCiscoOpticsTdecq:               newMetricCiscoOpticsTdecq(mbc.Metrics.CiscoOpticsTdecq),
+		metricCiscoOpticsTecCurrent:          newMetricCiscoOpticsTecCurrent(mbc.Metrics.CiscoOpticsTecCurrent),
+		metricCiscoOpticsTecUtilization:      newMetricCiscoOpticsTecUtilization(mbc.Metrics.CiscoOpticsTecUtilization),
+		metricCiscoOpticsTemperature:         newMetricCiscoOpticsTemperature(mbc.Metrics.CiscoOpticsTemperature),
+		metricCiscoOpticsTxPower:             newMetricCiscoOpticsTxPower(mbc.Metrics.CiscoOpticsTxPower),
+		metricCiscoOpticsVoltage:             newMetricCiscoOpticsVoltage(mbc.Metrics.CiscoOpticsVoltage),
+		metricCiscoWlcApJoinStatus:           newMetricCiscoWlcApJoinStatus(mbc.Metrics.CiscoWlcApJoinStatus),
+		metricCiscoWlcRfChannelUtilization:   newMetricCiscoWlcRfChannelUtilization(mbc.Metrics.CiscoWlcRfChannelUtilization),
+		metricCiscoWlcSsidClientCount:        newMetricCiscoWlcSsidClientCount(mbc.Metrics.CiscoWlcSsidClientCount),
+		metricSystemCPUUtilization:           newMetricSystemCPUUtilization(mbc.Metrics.SystemCPUUtilization),
+		metricSystemMemoryUtilization:        newMetricSystemMemoryUtilization(mbc.Metrics.SystemMemoryUtilization),
+		metricSystemNetworkErrors:            newMetricSystemNetworkErrors(mbc.Metrics.SystemNetworkErrors),
+		metricSystemNetworkInterfaceStatus:   newMetricSystemNetworkInterfaceStatus(mbc.Metrics.SystemNetworkInterfaceStatus),
+		metricSystemNetworkIo:                newMetricSystemNetworkIo(mbc.Metrics.SystemNetworkIo),
+		metricSystemNetworkPacketCount:       newMetricSystemNetworkPacketCount(mbc.Metrics.SystemNetworkPacketCount),
+		metricSystemNetworkPacketDropped:     newMetricSystemNetworkPacketDropped(mbc.Metrics.SystemNetworkPacketDropped),
+		metricSystemUptime:                   newMetricSystemUptime(mbc.Metrics.SystemUptime),
+		resourceAttributeIncludeFilter:       make(map[string]filter.Filter),
+		resourceAttributeExcludeFilter:       make(map[string]filter.Filter),
 	}
 	if mbc.ResourceAttributes.CiscoOsName.MetricsInclude != nil {
 		mb.resourceAttributeIncludeFilter["cisco.os.name"] = filter.CreateFilter(mbc.ResourceAttributes.CiscoOsName.MetricsInclude)
@@ -24011,298 +22257,9 @@ func (mb *MetricsBuilder) EmitForResource(options ...ResourceMetricsOption) {
 	mb.metricCiscoOpticsTemperature.emit(ils.Metrics())
 	mb.metricCiscoOpticsTxPower.emit(ils.Metrics())
 	mb.metricCiscoOpticsVoltage.emit(ils.Metrics())
-	mb.metricCiscoScrapePartialSuccess.emit(ils.Metrics())
-	mb.metricCiscoTopologyNeighborInfo.emit(ils.Metrics())
-	mb.metricCiscoTransceiverSensor.emit(ils.Metrics())
-	mb.metricCiscoWlcApCapwapEncryptionEnabled.emit(ils.Metrics())
-	mb.metricCiscoWlcApCapwapState.emit(ils.Metrics())
-	mb.metricCiscoWlcApDisconnect.emit(ils.Metrics())
-	mb.metricCiscoWlcApDisconnectReasonInfo.emit(ils.Metrics())
-	mb.metricCiscoWlcApJoinFailureReasonInfo.emit(ils.Metrics())
 	mb.metricCiscoWlcApJoinStatus.emit(ils.Metrics())
-	mb.metricCiscoWlcAuthRadiusAccessAcceptCount.emit(ils.Metrics())
-	mb.metricCiscoWlcAuthRadiusAccessRejectCount.emit(ils.Metrics())
-	mb.metricCiscoWlcAuthRadiusBadAuthenticatorCount.emit(ils.Metrics())
-	mb.metricCiscoWlcAuthRadiusResponseCount.emit(ils.Metrics())
-	mb.metricCiscoWlcAuthRadiusResponseDelayAvg.emit(ils.Metrics())
-	mb.metricCiscoWlcAuthRadiusResponseDelayMax.emit(ils.Metrics())
-	mb.metricCiscoWlcAuthRadiusTimeoutCount.emit(ils.Metrics())
-	mb.metricCiscoWlcClientAuthFailureReasonInfo.emit(ils.Metrics())
-	mb.metricCiscoWlcClientConnectionState.emit(ils.Metrics())
-	mb.metricCiscoWlcClientNetworkIo.emit(ils.Metrics())
-	mb.metricCiscoWlcClientNetworkPackets.emit(ils.Metrics())
-	mb.metricCiscoWlcClientRoamCount.emit(ils.Metrics())
-	mb.metricCiscoWlcClientRoamFailureCount.emit(ils.Metrics())
-	mb.metricCiscoWlcClientRoamTypeInfo.emit(ils.Metrics())
-	mb.metricCiscoWlcClientWirelessRssi.emit(ils.Metrics())
-	mb.metricCiscoWlcClientWirelessSnr.emit(ils.Metrics())
-	mb.metricCiscoWlcControllerCPUUtilization.emit(ils.Metrics())
-	mb.metricCiscoWlcControllerMemoryBytes.emit(ils.Metrics())
-	mb.metricCiscoWlcControllerReceiverActiveSubscriptions.emit(ils.Metrics())
-	mb.metricCiscoWlcControllerReceiverDecodeErrors.emit(ils.Metrics())
-	mb.metricCiscoWlcControllerReceiverSubscriptionActive.emit(ils.Metrics())
-	mb.metricCiscoWlcControllerReceiverUpdates.emit(ils.Metrics())
-	mb.metricCiscoWlcHaEnabled.emit(ils.Metrics())
-	mb.metricCiscoWlcHaStandbyFailureCount.emit(ils.Metrics())
-	mb.metricCiscoWlcHaState.emit(ils.Metrics())
-	mb.metricCiscoWlcHaSwitchoverCount.emit(ils.Metrics())
-	mb.metricCiscoWlcMobilityHandoffCount.emit(ils.Metrics())
-	mb.metricCiscoWlcMobilityHandoffFailureCount.emit(ils.Metrics())
-	mb.metricCiscoWlcMobilityPeerStatus.emit(ils.Metrics())
-	mb.metricCiscoWlcMobilityRoamCount.emit(ils.Metrics())
-	mb.metricCiscoWlcRfChannelChangeCount.emit(ils.Metrics())
-	mb.metricCiscoWlcRfChannelRecommended.emit(ils.Metrics())
 	mb.metricCiscoWlcRfChannelUtilization.emit(ils.Metrics())
-	mb.metricCiscoWlcRfClientCount.emit(ils.Metrics())
-	mb.metricCiscoWlcRfNoiseFloor.emit(ils.Metrics())
-	mb.metricCiscoWlcSsidChannelUtilization.emit(ils.Metrics())
 	mb.metricCiscoWlcSsidClientCount.emit(ils.Metrics())
-	mb.metricCiscoWlcSsidNetworkIo.emit(ils.Metrics())
-	mb.metricCiscoWlcSsidRetryCount.emit(ils.Metrics())
-	mb.metricFmcAPIEndpointError.emit(ils.Metrics())
-	mb.metricFmcAPIRateLimited.emit(ils.Metrics())
-	mb.metricFmcAPIRequestDuration.emit(ils.Metrics())
-	mb.metricFmcAPIRequestErrors.emit(ils.Metrics())
-	mb.metricFmcAuditRecordCount.emit(ils.Metrics())
-	mb.metricFmcDeploymentPendingCount.emit(ils.Metrics())
-	mb.metricFmcDeploymentStatus.emit(ils.Metrics())
-	mb.metricFmcHaStatus.emit(ils.Metrics())
-	mb.metricFmcHealthEventCount.emit(ils.Metrics())
-	mb.metricFmcHealthStatus.emit(ils.Metrics())
-	mb.metricFmcManagerUp.emit(ils.Metrics())
-	mb.metricFmcPolicyObjectCount.emit(ils.Metrics())
-	mb.metricFmcResourceCount.emit(ils.Metrics())
-	mb.metricFmcResourceInfo.emit(ils.Metrics())
-	mb.metricFmcResourceStatus.emit(ils.Metrics())
-	mb.metricFmcScrapeLastSuccess.emit(ils.Metrics())
-	mb.metricFmcScrapePartialSuccess.emit(ils.Metrics())
-	mb.metricFmcVpnTunnelStatus.emit(ils.Metrics())
-	mb.metricIntersightAdvisoryActive.emit(ils.Metrics())
-	mb.metricIntersightAdvisoryCount.emit(ils.Metrics())
-	mb.metricIntersightAlarmActive.emit(ils.Metrics())
-	mb.metricIntersightAlarmCount.emit(ils.Metrics())
-	mb.metricIntersightAPIRateLimited.emit(ils.Metrics())
-	mb.metricIntersightAPIRequestDuration.emit(ils.Metrics())
-	mb.metricIntersightAPIRequestErrors.emit(ils.Metrics())
-	mb.metricIntersightAuditRecordCount.emit(ils.Metrics())
-	mb.metricIntersightComputeAvailableMemory.emit(ils.Metrics())
-	mb.metricIntersightComputeThreadCount.emit(ils.Metrics())
-	mb.metricIntersightFaultCount.emit(ils.Metrics())
-	mb.metricIntersightFirmwareBundleInfo.emit(ils.Metrics())
-	mb.metricIntersightHclStatus.emit(ils.Metrics())
-	mb.metricIntersightHclStatusCount.emit(ils.Metrics())
-	mb.metricIntersightHyperflexReadIops.emit(ils.Metrics())
-	mb.metricIntersightHyperflexReadLatency.emit(ils.Metrics())
-	mb.metricIntersightHyperflexStatus.emit(ils.Metrics())
-	mb.metricIntersightHyperflexWriteIops.emit(ils.Metrics())
-	mb.metricIntersightHyperflexWriteLatency.emit(ils.Metrics())
-	mb.metricIntersightKubernetesClusterConnectionStatus.emit(ils.Metrics())
-	mb.metricIntersightResourceCount.emit(ils.Metrics())
-	mb.metricIntersightResourceInfo.emit(ils.Metrics())
-	mb.metricIntersightResourceStatus.emit(ils.Metrics())
-	mb.metricIntersightScrapeLastSuccess.emit(ils.Metrics())
-	mb.metricIntersightScrapePartialSuccess.emit(ils.Metrics())
-	mb.metricIntersightStorageLifeLeft.emit(ils.Metrics())
-	mb.metricIntersightStorageMediaErrorCount.emit(ils.Metrics())
-	mb.metricIntersightStoragePowerOnHours.emit(ils.Metrics())
-	mb.metricIntersightStoragePredictiveFailureCount.emit(ils.Metrics())
-	mb.metricIntersightStorageRebuildRate.emit(ils.Metrics())
-	mb.metricIntersightStorageStatus.emit(ils.Metrics())
-	mb.metricIntersightStorageTemperature.emit(ils.Metrics())
-	mb.metricIntersightTargetConnectionStatus.emit(ils.Metrics())
-	mb.metricIntersightTaskCount.emit(ils.Metrics())
-	mb.metricIntersightTaskStatus.emit(ils.Metrics())
-	mb.metricIntersightTechsupportCount.emit(ils.Metrics())
-	mb.metricIntersightTechsupportStatus.emit(ils.Metrics())
-	mb.metricIntersightTelemetryQueryRows.emit(ils.Metrics())
-	mb.metricIntersightUcsCPUIdleUtilization.emit(ils.Metrics())
-	mb.metricIntersightUcsCPUSystemUtilization.emit(ils.Metrics())
-	mb.metricIntersightUcsCurrent.emit(ils.Metrics())
-	mb.metricIntersightUcsFanSpeed.emit(ils.Metrics())
-	mb.metricIntersightUcsFanSpeedRatio.emit(ils.Metrics())
-	mb.metricIntersightUcsFanStatus.emit(ils.Metrics())
-	mb.metricIntersightUcsHostEnergy.emit(ils.Metrics())
-	mb.metricIntersightUcsHostPower.emit(ils.Metrics())
-	mb.metricIntersightUcsHostPowerState.emit(ils.Metrics())
-	mb.metricIntersightUcsMemoryCached.emit(ils.Metrics())
-	mb.metricIntersightUcsMemoryEccCorrectable.emit(ils.Metrics())
-	mb.metricIntersightUcsMemoryEccUncorrectable.emit(ils.Metrics())
-	mb.metricIntersightUcsMemoryFree.emit(ils.Metrics())
-	mb.metricIntersightUcsMemoryModuleSize.emit(ils.Metrics())
-	mb.metricIntersightUcsMemoryStatus.emit(ils.Metrics())
-	mb.metricIntersightUcsMemoryUsed.emit(ils.Metrics())
-	mb.metricIntersightUcsNetworkInterfaceResets.emit(ils.Metrics())
-	mb.metricIntersightUcsNetworkLinkStatus.emit(ils.Metrics())
-	mb.metricIntersightUcsNetworkLinkFailures.emit(ils.Metrics())
-	mb.metricIntersightUcsNetworkReceive.emit(ils.Metrics())
-	mb.metricIntersightUcsNetworkReceiveCrcErrors.emit(ils.Metrics())
-	mb.metricIntersightUcsNetworkReceiveDiscards.emit(ils.Metrics())
-	mb.metricIntersightUcsNetworkReceiveDrops.emit(ils.Metrics())
-	mb.metricIntersightUcsNetworkReceiveErrors.emit(ils.Metrics())
-	mb.metricIntersightUcsNetworkReceiveNoBuffer.emit(ils.Metrics())
-	mb.metricIntersightUcsNetworkReceivePackets.emit(ils.Metrics())
-	mb.metricIntersightUcsNetworkReceivePauseFrames.emit(ils.Metrics())
-	mb.metricIntersightUcsNetworkSignalLosses.emit(ils.Metrics())
-	mb.metricIntersightUcsNetworkSpeed.emit(ils.Metrics())
-	mb.metricIntersightUcsNetworkTransmit.emit(ils.Metrics())
-	mb.metricIntersightUcsNetworkTransmitDiscards.emit(ils.Metrics())
-	mb.metricIntersightUcsNetworkTransmitDrops.emit(ils.Metrics())
-	mb.metricIntersightUcsNetworkTransmitErrors.emit(ils.Metrics())
-	mb.metricIntersightUcsNetworkTransmitPackets.emit(ils.Metrics())
-	mb.metricIntersightUcsNetworkTransmitPauseFrames.emit(ils.Metrics())
-	mb.metricIntersightUcsNetworkUtilization.emit(ils.Metrics())
-	mb.metricIntersightUcsPowerSupplyOutputPower.emit(ils.Metrics())
-	mb.metricIntersightUcsPowerSupplyStatus.emit(ils.Metrics())
-	mb.metricIntersightUcsPowerSupplyUtilization.emit(ils.Metrics())
-	mb.metricIntersightUcsSignalPowerReceive.emit(ils.Metrics())
-	mb.metricIntersightUcsSignalPowerTransmit.emit(ils.Metrics())
-	mb.metricIntersightUcsTemperature.emit(ils.Metrics())
-	mb.metricIntersightUcsTemperatureLimitHighCritical.emit(ils.Metrics())
-	mb.metricIntersightUcsTemperatureLimitLowCritical.emit(ils.Metrics())
-	mb.metricIntersightUcsTemperatureStatus.emit(ils.Metrics())
-	mb.metricIntersightUcsVoltage.emit(ils.Metrics())
-	mb.metricIntersightVirtualMachineCount.emit(ils.Metrics())
-	mb.metricIntersightVirtualMachineCPUCount.emit(ils.Metrics())
-	mb.metricIntersightVirtualMachineMemory.emit(ils.Metrics())
-	mb.metricIntersightVirtualMachinePowerState.emit(ils.Metrics())
-	mb.metricIntersightWorkflowCount.emit(ils.Metrics())
-	mb.metricIntersightWorkflowStatus.emit(ils.Metrics())
-	mb.metricIseAccountingSessionCount.emit(ils.Metrics())
-	mb.metricIseAlarmCount.emit(ils.Metrics())
-	mb.metricIseAPIEndpointError.emit(ils.Metrics())
-	mb.metricIseAPIRateLimited.emit(ils.Metrics())
-	mb.metricIseAPIRequestDuration.emit(ils.Metrics())
-	mb.metricIseAPIRequestErrors.emit(ils.Metrics())
-	mb.metricIseAuthFailureReasonInfo.emit(ils.Metrics())
-	mb.metricIseCertificateCount.emit(ils.Metrics())
-	mb.metricIseCertificateExpiration.emit(ils.Metrics())
-	mb.metricIseControllerUp.emit(ils.Metrics())
-	mb.metricIseDataconnectQueryDuration.emit(ils.Metrics())
-	mb.metricIseDataconnectQueryErrors.emit(ils.Metrics())
-	mb.metricIseDataconnectQueryRows.emit(ils.Metrics())
-	mb.metricIseDataconnectRowCount.emit(ils.Metrics())
-	mb.metricIseDeploymentNodeCount.emit(ils.Metrics())
-	mb.metricIseDeploymentNodeStatus.emit(ils.Metrics())
-	mb.metricIseEndpointCount.emit(ils.Metrics())
-	mb.metricIseEndpointPostureCount.emit(ils.Metrics())
-	mb.metricIseEndpointPostureStatus.emit(ils.Metrics())
-	mb.metricIseEndpointProfileCount.emit(ils.Metrics())
-	mb.metricIseEndpointStatus.emit(ils.Metrics())
-	mb.metricIseLicenseCount.emit(ils.Metrics())
-	mb.metricIseLicenseStatus.emit(ils.Metrics())
-	mb.metricIseNetworkDeviceCount.emit(ils.Metrics())
-	mb.metricIseNetworkDeviceStatus.emit(ils.Metrics())
-	mb.metricIsePolicyObjectCount.emit(ils.Metrics())
-	mb.metricIsePolicyStatus.emit(ils.Metrics())
-	mb.metricIseProfilerPolicyStatus.emit(ils.Metrics())
-	mb.metricIsePxgridMessageCount.emit(ils.Metrics())
-	mb.metricIsePxgridServiceStatus.emit(ils.Metrics())
-	mb.metricIsePxgridSubscriptionStatus.emit(ils.Metrics())
-	mb.metricIseRadiusFailureCount.emit(ils.Metrics())
-	mb.metricIseResourceInfo.emit(ils.Metrics())
-	mb.metricIseResourceStatus.emit(ils.Metrics())
-	mb.metricIseScrapeLastSuccess.emit(ils.Metrics())
-	mb.metricIseScrapePartialSuccess.emit(ils.Metrics())
-	mb.metricIseServiceSkipped.emit(ils.Metrics())
-	mb.metricIseServiceUnavailable.emit(ils.Metrics())
-	mb.metricIseSessionActiveCount.emit(ils.Metrics())
-	mb.metricIseSessionCount.emit(ils.Metrics())
-	mb.metricIseTacacsFailureCount.emit(ils.Metrics())
-	mb.metricIseTrustsecResourceCount.emit(ils.Metrics())
-	mb.metricIseTrustsecResourceStatus.emit(ils.Metrics())
-	mb.metricIseWebhookDeliveryCount.emit(ils.Metrics())
-	mb.metricMerakiAPIRequestDuration.emit(ils.Metrics())
-	mb.metricMerakiAPIRequestErrors.emit(ils.Metrics())
-	mb.metricMerakiAPIRequestRateLimited.emit(ils.Metrics())
-	mb.metricMerakiAppliancePerformanceScore.emit(ils.Metrics())
-	mb.metricMerakiControllerUp.emit(ils.Metrics())
-	mb.metricMerakiDeviceStatus.emit(ils.Metrics())
-	mb.metricMerakiPowerModuleStatus.emit(ils.Metrics())
-	mb.metricMerakiScrapeLastSuccess.emit(ils.Metrics())
-	mb.metricMerakiSwitchPortAlertActive.emit(ils.Metrics())
-	mb.metricMerakiSwitchPortPoeAllocated.emit(ils.Metrics())
-	mb.metricMerakiSwitchPortUsage.emit(ils.Metrics())
-	mb.metricMerakiUplinkCellularSignalRsrp.emit(ils.Metrics())
-	mb.metricMerakiUplinkCellularSignalRsrq.emit(ils.Metrics())
-	mb.metricMerakiUplinkLatency.emit(ils.Metrics())
-	mb.metricMerakiUplinkLoss.emit(ils.Metrics())
-	mb.metricMerakiUplinkStatus.emit(ils.Metrics())
-	mb.metricMerakiVpnPeerJitter.emit(ils.Metrics())
-	mb.metricMerakiVpnPeerLatency.emit(ils.Metrics())
-	mb.metricMerakiVpnPeerLoss.emit(ils.Metrics())
-	mb.metricMerakiVpnPeerMos.emit(ils.Metrics())
-	mb.metricMerakiVpnPeerStatus.emit(ils.Metrics())
-	mb.metricMerakiVpnPeerUsage.emit(ils.Metrics())
-	mb.metricMerakiWirelessChannelUtilization.emit(ils.Metrics())
-	mb.metricMerakiWirelessClientCount.emit(ils.Metrics())
-	mb.metricMerakiWirelessPacketCount.emit(ils.Metrics())
-	mb.metricMerakiWirelessPacketLoss.emit(ils.Metrics())
-	mb.metricMerakiWirelessPacketLossPercentage.emit(ils.Metrics())
-	mb.metricMerakiWirelessSsidStatus.emit(ils.Metrics())
-	mb.metricNexusDashboardAPIEndpointError.emit(ils.Metrics())
-	mb.metricNexusDashboardAPIRateLimited.emit(ils.Metrics())
-	mb.metricNexusDashboardAPIRequestDuration.emit(ils.Metrics())
-	mb.metricNexusDashboardAPIRequestErrors.emit(ils.Metrics())
-	mb.metricNexusDashboardAuditRecordCount.emit(ils.Metrics())
-	mb.metricNexusDashboardConfigCompliance.emit(ils.Metrics())
-	mb.metricNexusDashboardDataBrokerRuleCount.emit(ils.Metrics())
-	mb.metricNexusDashboardDataBrokerSessionCount.emit(ils.Metrics())
-	mb.metricNexusDashboardDataBrokerStatus.emit(ils.Metrics())
-	mb.metricNexusDashboardDeploymentStatus.emit(ils.Metrics())
-	mb.metricNexusDashboardEndpointCount.emit(ils.Metrics())
-	mb.metricNexusDashboardEventCount.emit(ils.Metrics())
-	mb.metricNexusDashboardFabricHealth.emit(ils.Metrics())
-	mb.metricNexusDashboardInsightsAnomalyActive.emit(ils.Metrics())
-	mb.metricNexusDashboardInsightsAnomalyCount.emit(ils.Metrics())
-	mb.metricNexusDashboardInsightsConfidence.emit(ils.Metrics())
-	mb.metricNexusDashboardInsightsScore.emit(ils.Metrics())
-	mb.metricNexusDashboardInsightsStatus.emit(ils.Metrics())
-	mb.metricNexusDashboardOrchestratorDeploymentCount.emit(ils.Metrics())
-	mb.metricNexusDashboardOrchestratorDeploymentStatus.emit(ils.Metrics())
-	mb.metricNexusDashboardOrchestratorPolicyDeltaCount.emit(ils.Metrics())
-	mb.metricNexusDashboardResourceCount.emit(ils.Metrics())
-	mb.metricNexusDashboardResourceInfo.emit(ils.Metrics())
-	mb.metricNexusDashboardResourceStatus.emit(ils.Metrics())
-	mb.metricNexusDashboardScrapeLastSuccess.emit(ils.Metrics())
-	mb.metricNexusDashboardScrapePartialSuccess.emit(ils.Metrics())
-	mb.metricNexusDashboardServiceHealth.emit(ils.Metrics())
-	mb.metricNexusDashboardServiceSkipped.emit(ils.Metrics())
-	mb.metricNexusDashboardServiceUnavailable.emit(ils.Metrics())
-	mb.metricNexusDashboardStorageUtilization.emit(ils.Metrics())
-	mb.metricNexusDashboardVpcPeerCount.emit(ils.Metrics())
-	mb.metricSdwanAPIRateLimited.emit(ils.Metrics())
-	mb.metricSdwanAPIRequestDuration.emit(ils.Metrics())
-	mb.metricSdwanAPIRequestErrors.emit(ils.Metrics())
-	mb.metricSdwanAppRouteJitter.emit(ils.Metrics())
-	mb.metricSdwanAppRouteLatency.emit(ils.Metrics())
-	mb.metricSdwanAppRouteLoss.emit(ils.Metrics())
-	mb.metricSdwanAppRouteSLAStatus.emit(ils.Metrics())
-	mb.metricSdwanBfdSessionCount.emit(ils.Metrics())
-	mb.metricSdwanBfdSessionFlapCount.emit(ils.Metrics())
-	mb.metricSdwanBfdSessionStatus.emit(ils.Metrics())
-	mb.metricSdwanBfdSessionTransitions.emit(ils.Metrics())
-	mb.metricSdwanCollectionObjectCount.emit(ils.Metrics())
-	mb.metricSdwanControlActualConnections.emit(ils.Metrics())
-	mb.metricSdwanControlConnectionCount.emit(ils.Metrics())
-	mb.metricSdwanControlConnectionStatus.emit(ils.Metrics())
-	mb.metricSdwanControlExpectedConnections.emit(ils.Metrics())
-	mb.metricSdwanDeviceCertificateStatus.emit(ils.Metrics())
-	mb.metricSdwanDeviceReachabilityStatus.emit(ils.Metrics())
-	mb.metricSdwanDeviceValidityStatus.emit(ils.Metrics())
-	mb.metricSdwanEventCount.emit(ils.Metrics())
-	mb.metricSdwanInventoryDeviceCount.emit(ils.Metrics())
-	mb.metricSdwanManagerEndpointStatus.emit(ils.Metrics())
-	mb.metricSdwanManagerHealthScore.emit(ils.Metrics())
-	mb.metricSdwanManagerStatus.emit(ils.Metrics())
-	mb.metricSdwanManagerUp.emit(ils.Metrics())
-	mb.metricSdwanResourceInfo.emit(ils.Metrics())
-	mb.metricSdwanResourceStatus.emit(ils.Metrics())
-	mb.metricSdwanScrapeLastSuccess.emit(ils.Metrics())
-	mb.metricSdwanScrapePartialSuccess.emit(ils.Metrics())
-	mb.metricSdwanServiceSkipped.emit(ils.Metrics())
-	mb.metricSdwanServiceUnavailable.emit(ils.Metrics())
-	mb.metricSdwanTransportInterfaceStatus.emit(ils.Metrics())
-	mb.metricSystemCPULogicalCount.emit(ils.Metrics())
 	mb.metricSystemCPUUtilization.emit(ils.Metrics())
 	mb.metricSystemMemoryUtilization.emit(ils.Metrics())
 	mb.metricSystemNetworkErrors.emit(ils.Metrics())
@@ -24827,1464 +22784,19 @@ func (mb *MetricsBuilder) RecordCiscoOpticsVoltageDataPoint(ts pcommon.Timestamp
 	mb.metricCiscoOpticsVoltage.recordDataPoint(mb.startTime, ts, val, networkInterfaceNameAttributeValue, ciscoOpticsLaneAttributeValue, ciscoOpticsSensorAttributeValue, ciscoOpticsProfileAttributeValue.String(), ciscoOpticsExperimentalAttributeValue)
 }
 
-// RecordCiscoScrapePartialSuccessDataPoint adds a data point to cisco.scrape.partial_success metric.
-func (mb *MetricsBuilder) RecordCiscoScrapePartialSuccessDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoScrapePartialSuccess.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoTopologyNeighborInfoDataPoint adds a data point to cisco.topology.neighbor.info metric.
-func (mb *MetricsBuilder) RecordCiscoTopologyNeighborInfoDataPoint(ts pcommon.Timestamp, val int64, ciscoTopologyProtocolAttributeValue string, networkInterfaceNameAttributeValue string, ciscoTopologyNeighborNameAttributeValue string, ciscoTopologyNeighborInterfaceAttributeValue string, ciscoTopologyNeighborPlatformAttributeValue string, ciscoTopologyNeighborAddressAttributeValue string, networkPeerNameAttributeValue string, networkPeerAddressAttributeValue string, networkProtocolNameAttributeValue string) {
-	mb.metricCiscoTopologyNeighborInfo.recordDataPoint(mb.startTime, ts, val, ciscoTopologyProtocolAttributeValue, networkInterfaceNameAttributeValue, ciscoTopologyNeighborNameAttributeValue, ciscoTopologyNeighborInterfaceAttributeValue, ciscoTopologyNeighborPlatformAttributeValue, ciscoTopologyNeighborAddressAttributeValue, networkPeerNameAttributeValue, networkPeerAddressAttributeValue, networkProtocolNameAttributeValue)
-}
-
-// RecordCiscoTransceiverSensorDataPoint adds a data point to cisco.transceiver.sensor metric.
-func (mb *MetricsBuilder) RecordCiscoTransceiverSensorDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricCiscoTransceiverSensor.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcApCapwapEncryptionEnabledDataPoint adds a data point to cisco.wlc.ap.capwap.encryption.enabled metric.
-func (mb *MetricsBuilder) RecordCiscoWlcApCapwapEncryptionEnabledDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcApCapwapEncryptionEnabled.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcApCapwapStateDataPoint adds a data point to cisco.wlc.ap.capwap.state metric.
-func (mb *MetricsBuilder) RecordCiscoWlcApCapwapStateDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcApCapwapState.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcApDisconnectDataPoint adds a data point to cisco.wlc.ap.disconnect metric.
-func (mb *MetricsBuilder) RecordCiscoWlcApDisconnectDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcApDisconnect.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcApDisconnectReasonInfoDataPoint adds a data point to cisco.wlc.ap.disconnect.reason.info metric.
-func (mb *MetricsBuilder) RecordCiscoWlcApDisconnectReasonInfoDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricCiscoWlcApDisconnectReasonInfo.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcApJoinFailureReasonInfoDataPoint adds a data point to cisco.wlc.ap.join.failure.reason.info metric.
-func (mb *MetricsBuilder) RecordCiscoWlcApJoinFailureReasonInfoDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricCiscoWlcApJoinFailureReasonInfo.recordDataPoint(mb.startTime, ts, val)
-}
-
 // RecordCiscoWlcApJoinStatusDataPoint adds a data point to cisco.wlc.ap.join.status metric.
-func (mb *MetricsBuilder) RecordCiscoWlcApJoinStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcApJoinStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcAuthRadiusAccessAcceptCountDataPoint adds a data point to cisco.wlc.auth.radius.access.accept.count metric.
-func (mb *MetricsBuilder) RecordCiscoWlcAuthRadiusAccessAcceptCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcAuthRadiusAccessAcceptCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcAuthRadiusAccessRejectCountDataPoint adds a data point to cisco.wlc.auth.radius.access.reject.count metric.
-func (mb *MetricsBuilder) RecordCiscoWlcAuthRadiusAccessRejectCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcAuthRadiusAccessRejectCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcAuthRadiusBadAuthenticatorCountDataPoint adds a data point to cisco.wlc.auth.radius.bad_authenticator.count metric.
-func (mb *MetricsBuilder) RecordCiscoWlcAuthRadiusBadAuthenticatorCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcAuthRadiusBadAuthenticatorCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcAuthRadiusResponseCountDataPoint adds a data point to cisco.wlc.auth.radius.response.count metric.
-func (mb *MetricsBuilder) RecordCiscoWlcAuthRadiusResponseCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcAuthRadiusResponseCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcAuthRadiusResponseDelayAvgDataPoint adds a data point to cisco.wlc.auth.radius.response_delay.avg metric.
-func (mb *MetricsBuilder) RecordCiscoWlcAuthRadiusResponseDelayAvgDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricCiscoWlcAuthRadiusResponseDelayAvg.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcAuthRadiusResponseDelayMaxDataPoint adds a data point to cisco.wlc.auth.radius.response_delay.max metric.
-func (mb *MetricsBuilder) RecordCiscoWlcAuthRadiusResponseDelayMaxDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricCiscoWlcAuthRadiusResponseDelayMax.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcAuthRadiusTimeoutCountDataPoint adds a data point to cisco.wlc.auth.radius.timeout.count metric.
-func (mb *MetricsBuilder) RecordCiscoWlcAuthRadiusTimeoutCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcAuthRadiusTimeoutCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcClientAuthFailureReasonInfoDataPoint adds a data point to cisco.wlc.client.auth.failure.reason.info metric.
-func (mb *MetricsBuilder) RecordCiscoWlcClientAuthFailureReasonInfoDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricCiscoWlcClientAuthFailureReasonInfo.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcClientConnectionStateDataPoint adds a data point to cisco.wlc.client.connection.state metric.
-func (mb *MetricsBuilder) RecordCiscoWlcClientConnectionStateDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcClientConnectionState.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcClientNetworkIoDataPoint adds a data point to cisco.wlc.client.network.io metric.
-func (mb *MetricsBuilder) RecordCiscoWlcClientNetworkIoDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcClientNetworkIo.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcClientNetworkPacketsDataPoint adds a data point to cisco.wlc.client.network.packets metric.
-func (mb *MetricsBuilder) RecordCiscoWlcClientNetworkPacketsDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcClientNetworkPackets.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcClientRoamCountDataPoint adds a data point to cisco.wlc.client.roam.count metric.
-func (mb *MetricsBuilder) RecordCiscoWlcClientRoamCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcClientRoamCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcClientRoamFailureCountDataPoint adds a data point to cisco.wlc.client.roam.failure.count metric.
-func (mb *MetricsBuilder) RecordCiscoWlcClientRoamFailureCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcClientRoamFailureCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcClientRoamTypeInfoDataPoint adds a data point to cisco.wlc.client.roam.type.info metric.
-func (mb *MetricsBuilder) RecordCiscoWlcClientRoamTypeInfoDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricCiscoWlcClientRoamTypeInfo.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcClientWirelessRssiDataPoint adds a data point to cisco.wlc.client.wireless.rssi metric.
-func (mb *MetricsBuilder) RecordCiscoWlcClientWirelessRssiDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricCiscoWlcClientWirelessRssi.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcClientWirelessSnrDataPoint adds a data point to cisco.wlc.client.wireless.snr metric.
-func (mb *MetricsBuilder) RecordCiscoWlcClientWirelessSnrDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricCiscoWlcClientWirelessSnr.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcControllerCPUUtilizationDataPoint adds a data point to cisco.wlc.controller.cpu.utilization metric.
-func (mb *MetricsBuilder) RecordCiscoWlcControllerCPUUtilizationDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricCiscoWlcControllerCPUUtilization.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcControllerMemoryBytesDataPoint adds a data point to cisco.wlc.controller.memory.bytes metric.
-func (mb *MetricsBuilder) RecordCiscoWlcControllerMemoryBytesDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcControllerMemoryBytes.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcControllerReceiverActiveSubscriptionsDataPoint adds a data point to cisco.wlc.controller.receiver.active_subscriptions metric.
-func (mb *MetricsBuilder) RecordCiscoWlcControllerReceiverActiveSubscriptionsDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcControllerReceiverActiveSubscriptions.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcControllerReceiverDecodeErrorsDataPoint adds a data point to cisco.wlc.controller.receiver.decode_errors metric.
-func (mb *MetricsBuilder) RecordCiscoWlcControllerReceiverDecodeErrorsDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcControllerReceiverDecodeErrors.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcControllerReceiverSubscriptionActiveDataPoint adds a data point to cisco.wlc.controller.receiver.subscription.active metric.
-func (mb *MetricsBuilder) RecordCiscoWlcControllerReceiverSubscriptionActiveDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcControllerReceiverSubscriptionActive.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcControllerReceiverUpdatesDataPoint adds a data point to cisco.wlc.controller.receiver.updates metric.
-func (mb *MetricsBuilder) RecordCiscoWlcControllerReceiverUpdatesDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcControllerReceiverUpdates.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcHaEnabledDataPoint adds a data point to cisco.wlc.ha.enabled metric.
-func (mb *MetricsBuilder) RecordCiscoWlcHaEnabledDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcHaEnabled.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcHaStandbyFailureCountDataPoint adds a data point to cisco.wlc.ha.standby.failure.count metric.
-func (mb *MetricsBuilder) RecordCiscoWlcHaStandbyFailureCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcHaStandbyFailureCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcHaStateDataPoint adds a data point to cisco.wlc.ha.state metric.
-func (mb *MetricsBuilder) RecordCiscoWlcHaStateDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcHaState.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcHaSwitchoverCountDataPoint adds a data point to cisco.wlc.ha.switchover.count metric.
-func (mb *MetricsBuilder) RecordCiscoWlcHaSwitchoverCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcHaSwitchoverCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcMobilityHandoffCountDataPoint adds a data point to cisco.wlc.mobility.handoff.count metric.
-func (mb *MetricsBuilder) RecordCiscoWlcMobilityHandoffCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcMobilityHandoffCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcMobilityHandoffFailureCountDataPoint adds a data point to cisco.wlc.mobility.handoff.failure.count metric.
-func (mb *MetricsBuilder) RecordCiscoWlcMobilityHandoffFailureCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcMobilityHandoffFailureCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcMobilityPeerStatusDataPoint adds a data point to cisco.wlc.mobility.peer.status metric.
-func (mb *MetricsBuilder) RecordCiscoWlcMobilityPeerStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcMobilityPeerStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcMobilityRoamCountDataPoint adds a data point to cisco.wlc.mobility.roam.count metric.
-func (mb *MetricsBuilder) RecordCiscoWlcMobilityRoamCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcMobilityRoamCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcRfChannelChangeCountDataPoint adds a data point to cisco.wlc.rf.channel.change.count metric.
-func (mb *MetricsBuilder) RecordCiscoWlcRfChannelChangeCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcRfChannelChangeCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcRfChannelRecommendedDataPoint adds a data point to cisco.wlc.rf.channel.recommended metric.
-func (mb *MetricsBuilder) RecordCiscoWlcRfChannelRecommendedDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcRfChannelRecommended.recordDataPoint(mb.startTime, ts, val)
+func (mb *MetricsBuilder) RecordCiscoWlcApJoinStatusDataPoint(ts pcommon.Timestamp, val int64, ciscoWlcApMacAttributeValue string) {
+	mb.metricCiscoWlcApJoinStatus.recordDataPoint(mb.startTime, ts, val, ciscoWlcApMacAttributeValue)
 }
 
 // RecordCiscoWlcRfChannelUtilizationDataPoint adds a data point to cisco.wlc.rf.channel.utilization metric.
-func (mb *MetricsBuilder) RecordCiscoWlcRfChannelUtilizationDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricCiscoWlcRfChannelUtilization.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcRfClientCountDataPoint adds a data point to cisco.wlc.rf.client.count metric.
-func (mb *MetricsBuilder) RecordCiscoWlcRfClientCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcRfClientCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcRfNoiseFloorDataPoint adds a data point to cisco.wlc.rf.noise_floor metric.
-func (mb *MetricsBuilder) RecordCiscoWlcRfNoiseFloorDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricCiscoWlcRfNoiseFloor.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcSsidChannelUtilizationDataPoint adds a data point to cisco.wlc.ssid.channel.utilization metric.
-func (mb *MetricsBuilder) RecordCiscoWlcSsidChannelUtilizationDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricCiscoWlcSsidChannelUtilization.recordDataPoint(mb.startTime, ts, val)
+func (mb *MetricsBuilder) RecordCiscoWlcRfChannelUtilizationDataPoint(ts pcommon.Timestamp, val float64, ciscoWlcApMacAttributeValue string, ciscoWlcRadioSlotAttributeValue string) {
+	mb.metricCiscoWlcRfChannelUtilization.recordDataPoint(mb.startTime, ts, val, ciscoWlcApMacAttributeValue, ciscoWlcRadioSlotAttributeValue)
 }
 
 // RecordCiscoWlcSsidClientCountDataPoint adds a data point to cisco.wlc.ssid.client.count metric.
-func (mb *MetricsBuilder) RecordCiscoWlcSsidClientCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcSsidClientCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcSsidNetworkIoDataPoint adds a data point to cisco.wlc.ssid.network.io metric.
-func (mb *MetricsBuilder) RecordCiscoWlcSsidNetworkIoDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcSsidNetworkIo.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordCiscoWlcSsidRetryCountDataPoint adds a data point to cisco.wlc.ssid.retry.count metric.
-func (mb *MetricsBuilder) RecordCiscoWlcSsidRetryCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricCiscoWlcSsidRetryCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordFmcAPIEndpointErrorDataPoint adds a data point to fmc.api.endpoint.error metric.
-func (mb *MetricsBuilder) RecordFmcAPIEndpointErrorDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricFmcAPIEndpointError.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordFmcAPIRateLimitedDataPoint adds a data point to fmc.api.rate_limited metric.
-func (mb *MetricsBuilder) RecordFmcAPIRateLimitedDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricFmcAPIRateLimited.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordFmcAPIRequestDurationDataPoint adds a data point to fmc.api.request.duration metric.
-func (mb *MetricsBuilder) RecordFmcAPIRequestDurationDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricFmcAPIRequestDuration.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordFmcAPIRequestErrorsDataPoint adds a data point to fmc.api.request.errors metric.
-func (mb *MetricsBuilder) RecordFmcAPIRequestErrorsDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricFmcAPIRequestErrors.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordFmcAuditRecordCountDataPoint adds a data point to fmc.audit.record.count metric.
-func (mb *MetricsBuilder) RecordFmcAuditRecordCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricFmcAuditRecordCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordFmcDeploymentPendingCountDataPoint adds a data point to fmc.deployment.pending.count metric.
-func (mb *MetricsBuilder) RecordFmcDeploymentPendingCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricFmcDeploymentPendingCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordFmcDeploymentStatusDataPoint adds a data point to fmc.deployment.status metric.
-func (mb *MetricsBuilder) RecordFmcDeploymentStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricFmcDeploymentStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordFmcHaStatusDataPoint adds a data point to fmc.ha.status metric.
-func (mb *MetricsBuilder) RecordFmcHaStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricFmcHaStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordFmcHealthEventCountDataPoint adds a data point to fmc.health.event.count metric.
-func (mb *MetricsBuilder) RecordFmcHealthEventCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricFmcHealthEventCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordFmcHealthStatusDataPoint adds a data point to fmc.health.status metric.
-func (mb *MetricsBuilder) RecordFmcHealthStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricFmcHealthStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordFmcManagerUpDataPoint adds a data point to fmc.manager.up metric.
-func (mb *MetricsBuilder) RecordFmcManagerUpDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricFmcManagerUp.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordFmcPolicyObjectCountDataPoint adds a data point to fmc.policy.object.count metric.
-func (mb *MetricsBuilder) RecordFmcPolicyObjectCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricFmcPolicyObjectCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordFmcResourceCountDataPoint adds a data point to fmc.resource.count metric.
-func (mb *MetricsBuilder) RecordFmcResourceCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricFmcResourceCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordFmcResourceInfoDataPoint adds a data point to fmc.resource.info metric.
-func (mb *MetricsBuilder) RecordFmcResourceInfoDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricFmcResourceInfo.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordFmcResourceStatusDataPoint adds a data point to fmc.resource.status metric.
-func (mb *MetricsBuilder) RecordFmcResourceStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricFmcResourceStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordFmcScrapeLastSuccessDataPoint adds a data point to fmc.scrape.last_success metric.
-func (mb *MetricsBuilder) RecordFmcScrapeLastSuccessDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricFmcScrapeLastSuccess.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordFmcScrapePartialSuccessDataPoint adds a data point to fmc.scrape.partial_success metric.
-func (mb *MetricsBuilder) RecordFmcScrapePartialSuccessDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricFmcScrapePartialSuccess.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordFmcVpnTunnelStatusDataPoint adds a data point to fmc.vpn.tunnel.status metric.
-func (mb *MetricsBuilder) RecordFmcVpnTunnelStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricFmcVpnTunnelStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightAdvisoryActiveDataPoint adds a data point to intersight.advisory.active metric.
-func (mb *MetricsBuilder) RecordIntersightAdvisoryActiveDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightAdvisoryActive.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightAdvisoryCountDataPoint adds a data point to intersight.advisory.count metric.
-func (mb *MetricsBuilder) RecordIntersightAdvisoryCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightAdvisoryCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightAlarmActiveDataPoint adds a data point to intersight.alarm.active metric.
-func (mb *MetricsBuilder) RecordIntersightAlarmActiveDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightAlarmActive.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightAlarmCountDataPoint adds a data point to intersight.alarm.count metric.
-func (mb *MetricsBuilder) RecordIntersightAlarmCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightAlarmCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightAPIRateLimitedDataPoint adds a data point to intersight.api.rate_limited metric.
-func (mb *MetricsBuilder) RecordIntersightAPIRateLimitedDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightAPIRateLimited.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightAPIRequestDurationDataPoint adds a data point to intersight.api.request.duration metric.
-func (mb *MetricsBuilder) RecordIntersightAPIRequestDurationDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightAPIRequestDuration.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightAPIRequestErrorsDataPoint adds a data point to intersight.api.request.errors metric.
-func (mb *MetricsBuilder) RecordIntersightAPIRequestErrorsDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightAPIRequestErrors.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightAuditRecordCountDataPoint adds a data point to intersight.audit.record.count metric.
-func (mb *MetricsBuilder) RecordIntersightAuditRecordCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightAuditRecordCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightComputeAvailableMemoryDataPoint adds a data point to intersight.compute.available_memory metric.
-func (mb *MetricsBuilder) RecordIntersightComputeAvailableMemoryDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightComputeAvailableMemory.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightComputeThreadCountDataPoint adds a data point to intersight.compute.thread.count metric.
-func (mb *MetricsBuilder) RecordIntersightComputeThreadCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightComputeThreadCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightFaultCountDataPoint adds a data point to intersight.fault.count metric.
-func (mb *MetricsBuilder) RecordIntersightFaultCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightFaultCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightFirmwareBundleInfoDataPoint adds a data point to intersight.firmware.bundle.info metric.
-func (mb *MetricsBuilder) RecordIntersightFirmwareBundleInfoDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightFirmwareBundleInfo.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightHclStatusDataPoint adds a data point to intersight.hcl.status metric.
-func (mb *MetricsBuilder) RecordIntersightHclStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightHclStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightHclStatusCountDataPoint adds a data point to intersight.hcl.status.count metric.
-func (mb *MetricsBuilder) RecordIntersightHclStatusCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightHclStatusCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightHyperflexReadIopsDataPoint adds a data point to intersight.hyperflex.read.iops metric.
-func (mb *MetricsBuilder) RecordIntersightHyperflexReadIopsDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightHyperflexReadIops.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightHyperflexReadLatencyDataPoint adds a data point to intersight.hyperflex.read.latency metric.
-func (mb *MetricsBuilder) RecordIntersightHyperflexReadLatencyDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightHyperflexReadLatency.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightHyperflexStatusDataPoint adds a data point to intersight.hyperflex.status metric.
-func (mb *MetricsBuilder) RecordIntersightHyperflexStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightHyperflexStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightHyperflexWriteIopsDataPoint adds a data point to intersight.hyperflex.write.iops metric.
-func (mb *MetricsBuilder) RecordIntersightHyperflexWriteIopsDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightHyperflexWriteIops.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightHyperflexWriteLatencyDataPoint adds a data point to intersight.hyperflex.write.latency metric.
-func (mb *MetricsBuilder) RecordIntersightHyperflexWriteLatencyDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightHyperflexWriteLatency.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightKubernetesClusterConnectionStatusDataPoint adds a data point to intersight.kubernetes.cluster.connection_status metric.
-func (mb *MetricsBuilder) RecordIntersightKubernetesClusterConnectionStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightKubernetesClusterConnectionStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightResourceCountDataPoint adds a data point to intersight.resource.count metric.
-func (mb *MetricsBuilder) RecordIntersightResourceCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightResourceCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightResourceInfoDataPoint adds a data point to intersight.resource.info metric.
-func (mb *MetricsBuilder) RecordIntersightResourceInfoDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightResourceInfo.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightResourceStatusDataPoint adds a data point to intersight.resource.status metric.
-func (mb *MetricsBuilder) RecordIntersightResourceStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightResourceStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightScrapeLastSuccessDataPoint adds a data point to intersight.scrape.last_success metric.
-func (mb *MetricsBuilder) RecordIntersightScrapeLastSuccessDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightScrapeLastSuccess.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightScrapePartialSuccessDataPoint adds a data point to intersight.scrape.partial_success metric.
-func (mb *MetricsBuilder) RecordIntersightScrapePartialSuccessDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightScrapePartialSuccess.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightStorageLifeLeftDataPoint adds a data point to intersight.storage.life_left metric.
-func (mb *MetricsBuilder) RecordIntersightStorageLifeLeftDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightStorageLifeLeft.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightStorageMediaErrorCountDataPoint adds a data point to intersight.storage.media_error.count metric.
-func (mb *MetricsBuilder) RecordIntersightStorageMediaErrorCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightStorageMediaErrorCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightStoragePowerOnHoursDataPoint adds a data point to intersight.storage.power_on.hours metric.
-func (mb *MetricsBuilder) RecordIntersightStoragePowerOnHoursDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightStoragePowerOnHours.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightStoragePredictiveFailureCountDataPoint adds a data point to intersight.storage.predictive_failure.count metric.
-func (mb *MetricsBuilder) RecordIntersightStoragePredictiveFailureCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightStoragePredictiveFailureCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightStorageRebuildRateDataPoint adds a data point to intersight.storage.rebuild.rate metric.
-func (mb *MetricsBuilder) RecordIntersightStorageRebuildRateDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightStorageRebuildRate.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightStorageStatusDataPoint adds a data point to intersight.storage.status metric.
-func (mb *MetricsBuilder) RecordIntersightStorageStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightStorageStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightStorageTemperatureDataPoint adds a data point to intersight.storage.temperature metric.
-func (mb *MetricsBuilder) RecordIntersightStorageTemperatureDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightStorageTemperature.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightTargetConnectionStatusDataPoint adds a data point to intersight.target.connection_status metric.
-func (mb *MetricsBuilder) RecordIntersightTargetConnectionStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightTargetConnectionStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightTaskCountDataPoint adds a data point to intersight.task.count metric.
-func (mb *MetricsBuilder) RecordIntersightTaskCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightTaskCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightTaskStatusDataPoint adds a data point to intersight.task.status metric.
-func (mb *MetricsBuilder) RecordIntersightTaskStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightTaskStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightTechsupportCountDataPoint adds a data point to intersight.techsupport.count metric.
-func (mb *MetricsBuilder) RecordIntersightTechsupportCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightTechsupportCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightTechsupportStatusDataPoint adds a data point to intersight.techsupport.status metric.
-func (mb *MetricsBuilder) RecordIntersightTechsupportStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightTechsupportStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightTelemetryQueryRowsDataPoint adds a data point to intersight.telemetry.query.rows metric.
-func (mb *MetricsBuilder) RecordIntersightTelemetryQueryRowsDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightTelemetryQueryRows.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsCPUIdleUtilizationDataPoint adds a data point to intersight.ucs.cpu.idle.utilization metric.
-func (mb *MetricsBuilder) RecordIntersightUcsCPUIdleUtilizationDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsCPUIdleUtilization.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsCPUSystemUtilizationDataPoint adds a data point to intersight.ucs.cpu.system.utilization metric.
-func (mb *MetricsBuilder) RecordIntersightUcsCPUSystemUtilizationDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsCPUSystemUtilization.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsCurrentDataPoint adds a data point to intersight.ucs.current metric.
-func (mb *MetricsBuilder) RecordIntersightUcsCurrentDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsCurrent.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsFanSpeedDataPoint adds a data point to intersight.ucs.fan.speed metric.
-func (mb *MetricsBuilder) RecordIntersightUcsFanSpeedDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsFanSpeed.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsFanSpeedRatioDataPoint adds a data point to intersight.ucs.fan.speed_ratio metric.
-func (mb *MetricsBuilder) RecordIntersightUcsFanSpeedRatioDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsFanSpeedRatio.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsFanStatusDataPoint adds a data point to intersight.ucs.fan.status metric.
-func (mb *MetricsBuilder) RecordIntersightUcsFanStatusDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsFanStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsHostEnergyDataPoint adds a data point to intersight.ucs.host.energy metric.
-func (mb *MetricsBuilder) RecordIntersightUcsHostEnergyDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsHostEnergy.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsHostPowerDataPoint adds a data point to intersight.ucs.host.power metric.
-func (mb *MetricsBuilder) RecordIntersightUcsHostPowerDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsHostPower.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsHostPowerStateDataPoint adds a data point to intersight.ucs.host.power_state metric.
-func (mb *MetricsBuilder) RecordIntersightUcsHostPowerStateDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsHostPowerState.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsMemoryCachedDataPoint adds a data point to intersight.ucs.memory.cached metric.
-func (mb *MetricsBuilder) RecordIntersightUcsMemoryCachedDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsMemoryCached.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsMemoryEccCorrectableDataPoint adds a data point to intersight.ucs.memory.ecc.correctable metric.
-func (mb *MetricsBuilder) RecordIntersightUcsMemoryEccCorrectableDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsMemoryEccCorrectable.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsMemoryEccUncorrectableDataPoint adds a data point to intersight.ucs.memory.ecc.uncorrectable metric.
-func (mb *MetricsBuilder) RecordIntersightUcsMemoryEccUncorrectableDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsMemoryEccUncorrectable.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsMemoryFreeDataPoint adds a data point to intersight.ucs.memory.free metric.
-func (mb *MetricsBuilder) RecordIntersightUcsMemoryFreeDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsMemoryFree.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsMemoryModuleSizeDataPoint adds a data point to intersight.ucs.memory.module.size metric.
-func (mb *MetricsBuilder) RecordIntersightUcsMemoryModuleSizeDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsMemoryModuleSize.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsMemoryStatusDataPoint adds a data point to intersight.ucs.memory.status metric.
-func (mb *MetricsBuilder) RecordIntersightUcsMemoryStatusDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsMemoryStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsMemoryUsedDataPoint adds a data point to intersight.ucs.memory.used metric.
-func (mb *MetricsBuilder) RecordIntersightUcsMemoryUsedDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsMemoryUsed.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsNetworkInterfaceResetsDataPoint adds a data point to intersight.ucs.network.interface_resets metric.
-func (mb *MetricsBuilder) RecordIntersightUcsNetworkInterfaceResetsDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsNetworkInterfaceResets.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsNetworkLinkStatusDataPoint adds a data point to intersight.ucs.network.link.status metric.
-func (mb *MetricsBuilder) RecordIntersightUcsNetworkLinkStatusDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsNetworkLinkStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsNetworkLinkFailuresDataPoint adds a data point to intersight.ucs.network.link_failures metric.
-func (mb *MetricsBuilder) RecordIntersightUcsNetworkLinkFailuresDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsNetworkLinkFailures.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsNetworkReceiveDataPoint adds a data point to intersight.ucs.network.receive metric.
-func (mb *MetricsBuilder) RecordIntersightUcsNetworkReceiveDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsNetworkReceive.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsNetworkReceiveCrcErrorsDataPoint adds a data point to intersight.ucs.network.receive.crc_errors metric.
-func (mb *MetricsBuilder) RecordIntersightUcsNetworkReceiveCrcErrorsDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsNetworkReceiveCrcErrors.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsNetworkReceiveDiscardsDataPoint adds a data point to intersight.ucs.network.receive.discards metric.
-func (mb *MetricsBuilder) RecordIntersightUcsNetworkReceiveDiscardsDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsNetworkReceiveDiscards.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsNetworkReceiveDropsDataPoint adds a data point to intersight.ucs.network.receive.drops metric.
-func (mb *MetricsBuilder) RecordIntersightUcsNetworkReceiveDropsDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsNetworkReceiveDrops.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsNetworkReceiveErrorsDataPoint adds a data point to intersight.ucs.network.receive.errors metric.
-func (mb *MetricsBuilder) RecordIntersightUcsNetworkReceiveErrorsDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsNetworkReceiveErrors.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsNetworkReceiveNoBufferDataPoint adds a data point to intersight.ucs.network.receive.no_buffer metric.
-func (mb *MetricsBuilder) RecordIntersightUcsNetworkReceiveNoBufferDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsNetworkReceiveNoBuffer.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsNetworkReceivePacketsDataPoint adds a data point to intersight.ucs.network.receive.packets metric.
-func (mb *MetricsBuilder) RecordIntersightUcsNetworkReceivePacketsDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsNetworkReceivePackets.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsNetworkReceivePauseFramesDataPoint adds a data point to intersight.ucs.network.receive.pause_frames metric.
-func (mb *MetricsBuilder) RecordIntersightUcsNetworkReceivePauseFramesDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsNetworkReceivePauseFrames.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsNetworkSignalLossesDataPoint adds a data point to intersight.ucs.network.signal_losses metric.
-func (mb *MetricsBuilder) RecordIntersightUcsNetworkSignalLossesDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsNetworkSignalLosses.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsNetworkSpeedDataPoint adds a data point to intersight.ucs.network.speed metric.
-func (mb *MetricsBuilder) RecordIntersightUcsNetworkSpeedDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsNetworkSpeed.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsNetworkTransmitDataPoint adds a data point to intersight.ucs.network.transmit metric.
-func (mb *MetricsBuilder) RecordIntersightUcsNetworkTransmitDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsNetworkTransmit.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsNetworkTransmitDiscardsDataPoint adds a data point to intersight.ucs.network.transmit.discards metric.
-func (mb *MetricsBuilder) RecordIntersightUcsNetworkTransmitDiscardsDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsNetworkTransmitDiscards.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsNetworkTransmitDropsDataPoint adds a data point to intersight.ucs.network.transmit.drops metric.
-func (mb *MetricsBuilder) RecordIntersightUcsNetworkTransmitDropsDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsNetworkTransmitDrops.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsNetworkTransmitErrorsDataPoint adds a data point to intersight.ucs.network.transmit.errors metric.
-func (mb *MetricsBuilder) RecordIntersightUcsNetworkTransmitErrorsDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsNetworkTransmitErrors.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsNetworkTransmitPacketsDataPoint adds a data point to intersight.ucs.network.transmit.packets metric.
-func (mb *MetricsBuilder) RecordIntersightUcsNetworkTransmitPacketsDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsNetworkTransmitPackets.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsNetworkTransmitPauseFramesDataPoint adds a data point to intersight.ucs.network.transmit.pause_frames metric.
-func (mb *MetricsBuilder) RecordIntersightUcsNetworkTransmitPauseFramesDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsNetworkTransmitPauseFrames.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsNetworkUtilizationDataPoint adds a data point to intersight.ucs.network.utilization metric.
-func (mb *MetricsBuilder) RecordIntersightUcsNetworkUtilizationDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsNetworkUtilization.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsPowerSupplyOutputPowerDataPoint adds a data point to intersight.ucs.power_supply.output_power metric.
-func (mb *MetricsBuilder) RecordIntersightUcsPowerSupplyOutputPowerDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsPowerSupplyOutputPower.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsPowerSupplyStatusDataPoint adds a data point to intersight.ucs.power_supply.status metric.
-func (mb *MetricsBuilder) RecordIntersightUcsPowerSupplyStatusDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsPowerSupplyStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsPowerSupplyUtilizationDataPoint adds a data point to intersight.ucs.power_supply.utilization metric.
-func (mb *MetricsBuilder) RecordIntersightUcsPowerSupplyUtilizationDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsPowerSupplyUtilization.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsSignalPowerReceiveDataPoint adds a data point to intersight.ucs.signal_power.receive metric.
-func (mb *MetricsBuilder) RecordIntersightUcsSignalPowerReceiveDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsSignalPowerReceive.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsSignalPowerTransmitDataPoint adds a data point to intersight.ucs.signal_power.transmit metric.
-func (mb *MetricsBuilder) RecordIntersightUcsSignalPowerTransmitDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsSignalPowerTransmit.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsTemperatureDataPoint adds a data point to intersight.ucs.temperature metric.
-func (mb *MetricsBuilder) RecordIntersightUcsTemperatureDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsTemperature.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsTemperatureLimitHighCriticalDataPoint adds a data point to intersight.ucs.temperature.limit_high_critical metric.
-func (mb *MetricsBuilder) RecordIntersightUcsTemperatureLimitHighCriticalDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsTemperatureLimitHighCritical.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsTemperatureLimitLowCriticalDataPoint adds a data point to intersight.ucs.temperature.limit_low_critical metric.
-func (mb *MetricsBuilder) RecordIntersightUcsTemperatureLimitLowCriticalDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsTemperatureLimitLowCritical.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsTemperatureStatusDataPoint adds a data point to intersight.ucs.temperature.status metric.
-func (mb *MetricsBuilder) RecordIntersightUcsTemperatureStatusDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsTemperatureStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightUcsVoltageDataPoint adds a data point to intersight.ucs.voltage metric.
-func (mb *MetricsBuilder) RecordIntersightUcsVoltageDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIntersightUcsVoltage.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightVirtualMachineCountDataPoint adds a data point to intersight.virtual_machine.count metric.
-func (mb *MetricsBuilder) RecordIntersightVirtualMachineCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightVirtualMachineCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightVirtualMachineCPUCountDataPoint adds a data point to intersight.virtual_machine.cpu.count metric.
-func (mb *MetricsBuilder) RecordIntersightVirtualMachineCPUCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightVirtualMachineCPUCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightVirtualMachineMemoryDataPoint adds a data point to intersight.virtual_machine.memory metric.
-func (mb *MetricsBuilder) RecordIntersightVirtualMachineMemoryDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightVirtualMachineMemory.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightVirtualMachinePowerStateDataPoint adds a data point to intersight.virtual_machine.power_state metric.
-func (mb *MetricsBuilder) RecordIntersightVirtualMachinePowerStateDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightVirtualMachinePowerState.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightWorkflowCountDataPoint adds a data point to intersight.workflow.count metric.
-func (mb *MetricsBuilder) RecordIntersightWorkflowCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightWorkflowCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIntersightWorkflowStatusDataPoint adds a data point to intersight.workflow.status metric.
-func (mb *MetricsBuilder) RecordIntersightWorkflowStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIntersightWorkflowStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseAccountingSessionCountDataPoint adds a data point to ise.accounting.session.count metric.
-func (mb *MetricsBuilder) RecordIseAccountingSessionCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseAccountingSessionCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseAlarmCountDataPoint adds a data point to ise.alarm.count metric.
-func (mb *MetricsBuilder) RecordIseAlarmCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseAlarmCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseAPIEndpointErrorDataPoint adds a data point to ise.api.endpoint.error metric.
-func (mb *MetricsBuilder) RecordIseAPIEndpointErrorDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseAPIEndpointError.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseAPIRateLimitedDataPoint adds a data point to ise.api.rate_limited metric.
-func (mb *MetricsBuilder) RecordIseAPIRateLimitedDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseAPIRateLimited.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseAPIRequestDurationDataPoint adds a data point to ise.api.request.duration metric.
-func (mb *MetricsBuilder) RecordIseAPIRequestDurationDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIseAPIRequestDuration.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseAPIRequestErrorsDataPoint adds a data point to ise.api.request.errors metric.
-func (mb *MetricsBuilder) RecordIseAPIRequestErrorsDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseAPIRequestErrors.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseAuthFailureReasonInfoDataPoint adds a data point to ise.auth.failure.reason.info metric.
-func (mb *MetricsBuilder) RecordIseAuthFailureReasonInfoDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseAuthFailureReasonInfo.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseCertificateCountDataPoint adds a data point to ise.certificate.count metric.
-func (mb *MetricsBuilder) RecordIseCertificateCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseCertificateCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseCertificateExpirationDataPoint adds a data point to ise.certificate.expiration metric.
-func (mb *MetricsBuilder) RecordIseCertificateExpirationDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseCertificateExpiration.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseControllerUpDataPoint adds a data point to ise.controller.up metric.
-func (mb *MetricsBuilder) RecordIseControllerUpDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseControllerUp.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseDataconnectQueryDurationDataPoint adds a data point to ise.dataconnect.query.duration metric.
-func (mb *MetricsBuilder) RecordIseDataconnectQueryDurationDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIseDataconnectQueryDuration.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseDataconnectQueryErrorsDataPoint adds a data point to ise.dataconnect.query.errors metric.
-func (mb *MetricsBuilder) RecordIseDataconnectQueryErrorsDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseDataconnectQueryErrors.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseDataconnectQueryRowsDataPoint adds a data point to ise.dataconnect.query.rows metric.
-func (mb *MetricsBuilder) RecordIseDataconnectQueryRowsDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseDataconnectQueryRows.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseDataconnectRowCountDataPoint adds a data point to ise.dataconnect.row.count metric.
-func (mb *MetricsBuilder) RecordIseDataconnectRowCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseDataconnectRowCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseDeploymentNodeCountDataPoint adds a data point to ise.deployment.node.count metric.
-func (mb *MetricsBuilder) RecordIseDeploymentNodeCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseDeploymentNodeCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseDeploymentNodeStatusDataPoint adds a data point to ise.deployment.node.status metric.
-func (mb *MetricsBuilder) RecordIseDeploymentNodeStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseDeploymentNodeStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseEndpointCountDataPoint adds a data point to ise.endpoint.count metric.
-func (mb *MetricsBuilder) RecordIseEndpointCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseEndpointCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseEndpointPostureCountDataPoint adds a data point to ise.endpoint.posture.count metric.
-func (mb *MetricsBuilder) RecordIseEndpointPostureCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseEndpointPostureCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseEndpointPostureStatusDataPoint adds a data point to ise.endpoint.posture.status metric.
-func (mb *MetricsBuilder) RecordIseEndpointPostureStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseEndpointPostureStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseEndpointProfileCountDataPoint adds a data point to ise.endpoint.profile.count metric.
-func (mb *MetricsBuilder) RecordIseEndpointProfileCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseEndpointProfileCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseEndpointStatusDataPoint adds a data point to ise.endpoint.status metric.
-func (mb *MetricsBuilder) RecordIseEndpointStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseEndpointStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseLicenseCountDataPoint adds a data point to ise.license.count metric.
-func (mb *MetricsBuilder) RecordIseLicenseCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseLicenseCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseLicenseStatusDataPoint adds a data point to ise.license.status metric.
-func (mb *MetricsBuilder) RecordIseLicenseStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseLicenseStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseNetworkDeviceCountDataPoint adds a data point to ise.network_device.count metric.
-func (mb *MetricsBuilder) RecordIseNetworkDeviceCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseNetworkDeviceCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseNetworkDeviceStatusDataPoint adds a data point to ise.network_device.status metric.
-func (mb *MetricsBuilder) RecordIseNetworkDeviceStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseNetworkDeviceStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIsePolicyObjectCountDataPoint adds a data point to ise.policy.object.count metric.
-func (mb *MetricsBuilder) RecordIsePolicyObjectCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIsePolicyObjectCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIsePolicyStatusDataPoint adds a data point to ise.policy.status metric.
-func (mb *MetricsBuilder) RecordIsePolicyStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIsePolicyStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseProfilerPolicyStatusDataPoint adds a data point to ise.profiler.policy.status metric.
-func (mb *MetricsBuilder) RecordIseProfilerPolicyStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseProfilerPolicyStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIsePxgridMessageCountDataPoint adds a data point to ise.pxgrid.message.count metric.
-func (mb *MetricsBuilder) RecordIsePxgridMessageCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIsePxgridMessageCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIsePxgridServiceStatusDataPoint adds a data point to ise.pxgrid.service.status metric.
-func (mb *MetricsBuilder) RecordIsePxgridServiceStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIsePxgridServiceStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIsePxgridSubscriptionStatusDataPoint adds a data point to ise.pxgrid.subscription.status metric.
-func (mb *MetricsBuilder) RecordIsePxgridSubscriptionStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIsePxgridSubscriptionStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseRadiusFailureCountDataPoint adds a data point to ise.radius.failure.count metric.
-func (mb *MetricsBuilder) RecordIseRadiusFailureCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseRadiusFailureCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseResourceInfoDataPoint adds a data point to ise.resource.info metric.
-func (mb *MetricsBuilder) RecordIseResourceInfoDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseResourceInfo.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseResourceStatusDataPoint adds a data point to ise.resource.status metric.
-func (mb *MetricsBuilder) RecordIseResourceStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseResourceStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseScrapeLastSuccessDataPoint adds a data point to ise.scrape.last_success metric.
-func (mb *MetricsBuilder) RecordIseScrapeLastSuccessDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseScrapeLastSuccess.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseScrapePartialSuccessDataPoint adds a data point to ise.scrape.partial_success metric.
-func (mb *MetricsBuilder) RecordIseScrapePartialSuccessDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseScrapePartialSuccess.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseServiceSkippedDataPoint adds a data point to ise.service.skipped metric.
-func (mb *MetricsBuilder) RecordIseServiceSkippedDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseServiceSkipped.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseServiceUnavailableDataPoint adds a data point to ise.service.unavailable metric.
-func (mb *MetricsBuilder) RecordIseServiceUnavailableDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseServiceUnavailable.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseSessionActiveCountDataPoint adds a data point to ise.session.active.count metric.
-func (mb *MetricsBuilder) RecordIseSessionActiveCountDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricIseSessionActiveCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseSessionCountDataPoint adds a data point to ise.session.count metric.
-func (mb *MetricsBuilder) RecordIseSessionCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseSessionCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseTacacsFailureCountDataPoint adds a data point to ise.tacacs.failure.count metric.
-func (mb *MetricsBuilder) RecordIseTacacsFailureCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseTacacsFailureCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseTrustsecResourceCountDataPoint adds a data point to ise.trustsec.resource.count metric.
-func (mb *MetricsBuilder) RecordIseTrustsecResourceCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseTrustsecResourceCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseTrustsecResourceStatusDataPoint adds a data point to ise.trustsec.resource.status metric.
-func (mb *MetricsBuilder) RecordIseTrustsecResourceStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseTrustsecResourceStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordIseWebhookDeliveryCountDataPoint adds a data point to ise.webhook.delivery.count metric.
-func (mb *MetricsBuilder) RecordIseWebhookDeliveryCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricIseWebhookDeliveryCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiAPIRequestDurationDataPoint adds a data point to meraki.api.request.duration metric.
-func (mb *MetricsBuilder) RecordMerakiAPIRequestDurationDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricMerakiAPIRequestDuration.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiAPIRequestErrorsDataPoint adds a data point to meraki.api.request.errors metric.
-func (mb *MetricsBuilder) RecordMerakiAPIRequestErrorsDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricMerakiAPIRequestErrors.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiAPIRequestRateLimitedDataPoint adds a data point to meraki.api.request.rate_limited metric.
-func (mb *MetricsBuilder) RecordMerakiAPIRequestRateLimitedDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricMerakiAPIRequestRateLimited.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiAppliancePerformanceScoreDataPoint adds a data point to meraki.appliance.performance.score metric.
-func (mb *MetricsBuilder) RecordMerakiAppliancePerformanceScoreDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricMerakiAppliancePerformanceScore.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiControllerUpDataPoint adds a data point to meraki.controller.up metric.
-func (mb *MetricsBuilder) RecordMerakiControllerUpDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricMerakiControllerUp.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiDeviceStatusDataPoint adds a data point to meraki.device.status metric.
-func (mb *MetricsBuilder) RecordMerakiDeviceStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricMerakiDeviceStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiPowerModuleStatusDataPoint adds a data point to meraki.power.module.status metric.
-func (mb *MetricsBuilder) RecordMerakiPowerModuleStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricMerakiPowerModuleStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiScrapeLastSuccessDataPoint adds a data point to meraki.scrape.last_success metric.
-func (mb *MetricsBuilder) RecordMerakiScrapeLastSuccessDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricMerakiScrapeLastSuccess.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiSwitchPortAlertActiveDataPoint adds a data point to meraki.switch.port.alert.active metric.
-func (mb *MetricsBuilder) RecordMerakiSwitchPortAlertActiveDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricMerakiSwitchPortAlertActive.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiSwitchPortPoeAllocatedDataPoint adds a data point to meraki.switch.port.poe.allocated metric.
-func (mb *MetricsBuilder) RecordMerakiSwitchPortPoeAllocatedDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricMerakiSwitchPortPoeAllocated.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiSwitchPortUsageDataPoint adds a data point to meraki.switch.port.usage metric.
-func (mb *MetricsBuilder) RecordMerakiSwitchPortUsageDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricMerakiSwitchPortUsage.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiUplinkCellularSignalRsrpDataPoint adds a data point to meraki.uplink.cellular.signal.rsrp metric.
-func (mb *MetricsBuilder) RecordMerakiUplinkCellularSignalRsrpDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricMerakiUplinkCellularSignalRsrp.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiUplinkCellularSignalRsrqDataPoint adds a data point to meraki.uplink.cellular.signal.rsrq metric.
-func (mb *MetricsBuilder) RecordMerakiUplinkCellularSignalRsrqDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricMerakiUplinkCellularSignalRsrq.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiUplinkLatencyDataPoint adds a data point to meraki.uplink.latency metric.
-func (mb *MetricsBuilder) RecordMerakiUplinkLatencyDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricMerakiUplinkLatency.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiUplinkLossDataPoint adds a data point to meraki.uplink.loss metric.
-func (mb *MetricsBuilder) RecordMerakiUplinkLossDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricMerakiUplinkLoss.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiUplinkStatusDataPoint adds a data point to meraki.uplink.status metric.
-func (mb *MetricsBuilder) RecordMerakiUplinkStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricMerakiUplinkStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiVpnPeerJitterDataPoint adds a data point to meraki.vpn.peer.jitter metric.
-func (mb *MetricsBuilder) RecordMerakiVpnPeerJitterDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricMerakiVpnPeerJitter.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiVpnPeerLatencyDataPoint adds a data point to meraki.vpn.peer.latency metric.
-func (mb *MetricsBuilder) RecordMerakiVpnPeerLatencyDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricMerakiVpnPeerLatency.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiVpnPeerLossDataPoint adds a data point to meraki.vpn.peer.loss metric.
-func (mb *MetricsBuilder) RecordMerakiVpnPeerLossDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricMerakiVpnPeerLoss.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiVpnPeerMosDataPoint adds a data point to meraki.vpn.peer.mos metric.
-func (mb *MetricsBuilder) RecordMerakiVpnPeerMosDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricMerakiVpnPeerMos.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiVpnPeerStatusDataPoint adds a data point to meraki.vpn.peer.status metric.
-func (mb *MetricsBuilder) RecordMerakiVpnPeerStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricMerakiVpnPeerStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiVpnPeerUsageDataPoint adds a data point to meraki.vpn.peer.usage metric.
-func (mb *MetricsBuilder) RecordMerakiVpnPeerUsageDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricMerakiVpnPeerUsage.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiWirelessChannelUtilizationDataPoint adds a data point to meraki.wireless.channel_utilization metric.
-func (mb *MetricsBuilder) RecordMerakiWirelessChannelUtilizationDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricMerakiWirelessChannelUtilization.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiWirelessClientCountDataPoint adds a data point to meraki.wireless.client.count metric.
-func (mb *MetricsBuilder) RecordMerakiWirelessClientCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricMerakiWirelessClientCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiWirelessPacketCountDataPoint adds a data point to meraki.wireless.packet.count metric.
-func (mb *MetricsBuilder) RecordMerakiWirelessPacketCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricMerakiWirelessPacketCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiWirelessPacketLossDataPoint adds a data point to meraki.wireless.packet.loss metric.
-func (mb *MetricsBuilder) RecordMerakiWirelessPacketLossDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricMerakiWirelessPacketLoss.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiWirelessPacketLossPercentageDataPoint adds a data point to meraki.wireless.packet.loss_percentage metric.
-func (mb *MetricsBuilder) RecordMerakiWirelessPacketLossPercentageDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricMerakiWirelessPacketLossPercentage.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordMerakiWirelessSsidStatusDataPoint adds a data point to meraki.wireless.ssid.status metric.
-func (mb *MetricsBuilder) RecordMerakiWirelessSsidStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricMerakiWirelessSsidStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardAPIEndpointErrorDataPoint adds a data point to nexus_dashboard.api.endpoint.error metric.
-func (mb *MetricsBuilder) RecordNexusDashboardAPIEndpointErrorDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricNexusDashboardAPIEndpointError.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardAPIRateLimitedDataPoint adds a data point to nexus_dashboard.api.rate_limited metric.
-func (mb *MetricsBuilder) RecordNexusDashboardAPIRateLimitedDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricNexusDashboardAPIRateLimited.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardAPIRequestDurationDataPoint adds a data point to nexus_dashboard.api.request.duration metric.
-func (mb *MetricsBuilder) RecordNexusDashboardAPIRequestDurationDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricNexusDashboardAPIRequestDuration.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardAPIRequestErrorsDataPoint adds a data point to nexus_dashboard.api.request.errors metric.
-func (mb *MetricsBuilder) RecordNexusDashboardAPIRequestErrorsDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricNexusDashboardAPIRequestErrors.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardAuditRecordCountDataPoint adds a data point to nexus_dashboard.audit.record.count metric.
-func (mb *MetricsBuilder) RecordNexusDashboardAuditRecordCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricNexusDashboardAuditRecordCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardConfigComplianceDataPoint adds a data point to nexus_dashboard.config.compliance metric.
-func (mb *MetricsBuilder) RecordNexusDashboardConfigComplianceDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricNexusDashboardConfigCompliance.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardDataBrokerRuleCountDataPoint adds a data point to nexus_dashboard.data_broker.rule.count metric.
-func (mb *MetricsBuilder) RecordNexusDashboardDataBrokerRuleCountDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricNexusDashboardDataBrokerRuleCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardDataBrokerSessionCountDataPoint adds a data point to nexus_dashboard.data_broker.session.count metric.
-func (mb *MetricsBuilder) RecordNexusDashboardDataBrokerSessionCountDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricNexusDashboardDataBrokerSessionCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardDataBrokerStatusDataPoint adds a data point to nexus_dashboard.data_broker.status metric.
-func (mb *MetricsBuilder) RecordNexusDashboardDataBrokerStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricNexusDashboardDataBrokerStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardDeploymentStatusDataPoint adds a data point to nexus_dashboard.deployment.status metric.
-func (mb *MetricsBuilder) RecordNexusDashboardDeploymentStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricNexusDashboardDeploymentStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardEndpointCountDataPoint adds a data point to nexus_dashboard.endpoint.count metric.
-func (mb *MetricsBuilder) RecordNexusDashboardEndpointCountDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricNexusDashboardEndpointCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardEventCountDataPoint adds a data point to nexus_dashboard.event.count metric.
-func (mb *MetricsBuilder) RecordNexusDashboardEventCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricNexusDashboardEventCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardFabricHealthDataPoint adds a data point to nexus_dashboard.fabric.health metric.
-func (mb *MetricsBuilder) RecordNexusDashboardFabricHealthDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricNexusDashboardFabricHealth.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardInsightsAnomalyActiveDataPoint adds a data point to nexus_dashboard.insights.anomaly.active metric.
-func (mb *MetricsBuilder) RecordNexusDashboardInsightsAnomalyActiveDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricNexusDashboardInsightsAnomalyActive.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardInsightsAnomalyCountDataPoint adds a data point to nexus_dashboard.insights.anomaly.count metric.
-func (mb *MetricsBuilder) RecordNexusDashboardInsightsAnomalyCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricNexusDashboardInsightsAnomalyCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardInsightsConfidenceDataPoint adds a data point to nexus_dashboard.insights.confidence metric.
-func (mb *MetricsBuilder) RecordNexusDashboardInsightsConfidenceDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricNexusDashboardInsightsConfidence.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardInsightsScoreDataPoint adds a data point to nexus_dashboard.insights.score metric.
-func (mb *MetricsBuilder) RecordNexusDashboardInsightsScoreDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricNexusDashboardInsightsScore.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardInsightsStatusDataPoint adds a data point to nexus_dashboard.insights.status metric.
-func (mb *MetricsBuilder) RecordNexusDashboardInsightsStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricNexusDashboardInsightsStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardOrchestratorDeploymentCountDataPoint adds a data point to nexus_dashboard.orchestrator.deployment.count metric.
-func (mb *MetricsBuilder) RecordNexusDashboardOrchestratorDeploymentCountDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricNexusDashboardOrchestratorDeploymentCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardOrchestratorDeploymentStatusDataPoint adds a data point to nexus_dashboard.orchestrator.deployment.status metric.
-func (mb *MetricsBuilder) RecordNexusDashboardOrchestratorDeploymentStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricNexusDashboardOrchestratorDeploymentStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardOrchestratorPolicyDeltaCountDataPoint adds a data point to nexus_dashboard.orchestrator.policy_delta.count metric.
-func (mb *MetricsBuilder) RecordNexusDashboardOrchestratorPolicyDeltaCountDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricNexusDashboardOrchestratorPolicyDeltaCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardResourceCountDataPoint adds a data point to nexus_dashboard.resource.count metric.
-func (mb *MetricsBuilder) RecordNexusDashboardResourceCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricNexusDashboardResourceCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardResourceInfoDataPoint adds a data point to nexus_dashboard.resource.info metric.
-func (mb *MetricsBuilder) RecordNexusDashboardResourceInfoDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricNexusDashboardResourceInfo.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardResourceStatusDataPoint adds a data point to nexus_dashboard.resource.status metric.
-func (mb *MetricsBuilder) RecordNexusDashboardResourceStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricNexusDashboardResourceStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardScrapeLastSuccessDataPoint adds a data point to nexus_dashboard.scrape.last_success metric.
-func (mb *MetricsBuilder) RecordNexusDashboardScrapeLastSuccessDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricNexusDashboardScrapeLastSuccess.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardScrapePartialSuccessDataPoint adds a data point to nexus_dashboard.scrape.partial_success metric.
-func (mb *MetricsBuilder) RecordNexusDashboardScrapePartialSuccessDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricNexusDashboardScrapePartialSuccess.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardServiceHealthDataPoint adds a data point to nexus_dashboard.service.health metric.
-func (mb *MetricsBuilder) RecordNexusDashboardServiceHealthDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricNexusDashboardServiceHealth.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardServiceSkippedDataPoint adds a data point to nexus_dashboard.service.skipped metric.
-func (mb *MetricsBuilder) RecordNexusDashboardServiceSkippedDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricNexusDashboardServiceSkipped.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardServiceUnavailableDataPoint adds a data point to nexus_dashboard.service.unavailable metric.
-func (mb *MetricsBuilder) RecordNexusDashboardServiceUnavailableDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricNexusDashboardServiceUnavailable.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardStorageUtilizationDataPoint adds a data point to nexus_dashboard.storage.utilization metric.
-func (mb *MetricsBuilder) RecordNexusDashboardStorageUtilizationDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricNexusDashboardStorageUtilization.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordNexusDashboardVpcPeerCountDataPoint adds a data point to nexus_dashboard.vpc.peer.count metric.
-func (mb *MetricsBuilder) RecordNexusDashboardVpcPeerCountDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricNexusDashboardVpcPeerCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanAPIRateLimitedDataPoint adds a data point to sdwan.api.rate_limited metric.
-func (mb *MetricsBuilder) RecordSdwanAPIRateLimitedDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanAPIRateLimited.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanAPIRequestDurationDataPoint adds a data point to sdwan.api.request.duration metric.
-func (mb *MetricsBuilder) RecordSdwanAPIRequestDurationDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricSdwanAPIRequestDuration.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanAPIRequestErrorsDataPoint adds a data point to sdwan.api.request.errors metric.
-func (mb *MetricsBuilder) RecordSdwanAPIRequestErrorsDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanAPIRequestErrors.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanAppRouteJitterDataPoint adds a data point to sdwan.app_route.jitter metric.
-func (mb *MetricsBuilder) RecordSdwanAppRouteJitterDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricSdwanAppRouteJitter.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanAppRouteLatencyDataPoint adds a data point to sdwan.app_route.latency metric.
-func (mb *MetricsBuilder) RecordSdwanAppRouteLatencyDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricSdwanAppRouteLatency.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanAppRouteLossDataPoint adds a data point to sdwan.app_route.loss metric.
-func (mb *MetricsBuilder) RecordSdwanAppRouteLossDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricSdwanAppRouteLoss.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanAppRouteSLAStatusDataPoint adds a data point to sdwan.app_route.sla.status metric.
-func (mb *MetricsBuilder) RecordSdwanAppRouteSLAStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanAppRouteSLAStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanBfdSessionCountDataPoint adds a data point to sdwan.bfd.session.count metric.
-func (mb *MetricsBuilder) RecordSdwanBfdSessionCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanBfdSessionCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanBfdSessionFlapCountDataPoint adds a data point to sdwan.bfd.session.flap.count metric.
-func (mb *MetricsBuilder) RecordSdwanBfdSessionFlapCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanBfdSessionFlapCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanBfdSessionStatusDataPoint adds a data point to sdwan.bfd.session.status metric.
-func (mb *MetricsBuilder) RecordSdwanBfdSessionStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanBfdSessionStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanBfdSessionTransitionsDataPoint adds a data point to sdwan.bfd.session.transitions metric.
-func (mb *MetricsBuilder) RecordSdwanBfdSessionTransitionsDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanBfdSessionTransitions.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanCollectionObjectCountDataPoint adds a data point to sdwan.collection.object.count metric.
-func (mb *MetricsBuilder) RecordSdwanCollectionObjectCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanCollectionObjectCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanControlActualConnectionsDataPoint adds a data point to sdwan.control.actual_connections metric.
-func (mb *MetricsBuilder) RecordSdwanControlActualConnectionsDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanControlActualConnections.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanControlConnectionCountDataPoint adds a data point to sdwan.control.connection.count metric.
-func (mb *MetricsBuilder) RecordSdwanControlConnectionCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanControlConnectionCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanControlConnectionStatusDataPoint adds a data point to sdwan.control.connection.status metric.
-func (mb *MetricsBuilder) RecordSdwanControlConnectionStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanControlConnectionStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanControlExpectedConnectionsDataPoint adds a data point to sdwan.control.expected_connections metric.
-func (mb *MetricsBuilder) RecordSdwanControlExpectedConnectionsDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanControlExpectedConnections.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanDeviceCertificateStatusDataPoint adds a data point to sdwan.device.certificate.status metric.
-func (mb *MetricsBuilder) RecordSdwanDeviceCertificateStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanDeviceCertificateStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanDeviceReachabilityStatusDataPoint adds a data point to sdwan.device.reachability.status metric.
-func (mb *MetricsBuilder) RecordSdwanDeviceReachabilityStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanDeviceReachabilityStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanDeviceValidityStatusDataPoint adds a data point to sdwan.device.validity.status metric.
-func (mb *MetricsBuilder) RecordSdwanDeviceValidityStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanDeviceValidityStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanEventCountDataPoint adds a data point to sdwan.event.count metric.
-func (mb *MetricsBuilder) RecordSdwanEventCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanEventCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanInventoryDeviceCountDataPoint adds a data point to sdwan.inventory.device.count metric.
-func (mb *MetricsBuilder) RecordSdwanInventoryDeviceCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanInventoryDeviceCount.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanManagerEndpointStatusDataPoint adds a data point to sdwan.manager.endpoint.status metric.
-func (mb *MetricsBuilder) RecordSdwanManagerEndpointStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanManagerEndpointStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanManagerHealthScoreDataPoint adds a data point to sdwan.manager.health.score metric.
-func (mb *MetricsBuilder) RecordSdwanManagerHealthScoreDataPoint(ts pcommon.Timestamp, val float64) {
-	mb.metricSdwanManagerHealthScore.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanManagerStatusDataPoint adds a data point to sdwan.manager.status metric.
-func (mb *MetricsBuilder) RecordSdwanManagerStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanManagerStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanManagerUpDataPoint adds a data point to sdwan.manager.up metric.
-func (mb *MetricsBuilder) RecordSdwanManagerUpDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanManagerUp.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanResourceInfoDataPoint adds a data point to sdwan.resource.info metric.
-func (mb *MetricsBuilder) RecordSdwanResourceInfoDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanResourceInfo.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanResourceStatusDataPoint adds a data point to sdwan.resource.status metric.
-func (mb *MetricsBuilder) RecordSdwanResourceStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanResourceStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanScrapeLastSuccessDataPoint adds a data point to sdwan.scrape.last_success metric.
-func (mb *MetricsBuilder) RecordSdwanScrapeLastSuccessDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanScrapeLastSuccess.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanScrapePartialSuccessDataPoint adds a data point to sdwan.scrape.partial_success metric.
-func (mb *MetricsBuilder) RecordSdwanScrapePartialSuccessDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanScrapePartialSuccess.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanServiceSkippedDataPoint adds a data point to sdwan.service.skipped metric.
-func (mb *MetricsBuilder) RecordSdwanServiceSkippedDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanServiceSkipped.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanServiceUnavailableDataPoint adds a data point to sdwan.service.unavailable metric.
-func (mb *MetricsBuilder) RecordSdwanServiceUnavailableDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanServiceUnavailable.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSdwanTransportInterfaceStatusDataPoint adds a data point to sdwan.transport.interface.status metric.
-func (mb *MetricsBuilder) RecordSdwanTransportInterfaceStatusDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSdwanTransportInterfaceStatus.recordDataPoint(mb.startTime, ts, val)
-}
-
-// RecordSystemCPULogicalCountDataPoint adds a data point to system.cpu.logical.count metric.
-func (mb *MetricsBuilder) RecordSystemCPULogicalCountDataPoint(ts pcommon.Timestamp, val int64) {
-	mb.metricSystemCPULogicalCount.recordDataPoint(mb.startTime, ts, val)
+func (mb *MetricsBuilder) RecordCiscoWlcSsidClientCountDataPoint(ts pcommon.Timestamp, val int64, ciscoWlcApMacAttributeValue string, ciscoWlcWlanIDAttributeValue string) {
+	mb.metricCiscoWlcSsidClientCount.recordDataPoint(mb.startTime, ts, val, ciscoWlcApMacAttributeValue, ciscoWlcWlanIDAttributeValue)
 }
 
 // RecordSystemCPUUtilizationDataPoint adds a data point to system.cpu.utilization metric.

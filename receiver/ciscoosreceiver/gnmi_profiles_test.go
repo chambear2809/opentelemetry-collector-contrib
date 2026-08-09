@@ -423,7 +423,8 @@ func TestNormalizeNXOpticsSensorStrictAllowlist(t *testing.T) {
 
 func pathsByID(profile builtinGNMIProfileDefinition) map[string]builtinGNMIPathDefinition {
 	out := make(map[string]builtinGNMIPathDefinition, len(profile.Paths))
-	for _, path := range profile.Paths {
+	for pathIndex := range profile.Paths {
+		path := profile.Paths[pathIndex]
 		out[path.ID] = path
 	}
 	return out
@@ -440,7 +441,8 @@ func mappingsForContract(contract *gnmiProductContract) []builtinGNMIMapping {
 	var out []builtinGNMIMapping
 	for _, profile := range builtinGNMIProfiles(contract) {
 		out = append(out, profile.SyntheticMappings...)
-		for _, path := range profile.Paths {
+		for pathIndex := range profile.Paths {
+			path := profile.Paths[pathIndex]
 			out = append(out, path.Mappings...)
 		}
 	}
