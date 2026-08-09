@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"net/netip"
 	"path"
 	"sort"
 	"strings"
@@ -16,6 +18,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/scraper"
+	"go.opentelemetry.io/collector/scraper/scrapererror"
 	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/connection"
@@ -42,6 +45,11 @@ type reconnectInterfacesCommandClient interface {
 	GetReconnectCount() int64
 }
 
+type commandErrorKey struct {
+	family    string
+	errorType string
+}
+
 // interfacesScraper collects interface metrics from Cisco devices
 type interfacesScraper struct {
 	logger             *zap.Logger
@@ -52,6 +60,7 @@ type interfacesScraper struct {
 	lastReconnectCount int64
 	totalReconnects    int64
 	partialSuccess     bool
+	commandErrors      map[commandErrorKey]int64
 }
 
 func (s *interfacesScraper) Start(_ context.Context, _ component.Host) error {
@@ -59,6 +68,7 @@ func (s *interfacesScraper) Start(_ context.Context, _ component.Host) error {
 		ID:                component.MustNewIDWithName(metadata.Type.String(), "interfaces"),
 		TelemetrySettings: component.TelemetrySettings{Logger: s.logger},
 	})
+	s.commandErrors = make(map[commandErrorKey]int64)
 
 	if s.config.Device.Device.Host.IP == "" {
 		return errors.New("no device configured")
@@ -81,13 +91,16 @@ func (s *interfacesScraper) ScrapeMetrics(ctx context.Context) (pmetric.Metrics,
 		timestamp := pcommon.NewTimestampFromTime(time.Now())
 		s.recordScrapeHealth(timestamp)
 		rb := s.newResourceBuilder()
+		metrics := s.emitMetricsWithResource(rb)
 		if s.rpcClient != nil {
 			if closeErr := s.rpcClient.Close(); closeErr != nil {
 				s.logger.Warn("Failed to close SSH connection after interface scrape error", zap.Error(closeErr))
 			}
 			s.rpcClient = nil
 		}
-		return s.mb.Emit(metadata.WithResource(rb.Emit())), err
+		// One target's interface dataset failed, but the scrape-health metrics are
+		// valid and must be forwarded by scraperhelper.
+		return metrics, scrapererror.NewPartialScrapeError(err, 1)
 	}
 
 	timestamp := pcommon.NewTimestampFromTime(time.Now())
@@ -104,27 +117,6 @@ func (s *interfacesScraper) ScrapeMetrics(ctx context.Context) (pmetric.Metrics,
 			s.logger.Warn("Interface operational status was not present; omitting status metric", zap.String("interface", intf.Name))
 		}
 
-		if validCounter(intf.InputBytes) {
-			s.mb.RecordSystemNetworkIoDataPoint(timestamp, intf.InputBytes, metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
-		}
-		if validCounter(intf.OutputBytes) {
-			s.mb.RecordSystemNetworkIoDataPoint(timestamp, intf.OutputBytes, metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
-		}
-		if validCounter(intf.InputErrors) {
-			s.mb.RecordSystemNetworkErrorsDataPoint(timestamp, intf.InputErrors, metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
-		}
-		if validCounter(intf.OutputErrors) {
-			s.mb.RecordSystemNetworkErrorsDataPoint(timestamp, intf.OutputErrors, metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
-		}
-		if validCounter(intf.InputDrops) {
-			s.mb.RecordSystemNetworkPacketDroppedDataPoint(timestamp, intf.InputDrops, metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
-		}
-		if validCounter(intf.OutputDrops) {
-			s.mb.RecordSystemNetworkPacketDroppedDataPoint(timestamp, intf.OutputDrops, metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
-		}
-
-		recordPacketCounts(s.mb, timestamp, intf, description, macAddress, speedString)
-
 		if intf.Speed > 0 {
 			s.mb.RecordCiscoInterfaceSpeedDataPoint(timestamp, intf.Speed, description, macAddress, intf.Name)
 			if intf.HasInputRate {
@@ -136,12 +128,12 @@ func (s *interfacesScraper) ScrapeMetrics(ctx context.Context) (pmetric.Metrics,
 		}
 
 		if s.config.Rates.Enabled && intf.HasInputRate {
-			s.mb.RecordCiscoInterfaceIoRateDataPoint(timestamp, intf.InputRateBits, metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
-			s.mb.RecordCiscoInterfacePacketRateDataPoint(timestamp, intf.InputRatePackets, metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
+			s.mb.RecordCiscoInterfaceIoRateDataPoint(timestamp, float64(intf.InputRateBits), metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
+			s.mb.RecordCiscoInterfacePacketRateDataPoint(timestamp, float64(intf.InputRatePackets), metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
 		}
 		if s.config.Rates.Enabled && intf.HasOutputRate {
-			s.mb.RecordCiscoInterfaceIoRateDataPoint(timestamp, intf.OutputRateBits, metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
-			s.mb.RecordCiscoInterfacePacketRateDataPoint(timestamp, intf.OutputRatePackets, metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
+			s.mb.RecordCiscoInterfaceIoRateDataPoint(timestamp, float64(intf.OutputRateBits), metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
+			s.mb.RecordCiscoInterfacePacketRateDataPoint(timestamp, float64(intf.OutputRatePackets), metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
 		}
 
 		if intf.HasOperStatus {
@@ -168,6 +160,15 @@ func (s *interfacesScraper) ScrapeMetrics(ctx context.Context) (pmetric.Metrics,
 			s.recordStructuredInterfaceCounters(timestamp, intf)
 		}
 	}
+	for _, intf := range interfaces {
+		macAddress := intf.MACAddress
+		description := intf.Description
+		speedString := intf.SpeedString
+		if speedString == "" && intf.Speed > 0 {
+			speedString = formatSpeed(intf.Speed)
+		}
+		recordStandardInterfaceCounters(s.mb, timestamp, intf, description, macAddress, speedString)
+	}
 
 	s.collectL2Topology(optionalCtx, timestamp)
 	s.collectTransceiver(optionalCtx, timestamp)
@@ -175,19 +176,37 @@ func (s *interfacesScraper) ScrapeMetrics(ctx context.Context) (pmetric.Metrics,
 
 	rb := s.newResourceBuilder()
 
-	return s.mb.Emit(metadata.WithResource(rb.Emit())), nil
+	return s.emitMetricsWithResource(rb), nil
+}
+
+func recordStandardInterfaceCounters(mb *metadata.MetricsBuilder, timestamp pcommon.Timestamp, intf *Interface, description, macAddress, speedString string) {
+	if validCounter(intf.InputBytes) {
+		mb.RecordSystemNetworkIoDataPoint(timestamp, intf.InputBytes, metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
+	}
+	if validCounter(intf.OutputBytes) {
+		mb.RecordSystemNetworkIoDataPoint(timestamp, intf.OutputBytes, metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
+	}
+	if validCounter(intf.InputErrors) {
+		mb.RecordSystemNetworkErrorsDataPoint(timestamp, intf.InputErrors, metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
+	}
+	if validCounter(intf.OutputErrors) {
+		mb.RecordSystemNetworkErrorsDataPoint(timestamp, intf.OutputErrors, metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
+	}
+	if validCounter(intf.InputDrops) {
+		mb.RecordSystemNetworkPacketDroppedDataPoint(timestamp, intf.InputDrops, metadata.AttributeNetworkIoDirectionReceive, description, macAddress, intf.Name, speedString)
+	}
+	if validCounter(intf.OutputDrops) {
+		mb.RecordSystemNetworkPacketDroppedDataPoint(timestamp, intf.OutputDrops, metadata.AttributeNetworkIoDirectionTransmit, description, macAddress, intf.Name, speedString)
+	}
+	recordPacketCounts(mb, timestamp, intf, description, macAddress, speedString)
 }
 
 func recordPacketCounts(mb *metadata.MetricsBuilder, timestamp pcommon.Timestamp, intf *Interface, description, macAddress, speedString string) {
-	if intf.HasInputPacketTypes && validCounter(intf.InputPackets) && validCounter(intf.InputUnicast) && validCounter(intf.InputMulticast) && validCounter(intf.InputBroadcast) && intf.InputUnicast == 0 {
-		if sum := intf.InputMulticast + intf.InputBroadcast; intf.InputPackets >= sum {
-			intf.InputUnicast = intf.InputPackets - sum
-		}
+	if intf.HasInputPacketTypes {
+		intf.InputUnicast = inferUnicastIfAbsent(intf.InputPackets, intf.InputUnicast, intf.InputMulticast, intf.InputBroadcast, intf.InputBroadcastMulticast)
 	}
-	if intf.HasOutputPacketTypes && validCounter(intf.OutputPackets) && validCounter(intf.OutputUnicast) && validCounter(intf.OutputMulticast) && validCounter(intf.OutputBroadcast) && intf.OutputUnicast == 0 {
-		if sum := intf.OutputMulticast + intf.OutputBroadcast; intf.OutputPackets >= sum {
-			intf.OutputUnicast = intf.OutputPackets - sum
-		}
+	if intf.HasOutputPacketTypes {
+		intf.OutputUnicast = inferUnicastIfAbsent(intf.OutputPackets, intf.OutputUnicast, intf.OutputMulticast, intf.OutputBroadcast, invalidCounterValue)
 	}
 
 	if intf.HasInputPacketTypes {
@@ -200,6 +219,36 @@ func recordPacketCounts(mb *metadata.MetricsBuilder, timestamp pcommon.Timestamp
 		recordPacketCountIfValid(mb, timestamp, intf.OutputMulticast, metadata.AttributeNetworkIoDirectionTransmit, metadata.AttributeNetworkPacketTypeMulticast, description, macAddress, intf.Name, speedString)
 		recordPacketCountIfValid(mb, timestamp, intf.OutputBroadcast, metadata.AttributeNetworkIoDirectionTransmit, metadata.AttributeNetworkPacketTypeBroadcast, description, macAddress, intf.Name, speedString)
 	}
+}
+
+func inferUnicastIfAbsent(total, unicast, multicast, broadcast, broadcastMulticast int64) int64 {
+	if validCounter(unicast) {
+		return unicast
+	}
+	if validCounter(total) && validCounter(broadcastMulticast) {
+		if total < 0 || broadcastMulticast < 0 || broadcastMulticast > total {
+			return invalidCounterValue
+		}
+		if validCounter(multicast) && (multicast < 0 || multicast > broadcastMulticast) {
+			return invalidCounterValue
+		}
+		if validCounter(broadcast) && (broadcast < 0 || broadcast > broadcastMulticast) {
+			return invalidCounterValue
+		}
+		if validCounter(multicast) && validCounter(broadcast) && multicast != broadcastMulticast-broadcast {
+			return invalidCounterValue
+		}
+		return total - broadcastMulticast
+	}
+	if !validCounter(total) || !validCounter(multicast) || !validCounter(broadcast) ||
+		total < 0 || multicast < 0 || broadcast < 0 || multicast > total {
+		return invalidCounterValue
+	}
+	remaining := total - multicast
+	if broadcast > remaining {
+		return invalidCounterValue
+	}
+	return remaining - broadcast
 }
 
 func recordPacketCountIfValid(mb *metadata.MetricsBuilder, timestamp pcommon.Timestamp, value int64, direction metadata.AttributeNetworkIoDirection, packetType metadata.AttributeNetworkPacketType, description, macAddress, name, speedString string) {
@@ -354,7 +403,7 @@ func (s *interfacesScraper) collectL2Topology(ctx context.Context, timestamp pco
 				s.mb.RecordCiscoPortChannelMemberStatusDataPoint(timestamp, boolToInt(member.Up), member.PortChannel, member.Interface, member.State)
 				recordedMembers++
 			}
-			if (len(channels) > 0 || len(members) > 0) && !s.config.L2Topology.Commands.All {
+			if len(channels) > 0 || len(members) > 0 {
 				break
 			}
 		}
@@ -388,7 +437,7 @@ func (s *interfacesScraper) collectL2Topology(ctx context.Context, timestamp pco
 				}
 				s.mb.RecordCiscoLacpErrorsDataPoint(timestamp, lacpError.Value, lacpError.Interface, lacpError.Type)
 			}
-			if (len(packets) > 0 || len(errors) > 0) && !s.config.L2Topology.Commands.All {
+			if len(packets) > 0 || len(errors) > 0 {
 				break
 			}
 		}
@@ -415,7 +464,7 @@ func (s *interfacesScraper) collectL2Topology(ctx context.Context, timestamp pco
 				s.mb.RecordCiscoInterfaceErrdisabledDataPoint(timestamp, 1, intf.Interface, intf.Reason)
 				recorded++
 			}
-			if recorded > 0 && !s.config.L2Topology.Commands.All {
+			if recorded > 0 {
 				break
 			}
 		}
@@ -466,10 +515,22 @@ func (s *interfacesScraper) collectTopologyNeighbors(ctx context.Context, timest
 			if recorded >= s.l2MaxInterfaces() {
 				break
 			}
-			s.mb.RecordCiscoTopologyNeighborInfoDataPoint(timestamp, 1, neighbor.Protocol, neighbor.LocalInterface, neighbor.NeighborName, neighbor.NeighborInterface, neighbor.NeighborPlatform, neighbor.NeighborAddress)
+			s.mb.RecordCiscoTopologyNeighborInfoDataPoint(
+				timestamp,
+				1,
+				neighbor.Protocol,
+				neighbor.LocalInterface,
+				neighbor.NeighborName,
+				neighbor.NeighborInterface,
+				neighbor.NeighborPlatform,
+				neighbor.NeighborAddress,
+				neighbor.NeighborName,
+				neighbor.NeighborAddress,
+				neighbor.Protocol,
+			)
 			recorded++
 		}
-		if recorded > 0 && !s.config.L2Topology.Commands.All {
+		if recorded > 0 {
 			break
 		}
 	}
@@ -534,6 +595,7 @@ func (s *interfacesScraper) collectTransceiver(ctx context.Context, timestamp pc
 }
 
 func (s *interfacesScraper) enrichInterfaceCounters(ctx context.Context, interfaces []*Interface) []*Interface {
+	budget := newInterfaceCounterEnrichmentBudget(interfaces, s.counterMaxInterfaces())
 	counterCommands := []struct {
 		feature string
 		parse   func(string, *zap.Logger) map[string]map[string]int64
@@ -551,14 +613,19 @@ func (s *interfacesScraper) enrichInterfaceCounters(ctx context.Context, interfa
 		if !s.config.Counters.commandEnabled(command.feature) {
 			continue
 		}
-		interfaces = s.enrichOptionalInterfaceCounters(ctx, interfaces, command.feature, command.parse)
+		s.collectOptionalInterfaceCounters(ctx, command.feature, command.parse, budget)
 		if ctx.Err() != nil {
-			return interfaces
+			return budget.merge(interfaces)
 		}
 	}
 
+	platformCommands := s.rpcClient.GetCommands("interface_platform_queue_stats")
+	if s.config.Counters.commandEnabled("interface_platform_queue_stats") && len(platformCommands) > 0 {
+		budget.collectPlatformCandidates(interfaces)
+	}
+	interfaces = budget.merge(interfaces)
 	if s.config.Counters.commandEnabled("interface_platform_queue_stats") {
-		interfaces = s.enrichPlatformQueueStats(ctx, interfaces)
+		interfaces = s.enrichPlatformQueueStatsWithinBudget(ctx, interfaces, budget, platformCommands)
 	}
 
 	return interfaces
@@ -699,12 +766,12 @@ func boolToInt(value bool) int64 {
 	return 0
 }
 
-func (s *interfacesScraper) enrichOptionalInterfaceCounters(
+func (s *interfacesScraper) collectOptionalInterfaceCounters(
 	ctx context.Context,
-	interfaces []*Interface,
 	feature string,
 	parse func(string, *zap.Logger) map[string]map[string]int64,
-) []*Interface {
+	budget *interfaceCounterEnrichmentBudget,
+) {
 	for _, command := range s.rpcClient.GetCommands(feature) {
 		output, err := s.executeOptionalCommand(ctx, feature, command)
 		if err != nil {
@@ -712,7 +779,7 @@ func (s *interfacesScraper) enrichOptionalInterfaceCounters(
 				zap.String("command", command),
 				zap.Error(err))
 			if ctx.Err() != nil {
-				return interfaces
+				return
 			}
 			continue
 		}
@@ -724,30 +791,41 @@ func (s *interfacesScraper) enrichOptionalInterfaceCounters(
 			continue
 		}
 
-		return mergeInterfaceCounterTables(interfaces, counters)
+		budget.collectCounterTables(counters)
+		return
 	}
-
-	return interfaces
 }
 
 func (s *interfacesScraper) enrichPlatformQueueStats(ctx context.Context, interfaces []*Interface) []*Interface {
-	commands := s.rpcClient.GetCommands("interface_platform_queue_stats")
+	budget := newInterfaceCounterEnrichmentBudget(interfaces, s.counterMaxInterfaces())
+	budget.collectPlatformCandidates(interfaces)
+	return s.enrichPlatformQueueStatsWithinBudget(ctx, interfaces, budget, s.rpcClient.GetCommands("interface_platform_queue_stats"))
+}
+
+func (s *interfacesScraper) enrichPlatformQueueStatsWithinBudget(
+	ctx context.Context,
+	interfaces []*Interface,
+	budget *interfaceCounterEnrichmentBudget,
+	commands []string,
+) []*Interface {
 	if len(commands) == 0 {
 		return interfaces
 	}
 
-	maxInterfaces := s.counterMaxInterfaces()
-	queried := 0
-
+	queried := make(map[string]struct{})
 	for _, intf := range interfaces {
-		if queried >= maxInterfaces {
-			break
-		}
 		if !supportsPlatformQueueStats(intf.Name) {
 			continue
 		}
+		identity := normalizeInterfaceName(intf.Name)
+		if _, ok := queried[identity]; ok {
+			continue
+		}
+		if !budget.contains(identity) {
+			continue
+		}
+		queried[identity] = struct{}{}
 
-		queried++
 		for _, commandPrefix := range commands {
 			output, err := s.executeOptionalCommand(ctx, "interface_platform_queue_stats", commandPrefix+" "+intf.Name)
 			if err != nil {
@@ -762,16 +840,202 @@ func (s *interfacesScraper) enrichPlatformQueueStats(ctx context.Context, interf
 			}
 
 			counters := parsePlatformQueueStatsCounters(output, s.logger)
-			if len(counters) > 0 {
-				interfaces = mergeInterfaceCounterTables(interfaces, map[string]map[string]int64{
-					intf.Name: counters,
-				})
+			if len(counters) == 0 {
+				s.logger.Debug("Optional interface platform queue stats command returned no parseable counters",
+					zap.String("command", commandPrefix),
+					zap.String("interface", intf.Name))
+				continue
 			}
+			applyInterfaceCounterTable(intf, counters)
 			break
 		}
 	}
 
 	return interfaces
+}
+
+type interfaceCounterEnrichmentBudget struct {
+	limit         int
+	originalOrder map[string]int
+	selected      map[string]*interfaceCounterEnrichment
+}
+
+func newInterfaceCounterEnrichmentBudget(interfaces []*Interface, limit int) *interfaceCounterEnrichmentBudget {
+	budget := &interfaceCounterEnrichmentBudget{
+		limit:         limit,
+		originalOrder: make(map[string]int, len(interfaces)),
+		selected:      make(map[string]*interfaceCounterEnrichment),
+	}
+	for _, intf := range interfaces {
+		identity := normalizeInterfaceName(intf.Name)
+		if identity == "" {
+			continue
+		}
+		if _, exists := budget.originalOrder[identity]; !exists {
+			budget.originalOrder[identity] = len(budget.originalOrder)
+		}
+	}
+	return budget
+}
+
+type interfaceCounterEnrichment struct {
+	identity string
+	name     string
+	counters map[string]int64
+}
+
+type interfaceCounterTableRow struct {
+	name     string
+	counters map[string]int64
+}
+
+type interfaceCounterTableGroup struct {
+	identity string
+	rows     []interfaceCounterTableRow
+}
+
+func (b *interfaceCounterEnrichmentBudget) collectCounterTables(counterTables map[string]map[string]int64) {
+	if len(counterTables) == 0 {
+		return
+	}
+
+	groupsByIdentity := make(map[string]*interfaceCounterTableGroup, len(counterTables))
+	for tableName, counters := range counterTables {
+		if len(counters) == 0 {
+			continue
+		}
+		identity := normalizeInterfaceName(tableName)
+		if identity == "" {
+			continue
+		}
+		group := groupsByIdentity[identity]
+		if group == nil {
+			group = &interfaceCounterTableGroup{identity: identity}
+			groupsByIdentity[identity] = group
+		}
+		group.rows = append(group.rows, interfaceCounterTableRow{name: tableName, counters: counters})
+	}
+
+	groups := make([]*interfaceCounterTableGroup, 0, len(groupsByIdentity))
+	for _, group := range groupsByIdentity {
+		sort.Slice(group.rows, func(i, j int) bool {
+			return group.rows[i].name < group.rows[j].name
+		})
+		groups = append(groups, group)
+	}
+	sort.Slice(groups, func(i, j int) bool {
+		return b.identityLess(groups[i].identity, groups[j].identity)
+	})
+
+	for _, group := range groups {
+		entry, selected := b.selectIdentity(group.identity, group.rows[0].name)
+		if !selected {
+			continue
+		}
+		if entry.name == "" || group.rows[0].name < entry.name {
+			entry.name = group.rows[0].name
+		}
+		for _, row := range group.rows {
+			maps.Copy(entry.counters, row.counters)
+		}
+	}
+}
+
+func (b *interfaceCounterEnrichmentBudget) collectPlatformCandidates(interfaces []*Interface) {
+	for _, intf := range interfaces {
+		if supportsPlatformQueueStats(intf.Name) {
+			b.selectIdentity(normalizeInterfaceName(intf.Name), intf.Name)
+		}
+	}
+}
+
+func (b *interfaceCounterEnrichmentBudget) selectIdentity(identity, name string) (*interfaceCounterEnrichment, bool) {
+	if identity == "" || b.limit <= 0 {
+		return nil, false
+	}
+	if entry := b.selected[identity]; entry != nil {
+		return entry, true
+	}
+	entry := &interfaceCounterEnrichment{identity: identity, name: name, counters: make(map[string]int64)}
+	if len(b.selected) < b.limit {
+		b.selected[identity] = entry
+		return entry, true
+	}
+
+	var worst *interfaceCounterEnrichment
+	for _, candidate := range b.selected {
+		if worst == nil || b.identityLess(worst.identity, candidate.identity) {
+			worst = candidate
+		}
+	}
+	if worst == nil || !b.identityLess(identity, worst.identity) {
+		return nil, false
+	}
+	delete(b.selected, worst.identity)
+	b.selected[identity] = entry
+	return entry, true
+}
+
+func (b *interfaceCounterEnrichmentBudget) identityLess(left, right string) bool {
+	leftOrder, leftOriginal := b.originalOrder[left]
+	rightOrder, rightOriginal := b.originalOrder[right]
+	if leftOriginal != rightOriginal {
+		return leftOriginal
+	}
+	if leftOriginal && leftOrder != rightOrder {
+		return leftOrder < rightOrder
+	}
+	return left < right
+}
+
+func (b *interfaceCounterEnrichmentBudget) contains(identity string) bool {
+	return b.selected[identity] != nil
+}
+
+func (b *interfaceCounterEnrichmentBudget) merge(interfaces []*Interface) []*Interface {
+	byIdentity := make(map[string]*Interface, len(interfaces))
+	for _, intf := range interfaces {
+		identity := normalizeInterfaceName(intf.Name)
+		if _, exists := byIdentity[identity]; !exists {
+			byIdentity[identity] = intf
+		}
+	}
+
+	entries := make([]*interfaceCounterEnrichment, 0, len(b.selected))
+	for _, entry := range b.selected {
+		if len(entry.counters) > 0 {
+			entries = append(entries, entry)
+		}
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return b.identityLess(entries[i].identity, entries[j].identity)
+	})
+	for _, entry := range entries {
+		intf := byIdentity[entry.identity]
+		if intf == nil {
+			intf = NewInterface(entry.name)
+			interfaces = append(interfaces, intf)
+			byIdentity[entry.identity] = intf
+		}
+		applyInterfaceCounterTable(intf, entry.counters)
+	}
+	return interfaces
+}
+
+func mergeInterfaceCounterTablesWithinBudget(interfaces []*Interface, counterTables map[string]map[string]int64, budget *interfaceCounterEnrichmentBudget) []*Interface {
+	budget.collectCounterTables(counterTables)
+	return budget.merge(interfaces)
+}
+
+func applyInterfaceCounterTable(intf *Interface, counters map[string]int64) {
+	counterNames := make([]string, 0, len(counters))
+	for counterName := range counters {
+		counterNames = append(counterNames, counterName)
+	}
+	sort.Strings(counterNames)
+	for _, counterName := range counterNames {
+		applyInterfaceCounterValue(intf, counterName, counters[counterName])
+	}
 }
 
 func (s *interfacesScraper) executeOptionalCommand(ctx context.Context, family, command string) (string, error) {
@@ -802,7 +1066,12 @@ func (s *interfacesScraper) recordCommandResult(family string, duration time.Dur
 	if err != nil {
 		outcome = "error"
 		s.partialSuccess = true
-		s.mb.RecordCiscoScrapeCommandErrorsDataPoint(pcommon.NewTimestampFromTime(time.Now()), 1, family, commandErrorType(err))
+		errorType := commandErrorType(err)
+		key := commandErrorKey{family: family, errorType: errorType}
+		if s.commandErrors == nil {
+			s.commandErrors = make(map[commandErrorKey]int64)
+		}
+		s.commandErrors[key]++
 	}
 	s.mb.RecordCiscoScrapeCommandDurationDataPoint(pcommon.NewTimestampFromTime(time.Now()), duration.Seconds(), family, outcome)
 }
@@ -823,7 +1092,9 @@ func interfaceUtilization(rateBits, speedBits int64) float64 {
 
 func (s *interfacesScraper) newResourceBuilder() *metadata.ResourceBuilder {
 	rb := s.mb.NewResourceBuilder()
-	rb.SetHostIP(s.deviceTarget)
+	if hostIP, err := netip.ParseAddr(strings.TrimSpace(s.deviceTarget)); err == nil {
+		rb.SetHostIP(hostIP.Unmap().String())
+	}
 	rb.SetHwType("network")
 
 	configuredHostName := s.config.Device.Device.Host.Name
@@ -834,14 +1105,13 @@ func (s *interfacesScraper) newResourceBuilder() *metadata.ResourceBuilder {
 	osVersion := ""
 	if s.rpcClient != nil {
 		osName = s.rpcClient.GetOSType()
-		if client, ok := s.rpcClient.(metadataInterfacesCommandClient); ok {
-			deviceMetadata := client.GetDeviceMetadata()
-			hostName = firstNonEmptyString(deviceMetadata.HostName, configuredHostName, s.deviceTarget)
-			hostID = firstNonEmptyString(deviceMetadata.HostID, deviceMetadata.Serial, s.deviceTarget, configuredHostName)
-			hostType = firstNonEmptyString(deviceMetadata.HostType, deviceMetadata.Model)
-			osName = firstNonEmptyString(deviceMetadata.OSType, osName)
-			osVersion = deviceMetadata.OSVersion
-		}
+	}
+	if deviceMetadata, ok := s.lastVerifiedDeviceMetadata(); ok {
+		hostName = firstNonEmptyString(deviceMetadata.HostName, configuredHostName, s.deviceTarget)
+		hostID = firstNonEmptyString(deviceMetadata.HostID, deviceMetadata.Serial, s.deviceTarget, configuredHostName)
+		hostType = firstNonEmptyString(deviceMetadata.HostType, deviceMetadata.Model)
+		osName = firstNonEmptyString(deviceMetadata.OSType, osName)
+		osVersion = deviceMetadata.OSVersion
 	}
 	hostName = firstNonEmptyString(hostName, s.deviceTarget)
 	hostID = firstNonEmptyString(hostID, s.deviceTarget)
@@ -859,8 +1129,26 @@ func (s *interfacesScraper) newResourceBuilder() *metadata.ResourceBuilder {
 	return rb
 }
 
+func (s *interfacesScraper) emitMetricsWithResource(rb *metadata.ResourceBuilder) pmetric.Metrics {
+	resource := rb.Emit()
+	if deviceMetadata, ok := s.lastVerifiedDeviceMetadata(); ok {
+		if serial := strings.TrimSpace(deviceMetadata.Serial); serial != "" {
+			resource.Attributes().PutStr("cisco.switch.serial", serial)
+		}
+	}
+	return s.mb.Emit(metadata.WithResource(resource))
+}
+
+func (s *interfacesScraper) lastVerifiedDeviceMetadata() (connection.DeviceMetadata, bool) {
+	if client, ok := s.rpcClient.(metadataInterfacesCommandClient); ok {
+		return client.GetDeviceMetadata(), true
+	}
+	return s.config.Device.MetadataStore.Load()
+}
+
 func (s *interfacesScraper) recordScrapeHealth(ts pcommon.Timestamp) {
 	s.mb.RecordCiscoScrapePartialSuccessDataPoint(ts, boolToInt(s.partialSuccess))
+	s.recordCommandErrors(ts)
 	if s.rpcClient == nil {
 		s.mb.RecordCiscoSSHReconnectsDataPoint(ts, s.totalReconnects)
 		return
@@ -877,6 +1165,22 @@ func (s *interfacesScraper) recordScrapeHealth(ts pcommon.Timestamp) {
 	s.totalReconnects += current - s.lastReconnectCount
 	s.lastReconnectCount = current
 	s.mb.RecordCiscoSSHReconnectsDataPoint(ts, s.totalReconnects)
+}
+
+func (s *interfacesScraper) recordCommandErrors(ts pcommon.Timestamp) {
+	keys := make([]commandErrorKey, 0, len(s.commandErrors))
+	for key := range s.commandErrors {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].family == keys[j].family {
+			return keys[i].errorType < keys[j].errorType
+		}
+		return keys[i].family < keys[j].family
+	})
+	for _, key := range keys {
+		s.mb.RecordCiscoScrapeCommandErrorsDataPoint(ts, s.commandErrors[key], key.family, key.errorType)
+	}
 }
 
 func commandErrorType(err error) string {

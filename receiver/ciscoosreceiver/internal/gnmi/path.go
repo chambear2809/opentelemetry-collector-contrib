@@ -55,7 +55,7 @@ func PathFromProto(path *gnmipb.Path) Path {
 	if path == nil {
 		return Path{}
 	}
-	out := Path{Target: path.GetTarget(), Origin: path.GetOrigin()}
+	out := Path{PathTarget: path.GetTarget(), Origin: path.GetOrigin()}
 	if len(path.GetElem()) > 0 {
 		out.Elements = make([]PathElem, 0, len(path.GetElem()))
 		for _, elem := range path.GetElem() {
@@ -90,9 +90,9 @@ func validatedPathFromProto(path *gnmipb.Path) (Path, int, error) {
 //nolint:staticcheck // Element is deprecated but remains part of the supported gNMI wire format.
 func validateProtoPath(path *gnmipb.Path) (int, error) {
 	if path == nil {
-		return canonicalPathFixedBytes("", ""), nil
+		return canonicalPathFixedBytes("", "", ""), nil
 	}
-	bytes := canonicalPathFixedBytes(path.GetTarget(), path.GetOrigin())
+	bytes := canonicalPathFixedBytes("", path.GetTarget(), path.GetOrigin())
 	if bytes > maxCanonicalPathBytes {
 		return 0, fmt.Errorf("path exceeds %d canonical bytes", maxCanonicalPathBytes)
 	}
@@ -131,7 +131,7 @@ func validatePath(path Path) (int, error) {
 	if len(path.Elements) > maxPathDepth {
 		return 0, fmt.Errorf("path exceeds %d elements", maxPathDepth)
 	}
-	bytes := canonicalPathFixedBytes(path.Target, path.Origin)
+	bytes := canonicalPathFixedBytes(path.Target, path.PathTarget, path.Origin)
 	if bytes > maxCanonicalPathBytes {
 		return 0, fmt.Errorf("path exceeds %d canonical bytes", maxCanonicalPathBytes)
 	}
@@ -151,7 +151,7 @@ func validateSeries(series Series) (int, error) {
 	if len(series.Elements)+1 > maxPathDepth {
 		return 0, fmt.Errorf("path exceeds %d elements", maxPathDepth)
 	}
-	bytes := canonicalPathFixedBytes(series.Target, series.Origin)
+	bytes := canonicalPathFixedBytes(series.Target, series.PathTarget, series.Origin)
 	if bytes > maxCanonicalPathBytes {
 		return 0, fmt.Errorf("path exceeds %d canonical bytes", maxCanonicalPathBytes)
 	}
@@ -179,8 +179,8 @@ func ValidateSeries(series Series) error {
 	return err
 }
 
-func canonicalPathFixedBytes(target, origin string) int {
-	return canonicalKeyPartBytes(target) + canonicalKeyPartBytes(origin)
+func canonicalPathFixedBytes(target, pathTarget, origin string) int {
+	return canonicalKeyPartBytes(target) + canonicalKeyPartBytes(pathTarget) + canonicalKeyPartBytes(origin)
 }
 
 func addValidatedPathElementBytes(current int, name string, keys map[string]string) (int, error) {
@@ -230,7 +230,10 @@ func canonicalKeyPartBytes(value string) int {
 // side's key maps.
 func validateJoinedPath(prefix, relative Path) (int, error) {
 	if prefix.Target != "" && relative.Target != "" && prefix.Target != relative.Target {
-		return 0, fmt.Errorf("conflicting path targets %q and %q", prefix.Target, relative.Target)
+		return 0, fmt.Errorf("conflicting configured targets %q and %q", prefix.Target, relative.Target)
+	}
+	if prefix.PathTarget != "" && relative.PathTarget != "" && prefix.PathTarget != relative.PathTarget {
+		return 0, fmt.Errorf("conflicting gNMI path targets %q and %q", prefix.PathTarget, relative.PathTarget)
 	}
 	if prefix.Origin != "" && relative.Origin != "" && prefix.Origin != relative.Origin {
 		return 0, fmt.Errorf("conflicting path origins %q and %q", prefix.Origin, relative.Origin)
@@ -239,6 +242,10 @@ func validateJoinedPath(prefix, relative Path) (int, error) {
 	if relative.Target != "" {
 		target = relative.Target
 	}
+	pathTarget := prefix.PathTarget
+	if relative.PathTarget != "" {
+		pathTarget = relative.PathTarget
+	}
 	origin := prefix.Origin
 	if relative.Origin != "" {
 		origin = relative.Origin
@@ -246,7 +253,7 @@ func validateJoinedPath(prefix, relative Path) (int, error) {
 	if len(prefix.Elements)+len(relative.Elements) > maxPathDepth {
 		return 0, fmt.Errorf("path exceeds %d elements", maxPathDepth)
 	}
-	bytes := canonicalPathFixedBytes(target, origin)
+	bytes := canonicalPathFixedBytes(target, pathTarget, origin)
 	if bytes > maxCanonicalPathBytes {
 		return 0, fmt.Errorf("path exceeds %d canonical bytes", maxCanonicalPathBytes)
 	}
@@ -277,7 +284,7 @@ func validateReplacedLastPathElement(path Path, keys map[string]string) (int, er
 	if len(path.Elements) == 0 {
 		return 0, errors.New("path has no element to replace")
 	}
-	bytes := canonicalPathFixedBytes(path.Target, path.Origin)
+	bytes := canonicalPathFixedBytes(path.Target, path.PathTarget, path.Origin)
 	if bytes > maxCanonicalPathBytes {
 		return 0, fmt.Errorf("path exceeds %d canonical bytes", maxCanonicalPathBytes)
 	}
@@ -296,7 +303,7 @@ func validateReplacedLastPathElement(path Path, keys map[string]string) (int, er
 
 // ToProto returns a deep protobuf representation of the canonical path.
 func (p Path) ToProto() *gnmipb.Path {
-	out := &gnmipb.Path{Target: p.Target, Origin: p.Origin, Elem: make([]*gnmipb.PathElem, 0, len(p.Elements))}
+	out := &gnmipb.Path{Target: p.PathTarget, Origin: p.Origin, Elem: make([]*gnmipb.PathElem, 0, len(p.Elements))}
 	for _, elem := range p.Elements {
 		out.Elem = append(out.Elem, &gnmipb.PathElem{Name: elem.Name, Key: cloneStrings(elem.Keys)})
 	}
@@ -308,7 +315,10 @@ func (p Path) ToProto() *gnmipb.Path {
 // ambiguous path.
 func JoinPaths(prefix, relative Path) (Path, error) {
 	if prefix.Target != "" && relative.Target != "" && prefix.Target != relative.Target {
-		return Path{}, fmt.Errorf("conflicting path targets %q and %q", prefix.Target, relative.Target)
+		return Path{}, fmt.Errorf("conflicting configured targets %q and %q", prefix.Target, relative.Target)
+	}
+	if prefix.PathTarget != "" && relative.PathTarget != "" && prefix.PathTarget != relative.PathTarget {
+		return Path{}, fmt.Errorf("conflicting gNMI path targets %q and %q", prefix.PathTarget, relative.PathTarget)
 	}
 	if prefix.Origin != "" && relative.Origin != "" && prefix.Origin != relative.Origin {
 		return Path{}, fmt.Errorf("conflicting path origins %q and %q", prefix.Origin, relative.Origin)
@@ -317,11 +327,15 @@ func JoinPaths(prefix, relative Path) (Path, error) {
 	if relative.Target != "" {
 		target = relative.Target
 	}
+	pathTarget := prefix.PathTarget
+	if relative.PathTarget != "" {
+		pathTarget = relative.PathTarget
+	}
 	origin := prefix.Origin
 	if relative.Origin != "" {
 		origin = relative.Origin
 	}
-	out := Path{Target: target, Origin: origin, Elements: make([]PathElem, 0, len(prefix.Elements)+len(relative.Elements))}
+	out := Path{Target: target, PathTarget: pathTarget, Origin: origin, Elements: make([]PathElem, 0, len(prefix.Elements)+len(relative.Elements))}
 	for _, elem := range prefix.Elements {
 		out.Elements = append(out.Elements, PathElem{Name: elem.Name, Keys: cloneStrings(elem.Keys)})
 	}
@@ -356,7 +370,7 @@ func (p Path) SplitLeaf() (Series, error) {
 	for i, elem := range p.Elements[:len(p.Elements)-1] {
 		parents[i] = PathElem{Name: elem.Name, Keys: cloneStrings(elem.Keys)}
 	}
-	return Series{Target: p.Target, Origin: p.Origin, Elements: parents, Leaf: leaf.Name}, nil
+	return Series{Target: p.Target, PathTarget: p.PathTarget, Origin: p.Origin, Elements: parents, Leaf: leaf.Name}, nil
 }
 
 // String renders only path elements. Target and origin are intentionally not

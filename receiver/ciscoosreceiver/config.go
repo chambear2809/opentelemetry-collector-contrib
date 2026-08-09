@@ -6,6 +6,7 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/netip"
 	"net/url"
@@ -17,11 +18,11 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/confmap"
-	"go.opentelemetry.io/collector/confmap/xconfmap"
 	"go.opentelemetry.io/collector/scraper/scraperhelper"
 	"go.uber.org/multierr"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/connection"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/fmc"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
 
@@ -75,17 +76,27 @@ type MerakiDeviceConfig struct {
 	Serial         string `mapstructure:"serial"`
 }
 
+// MerakiSwitchTransceiversConfig controls the Meraki switch DOM beta endpoint.
+type MerakiSwitchTransceiversConfig struct {
+	// DO NOT USE unkeyed struct initialization
+	_ struct{} `mapstructure:"-"`
+
+	Enabled bool `mapstructure:"enabled"`
+}
+
 // MerakiConfig defines Meraki Dashboard API polling settings.
 type MerakiConfig struct {
 	// DO NOT USE unkeyed struct initialization
 	_ struct{} `mapstructure:"-"`
 
-	Auth          MerakiAuthConfig           `mapstructure:"auth"`
-	BaseURL       string                     `mapstructure:"base_url"`
-	UserAgent     string                     `mapstructure:"user_agent"`
-	MaxRetries    int                        `mapstructure:"max_retries"`
-	Organizations []MerakiOrganizationConfig `mapstructure:"organizations"`
-	Devices       []MerakiDeviceConfig       `mapstructure:"devices"`
+	Auth               MerakiAuthConfig               `mapstructure:"auth"`
+	BaseURL            string                         `mapstructure:"base_url"`
+	UserAgent          string                         `mapstructure:"user_agent"`
+	MaxRetries         int                            `mapstructure:"max_retries"`
+	InsecureSkipVerify bool                           `mapstructure:"insecure_skip_verify"`
+	SwitchTransceivers MerakiSwitchTransceiversConfig `mapstructure:"switch_transceivers"`
+	Organizations      []MerakiOrganizationConfig     `mapstructure:"organizations"`
+	Devices            []MerakiDeviceConfig           `mapstructure:"devices"`
 }
 
 func defaultMerakiConfig() MerakiConfig {
@@ -462,6 +473,39 @@ type NexusControllerGroupConfig struct {
 	MaxResults int  `mapstructure:"max_results"`
 }
 
+// ACILogSignalConfig controls one APIC log signal independently from its
+// metric collection group. A signal defaults to disabled. When present, the
+// signal setting must be a non-null mapping.
+type ACILogSignalConfig struct {
+	// DO NOT USE unkeyed struct initialization
+	_ struct{} `mapstructure:"-"`
+
+	Enabled bool `mapstructure:"enabled"`
+}
+
+// ACILogsConfig controls the APIC record classes emitted as logs. When present,
+// the logs setting must be a non-null mapping.
+type ACILogsConfig struct {
+	// DO NOT USE unkeyed struct initialization
+	_ struct{} `mapstructure:"-"`
+
+	Faults ACILogSignalConfig `mapstructure:"faults"`
+	Audit  ACILogSignalConfig `mapstructure:"audit"`
+	Events ACILogSignalConfig `mapstructure:"events"`
+}
+
+const (
+	nexusDashboardAPIProfileLegacy  = "legacy"
+	nexusDashboardAPIProfileUnified = "unified"
+)
+
+func normalizeNexusDashboardAPIProfile(profile string) string {
+	if profile == "" {
+		return nexusDashboardAPIProfileLegacy
+	}
+	return profile
+}
+
 // NexusDashboardConfig defines Nexus Dashboard, NDFC, Insights, NDO, OneManage, and Data Broker polling settings.
 type NexusDashboardConfig struct {
 	// DO NOT USE unkeyed struct initialization
@@ -469,6 +513,7 @@ type NexusDashboardConfig struct {
 
 	Enabled            bool                        `mapstructure:"enabled"`
 	Endpoint           string                      `mapstructure:"endpoint"`
+	APIProfile         string                      `mapstructure:"api_profile"`
 	Auth               ControllerAuthConfig        `mapstructure:"auth"`
 	UserAgent          string                      `mapstructure:"user_agent"`
 	PageSize           int                         `mapstructure:"page_size"`
@@ -495,6 +540,8 @@ type ACIConfig struct {
 	UserAgent          string                     `mapstructure:"user_agent"`
 	PageSize           int                        `mapstructure:"page_size"`
 	MaxRetries         int                        `mapstructure:"max_retries"`
+	CAFile             string                     `mapstructure:"ca_file"`
+	ServerName         string                     `mapstructure:"server_name"`
 	InsecureSkipVerify bool                       `mapstructure:"insecure_skip_verify"`
 	EventLookback      time.Duration              `mapstructure:"event_lookback"`
 	Targets            ACITargetFilters           `mapstructure:"targets"`
@@ -504,6 +551,7 @@ type ACIConfig struct {
 	Faults             NexusControllerGroupConfig `mapstructure:"faults"`
 	Audit              NexusControllerGroupConfig `mapstructure:"audit"`
 	Events             NexusControllerGroupConfig `mapstructure:"events"`
+	Logs               ACILogsConfig              `mapstructure:"logs"`
 	Stats              NexusControllerGroupConfig `mapstructure:"stats"`
 	Endpoints          NexusControllerGroupConfig `mapstructure:"endpoints"`
 	Tenants            NexusControllerGroupConfig `mapstructure:"tenants"`
@@ -615,6 +663,7 @@ func defaultNexusControllerGroupConfig(maxResults int) NexusControllerGroupConfi
 
 func defaultNexusDashboardConfig() NexusDashboardConfig {
 	return NexusDashboardConfig{
+		APIProfile:    nexusDashboardAPIProfileLegacy,
 		UserAgent:     "opentelemetry-collector-contrib-ciscoosreceiver",
 		PageSize:      100,
 		MaxRetries:    3,
@@ -683,7 +732,12 @@ func (cfg NexusDashboardConfig) hasTarget() bool {
 }
 
 func (cfg ACIConfig) hasTarget() bool {
-	return cfg.Enabled || len(cfg.Controllers) > 0 || cfg.Auth.Username != "" || cfg.Auth.Password != ""
+	return cfg.Enabled || len(cfg.Controllers) > 0 || cfg.Auth.Username != "" || cfg.Auth.Password != "" ||
+		cfg.CAFile != "" || cfg.ServerName != "" || cfg.InsecureSkipVerify || cfg.hasLogs()
+}
+
+func (cfg ACIConfig) hasLogs() bool {
+	return cfg.Logs.Faults.Enabled || cfg.Logs.Audit.Enabled || cfg.Logs.Events.Enabled
 }
 
 func (cfg FMCConfig) hasTarget() bool {
@@ -700,7 +754,11 @@ func (cfg FMCEStreamerConfig) hasTarget() bool {
 
 // Config defines configuration for Cisco OS receiver.
 type Config struct {
-	scraperhelper.ControllerConfig `mapstructure:",squash"`
+	ControllerConfig scraperhelper.ControllerConfig `mapstructure:",squash"`
+
+	// StorageID is an optional Collector storage extension used to persist
+	// delivery-safe receiver checkpoints across restarts.
+	StorageID *component.ID `mapstructure:"storage"`
 
 	// Devices is the list of Cisco devices to monitor.
 	Devices []DeviceConfig `mapstructure:"devices"`
@@ -748,7 +806,7 @@ type Config struct {
 }
 
 var (
-	_ xconfmap.Validator  = (*Config)(nil)
+	_ confmap.Validator   = (*Config)(nil)
 	_ confmap.Unmarshaler = (*Config)(nil)
 )
 
@@ -756,13 +814,15 @@ var (
 func (cfg *Config) Validate() error {
 	var err error
 
-	if cfg.Timeout <= 0 {
+	if cfg.ControllerConfig.Timeout <= 0 {
 		err = multierr.Append(err, errors.New("timeout must be positive"))
 	}
 
-	if cfg.CollectionInterval <= 0 {
+	if cfg.ControllerConfig.CollectionInterval <= 0 {
 		err = multierr.Append(err, errors.New("collection_interval must be positive"))
 	}
+
+	err = multierr.Append(err, cfg.DeviceSelection.Validate())
 
 	if len(cfg.Devices) == 0 && !cfg.Meraki.hasTargets() && !cfg.Intersight.hasTarget() && !cfg.CatalystCenter.hasTarget() && !cfg.Catalyst9800.hasTarget() && !cfg.SDWAN.hasTarget() && !cfg.NexusDashboard.hasTarget() && !cfg.ACI.hasTarget() && !cfg.FMC.hasTarget() && !cfg.ISE.hasTarget() && !cfg.IOSXR.hasTarget() && !cfg.GNMI.hasTargets() {
 		err = multierr.Append(err, errors.New("must specify at least one SSH device, Meraki target, Intersight target, Catalyst Center target, Catalyst 9800 target, SD-WAN target, Nexus Dashboard target, ACI target, FMC target, ISE target, or IOS XR target; alternatively, specify a shared gNMI target"))
@@ -782,6 +842,7 @@ func (cfg *Config) Validate() error {
 		}
 	}
 
+	deviceEndpoints := make(map[string]int, len(cfg.Devices))
 	for i := range cfg.Devices {
 		device := &cfg.Devices[i]
 		if device.Host == "" {
@@ -799,6 +860,13 @@ func (cfg *Config) Validate() error {
 		if device.Auth.KnownHostsFile == "" && !device.Auth.InsecureSkipVerify {
 			err = multierr.Append(err, fmt.Errorf("devices[%d].auth.known_hosts_file or devices[%d].auth.insecure_skip_verify must be set", i, i))
 		}
+		if endpoint, ok := canonicalSSHDeviceEndpoint(device.Host, device.Port); ok {
+			if previous, duplicate := deviceEndpoints[endpoint]; duplicate {
+				err = multierr.Append(err, fmt.Errorf("devices[%d] endpoint %q duplicates devices[%d] after host normalization", i, endpoint, previous))
+			} else {
+				deviceEndpoints[endpoint] = i
+			}
+		}
 	}
 
 	err = multierr.Append(err, cfg.validateMeraki())
@@ -813,7 +881,35 @@ func (cfg *Config) Validate() error {
 	err = multierr.Append(err, cfg.validateIOSXR())
 	err = multierr.Append(err, cfg.validateGNMI())
 
+	for _, scraperCfg := range cfg.Scrapers {
+		if validator, ok := scraperCfg.(confmap.Validator); ok {
+			err = multierr.Append(err, validator.Validate())
+		}
+	}
+
 	return err
+}
+
+func canonicalSSHDeviceEndpoint(host string, port int) (string, bool) {
+	if port < 1 || port > 65535 {
+		return "", false
+	}
+	host = strings.TrimSpace(host)
+	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		unbracketed := host[1 : len(host)-1]
+		if _, err := netip.ParseAddr(unbracketed); err == nil {
+			host = unbracketed
+		}
+	}
+	if address, err := netip.ParseAddr(host); err == nil {
+		host = address.Unmap().String()
+	} else {
+		host = strings.TrimSuffix(strings.ToLower(host), ".")
+	}
+	if host == "" {
+		return "", false
+	}
+	return net.JoinHostPort(host, strconv.Itoa(port)), true
 }
 
 func (cfg *Config) validateMeraki() error {
@@ -851,6 +947,15 @@ func (cfg *Config) validateMeraki() error {
 		err = multierr.Append(err, validateNonEmptyStringList(fmt.Sprintf("meraki.organizations[%d].network_ids", i), org.NetworkIDs))
 		err = multierr.Append(err, validateNonEmptyStringList(fmt.Sprintf("meraki.organizations[%d].serials", i), org.Serials))
 		err = multierr.Append(err, validateNonEmptyStringList(fmt.Sprintf("meraki.organizations[%d].product_types", i), org.ProductTypes))
+		for j, productType := range org.ProductTypes {
+			if !validMerakiProductType(productType) {
+				err = multierr.Append(err, fmt.Errorf(
+					"meraki.organizations[%d].product_types[%d] must be one of appliance, camera, campusGateway, cellularGateway, secureConnect, sensor, switch, systemsManager, wireless, or wirelessController",
+					i,
+					j,
+				))
+			}
+		}
 		err = multierr.Append(err, validateNonEmptyStringList(fmt.Sprintf("meraki.organizations[%d].tags", i), org.Tags))
 	}
 
@@ -864,6 +969,15 @@ func (cfg *Config) validateMeraki() error {
 	}
 
 	return err
+}
+
+func validMerakiProductType(productType string) bool {
+	switch productType {
+	case "appliance", "camera", "campusGateway", "cellularGateway", "secureConnect", "sensor", "switch", "systemsManager", "wireless", "wirelessController":
+		return true
+	default:
+		return false
+	}
 }
 
 func (cfg *Config) validateIntersight() error {
@@ -1092,6 +1206,11 @@ func (cfg *Config) validateNexusDashboard() error {
 	}
 
 	var err error
+	switch normalizeNexusDashboardAPIProfile(cfg.NexusDashboard.APIProfile) {
+	case nexusDashboardAPIProfileLegacy, nexusDashboardAPIProfileUnified:
+	default:
+		err = multierr.Append(err, errors.New("nexus_dashboard.api_profile must be legacy or unified"))
+	}
 	if cfg.NexusDashboard.Endpoint == "" {
 		err = multierr.Append(err, errors.New("nexus_dashboard.endpoint must be provided"))
 	} else {
@@ -1155,12 +1274,15 @@ func (cfg *Config) validateACI() error {
 	if len(cfg.ACI.Controllers) == 0 {
 		err = multierr.Append(err, errors.New("aci.controllers must include at least one APIC endpoint"))
 	}
+	controllerEndpoints := make(map[string]int, len(cfg.ACI.Controllers))
+	controllerNames := make(map[string]int, len(cfg.ACI.Controllers))
 	for i, controller := range cfg.ACI.Controllers {
 		if controller.Endpoint == "" {
 			err = multierr.Append(err, fmt.Errorf("aci.controllers[%d].endpoint cannot be empty", i))
 			continue
 		}
 		err = multierr.Append(err, validateHTTPURL(fmt.Sprintf("aci.controllers[%d].endpoint", i), controller.Endpoint, cfg.ACI.InsecureSkipVerify))
+		err = multierr.Append(err, validateUniqueHTTPController("aci.controllers", i, controller.Endpoint, controller.Name, controllerEndpoints, controllerNames))
 	}
 
 	authMode := inferredControllerAuthMode(cfg.ACI.Auth)
@@ -1176,6 +1298,7 @@ func (cfg *Config) validateACI() error {
 
 	err = multierr.Append(err, validatePageSize("aci.page_size", cfg.ACI.PageSize))
 	err = multierr.Append(err, validateMaxRetries("aci.max_retries", cfg.ACI.MaxRetries))
+	err = multierr.Append(err, validateACITLSConfig(cfg.ACI))
 	if cfg.ACI.EventLookback < 0 {
 		err = multierr.Append(err, errors.New("aci.event_lookback must not be negative"))
 	}
@@ -1209,6 +1332,23 @@ func (cfg *Config) validateACI() error {
 	return err
 }
 
+func validateACITLSConfig(cfg ACIConfig) error {
+	var err error
+	if cfg.CAFile != strings.TrimSpace(cfg.CAFile) {
+		err = multierr.Append(err, errors.New("aci.ca_file must not contain surrounding whitespace"))
+	} else if cfg.CAFile != "" && strings.IndexByte(cfg.CAFile, 0) >= 0 {
+		err = multierr.Append(err, errors.New("aci.ca_file must be a valid file path"))
+	}
+
+	serverName := strings.TrimSpace(cfg.ServerName)
+	if cfg.ServerName != serverName {
+		err = multierr.Append(err, errors.New("aci.server_name must not contain surrounding whitespace"))
+	} else if serverName != "" && !validHostOrIP(serverName) {
+		err = multierr.Append(err, errors.New("aci.server_name must be a valid hostname or IP address without a scheme or port"))
+	}
+	return err
+}
+
 func (cfg *Config) validateFMC() error {
 	if !cfg.FMC.hasTarget() {
 		return nil
@@ -1220,12 +1360,15 @@ func (cfg *Config) validateFMC() error {
 		if len(cfg.FMC.Controllers) == 0 {
 			err = multierr.Append(err, errors.New("fmc.controllers must include at least one FMC endpoint"))
 		}
+		controllerEndpoints := make(map[string]int, len(cfg.FMC.Controllers))
+		controllerNames := make(map[string]int, len(cfg.FMC.Controllers))
 		for i, controller := range cfg.FMC.Controllers {
 			if controller.Endpoint == "" {
 				err = multierr.Append(err, fmt.Errorf("fmc.controllers[%d].endpoint cannot be empty", i))
 				continue
 			}
 			err = multierr.Append(err, validateHTTPURL(fmt.Sprintf("fmc.controllers[%d].endpoint", i), controller.Endpoint, cfg.FMC.InsecureSkipVerify))
+			err = multierr.Append(err, validateUniqueHTTPController("fmc.controllers", i, controller.Endpoint, controller.Name, controllerEndpoints, controllerNames))
 		}
 
 		authMode := inferredControllerAuthMode(cfg.FMC.Auth)
@@ -1285,12 +1428,23 @@ func (cfg *Config) validateFMCEStreamer() error {
 	if cfg.FMC.EStreamer.Enabled && len(cfg.FMC.EStreamer.Targets) == 0 && len(cfg.FMC.Controllers) == 0 {
 		err = multierr.Append(err, errors.New("fmc.estreamer.targets or fmc.controllers must include at least one eStreamer endpoint"))
 	}
+	targetEndpoints := make(map[string]int, len(cfg.FMC.EStreamer.Targets))
+	targetNames := make(map[string]int, len(cfg.FMC.EStreamer.Targets))
 	for i, target := range cfg.FMC.EStreamer.Targets {
 		if target.Endpoint == "" {
 			err = multierr.Append(err, fmt.Errorf("fmc.estreamer.targets[%d].endpoint cannot be empty", i))
 			continue
 		}
 		err = multierr.Append(err, validateHostPortOrHost(fmt.Sprintf("fmc.estreamer.targets[%d].endpoint", i), target.Endpoint))
+		endpointKey, defaultName, keyErr := canonicalHostPort(target.Endpoint, "8302")
+		if keyErr == nil {
+			if previous, duplicate := targetEndpoints[endpointKey]; duplicate {
+				err = multierr.Append(err, fmt.Errorf("fmc.estreamer.targets[%d].endpoint duplicates fmc.estreamer.targets[%d].endpoint after address normalization", i, previous))
+			} else {
+				targetEndpoints[endpointKey] = i
+			}
+			err = multierr.Append(err, validateUniqueEffectiveName("fmc.estreamer.targets", i, target.Name, defaultName, targetNames))
+		}
 	}
 	if cfg.FMC.EStreamer.TLS.CertFile == "" && cfg.FMC.EStreamer.TLS.KeyFile != "" {
 		err = multierr.Append(err, errors.New("fmc.estreamer.tls.cert_file must be provided when key_file is set"))
@@ -1316,6 +1470,87 @@ func (cfg *Config) validateFMCEStreamer() error {
 		}
 	}
 	return err
+}
+
+func validateUniqueHTTPController(prefix string, index int, endpoint, name string, endpoints, names map[string]int) error {
+	parsed, err := url.Parse(endpoint)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return nil
+	}
+	host, defaultName := canonicalURLHost(parsed)
+	path := strings.TrimRight(parsed.EscapedPath(), "/")
+	endpointKey := strings.ToLower(parsed.Scheme) + "://" + host + path
+	var validationErr error
+	if previous, duplicate := endpoints[endpointKey]; duplicate {
+		validationErr = multierr.Append(validationErr, fmt.Errorf("%s[%d].endpoint duplicates %s[%d].endpoint after URL normalization", prefix, index, prefix, previous))
+	} else {
+		endpoints[endpointKey] = index
+	}
+	return multierr.Append(validationErr, validateUniqueEffectiveName(prefix, index, name, defaultName, names))
+}
+
+func validateUniqueEffectiveName(prefix string, index int, configured, fallback string, names map[string]int) error {
+	if configured != strings.TrimSpace(configured) {
+		return fmt.Errorf("%s[%d].name must not contain surrounding whitespace", prefix, index)
+	}
+	if configured != "" && strings.TrimSpace(configured) == "" {
+		return fmt.Errorf("%s[%d].name cannot be blank", prefix, index)
+	}
+	effective := strings.ToLower(strings.TrimSpace(firstNonEmpty(configured, fallback)))
+	if previous, duplicate := names[effective]; duplicate {
+		return fmt.Errorf("%s[%d].name duplicates the effective name of %s[%d]", prefix, index, prefix, previous)
+	}
+	names[effective] = index
+	return nil
+}
+
+func canonicalURLHost(parsed *url.URL) (string, string) {
+	hostname := strings.ToLower(parsed.Hostname())
+	if address, err := netip.ParseAddr(hostname); err == nil {
+		hostname = address.Unmap().String()
+	}
+	port := parsed.Port()
+	if strings.EqualFold(parsed.Scheme, "https") && port == "443" {
+		port = ""
+	}
+	defaultName := hostname
+	if port != "" {
+		defaultName = net.JoinHostPort(hostname, port)
+		return defaultName, defaultName
+	}
+	if strings.Contains(hostname, ":") {
+		return "[" + hostname + "]", defaultName
+	}
+	return hostname, defaultName
+}
+
+func canonicalHostPort(value, defaultPort string) (string, string, error) {
+	value = strings.TrimSpace(value)
+	if address, err := netip.ParseAddr(value); err == nil {
+		host := address.Unmap().String()
+		endpoint := net.JoinHostPort(host, defaultPort)
+		return endpoint, endpoint, nil
+	}
+	host, port, err := net.SplitHostPort(value)
+	if err != nil {
+		if strings.Contains(value, ":") {
+			return "", "", err
+		}
+		host, port = value, defaultPort
+	}
+	host = strings.ToLower(strings.TrimSpace(host))
+	if address, parseErr := netip.ParseAddr(host); parseErr == nil {
+		host = address.Unmap().String()
+	}
+	if host == "" || port == "" {
+		return "", "", errors.New("host and port are required")
+	}
+	portNumber, err := strconv.ParseUint(port, 10, 16)
+	if err != nil || portNumber == 0 {
+		return "", "", errors.New("port must be between 1 and 65535")
+	}
+	endpoint := net.JoinHostPort(host, strconv.FormatUint(portNumber, 10))
+	return endpoint, endpoint, nil
 }
 
 func validateHTTPURL(name, value string, _ bool) error {
@@ -1346,7 +1581,11 @@ func endpointURLContentError(name string, parsed *url.URL) error {
 }
 
 func validateHostPortOrHost(name, value string) error {
-	value = strings.TrimSpace(value)
+	trimmed := strings.TrimSpace(value)
+	if trimmed != value {
+		return fmt.Errorf("%s must not contain surrounding whitespace", name)
+	}
+	value = trimmed
 	if value == "" {
 		return fmt.Errorf("%s cannot be empty", name)
 	}
@@ -1511,14 +1750,7 @@ func inferredControllerAuthMode(auth ControllerAuthConfig) string {
 }
 
 func validFMCEStreamerEventType(value string) bool {
-	switch strings.ToLower(strings.TrimSpace(strings.ReplaceAll(value, "-", "_"))) {
-	case "connection", "connection_event", "traffic", "security_intelligence", "si",
-		"intrusion", "intrusion_event", "intrusion_packet", "intrusion_packet_event",
-		"file", "file_event", "malware", "file_malware":
-		return true
-	default:
-		return false
-	}
+	return len(fmc.NormalizeEStreamerEventTypes([]string{value})) == 1
 }
 
 func validateNexusControllerGroups(prefix string, groups map[string]NexusControllerGroupConfig) error {
@@ -1616,6 +1848,10 @@ func (cfg *Config) Unmarshal(componentParser *confmap.Conf) error {
 	// strict pass.
 	staticSettings := componentParser.ToStringMap()
 	delete(staticSettings, "scrapers")
+	applyMetricConfigDefaults(staticSettings)
+	if err := applyACILogCompatibility(staticSettings); err != nil {
+		return err
+	}
 	type staticConfig Config
 	if err := confmap.NewFromStringMap(staticSettings).Unmarshal((*staticConfig)(cfg)); err != nil {
 		return err
@@ -1656,5 +1892,98 @@ func (cfg *Config) Unmarshal(componentParser *confmap.Conf) error {
 		cfg.Scrapers[key] = scraperCfg
 	}
 
+	return nil
+}
+
+// applyMetricConfigDefaults preserves the documented opt-out behavior for
+// dynamically named metric entries. A map value has no factory-created
+// default for its Enabled field, so an empty object would otherwise decode as
+// false and unexpectedly disable the metric.
+func applyMetricConfigDefaults(settings map[string]any) {
+	rawMetrics, ok := settings["metrics"].(map[string]any)
+	if !ok {
+		return
+	}
+
+	metrics := make(map[string]any, len(rawMetrics))
+	for name, rawConfig := range rawMetrics {
+		metricSettings, ok := rawConfig.(map[string]any)
+		if !ok {
+			metrics[name] = rawConfig
+			continue
+		}
+		if _, configured := metricSettings["enabled"]; configured {
+			metrics[name] = rawConfig
+			continue
+		}
+
+		withDefault := make(map[string]any, len(metricSettings)+1)
+		maps.Copy(withDefault, metricSettings)
+		withDefault["enabled"] = true
+		metrics[name] = withDefault
+	}
+	settings["metrics"] = metrics
+}
+
+// applyACILogCompatibility retains a safe subset of the original ACI log
+// enablement behavior. An explicitly configured legacy collection-group opt-in
+// enables the corresponding log signal when the new signal-specific block is
+// absent. Factory defaults alone never opt into logs, and an explicit new block
+// always takes precedence. Present nulls are rejected here because mapstructure
+// otherwise decodes them into disabled zero-value structs without an error.
+func applyACILogCompatibility(settings map[string]any) error {
+	rawACI, ok := settings["aci"].(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	rawLogsValue, logsConfigured := rawACI["logs"]
+	if logsConfigured && rawLogsValue == nil {
+		return errors.New("aci.logs must be a map and cannot be null")
+	}
+	rawLogs, logsAreMap := rawLogsValue.(map[string]any)
+	if logsConfigured && !logsAreMap {
+		// Preserve malformed top-level input so strict decoding reports it.
+		return nil
+	}
+	logs := maps.Clone(rawLogs)
+	if logs == nil {
+		logs = map[string]any{}
+	}
+
+	for _, signal := range []string{"faults", "audit", "events"} {
+		if signalSettings, configured := logs[signal]; configured {
+			if signalSettings == nil {
+				return fmt.Errorf("aci.logs.%s must be a map and cannot be null", signal)
+			}
+			// A new signal block, including an empty block with safe defaults,
+			// takes precedence. Malformed input remains intact for strict decode.
+			continue
+		}
+
+		legacySettings, ok := rawACI[signal].(map[string]any)
+		if !ok {
+			continue
+		}
+		legacyEnabled, explicitlyConfigured := legacySettings["enabled"].(bool)
+		if !explicitlyConfigured || !legacyEnabled {
+			continue
+		}
+
+		signalSettings, _ := logs[signal].(map[string]any)
+		signalSettings = maps.Clone(signalSettings)
+		if signalSettings == nil {
+			signalSettings = map[string]any{}
+		}
+		signalSettings["enabled"] = true
+		logs[signal] = signalSettings
+	}
+
+	if len(logs) == 0 {
+		return nil
+	}
+	aciSettings := maps.Clone(rawACI)
+	aciSettings["logs"] = logs
+	settings["aci"] = aciSettings
 	return nil
 }

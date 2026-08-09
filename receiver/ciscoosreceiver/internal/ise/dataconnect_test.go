@@ -5,13 +5,23 @@ package ise
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
 	"database/sql/driver"
+	"encoding/pem"
 	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/sijms/go-ora/v2/configurations"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -42,6 +52,182 @@ func TestNewDataConnectClientRejectsPlaintextCredentials(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, client)
 	assert.ErrorContains(t, err, "SSL must be enabled")
+}
+
+func TestNewDataConnectClientConfiguresPEMTrustAndServerName(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	t.Cleanup(server.Close)
+	serverHost, serverPort, err := net.SplitHostPort(server.Listener.Addr().String())
+	require.NoError(t, err)
+	caFile := writeDataConnectTestCA(t, server.Certificate())
+
+	connector := &configuredDataConnectConnector{}
+	var dsn string
+	client, err := newDataConnectClient(DataConnectConfig{
+		Host:        serverHost,
+		Port:        mustDataConnectTestPort(t, serverPort),
+		ServiceName: "cpm10",
+		Username:    "dataconnect",
+		Password:    "secret",
+		CAFile:      caFile,
+		ServerName:  "example.com",
+		SSL:         true,
+		SSLVerify:   true,
+	}, func(value string) (dataConnectOracleConnector, error) {
+		dsn = value
+		return connector, nil
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
+
+	parsed, err := url.Parse(dsn)
+	require.NoError(t, err)
+	assert.Equal(t, "example.com", parsed.Hostname())
+	require.NotNil(t, connector.tlsConfig)
+	assert.Equal(t, "example.com", connector.tlsConfig.ServerName)
+	assert.Equal(t, uint16(tls.VersionTLS12), connector.tlsConfig.MinVersion)
+	require.NotNil(t, connector.tlsConfig.RootCAs)
+	_, err = server.Certificate().Verify(x509.VerifyOptions{Roots: connector.tlsConfig.RootCAs})
+	require.NoError(t, err)
+
+	// The TLS config is usable against the private CA, independent of Oracle's
+	// application protocol. This proves both chain and hostname verification.
+	tlsConn, err := tls.Dial("tcp", server.Listener.Addr().String(), connector.tlsConfig.Clone())
+	require.NoError(t, err)
+	require.NoError(t, tlsConn.Close())
+
+	dialer, ok := connector.dialer.(*dataConnectServerNameDialer)
+	require.True(t, ok)
+	dialedAddress := ""
+	dialer.dialContext = func(_ context.Context, _, address string) (net.Conn, error) {
+		dialedAddress = address
+		return nil, assert.AnError
+	}
+	_, err = dialer.DialContext(t.Context(), "tcp", net.JoinHostPort("example.com", serverPort))
+	require.ErrorIs(t, err, assert.AnError)
+	assert.Equal(t, net.JoinHostPort(serverHost, serverPort), dialedAddress)
+
+	_, err = dialer.DialContext(t.Context(), "tcp", net.JoinHostPort("redirect.example.com", serverPort))
+	require.ErrorIs(t, err, assert.AnError)
+	assert.Equal(t, net.JoinHostPort("redirect.example.com", serverPort), dialedAddress)
+}
+
+func TestNewDataConnectClientPreservesWalletTLSWithServerName(t *testing.T) {
+	connector := &configuredDataConnectConnector{}
+	var dsn string
+	client, err := newDataConnectClient(DataConnectConfig{
+		Host:        "192.0.2.10",
+		Port:        2484,
+		ServiceName: "cpm10",
+		Username:    "dataconnect",
+		Password:    "secret",
+		WalletDir:   "/etc/otelcol/ise-wallet",
+		ServerName:  "ise.example.com",
+		SSL:         true,
+		SSLVerify:   true,
+	}, func(value string) (dataConnectOracleConnector, error) {
+		dsn = value
+		return connector, nil
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
+
+	parsed, err := url.Parse(dsn)
+	require.NoError(t, err)
+	assert.Equal(t, "ise.example.com", parsed.Hostname())
+	assert.Equal(t, "/etc/otelcol/ise-wallet", parsed.Query().Get("WALLET"))
+	assert.Nil(t, connector.tlsConfig, "WithTLSConfig would replace go-ora wallet trust material")
+	assert.IsType(t, &dataConnectServerNameDialer{}, connector.dialer)
+	assert.Equal(t, dataConnectWalletConfigPath, client.trustConfigPath)
+}
+
+func TestNewDataConnectClientRejectsInvalidPEMTrustConfiguration(t *testing.T) {
+	base := DataConnectConfig{
+		Host:        "ise.example.com",
+		Port:        2484,
+		ServiceName: "cpm10",
+		Username:    "dataconnect",
+		Password:    "secret",
+		SSL:         true,
+		SSLVerify:   true,
+	}
+
+	t.Run("missing CA file", func(t *testing.T) {
+		cfg := base
+		cfg.CAFile = t.TempDir() + "/missing.pem"
+		client, err := NewDataConnectClient(cfg)
+		assert.Nil(t, client)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "read ise.data_connect.ca_file")
+	})
+
+	t.Run("invalid CA PEM", func(t *testing.T) {
+		cfg := base
+		cfg.CAFile = t.TempDir() + "/invalid.pem"
+		require.NoError(t, os.WriteFile(cfg.CAFile, []byte("not a certificate"), 0o600))
+		client, err := NewDataConnectClient(cfg)
+		assert.Nil(t, client)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "ise.data_connect.ca_file")
+		assert.ErrorContains(t, err, "did not contain PEM certificates")
+	})
+
+	t.Run("wallet and CA", func(t *testing.T) {
+		cfg := base
+		cfg.WalletDir = "/etc/otelcol/ise-wallet"
+		cfg.CAFile = "/etc/otelcol/ise-ca.pem"
+		client, err := NewDataConnectClient(cfg)
+		assert.Nil(t, client)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "wallet_dir cannot be combined with ca_file")
+	})
+
+	t.Run("CA with verification disabled", func(t *testing.T) {
+		cfg := base
+		cfg.CAFile = "/etc/otelcol/ise-ca.pem"
+		cfg.SSLVerify = false
+		client, err := NewDataConnectClient(cfg)
+		assert.Nil(t, client)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "ca_file requires ssl_verify to be true")
+	})
+}
+
+func TestDataConnectPingPromptsForExplicitSelfSignedLabOptIn(t *testing.T) {
+	cause := x509.UnknownAuthorityError{Cert: &x509.Certificate{}}
+	verified := &DataConnectClient{
+		db:        sql.OpenDB(pingErrorConnector{err: cause}),
+		sslVerify: true,
+	}
+	t.Cleanup(func() { require.NoError(t, verified.Close()) })
+
+	err := verified.Ping(t.Context())
+	require.ErrorIs(t, err, cause)
+	assert.ErrorContains(t, err, "configure ise.data_connect.ca_file with the issuing CA (preferred)")
+	assert.ErrorContains(t, err, "set ise.data_connect.ssl_verify: false only for an isolated lab")
+
+	lab := &DataConnectClient{
+		db:        sql.OpenDB(pingErrorConnector{err: cause}),
+		sslVerify: false,
+	}
+	t.Cleanup(func() { require.NoError(t, lab.Close()) })
+	assert.ErrorIs(t, lab.Ping(t.Context()), cause)
+}
+
+func TestDataConnectQueryPromptsForExplicitSelfSignedLabOptIn(t *testing.T) {
+	cause := x509.UnknownAuthorityError{Cert: &x509.Certificate{}}
+	client := &DataConnectClient{
+		db:        sql.OpenDB(pingErrorConnector{err: cause}),
+		rowLimit:  10,
+		sslVerify: true,
+	}
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
+
+	objects, err := client.QueryView(t.Context(), DataConnectView{Name: "NODE_LIST"})
+	assert.Empty(t, objects)
+	require.ErrorIs(t, err, cause)
+	assert.ErrorContains(t, err, "configure ise.data_connect.ca_file with the issuing CA (preferred)")
+	assert.ErrorContains(t, err, "set ise.data_connect.ssl_verify: false only for an isolated lab")
 }
 
 func TestDataConnectQueryViewRejectsExcessiveColumnCount(t *testing.T) {
@@ -102,6 +288,47 @@ type captureConnector struct {
 	query string
 	args  []driver.NamedValue
 	rows  driver.Rows
+}
+
+type configuredDataConnectConnector struct {
+	captureConnector
+	tlsConfig *tls.Config
+	dialer    configurations.DialerContext
+}
+
+func (c *configuredDataConnectConnector) WithTLSConfig(cfg *tls.Config) {
+	c.tlsConfig = cfg
+}
+
+func (c *configuredDataConnectConnector) Dialer(dialer configurations.DialerContext) {
+	c.dialer = dialer
+}
+
+func writeDataConnectTestCA(t *testing.T, cert *x509.Certificate) string {
+	t.Helper()
+	path := t.TempDir() + "/ise-ca.pem"
+	encoded := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
+	require.NoError(t, os.WriteFile(path, encoded, 0o600))
+	return path
+}
+
+func mustDataConnectTestPort(t *testing.T, value string) int {
+	t.Helper()
+	port, err := strconv.Atoi(value)
+	require.NoError(t, err)
+	return port
+}
+
+type pingErrorConnector struct {
+	err error
+}
+
+func (c pingErrorConnector) Connect(context.Context) (driver.Conn, error) {
+	return nil, c.err
+}
+
+func (pingErrorConnector) Driver() driver.Driver {
+	return captureDriver{}
 }
 
 func (c *captureConnector) Connect(context.Context) (driver.Conn, error) {

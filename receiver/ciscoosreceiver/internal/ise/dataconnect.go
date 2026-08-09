@@ -5,20 +5,30 @@ package ise // import "github.com/open-telemetry/opentelemetry-collector-contrib
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
+	"net"
+	"os"
 	"regexp"
 	"strings"
 	"time"
 
 	go_ora "github.com/sijms/go-ora/v2"
+	"github.com/sijms/go-ora/v2/configurations"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
 
 const (
-	defaultDataConnectRowLimit = 5000
+	defaultDataConnectRowLimit  = 5000
+	dataConnectCAConfigPath     = "ise.data_connect.ca_file"
+	dataConnectWalletConfigPath = "ise.data_connect.wallet_dir"
+	dataConnectServerNamePath   = "ise.data_connect.server_name"
+	dataConnectSSLVerifyPath    = "ise.data_connect.ssl_verify"
 
 	// Data Connect queries are against fixed, documented views. A result with
 	// hundreds of columns is malformed and can otherwise amplify the per-row
@@ -43,6 +53,8 @@ type DataConnectConfig struct {
 	Username           string
 	Password           string
 	WalletDir          string
+	CAFile             string
+	ServerName         string
 	SSL                bool
 	SSLVerify          bool
 	Lookback           time.Duration
@@ -89,20 +101,77 @@ func (e *DataConnectResultLimitError) Error() string {
 
 // DataConnectClient is a read-only Cisco ISE Data Connect client.
 type DataConnectClient struct {
-	db       *sql.DB
-	rowLimit int
-	lookback time.Duration
+	db              *sql.DB
+	rowLimit        int
+	lookback        time.Duration
+	sslVerify       bool
+	trustConfigPath string
 
 	OnQuery func(DataConnectStat)
 }
 
+type dataConnectOracleConnector interface {
+	driver.Connector
+	Dialer(configurations.DialerContext)
+	WithTLSConfig(*tls.Config)
+}
+
+type dataConnectConnectorFactory func(string) (dataConnectOracleConnector, error)
+
+type dataConnectServerNameDialer struct {
+	targetHost  string
+	serverName  string
+	dialContext func(context.Context, string, string) (net.Conn, error)
+}
+
+func (d *dataConnectServerNameDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(address)
+	if err == nil && sameDataConnectHost(host, d.serverName) {
+		address = net.JoinHostPort(strings.Trim(d.targetHost, "[]"), port)
+	}
+	return d.dialContext(ctx, network, address)
+}
+
+func sameDataConnectHost(left, right string) bool {
+	left = strings.Trim(left, "[]")
+	right = strings.Trim(right, "[]")
+	leftIP := net.ParseIP(left)
+	rightIP := net.ParseIP(right)
+	if leftIP != nil && rightIP != nil {
+		return leftIP.Equal(rightIP)
+	}
+	return strings.EqualFold(left, right)
+}
+
 // NewDataConnectClient creates a Data Connect client.
 func NewDataConnectClient(cfg DataConnectConfig) (*DataConnectClient, error) {
+	return newDataConnectClient(cfg, defaultDataConnectConnectorFactory)
+}
+
+func newDataConnectClient(cfg DataConnectConfig, connectorFactory dataConnectConnectorFactory) (*DataConnectClient, error) {
 	if cfg.Host == "" || cfg.ServiceName == "" || cfg.Username == "" || cfg.Password == "" {
 		return nil, errors.New("Data Connect host, service name, username, and password are required")
 	}
 	if !cfg.SSL {
 		return nil, errors.New("Data Connect SSL must be enabled because database credentials require TLS")
+	}
+	if cfg.WalletDir != strings.TrimSpace(cfg.WalletDir) || strings.IndexByte(cfg.WalletDir, 0) >= 0 {
+		return nil, errors.New("ise.data_connect.wallet_dir must be a valid directory path without surrounding whitespace")
+	}
+	if cfg.CAFile != strings.TrimSpace(cfg.CAFile) || strings.IndexByte(cfg.CAFile, 0) >= 0 {
+		return nil, errors.New("ise.data_connect.ca_file must be a valid file path without surrounding whitespace")
+	}
+	if cfg.ServerName != strings.TrimSpace(cfg.ServerName) {
+		return nil, errors.New("ise.data_connect.server_name must not contain surrounding whitespace")
+	}
+	if cfg.WalletDir != "" && cfg.CAFile != "" {
+		return nil, errors.New("ise.data_connect.wallet_dir cannot be combined with ca_file; use either an Oracle wallet or a PEM CA bundle")
+	}
+	if !cfg.SSLVerify && cfg.CAFile != "" {
+		return nil, errors.New("ise.data_connect.ca_file requires ssl_verify to be true")
+	}
+	if !cfg.SSLVerify && cfg.ServerName != "" {
+		return nil, errors.New("ise.data_connect.server_name requires ssl_verify to be true")
 	}
 	rowLimit := cfg.RowLimit
 	if rowLimit <= 0 {
@@ -118,12 +187,81 @@ func NewDataConnectClient(cfg DataConnectConfig) (*DataConnectClient, error) {
 	if cfg.WalletDir != "" {
 		options["WALLET"] = cfg.WalletDir
 	}
-	dsn := go_ora.BuildUrl(cfg.Host, cfg.Port, cfg.ServiceName, cfg.Username, cfg.Password, options)
-	db, err := sql.Open("oracle", dsn)
+	dsnHost := cfg.Host
+	if cfg.ServerName != "" {
+		// go-ora derives the TLS server name from the host in the DSN. Use the
+		// configured certificate identity there, then map only that initial
+		// network destination back to the configured Data Connect host below.
+		dsnHost = cfg.ServerName
+	}
+	dsn := go_ora.BuildUrl(dsnHost, cfg.Port, cfg.ServiceName, cfg.Username, cfg.Password, options)
+	tlsConfig, err := dataConnectTLSConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
-	return &DataConnectClient{db: db, rowLimit: rowLimit, lookback: cfg.Lookback}, nil
+	connector, err := connectorFactory(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("create Data Connect Oracle connector: %w", err)
+	}
+	if tlsConfig != nil {
+		connector.WithTLSConfig(tlsConfig)
+	}
+	if cfg.ServerName != "" && !sameDataConnectHost(cfg.Host, cfg.ServerName) {
+		networkDialer := &net.Dialer{}
+		connector.Dialer(&dataConnectServerNameDialer{
+			targetHost:  cfg.Host,
+			serverName:  cfg.ServerName,
+			dialContext: networkDialer.DialContext,
+		})
+	}
+	trustConfigPath := dataConnectCAConfigPath
+	if cfg.WalletDir != "" {
+		trustConfigPath = dataConnectWalletConfigPath
+	}
+	return &DataConnectClient{
+		db:              sql.OpenDB(connector),
+		rowLimit:        rowLimit,
+		lookback:        cfg.Lookback,
+		sslVerify:       cfg.SSLVerify,
+		trustConfigPath: trustConfigPath,
+	}, nil
+}
+
+func defaultDataConnectConnectorFactory(dsn string) (dataConnectOracleConnector, error) {
+	connector, ok := go_ora.NewConnector(dsn).(*go_ora.OracleConnector)
+	if !ok {
+		return nil, errors.New("go-ora returned an unsupported Oracle connector")
+	}
+	return connector, nil
+}
+
+func dataConnectTLSConfig(cfg DataConnectConfig) (*tls.Config, error) {
+	// A wallet remains entirely under go-ora's existing TLS implementation.
+	// Supplying WithTLSConfig in wallet mode would replace the wallet trust
+	// material, so only the PEM/system-root mode uses a custom TLS config.
+	if cfg.WalletDir != "" || (cfg.CAFile == "" && cfg.ServerName == "") {
+		return nil, nil
+	}
+	tlsConfig := &tls.Config{
+		ServerName: cfg.ServerName,
+		MinVersion: tls.VersionTLS12,
+	}
+	if cfg.CAFile == "" {
+		return tlsConfig, nil
+	}
+	caBytes, err := os.ReadFile(cfg.CAFile)
+	if err != nil {
+		return nil, fmt.Errorf("read %s %q: %w", dataConnectCAConfigPath, cfg.CAFile, err)
+	}
+	rootCAs, err := x509.SystemCertPool()
+	if err != nil || rootCAs == nil {
+		rootCAs = x509.NewCertPool()
+	}
+	if !rootCAs.AppendCertsFromPEM(caBytes) {
+		return nil, fmt.Errorf("%s %q did not contain PEM certificates", dataConnectCAConfigPath, cfg.CAFile)
+	}
+	tlsConfig.RootCAs = rootCAs
+	return tlsConfig, nil
 }
 
 // Close closes the underlying database handle.
@@ -136,7 +274,28 @@ func (c *DataConnectClient) Close() error {
 
 // Ping verifies Data Connect connectivity.
 func (c *DataConnectClient) Ping(ctx context.Context) error {
-	return c.db.PingContext(ctx)
+	return c.decorateCertificateVerificationError(c.db.PingContext(ctx))
+}
+
+func (c *DataConnectClient) decorateCertificateVerificationError(err error) error {
+	if err == nil || !c.sslVerify {
+		return err
+	}
+	trustConfigPath := c.trustConfigPath
+	if trustConfigPath == "" {
+		trustConfigPath = dataConnectCAConfigPath
+	}
+	decorated := httpclient.DecorateCertificateVerificationErrorWithValue(
+		err,
+		trustConfigPath,
+		dataConnectSSLVerifyPath,
+		"false",
+	)
+	var hostnameErr x509.HostnameError
+	if errors.As(err, &hostnameErr) {
+		return fmt.Errorf("configure %s with a DNS name or IP address present in the Data Connect certificate SAN: %w", dataConnectServerNamePath, decorated)
+	}
+	return decorated
 }
 
 // QueryView returns rows from one allowlisted Data Connect view.
@@ -172,12 +331,14 @@ func (c *DataConnectClient) QueryView(ctx context.Context, view DataConnectView)
 	start := time.Now()
 	rows, err := c.db.QueryContext(ctx, query, args...)
 	if err != nil {
+		err = c.decorateCertificateVerificationError(err)
 		c.record(DataConnectStat{View: view.Name, Outcome: "error", Duration: time.Since(start), Err: err})
 		return nil, err
 	}
 	defer rows.Close()
 	objects, err := scanRows(rows)
 	if err != nil {
+		err = c.decorateCertificateVerificationError(err)
 		c.record(DataConnectStat{View: view.Name, Outcome: "error", Rows: len(objects), Duration: time.Since(start), Err: err})
 		return objects, err
 	}

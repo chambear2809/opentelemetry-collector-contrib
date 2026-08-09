@@ -1,0 +1,48 @@
+{
+  "openconfig-interfaces:interfaces": {
+    "interface": [
+      {
+        "name": "GigabitEthernet1/0/1",
+        "state": {
+          "oper-status": "UP",
+          "admin-status": "UP",
+          "counters": {
+            "in-octets": "9007199254740993",
+            "out-octets": "2000",
+            "in-errors": "1",
+            "out-errors": "2",
+            "in-discards": "3",
+            "out-discards": "4",
+            "in-unicast-pkts": "100",
+            "in-multicast-pkts": "101",
+            "in-broadcast-pkts": "102",
+            "out-unicast-pkts": "200",
+            "out-multicast-pkts": "201",
+            "out-broadcast-pkts": "202"
+          }
+        }
+      },
+      {
+        "name": "GigabitEthernet1/0/2",
+        "state": {
+          "oper-status": "openconfig-interfaces:LOWER_LAYER_DOWN",
+          "admin-status": "TESTING",
+          "counters": {
+            "in-octets": "3000",
+            "out-octets": "4000",
+            "in-errors": "5",
+            "out-errors": "6",
+            "in-discards": "7",
+            "out-discards": "8",
+            "in-unicast-pkts": "300",
+            "in-multicast-pkts": "301",
+            "in-broadcast-pkts": "302",
+            "out-unicast-pkts": "400",
+            "out-multicast-pkts": "401",
+            "out-broadcast-pkts": "402"
+          }
+        }
+      }
+    ]
+  }
+}

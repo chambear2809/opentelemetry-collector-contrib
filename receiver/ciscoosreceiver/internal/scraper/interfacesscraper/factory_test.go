@@ -30,9 +30,9 @@ func TestCreateDefaultConfig(t *testing.T) {
 	assert.NotNil(t, config)
 
 	// Verify default metrics are enabled
-	assert.True(t, config.Metrics.SystemNetworkIo.Enabled)
-	assert.True(t, config.Metrics.SystemNetworkErrors.Enabled)
-	assert.True(t, config.Metrics.SystemNetworkInterfaceStatus.Enabled)
+	assert.True(t, config.MetricsBuilderConfig.Metrics.SystemNetworkIo.Enabled)
+	assert.True(t, config.MetricsBuilderConfig.Metrics.SystemNetworkErrors.Enabled)
+	assert.True(t, config.MetricsBuilderConfig.Metrics.SystemNetworkInterfaceStatus.Enabled)
 	assert.False(t, config.Rates.Enabled)
 	assert.False(t, config.Counters.Enabled)
 	assert.Equal(t, 100, config.Counters.MaxPerInterface)
@@ -75,7 +75,7 @@ func TestConfig_AllMetricsEnabled(t *testing.T) {
 	}
 
 	// Verify all interface metrics are enabled by default
-	metrics := config.Metrics
+	metrics := config.MetricsBuilderConfig.Metrics
 	assert.True(t, metrics.SystemNetworkIo.Enabled)
 	assert.True(t, metrics.SystemNetworkErrors.Enabled)
 	assert.True(t, metrics.SystemNetworkPacketDropped.Enabled)
@@ -89,13 +89,13 @@ func TestConfig_DisableMetrics(t *testing.T) {
 	}
 
 	// Test disabling specific metrics
-	config.Metrics.SystemNetworkIo.Enabled = false
-	config.Metrics.SystemNetworkErrors.Enabled = false
+	config.MetricsBuilderConfig.Metrics.SystemNetworkIo.Enabled = false
+	config.MetricsBuilderConfig.Metrics.SystemNetworkErrors.Enabled = false
 
-	assert.False(t, config.Metrics.SystemNetworkIo.Enabled)
-	assert.False(t, config.Metrics.SystemNetworkErrors.Enabled)
+	assert.False(t, config.MetricsBuilderConfig.Metrics.SystemNetworkIo.Enabled)
+	assert.False(t, config.MetricsBuilderConfig.Metrics.SystemNetworkErrors.Enabled)
 	// Others should still be enabled
-	assert.True(t, config.Metrics.SystemNetworkInterfaceStatus.Enabled)
+	assert.True(t, config.MetricsBuilderConfig.Metrics.SystemNetworkInterfaceStatus.Enabled)
 }
 
 func TestCounterCollectionConfig_CommandDefaults(t *testing.T) {
@@ -267,7 +267,7 @@ func TestCreateDefaultConfig_AllInterfaceMetrics(t *testing.T) {
 	cfg := factory.CreateDefaultConfig().(*Config)
 
 	// Verify all 5 interface metrics are enabled
-	metrics := cfg.Metrics
+	metrics := cfg.MetricsBuilderConfig.Metrics
 	assert.True(t, metrics.SystemNetworkIo.Enabled)
 	assert.True(t, metrics.SystemNetworkErrors.Enabled)
 	assert.True(t, metrics.SystemNetworkPacketDropped.Enabled)

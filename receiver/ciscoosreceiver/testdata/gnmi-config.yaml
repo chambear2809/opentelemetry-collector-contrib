@@ -27,8 +27,6 @@ receivers:
           profiles:
             identity:
               enabled: true
-            system:
-              enabled: true
             interfaces:
               enabled: true
             optics:

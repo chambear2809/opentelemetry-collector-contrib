@@ -7,8 +7,9 @@ import "go.opentelemetry.io/collector/config/configopaque"
 
 // DeviceConfig represents configuration for a single Cisco device using semantic conventions
 type DeviceConfig struct {
-	Device DeviceInfo `mapstructure:"device"`
-	Auth   AuthConfig `mapstructure:"auth"`
+	Device        DeviceInfo           `mapstructure:"device"`
+	Auth          AuthConfig           `mapstructure:"auth"`
+	MetadataStore *DeviceMetadataStore `mapstructure:"-"`
 }
 
 // DeviceInfo follows semantic conventions for device identification

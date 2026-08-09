@@ -72,16 +72,21 @@ receivers:
     metrics:
       cisco.wlc.client.*:
         enabled: false
-      cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.*:
+      cisco.iosxr.yang.__v1.m1.s29_Cisco_2DIOS_2DXR_2Dip_2Drib_2Dipv4_2Doper.*:
         enabled: false
-      cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.rib.rib_table_ids.rib_table_id.summary_protos.summary_proto.route_count:
+      cisco.iosxr.yang.__v1.m1.s29_Cisco_2DIOS_2DXR_2Dip_2Drib_2Dipv4_2Doper.p6.s3_rib.s13_rib_2Dtable_2Dids.s12_rib_2Dtable_2Did.s14_summary_2Dprotos.s13_summary_2Dproto.s11_route_2Dcount.n:
         enabled: true
 ```
 
 This filter applies to metrics from SSH scrapers and API platforms. It does not drop logs. To stop logs, remove the receiver from the logs pipeline or disable the platform groups that produce event logs.
-For IOS XR, root metric filtering runs after YANG paths are normalized into `cisco.iosxr.yang.*` or
-`cisco.iosxr.receiver.*` metric names. For Catalyst 9800, it runs after both `cisco.catalyst9800.yang.*` metrics and
+For IOS XR, root metric filtering runs after YANG paths are encoded into `cisco.iosxr.yang.__v1.*` or
+`cisco.iosxr.receiver.*` metric names. For Catalyst 9800, it runs after both `cisco.catalyst9800.yang.__v1.*` metrics and
 `cisco.wlc.*` aliases are generated.
+
+The framed strings are exact and case-sensitive. The first rule above disables the raw module
+`Cisco-IOS-XR-ip-rib-ipv4-oper`; the second re-enables the direct-gNMI raw path tuple
+`rib/rib-table-ids/rib-table-id/summary-protos/summary-proto/route-count`. Use
+`cisco.iosxr.yang.__v1.*` when a broad all-dynamic selector is preferable.
 
 ## Collection Groups
 
@@ -146,6 +151,8 @@ receivers:
 
 `exclude` always wins. Empty `include` fields mean "include all that pass provider targets."
 
+For SSH targets, the receiver applies host-name and serial selection after `show version` discovers the device identity; a configured host IP can be rejected before the connection is created. Shared `gnmi.targets` expose their configured target name, endpoint, and endpoint host, but do not currently discover a serial or provider device ID for selection. Scope those targets with `host_names`, `host_ids`, or `host_ips`.
+
 ## Platform Guidance
 
 Use this table when deciding what to enable.
@@ -163,7 +170,7 @@ Use this table when deciding what to enable.
 | FMC | REST manager/version/license state, inventory, health, VPN, HA, deployments, audit, and bounded policy/object state | eStreamer security events, broad object/rule sweeps, per-device interface/routing/chassis detail, health aggregate metrics, and pending-change detail |
 | Catalyst 9800 | Default AP/RF/SSID/mobility/HA/auth/controller groups, safe path minimum sample intervals, and `max_datapoints_per_batch` | client detail, CAPWAP packets, neighbors, broad custom YANG paths, and low sample intervals |
 | IOS XR | A small set of enabled path groups with 60s+ sample intervals, such as interfaces, optics, and BGP, plus `max_datapoints_per_batch` | high-volume routing tables, FIB/CEF, QoS, ASIC, SR/SRv6, and broad native paths |
-| ISE | REST/OpenAPI/ERS/MnT deployment, backup/upgrade status, network devices, endpoints, sessions, auth failures, RBAC/policy/identity stores, posture, profiler, TrustSec, alarms, certificates, licensing, webhooks, pxGrid Cloud/Direct status | pxGrid streaming, broad Data Connect historical views, and high-volume endpoint/session evidence |
+| ISE | Scalar MnT active, posture, and profiler session counts | Opt-in `session_details` row evidence; release-, feature-, and ERS-dependent REST groups; pxGrid; broad Data Connect historical views; and high-volume endpoint/session evidence |
 
 ## Common Recipes
 

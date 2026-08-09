@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -40,6 +41,90 @@ func TestFMCMetricsReceiverScrape(t *testing.T) {
 	assert.True(t, metricNameExists(md, "fmc.resource.info"))
 	assert.True(t, metricNameExists(md, "cisco.device.up"))
 	assert.True(t, fmcIntMetricValueExists(md, "fmc.scrape.partial_success", 0))
+}
+
+func TestFMCManagerAggregatesBypassOnlyDeviceFilters(t *testing.T) {
+	tests := []struct {
+		name      string
+		configure func(*Config)
+	}{
+		{
+			name: "FMC targets",
+			configure: func(cfg *Config) {
+				cfg.FMC.Targets = FMCTargetFilters{DeviceIDs: []string{"selected-device"}}
+			},
+		},
+		{
+			name: "shared device selection",
+			configure: func(cfg *Config) {
+				cfg.DeviceSelection = DeviceSelectionConfig{
+					Include: DeviceSelectionMatchConfig{DeviceIDs: []string{"selected-device"}},
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var interfaceRequests atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/api/fmc_platform/v1/auth/generatetoken":
+					w.Header().Set("X-auth-access-token", "access-1")
+					w.Header().Set("X-auth-refresh-token", "refresh-1")
+					w.Header().Set("DOMAIN_UUID", "domain-1")
+					w.WriteHeader(http.StatusNoContent)
+				case "/api/fmc_platform/v1/info/domain":
+					_, _ = w.Write([]byte(`{"items":[{"id":"domain-1","name":"Global"}],"paging":{"count":1}}`))
+				case "/api/fmc_platform/v1/info/serverversion":
+					_, _ = w.Write([]byte(`{"items":[{"id":"server-1","name":"fmc-controller","serverVersion":"7.7"}],"paging":{"count":1}}`))
+				case "/api/fmc_platform/v1/license/devicelicenses":
+					_, _ = w.Write([]byte(`{"items":[{"id":"license-1","name":"device-license"}],"paging":{"count":1}}`))
+				case "/api/fmc_platform/v1/license/smartlicenses":
+					_, _ = w.Write([]byte(`{"items":[{"id":"smart-license-1","name":"smart-license"}],"paging":{"count":1}}`))
+				case "/api/fmc_platform/v1/updates/upgradepackages":
+					_, _ = w.Write([]byte(`{"items":[{"id":"upgrade-1","name":"upgrade-package"}],"paging":{"count":1}}`))
+				case "/api/fmc_config/v1/domain/domain-1/devices/devicerecords":
+					_, _ = w.Write([]byte(`{"items":[{"id":"unselected-device","name":"unselected-device","serialNumber":"UNSELECTED"}],"paging":{"count":1}}`))
+				case "/api/fmc_config/v1/domain/domain-1/policy/accesspolicies":
+					_, _ = w.Write([]byte(`{"items":[{"id":"unselected-policy","name":"unselected-policy"}],"paging":{"count":1}}`))
+				default:
+					if strings.Contains(r.URL.Path, "/devices/devicerecords/unselected-device/") {
+						interfaceRequests.Add(1)
+					}
+					_, _ = w.Write([]byte(`{"items":[],"paging":{"count":0}}`))
+				}
+			}))
+			defer server.Close()
+
+			cfg := fmcTestConfig(server.URL)
+			enabled := FMCGroupConfig{Enabled: true, MaxResults: 10}
+			cfg.FMC.Manager = enabled
+			cfg.FMC.Inventory = enabled
+			cfg.FMC.Interfaces = enabled
+			cfg.FMC.Policy = enabled
+			tt.configure(cfg)
+
+			receiver, err := newFMCMetricsReceiver(receivertest.NewNopSettings(metadata.Type), cfg, consumertest.NewNop())
+			require.NoError(t, err)
+			md, err := receiver.scrape(t.Context())
+			require.NoError(t, err)
+
+			for _, operation := range []string{
+				"manager.domains",
+				"manager.server_versions",
+				"manager.device_licenses",
+				"manager.smart_licenses",
+				"manager.upgrade_packages",
+			} {
+				assert.True(t, hasMetricDatapointAttribute(md, "fmc.resource.info", "fmc.operation", operation), operation)
+			}
+			assert.False(t, hasMetricDatapointAttribute(md, "fmc.resource.info", "fmc.operation", "devices.records"))
+			assert.False(t, hasMetricDatapointAttribute(md, "fmc.resource.info", "fmc.operation", "policy.access_policies"))
+			assert.Zero(t, interfaceRequests.Load(), "unselected devices must not fan out to interface endpoints")
+		})
+	}
 }
 
 func metricNameExists(md pmetric.Metrics, name string) bool {
@@ -109,6 +194,7 @@ func TestFMCEStreamerReconnectAdvancesCursorAndSuppressesDeliveredDuplicate(t *t
 	}
 	resume := newFMCEStreamerResumeState(client.InitialTime())
 	eventTime := time.Unix(1_800_000_123, 750_000_000).UTC()
+	resume.now = func() time.Time { return eventTime }
 	event := fmcinternal.EStreamerEvent{
 		EventType:  "connection",
 		RecordType: 3,

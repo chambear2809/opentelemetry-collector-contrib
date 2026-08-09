@@ -10,6 +10,8 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata/metricdatatest"
 
+	"go.opentelemetry.io/collector/component/componenttest"
+
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
 	"go.opentelemetry.io/collector/component/componenttest"
 )
@@ -20,6 +22,8 @@ func TestSetupTelemetry(t *testing.T) {
 	require.NoError(t, err)
 	defer tb.Shutdown()
 	tb.CiscoosreceiverGnmiAuthenticationFailures.Add(context.Background(), 1)
+	tb.CiscoosreceiverGnmiAuxiliaryStateUtilization.Record(context.Background(), 1)
+	tb.CiscoosreceiverGnmiCacheOwnerResets.Add(context.Background(), 1)
 	tb.CiscoosreceiverGnmiCacheUtilization.Record(context.Background(), 1)
 	tb.CiscoosreceiverGnmiConnections.Record(context.Background(), 1)
 	tb.CiscoosreceiverGnmiConsumerRefusals.Add(context.Background(), 1)
@@ -28,12 +32,22 @@ func TestSetupTelemetry(t *testing.T) {
 	tb.CiscoosreceiverGnmiDuplicateUpdates.Add(context.Background(), 1)
 	tb.CiscoosreceiverGnmiInvalidTimestamps.Add(context.Background(), 1)
 	tb.CiscoosreceiverGnmiLastSuccessUnixtime.Record(context.Background(), 1)
+	tb.CiscoosreceiverGnmiOutOfOrderUpdates.Add(context.Background(), 1)
+	tb.CiscoosreceiverGnmiPreflightFailures.Add(context.Background(), 1)
+	tb.CiscoosreceiverGnmiProductVerified.Record(context.Background(), 1)
 	tb.CiscoosreceiverGnmiProfileDegraded.Record(context.Background(), 1)
 	tb.CiscoosreceiverGnmiReconnects.Add(context.Background(), 1)
 	tb.CiscoosreceiverGnmiSubscriptions.Record(context.Background(), 1)
 	tb.CiscoosreceiverGnmiUnmappedValues.Add(context.Background(), 1)
+	tb.CiscoosreceiverGnmiUnsupportedValueKinds.Add(context.Background(), 1)
 	tb.CiscoosreceiverGnmiUpdates.Add(context.Background(), 1)
 	AssertEqualCiscoosreceiverGnmiAuthenticationFailures(t, testTel,
+		[]metricdata.DataPoint[int64]{{Value: 1}},
+		metricdatatest.IgnoreTimestamp())
+	AssertEqualCiscoosreceiverGnmiAuxiliaryStateUtilization(t, testTel,
+		[]metricdata.DataPoint[float64]{{Value: 1}},
+		metricdatatest.IgnoreTimestamp())
+	AssertEqualCiscoosreceiverGnmiCacheOwnerResets(t, testTel,
 		[]metricdata.DataPoint[int64]{{Value: 1}},
 		metricdatatest.IgnoreTimestamp())
 	AssertEqualCiscoosreceiverGnmiCacheUtilization(t, testTel,
@@ -60,6 +74,15 @@ func TestSetupTelemetry(t *testing.T) {
 	AssertEqualCiscoosreceiverGnmiLastSuccessUnixtime(t, testTel,
 		[]metricdata.DataPoint[int64]{{Value: 1}},
 		metricdatatest.IgnoreTimestamp())
+	AssertEqualCiscoosreceiverGnmiOutOfOrderUpdates(t, testTel,
+		[]metricdata.DataPoint[int64]{{Value: 1}},
+		metricdatatest.IgnoreTimestamp())
+	AssertEqualCiscoosreceiverGnmiPreflightFailures(t, testTel,
+		[]metricdata.DataPoint[int64]{{Value: 1}},
+		metricdatatest.IgnoreTimestamp())
+	AssertEqualCiscoosreceiverGnmiProductVerified(t, testTel,
+		[]metricdata.DataPoint[int64]{{Value: 1}},
+		metricdatatest.IgnoreTimestamp())
 	AssertEqualCiscoosreceiverGnmiProfileDegraded(t, testTel,
 		[]metricdata.DataPoint[int64]{{Value: 1}},
 		metricdatatest.IgnoreTimestamp())
@@ -70,6 +93,9 @@ func TestSetupTelemetry(t *testing.T) {
 		[]metricdata.DataPoint[int64]{{Value: 1}},
 		metricdatatest.IgnoreTimestamp())
 	AssertEqualCiscoosreceiverGnmiUnmappedValues(t, testTel,
+		[]metricdata.DataPoint[int64]{{Value: 1}},
+		metricdatatest.IgnoreTimestamp())
+	AssertEqualCiscoosreceiverGnmiUnsupportedValueKinds(t, testTel,
 		[]metricdata.DataPoint[int64]{{Value: 1}},
 		metricdatatest.IgnoreTimestamp())
 	AssertEqualCiscoosreceiverGnmiUpdates(t, testTel,

@@ -4,6 +4,7 @@
 package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver"
 
 import (
+	"container/list"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
@@ -126,6 +127,7 @@ type fmcEStreamerLogsReceiver struct {
 	config   *Config
 	consumer consumer.Logs
 	clients  []*fmc.EStreamerClient
+	resumes  map[*fmc.EStreamerClient]*fmcEStreamerResumeState
 	obs      *receiverhelper.ObsReport
 
 	startMu sync.Mutex
@@ -134,12 +136,13 @@ type fmcEStreamerLogsReceiver struct {
 }
 
 type fmcEndpoint struct {
-	group      string
-	operation  string
-	path       string
-	objectType string
-	method     string
-	query      func(*Config, time.Time) url.Values
+	group               string
+	operation           string
+	path                string
+	objectType          string
+	method              string
+	query               func(*Config, time.Time) url.Values
+	controllerAggregate bool
 }
 
 type fmcScopedEndpoint struct {
@@ -204,14 +207,20 @@ func newFMCEStreamerLogsReceiver(set receiver.Settings, conf *Config, consumer c
 	if err != nil {
 		return nil, err
 	}
-	return &fmcEStreamerLogsReceiver{
+	receiver := &fmcEStreamerLogsReceiver{
 		settings: set,
 		config:   conf,
 		consumer: consumer,
 		clients:  clients,
+		resumes:  make(map[*fmc.EStreamerClient]*fmcEStreamerResumeState, len(clients)),
 		obs:      newPlatformObsReport(set, "tcp"),
 		done:     make(chan struct{}),
-	}, nil
+	}
+	lookback := fmcEStreamerConfiguredLookback(conf)
+	for _, client := range clients {
+		receiver.resumes[client] = newFMCEStreamerResumeStateWithLookback(client.InitialTime(), lookback)
+	}
+	return receiver, nil
 }
 
 func newFMCClients(conf *Config) ([]*fmc.Client, error) {
@@ -224,7 +233,7 @@ func newFMCClients(conf *Config) ([]*fmc.Client, error) {
 			Password:           string(conf.FMC.Auth.Password),
 			DomainUUID:         controller.DomainUUID,
 			UserAgent:          conf.FMC.UserAgent,
-			Timeout:            conf.Timeout,
+			Timeout:            conf.ControllerConfig.Timeout,
 			MaxRetries:         conf.FMC.MaxRetries,
 			PageSize:           conf.FMC.PageSize,
 			InsecureSkipVerify: conf.FMC.InsecureSkipVerify,
@@ -252,10 +261,7 @@ func newFMCEStreamerClients(conf *Config) ([]*fmc.EStreamerClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	lookback := conf.FMC.EStreamer.Lookback
-	if lookback <= 0 {
-		lookback = defaultFMCConfig().EStreamer.Lookback
-	}
+	lookback := fmcEStreamerConfiguredLookback(conf)
 	var initialTime time.Time
 	if lookback > 0 {
 		initialTime = time.Now().Add(-lookback)
@@ -268,8 +274,8 @@ func newFMCEStreamerClients(conf *Config) ([]*fmc.EStreamerClient, error) {
 			TLSConfig:       tlsConfig,
 			InitialTime:     initialTime,
 			EventTypes:      conf.FMC.EStreamer.EventTypes,
-			DialTimeout:     conf.Timeout,
-			ReadTimeout:     conf.CollectionInterval * 2,
+			DialTimeout:     conf.ControllerConfig.Timeout,
+			ReadTimeout:     conf.ControllerConfig.CollectionInterval * 2,
 			MaxMessageBytes: conf.FMC.EStreamer.MaxMessageBytes,
 		})
 		if err != nil {
@@ -278,6 +284,14 @@ func newFMCEStreamerClients(conf *Config) ([]*fmc.EStreamerClient, error) {
 		clients = append(clients, client)
 	}
 	return clients, nil
+}
+
+func fmcEStreamerConfiguredLookback(conf *Config) time.Duration {
+	lookback := conf.FMC.EStreamer.Lookback
+	if lookback <= 0 {
+		lookback = defaultFMCConfig().EStreamer.Lookback
+	}
+	return lookback
 }
 
 func (r *fmcMetricsReceiver) Start(_ context.Context, _ component.Host) error {
@@ -319,7 +333,7 @@ func (r *fmcMetricsReceiver) Shutdown(ctx context.Context) error {
 func (r *fmcMetricsReceiver) run(ctx context.Context) {
 	defer close(r.done)
 	r.collect(ctx)
-	ticker := time.NewTicker(r.config.CollectionInterval)
+	ticker := time.NewTicker(r.config.ControllerConfig.CollectionInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -332,7 +346,7 @@ func (r *fmcMetricsReceiver) run(ctx context.Context) {
 }
 
 func (r *fmcMetricsReceiver) collect(ctx context.Context) {
-	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
+	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.ControllerConfig.Timeout)
 	defer cancel()
 	obsCtx := startMetricsOp(ctx, r.obs)
 	md, scrapeErr := r.scrape(scrapeCtx)
@@ -358,7 +372,7 @@ func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 		domainUUID, err := client.DomainUUID(ctx)
 		if err != nil {
 			partial = true
-			controllerRB.recordSum("fmc.api.endpoint.error", "FMC endpoint scrape error.", "{error}", 1, map[string]string{
+			controllerRB.recordSum("fmc.api.endpoint.error", "FMC endpoint-family scrape failures.", "{error}", 1, map[string]string{
 				"fmc.api.operation": "auth.domain_uuid",
 				"fmc.error.kind":    classifyFMCError(err),
 			})
@@ -399,7 +413,9 @@ func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 				continue
 			}
 			objects, err := r.fetchEndpoint(ctx, client, domainUUID, endpoint, now)
-			objects = filterFMCObjects(objects, r.config.FMC.Targets)
+			if !endpoint.controllerAggregate {
+				objects = filterFMCObjects(objects, r.config.FMC.Targets)
+			}
 			switch endpoint.operation {
 			case "deployment.deployable_devices":
 				cache.deployableDevices = append(cache.deployableDevices, objects...)
@@ -417,7 +433,7 @@ func (r *fmcMetricsReceiver) scrape(ctx context.Context) (pmetric.Metrics, error
 				cache.prefilterPolicies = append(cache.prefilterPolicies, objects...)
 			}
 			for _, obj := range objects {
-				if !selector.allows(fmcObjectIdentity(obj)) {
+				if !endpoint.controllerAggregate && !selector.allows(fmcObjectIdentity(obj)) {
 					continue
 				}
 				builder.recordObject(client.ControllerName(), client.Endpoint(), domainUUID, endpoint, obj)
@@ -641,7 +657,7 @@ func (r *fmcMetricsReceiver) finishScrape(builder *fmcMetricsBuilder, _ time.Tim
 		}
 		outcome := summarizeAPIOutcomes(controllerStats, func(stat fmc.RequestStat) string { return stat.Outcome })
 		if availability, ok := outcome.availability(); ok {
-			builder.controllerResource(client.ControllerName(), client.Endpoint(), "").recordInt("fmc.manager.up", "FMC REST API availability for this scrape.", "1", availability, nil)
+			builder.controllerResource(client.ControllerName(), client.Endpoint(), "").recordInt("fmc.manager.up", "Whether the FMC REST API was reachable for the scrape.", "1", availability, nil)
 		}
 	}
 
@@ -690,7 +706,7 @@ func (r *fmcLogsReceiver) fetchEndpoint(ctx context.Context, client *fmc.Client,
 }
 
 func (r *fmcMetricsReceiver) recordEndpointError(builder *fmcMetricsBuilder, client *fmc.Client, domainUUID, operation string, err error) {
-	builder.controllerResource(client.ControllerName(), client.Endpoint(), domainUUID).recordSum("fmc.api.endpoint.error", "FMC endpoint scrape error.", "{error}", 1, map[string]string{
+	builder.controllerResource(client.ControllerName(), client.Endpoint(), domainUUID).recordSum("fmc.api.endpoint.error", "FMC endpoint-family scrape failures.", "{error}", 1, map[string]string{
 		"fmc.api.operation": operation,
 		"fmc.error.kind":    classifyFMCError(err),
 	})
@@ -729,12 +745,12 @@ func (r *fmcMetricsReceiver) recordAPIRequestMetrics(builder *fmcMetricsBuilder)
 	}
 	for _, aggregate := range aggregateAPIRequestObservations(observations) {
 		rb := builder.controllerResource(aggregate.resource, "", "")
-		rb.recordDouble("fmc.api.request.duration", "Average duration of FMC REST API request attempts in this scrape.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
+		rb.recordDouble("fmc.api.request.duration", "Average duration of FMC REST request attempts within the scrape for each matching request-attribute set.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
 		if aggregate.errors > 0 {
-			rb.recordSum("fmc.api.request.errors", "FMC REST API request errors.", "{error}", aggregate.errors, aggregate.attrs)
+			rb.recordSum("fmc.api.request.errors", "FMC REST request failures.", "{error}", aggregate.errors, aggregate.attrs)
 		}
 		if aggregate.rateLimited > 0 {
-			rb.recordSum("fmc.api.rate_limited", "FMC REST API requests that were rate limited.", "{request}", aggregate.rateLimited, aggregate.attrs)
+			rb.recordSum("fmc.api.rate_limited", "FMC REST requests that were rate limited.", "{request}", aggregate.rateLimited, aggregate.attrs)
 		}
 	}
 }
@@ -778,7 +794,7 @@ func (r *fmcLogsReceiver) Shutdown(ctx context.Context) error {
 func (r *fmcLogsReceiver) run(ctx context.Context) {
 	defer close(r.done)
 	r.collect(ctx)
-	ticker := time.NewTicker(r.config.CollectionInterval)
+	ticker := time.NewTicker(r.config.ControllerConfig.CollectionInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -791,7 +807,7 @@ func (r *fmcLogsReceiver) run(ctx context.Context) {
 }
 
 func (r *fmcLogsReceiver) collect(ctx context.Context) {
-	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
+	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.ControllerConfig.Timeout)
 	defer cancel()
 	r.seen.BeginBatch()
 	obsCtx := startLogsOp(ctx, r.obs)
@@ -827,7 +843,7 @@ func (r *fmcLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 				if !selector.allows(fmcObjectIdentity(obj)) {
 					continue
 				}
-				if r.seenBefore(client.ControllerName(), endpoint, obj, now) {
+				if r.seenBefore(client.ControllerName(), client.Endpoint(), endpoint, obj, now) {
 					continue
 				}
 				appendFMCLog(ld, client.ControllerName(), client.Endpoint(), domainUUID, endpoint, obj, now)
@@ -846,8 +862,10 @@ func (r *fmcLogsReceiver) scrape(ctx context.Context) (plog.Logs, error) {
 	return ld, errors.Join(endpointErrors...)
 }
 
-func (r *fmcLogsReceiver) seenBefore(controller string, endpoint fmcEndpoint, obj fmc.Object, now time.Time) bool {
-	key := logDedupKey(controller+":"+endpoint.operation, fmc.StableID(obj), obj)
+func (r *fmcLogsReceiver) seenBefore(controllerName, controllerEndpoint string, endpoint fmcEndpoint, obj fmc.Object, now time.Time) bool {
+	controllerName, controllerEndpoint = canonicalCheckpointHTTPControllerIdentity(controllerName, controllerEndpoint)
+	namespace := strings.Join([]string{controllerName, controllerEndpoint, endpoint.operation}, "\x00")
+	key := logDedupKey(namespace, fmc.StableID(obj), obj)
 	return !r.seen.MarkPending(key, now)
 }
 
@@ -877,11 +895,17 @@ func (r *fmcEStreamerLogsReceiver) Shutdown(ctx context.Context) error {
 	cancel := r.cancel
 	r.startMu.Unlock()
 	if cancel == nil {
+		flushCtx, flushCancel := checkpointFlushContext(ctx)
+		defer flushCancel()
+		r.flushEStreamerCheckpoints(flushCtx, true)
 		return nil
 	}
 	cancel()
 	select {
 	case <-r.done:
+		flushCtx, flushCancel := checkpointFlushContext(ctx)
+		defer flushCancel()
+		r.flushEStreamerCheckpoints(flushCtx, true)
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
@@ -891,6 +915,11 @@ func (r *fmcEStreamerLogsReceiver) Shutdown(ctx context.Context) error {
 func (r *fmcEStreamerLogsReceiver) run(ctx context.Context) {
 	defer close(r.done)
 	var wg sync.WaitGroup
+	if r.hasEStreamerCheckpoints() {
+		wg.Go(func() {
+			r.runEStreamerCheckpointFlusher(ctx)
+		})
+	}
 	for _, client := range r.clients {
 		client.OnStat = func(stat fmc.EStreamerStat) {
 			if stat.Err != nil {
@@ -900,10 +929,41 @@ func (r *fmcEStreamerLogsReceiver) run(ctx context.Context) {
 			}
 		}
 		wg.Go(func() {
-			r.runEStreamerClient(ctx, client)
+			r.runEStreamerClient(ctx, client, r.resumes[client])
 		})
 	}
 	wg.Wait()
+}
+
+func (r *fmcEStreamerLogsReceiver) hasEStreamerCheckpoints() bool {
+	for _, resume := range r.resumes {
+		resume.mu.Lock()
+		enabled := resume.checkpoint != nil
+		resume.mu.Unlock()
+		if enabled {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *fmcEStreamerLogsReceiver) runEStreamerCheckpointFlusher(ctx context.Context) {
+	ticker := time.NewTicker(fmcCheckpointFlushInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			r.flushEStreamerCheckpoints(ctx, false)
+		}
+	}
+}
+
+func (r *fmcEStreamerLogsReceiver) flushEStreamerCheckpoints(ctx context.Context, force bool) {
+	for _, resume := range r.resumes {
+		resume.persistCheckpoint(ctx, force)
+	}
 }
 
 // fmcEStreamerBackoffSchedule caps how aggressively eStreamer reconnects after
@@ -922,63 +982,172 @@ const (
 	// cursor second or are returned by a server with exclusive cursor semantics.
 	fmcEStreamerResumeOverlap = time.Second
 
-	// The replay set is intentionally in-memory and bounded. Collector restarts
-	// can therefore replay the configured startup lookback (at-least-once), but a
-	// reconnect in the same process suppresses events already accepted downstream.
+	// The replay set is bounded whether it is memory-only or backed by an optional
+	// storage checkpoint. Without storage, Collector restarts replay the configured
+	// startup lookback; with storage, only the bounded unflushed window can replay.
 	fmcEStreamerSeenLimit          = 100_000
 	fmcEStreamerSeenPruneThreshold = 110_000
+	fmcCheckpointFlushEvents       = 256
+	fmcCheckpointFlushInterval     = 5 * time.Second
+	fmcCheckpointFutureSkew        = checkpointFutureSkew
 )
 
 type fmcEStreamerSeenEvent struct {
-	eventTime time.Time
-	seenAt    time.Time
+	eventTime     time.Time
+	seenAt        time.Time
+	shard         uint16
+	checkpointLRU *list.Element
 }
 
 type fmcEStreamerResumeState struct {
-	initialTime time.Time
-	cursor      time.Time
-	seen        map[string]fmcEStreamerSeenEvent
+	mu            sync.Mutex
+	persistMu     sync.Mutex
+	initialTime   time.Time
+	lookback      time.Duration
+	cursor        time.Time
+	seen          map[string]fmcEStreamerSeenEvent
+	checkpoint    *checkpointBinding
+	shards        map[uint16]*list.List
+	nextShard     uint16
+	generation    map[uint16]uint64
+	persisted     map[uint16]uint64
+	accepted      uint64
+	flushed       uint64
+	lastAttempt   time.Time
+	retryAfter    time.Time
+	now           func() time.Time
+	metadataDirty bool
+}
+
+type fmcResumeCheckpointMetadata struct {
+	Cursor time.Time `json:"cursor"`
+}
+
+type fmcResumeCheckpointShard struct {
+	Version int                        `json:"version"`
+	Shard   uint16                     `json:"shard"`
+	Entries []fmcResumeCheckpointEntry `json:"entries,omitempty"`
+}
+
+type fmcResumeCheckpointEntry struct {
+	Key       string    `json:"key"`
+	EventTime time.Time `json:"event_time"`
+	SeenAt    time.Time `json:"seen_at"`
 }
 
 func newFMCEStreamerResumeState(initialTime time.Time) *fmcEStreamerResumeState {
+	return newFMCEStreamerResumeStateWithLookback(initialTime, 0)
+}
+
+func newFMCEStreamerResumeStateWithLookback(initialTime time.Time, lookback time.Duration) *fmcEStreamerResumeState {
 	return &fmcEStreamerResumeState{
 		initialTime: initialTime,
+		lookback:    lookback,
 		seen:        make(map[string]fmcEStreamerSeenEvent),
+		generation:  map[uint16]uint64{},
+		persisted:   map[uint16]uint64{},
+		now:         time.Now,
 	}
 }
 
 func (s *fmcEStreamerResumeState) requestStart() time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.requestStartLocked()
+}
+
+func (s *fmcEStreamerResumeState) requestStartLocked() time.Time {
 	if s.cursor.IsZero() {
+		if s.now != nil {
+			if now := s.now(); !now.IsZero() && s.initialTime.After(now) {
+				if s.lookback > 0 {
+					return now.Add(-s.lookback)
+				}
+				return now
+			}
+		}
 		return s.initialTime
 	}
-	resume := s.cursor.UTC().Truncate(time.Second).Add(-fmcEStreamerResumeOverlap)
-	if s.initialTime.IsZero() || resume.After(s.initialTime) {
-		return resume
+	cursor := s.cursor
+	if s.now != nil {
+		if now := s.now(); !now.IsZero() && cursor.After(now) {
+			cursor = now
+		}
 	}
-	return s.initialTime
+	return fmcEStreamerRetentionStart(cursor)
+}
+
+func fmcEStreamerRetentionStart(cursor time.Time) time.Time {
+	if cursor.IsZero() {
+		return time.Time{}
+	}
+	return cursor.UTC().Truncate(time.Second).Add(-fmcEStreamerResumeOverlap)
 }
 
 func (s *fmcEStreamerResumeState) seenBefore(key string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	_, ok := s.seen[key]
 	return ok
 }
 
+func (s *fmcEStreamerResumeState) observationTime() time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.now()
+}
+
 func (s *fmcEStreamerResumeState) commit(key string, eventTime, seenAt time.Time) {
-	s.seen[key] = fmcEStreamerSeenEvent{eventTime: eventTime, seenAt: seenAt}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if seenAt.IsZero() {
+		if s.now == nil {
+			return
+		}
+		seenAt = s.now()
+		if seenAt.IsZero() {
+			return
+		}
+	}
+	seenAt = seenAt.UTC()
+	eventTime = fmcEStreamerResumeEventTime(eventTime, seenAt)
+	s.addSeenLocked(key, eventTime, seenAt)
 	if eventTime.After(s.cursor) {
 		s.cursor = eventTime.UTC()
 	}
 	if len(s.seen) >= fmcEStreamerSeenPruneThreshold {
-		s.prune()
+		s.pruneLocked()
+	}
+	if s.checkpoint != nil {
+		s.accepted++
 	}
 }
 
-func (s *fmcEStreamerResumeState) prune() {
-	cutoff := s.requestStart()
+func fmcEStreamerResumeEventTime(eventTime, seenAt time.Time) time.Time {
+	if eventTime.IsZero() {
+		return time.Time{}
+	}
+	eventTime = eventTime.UTC()
+	// Keep the delivered controller timestamp unchanged in OTLP, but never let a
+	// future controller clock advance the resume cursor past the collector's
+	// observation time. Even a small accepted skew could otherwise skip events
+	// after the controller clock corrects backward and the stream reconnects.
+	if !seenAt.IsZero() && eventTime.After(seenAt) {
+		return seenAt
+	}
+	return eventTime
+}
+
+func (s *fmcEStreamerResumeState) pruneLocked() {
+	// A committed cursor always has retained delivery evidence. Preserve the
+	// strongest event/observation anchor while pruning so persistence never
+	// emits a nonzero cursor with an empty replay set.
+	protected := s.cursorEvidenceKeyLocked()
+	cutoff := fmcEStreamerRetentionStart(s.cursor)
 	if !cutoff.IsZero() {
 		for key, item := range s.seen {
-			if !item.eventTime.IsZero() && item.eventTime.Before(cutoff) {
-				delete(s.seen, key)
+			if key != protected && !item.eventTime.IsZero() && item.eventTime.Before(cutoff) {
+				s.removeSeenLocked(key)
 			}
 		}
 	}
@@ -996,8 +1165,416 @@ func (s *fmcEStreamerResumeState) prune() {
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].seenAt.Before(entries[j].seenAt)
 	})
-	for _, entry := range entries[:len(entries)-fmcEStreamerSeenLimit] {
-		delete(s.seen, entry.key)
+	remaining := len(entries) - fmcEStreamerSeenLimit
+	for _, entry := range entries {
+		if remaining == 0 {
+			break
+		}
+		if entry.key == protected {
+			continue
+		}
+		s.removeSeenLocked(entry.key)
+		remaining--
+	}
+}
+
+func (s *fmcEStreamerResumeState) cursorEvidenceKeyLocked() string {
+	if s.cursor.IsZero() {
+		return ""
+	}
+	var key string
+	var latest time.Time
+	for candidate, item := range s.seen {
+		evidence := item.eventTime
+		if item.seenAt.After(evidence) {
+			evidence = item.seenAt
+		}
+		if key == "" || evidence.After(latest) || (evidence.Equal(latest) && candidate < key) {
+			key = candidate
+			latest = evidence
+		}
+	}
+	return key
+}
+
+func (s *fmcEStreamerResumeState) addSeenLocked(key string, eventTime, seenAt time.Time) {
+	item := fmcEStreamerSeenEvent{eventTime: eventTime, seenAt: seenAt}
+	if s.checkpoint != nil {
+		item.shard, _ = checkpointShardWithRoom(s.shards, &s.nextShard)
+		s.addSeenToCheckpointShardLocked(key, &item)
+	}
+	s.seen[key] = item
+}
+
+func (s *fmcEStreamerResumeState) addSeenToCheckpointShardLocked(key string, item *fmcEStreamerSeenEvent) {
+	if item.shard == unassignedCheckpointShard {
+		return
+	}
+	shardLRU := s.shards[item.shard]
+	if shardLRU == nil {
+		shardLRU = list.New()
+		s.shards[item.shard] = shardLRU
+	}
+	item.checkpointLRU = shardLRU.PushBack(key)
+	s.generation[item.shard]++
+}
+
+func (s *fmcEStreamerResumeState) removeSeenLocked(key string) {
+	item, ok := s.seen[key]
+	if !ok {
+		return
+	}
+	if s.checkpoint != nil {
+		if item.shard == unassignedCheckpointShard {
+			delete(s.seen, key)
+			return
+		}
+		if shardLRU := s.shards[item.shard]; shardLRU != nil && item.checkpointLRU != nil {
+			shardLRU.Remove(item.checkpointLRU)
+			if shardLRU.Len() == 0 {
+				delete(s.shards, item.shard)
+			}
+		}
+		s.generation[item.shard]++
+	}
+	delete(s.seen, key)
+}
+
+func (s *fmcEStreamerResumeState) enableCheckpoint(binding *checkpointBinding) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.checkpoint = binding
+	if s.now == nil {
+		s.now = time.Now
+	}
+	s.lastAttempt = s.now()
+	s.shards = map[uint16]*list.List{}
+	s.nextShard = 0
+	entries := make([]fmcResumeCheckpointEntry, 0, len(s.seen))
+	for key, item := range s.seen {
+		entries = append(entries, fmcResumeCheckpointEntry{Key: key, EventTime: item.eventTime, SeenAt: item.seenAt})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].SeenAt.Equal(entries[j].SeenAt) {
+			return entries[i].Key < entries[j].Key
+		}
+		return entries[i].SeenAt.Before(entries[j].SeenAt)
+	})
+	s.seen = make(map[string]fmcEStreamerSeenEvent, len(entries))
+	for _, entry := range entries {
+		s.addSeenLocked(entry.Key, entry.EventTime, entry.SeenAt)
+	}
+	s.mu.Unlock()
+}
+
+func (s *fmcEStreamerResumeState) restoreCheckpoint(ctx context.Context) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	binding := s.checkpoint
+	now := s.now()
+	s.mu.Unlock()
+	restoreAccepted := false
+	defer func() {
+		if !restoreAccepted && binding.replacementRequired() {
+			s.markCheckpointReplacementDirty()
+		}
+	}()
+	loaded, ok := binding.load(ctx)
+	if !ok {
+		return
+	}
+	var metadata fmcResumeCheckpointMetadata
+	if len(loaded.metadata) > 0 {
+		if err := json.Unmarshal(loaded.metadata, &metadata); err != nil {
+			binding.warnCorrupt(fmt.Errorf("decode FMC resume checkpoint metadata: %w", err))
+			return
+		}
+	}
+	checkpointCursor := metadata.Cursor
+	latestValidTime := checkpointLatestValidTime(now, loaded.clockAnchor)
+	hasClockAnchor := !loaded.clockAnchor.IsZero()
+	if hasClockAnchor && checkpointCursor.After(latestValidTime) {
+		binding.warnCorrupt(fmt.Errorf("FMC resume checkpoint cursor %s exceeds the allowed future skew from %s", metadata.Cursor, now))
+		return
+	}
+	type restoredEntry struct {
+		fmcResumeCheckpointEntry
+		shard uint16
+	}
+	restored := make([]restoredEntry, 0, len(loaded.shards)*checkpointShardEntries)
+	seen := make(map[string]struct{}, cap(restored))
+	normalizedShards := make(map[uint16]struct{})
+	var latestEventTime time.Time
+	var latestSeenAt time.Time
+	var latestNormalizedEvidence time.Time
+	for shard, encoded := range loaded.shards {
+		var checkpoint fmcResumeCheckpointShard
+		if err := json.Unmarshal(encoded, &checkpoint); err != nil {
+			binding.warnCorrupt(fmt.Errorf("decode FMC resume checkpoint shard %d: %w", shard, err))
+			return
+		}
+		if checkpoint.Version != checkpointFormatVersion || checkpoint.Shard != shard {
+			binding.warnCorrupt(fmt.Errorf("FMC resume checkpoint shard %d has incompatible version or identity", shard))
+			return
+		}
+		if len(checkpoint.Entries) > checkpointShardEntries {
+			binding.warnCorrupt(fmt.Errorf("FMC resume checkpoint shard %d contains %d entries; maximum is %d", shard, len(checkpoint.Entries), checkpointShardEntries))
+			return
+		}
+		for _, entry := range checkpoint.Entries {
+			if entry.Key == "" || entry.SeenAt.IsZero() {
+				binding.warnCorrupt(fmt.Errorf("FMC resume checkpoint shard %d contains an invalid entry", shard))
+				return
+			}
+			if hasClockAnchor && entry.SeenAt.After(latestValidTime) {
+				binding.warnCorrupt(fmt.Errorf("FMC resume checkpoint shard %d contains a future observation time", shard))
+				return
+			}
+			if entry.SeenAt.After(latestSeenAt) {
+				latestSeenAt = entry.SeenAt
+			}
+			if !entry.EventTime.IsZero() {
+				if hasClockAnchor && entry.EventTime.After(latestValidTime) {
+					binding.warnCorrupt(fmt.Errorf("FMC resume checkpoint shard %d contains a future event time", shard))
+					return
+				}
+				if checkpointCursor.IsZero() || entry.EventTime.After(checkpointCursor) {
+					binding.warnCorrupt(fmt.Errorf("FMC resume checkpoint cursor precedes an event in shard %d", shard))
+					return
+				}
+				if entry.EventTime.After(entry.SeenAt.Add(fmcCheckpointFutureSkew)) {
+					binding.warnCorrupt(fmt.Errorf("FMC resume checkpoint shard %d contains an event time after its observation envelope", shard))
+					return
+				}
+				if entry.EventTime.After(latestEventTime) {
+					latestEventTime = entry.EventTime
+				}
+			}
+			if _, duplicate := seen[entry.Key]; duplicate {
+				binding.warnCorrupt(errors.New("FMC resume checkpoint contains a duplicate entry"))
+				return
+			}
+			originalSeenAt := entry.SeenAt
+			originalEventTime := entry.EventTime
+			if entry.SeenAt.After(now) {
+				entry.SeenAt = now
+			}
+			entry.EventTime = fmcEStreamerResumeEventTime(entry.EventTime, entry.SeenAt)
+			if !entry.SeenAt.Equal(originalSeenAt) || !entry.EventTime.Equal(originalEventTime) {
+				normalizedShards[shard] = struct{}{}
+			}
+			normalizedEvidence := entry.EventTime
+			if entry.SeenAt.After(normalizedEvidence) {
+				normalizedEvidence = entry.SeenAt
+			}
+			if normalizedEvidence.After(latestNormalizedEvidence) {
+				latestNormalizedEvidence = normalizedEvidence
+			}
+			seen[entry.Key] = struct{}{}
+			restored = append(restored, restoredEntry{fmcResumeCheckpointEntry: entry, shard: shard})
+		}
+	}
+	if len(restored) > fmcEStreamerSeenLimit {
+		binding.warnCorrupt(fmt.Errorf("FMC resume checkpoint contains %d entries; maximum is %d", len(restored), fmcEStreamerSeenLimit))
+		return
+	}
+	if !checkpointCursor.IsZero() {
+		// commit records both the cursor-producing event and its observation.
+		// Size pruning can remove that exact event only while later-observed
+		// entries remain, so the persisted cursor must stay within the same
+		// bounded clock-skew envelope of retained event/observation evidence.
+		if len(restored) == 0 {
+			binding.warnCorrupt(errors.New("FMC resume checkpoint has a cursor without retained delivery evidence"))
+			return
+		}
+		latestEvidence := latestEventTime
+		if latestSeenAt.After(latestEvidence) {
+			latestEvidence = latestSeenAt
+		}
+		if checkpointCursor.After(latestEvidence.Add(fmcCheckpointFutureSkew)) {
+			binding.warnCorrupt(fmt.Errorf("FMC resume checkpoint cursor %s exceeds retained delivery evidence %s by more than %s", metadata.Cursor, latestEvidence, fmcCheckpointFutureSkew))
+			return
+		}
+	}
+	restoredCursor := checkpointCursor.UTC()
+	metadataDirty := loaded.clockAnchor.IsZero()
+	if restoredCursor.After(now) {
+		restoredCursor = now.UTC()
+		metadataDirty = true
+	}
+	if restoredCursor.After(latestNormalizedEvidence) {
+		restoredCursor = latestNormalizedEvidence.UTC()
+		metadataDirty = true
+	}
+	sort.Slice(restored, func(i, j int) bool {
+		if restored[i].SeenAt.Equal(restored[j].SeenAt) {
+			return restored[i].Key < restored[j].Key
+		}
+		return restored[i].SeenAt.Before(restored[j].SeenAt)
+	})
+	s.mu.Lock()
+	s.cursor = restoredCursor
+	s.seen = make(map[string]fmcEStreamerSeenEvent, len(restored))
+	s.shards = map[uint16]*list.List{}
+	s.nextShard = 0
+	for _, entry := range restored {
+		item := fmcEStreamerSeenEvent{eventTime: entry.EventTime, seenAt: entry.SeenAt, shard: entry.shard}
+		s.addSeenToCheckpointShardLocked(entry.Key, &item)
+		s.seen[entry.Key] = item
+	}
+	s.generation = map[uint16]uint64{}
+	s.persisted = map[uint16]uint64{}
+	for shard := range normalizedShards {
+		s.generation[shard] = 1
+	}
+	s.metadataDirty = metadataDirty
+	s.pruneLocked()
+	s.accepted = 0
+	s.flushed = 0
+	s.lastAttempt = s.now()
+	s.retryAfter = time.Time{}
+	s.mu.Unlock()
+	binding.acceptLoaded(loaded)
+	restoreAccepted = true
+	binding.markValid()
+	s.persistCheckpoint(ctx, true)
+}
+
+func (s *fmcEStreamerResumeState) markCheckpointReplacementDirty() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for shard := range s.shards {
+		s.generation[shard]++
+	}
+	s.metadataDirty = true
+}
+
+func (s *fmcEStreamerResumeState) persistCheckpoint(ctx context.Context, force bool) {
+	if s == nil {
+		return
+	}
+	s.persistMu.Lock()
+	defer s.persistMu.Unlock()
+	s.mu.Lock()
+	binding := s.checkpoint
+	if binding == nil {
+		s.mu.Unlock()
+		return
+	}
+	now := s.now()
+	pending := s.accepted - s.flushed
+	if pending == 0 && !s.metadataDirty && !force {
+		s.mu.Unlock()
+		binding.maintain(ctx)
+		return
+	}
+	if !force {
+		if now.Before(s.retryAfter) || (pending < fmcCheckpointFlushEvents && now.Sub(s.lastAttempt) < fmcCheckpointFlushInterval) {
+			s.mu.Unlock()
+			return
+		}
+	}
+	s.enforceCheckpointBoundsLocked()
+	dirty := make([]int, 0, len(s.generation))
+	for shard, generation := range s.generation {
+		if generation != s.persisted[shard] {
+			dirty = append(dirty, int(shard))
+		}
+	}
+	sort.Ints(dirty)
+	shards := make(map[uint16][]byte, len(dirty))
+	active := make(map[uint16]bool, len(dirty))
+	generations := make(map[uint16]uint64, len(dirty))
+	clockAnchor := checkpointClockAnchor(now, s.cursor)
+	for _, index := range dirty {
+		shard := uint16(index)
+		checkpoint := fmcResumeCheckpointShard{Version: checkpointFormatVersion, Shard: shard}
+		if shardLRU := s.shards[shard]; shardLRU != nil {
+			for element := shardLRU.Front(); element != nil; element = element.Next() {
+				key := element.Value.(string)
+				item := s.seen[key]
+				clockAnchor = checkpointClockAnchor(clockAnchor, item.eventTime)
+				clockAnchor = checkpointClockAnchor(clockAnchor, item.seenAt)
+				checkpoint.Entries = append(checkpoint.Entries, fmcResumeCheckpointEntry{Key: key, EventTime: item.eventTime, SeenAt: item.seenAt})
+			}
+		}
+		encoded, err := json.Marshal(checkpoint)
+		if err != nil {
+			s.mu.Unlock()
+			binding.warn("Failed to encode Cisco OS FMC resume checkpoint; collection will continue with in-memory state", err)
+			return
+		}
+		shards[shard] = encoded
+		active[shard] = len(checkpoint.Entries) > 0
+		generations[shard] = s.generation[shard]
+	}
+	metadata, err := json.Marshal(fmcResumeCheckpointMetadata{Cursor: s.cursor})
+	accepted := s.accepted
+	metadataDirty := s.metadataDirty
+	s.mu.Unlock()
+	if err != nil {
+		binding.warn("Failed to encode Cisco OS FMC resume checkpoint metadata; collection will continue with in-memory state", err)
+		return
+	}
+	if len(dirty) == 0 && !metadataDirty {
+		binding.maintain(ctx)
+		return
+	}
+	persisted := binding.persist(ctx, shards, active, metadata, clockAnchor)
+	s.mu.Lock()
+	s.lastAttempt = now
+	if persisted {
+		for shard, generation := range generations {
+			if generation > s.persisted[shard] {
+				s.persisted[shard] = generation
+			}
+		}
+		if accepted > s.flushed {
+			s.flushed = accepted
+		}
+		s.metadataDirty = false
+		s.retryAfter = time.Time{}
+	} else {
+		s.retryAfter = now.Add(fmcCheckpointFlushInterval)
+	}
+	s.mu.Unlock()
+}
+
+func (s *fmcEStreamerResumeState) enforceCheckpointBoundsLocked() {
+	if len(s.seen) > fmcEStreamerSeenLimit {
+		protected := s.cursorEvidenceKeyLocked()
+		type seenEntry struct {
+			key    string
+			seenAt time.Time
+		}
+		entries := make([]seenEntry, 0, len(s.seen))
+		for key, item := range s.seen {
+			entries = append(entries, seenEntry{key: key, seenAt: item.seenAt})
+		}
+		sort.Slice(entries, func(i, j int) bool { return entries[i].seenAt.Before(entries[j].seenAt) })
+		remaining := len(entries) - fmcEStreamerSeenLimit
+		for _, entry := range entries {
+			if remaining == 0 {
+				break
+			}
+			if entry.key == protected {
+				continue
+			}
+			s.removeSeenLocked(entry.key)
+			remaining--
+		}
+	}
+	for key, item := range s.seen {
+		if item.checkpointLRU != nil {
+			continue
+		}
+		item.shard, _ = checkpointShardWithRoom(s.shards, &s.nextShard)
+		s.addSeenToCheckpointShardLocked(key, &item)
+		s.seen[key] = item
 	}
 }
 
@@ -1018,12 +1595,11 @@ func fmcEStreamerEventKey(event fmc.EStreamerEvent) string {
 	return fmt.Sprintf("sha256:%x", hash.Sum(nil))
 }
 
-func (r *fmcEStreamerLogsReceiver) runEStreamerClient(ctx context.Context, client *fmc.EStreamerClient) {
+func (r *fmcEStreamerLogsReceiver) runEStreamerClient(ctx context.Context, client *fmc.EStreamerClient, resume *fmcEStreamerResumeState) {
 	reconnect := r.config.FMC.EStreamer.ReconnectInterval
 	if reconnect <= 0 {
 		reconnect = defaultFMCConfig().EStreamer.ReconnectInterval
 	}
-	resume := newFMCEStreamerResumeState(client.InitialTime())
 	failures := 0
 	for {
 		err := client.RunFrom(ctx, resume.requestStart(), func(event fmc.EStreamerEvent) error {
@@ -1060,7 +1636,7 @@ func (r *fmcEStreamerLogsReceiver) consumeEStreamerEvent(ctx context.Context, cl
 	if resume.seenBefore(key) {
 		return nil
 	}
-	now := time.Now()
+	now := resume.observationTime()
 	ld := plog.NewLogs()
 	appendFMCEStreamerLog(ld, client.ControllerName(), client.Address(), event, now)
 	if ld.LogRecordCount() > 0 {
@@ -1076,6 +1652,7 @@ func (r *fmcEStreamerLogsReceiver) consumeEStreamerEvent(ctx context.Context, cl
 	// retried from the previous cursor; after a successful consume, the overlap
 	// may replay it from FMC but this in-memory fingerprint suppresses re-export.
 	resume.commit(key, event.Timestamp, now)
+	resume.persistCheckpoint(ctx, false)
 	return nil
 }
 
@@ -1195,16 +1772,16 @@ func (b *fmcMetricsBuilder) recordObject(controllerName, controllerEndpoint, dom
 		"fmc.status":        firstNonEmpty(status, "present"),
 		"fmc.severity":      firstNonEmpty(severity, "unknown"),
 	})
-	rb.recordInt("fmc.resource.info", "FMC managed object metadata.", "1", 1, attrs)
+	rb.recordInt("fmc.resource.info", "Bounded metadata for FMC managed objects.", "1", 1, attrs)
 	if code, ok := statusCode(status); ok {
-		rb.recordInt("fmc.resource.status", "FMC managed object status encoded for troubleshooting.", "1", code, attrs)
+		rb.recordInt("fmc.resource.status", "Encoded FMC object status with original state attributes.", "1", code, attrs)
 	}
 	b.addCount("fmc.resource.count", attrs)
 
 	switch endpoint.group {
 	case "inventory":
 		if up, ok := upStatus(status); ok {
-			rb.recordInt("cisco.device.up", "FMC-managed firewall availability reported by FMC.", "1", up, nil)
+			rb.recordInt("cisco.device.up", "Device availability (1 = up, 0 = down)", "1", up, nil)
 		}
 	case "interfaces":
 		recordControllerStringState(rb, "system.network.interface.status", "FMC-managed firewall interface status.", status, "fmc.interface.status", interfaceAttrs(fmc.String(obj, "name", "ifname", "interfaceName"), fmc.String(obj, "macAddress", "mac"), fmc.String(obj, "description", "descr"), fmc.String(obj, "speed")))
@@ -1344,11 +1921,11 @@ func appendFMCEStreamerLog(ld plog.Logs, controllerName, address string, event f
 
 func fmcMetricEndpoints() []fmcEndpoint {
 	return []fmcEndpoint{
-		{group: "manager", operation: "manager.domains", path: "/api/fmc_platform/v1/info/domain", objectType: "fmc.domain"},
-		{group: "manager", operation: "manager.server_versions", path: "/api/fmc_platform/v1/info/serverversion", objectType: "fmc.server_version"},
-		{group: "manager", operation: "manager.device_licenses", path: "/api/fmc_platform/v1/license/devicelicenses", objectType: "fmc.device_license"},
-		{group: "manager", operation: "manager.smart_licenses", path: "/api/fmc_platform/v1/license/smartlicenses", objectType: "fmc.smart_license"},
-		{group: "manager", operation: "manager.upgrade_packages", path: "/api/fmc_platform/v1/updates/upgradepackages", objectType: "fmc.upgrade_package"},
+		{group: "manager", operation: "manager.domains", path: "/api/fmc_platform/v1/info/domain", objectType: "fmc.domain", controllerAggregate: true},
+		{group: "manager", operation: "manager.server_versions", path: "/api/fmc_platform/v1/info/serverversion", objectType: "fmc.server_version", controllerAggregate: true},
+		{group: "manager", operation: "manager.device_licenses", path: "/api/fmc_platform/v1/license/devicelicenses", objectType: "fmc.device_license", controllerAggregate: true},
+		{group: "manager", operation: "manager.smart_licenses", path: "/api/fmc_platform/v1/license/smartlicenses", objectType: "fmc.smart_license", controllerAggregate: true},
+		{group: "manager", operation: "manager.upgrade_packages", path: "/api/fmc_platform/v1/updates/upgradepackages", objectType: "fmc.upgrade_package", controllerAggregate: true},
 		{group: "inventory", operation: "inventory.device_groups", path: "devicegroups/devicegrouprecords", objectType: "fmc.device_group"},
 		{group: "inventory", operation: "inventory.chassis", path: "chassis/fmcmanagedchassis", objectType: "fmc.chassis"},
 		{group: "health", operation: "health.alerts", path: "health/alerts", objectType: "fmc.health_alert", query: recentFMCQuery},

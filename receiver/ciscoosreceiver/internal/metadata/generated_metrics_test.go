@@ -72,15 +72,10 @@ func TestMetricsBuilder(t *testing.T) {
 			aggMap["cisco.interface.packet.rate"] = mb.metricCiscoInterfacePacketRate.config.AggregationStrategy
 			aggMap["cisco.interface.speed"] = mb.metricCiscoInterfaceSpeed.config.AggregationStrategy
 			aggMap["cisco.interface.utilization"] = mb.metricCiscoInterfaceUtilization.config.AggregationStrategy
-			aggMap["cisco.optics.chromatic_dispersion"] = mb.metricCiscoOpticsChromaticDispersion.config.AggregationStrategy
-			aggMap["cisco.optics.dgd"] = mb.metricCiscoOpticsDgd.config.AggregationStrategy
 			aggMap["cisco.optics.esnr"] = mb.metricCiscoOpticsEsnr.config.AggregationStrategy
 			aggMap["cisco.optics.laser_bias_current"] = mb.metricCiscoOpticsLaserBiasCurrent.config.AggregationStrategy
-			aggMap["cisco.optics.osnr"] = mb.metricCiscoOpticsOsnr.config.AggregationStrategy
 			aggMap["cisco.optics.pre_fec_ber"] = mb.metricCiscoOpticsPreFecBer.config.AggregationStrategy
 			aggMap["cisco.optics.present"] = mb.metricCiscoOpticsPresent.config.AggregationStrategy
-			aggMap["cisco.optics.q_factor"] = mb.metricCiscoOpticsQFactor.config.AggregationStrategy
-			aggMap["cisco.optics.q_margin"] = mb.metricCiscoOpticsQMargin.config.AggregationStrategy
 			aggMap["cisco.optics.rx_power"] = mb.metricCiscoOpticsRxPower.config.AggregationStrategy
 			aggMap["cisco.optics.tdecq"] = mb.metricCiscoOpticsTdecq.config.AggregationStrategy
 			aggMap["cisco.optics.tec_current"] = mb.metricCiscoOpticsTecCurrent.config.AggregationStrategy
@@ -106,6 +101,207 @@ func TestMetricsBuilder(t *testing.T) {
 			allMetricsCount := 0
 			defaultMetricsCount++
 			allMetricsCount++
+			mb.RecordAciAPIEndpointErrorDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordAciAPIRateLimitedDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordAciAPIRequestDurationDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordAciAPIRequestErrorsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordAciAuditRecordCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordAciControllerUpDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordAciEndpointCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordAciEndpointPresentDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordAciEventCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordAciFabricHealthDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordAciFaultActiveDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordAciFaultCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordAciResourceCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordAciResourceInfoDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordAciResourceStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordAciScrapeLastSuccessDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordAciScrapePartialSuccessDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordAciTenantObjectCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordAciTenantStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterAPIRateLimitedDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterAPIRequestDurationDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterAPIRequestErrorsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterClientCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterClientDetailHealthScoreDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterClientHealthScoreDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterClientIssueCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterClientNetworkIoDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterClientUniqueCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterClientWirelessRssiDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterClientWirelessSnrDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterDeviceCollectionStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterDeviceDetailCommunicationStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterDeviceDetailHealthScoreDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterDeviceInterfaceCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterDeviceReachabilityStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterDeviceUptimeDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterInterfaceCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterInventoryDeviceCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterIssueActiveCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterIssueCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterNetworkDeviceCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterNetworkHealthCategoryScoreDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterNetworkHealthEntityCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterNetworkHealthEntityScoreDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterNetworkHealthScoreDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterScrapeLastSuccessDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterScrapePartialSuccessDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterSiteClientCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterSiteClientHealthPercentageDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterSiteHealthCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterSiteIssueCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterSiteNetworkDeviceCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterSiteNetworkDeviceHealthPercentageDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterTopologyLinkCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCatalystCenterTopologyNodeCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoCatalyst9800ReceiverActiveSubscriptionsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoCatalyst9800ReceiverCompactGpbPayloadsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoCatalyst9800ReceiverDecodeErrorsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoCatalyst9800ReceiverDroppedDatapointsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoCatalyst9800ReceiverLastSuccessTimestampDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoCatalyst9800ReceiverReconnectsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoCatalyst9800ReceiverTargetLastSuccessTimestampDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoCatalyst9800ReceiverTargetReconnectsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoCatalyst9800ReceiverTargetSubscriptionActiveDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoCatalyst9800ReceiverTargetUpdatesDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoCatalyst9800ReceiverUnsupportedPathsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoCatalyst9800ReceiverUpdatesDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
 			mb.RecordCiscoDeviceUpDataPoint(ts, 1)
 			defaultMetricsCount++
 			allMetricsCount++
@@ -113,6 +309,9 @@ func TestMetricsBuilder(t *testing.T) {
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoInterfaceAdminStatusDataPoint(ts, 3, "network.interface.name-val-2")
 			}
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoInterfaceDropRateDataPoint(ts, 1)
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoInterfaceIoRateDataPoint(ts, 1, AttributeNetworkIoDirectionReceive, "network.interface.name-val")
@@ -139,16 +338,40 @@ func TestMetricsBuilder(t *testing.T) {
 			}
 			defaultMetricsCount++
 			allMetricsCount++
-			mb.RecordCiscoOpticsChromaticDispersionDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
-			if tt.name == "reaggregate_set" {
-				mb.RecordCiscoOpticsChromaticDispersionDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
-			}
+			mb.RecordCiscoIosxrReceiverActiveSubscriptionsDataPoint(ts, 1)
 			defaultMetricsCount++
 			allMetricsCount++
-			mb.RecordCiscoOpticsDgdDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
-			if tt.name == "reaggregate_set" {
-				mb.RecordCiscoOpticsDgdDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
-			}
+			mb.RecordCiscoIosxrReceiverCompactGpbPayloadsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoIosxrReceiverDecodeErrorsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoIosxrReceiverDroppedDatapointsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoIosxrReceiverLastSuccessTimestampDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoIosxrReceiverReconnectsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoIosxrReceiverTargetLastSuccessTimestampDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoIosxrReceiverTargetReconnectsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoIosxrReceiverTargetSubscriptionActiveDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoIosxrReceiverTargetUpdatesDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoIosxrReceiverUnsupportedPathsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoIosxrReceiverUpdatesDataPoint(ts, 1)
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordCiscoOpticsEsnrDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
@@ -163,12 +386,6 @@ func TestMetricsBuilder(t *testing.T) {
 			}
 			defaultMetricsCount++
 			allMetricsCount++
-			mb.RecordCiscoOpticsOsnrDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
-			if tt.name == "reaggregate_set" {
-				mb.RecordCiscoOpticsOsnrDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
-			}
-			defaultMetricsCount++
-			allMetricsCount++
 			mb.RecordCiscoOpticsPreFecBerDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoOpticsPreFecBerDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
@@ -178,18 +395,6 @@ func TestMetricsBuilder(t *testing.T) {
 			mb.RecordCiscoOpticsPresentDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", AttributeCiscoOpticsProfileDom, false)
 			if tt.name == "reaggregate_set" {
 				mb.RecordCiscoOpticsPresentDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", AttributeCiscoOpticsProfileVdm, true)
-			}
-			defaultMetricsCount++
-			allMetricsCount++
-			mb.RecordCiscoOpticsQFactorDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
-			if tt.name == "reaggregate_set" {
-				mb.RecordCiscoOpticsQFactorDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
-			}
-			defaultMetricsCount++
-			allMetricsCount++
-			mb.RecordCiscoOpticsQMarginDataPoint(ts, 1, "network.interface.name-val", "cisco.optics.lane-val", "cisco.optics.sensor-val", AttributeCiscoOpticsProfileDom, false)
-			if tt.name == "reaggregate_set" {
-				mb.RecordCiscoOpticsQMarginDataPoint(ts, 3, "network.interface.name-val-2", "cisco.optics.lane-val-2", "cisco.optics.sensor-val-2", AttributeCiscoOpticsProfileVdm, true)
 			}
 			defaultMetricsCount++
 			allMetricsCount++
@@ -256,7 +461,892 @@ func TestMetricsBuilder(t *testing.T) {
 			mb.RecordSystemCPUUtilizationDataPoint(ts, 1)
 			defaultMetricsCount++
 			allMetricsCount++
-			mb.RecordSystemMemoryUtilizationDataPoint(ts, 1)
+			mb.RecordCiscoTopologyNeighborInfoDataPoint(ts, 1, "cisco.topology.protocol-val", "network.interface.name-val", "cisco.topology.neighbor.name-val", "cisco.topology.neighbor.interface-val", "cisco.topology.neighbor.platform-val", "cisco.topology.neighbor.address-val", "network.peer.name-val", "network.peer.address-val", "network.protocol.name-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoTopologyNeighborInfoDataPoint(ts, 3, "cisco.topology.protocol-val-2", "network.interface.name-val-2", "cisco.topology.neighbor.name-val-2", "cisco.topology.neighbor.interface-val-2", "cisco.topology.neighbor.platform-val-2", "cisco.topology.neighbor.address-val-2", "network.peer.name-val-2", "network.peer.address-val-2", "network.protocol.name-val-2")
+			}
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoTransceiverSensorDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcApCapwapEncryptionEnabledDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcApCapwapStateDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcApDisconnectDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcApDisconnectReasonInfoDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcApJoinFailureReasonInfoDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcApJoinStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcAuthRadiusAccessAcceptCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcAuthRadiusAccessRejectCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcAuthRadiusBadAuthenticatorCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcAuthRadiusResponseCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcAuthRadiusResponseDelayAvgDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcAuthRadiusResponseDelayMaxDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcAuthRadiusTimeoutCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcClientAuthFailureReasonInfoDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcClientConnectionStateDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcClientNetworkIoDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcClientNetworkPacketsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcClientRoamCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcClientRoamFailureCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcClientRoamTypeInfoDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcClientWirelessRssiDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcClientWirelessSnrDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcControllerCPUUtilizationDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcControllerMemoryBytesDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcControllerReceiverActiveSubscriptionsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcControllerReceiverDecodeErrorsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcControllerReceiverSubscriptionActiveDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcControllerReceiverUpdatesDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcHaEnabledDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcHaStandbyFailureCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcHaStateDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcHaSwitchoverCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcMobilityHandoffCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcMobilityHandoffFailureCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcMobilityPeerStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcMobilityRoamCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcRfChannelChangeCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcRfChannelRecommendedDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcRfChannelUtilizationDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcRfClientCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcRfNoiseFloorDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcSsidChannelUtilizationDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcSsidClientCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcSsidNetworkIoDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcSsidRetryCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordFmcAPIEndpointErrorDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordFmcAPIRateLimitedDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordFmcAPIRequestDurationDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordFmcAPIRequestErrorsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordFmcAuditRecordCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordFmcDeploymentPendingCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordFmcDeploymentStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordFmcHaStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordFmcHealthEventCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordFmcHealthStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordFmcManagerUpDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordFmcPolicyObjectCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordFmcResourceCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordFmcResourceInfoDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordFmcResourceStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordFmcScrapeLastSuccessDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordFmcScrapePartialSuccessDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordFmcVpnTunnelStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightAdvisoryActiveDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightAdvisoryCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightAlarmActiveDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightAlarmCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightAPIRateLimitedDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightAPIRequestDurationDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightAPIRequestErrorsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightAuditRecordCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightComputeAvailableMemoryDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightComputeThreadCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightFaultCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightFirmwareBundleInfoDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightHclStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightHclStatusCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightHyperflexReadIopsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightHyperflexReadLatencyDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightHyperflexStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightHyperflexWriteIopsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightHyperflexWriteLatencyDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightKubernetesClusterConnectionStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightResourceCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightResourceInfoDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightResourceStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightScrapeLastSuccessDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightScrapePartialSuccessDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightStorageLifeLeftDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightStorageMediaErrorCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightStoragePowerOnHoursDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightStoragePredictiveFailureCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightStorageRebuildRateDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightStorageStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightStorageTemperatureDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightTargetConnectionStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightTaskCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightTaskStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightTechsupportCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightTechsupportStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightTelemetryQueryRowsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsCPUIdleUtilizationDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsCPUSystemUtilizationDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsCurrentDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsFanSpeedDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsFanSpeedRatioDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsFanStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsHostEnergyDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsHostPowerDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsHostPowerStateDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsMemoryCachedDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsMemoryEccCorrectableDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsMemoryEccUncorrectableDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsMemoryFreeDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsMemoryModuleSizeDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsMemoryStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsMemoryUsedDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsNetworkInterfaceResetsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsNetworkLinkStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsNetworkLinkFailuresDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsNetworkReceiveDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsNetworkReceiveCrcErrorsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsNetworkReceiveDiscardsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsNetworkReceiveDropsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsNetworkReceiveErrorsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsNetworkReceiveNoBufferDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsNetworkReceivePacketsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsNetworkReceivePauseFramesDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsNetworkSignalLossesDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsNetworkSpeedDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsNetworkTransmitDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsNetworkTransmitDiscardsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsNetworkTransmitDropsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsNetworkTransmitErrorsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsNetworkTransmitPacketsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsNetworkTransmitPauseFramesDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsNetworkUtilizationDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsPowerSupplyOutputPowerDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsPowerSupplyStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsPowerSupplyUtilizationDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsSignalPowerReceiveDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsSignalPowerTransmitDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsTemperatureDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsTemperatureLimitHighCriticalDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsTemperatureLimitLowCriticalDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsTemperatureStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightUcsVoltageDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightVirtualMachineCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightVirtualMachineCPUCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightVirtualMachineMemoryDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightVirtualMachinePowerStateDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightWorkflowCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIntersightWorkflowStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseAccountingSessionCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseAlarmCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseAPIEndpointErrorDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseAPIRateLimitedDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseAPIRequestDurationDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseAPIRequestErrorsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseAuthFailureReasonInfoDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseCertificateCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseCertificateExpirationDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseControllerUpDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseDataconnectQueryDurationDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseDataconnectQueryErrorsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseDataconnectQueryRowsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseDataconnectRowCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseDeploymentNodeCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseDeploymentNodeStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseEndpointCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseEndpointPostureCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseEndpointPostureStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseEndpointProfileCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseEndpointStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseLicenseCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseLicenseStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseNetworkDeviceCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseNetworkDeviceStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIsePolicyObjectCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIsePolicyStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseProfilerPolicyStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIsePxgridMessageCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIsePxgridServiceStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIsePxgridSubscriptionStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseRadiusFailureCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseResourceInfoDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseResourceStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseScrapeLastSuccessDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseScrapePartialSuccessDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseServiceSkippedDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseServiceUnavailableDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseSessionActiveCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseSessionCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseTacacsFailureCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseTrustsecResourceCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseTrustsecResourceStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordIseWebhookDeliveryCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiAPIRequestDurationDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiAPIRequestErrorsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiAPIRequestRateLimitedDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiAppliancePerformanceScoreDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiControllerUpDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiDeviceStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiPowerModuleStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiScrapeLastSuccessDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiSwitchPortAlertActiveDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiSwitchPortPoeAllocatedDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiSwitchPortUsageDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiUplinkCellularSignalRsrpDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiUplinkCellularSignalRsrqDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiUplinkLatencyDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiUplinkLossDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiUplinkStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiVpnPeerJitterDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiVpnPeerLatencyDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiVpnPeerLossDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiVpnPeerMosDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiVpnPeerStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiVpnPeerUsageDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiWirelessChannelUtilizationDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiWirelessClientCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiWirelessPacketCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiWirelessPacketLossDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiWirelessPacketLossPercentageDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordMerakiWirelessSsidStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardAPIEndpointErrorDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardAPIRateLimitedDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardAPIRequestDurationDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardAPIRequestErrorsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardAuditRecordCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardConfigComplianceDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardDataBrokerRuleCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardDataBrokerSessionCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardDataBrokerStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardDeploymentStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardEndpointCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardEventCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardFabricHealthDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardInsightsAnomalyActiveDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardInsightsAnomalyCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardInsightsConfidenceDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardInsightsScoreDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardInsightsStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardOrchestratorDeploymentCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardOrchestratorDeploymentStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardOrchestratorPolicyDeltaCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardResourceCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardResourceInfoDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardResourceStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardScrapeLastSuccessDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardScrapePartialSuccessDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardServiceHealthDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardServiceSkippedDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardServiceUnavailableDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardStorageUtilizationDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordNexusDashboardVpcPeerCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanAPIRateLimitedDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanAPIRequestDurationDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanAPIRequestErrorsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanAppRouteJitterDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanAppRouteLatencyDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanAppRouteLossDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanAppRouteSLAStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanBfdSessionCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanBfdSessionFlapCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanBfdSessionStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanBfdSessionTransitionsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanCollectionObjectCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanControlActualConnectionsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanControlConnectionCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanControlConnectionStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanControlExpectedConnectionsDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanDeviceCertificateStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanDeviceReachabilityStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanDeviceValidityStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanEventCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanInventoryDeviceCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanManagerEndpointStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanManagerHealthScoreDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanManagerStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanManagerUpDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanResourceInfoDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanResourceStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanScrapeLastSuccessDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanScrapePartialSuccessDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanServiceSkippedDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanServiceUnavailableDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSdwanTransportInterfaceStatusDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSystemCPULogicalCountDataPoint(ts, 1)
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSystemCPUUtilizationDataPoint(ts, 1, "cisco.node.name-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordSystemCPUUtilizationDataPoint(ts, 3, "cisco.node.name-val-2")
+			}
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordSystemMemoryUtilizationDataPoint(ts, 1, "cisco.location.fru-val", "cisco.location.slot-val", "cisco.location.bay-val", "cisco.location.chassis-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordSystemMemoryUtilizationDataPoint(ts, 3, "cisco.location.fru-val-2", "cisco.location.slot-val-2", "cisco.location.bay-val-2", "cisco.location.chassis-val-2")
+			}
 			defaultMetricsCount++
 			allMetricsCount++
 			mb.RecordSystemNetworkErrorsDataPoint(ts, 1, AttributeNetworkIoDirectionReceive, "network.interface.name-val")
@@ -292,14 +1382,19 @@ func TestMetricsBuilder(t *testing.T) {
 			mb.RecordSystemUptimeDataPoint(ts, 1)
 
 			rb := mb.NewResourceBuilder()
+			rb.SetCiscoOsBootMode("cisco.os.boot_mode-val")
 			rb.SetCiscoOsName("cisco.os.name-val")
 			rb.SetCiscoPlatformFamily("cisco.platform.family-val")
+			rb.SetCiscoProductFamily("cisco.product.family-val")
 			rb.SetCiscoTelemetryTransport("cisco.telemetry.transport-val")
+			rb.SetDeviceManufacturer("device.manufacturer-val")
+			rb.SetDeviceModelIdentifier("device.model.identifier-val")
 			rb.SetHostID("host.id-val")
 			rb.SetHostIP("host.ip-val")
 			rb.SetHostName("host.name-val")
 			rb.SetHwType("hw.type-val")
 			rb.SetOsName("os.name-val")
+			rb.SetOsVersion("os.version-val")
 			res := rb.Emit()
 			metrics := mb.Emit(WithResource(res))
 			if tt.name == "reaggregate_set" {
@@ -308,15 +1403,10 @@ func TestMetricsBuilder(t *testing.T) {
 				assert.Empty(t, mb.metricCiscoInterfacePacketRate.aggDataPoints)
 				assert.Empty(t, mb.metricCiscoInterfaceSpeed.aggDataPoints)
 				assert.Empty(t, mb.metricCiscoInterfaceUtilization.aggDataPoints)
-				assert.Empty(t, mb.metricCiscoOpticsChromaticDispersion.aggDataPoints)
-				assert.Empty(t, mb.metricCiscoOpticsDgd.aggDataPoints)
 				assert.Empty(t, mb.metricCiscoOpticsEsnr.aggDataPoints)
 				assert.Empty(t, mb.metricCiscoOpticsLaserBiasCurrent.aggDataPoints)
-				assert.Empty(t, mb.metricCiscoOpticsOsnr.aggDataPoints)
 				assert.Empty(t, mb.metricCiscoOpticsPreFecBer.aggDataPoints)
 				assert.Empty(t, mb.metricCiscoOpticsPresent.aggDataPoints)
-				assert.Empty(t, mb.metricCiscoOpticsQFactor.aggDataPoints)
-				assert.Empty(t, mb.metricCiscoOpticsQMargin.aggDataPoints)
 				assert.Empty(t, mb.metricCiscoOpticsRxPower.aggDataPoints)
 				assert.Empty(t, mb.metricCiscoOpticsTdecq.aggDataPoints)
 				assert.Empty(t, mb.metricCiscoOpticsTecCurrent.aggDataPoints)
@@ -359,6 +1449,834 @@ func TestMetricsBuilder(t *testing.T) {
 			validatedMetrics := make(map[string]bool)
 			for _, mi := range allMetricsList {
 				switch mi.Name() {
+				case "aci.api.endpoint.error":
+					assert.False(t, validatedMetrics["aci.api.endpoint.error"], "Found a duplicate in the metrics slice: aci.api.endpoint.error")
+					validatedMetrics["aci.api.endpoint.error"] = true
+					assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+					assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+					assert.Equal(t, "APIC class or endpoint-family scrape failures.", mi.Description())
+					assert.Equal(t, "{error}", mi.Unit())
+					assert.True(t, mi.Sum().IsMonotonic())
+					assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+					dp := mi.Sum().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "aci.api.rate_limited":
+					assert.False(t, validatedMetrics["aci.api.rate_limited"], "Found a duplicate in the metrics slice: aci.api.rate_limited")
+					validatedMetrics["aci.api.rate_limited"] = true
+					assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+					assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+					assert.Equal(t, "APIC requests that received HTTP 429.", mi.Description())
+					assert.Equal(t, "{request}", mi.Unit())
+					assert.True(t, mi.Sum().IsMonotonic())
+					assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+					dp := mi.Sum().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "aci.api.request.duration":
+					assert.False(t, validatedMetrics["aci.api.request.duration"], "Found a duplicate in the metrics slice: aci.api.request.duration")
+					validatedMetrics["aci.api.request.duration"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Average duration of APIC API request attempts within the scrape for each matching request-attribute set.", mi.Description())
+					assert.Equal(t, "s", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+					assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+				case "aci.api.request.errors":
+					assert.False(t, validatedMetrics["aci.api.request.errors"], "Found a duplicate in the metrics slice: aci.api.request.errors")
+					validatedMetrics["aci.api.request.errors"] = true
+					assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+					assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+					assert.Equal(t, "APIC API request failures.", mi.Description())
+					assert.Equal(t, "{error}", mi.Unit())
+					assert.True(t, mi.Sum().IsMonotonic())
+					assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+					dp := mi.Sum().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "aci.audit.record.count":
+					assert.False(t, validatedMetrics["aci.audit.record.count"], "Found a duplicate in the metrics slice: aci.audit.record.count")
+					validatedMetrics["aci.audit.record.count"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Recent APIC audit records by bounded operation, status, and severity attributes.", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "aci.controller.up":
+					assert.False(t, validatedMetrics["aci.controller.up"], "Found a duplicate in the metrics slice: aci.controller.up")
+					validatedMetrics["aci.controller.up"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Whether an APIC controller API was reachable for the scrape.", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "aci.endpoint.count":
+					assert.False(t, validatedMetrics["aci.endpoint.count"], "Found a duplicate in the metrics slice: aci.endpoint.count")
+					validatedMetrics["aci.endpoint.count"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Endpoint count by bounded tenant/EPG context.", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "aci.endpoint.present":
+					assert.False(t, validatedMetrics["aci.endpoint.present"], "Found a duplicate in the metrics slice: aci.endpoint.present")
+					validatedMetrics["aci.endpoint.present"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Endpoint MAC/IP presence.", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "aci.event.count":
+					assert.False(t, validatedMetrics["aci.event.count"], "Found a duplicate in the metrics slice: aci.event.count")
+					validatedMetrics["aci.event.count"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Recent APIC event records by bounded operation, status, and severity attributes.", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "aci.fabric.health":
+					assert.False(t, validatedMetrics["aci.fabric.health"], "Found a duplicate in the metrics slice: aci.fabric.health")
+					validatedMetrics["aci.fabric.health"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Fabric, pod, node, or tenant health score where exposed by APIC.", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+					assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+				case "aci.fault.active":
+					assert.False(t, validatedMetrics["aci.fault.active"], "Found a duplicate in the metrics slice: aci.fault.active")
+					validatedMetrics["aci.fault.active"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Active APIC fault instance.", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "aci.fault.count":
+					assert.False(t, validatedMetrics["aci.fault.count"], "Found a duplicate in the metrics slice: aci.fault.count")
+					validatedMetrics["aci.fault.count"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Active APIC fault counts by bounded attributes.", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "aci.resource.count":
+					assert.False(t, validatedMetrics["aci.resource.count"], "Found a duplicate in the metrics slice: aci.resource.count")
+					validatedMetrics["aci.resource.count"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "APIC resources grouped by bounded group, class, type, status, and severity.", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "aci.resource.info":
+					assert.False(t, validatedMetrics["aci.resource.info"], "Found a duplicate in the metrics slice: aci.resource.info")
+					validatedMetrics["aci.resource.info"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Bounded metadata for APIC managed objects.", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "aci.resource.status":
+					assert.False(t, validatedMetrics["aci.resource.status"], "Found a duplicate in the metrics slice: aci.resource.status")
+					validatedMetrics["aci.resource.status"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Encoded APIC object status with original state attributes.", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "aci.scrape.last_success":
+					assert.False(t, validatedMetrics["aci.scrape.last_success"], "Found a duplicate in the metrics slice: aci.scrape.last_success")
+					validatedMetrics["aci.scrape.last_success"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Unix timestamp of the most recent fully successful APIC scrape.", mi.Description())
+					assert.Equal(t, "s", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "aci.scrape.partial_success":
+					assert.False(t, validatedMetrics["aci.scrape.partial_success"], "Found a duplicate in the metrics slice: aci.scrape.partial_success")
+					validatedMetrics["aci.scrape.partial_success"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Whether one or more APIC endpoint families failed during the scrape.", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "aci.tenant.object.count":
+					assert.False(t, validatedMetrics["aci.tenant.object.count"], "Found a duplicate in the metrics slice: aci.tenant.object.count")
+					validatedMetrics["aci.tenant.object.count"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Tenant object counts by bounded tenant/VRF/BD/EPG attributes.", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "aci.tenant.status":
+					assert.False(t, validatedMetrics["aci.tenant.status"], "Found a duplicate in the metrics slice: aci.tenant.status")
+					validatedMetrics["aci.tenant.status"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Tenant, VRF, bridge domain, EPG, app profile, contract, or L3Out status.", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.api.rate_limited":
+					assert.False(t, validatedMetrics["catalyst_center.api.rate_limited"], "Found a duplicate in the metrics slice: catalyst_center.api.rate_limited")
+					validatedMetrics["catalyst_center.api.rate_limited"] = true
+					assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+					assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+					assert.Equal(t, "Requests that received HTTP 429.", mi.Description())
+					assert.Equal(t, "{request}", mi.Unit())
+					assert.True(t, mi.Sum().IsMonotonic())
+					assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+					dp := mi.Sum().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.api.request.duration":
+					assert.False(t, validatedMetrics["catalyst_center.api.request.duration"], "Found a duplicate in the metrics slice: catalyst_center.api.request.duration")
+					validatedMetrics["catalyst_center.api.request.duration"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Average duration of Catalyst Center API request attempts within the scrape for each matching request-attribute set.", mi.Description())
+					assert.Equal(t, "s", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+					assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+				case "catalyst_center.api.request.errors":
+					assert.False(t, validatedMetrics["catalyst_center.api.request.errors"], "Found a duplicate in the metrics slice: catalyst_center.api.request.errors")
+					validatedMetrics["catalyst_center.api.request.errors"] = true
+					assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+					assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+					assert.Equal(t, "Catalyst Center API request failures.", mi.Description())
+					assert.Equal(t, "{error}", mi.Unit())
+					assert.True(t, mi.Sum().IsMonotonic())
+					assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+					dp := mi.Sum().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.client.count":
+					assert.False(t, validatedMetrics["catalyst_center.client.count"], "Found a duplicate in the metrics slice: catalyst_center.client.count")
+					validatedMetrics["catalyst_center.client.count"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Client count by health category.", mi.Description())
+					assert.Equal(t, "{client}", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.client.detail.health.score":
+					assert.False(t, validatedMetrics["catalyst_center.client.detail.health.score"], "Found a duplicate in the metrics slice: catalyst_center.client.detail.health.score")
+					validatedMetrics["catalyst_center.client.detail.health.score"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Targeted client-detail health score by client, health type, and reason.", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+					assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+				case "catalyst_center.client.health.score":
+					assert.False(t, validatedMetrics["catalyst_center.client.health.score"], "Found a duplicate in the metrics slice: catalyst_center.client.health.score")
+					validatedMetrics["catalyst_center.client.health.score"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Client health score by site and score category.", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+					assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+				case "catalyst_center.client.issue.count":
+					assert.False(t, validatedMetrics["catalyst_center.client.issue.count"], "Found a duplicate in the metrics slice: catalyst_center.client.issue.count")
+					validatedMetrics["catalyst_center.client.issue.count"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Issue count for a targeted client detail lookup.", mi.Description())
+					assert.Equal(t, "{issue}", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.client.network.io":
+					assert.False(t, validatedMetrics["catalyst_center.client.network.io"], "Found a duplicate in the metrics slice: catalyst_center.client.network.io")
+					validatedMetrics["catalyst_center.client.network.io"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Client transmit and receive bytes.", mi.Description())
+					assert.Equal(t, "By", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+					assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+				case "catalyst_center.client.unique.count":
+					assert.False(t, validatedMetrics["catalyst_center.client.unique.count"], "Found a duplicate in the metrics slice: catalyst_center.client.unique.count")
+					validatedMetrics["catalyst_center.client.unique.count"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Unique client count by health category.", mi.Description())
+					assert.Equal(t, "{client}", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.client.wireless.rssi":
+					assert.False(t, validatedMetrics["catalyst_center.client.wireless.rssi"], "Found a duplicate in the metrics slice: catalyst_center.client.wireless.rssi")
+					validatedMetrics["catalyst_center.client.wireless.rssi"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "RSSI for a targeted wireless client.", mi.Description())
+					assert.Equal(t, "dB{mW}", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+					assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+				case "catalyst_center.client.wireless.snr":
+					assert.False(t, validatedMetrics["catalyst_center.client.wireless.snr"], "Found a duplicate in the metrics slice: catalyst_center.client.wireless.snr")
+					validatedMetrics["catalyst_center.client.wireless.snr"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "SNR for a targeted wireless client.", mi.Description())
+					assert.Equal(t, "dB", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+					assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+				case "catalyst_center.device.collection.status":
+					assert.False(t, validatedMetrics["catalyst_center.device.collection.status"], "Found a duplicate in the metrics slice: catalyst_center.device.collection.status")
+					validatedMetrics["catalyst_center.device.collection.status"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Encoded Catalyst Center collection status.", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.device.detail.communication.status":
+					assert.False(t, validatedMetrics["catalyst_center.device.detail.communication.status"], "Found a duplicate in the metrics slice: catalyst_center.device.detail.communication.status")
+					validatedMetrics["catalyst_center.device.detail.communication.status"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Targeted device communication status.", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.device.detail.health.score":
+					assert.False(t, validatedMetrics["catalyst_center.device.detail.health.score"], "Found a duplicate in the metrics slice: catalyst_center.device.detail.health.score")
+					validatedMetrics["catalyst_center.device.detail.health.score"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Targeted device-detail health score.", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+					assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+				case "catalyst_center.device.interface.count":
+					assert.False(t, validatedMetrics["catalyst_center.device.interface.count"], "Found a duplicate in the metrics slice: catalyst_center.device.interface.count")
+					validatedMetrics["catalyst_center.device.interface.count"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Interface count reported for a device.", mi.Description())
+					assert.Equal(t, "{interface}", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.device.reachability.status":
+					assert.False(t, validatedMetrics["catalyst_center.device.reachability.status"], "Found a duplicate in the metrics slice: catalyst_center.device.reachability.status")
+					validatedMetrics["catalyst_center.device.reachability.status"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Encoded device reachability status with the original status retained as an attribute.", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.device.uptime":
+					assert.False(t, validatedMetrics["catalyst_center.device.uptime"], "Found a duplicate in the metrics slice: catalyst_center.device.uptime")
+					validatedMetrics["catalyst_center.device.uptime"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Device uptime reported by Catalyst Center.", mi.Description())
+					assert.Equal(t, "s", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.interface.count":
+					assert.False(t, validatedMetrics["catalyst_center.interface.count"], "Found a duplicate in the metrics slice: catalyst_center.interface.count")
+					validatedMetrics["catalyst_center.interface.count"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Interface inventory count.", mi.Description())
+					assert.Equal(t, "{interface}", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.inventory.device.count":
+					assert.False(t, validatedMetrics["catalyst_center.inventory.device.count"], "Found a duplicate in the metrics slice: catalyst_center.inventory.device.count")
+					validatedMetrics["catalyst_center.inventory.device.count"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Network-device inventory count.", mi.Description())
+					assert.Equal(t, "{device}", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.issue.active.count":
+					assert.False(t, validatedMetrics["catalyst_center.issue.active.count"], "Found a duplicate in the metrics slice: catalyst_center.issue.active.count")
+					validatedMetrics["catalyst_center.issue.active.count"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Active Assurance issues grouped by severity, priority, status, category, entity type, and site.", mi.Description())
+					assert.Equal(t, "{item}", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.issue.count":
+					assert.False(t, validatedMetrics["catalyst_center.issue.count"], "Found a duplicate in the metrics slice: catalyst_center.issue.count")
+					validatedMetrics["catalyst_center.issue.count"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Assurance issue count in the configured lookback window.", mi.Description())
+					assert.Equal(t, "{issue}", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.network.device.count":
+					assert.False(t, validatedMetrics["catalyst_center.network.device.count"], "Found a duplicate in the metrics slice: catalyst_center.network.device.count")
+					validatedMetrics["catalyst_center.network.device.count"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Network device count by health state.", mi.Description())
+					assert.Equal(t, "{device}", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.network.health.category.score":
+					assert.False(t, validatedMetrics["catalyst_center.network.health.category.score"], "Found a duplicate in the metrics slice: catalyst_center.network.health.category.score")
+					validatedMetrics["catalyst_center.network.health.category.score"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Network health score by device category.", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+					assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+				case "catalyst_center.network.health.entity.count":
+					assert.False(t, validatedMetrics["catalyst_center.network.health.entity.count"], "Found a duplicate in the metrics slice: catalyst_center.network.health.entity.count")
+					validatedMetrics["catalyst_center.network.health.entity.count"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Entity count by health state.", mi.Description())
+					assert.Equal(t, "{device}", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.network.health.entity.score":
+					assert.False(t, validatedMetrics["catalyst_center.network.health.entity.score"], "Found a duplicate in the metrics slice: catalyst_center.network.health.entity.score")
+					validatedMetrics["catalyst_center.network.health.entity.score"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Network health score by Assurance entity.", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.network.health.score":
+					assert.False(t, validatedMetrics["catalyst_center.network.health.score"], "Found a duplicate in the metrics slice: catalyst_center.network.health.score")
+					validatedMetrics["catalyst_center.network.health.score"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Latest global Catalyst Center network health score.", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.scrape.last_success":
+					assert.False(t, validatedMetrics["catalyst_center.scrape.last_success"], "Found a duplicate in the metrics slice: catalyst_center.scrape.last_success")
+					validatedMetrics["catalyst_center.scrape.last_success"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Unix timestamp of the most recent fully successful Catalyst Center scrape.", mi.Description())
+					assert.Equal(t, "s", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.scrape.partial_success":
+					assert.False(t, validatedMetrics["catalyst_center.scrape.partial_success"], "Found a duplicate in the metrics slice: catalyst_center.scrape.partial_success")
+					validatedMetrics["catalyst_center.scrape.partial_success"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Whether one or more Catalyst Center endpoint families failed during a scrape.", mi.Description())
+					assert.Equal(t, "1", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.site.client.count":
+					assert.False(t, validatedMetrics["catalyst_center.site.client.count"], "Found a duplicate in the metrics slice: catalyst_center.site.client.count")
+					validatedMetrics["catalyst_center.site.client.count"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Site client population by client type and health state.", mi.Description())
+					assert.Equal(t, "{client}", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.site.client.health.percentage":
+					assert.False(t, validatedMetrics["catalyst_center.site.client.health.percentage"], "Found a duplicate in the metrics slice: catalyst_center.site.client.health.percentage")
+					validatedMetrics["catalyst_center.site.client.health.percentage"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Percent of healthy clients by site.", mi.Description())
+					assert.Equal(t, "%", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+					assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+				case "catalyst_center.site.health.count":
+					assert.False(t, validatedMetrics["catalyst_center.site.health.count"], "Found a duplicate in the metrics slice: catalyst_center.site.health.count")
+					validatedMetrics["catalyst_center.site.health.count"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Site health counts for devices, clients, wireless, APs, WLCs, switches, routers, and issues.", mi.Description())
+					assert.Equal(t, "{item}", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.site.issue.count":
+					assert.False(t, validatedMetrics["catalyst_center.site.issue.count"], "Found a duplicate in the metrics slice: catalyst_center.site.issue.count")
+					validatedMetrics["catalyst_center.site.issue.count"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Site issue counts by priority.", mi.Description())
+					assert.Equal(t, "{issue}", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.site.network_device.count":
+					assert.False(t, validatedMetrics["catalyst_center.site.network_device.count"], "Found a duplicate in the metrics slice: catalyst_center.site.network_device.count")
+					validatedMetrics["catalyst_center.site.network_device.count"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Site network-device population by role and health state.", mi.Description())
+					assert.Equal(t, "{device}", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.site.network_device.health.percentage":
+					assert.False(t, validatedMetrics["catalyst_center.site.network_device.health.percentage"], "Found a duplicate in the metrics slice: catalyst_center.site.network_device.health.percentage")
+					validatedMetrics["catalyst_center.site.network_device.health.percentage"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Percent of healthy network devices by site.", mi.Description())
+					assert.Equal(t, "%", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+					assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+				case "catalyst_center.topology.link.count":
+					assert.False(t, validatedMetrics["catalyst_center.topology.link.count"], "Found a duplicate in the metrics slice: catalyst_center.topology.link.count")
+					validatedMetrics["catalyst_center.topology.link.count"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Physical topology link count globally and by link status.", mi.Description())
+					assert.Equal(t, "{link}", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "catalyst_center.topology.node.count":
+					assert.False(t, validatedMetrics["catalyst_center.topology.node.count"], "Found a duplicate in the metrics slice: catalyst_center.topology.node.count")
+					validatedMetrics["catalyst_center.topology.node.count"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Physical topology node count globally and by node attributes.", mi.Description())
+					assert.Equal(t, "{node}", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.catalyst9800.receiver.active_subscriptions":
+					assert.False(t, validatedMetrics["cisco.catalyst9800.receiver.active_subscriptions"], "Found a duplicate in the metrics slice: cisco.catalyst9800.receiver.active_subscriptions")
+					validatedMetrics["cisco.catalyst9800.receiver.active_subscriptions"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Current number of active Catalyst 9800 telemetry subscriptions.", mi.Description())
+					assert.Empty(t, mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.catalyst9800.receiver.compact_gpb_payloads":
+					assert.False(t, validatedMetrics["cisco.catalyst9800.receiver.compact_gpb_payloads"], "Found a duplicate in the metrics slice: cisco.catalyst9800.receiver.compact_gpb_payloads")
+					validatedMetrics["cisco.catalyst9800.receiver.compact_gpb_payloads"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Compact GPB payload rows in the current MDT message; the rows are not generically decoded.", mi.Description())
+					assert.Empty(t, mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.catalyst9800.receiver.decode_errors":
+					assert.False(t, validatedMetrics["cisco.catalyst9800.receiver.decode_errors"], "Found a duplicate in the metrics slice: cisco.catalyst9800.receiver.decode_errors")
+					validatedMetrics["cisco.catalyst9800.receiver.decode_errors"] = true
+					assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+					assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+					assert.Equal(t, "Catalyst 9800 telemetry decode failures.", mi.Description())
+					assert.Empty(t, mi.Unit())
+					assert.True(t, mi.Sum().IsMonotonic())
+					assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+					dp := mi.Sum().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.catalyst9800.receiver.dropped_datapoints":
+					assert.False(t, validatedMetrics["cisco.catalyst9800.receiver.dropped_datapoints"], "Found a duplicate in the metrics slice: cisco.catalyst9800.receiver.dropped_datapoints")
+					validatedMetrics["cisco.catalyst9800.receiver.dropped_datapoints"] = true
+					assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+					assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+					assert.Equal(t, "Catalyst 9800 datapoints dropped by the receiver cardinality guard.", mi.Description())
+					assert.Empty(t, mi.Unit())
+					assert.True(t, mi.Sum().IsMonotonic())
+					assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+					dp := mi.Sum().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.catalyst9800.receiver.last_success_timestamp":
+					assert.False(t, validatedMetrics["cisco.catalyst9800.receiver.last_success_timestamp"], "Found a duplicate in the metrics slice: cisco.catalyst9800.receiver.last_success_timestamp")
+					validatedMetrics["cisco.catalyst9800.receiver.last_success_timestamp"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Unix timestamp of the last successful Catalyst 9800 telemetry update.", mi.Description())
+					assert.Empty(t, mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.catalyst9800.receiver.reconnects":
+					assert.False(t, validatedMetrics["cisco.catalyst9800.receiver.reconnects"], "Found a duplicate in the metrics slice: cisco.catalyst9800.receiver.reconnects")
+					validatedMetrics["cisco.catalyst9800.receiver.reconnects"] = true
+					assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+					assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+					assert.Equal(t, "Catalyst 9800 telemetry reconnect attempts.", mi.Description())
+					assert.Empty(t, mi.Unit())
+					assert.True(t, mi.Sum().IsMonotonic())
+					assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+					dp := mi.Sum().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.catalyst9800.receiver.target.last_success_timestamp":
+					assert.False(t, validatedMetrics["cisco.catalyst9800.receiver.target.last_success_timestamp"], "Found a duplicate in the metrics slice: cisco.catalyst9800.receiver.target.last_success_timestamp")
+					validatedMetrics["cisco.catalyst9800.receiver.target.last_success_timestamp"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Unix timestamp of the individual target's last successful update.", mi.Description())
+					assert.Empty(t, mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.catalyst9800.receiver.target.reconnects":
+					assert.False(t, validatedMetrics["cisco.catalyst9800.receiver.target.reconnects"], "Found a duplicate in the metrics slice: cisco.catalyst9800.receiver.target.reconnects")
+					validatedMetrics["cisco.catalyst9800.receiver.target.reconnects"] = true
+					assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+					assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+					assert.Equal(t, "Reconnect attempts for an individual target.", mi.Description())
+					assert.Empty(t, mi.Unit())
+					assert.True(t, mi.Sum().IsMonotonic())
+					assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+					dp := mi.Sum().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.catalyst9800.receiver.target.subscription.active":
+					assert.False(t, validatedMetrics["cisco.catalyst9800.receiver.target.subscription.active"], "Found a duplicate in the metrics slice: cisco.catalyst9800.receiver.target.subscription.active")
+					validatedMetrics["cisco.catalyst9800.receiver.target.subscription.active"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Whether an individual configured target has an active subscription.", mi.Description())
+					assert.Empty(t, mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.catalyst9800.receiver.target.updates":
+					assert.False(t, validatedMetrics["cisco.catalyst9800.receiver.target.updates"], "Found a duplicate in the metrics slice: cisco.catalyst9800.receiver.target.updates")
+					validatedMetrics["cisco.catalyst9800.receiver.target.updates"] = true
+					assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+					assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+					assert.Equal(t, "Updates received from an individual target.", mi.Description())
+					assert.Empty(t, mi.Unit())
+					assert.True(t, mi.Sum().IsMonotonic())
+					assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+					dp := mi.Sum().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.catalyst9800.receiver.unsupported_paths":
+					assert.False(t, validatedMetrics["cisco.catalyst9800.receiver.unsupported_paths"], "Found a duplicate in the metrics slice: cisco.catalyst9800.receiver.unsupported_paths")
+					validatedMetrics["cisco.catalyst9800.receiver.unsupported_paths"] = true
+					assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+					assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+					assert.Equal(t, "Catalyst 9800 telemetry paths rejected or pruned as unsupported.", mi.Description())
+					assert.Empty(t, mi.Unit())
+					assert.True(t, mi.Sum().IsMonotonic())
+					assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+					dp := mi.Sum().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.catalyst9800.receiver.updates":
+					assert.False(t, validatedMetrics["cisco.catalyst9800.receiver.updates"], "Found a duplicate in the metrics slice: cisco.catalyst9800.receiver.updates")
+					validatedMetrics["cisco.catalyst9800.receiver.updates"] = true
+					assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+					assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+					assert.Equal(t, "Catalyst 9800 telemetry updates and deletes received.", mi.Description())
+					assert.Empty(t, mi.Unit())
+					assert.True(t, mi.Sum().IsMonotonic())
+					assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+					dp := mi.Sum().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
 				case "cisco.device.up":
 					assert.False(t, validatedMetrics["cisco.device.up"], "Found a duplicate in the metrics slice: cisco.device.up")
 					validatedMetrics["cisco.device.up"] = true
@@ -377,7 +2295,7 @@ func TestMetricsBuilder(t *testing.T) {
 						validatedMetrics["cisco.interface.admin.status"] = true
 						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)", mi.Description())
+						assert.Equal(t, "Cisco interface administrative status (1 = administratively enabled, 0 = not administratively enabled)", mi.Description())
 						assert.Equal(t, "1", mi.Unit())
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
@@ -392,7 +2310,7 @@ func TestMetricsBuilder(t *testing.T) {
 						validatedMetrics["cisco.interface.admin.status"] = true
 						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)", mi.Description())
+						assert.Equal(t, "Cisco interface administrative status (1 = administratively enabled, 0 = not administratively enabled)", mi.Description())
 						assert.Equal(t, "1", mi.Unit())
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
@@ -411,6 +2329,18 @@ func TestMetricsBuilder(t *testing.T) {
 						_, ok := dp.Attributes().Get("network.interface.name")
 						assert.False(t, ok)
 					}
+				case "cisco.interface.drop.rate":
+					assert.False(t, validatedMetrics["cisco.interface.drop.rate"], "Found a duplicate in the metrics slice: cisco.interface.drop.rate")
+					validatedMetrics["cisco.interface.drop.rate"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "APIC interface packet-drop rate when exposed by statistics classes.", mi.Description())
+					assert.Equal(t, "{drop}/s", mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+					assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
 				case "cisco.interface.io.rate":
 					if tt.name != "reaggregate_set" {
 						assert.False(t, validatedMetrics["cisco.interface.io.rate"], "Found a duplicate in the metrics slice: cisco.interface.io.rate")
@@ -422,8 +2352,8 @@ func TestMetricsBuilder(t *testing.T) {
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
 						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
-						assert.Equal(t, int64(1), dp.IntValue())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+						assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
 						networkIoDirectionAttrVal, ok := dp.Attributes().Get("network.io.direction")
 						assert.True(t, ok)
 						assert.Equal(t, "receive", networkIoDirectionAttrVal.Str())
@@ -440,16 +2370,16 @@ func TestMetricsBuilder(t *testing.T) {
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
 						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
 						switch aggMap["cisco.interface.io.rate"] {
 						case "sum":
-							assert.Equal(t, int64(4), dp.IntValue())
+							assert.InDelta(t, float64(4), dp.DoubleValue(), 0.01)
 						case "avg":
-							assert.Equal(t, int64(2), dp.IntValue())
+							assert.InDelta(t, float64(2), dp.DoubleValue(), 0.01)
 						case "min":
-							assert.Equal(t, int64(1), dp.IntValue())
+							assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
 						case "max":
-							assert.Equal(t, int64(3), dp.IntValue())
+							assert.InDelta(t, float64(3), dp.DoubleValue(), 0.01)
 						}
 						_, ok := dp.Attributes().Get("network.io.direction")
 						assert.False(t, ok)
@@ -467,8 +2397,8 @@ func TestMetricsBuilder(t *testing.T) {
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
 						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
-						assert.Equal(t, int64(1), dp.IntValue())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+						assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
 						networkIoDirectionAttrVal, ok := dp.Attributes().Get("network.io.direction")
 						assert.True(t, ok)
 						assert.Equal(t, "receive", networkIoDirectionAttrVal.Str())
@@ -485,16 +2415,16 @@ func TestMetricsBuilder(t *testing.T) {
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
 						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
 						switch aggMap["cisco.interface.packet.rate"] {
 						case "sum":
-							assert.Equal(t, int64(4), dp.IntValue())
+							assert.InDelta(t, float64(4), dp.DoubleValue(), 0.01)
 						case "avg":
-							assert.Equal(t, int64(2), dp.IntValue())
+							assert.InDelta(t, float64(2), dp.DoubleValue(), 0.01)
 						case "min":
-							assert.Equal(t, int64(1), dp.IntValue())
+							assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
 						case "max":
-							assert.Equal(t, int64(3), dp.IntValue())
+							assert.InDelta(t, float64(3), dp.DoubleValue(), 0.01)
 						}
 						_, ok := dp.Attributes().Get("network.io.direction")
 						assert.False(t, ok)
@@ -586,133 +2516,171 @@ func TestMetricsBuilder(t *testing.T) {
 						_, ok = dp.Attributes().Get("network.interface.name")
 						assert.False(t, ok)
 					}
-				case "cisco.optics.chromatic_dispersion":
-					if tt.name != "reaggregate_set" {
-						assert.False(t, validatedMetrics["cisco.optics.chromatic_dispersion"], "Found a duplicate in the metrics slice: cisco.optics.chromatic_dispersion")
-						validatedMetrics["cisco.optics.chromatic_dispersion"] = true
-						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
-						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Coherent optical chromatic dispersion", mi.Description())
-						assert.Equal(t, "ps/nm", mi.Unit())
-						dp := mi.Gauge().DataPoints().At(0)
-						assert.Equal(t, start, dp.StartTimestamp())
-						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
-						assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
-						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
-						assert.True(t, ok)
-						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
-						ciscoOpticsLaneAttrVal, ok := dp.Attributes().Get("cisco.optics.lane")
-						assert.True(t, ok)
-						assert.Equal(t, "cisco.optics.lane-val", ciscoOpticsLaneAttrVal.Str())
-						ciscoOpticsSensorAttrVal, ok := dp.Attributes().Get("cisco.optics.sensor")
-						assert.True(t, ok)
-						assert.Equal(t, "cisco.optics.sensor-val", ciscoOpticsSensorAttrVal.Str())
-						ciscoOpticsProfileAttrVal, ok := dp.Attributes().Get("cisco.optics.profile")
-						assert.True(t, ok)
-						assert.Equal(t, "dom", ciscoOpticsProfileAttrVal.Str())
-						ciscoOpticsExperimentalAttrVal, ok := dp.Attributes().Get("cisco.optics.experimental")
-						assert.True(t, ok)
-						assert.False(t, ciscoOpticsExperimentalAttrVal.Bool())
-					} else {
-						assert.False(t, validatedMetrics["cisco.optics.chromatic_dispersion"], "Found a duplicate in the metrics slice: cisco.optics.chromatic_dispersion")
-						validatedMetrics["cisco.optics.chromatic_dispersion"] = true
-						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
-						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Coherent optical chromatic dispersion", mi.Description())
-						assert.Equal(t, "ps/nm", mi.Unit())
-						dp := mi.Gauge().DataPoints().At(0)
-						assert.Equal(t, start, dp.StartTimestamp())
-						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
-						switch aggMap["cisco.optics.chromatic_dispersion"] {
-						case "sum":
-							assert.InDelta(t, float64(4), dp.DoubleValue(), 0.01)
-						case "avg":
-							assert.InDelta(t, float64(2), dp.DoubleValue(), 0.01)
-						case "min":
-							assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
-						case "max":
-							assert.InDelta(t, float64(3), dp.DoubleValue(), 0.01)
-						}
-						_, ok := dp.Attributes().Get("network.interface.name")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.lane")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.sensor")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.profile")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.experimental")
-						assert.False(t, ok)
-					}
-				case "cisco.optics.dgd":
-					if tt.name != "reaggregate_set" {
-						assert.False(t, validatedMetrics["cisco.optics.dgd"], "Found a duplicate in the metrics slice: cisco.optics.dgd")
-						validatedMetrics["cisco.optics.dgd"] = true
-						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
-						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Coherent optical differential group delay", mi.Description())
-						assert.Equal(t, "ps", mi.Unit())
-						dp := mi.Gauge().DataPoints().At(0)
-						assert.Equal(t, start, dp.StartTimestamp())
-						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
-						assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
-						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
-						assert.True(t, ok)
-						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
-						ciscoOpticsLaneAttrVal, ok := dp.Attributes().Get("cisco.optics.lane")
-						assert.True(t, ok)
-						assert.Equal(t, "cisco.optics.lane-val", ciscoOpticsLaneAttrVal.Str())
-						ciscoOpticsSensorAttrVal, ok := dp.Attributes().Get("cisco.optics.sensor")
-						assert.True(t, ok)
-						assert.Equal(t, "cisco.optics.sensor-val", ciscoOpticsSensorAttrVal.Str())
-						ciscoOpticsProfileAttrVal, ok := dp.Attributes().Get("cisco.optics.profile")
-						assert.True(t, ok)
-						assert.Equal(t, "dom", ciscoOpticsProfileAttrVal.Str())
-						ciscoOpticsExperimentalAttrVal, ok := dp.Attributes().Get("cisco.optics.experimental")
-						assert.True(t, ok)
-						assert.False(t, ciscoOpticsExperimentalAttrVal.Bool())
-					} else {
-						assert.False(t, validatedMetrics["cisco.optics.dgd"], "Found a duplicate in the metrics slice: cisco.optics.dgd")
-						validatedMetrics["cisco.optics.dgd"] = true
-						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
-						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Coherent optical differential group delay", mi.Description())
-						assert.Equal(t, "ps", mi.Unit())
-						dp := mi.Gauge().DataPoints().At(0)
-						assert.Equal(t, start, dp.StartTimestamp())
-						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
-						switch aggMap["cisco.optics.dgd"] {
-						case "sum":
-							assert.InDelta(t, float64(4), dp.DoubleValue(), 0.01)
-						case "avg":
-							assert.InDelta(t, float64(2), dp.DoubleValue(), 0.01)
-						case "min":
-							assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
-						case "max":
-							assert.InDelta(t, float64(3), dp.DoubleValue(), 0.01)
-						}
-						_, ok := dp.Attributes().Get("network.interface.name")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.lane")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.sensor")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.profile")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.experimental")
-						assert.False(t, ok)
-					}
+				case "cisco.iosxr.receiver.active_subscriptions":
+					assert.False(t, validatedMetrics["cisco.iosxr.receiver.active_subscriptions"], "Found a duplicate in the metrics slice: cisco.iosxr.receiver.active_subscriptions")
+					validatedMetrics["cisco.iosxr.receiver.active_subscriptions"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Active gNMI dial-in targets.", mi.Description())
+					assert.Empty(t, mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.iosxr.receiver.compact_gpb_payloads":
+					assert.False(t, validatedMetrics["cisco.iosxr.receiver.compact_gpb_payloads"], "Found a duplicate in the metrics slice: cisco.iosxr.receiver.compact_gpb_payloads")
+					validatedMetrics["cisco.iosxr.receiver.compact_gpb_payloads"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Compact GPB payload rows in the current MDT message; the rows are not generically decoded.", mi.Description())
+					assert.Empty(t, mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.iosxr.receiver.decode_errors":
+					assert.False(t, validatedMetrics["cisco.iosxr.receiver.decode_errors"], "Found a duplicate in the metrics slice: cisco.iosxr.receiver.decode_errors")
+					validatedMetrics["cisco.iosxr.receiver.decode_errors"] = true
+					assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+					assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+					assert.Equal(t, "JSON/YANG decode failures.", mi.Description())
+					assert.Empty(t, mi.Unit())
+					assert.True(t, mi.Sum().IsMonotonic())
+					assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+					dp := mi.Sum().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.iosxr.receiver.dropped_datapoints":
+					assert.False(t, validatedMetrics["cisco.iosxr.receiver.dropped_datapoints"], "Found a duplicate in the metrics slice: cisco.iosxr.receiver.dropped_datapoints")
+					validatedMetrics["cisco.iosxr.receiver.dropped_datapoints"] = true
+					assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+					assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+					assert.Equal(t, "Datapoints dropped by the receiver cardinality guard.", mi.Description())
+					assert.Empty(t, mi.Unit())
+					assert.True(t, mi.Sum().IsMonotonic())
+					assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+					dp := mi.Sum().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.iosxr.receiver.last_success_timestamp":
+					assert.False(t, validatedMetrics["cisco.iosxr.receiver.last_success_timestamp"], "Found a duplicate in the metrics slice: cisco.iosxr.receiver.last_success_timestamp")
+					validatedMetrics["cisco.iosxr.receiver.last_success_timestamp"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Unix timestamp of the last successful gNMI update.", mi.Description())
+					assert.Empty(t, mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.iosxr.receiver.reconnects":
+					assert.False(t, validatedMetrics["cisco.iosxr.receiver.reconnects"], "Found a duplicate in the metrics slice: cisco.iosxr.receiver.reconnects")
+					validatedMetrics["cisco.iosxr.receiver.reconnects"] = true
+					assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+					assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+					assert.Equal(t, "gNMI reconnect attempts after subscription failures.", mi.Description())
+					assert.Empty(t, mi.Unit())
+					assert.True(t, mi.Sum().IsMonotonic())
+					assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+					dp := mi.Sum().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.iosxr.receiver.target.last_success_timestamp":
+					assert.False(t, validatedMetrics["cisco.iosxr.receiver.target.last_success_timestamp"], "Found a duplicate in the metrics slice: cisco.iosxr.receiver.target.last_success_timestamp")
+					validatedMetrics["cisco.iosxr.receiver.target.last_success_timestamp"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Unix timestamp of the individual target's last successful update.", mi.Description())
+					assert.Empty(t, mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.iosxr.receiver.target.reconnects":
+					assert.False(t, validatedMetrics["cisco.iosxr.receiver.target.reconnects"], "Found a duplicate in the metrics slice: cisco.iosxr.receiver.target.reconnects")
+					validatedMetrics["cisco.iosxr.receiver.target.reconnects"] = true
+					assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+					assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+					assert.Equal(t, "Reconnect attempts for an individual target.", mi.Description())
+					assert.Empty(t, mi.Unit())
+					assert.True(t, mi.Sum().IsMonotonic())
+					assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+					dp := mi.Sum().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.iosxr.receiver.target.subscription.active":
+					assert.False(t, validatedMetrics["cisco.iosxr.receiver.target.subscription.active"], "Found a duplicate in the metrics slice: cisco.iosxr.receiver.target.subscription.active")
+					validatedMetrics["cisco.iosxr.receiver.target.subscription.active"] = true
+					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+					assert.Equal(t, "Whether an individual configured target has an active subscription.", mi.Description())
+					assert.Empty(t, mi.Unit())
+					dp := mi.Gauge().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.iosxr.receiver.target.updates":
+					assert.False(t, validatedMetrics["cisco.iosxr.receiver.target.updates"], "Found a duplicate in the metrics slice: cisco.iosxr.receiver.target.updates")
+					validatedMetrics["cisco.iosxr.receiver.target.updates"] = true
+					assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+					assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+					assert.Equal(t, "Updates received from an individual target.", mi.Description())
+					assert.Empty(t, mi.Unit())
+					assert.True(t, mi.Sum().IsMonotonic())
+					assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+					dp := mi.Sum().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.iosxr.receiver.unsupported_paths":
+					assert.False(t, validatedMetrics["cisco.iosxr.receiver.unsupported_paths"], "Found a duplicate in the metrics slice: cisco.iosxr.receiver.unsupported_paths")
+					validatedMetrics["cisco.iosxr.receiver.unsupported_paths"] = true
+					assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+					assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+					assert.Equal(t, "Paths rejected or pruned by gNMI capabilities.", mi.Description())
+					assert.Empty(t, mi.Unit())
+					assert.True(t, mi.Sum().IsMonotonic())
+					assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+					dp := mi.Sum().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
+				case "cisco.iosxr.receiver.updates":
+					assert.False(t, validatedMetrics["cisco.iosxr.receiver.updates"], "Found a duplicate in the metrics slice: cisco.iosxr.receiver.updates")
+					validatedMetrics["cisco.iosxr.receiver.updates"] = true
+					assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
+					assert.Equal(t, 1, mi.Sum().DataPoints().Len())
+					assert.Equal(t, "gNMI updates and deletes received.", mi.Description())
+					assert.Empty(t, mi.Unit())
+					assert.True(t, mi.Sum().IsMonotonic())
+					assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
+					dp := mi.Sum().DataPoints().At(0)
+					assert.Equal(t, start, dp.StartTimestamp())
+					assert.Equal(t, ts, dp.Timestamp())
+					assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+					assert.Equal(t, int64(1), dp.IntValue())
 				case "cisco.optics.esnr":
 					if tt.name != "reaggregate_set" {
 						assert.False(t, validatedMetrics["cisco.optics.esnr"], "Found a duplicate in the metrics slice: cisco.optics.esnr")
 						validatedMetrics["cisco.optics.esnr"] = true
 						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Effective signal-to-noise ratio reported by a qualified VDM sensor", mi.Description())
+						assert.Equal(t, "Effective signal-to-noise ratio reported by an allowlisted device VDM sensor", mi.Description())
 						assert.Equal(t, "dB", mi.Unit())
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
@@ -739,7 +2707,7 @@ func TestMetricsBuilder(t *testing.T) {
 						validatedMetrics["cisco.optics.esnr"] = true
 						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Effective signal-to-noise ratio reported by a qualified VDM sensor", mi.Description())
+						assert.Equal(t, "Effective signal-to-noise ratio reported by an allowlisted device VDM sensor", mi.Description())
 						assert.Equal(t, "dB", mi.Unit())
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
@@ -806,66 +2774,6 @@ func TestMetricsBuilder(t *testing.T) {
 						assert.Equal(t, ts, dp.Timestamp())
 						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
 						switch aggMap["cisco.optics.laser_bias_current"] {
-						case "sum":
-							assert.InDelta(t, float64(4), dp.DoubleValue(), 0.01)
-						case "avg":
-							assert.InDelta(t, float64(2), dp.DoubleValue(), 0.01)
-						case "min":
-							assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
-						case "max":
-							assert.InDelta(t, float64(3), dp.DoubleValue(), 0.01)
-						}
-						_, ok := dp.Attributes().Get("network.interface.name")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.lane")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.sensor")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.profile")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.experimental")
-						assert.False(t, ok)
-					}
-				case "cisco.optics.osnr":
-					if tt.name != "reaggregate_set" {
-						assert.False(t, validatedMetrics["cisco.optics.osnr"], "Found a duplicate in the metrics slice: cisco.optics.osnr")
-						validatedMetrics["cisco.optics.osnr"] = true
-						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
-						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Coherent optical signal-to-noise ratio", mi.Description())
-						assert.Equal(t, "dB", mi.Unit())
-						dp := mi.Gauge().DataPoints().At(0)
-						assert.Equal(t, start, dp.StartTimestamp())
-						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
-						assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
-						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
-						assert.True(t, ok)
-						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
-						ciscoOpticsLaneAttrVal, ok := dp.Attributes().Get("cisco.optics.lane")
-						assert.True(t, ok)
-						assert.Equal(t, "cisco.optics.lane-val", ciscoOpticsLaneAttrVal.Str())
-						ciscoOpticsSensorAttrVal, ok := dp.Attributes().Get("cisco.optics.sensor")
-						assert.True(t, ok)
-						assert.Equal(t, "cisco.optics.sensor-val", ciscoOpticsSensorAttrVal.Str())
-						ciscoOpticsProfileAttrVal, ok := dp.Attributes().Get("cisco.optics.profile")
-						assert.True(t, ok)
-						assert.Equal(t, "dom", ciscoOpticsProfileAttrVal.Str())
-						ciscoOpticsExperimentalAttrVal, ok := dp.Attributes().Get("cisco.optics.experimental")
-						assert.True(t, ok)
-						assert.False(t, ciscoOpticsExperimentalAttrVal.Bool())
-					} else {
-						assert.False(t, validatedMetrics["cisco.optics.osnr"], "Found a duplicate in the metrics slice: cisco.optics.osnr")
-						validatedMetrics["cisco.optics.osnr"] = true
-						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
-						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Coherent optical signal-to-noise ratio", mi.Description())
-						assert.Equal(t, "dB", mi.Unit())
-						dp := mi.Gauge().DataPoints().At(0)
-						assert.Equal(t, start, dp.StartTimestamp())
-						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
-						switch aggMap["cisco.optics.osnr"] {
 						case "sum":
 							assert.InDelta(t, float64(4), dp.DoubleValue(), 0.01)
 						case "avg":
@@ -1001,126 +2909,6 @@ func TestMetricsBuilder(t *testing.T) {
 						_, ok = dp.Attributes().Get("cisco.optics.experimental")
 						assert.False(t, ok)
 					}
-				case "cisco.optics.q_factor":
-					if tt.name != "reaggregate_set" {
-						assert.False(t, validatedMetrics["cisco.optics.q_factor"], "Found a duplicate in the metrics slice: cisco.optics.q_factor")
-						validatedMetrics["cisco.optics.q_factor"] = true
-						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
-						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Coherent optical Q-factor", mi.Description())
-						assert.Equal(t, "dB", mi.Unit())
-						dp := mi.Gauge().DataPoints().At(0)
-						assert.Equal(t, start, dp.StartTimestamp())
-						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
-						assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
-						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
-						assert.True(t, ok)
-						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
-						ciscoOpticsLaneAttrVal, ok := dp.Attributes().Get("cisco.optics.lane")
-						assert.True(t, ok)
-						assert.Equal(t, "cisco.optics.lane-val", ciscoOpticsLaneAttrVal.Str())
-						ciscoOpticsSensorAttrVal, ok := dp.Attributes().Get("cisco.optics.sensor")
-						assert.True(t, ok)
-						assert.Equal(t, "cisco.optics.sensor-val", ciscoOpticsSensorAttrVal.Str())
-						ciscoOpticsProfileAttrVal, ok := dp.Attributes().Get("cisco.optics.profile")
-						assert.True(t, ok)
-						assert.Equal(t, "dom", ciscoOpticsProfileAttrVal.Str())
-						ciscoOpticsExperimentalAttrVal, ok := dp.Attributes().Get("cisco.optics.experimental")
-						assert.True(t, ok)
-						assert.False(t, ciscoOpticsExperimentalAttrVal.Bool())
-					} else {
-						assert.False(t, validatedMetrics["cisco.optics.q_factor"], "Found a duplicate in the metrics slice: cisco.optics.q_factor")
-						validatedMetrics["cisco.optics.q_factor"] = true
-						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
-						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Coherent optical Q-factor", mi.Description())
-						assert.Equal(t, "dB", mi.Unit())
-						dp := mi.Gauge().DataPoints().At(0)
-						assert.Equal(t, start, dp.StartTimestamp())
-						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
-						switch aggMap["cisco.optics.q_factor"] {
-						case "sum":
-							assert.InDelta(t, float64(4), dp.DoubleValue(), 0.01)
-						case "avg":
-							assert.InDelta(t, float64(2), dp.DoubleValue(), 0.01)
-						case "min":
-							assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
-						case "max":
-							assert.InDelta(t, float64(3), dp.DoubleValue(), 0.01)
-						}
-						_, ok := dp.Attributes().Get("network.interface.name")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.lane")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.sensor")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.profile")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.experimental")
-						assert.False(t, ok)
-					}
-				case "cisco.optics.q_margin":
-					if tt.name != "reaggregate_set" {
-						assert.False(t, validatedMetrics["cisco.optics.q_margin"], "Found a duplicate in the metrics slice: cisco.optics.q_margin")
-						validatedMetrics["cisco.optics.q_margin"] = true
-						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
-						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Coherent optical Q-margin", mi.Description())
-						assert.Equal(t, "dB", mi.Unit())
-						dp := mi.Gauge().DataPoints().At(0)
-						assert.Equal(t, start, dp.StartTimestamp())
-						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
-						assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
-						networkInterfaceNameAttrVal, ok := dp.Attributes().Get("network.interface.name")
-						assert.True(t, ok)
-						assert.Equal(t, "network.interface.name-val", networkInterfaceNameAttrVal.Str())
-						ciscoOpticsLaneAttrVal, ok := dp.Attributes().Get("cisco.optics.lane")
-						assert.True(t, ok)
-						assert.Equal(t, "cisco.optics.lane-val", ciscoOpticsLaneAttrVal.Str())
-						ciscoOpticsSensorAttrVal, ok := dp.Attributes().Get("cisco.optics.sensor")
-						assert.True(t, ok)
-						assert.Equal(t, "cisco.optics.sensor-val", ciscoOpticsSensorAttrVal.Str())
-						ciscoOpticsProfileAttrVal, ok := dp.Attributes().Get("cisco.optics.profile")
-						assert.True(t, ok)
-						assert.Equal(t, "dom", ciscoOpticsProfileAttrVal.Str())
-						ciscoOpticsExperimentalAttrVal, ok := dp.Attributes().Get("cisco.optics.experimental")
-						assert.True(t, ok)
-						assert.False(t, ciscoOpticsExperimentalAttrVal.Bool())
-					} else {
-						assert.False(t, validatedMetrics["cisco.optics.q_margin"], "Found a duplicate in the metrics slice: cisco.optics.q_margin")
-						validatedMetrics["cisco.optics.q_margin"] = true
-						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
-						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Coherent optical Q-margin", mi.Description())
-						assert.Equal(t, "dB", mi.Unit())
-						dp := mi.Gauge().DataPoints().At(0)
-						assert.Equal(t, start, dp.StartTimestamp())
-						assert.Equal(t, ts, dp.Timestamp())
-						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
-						switch aggMap["cisco.optics.q_margin"] {
-						case "sum":
-							assert.InDelta(t, float64(4), dp.DoubleValue(), 0.01)
-						case "avg":
-							assert.InDelta(t, float64(2), dp.DoubleValue(), 0.01)
-						case "min":
-							assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
-						case "max":
-							assert.InDelta(t, float64(3), dp.DoubleValue(), 0.01)
-						}
-						_, ok := dp.Attributes().Get("network.interface.name")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.lane")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.sensor")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.profile")
-						assert.False(t, ok)
-						_, ok = dp.Attributes().Get("cisco.optics.experimental")
-						assert.False(t, ok)
-					}
 				case "cisco.optics.rx_power":
 					if tt.name != "reaggregate_set" {
 						assert.False(t, validatedMetrics["cisco.optics.rx_power"], "Found a duplicate in the metrics slice: cisco.optics.rx_power")
@@ -1128,7 +2916,7 @@ func TestMetricsBuilder(t *testing.T) {
 						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
 						assert.Equal(t, "Received optical power", mi.Description())
-						assert.Equal(t, "dB[mW]", mi.Unit())
+						assert.Equal(t, "dB{mW}", mi.Unit())
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
 						assert.Equal(t, ts, dp.Timestamp())
@@ -1155,7 +2943,7 @@ func TestMetricsBuilder(t *testing.T) {
 						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
 						assert.Equal(t, "Received optical power", mi.Description())
-						assert.Equal(t, "dB[mW]", mi.Unit())
+						assert.Equal(t, "dB{mW}", mi.Unit())
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
 						assert.Equal(t, ts, dp.Timestamp())
@@ -1428,7 +3216,7 @@ func TestMetricsBuilder(t *testing.T) {
 						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
 						assert.Equal(t, "Transmitted optical power", mi.Description())
-						assert.Equal(t, "dB[mW]", mi.Unit())
+						assert.Equal(t, "dB{mW}", mi.Unit())
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
 						assert.Equal(t, ts, dp.Timestamp())
@@ -1455,7 +3243,7 @@ func TestMetricsBuilder(t *testing.T) {
 						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
 						assert.Equal(t, "Transmitted optical power", mi.Description())
-						assert.Equal(t, "dB[mW]", mi.Unit())
+						assert.Equal(t, "dB{mW}", mi.Unit())
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
 						assert.Equal(t, ts, dp.Timestamp())
@@ -1672,29 +3460,100 @@ func TestMetricsBuilder(t *testing.T) {
 						assert.False(t, ok)
 					}
 				case "system.cpu.utilization":
-					assert.False(t, validatedMetrics["system.cpu.utilization"], "Found a duplicate in the metrics slice: system.cpu.utilization")
-					validatedMetrics["system.cpu.utilization"] = true
-					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
-					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-					assert.Equal(t, "Percentage of CPU time in use.", mi.Description())
-					assert.Equal(t, "1", mi.Unit())
-					dp := mi.Gauge().DataPoints().At(0)
-					assert.Equal(t, start, dp.StartTimestamp())
-					assert.Equal(t, ts, dp.Timestamp())
-					assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
-					assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["system.cpu.utilization"], "Found a duplicate in the metrics slice: system.cpu.utilization")
+						validatedMetrics["system.cpu.utilization"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Ratio of CPU time in use, from 0 to 1.", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+						assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+						ciscoNodeNameAttrVal, ok := dp.Attributes().Get("cisco.node.name")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.node.name-val", ciscoNodeNameAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["system.cpu.utilization"], "Found a duplicate in the metrics slice: system.cpu.utilization")
+						validatedMetrics["system.cpu.utilization"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Ratio of CPU time in use, from 0 to 1.", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+						switch aggMap["system.cpu.utilization"] {
+						case "sum":
+							assert.InDelta(t, float64(4), dp.DoubleValue(), 0.01)
+						case "avg":
+							assert.InDelta(t, float64(2), dp.DoubleValue(), 0.01)
+						case "min":
+							assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+						case "max":
+							assert.InDelta(t, float64(3), dp.DoubleValue(), 0.01)
+						}
+						_, ok := dp.Attributes().Get("cisco.node.name")
+						assert.False(t, ok)
+					}
 				case "system.memory.utilization":
-					assert.False(t, validatedMetrics["system.memory.utilization"], "Found a duplicate in the metrics slice: system.memory.utilization")
-					validatedMetrics["system.memory.utilization"] = true
-					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
-					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-					assert.Equal(t, "Percentage of memory bytes in use.", mi.Description())
-					assert.Equal(t, "1", mi.Unit())
-					dp := mi.Gauge().DataPoints().At(0)
-					assert.Equal(t, start, dp.StartTimestamp())
-					assert.Equal(t, ts, dp.Timestamp())
-					assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
-					assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["system.memory.utilization"], "Found a duplicate in the metrics slice: system.memory.utilization")
+						validatedMetrics["system.memory.utilization"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Ratio of memory bytes in use, from 0 to 1.", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+						assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+						ciscoLocationFruAttrVal, ok := dp.Attributes().Get("cisco.location.fru")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.location.fru-val", ciscoLocationFruAttrVal.Str())
+						ciscoLocationSlotAttrVal, ok := dp.Attributes().Get("cisco.location.slot")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.location.slot-val", ciscoLocationSlotAttrVal.Str())
+						ciscoLocationBayAttrVal, ok := dp.Attributes().Get("cisco.location.bay")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.location.bay-val", ciscoLocationBayAttrVal.Str())
+						ciscoLocationChassisAttrVal, ok := dp.Attributes().Get("cisco.location.chassis")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.location.chassis-val", ciscoLocationChassisAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["system.memory.utilization"], "Found a duplicate in the metrics slice: system.memory.utilization")
+						validatedMetrics["system.memory.utilization"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Ratio of memory bytes in use, from 0 to 1.", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+						switch aggMap["system.memory.utilization"] {
+						case "sum":
+							assert.InDelta(t, float64(4), dp.DoubleValue(), 0.01)
+						case "avg":
+							assert.InDelta(t, float64(2), dp.DoubleValue(), 0.01)
+						case "min":
+							assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+						case "max":
+							assert.InDelta(t, float64(3), dp.DoubleValue(), 0.01)
+						}
+						_, ok := dp.Attributes().Get("cisco.location.fru")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.location.slot")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.location.bay")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.location.chassis")
+						assert.False(t, ok)
+					}
 				case "system.network.errors":
 					if tt.name != "reaggregate_set" {
 						assert.False(t, validatedMetrics["system.network.errors"], "Found a duplicate in the metrics slice: system.network.errors")
@@ -1750,7 +3609,7 @@ func TestMetricsBuilder(t *testing.T) {
 						validatedMetrics["system.network.interface.status"] = true
 						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Interface operational status (1 = up, 0 = down)", mi.Description())
+						assert.Equal(t, "Interface operational status (1 = up, 0 = not up)", mi.Description())
 						assert.Equal(t, "1", mi.Unit())
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
@@ -1765,7 +3624,7 @@ func TestMetricsBuilder(t *testing.T) {
 						validatedMetrics["system.network.interface.status"] = true
 						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-						assert.Equal(t, "Interface operational status (1 = up, 0 = down)", mi.Description())
+						assert.Equal(t, "Interface operational status (1 = up, 0 = not up)", mi.Description())
 						assert.Equal(t, "1", mi.Unit())
 						dp := mi.Gauge().DataPoints().At(0)
 						assert.Equal(t, start, dp.StartTimestamp())
@@ -1839,7 +3698,7 @@ func TestMetricsBuilder(t *testing.T) {
 						validatedMetrics["system.network.packet.count"] = true
 						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
 						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
-						assert.Equal(t, "The number of packets transmitted or received, categorized by type", mi.Description())
+						assert.Equal(t, "The number of packets transmitted or received by direction and, when available, packet type", mi.Description())
 						assert.Equal(t, "{packet}", mi.Unit())
 						assert.True(t, mi.Sum().IsMonotonic())
 						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())
@@ -1862,7 +3721,7 @@ func TestMetricsBuilder(t *testing.T) {
 						validatedMetrics["system.network.packet.count"] = true
 						assert.Equal(t, pmetric.MetricTypeSum, mi.Type())
 						assert.Equal(t, 1, mi.Sum().DataPoints().Len())
-						assert.Equal(t, "The number of packets transmitted or received, categorized by type", mi.Description())
+						assert.Equal(t, "The number of packets transmitted or received by direction and, when available, packet type", mi.Description())
 						assert.Equal(t, "{packet}", mi.Unit())
 						assert.True(t, mi.Sum().IsMonotonic())
 						assert.Equal(t, pmetric.AggregationTemporalityCumulative, mi.Sum().AggregationTemporality())

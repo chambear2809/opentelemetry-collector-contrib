@@ -1,0 +1,72 @@
+receivers:
+  cisco_os/aci:
+    collection_interval: 60s
+    timeout: 45s
+    aci:
+      enabled: true
+      controllers:
+        - endpoint: ${env:APIC_ENDPOINT}
+          name: apic-primary
+      auth:
+        username: ${env:APIC_USERNAME}
+        password: ${env:APIC_PASSWORD}
+      # Append a private APIC CA to the host trust store. When APIC_ENDPOINT is
+      # an IP address, APIC_SERVER_NAME must match a DNS/IP SAN in its certificate.
+      ca_file: ${env:APIC_CA_FILE}
+      server_name: ${env:APIC_SERVER_NAME}
+      # Verification remains enabled by default. Set this only for an isolated lab.
+      insecure_skip_verify: false
+      event_lookback: 24h
+      # ACI logs are disabled by default. These explicit opt-ins derive complete
+      # records only from documented fault, audit, and event allowlists.
+      logs:
+        faults:
+          enabled: true
+        audit:
+          enabled: true
+        events:
+          enabled: true
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 1024
+    spike_limit_mib: 256
+  resource/aci:
+    attributes:
+      - key: service.name
+        value: cisco-aci
+        action: upsert
+      - key: deployment.environment.name
+        value: ${env:SPLUNK_ENVIRONMENT}
+        action: upsert
+  batch:
+    timeout: 5s
+
+exporters:
+  otlp_http/splunk:
+    metrics_endpoint: https://ingest.${env:SPLUNK_REALM}.observability.splunkcloud.com/v2/datapoint/otlp
+    headers:
+      X-SF-Token: ${env:SPLUNK_ACCESS_TOKEN}
+    compression: gzip
+    timeout: 15s
+    sending_queue:
+      enabled: true
+    retry_on_failure:
+      enabled: true
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    metrics:
+      receivers: [cisco_os/aci]
+      processors: [memory_limiter, resource/aci, batch]
+      exporters: [otlp_http/splunk]
+    # Splunk Observability Cloud's metric ingest is handled above. The receiver
+    # opt-ins above emit only sanitized APIC records; keep them local
+    # unless a Splunk Platform HEC destination is configured explicitly.
+    logs:
+      receivers: [cisco_os/aci]
+      processors: [memory_limiter, resource/aci, batch]
+      exporters: [debug]

@@ -420,7 +420,7 @@ metrics:
 
   cisco.scrape.partial_success:
     enabled: true
-    description: Cisco receiver scrape partial success status (1 = partial success, 0 = complete success)
+    description: Whether the scrape completed with at least one command-family failure.
     stability: development
     unit: "1"
     gauge:
@@ -438,7 +438,7 @@ metrics:
 
   system.cpu.utilization:
     enabled: true
-    description: Percentage of CPU time in use.
+    description: Ratio of CPU time in use, from 0 to 1.
     stability: development
     unit: "1"
     gauge:
@@ -446,7 +446,7 @@ metrics:
 
   system.memory.utilization:
     enabled: true
-    description: Percentage of memory bytes in use.
+    description: Ratio of memory bytes in use, from 0 to 1.
     stability: development
     unit: "1"
     gauge:

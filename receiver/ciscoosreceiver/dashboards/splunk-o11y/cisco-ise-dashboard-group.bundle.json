@@ -21,24 +21,6 @@
         "applyIfExists": true
       },
       {
-        "property": "ise.network_device.name",
-        "alias": "Network Device",
-        "description": "Network access device known to ISE.",
-        "applyIfExists": true
-      },
-      {
-        "property": "ise.endpoint.mac",
-        "alias": "Endpoint MAC",
-        "description": "Endpoint MAC address.",
-        "applyIfExists": true
-      },
-      {
-        "property": "user.name",
-        "alias": "User",
-        "description": "User name from ISE authentication or session evidence.",
-        "applyIfExists": true
-      },
-      {
         "property": "ise.protocol",
         "alias": "Protocol",
         "description": "RADIUS, TACACS, or authentication protocol.",
@@ -77,7 +59,7 @@
         {
           "name": "API Request Errors",
           "description": "Value: surfaces failed ISE API calls by operation and HTTP status. Interpretation: non-zero values explain missing deployment, endpoint, session, policy, pxGrid, or Data Connect evidence.",
-          "signalflow": "data('ise.api.request.errors').sum(by=['ise.api.operation', 'http.response.status_code', 'ise.api.outcome']).publish(label='API errors')",
+          "signalflow": "data('ise.api.request.errors').rate().sum(by=['ise.api.operation', 'http.response.status_code', 'ise.api.outcome']).publish(label='API errors/sec')",
           "legend_dimension": "ise.api.operation"
         },
         {
@@ -108,28 +90,28 @@
         {
           "type": "Text",
           "name": "Value Provided",
-          "description": "Value: explains how to use ISE AAA and posture data during access incidents. Interpretation: correlate failures by protocol, network device, endpoint, user, policy, and failure reason before escalating to wireless, switching, VPN, or identity teams.",
-          "markdown": "## Value Provided\nUse this dashboard for user or endpoint access incidents. RADIUS/TACACS failure counts, active sessions, endpoint posture, and profiling evidence show whether the symptom is identity, network device, policy, or endpoint compliance.",
+          "description": "Value: explains how to use ISE AAA and posture data during access incidents. Interpretation: correlate aggregate failures by bounded protocol, outcome, policy, message code, and reason; use ISE logs for user, endpoint, and network-device identities.",
+          "markdown": "## Value Provided\nUse this dashboard for user or endpoint access incidents. Bounded RADIUS/TACACS failure dimensions, active sessions, endpoint posture, and profiling evidence show whether the symptom is identity, policy, or endpoint compliance. Use the correlated ISE logs for user, endpoint, and network-device identity.",
           "width": 12,
           "height": 2
         },
         {
           "name": "RADIUS Failures",
-          "description": "Value: counts RADIUS authentication failures by device, user, endpoint, and failure reason. Interpretation: spikes isolate wireless, wired, VPN, MAB, or identity-store issues.",
-          "signalflow": "data('ise.radius.failure.count').sum(by=['ise.network_device.name', 'user.name', 'ise.endpoint.mac', 'ise.failure.reason']).publish(label='RADIUS failures')",
+          "description": "Value: counts RADIUS authentication failures by bounded protocol, outcome, policy, message code, and failure reason. Interpretation: spikes isolate wireless, wired, VPN, MAB, or identity-store issues; use logs for user, endpoint, and network-device identity.",
+          "signalflow": "data('ise.radius.failure.count').sum(by=['ise.protocol', 'event.outcome', 'ise.failure.reason', 'ise.message.code', 'ise.policy.set']).publish(label='RADIUS failures')",
           "legend_dimension": "ise.failure.reason"
         },
         {
           "name": "TACACS Failures",
           "description": "Value: counts TACACS authentication, authorization, or accounting failures. Interpretation: spikes point to admin login, command authorization, or network device administration issues.",
-          "signalflow": "data('ise.tacacs.failure.count').sum(by=['ise.network_device.name', 'user.name', 'ise.failure.reason']).publish(label='TACACS failures')",
-          "legend_dimension": "ise.network_device.name"
+          "signalflow": "data('ise.tacacs.failure.count').sum(by=['ise.protocol', 'event.outcome', 'ise.failure.reason', 'ise.message.code', 'ise.policy.set']).publish(label='TACACS failures')",
+          "legend_dimension": "ise.failure.reason"
         },
         {
           "name": "Active Sessions",
           "description": "Value: tracks ISE active sessions and session evidence volume. Interpretation: sudden drops or spikes indicate access outages, reconnect storms, or MnT visibility gaps.",
-          "signalflow": "data('ise.session.active.count').mean(by=['ise.node.name']).publish(label='Active sessions'); data('ise.session.count').sum(by=['ise.network_device.name', 'ise.protocol']).publish(label='Session records')",
-          "legend_dimension": "ise.network_device.name"
+          "signalflow": "data('ise.session.active.count').mean(by=['ise.node.name']).publish(label='Active sessions'); data('ise.session.count').sum(by=['ise.protocol', 'event.outcome', 'ise.posture.status']).publish(label='Session records')",
+          "legend_dimension": "ise.protocol"
         },
         {
           "name": "Endpoint Posture And Profiles",
@@ -155,19 +137,19 @@
         {
           "name": "Policy Objects",
           "description": "Value: counts ISE network-access, device-admin, TACACS, and policy objects. Interpretation: missing or changing policy object counts can explain changed access decisions.",
-          "signalflow": "data('ise.policy.object.count').sum(by=['ise.policy.set', 'ise.object.type', 'ise.status']).publish(label='Policy objects')",
+          "signalflow": "data('ise.policy.object.count').sum(by=['ise.policy.set', 'ise.object.type']).publish(label='Policy objects')",
           "legend_dimension": "ise.policy.set"
         },
         {
           "name": "TrustSec Resources",
-          "description": "Value: counts SGT, SGACL, and SG mapping records. Interpretation: changes in TrustSec resource counts or status can explain segmentation impact.",
-          "signalflow": "data('ise.trustsec.resource.count').sum(by=['ise.object.type', 'ise.status']).publish(label='TrustSec resources')",
+          "description": "Value: counts SGT, SGACL, and SG mapping records. Interpretation: changes in TrustSec resource counts can explain segmentation impact.",
+          "signalflow": "data('ise.trustsec.resource.count').sum(by=['ise.object.type']).publish(label='TrustSec resources')",
           "legend_dimension": "ise.object.type"
         },
         {
           "name": "Alarms Licenses And Webhooks",
           "description": "Value: surfaces ISE alarms, license state, and webhook delivery evidence. Interpretation: platform alarms, license failures, or webhook delivery failures can explain missing downstream evidence.",
-          "signalflow": "data('ise.alarm.count').sum(by=['ise.severity', 'ise.status']).publish(label='Alarms'); data('ise.license.status').mean(by=['ise.status']).publish(label='License'); data('ise.webhook.delivery.count').sum(by=['ise.status']).publish(label='Webhooks')",
+          "signalflow": "data('ise.alarm.count').sum(by=['ise.severity', 'ise.object.type']).publish(label='Alarms'); data('ise.license.status').mean(by=['ise.status']).publish(label='License'); data('ise.webhook.delivery.count').sum(by=['ise.status']).publish(label='Webhooks')",
           "legend_dimension": "ise.status"
         },
         {
@@ -194,7 +176,7 @@
         {
           "name": "pxGrid Service And Subscription Status",
           "description": "Value: shows pxGrid service lookup and configured subscription state. Interpretation: missing services or failed subscriptions explain absent real-time session, RADIUS, endpoint, TrustSec, or system health signals.",
-          "signalflow": "data('ise.pxgrid.service.status').mean(by=['ise.object.type', 'ise.pxgrid.topic']).publish(label='Service'); data('ise.pxgrid.subscription.status').mean(by=['ise.pxgrid.topic']).publish(label='Subscription')",
+          "signalflow": "data('ise.pxgrid.service.status').mean(by=['ise.object.type', 'ise.protocol']).publish(label='Service'); data('ise.pxgrid.subscription.status').mean(by=['ise.pxgrid.topic']).publish(label='Subscription')",
           "legend_dimension": "ise.pxgrid.topic"
         },
         {
@@ -205,8 +187,8 @@
         },
         {
           "name": "Data Connect Query Health",
-          "description": "Value: tracks Data Connect query duration and errors by view. Interpretation: slow or failing views point to wallet, TLS, credential, database, or view availability problems.",
-          "signalflow": "data('ise.dataconnect.query.duration').mean(by=['ise.dataconnect.view', 'ise.dataconnect.outcome']).publish(label='Duration'); data('ise.dataconnect.query.errors').sum(by=['ise.dataconnect.view']).publish(label='Errors')",
+          "description": "Value: tracks Data Connect query duration and error rate by view. Interpretation: slow or failing views point to wallet, TLS, credential, database, or view availability problems.",
+          "signalflow": "data('ise.dataconnect.query.duration').mean(by=['ise.dataconnect.view', 'ise.dataconnect.outcome']).publish(label='Duration'); data('ise.dataconnect.query.errors').rate().sum(by=['ise.dataconnect.view']).publish(label='Errors/sec')",
           "legend_dimension": "ise.dataconnect.view"
         },
         {

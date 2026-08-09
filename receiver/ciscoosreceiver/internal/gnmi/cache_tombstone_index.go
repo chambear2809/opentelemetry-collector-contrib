@@ -6,25 +6,31 @@ package gnmi // import "github.com/open-telemetry/opentelemetry-collector-contri
 import (
 	"slices"
 	"sort"
+	"strings"
 	"time"
 )
 
-// tombstonePrefixIndex is a structural index for removal tombstones. Target
-// and origin form the first two levels. Path elements are indexed by name and
-// then by their sorted key constraints, which lets lookups follow only selector
-// key sets that are subsets of the concrete update path.
+// tombstonePrefixIndex is a structural index for authoritative removal
+// tombstones and equal-admitting semantic-invalidation watermarks. Configured
+// subscription owner, target, gNMI path target, and origin form the first four
+// logical levels. Path elements are indexed by name and then by their sorted
+// key constraints, which lets lookups follow only selector key sets that are
+// subsets of the concrete update path.
 type tombstonePrefixIndex struct {
 	targets map[string]*tombstoneTargetIndex
 }
 
 type tombstoneTargetIndex struct {
-	origins map[string]*tombstonePathIndexNode
+	target     string
+	pathTarget string
+	origins    map[string]*tombstonePathIndexNode
 }
 
 type tombstonePathIndexNode struct {
-	tombstoneKey       string
-	tombstoneTimestamp time.Time
-	children           map[string]*tombstoneElementIndex
+	tombstoneKey        string
+	tombstoneTimestamp  time.Time
+	tombstoneAllowEqual bool
+	children            map[string]*tombstoneElementIndex
 }
 
 type tombstoneElementIndex struct {
@@ -46,10 +52,14 @@ func newTombstonePrefixIndex() *tombstonePrefixIndex {
 }
 
 func (idx *tombstonePrefixIndex) upsert(key string, tombstone stateTombstone) {
-	target := idx.targets[tombstone.path.Target]
+	scopeKey := tombstoneOwnerScopeKey(tombstone.ownerID, tombstone.path.Target, tombstone.path.PathTarget)
+	target := idx.targets[scopeKey]
 	if target == nil {
-		target = &tombstoneTargetIndex{origins: map[string]*tombstonePathIndexNode{}}
-		idx.targets[tombstone.path.Target] = target
+		target = &tombstoneTargetIndex{
+			target: tombstone.path.Target, pathTarget: tombstone.path.PathTarget,
+			origins: map[string]*tombstonePathIndexNode{},
+		}
+		idx.targets[scopeKey] = target
 	}
 	node := target.origins[tombstone.path.Origin]
 	if node == nil {
@@ -69,10 +79,16 @@ func (idx *tombstonePrefixIndex) upsert(key string, tombstone stateTombstone) {
 	}
 	node.tombstoneKey = key
 	node.tombstoneTimestamp = tombstone.timestamp
+	node.tombstoneAllowEqual = tombstone.allowEqual
 }
 
 func (idx *tombstonePrefixIndex) remove(key string, path Path) {
-	target := idx.targets[path.Target]
+	idx.removeForOwner("", key, path)
+}
+
+func (idx *tombstonePrefixIndex) removeForOwner(ownerID, key string, path Path) {
+	scopeKey := tombstoneOwnerScopeKey(ownerID, path.Target, path.PathTarget)
+	target := idx.targets[scopeKey]
 	if target == nil {
 		return
 	}
@@ -85,7 +101,7 @@ func (idx *tombstonePrefixIndex) remove(key string, path Path) {
 		delete(target.origins, path.Origin)
 	}
 	if len(target.origins) == 0 {
-		delete(idx.targets, path.Target)
+		delete(idx.targets, scopeKey)
 	}
 }
 
@@ -94,6 +110,7 @@ func removeTombstonePath(node *tombstonePathIndexNode, elements []PathElem, inde
 		if node.tombstoneKey == key {
 			node.tombstoneKey = ""
 			node.tombstoneTimestamp = time.Time{}
+			node.tombstoneAllowEqual = false
 		}
 		return
 	}
@@ -119,14 +136,20 @@ func removeTombstonePath(node *tombstonePathIndexNode, elements []PathElem, inde
 }
 
 func (idx *tombstonePrefixIndex) isStale(path Path, timestamp time.Time) bool {
+	return idx.isStaleForOwner("", path, timestamp)
+}
+
+func (idx *tombstonePrefixIndex) isStaleForOwner(ownerID string, path Path, timestamp time.Time) bool {
 	for _, targetName := range exactAndWildcard(path.Target) {
-		target := idx.targets[targetName]
-		if target == nil {
-			continue
-		}
-		for _, origin := range exactAndWildcard(path.Origin) {
-			if root := target.origins[origin]; root != nil && root.isStale(path.Elements, 0, timestamp) {
-				return true
+		for _, pathTarget := range exactAndWildcard(path.PathTarget) {
+			target := idx.targets[tombstoneOwnerScopeKey(ownerID, targetName, pathTarget)]
+			if target == nil {
+				continue
+			}
+			for _, origin := range exactAndWildcard(path.Origin) {
+				if root := target.origins[origin]; root != nil && root.isStale(path.Elements, 0, timestamp) {
+					return true
+				}
 			}
 		}
 	}
@@ -134,7 +157,7 @@ func (idx *tombstonePrefixIndex) isStale(path Path, timestamp time.Time) bool {
 }
 
 func (node *tombstonePathIndexNode) isStale(elements []PathElem, index int, timestamp time.Time) bool {
-	if node.tombstoneKey != "" && !timestamp.After(node.tombstoneTimestamp) {
+	if node.tombstoneKey != "" && stateBarrierRejects(node.tombstoneTimestamp, node.tombstoneAllowEqual, timestamp) {
 		return true
 	}
 	if index == len(elements) {
@@ -150,17 +173,25 @@ func (node *tombstonePathIndexNode) isStale(elements []PathElem, index int, time
 	})
 }
 
+func stateBarrierRejects(barrier time.Time, allowEqual bool, candidate time.Time) bool {
+	return candidate.Before(barrier) || (!allowEqual && candidate.Equal(barrier))
+}
+
 // dominated returns only tombstones whose paths are selected by selector and
 // whose timestamps are no newer than timestamp. Traversal starts in the
 // selector's target scope and never visits sibling targets. An empty target is
 // retained as its own wildcard root rather than expanded across every target;
 // the wildcard still participates in lookups, while pruning remains local.
 func (idx *tombstonePrefixIndex) dominated(selector Path, timestamp time.Time) map[string]struct{} {
+	return idx.dominatedForOwner("", selector, timestamp)
+}
+
+func (idx *tombstonePrefixIndex) dominatedForOwner(ownerID string, selector Path, timestamp time.Time) map[string]struct{} {
 	dominated := map[string]struct{}{}
 	visit := func(node *tombstonePathIndexNode) {
 		node.collect(timestamp, dominated)
 	}
-	for _, target := range idx.descendantTargets(selector.Target) {
+	for _, target := range idx.descendantTargetsForOwner(ownerID, selector.Target, selector.PathTarget) {
 		for _, root := range descendantOrigins(target, selector.Origin) {
 			root.forEachSelectedDescendant(selector.Elements, 0, visit)
 		}
@@ -173,14 +204,15 @@ func (idx *tombstonePrefixIndex) dominated(selector Path, timestamp time.Time) m
 // indexed scopes so this also preserves Path.HasPrefix wildcard semantics for
 // temporary notification selector indexes.
 func (idx *tombstonePrefixIndex) hasSelectedDescendant(selector Path) bool {
-	var targets []*tombstoneTargetIndex
-	if selector.Target == "" {
-		targets = make([]*tombstoneTargetIndex, 0, len(idx.targets))
-		for _, target := range idx.targets {
-			targets = append(targets, target)
+	targets := make([]*tombstoneTargetIndex, 0, len(idx.targets))
+	for _, target := range idx.targets {
+		if selector.Target != "" && target.target != selector.Target {
+			continue
 		}
-	} else if target := idx.targets[selector.Target]; target != nil {
-		targets = []*tombstoneTargetIndex{target}
+		if selector.PathTarget != "" && target.pathTarget != selector.PathTarget {
+			continue
+		}
+		targets = append(targets, target)
 	}
 	for _, target := range targets {
 		if selector.Origin != "" {
@@ -258,11 +290,25 @@ func (node *tombstonePathIndexNode) collect(timestamp time.Time, out map[string]
 	}
 }
 
-func (idx *tombstonePrefixIndex) descendantTargets(target string) []*tombstoneTargetIndex {
-	if selected := idx.targets[target]; selected != nil {
+func (idx *tombstonePrefixIndex) descendantTargetsForOwner(ownerID, target, pathTarget string) []*tombstoneTargetIndex {
+	if selected := idx.targets[tombstoneOwnerScopeKey(ownerID, target, pathTarget)]; selected != nil {
 		return []*tombstoneTargetIndex{selected}
 	}
 	return nil
+}
+
+func tombstoneScopeKey(target, pathTarget string) string {
+	return tombstoneOwnerScopeKey("", target, pathTarget)
+}
+
+func tombstoneOwnerScopeKey(ownerID, target, pathTarget string) string {
+	var key strings.Builder
+	if ownerID != "" {
+		appendKeyPart(&key, ownerID)
+	}
+	appendKeyPart(&key, target)
+	appendKeyPart(&key, pathTarget)
+	return key.String()
 }
 
 func descendantOrigins(target *tombstoneTargetIndex, origin string) []*tombstonePathIndexNode {

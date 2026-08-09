@@ -443,7 +443,7 @@ Cisco receiver command execution errors
 
 ### cisco.scrape.partial_success
 
-Cisco receiver scrape partial success status (1 = partial success, 0 = complete success)
+Whether the scrape completed with at least one command-family failure.
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
@@ -459,7 +459,7 @@ The number of successful Cisco SSH reconnects by the receiver
 
 ### system.cpu.utilization
 
-Percentage of CPU time in use.
+Ratio of CPU time in use, from 0 to 1.
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
@@ -467,7 +467,7 @@ Percentage of CPU time in use.
 
 ### system.memory.utilization
 
-Percentage of memory bytes in use.
+Ratio of memory bytes in use, from 0 to 1.
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |

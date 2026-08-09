@@ -70,12 +70,14 @@ func TestCreateDefaultConfig(t *testing.T) {
 
 	config, ok := cfg.(*Config)
 	require.True(t, ok)
-	assert.Equal(t, 1*time.Minute, config.CollectionInterval)
-	assert.Equal(t, 30*time.Second, config.Timeout)
+	assert.Equal(t, 1*time.Minute, config.ControllerConfig.CollectionInterval)
+	assert.Equal(t, 30*time.Second, config.ControllerConfig.Timeout)
 	assert.Empty(t, config.Devices)
 	assert.Empty(t, config.Scrapers)
 	assert.Equal(t, "https://api.meraki.com/api/v1", config.Meraki.BaseURL)
 	assert.Equal(t, "opentelemetry-collector-contrib-ciscoosreceiver", config.Meraki.UserAgent)
+	assert.False(t, config.Meraki.InsecureSkipVerify)
+	assert.False(t, config.Meraki.SwitchTransceivers.Enabled)
 	assert.Equal(t, "https://intersight.com", config.Intersight.Endpoint)
 	assert.Equal(t, 100, config.Intersight.PageSize)
 	assert.Equal(t, 24*time.Hour, config.Intersight.EventLookback)
@@ -90,8 +92,10 @@ func TestCreateDefaultConfig(t *testing.T) {
 	assert.Equal(t, 100, config.ISE.PageSize)
 	assert.Equal(t, 24*time.Hour, config.ISE.EventLookback)
 	assert.Equal(t, 15*time.Minute, config.ISE.SessionLookback)
-	assert.True(t, config.ISE.NetworkDevices.Enabled)
-	assert.True(t, config.ISE.AuthFailures.Enabled)
+	assert.True(t, config.ISE.Sessions.Enabled)
+	assert.False(t, config.ISE.SessionDetails.Enabled)
+	assert.False(t, config.ISE.NetworkDevices.Enabled)
+	assert.False(t, config.ISE.AuthFailures.Enabled)
 	assert.False(t, config.ISE.PxGrid.Enabled)
 	assert.False(t, config.ISE.DataConnect.Enabled)
 }
@@ -293,14 +297,14 @@ func TestCreateMetricsReceiverWithMultipleDevices(t *testing.T) {
 	assert.True(t, isMulti, "expected multiMetricsReceiver for multiple devices")
 }
 
-func TestCreateMetricsReceiverFiltersSSHDevicesBeforeControllerCreation(t *testing.T) {
+func TestCreateMetricsReceiverPrefiltersSSHDevicesByKnownIP(t *testing.T) {
 	factory := NewFactory()
 	config := factory.CreateDefaultConfig().(*Config)
 	config.Devices = []DeviceConfig{
 		newTestDevice("device-1", "192.168.1.1"),
 		newTestDevice("device-2", "192.168.1.2"),
 	}
-	config.DeviceSelection.Include.HostNames = []string{"device-1"}
+	config.DeviceSelection.Include.HostIPs = []string{"192.168.1.1"}
 	config.Scrapers = map[component.Type]component.Config{
 		component.MustNewType("system"): systemscraper.NewFactory().CreateDefaultConfig(),
 	}
@@ -310,6 +314,21 @@ func TestCreateMetricsReceiverFiltersSSHDevicesBeforeControllerCreation(t *testi
 	assert.NotNil(t, receiver)
 	_, isMulti := receiver.(*multiMetricsReceiver)
 	assert.False(t, isMulti, "expected one SSH controller after device selection")
+}
+
+func TestCreateMetricsReceiverDefersSSHSerialSelectionUntilDiscovery(t *testing.T) {
+	factory := NewFactory()
+	config := factory.CreateDefaultConfig().(*Config)
+	config.Devices = []DeviceConfig{newTestDevice("device-1", "192.168.1.1")}
+	config.DeviceSelection.Include.Serials = []string{"SERIAL-1"}
+	config.Scrapers = map[component.Type]component.Config{
+		component.MustNewType("system"): systemscraper.NewFactory().CreateDefaultConfig(),
+	}
+
+	rcvr, err := factory.CreateMetrics(t.Context(), receivertest.NewNopSettings(metadata.Type), config, consumertest.NewNop())
+	require.NoError(t, err)
+	_, isNop := rcvr.(*nopMetricsReceiver)
+	assert.False(t, isNop, "serial selection must wait for SSH identity discovery")
 }
 
 func TestCreateMetricsReceiverReturnsNopWhenSSHDevicesAreExcluded(t *testing.T) {

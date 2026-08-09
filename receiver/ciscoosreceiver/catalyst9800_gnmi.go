@@ -26,10 +26,7 @@ type catalyst9800GNMIUpdateDecoder struct {
 }
 
 func (d *catalyst9800GNMIUpdateDecoder) decodeNotification(notification *gnmi.Notification, transport string) pmetric.Metrics { //nolint:unparam // Explicit transport keeps direct and future replay decoders distinguishable.
-	ts := pcommon.NewTimestampFromTime(time.Now())
-	if notification.GetTimestamp() > 0 {
-		ts = pcommon.Timestamp(notification.GetTimestamp())
-	}
+	ts := directGNMITimestamp(notification.GetTimestamp(), time.Now())
 	budget := newDirectGNMIDecodeBudget(d.limits, d.maxDatapoints)
 	prefix := notification.GetPrefix()
 	prefixText, validPrefix := gnmiPathToString(prefix, budget)
@@ -64,24 +61,24 @@ func (d *catalyst9800GNMIUpdateDecoder) decodeNotification(notification *gnmi.No
 			}
 			continue
 		}
-		parts, attrs, ok := pathPartsAndAttrs(prefix, deleted, budget)
+		path, attrs, ok := dynamicYANGPathAndAttrs(prefix, deleted, budget)
 		if !ok {
 			if budget.exhausted {
 				break
 			}
 			continue
 		}
-		if len(parts) == 0 {
+		if len(path.identity) == 0 {
 			continue
 		}
 		catalyst9800NormalizePathAttrs(attrs)
 		attrs["deleted"] = "true"
-		deleteModule := moduleFromParts(module, parts)
-		if !setDirectGNMISourcePath(attrs, prefixText, deletedText, budget) {
+		deleteModule := dynamicYANGModule(prefix, deleted, module, path.identity)
+		if !setDirectGNMISourcePath(attrs, prefix, deleted, prefixText, deletedText, budget) {
 			continue
 		}
 		putNonEmpty(attrs, "cisco.yang.module", deleteModule)
-		appendCatalyst9800InfoMetricIndexed(metrics, deleteModule, parts, "deleted", ts, attrs)
+		appendCatalyst9800InfoMetricIndexed(metrics, deleteModule, path, "deleted", ts, attrs)
 	}
 
 	for _, update := range updates {
@@ -95,27 +92,33 @@ func (d *catalyst9800GNMIUpdateDecoder) decodeNotification(notification *gnmi.No
 			}
 			continue
 		}
-		parts, attrs, ok := pathPartsAndAttrs(prefix, update.GetPath(), budget)
+		path, attrs, ok := dynamicYANGPathAndAttrs(prefix, update.GetPath(), budget)
 		if !ok {
 			if budget.exhausted {
 				break
 			}
 			continue
 		}
-		catalyst9800NormalizePathAttrs(attrs)
-		updateModule := moduleFromParts(module, parts)
-		if updateModule == "" {
-			updateModule = moduleFromGNMIPath(update.GetPath())
+		if len(path.identity) == 0 {
+			budget.addDecodeError()
+			budget.drop(false)
+			continue
 		}
-		if !setDirectGNMISourcePath(attrs, prefixText, updateText, budget) {
+		catalyst9800NormalizePathAttrs(attrs)
+		updateModule := dynamicYANGModule(prefix, update.GetPath(), module, path.identity)
+		if !setDirectGNMISourcePath(attrs, prefix, update.GetPath(), prefixText, updateText, budget) {
 			continue
 		}
 		putNonEmpty(attrs, "cisco.yang.module", updateModule)
-		depth := len(parts)
+		depth := len(path.identity)
 		if depth == 0 {
 			depth = 1
 		}
-		d.decodeTypedValue(metrics, updateModule, parts, update.GetVal(), ts, attrs, budget, depth)
+		value, ok := resolveDirectGNMIUpdateValue(update, budget)
+		if !ok {
+			continue
+		}
+		d.decodeTypedValue(metrics, updateModule, path, value, ts, attrs, budget, depth)
 	}
 	if d.health != nil {
 		if budget.decodeErrors > 0 {
@@ -135,7 +138,7 @@ func (d *catalyst9800GNMIUpdateDecoder) decodeNotification(notification *gnmi.No
 	return md
 }
 
-func (d catalyst9800GNMIUpdateDecoder) decodeTypedValue(metrics *indexedMetricBuilder, module string, parts []string, value *gnmi.TypedValue, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth int) {
+func (d catalyst9800GNMIUpdateDecoder) decodeTypedValue(metrics *indexedMetricBuilder, module string, path dynamicYANGPath, value *gnmi.TypedValue, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth int) {
 	if value == nil || value.GetValue() == nil {
 		budget.addDecodeError()
 		budget.drop(false)
@@ -143,33 +146,33 @@ func (d catalyst9800GNMIUpdateDecoder) decodeTypedValue(metrics *indexedMetricBu
 	}
 	switch v := value.GetValue().(type) {
 	case *gnmi.TypedValue_StringVal:
-		appendCatalyst9800InfoMetricIndexed(metrics, module, parts, v.StringVal, ts, attrs)
+		appendCatalyst9800InfoMetricIndexed(metrics, module, path, v.StringVal, ts, attrs)
 	case *gnmi.TypedValue_AsciiVal:
-		appendCatalyst9800InfoMetricIndexed(metrics, module, parts, v.AsciiVal, ts, attrs)
+		appendCatalyst9800InfoMetricIndexed(metrics, module, path, v.AsciiVal, ts, attrs)
 	case *gnmi.TypedValue_IntVal:
-		appendCatalyst9800MetricNumberIndexed(metrics, module, parts, intMetricNumber(v.IntVal), ts, attrs)
+		appendCatalyst9800MetricNumberIndexed(metrics, module, path, intMetricNumber(v.IntVal), ts, attrs)
 	case *gnmi.TypedValue_UintVal:
 		if v.UintVal <= math.MaxInt64 {
-			appendCatalyst9800MetricNumberIndexed(metrics, module, parts, intMetricNumber(int64(v.UintVal)), ts, attrs)
+			appendCatalyst9800MetricNumberIndexed(metrics, module, path, intMetricNumber(int64(v.UintVal)), ts, attrs)
 		} else {
 			overflowAttrs := cloneAttrs(attrs)
 			overflowAttrs["cisco.value.type"] = "uint64"
 			overflowAttrs["cisco.value.out_of_range"] = "true"
-			appendCatalyst9800InfoMetricIndexed(metrics, module, parts, strconv.FormatUint(v.UintVal, 10), ts, overflowAttrs)
+			appendCatalyst9800InfoMetricIndexed(metrics, module, path, strconv.FormatUint(v.UintVal, 10), ts, overflowAttrs)
 		}
 	case *gnmi.TypedValue_BoolVal:
 		if v.BoolVal {
-			appendCatalyst9800MetricNumberIndexed(metrics, module, parts, intMetricNumber(1), ts, attrs)
+			appendCatalyst9800MetricNumberIndexed(metrics, module, path, intMetricNumber(1), ts, attrs)
 		} else {
-			appendCatalyst9800MetricNumberIndexed(metrics, module, parts, intMetricNumber(0), ts, attrs)
+			appendCatalyst9800MetricNumberIndexed(metrics, module, path, intMetricNumber(0), ts, attrs)
 		}
 	case *gnmi.TypedValue_FloatVal:
-		appendCatalyst9800MetricNumberIndexed(metrics, module, parts, doubleMetricNumber(float64(v.FloatVal)), ts, attrs) //nolint:staticcheck // Legacy Cisco devices still emit the deprecated gNMI float field.
+		appendCatalyst9800MetricNumberIndexed(metrics, module, path, doubleMetricNumber(float64(v.FloatVal)), ts, attrs) //nolint:staticcheck // Legacy Cisco devices still emit the deprecated gNMI float field.
 	case *gnmi.TypedValue_DoubleVal:
-		appendCatalyst9800MetricNumberIndexed(metrics, module, parts, doubleMetricNumber(v.DoubleVal), ts, attrs)
+		appendCatalyst9800MetricNumberIndexed(metrics, module, path, doubleMetricNumber(v.DoubleVal), ts, attrs)
 	case *gnmi.TypedValue_DecimalVal:
 		if v.DecimalVal != nil && v.DecimalVal.Precision <= 308 { //nolint:staticcheck // Legacy Cisco devices still emit the deprecated gNMI decimal field.
-			appendCatalyst9800MetricNumberIndexed(metrics, module, parts, doubleMetricNumber(float64(v.DecimalVal.Digits)/pow10(v.DecimalVal.Precision)), ts, attrs) //nolint:staticcheck // Preserve compatibility with legacy gNMI decimal payloads.
+			appendCatalyst9800MetricNumberIndexed(metrics, module, path, doubleMetricNumber(float64(v.DecimalVal.Digits)/pow10(v.DecimalVal.Precision)), ts, attrs) //nolint:staticcheck // Preserve compatibility with legacy gNMI decimal payloads.
 		} else {
 			budget.addDecodeError()
 			budget.drop(false)
@@ -203,22 +206,25 @@ func (d catalyst9800GNMIUpdateDecoder) decodeTypedValue(metrics *indexedMetricBu
 			joinedBytes += len(value) + separatorBytes
 			values = append(values, value)
 		}
-		appendCatalyst9800InfoMetricIndexed(metrics, module, parts, strings.Join(values, ","), ts, attrs)
+		appendCatalyst9800InfoMetricIndexed(metrics, module, path, strings.Join(values, ","), ts, attrs)
 	case *gnmi.TypedValue_JsonIetfVal:
-		d.decodeJSONValue(metrics, module, parts, v.JsonIetfVal, ts, attrs, budget, depth+1)
+		d.decodeJSONValue(metrics, module, path, v.JsonIetfVal, ts, attrs, budget, depth+1)
 	case *gnmi.TypedValue_JsonVal:
-		d.decodeJSONValue(metrics, module, parts, v.JsonVal, ts, attrs, budget, depth+1)
+		d.decodeJSONValue(metrics, module, path, v.JsonVal, ts, attrs, budget, depth+1)
 	case *gnmi.TypedValue_BytesVal:
 		if len(v.BytesVal) > budget.limits.maxAttributeValueBytes/2 {
 			budget.drop(false)
 			return
 		}
-		appendCatalyst9800InfoMetricIndexed(metrics, module, append(parts, "bytes"), fmt.Sprintf("%x", v.BytesVal), ts, attrs)
+		appendCatalyst9800InfoMetricIndexed(metrics, module, path.child("bytes", "bytes"), fmt.Sprintf("%x", v.BytesVal), ts, attrs)
 	case *gnmi.TypedValue_ProtoBytes:
-		if d.health != nil {
-			d.health.addCompactGPBPayloads(1)
-		}
-		metrics.appendNumber("cisco.catalyst9800.receiver.compact_gpb_payloads", pmetric.MetricTypeGauge, doubleMetricNumber(1), ts, attrs)
+		metrics.appendNumber(
+			"cisco.catalyst9800.receiver.compact_gpb_payloads",
+			pmetric.MetricTypeGauge,
+			intMetricNumber(1),
+			ts,
+			attrs,
+		)
 	case *gnmi.TypedValue_AnyVal:
 		if v.AnyVal == nil {
 			budget.addDecodeError()
@@ -229,13 +235,13 @@ func (d catalyst9800GNMIUpdateDecoder) decodeTypedValue(metrics *indexedMetricBu
 			budget.drop(false)
 			return
 		}
-		appendCatalyst9800InfoMetricIndexed(metrics, module, append(parts, "any"), v.AnyVal.String(), ts, attrs)
+		appendCatalyst9800InfoMetricIndexed(metrics, module, path.child("any", "any"), v.AnyVal.String(), ts, attrs)
 	default:
-		appendCatalyst9800InfoMetricIndexed(metrics, module, parts, value.String(), ts, attrs)
+		appendCatalyst9800InfoMetricIndexed(metrics, module, path, value.String(), ts, attrs)
 	}
 }
 
-func (catalyst9800GNMIUpdateDecoder) decodeJSONValue(metrics *indexedMetricBuilder, module string, parts []string, raw []byte, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth int) {
+func (catalyst9800GNMIUpdateDecoder) decodeJSONValue(metrics *indexedMetricBuilder, module string, path dynamicYANGPath, raw []byte, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth int) {
 	if len(raw) > directGNMIHardMaxPayloadBytes {
 		budget.drop(true)
 		return
@@ -246,15 +252,15 @@ func (catalyst9800GNMIUpdateDecoder) decodeJSONValue(metrics *indexedMetricBuild
 		budget.drop(false)
 		return
 	}
-	pathNameBytes, ok := directGNMIPathNameBytes(parts, budget.limits.maxMetricNameBytes)
+	pathNameBytes, ok := directGNMIPathNameBytes(path.identity, budget.limits.maxMetricNameBytes)
 	if !ok {
 		budget.drop(false)
 		return
 	}
-	walkCatalyst9800JSON(metrics, module, parts, value, ts, attrs, budget, depth, pathNameBytes)
+	walkCatalyst9800JSON(metrics, module, path, value, ts, attrs, budget, depth, pathNameBytes)
 }
 
-func walkCatalyst9800JSON(metrics *indexedMetricBuilder, module string, parts []string, value any, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth, pathNameBytes int) bool {
+func walkCatalyst9800JSON(metrics *indexedMetricBuilder, module string, path dynamicYANGPath, value any, ts pcommon.Timestamp, attrs map[string]string, budget *directGNMIDecodeBudget, depth, pathNameBytes int) bool {
 	if !budget.visitField(depth) {
 		return false
 	}
@@ -264,7 +270,7 @@ func walkCatalyst9800JSON(metrics *indexedMetricBuilder, module string, parts []
 			return false
 		}
 		nextAttrs := cloneAttrs(attrs)
-		if !extractJSONIdentityAttrs(v, nextAttrs, budget, parts) || !extractCatalyst9800JSONIdentityAttrs(v, nextAttrs, budget, parts) {
+		if !extractJSONIdentityAttrs(v, nextAttrs, budget, path.normalized) || !extractCatalyst9800JSONIdentityAttrs(v, nextAttrs, budget, path.normalized) {
 			return !budget.exhausted
 		}
 		keys := make([]string, 0, len(v))
@@ -274,20 +280,25 @@ func walkCatalyst9800JSON(metrics *indexedMetricBuilder, module string, parts []
 		sort.Strings(keys)
 		for _, key := range keys {
 			nextModule, part := splitYANGQualifiedName(module, key)
-			if sanitizeMetricSegment(part) == "" {
+			if key == "" || part == "" {
 				budget.drop(false)
 				continue
 			}
-			nextPathNameBytes, ok := extendDirectGNMIPathNameBytes(pathNameBytes, part, budget.limits.maxMetricNameBytes)
+			nextPathNameBytes, ok := extendDirectGNMIPathNameBytes(pathNameBytes, key, budget.limits.maxMetricNameBytes)
 			if !ok {
 				budget.drop(false)
 				continue
 			}
 			childAttrs := cloneAttrs(nextAttrs)
+			if nextModule == "" {
+				delete(childAttrs, "cisco.yang.module")
+			} else {
+				childAttrs["cisco.yang.module"] = nextModule
+			}
 			if !extendDirectGNMISourcePath(childAttrs, key, budget) {
 				continue
 			}
-			if !walkCatalyst9800JSON(metrics, nextModule, append(parts, part), v[key], ts, childAttrs, budget, depth+1, nextPathNameBytes) && budget.exhausted {
+			if !walkCatalyst9800JSON(metrics, nextModule, path.child(key, part), v[key], ts, childAttrs, budget, depth+1, nextPathNameBytes) && budget.exhausted {
 				return false
 			}
 		}
@@ -299,35 +310,42 @@ func walkCatalyst9800JSON(metrics *indexedMetricBuilder, module string, parts []
 			if !budget.consumeChildFields(len(v), depth+1) {
 				return false
 			}
-			appendCatalyst9800InfoMetricIndexed(metrics, module, parts, valueToInfoString(v), ts, attrs)
+			appendCatalyst9800InfoMetricIndexed(metrics, module, path, valueToInfoString(v), ts, attrs)
 			return !budget.exhausted
 		}
-		if !validateCatalyst9800JSONArrayIdentity(v, attrs, budget, parts) {
+		if !validateCatalyst9800JSONArrayIdentity(v, attrs, budget, path.normalized) {
 			return !budget.exhausted
 		}
 		for _, elem := range v {
-			if !walkCatalyst9800JSON(metrics, module, parts, elem, ts, attrs, budget, depth+1, pathNameBytes) && budget.exhausted {
+			if !walkCatalyst9800JSON(metrics, module, path, elem, ts, attrs, budget, depth+1, pathNameBytes) && budget.exhausted {
 				return false
 			}
 		}
 	default:
 		if n, ok := typedNumericValue(v); ok {
-			appendCatalyst9800MetricNumberIndexed(metrics, module, parts, n, ts, attrs)
+			appendCatalyst9800MetricNumberIndexed(metrics, module, path, n, ts, attrs)
 			return !budget.exhausted
 		}
-		if value := valueToInfoString(v); value != "" {
-			appendCatalyst9800InfoMetricIndexed(metrics, module, parts, value, ts, attrs)
+		switch v := v.(type) {
+		case nil:
+			// JSON null represents no leaf value.
+		case string:
+			appendCatalyst9800InfoMetricIndexed(metrics, module, path, v, ts, attrs)
+		default:
+			value := valueToInfoString(v)
+			if value == "" {
+				break
+			}
+			appendCatalyst9800InfoMetricIndexed(metrics, module, path, value, ts, attrs)
 		}
 	}
 	return !budget.exhausted
 }
 
 // validateCatalyst9800JSONArrayIdentity rejects anonymous or duplicate
-// effective identities before emitting any child of a multi-entry array.
+// effective identities before emitting any child of a complex array. A
+// singleton still requires identity because its occupant can change later.
 func validateCatalyst9800JSONArrayIdentity(values []any, attrs map[string]string, budget *directGNMIDecodeBudget, objectPath []string) bool {
-	if len(values) <= 1 {
-		return true
-	}
 	seen := make(map[[32]byte]struct{}, len(values))
 	for _, value := range values {
 		projected := cloneAttrs(attrs)

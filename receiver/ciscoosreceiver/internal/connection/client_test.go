@@ -24,9 +24,9 @@ func TestRPCClient_GetOSType(t *testing.T) {
 			expected: "NX-OS",
 		},
 		{
-			name:     "Returns default when empty",
+			name:     "Returns unknown when empty",
 			osType:   "",
-			expected: "IOS XE",
+			expected: "unknown",
 		},
 	}
 

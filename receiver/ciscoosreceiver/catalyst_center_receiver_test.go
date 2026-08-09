@@ -84,6 +84,34 @@ func TestCatalystCenterScrapeEmitsAssuranceMetrics(t *testing.T) {
 	assert.True(t, catalystCenterRequestExists(*requests, "/dna/intent/api/v1/device-detail", "identifier=uuid"), "device detail identifier should be canonicalized")
 }
 
+func TestCatalystCenterIssuesDefaultRequestBodyUsesAPIMaximumPageLimit(t *testing.T) {
+	server, requests := newCatalystCenterFixtureServer(t, map[string]string{
+		"/dna/data/api/v1/assuranceIssues/query": `{"response":[],"page":{"limit":25,"offset":1,"count":0}}`,
+	}, nil)
+	defer server.Close()
+
+	receiver := newTestCatalystCenterReceiver(t, server.URL, nil)
+	require.Equal(t, 500, receiver.config.CatalystCenter.PageSize)
+	now := time.UnixMilli(1_700_000_000_000)
+	partial, err := receiver.scrapeIssues(
+		t.Context(),
+		newCatalystCenterMetricsBuilder(now, server.URL, nil),
+		now,
+		newDeviceSelectionMatcher(DeviceSelectionConfig{}),
+	)
+	require.NoError(t, err)
+	assert.False(t, partial)
+
+	var requestBody string
+	for _, request := range *requests {
+		if request.path == "/dna/data/api/v1/assuranceIssues/query" {
+			requestBody = request.body
+			break
+		}
+	}
+	require.Equal(t, `{"endTime":1700000000000,"filters":[],"page":{"limit":25,"offset":1},"startTime":1699913600000}`, requestBody)
+}
+
 func TestCatalystCenterScrapeAppliesSharedDeviceSelection(t *testing.T) {
 	server, _ := newCatalystCenterFixtureServer(t, map[string]string{
 		"/dna/intent/api/v1/network-device": `{"response":[
@@ -156,10 +184,31 @@ func TestCatalystCenterDeviceUtilizationNormalizesPercentages(t *testing.T) {
 	assert.InDelta(t, 0.42, metric.Gauge().DataPoints().At(1).DoubleValue(), 1e-12)
 }
 
+func TestCatalystCenterManagedDeviceUsesInventoryOSIdentity(t *testing.T) {
+	builder := newCatalystCenterMetricsBuilder(time.Now(), "test", nil)
+	deviceResource := builder.deviceResource(catalystcenter.Device{
+		ID:              "device-1",
+		Hostname:        "edge-1",
+		SoftwareType:    "IOS-XE",
+		SoftwareVersion: "17.12.1",
+	})
+
+	osName, ok := deviceResource.resource.Attributes().Get("os.name")
+	require.True(t, ok)
+	assert.Equal(t, "IOS-XE", osName.Str())
+	osVersion, ok := deviceResource.resource.Attributes().Get("os.version")
+	require.True(t, ok)
+	assert.Equal(t, "17.12.1", osVersion.Str())
+
+	unknownInterfaceResource := builder.interfaceResource(catalystcenter.Interface{DeviceID: "unknown-device"})
+	_, ok = unknownInterfaceResource.resource.Attributes().Get("os.name")
+	assert.False(t, ok, "an interface without inventory must not be labeled as the controller operating system")
+}
+
 func newTestCatalystCenterReceiver(t *testing.T, endpoint string, mutate func(*Config)) *catalystCenterMetricsReceiver {
 	t.Helper()
 	cfg := createDefaultConfig().(*Config)
-	cfg.Timeout = 10 * time.Second
+	cfg.ControllerConfig.Timeout = 10 * time.Second
 	cfg.CatalystCenter = defaultCatalystCenterConfig()
 	cfg.CatalystCenter.Enabled = true
 	cfg.CatalystCenter.Endpoint = endpoint

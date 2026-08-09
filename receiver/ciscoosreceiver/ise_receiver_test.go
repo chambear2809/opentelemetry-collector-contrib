@@ -25,6 +25,11 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
 )
 
+func TestClassifyISEErrorRejectsRedirectAndInvalidAPIContent(t *testing.T) {
+	assert.Equal(t, "redirect", classifyISEError(&iseinternal.APIError{StatusCode: http.StatusFound}))
+	assert.Equal(t, "protocol", classifyISEError(&iseinternal.ResponseContentError{Kind: "HTML", ContentType: "text/html"}))
+}
+
 func TestISEMetricsReceiverScrapesNetworkDevices(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -171,12 +176,16 @@ func TestISEMetricsReceiverUsesDocumentedMNTSessionPaths(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.EscapedPath())
 		switch {
-		case r.URL.Path == "/admin/API/mnt/Session/ActiveSessionsList":
-			_, _ = w.Write([]byte(`<activeSessionList noOfActiveSession="1"><activeSession><user_name>alice</user_name><calling_station_id>00:11:22:33:44:55</calling_station_id></activeSession></activeSessionList>`))
-		case strings.HasPrefix(r.URL.Path, "/admin/API/mnt/Session/AuthSessionsList/"):
-			_, _ = w.Write([]byte(`<authSessionList noOfAuthSession="1"><authSession><user_name>bob</user_name><calling_station_id>66:77:88:99:AA:BB</calling_station_id></authSession></authSessionList>`))
-		case r.URL.Path == "/admin/API/mnt/Session/ActiveCount" || r.URL.Path == "/admin/API/mnt/Session/PostureCount" || r.URL.Path == "/admin/API/mnt/Session/ProfilerCount":
-			_, _ = w.Write([]byte(`<sessionCount><count>1</count></sessionCount>`))
+		case r.URL.Path == "/admin/API/mnt/Session/ActiveList":
+			_, _ = w.Write([]byte(`<activeList noOfActiveSession="1"><activeSession><user_name>alice</user_name><calling_station_id>00:11:22:33:44:55</calling_station_id></activeSession></activeList>`))
+		case strings.HasPrefix(r.URL.Path, "/admin/API/mnt/Session/AuthList/"):
+			_, _ = w.Write([]byte(`<activeList noOfActiveSession="1"><activeSession><user_name>bob</user_name><calling_station_id>66:77:88:99:AA:BB</calling_station_id></activeSession></activeList>`))
+		case r.URL.Path == "/admin/API/mnt/Session/ActiveCount":
+			_, _ = w.Write([]byte(`<sessionCount><count>11</count></sessionCount>`))
+		case r.URL.Path == "/admin/API/mnt/Session/PostureCount":
+			_, _ = w.Write([]byte(`<sessionCount><count>22</count></sessionCount>`))
+		case r.URL.Path == "/admin/API/mnt/Session/ProfilerCount":
+			_, _ = w.Write([]byte(`<sessionCount><count>33</count></sessionCount>`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -190,6 +199,7 @@ func TestISEMetricsReceiverUsesDocumentedMNTSessionPaths(t *testing.T) {
 	cfg.ISE.Auth.Password = configopaque.String("password")
 	disableISEGroups(&cfg.ISE)
 	cfg.ISE.Sessions.Enabled = true
+	cfg.ISE.SessionDetails.Enabled = true
 
 	receiver, err := newISEMetricsReceiver(receivertest.NewNopSettings(metadata.Type), cfg, consumertest.NewNop())
 	require.NoError(t, err)
@@ -197,8 +207,75 @@ func TestISEMetricsReceiverUsesDocumentedMNTSessionPaths(t *testing.T) {
 	require.NoError(t, err)
 	assertISEMetricExists(t, md, "ise.session.active.count")
 	assertISEMetricExists(t, md, "ise.session.count")
-	assert.Contains(t, paths, "/admin/API/mnt/Session/ActiveSessionsList")
-	assert.True(t, containsPathPrefix(paths, "/admin/API/mnt/Session/AuthSessionsList/"))
+	activeCount := mustFindIOSXRMetric(t, md, "ise.session.active.count")
+	require.Equal(t, 1, activeCount.Gauge().DataPoints().Len())
+	assert.Equal(t, 11.0, activeCount.Gauge().DataPoints().At(0).DoubleValue())
+	assert.True(t, intMetricValueExists(md, "ise.endpoint.posture.count", 22))
+	assert.True(t, intMetricValueExists(md, "ise.endpoint.profile.count", 33))
+	assert.Contains(t, paths, "/admin/API/mnt/Session/ActiveList")
+	assert.True(t, containsPathPrefix(paths, "/admin/API/mnt/Session/AuthList/"))
+}
+
+func TestISEDefaultSessionsScrapeOnlyScalarCounts(t *testing.T) {
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		switch r.URL.Path {
+		case "/admin/API/mnt/Session/ActiveCount":
+			_, _ = w.Write([]byte(`<sessionCount><count>11</count></sessionCount>`))
+		case "/admin/API/mnt/Session/PostureCount":
+			_, _ = w.Write([]byte(`<sessionCount><count>22</count></sessionCount>`))
+		case "/admin/API/mnt/Session/ProfilerCount":
+			_, _ = w.Write([]byte(`<sessionCount><count>33</count></sessionCount>`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	cfg := createDefaultConfig().(*Config)
+	cfg.ISE.Enabled = true
+	cfg.ISE.Endpoint = server.URL
+	cfg.ISE.Auth.Username = "admin"
+	cfg.ISE.Auth.Password = configopaque.String("password")
+
+	receiver, err := newISEMetricsReceiver(receivertest.NewNopSettings(metadata.Type), cfg, consumertest.NewNop())
+	require.NoError(t, err)
+	md, err := receiver.scrape(t.Context())
+	require.NoError(t, err)
+
+	assert.ElementsMatch(t, []string{
+		"/admin/API/mnt/Session/ActiveCount",
+		"/admin/API/mnt/Session/PostureCount",
+		"/admin/API/mnt/Session/ProfilerCount",
+	}, paths)
+	assert.NotContains(t, paths, "/admin/API/mnt/Session/ActiveList")
+	assert.NotContains(t, metricNames(md), "ise.session.count")
+	assert.True(t, intMetricValueExists(md, "ise.scrape.partial_success", 0))
+}
+
+func TestISESessionEndpointGroupsSeparateCountsFromDetails(t *testing.T) {
+	metricGroups := make(map[string]string)
+	for _, spec := range iseMetricEndpoints() {
+		metricGroups[spec.operation] = spec.group
+	}
+	for _, operation := range []string{
+		"mnt.session.active_count",
+		"mnt.session.posture_count",
+		"mnt.session.profiler_count",
+	} {
+		assert.Equal(t, "sessions", metricGroups[operation], operation)
+	}
+	for _, operation := range []string{"mnt.session.active_list", "mnt.session.auth_list"} {
+		assert.Equal(t, "session_details", metricGroups[operation], operation)
+	}
+
+	logGroups := make(map[string]string)
+	for _, spec := range iseLogEndpoints() {
+		logGroups[spec.operation] = spec.group
+	}
+	assert.Equal(t, "session_details", logGroups["mnt.session.active_list"])
+	assert.Equal(t, "session_details", logGroups["mnt.session.auth_list"])
 }
 
 func TestISELogsReceiverCollectsWebhookDeliveries(t *testing.T) {
@@ -429,7 +506,109 @@ func TestISEEndpointSpecWithPathPreservesPathFuncForErrorMetrics(t *testing.T) {
 	spec := iseEndpointSpec{operation: "mnt.session.auth_list", pathFunc: iseAuthSessionsListPath}
 	resolved := iseEndpointSpecWithPath(cfg, spec, now)
 
-	assert.Equal(t, "/admin/API/mnt/Session/AuthSessionsList/2026-05-27 12:20:00/null", resolved.path)
+	assert.Equal(t, "/admin/API/mnt/Session/AuthList/2026-05-27 12:20:00/null", resolved.path)
+}
+
+func TestISEMetricAPIPathTemplatesDynamicValues(t *testing.T) {
+	assert.Equal(t,
+		"/admin/API/mnt/Session/AuthList/{start}/{end}",
+		iseMetricAPIPath("mnt.session.auth_list", "/admin/API/mnt/Session/AuthList/2026-07-05 12:00:00/null"),
+	)
+	assert.Equal(t,
+		"/api/v1/alarms/instances/{page}/{size}",
+		iseMetricAPIPath("openapi.alarm_instances", "/api/v1/alarms/instances/1/100"),
+	)
+	assert.Equal(t,
+		"/api/v1/webhooks/{webhookId}/deliveries",
+		iseMetricAPIPath("openapi.webhook_deliveries", "/api/v1/webhooks/secret-object-id/deliveries"),
+	)
+	assert.Equal(t, "/api/v1/task", iseMetricAPIPath("openapi.task_service", "/api/v1/task"))
+}
+
+func TestISEAuthReferenceObjectsDoNotBecomeAuthenticationFailures(t *testing.T) {
+	builder := newISEMetricsBuilder(time.Unix(1, 0), "https://ise.example", newCounterStore())
+	builder.recordObject(iseEndpointSpec{group: "auth_failures", operation: "mnt.version", objectType: "mnt_version"}, iseinternal.Object{
+		"version": "3.4.0.608",
+	})
+	builder.recordObject(iseEndpointSpec{group: "auth_failures", operation: "mnt.failure_reasons", objectType: "failure_reason"}, iseinternal.Object{
+		"code":  "10001",
+		"cause": "reference text that must not label a failure count",
+	})
+	builder.flushCounts()
+
+	md := builder.emit()
+	assert.NotContains(t, metricNames(md), "ise.radius.failure.count")
+	assert.NotContains(t, metricNames(md), "ise.tacacs.failure.count")
+	assert.Equal(t, 1, metricNames(md)["ise.resource.info"], "only the Version object should create generic resource evidence")
+	reason := mustFindIOSXRMetric(t, md, "ise.auth.failure.reason.info")
+	require.Equal(t, 1, reason.Gauge().DataPoints().Len())
+	attrs := reason.Gauge().DataPoints().At(0).Attributes()
+	assert.Equal(t, "10001", attrValue(t, attrs, "ise.message.code"))
+	_, hasCause := attrs.Get("ise.failure.reason")
+	assert.False(t, hasCause)
+}
+
+func TestISEMetricsReceiverFetchesFailureReasonCatalogOnce(t *testing.T) {
+	var versionRequests, reasonRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/admin/API/mnt/Version":
+			versionRequests++
+			_, _ = w.Write([]byte(`<product><name>ISE</name><version>3.4.0.608</version></product>`))
+		case "/admin/API/mnt/FailureReasons":
+			reasonRequests++
+			_, _ = w.Write([]byte(`<failureReasonList><failureReason><code>10001</code><cause>invalid credentials</cause></failureReason></failureReasonList>`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	cfg := createDefaultConfig().(*Config)
+	cfg.ISE.Enabled = true
+	cfg.ISE.Endpoint = server.URL
+	cfg.ISE.Auth.Username = "admin"
+	cfg.ISE.Auth.Password = configopaque.String("password")
+	disableISEGroups(&cfg.ISE)
+	cfg.ISE.AuthFailures.Enabled = true
+	receiver, err := newISEMetricsReceiver(receivertest.NewNopSettings(metadata.Type), cfg, consumertest.NewNop())
+	require.NoError(t, err)
+
+	for range 2 {
+		md, scrapeErr := receiver.scrape(t.Context())
+		require.NoError(t, scrapeErr)
+		assert.True(t, intMetricValueExists(md, "ise.scrape.partial_success", 0))
+		assertISEMetricExists(t, md, "ise.auth.failure.reason.info")
+	}
+	assert.Equal(t, 2, versionRequests)
+	assert.Equal(t, 1, reasonRequests)
+}
+
+func TestISEPxGridAndDataConnectRowsReachAdvertisedSemanticMetrics(t *testing.T) {
+	builder := newISEMetricsBuilder(time.Unix(1, 0), "https://ise.example", newCounterStore())
+	builder.recordObject(iseEndpointSpec{group: "pxgrid", operation: "pxgrid.radius.get_failures", objectType: "pxgrid_radius_failure"}, iseinternal.Object{
+		"failureReason": "invalid credentials",
+	})
+	builder.recordObject(iseEndpointSpec{group: "pxgrid", operation: "pxgrid.session.get_sessions", objectType: "pxgrid_session"}, iseinternal.Object{
+		"auditSessionId": "session-1",
+	})
+	builder.recordObject(iseEndpointSpec{group: "data_connect", operation: "data_connect.tacacs_authentication_last_two_days", objectType: "data_connect_tacacs"}, iseinternal.Object{
+		"AUTHENTICATION_STATUS": "FAILED",
+	})
+	builder.recordObject(iseEndpointSpec{group: "data_connect", operation: "data_connect.radius_accounting_week", objectType: "data_connect_radius"}, iseinternal.Object{
+		"SESSION_ID": "accounting-1",
+	})
+	builder.flushCounts()
+
+	md := builder.emit()
+	assert.True(t, intMetricValueExists(md, "ise.radius.failure.count", 1))
+	assert.True(t, intMetricValueExists(md, "ise.tacacs.failure.count", 1))
+	assert.True(t, intMetricValueExists(md, "ise.session.count", 1))
+	assert.True(t, intMetricValueExists(md, "ise.accounting.session.count", 1))
+	pxGridCount := mustFindIOSXRMetric(t, md, "ise.pxgrid.message.count")
+	assert.Equal(t, 2, pxGridCount.Gauge().DataPoints().Len())
+	dataConnectCount := mustFindIOSXRMetric(t, md, "ise.dataconnect.row.count")
+	assert.Equal(t, 2, dataConnectCount.Gauge().DataPoints().Len())
 }
 
 func TestISEDataConnectViewsDeduplicateAndNormalizeOverrides(t *testing.T) {
@@ -578,7 +757,7 @@ func TestISEMetricEndpointsIncludeDocumentedISEProductCoverage(t *testing.T) {
 	}
 
 	for _, operation := range []string{
-		"openapi.deployment.nodes",
+		"deployment.nodes",
 		"openapi.repository",
 		"openapi.backup_restore.last_backup_status",
 		"openapi.upgrade.summary_status",
@@ -793,7 +972,7 @@ func TestISESeenKeyDistinguishesEventsWithSameMessageCode(t *testing.T) {
 }
 
 func TestISEMetricObjectAttrsExcludeHighCardinalityIdentityFields(t *testing.T) {
-	spec := iseEndpointSpec{group: "sessions", operation: "mnt.session.auth_list", objectType: "auth_session"}
+	spec := iseEndpointSpec{group: "session_details", operation: "mnt.session.auth_list", objectType: "auth_session"}
 	obj := iseinternal.Object{
 		"auditSessionId":     "audit-1",
 		"userName":           "alice",
@@ -820,7 +999,7 @@ func TestISEMetricObjectAttrsExcludeHighCardinalityIdentityFields(t *testing.T) 
 
 func TestISEEventEvidenceMetricsUseControllerResource(t *testing.T) {
 	builder := newISEMetricsBuilder(time.Unix(1, 0), "https://ise.example", newCounterStore())
-	builder.recordObject(iseEndpointSpec{group: "sessions", operation: "mnt.session.auth_list", objectType: "auth_session"}, iseinternal.Object{
+	builder.recordObject(iseEndpointSpec{group: "session_details", operation: "mnt.session.auth_list", objectType: "auth_session"}, iseinternal.Object{
 		"auditSessionId": "audit-1",
 		"userName":       "alice",
 	})
@@ -834,7 +1013,7 @@ func TestISEEventEvidenceMetricsUseControllerResource(t *testing.T) {
 
 func TestISEControllerEvidenceRowsHaveUniqueIdentityAndCountsStayAggregated(t *testing.T) {
 	builder := newISEMetricsBuilder(time.Unix(1, 0), "https://ise.example", newCounterStore())
-	spec := iseEndpointSpec{group: "sessions", operation: "mnt.session.auth_list", objectType: "auth_session"}
+	spec := iseEndpointSpec{group: "session_details", operation: "mnt.session.auth_list", objectType: "auth_session"}
 	for _, id := range []string{"audit-1", "audit-2"} {
 		builder.recordObject(spec, iseinternal.Object{
 			"auditSessionId": id,
@@ -1062,6 +1241,7 @@ func disableISEGroups(cfg *ISEConfig) {
 	cfg.NetworkDevices.Enabled = false
 	cfg.Endpoints.Enabled = false
 	cfg.Sessions.Enabled = false
+	cfg.SessionDetails.Enabled = false
 	cfg.AuthFailures.Enabled = false
 	cfg.Accounting.Enabled = false
 	cfg.Policy.Enabled = false

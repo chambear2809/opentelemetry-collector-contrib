@@ -34,6 +34,35 @@ const (
 // ErrResponseBodyTooLarge is returned when an HTTP response exceeds MaxResponseBodySize.
 var ErrResponseBodyTooLarge = errors.New("HTTP response body is too large")
 
+// ResponseBodyReadError identifies a transport failure that happened after an
+// HTTP response was received but before its body could be read completely.
+// Clients can safely distinguish this transient case from deterministic body
+// limits and decide whether the response status is otherwise retryable.
+type ResponseBodyReadError struct {
+	Err error
+}
+
+func (e *ResponseBodyReadError) Error() string {
+	if e == nil || e.Err == nil {
+		return "read HTTP response body"
+	}
+	return fmt.Sprintf("read HTTP response body: %v", e.Err)
+}
+
+func (e *ResponseBodyReadError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+// IsResponseBodyReadError reports whether err came from an incomplete response
+// body read rather than a configured size or complexity limit.
+func IsResponseBodyReadError(err error) bool {
+	var readErr *ResponseBodyReadError
+	return errors.As(err, &readErr)
+}
+
 // JSONComplexityLimitError reports that a response exceeded a hard structural
 // ceiling before it was decoded into the caller's target.
 type JSONComplexityLimitError struct {
@@ -204,7 +233,7 @@ func ReadResponseBody(body io.Reader) ([]byte, error) {
 	limited := &io.LimitedReader{R: body, N: MaxResponseBodySize + 1}
 	data, err := io.ReadAll(limited)
 	if err != nil {
-		return nil, fmt.Errorf("read HTTP response body: %w", err)
+		return nil, &ResponseBodyReadError{Err: err}
 	}
 	if int64(len(data)) > MaxResponseBodySize {
 		return nil, fmt.Errorf("%w: limit is %d bytes", ErrResponseBodyTooLarge, MaxResponseBodySize)

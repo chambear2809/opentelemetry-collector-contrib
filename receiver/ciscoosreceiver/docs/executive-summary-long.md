@@ -20,7 +20,7 @@ Every scrape cycle collects from `show interface` on all physical and logical in
 - **Rate samples** — 5-second input/output bit rate and packet rate (when enabled)
 - **Operational status** — interface up/down as a gauge (`cisco.interface.status`)
 
-These metrics use OpenTelemetry semantic convention names (`system.network.io`, `system.network.errors`, `system.network.packet.dropped`, `system.network.packets`) with proper UCUM units (`By`, `{packet}`, `{error}`) so they join naturally with host-level network metrics from the OTel `hostmetricsreceiver` in the same Splunk O11y charts.
+These metrics use OpenTelemetry semantic convention names (`system.network.io`, `system.network.errors`, `system.network.packet.dropped`, `system.network.packet.count`) with proper UCUM units (`By`, `{packet}`, `{error}`) so they join naturally with host-level network metrics from the OTel `hostmetricsreceiver` in the same Splunk O11y charts.
 
 ### Device Health
 
