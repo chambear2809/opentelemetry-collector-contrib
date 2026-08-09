@@ -4,15 +4,19 @@
 package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver"
 
 import (
+	"context"
 	"fmt"
 	"net/netip"
 	"strings"
 
+	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/multierr"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/aci"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/catalystcenter"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/connection"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/fmc"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/intersight"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/nexusdashboard"
@@ -150,6 +154,22 @@ func (m deviceSelectionMatcher) allowsResource(attrs pcommon.Map) bool {
 	return m.allows(deviceIdentityFromResourceAttrs(attrs))
 }
 
+// allowsSSHConfiguration determines whether a configured SSH target may need
+// to be connected before device selection can be decided. The configured IP
+// is authoritative, but host name and stable IDs can be discovered only after
+// show version succeeds.
+func (m deviceSelectionMatcher) allowsSSHConfiguration(id deviceIdentity) bool {
+	if m.exclude.matches(id) {
+		return false
+	}
+	if m.include.empty() || m.include.matches(id) {
+		return true
+	}
+	return len(m.include.hostNames) > 0 ||
+		len(m.include.hostIDs) > 0 ||
+		len(m.include.serials) > 0
+}
+
 func (m deviceSelectionMatch) empty() bool {
 	return len(m.hostNames) == 0 && len(m.hostIDs) == 0 && len(m.hostIPs) == 0 && len(m.serials) == 0 && len(m.deviceIDs) == 0
 }
@@ -184,7 +204,7 @@ func normalizeSelectorIP(value string) string {
 		return ""
 	}
 	if addr, err := netip.ParseAddr(value); err == nil {
-		return addr.String()
+		return addr.Unmap().String()
 	}
 	return strings.ToLower(value)
 }
@@ -198,11 +218,148 @@ func sshDeviceIdentity(device DeviceConfig) deviceIdentity {
 	}
 }
 
+type sshDeviceSelectionConsumer struct {
+	next                    consumer.Metrics
+	selector                deviceSelectionMatcher
+	configured              deviceIdentity
+	configuredHostFallbacks []string
+	metadataStore           *connection.DeviceMetadataStore
+}
+
+func newSSHDeviceSelectionConsumer(
+	next consumer.Metrics,
+	selector deviceSelectionMatcher,
+	device DeviceConfig,
+	metadataStore *connection.DeviceMetadataStore,
+) consumer.Metrics {
+	if selector.empty() {
+		return next
+	}
+	configured := sshDeviceIdentity(device)
+	return &sshDeviceSelectionConsumer{
+		next:                    next,
+		selector:                selector,
+		configured:              configured,
+		configuredHostFallbacks: append(append([]string(nil), configured.hostNames...), device.Host),
+		metadataStore:           metadataStore,
+	}
+}
+
+func (*sshDeviceSelectionConsumer) Capabilities() consumer.Capabilities {
+	return consumer.Capabilities{MutatesData: true}
+}
+
+func (c *sshDeviceSelectionConsumer) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error {
+	md.ResourceMetrics().RemoveIf(func(rm pmetric.ResourceMetrics) bool {
+		resourceAttrs := rm.Resource().Attributes()
+		metadata, metadataAvailable := c.metadataStore.Load()
+		if c.unresolvedSSHExclusionIdentity(metadata, metadataAvailable) {
+			// Exclusions always win, so an initial connection failure cannot be
+			// safely emitted until show version resolves every field needed to
+			// prove that the target is not excluded.
+			return true
+		}
+		if metadataAvailable {
+			c.enrichSSHResourceIdentity(resourceAttrs, metadata)
+		}
+		identity := deviceIdentityFromResourceAttrs(resourceAttrs)
+		if metadataAvailable {
+			// Prefer discovered identity carried by this batch. Fill dimensions that
+			// contain no discovered value from the last verified target metadata so a
+			// later failure cannot lose an established include/exclude decision.
+			if hasOnlyConfiguredDeviceSelectionValues(identity.hostNames, c.configuredHostFallbacks) {
+				identity.hostNames = append(identity.hostNames, metadata.HostName)
+			}
+			if hasOnlyConfiguredDeviceSelectionValues(identity.hostIDs, c.configured.hostIDs) {
+				identity.hostIDs = append(identity.hostIDs, metadata.HostID, metadata.Serial)
+			}
+			if !hasDeviceSelectionValue(identity.serials) {
+				identity.serials = append(identity.serials, metadata.Serial)
+			}
+		}
+		// Retain configured target identity alongside the hostname and serial
+		// discovered by the SSH scrapers.
+		identity.hostNames = append(identity.hostNames, c.configured.hostNames...)
+		identity.hostIDs = append(identity.hostIDs, c.configured.hostIDs...)
+		identity.hostIPs = append(identity.hostIPs, c.configured.hostIPs...)
+		identity.deviceIDs = append(identity.deviceIDs, c.configured.deviceIDs...)
+		return !c.selector.allows(identity)
+	})
+	if md.MetricCount() == 0 {
+		return nil
+	}
+	return c.next.ConsumeMetrics(ctx, md)
+}
+
+func (c *sshDeviceSelectionConsumer) enrichSSHResourceIdentity(attrs pcommon.Map, metadata connection.DeviceMetadata) {
+	if serial := strings.TrimSpace(metadata.Serial); serial != "" && strings.TrimSpace(attrString(attrs, "cisco.switch.serial")) == "" {
+		attrs.PutStr("cisco.switch.serial", serial)
+	}
+	if hostName := strings.TrimSpace(metadata.HostName); hostName != "" {
+		if current := attrString(attrs, "host.name"); current != "" && hasOnlyConfiguredDeviceSelectionValues([]string{current}, c.configuredHostFallbacks) {
+			// Replace only an emitted configured fallback. Absence can mean that
+			// the user disabled this resource attribute and must be preserved.
+			attrs.PutStr("host.name", hostName)
+		}
+	}
+	if hostID := strings.TrimSpace(firstNonEmpty(metadata.HostID, metadata.Serial)); hostID != "" {
+		if current := attrString(attrs, "host.id"); current != "" && hasOnlyConfiguredDeviceSelectionValues([]string{current}, c.configured.hostIDs) {
+			attrs.PutStr("host.id", hostID)
+		}
+	}
+}
+
+func hasDeviceSelectionValue(values []string) bool {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func hasOnlyConfiguredDeviceSelectionValues(values, configured []string) bool {
+	configuredSet := normalizedSet(configured, normalizeSelectorText)
+	for _, value := range values {
+		normalized := normalizeSelectorText(value)
+		if normalized == "" {
+			continue
+		}
+		if _, ok := configuredSet[normalized]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func (m deviceSelectionMatch) requiresSSHDiscovery() bool {
+	return len(m.hostNames) > 0 || len(m.hostIDs) > 0 || len(m.serials) > 0
+}
+
+func (c *sshDeviceSelectionConsumer) unresolvedSSHExclusionIdentity(metadata connection.DeviceMetadata, available bool) bool {
+	exclude := c.selector.exclude
+	if !exclude.requiresSSHDiscovery() {
+		return false
+	}
+	if !available {
+		return true
+	}
+	if len(exclude.hostNames) > 0 && strings.TrimSpace(metadata.HostName) == "" {
+		return true
+	}
+	stableID := firstNonEmpty(metadata.HostID, metadata.Serial)
+	if len(exclude.hostIDs) > 0 && stableID == "" {
+		return true
+	}
+	return len(exclude.serials) > 0 && strings.TrimSpace(metadata.Serial) == ""
+}
+
 func merakiDeviceIdentity(device deviceResource) deviceIdentity {
+	hostIPs := append([]string{device.LANIP, device.PublicIP}, device.AdditionalIPs...)
 	return deviceIdentity{
 		hostNames: []string{device.Name},
 		hostIDs:   []string{device.Serial},
-		hostIPs:   []string{device.LANIP, device.PublicIP},
+		hostIPs:   hostIPs,
 		serials:   []string{device.Serial},
 		deviceIDs: []string{device.Serial, device.MAC, device.NetworkID},
 	}
@@ -250,7 +407,7 @@ func catalystDeviceIdentity(device catalystcenter.Device) deviceIdentity {
 		hostIDs:   []string{firstNonEmpty(device.SerialNumber, device.ID, device.InstanceUUID, device.MacAddress)},
 		hostIPs:   []string{device.ManagementIPAddress, device.DNSResolvedManagementAddr, device.APManagerInterfaceIP, device.AssociatedWlcIP},
 		serials:   []string{device.SerialNumber},
-		deviceIDs: []string{device.ID, device.InstanceUUID, device.MacAddress, device.LocationName, device.Location},
+		deviceIDs: []string{device.ID, device.InstanceUUID, device.MacAddress},
 	}
 }
 
@@ -280,7 +437,7 @@ func catalystIssueIdentity(issue catalystcenter.Issue, device catalystcenter.Dev
 	id := catalystDeviceIdentity(device)
 	id.hostNames = append(id.hostNames, issue.Name, issue.SiteName)
 	id.hostIDs = append(id.hostIDs, issue.EntityID)
-	id.deviceIDs = append(id.deviceIDs, issue.EntityID, issue.SiteID, issue.SiteHierarchyID)
+	id.deviceIDs = append(id.deviceIDs, issue.EntityID)
 	return id
 }
 
@@ -304,7 +461,7 @@ func sdwanObjectIdentity(obj sdwan.Object) deviceIdentity {
 		hostIDs:   []string{firstNonEmpty(serial, uuid, systemIP, siteID)},
 		hostIPs:   []string{systemIP, sdwan.String(obj, "managementIp", "mgmt-ip", "local-system-ip")},
 		serials:   []string{serial},
-		deviceIDs: []string{uuid, systemIP, siteID, sdwanDeviceModel(obj), sdwanPersonality(obj)},
+		deviceIDs: []string{uuid, systemIP},
 	}
 }
 
@@ -317,7 +474,7 @@ func nexusDashboardObjectIdentity(obj nexusdashboard.Object) deviceIdentity {
 		hostIDs:   []string{firstNonEmpty(serial, switchID)},
 		hostIPs:   []string{nexusdashboard.String(obj, "ipAddress", "mgmtIpAddress", "managementIp", "hostIp", "ip")},
 		serials:   []string{serial},
-		deviceIDs: []string{switchID, nexusdashboard.String(obj, "fabricName", "fabric"), nexusdashboard.String(obj, "siteName", "site")},
+		deviceIDs: []string{switchID},
 	}
 }
 
@@ -343,7 +500,7 @@ func fmcObjectIdentity(obj fmc.Object) deviceIdentity {
 		hostIDs:   []string{firstNonEmpty(serial, deviceID, name)},
 		hostIPs:   []string{fmc.String(obj, "managementIpAddress", "managementIP", "mgmtIp", "ipAddress", "ip", "parent.device.ip")},
 		serials:   []string{serial},
-		deviceIDs: []string{deviceID, fmc.String(obj, "policyId", "parent.policy.id"), fmc.String(obj, "policyName", "parent.policy.name")},
+		deviceIDs: []string{deviceID},
 	}
 }
 
@@ -368,7 +525,6 @@ func deviceIdentityFromResourceAttrs(attrs pcommon.Map) deviceIdentity {
 			attrString(attrs, "catalyst_center.device.instance_uuid"),
 			attrString(attrs, "sdwan.system_ip"),
 			attrString(attrs, "sdwan.uuid"),
-			attrString(attrs, "sdwan.site.id"),
 			attrString(attrs, "ndfc.switch.id"),
 			attrString(attrs, "aci.node.id"),
 			attrString(attrs, "aci.dn"),

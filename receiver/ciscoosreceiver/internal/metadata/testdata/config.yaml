@@ -1,11 +1,147 @@
 default:
 all_set:
   metrics:
+    aci.api.endpoint.error:
+      enabled: true
+    aci.api.rate_limited:
+      enabled: true
+    aci.api.request.duration:
+      enabled: true
+    aci.api.request.errors:
+      enabled: true
+    aci.audit.record.count:
+      enabled: true
+    aci.controller.up:
+      enabled: true
+    aci.endpoint.count:
+      enabled: true
+    aci.endpoint.present:
+      enabled: true
+    aci.event.count:
+      enabled: true
+    aci.fabric.health:
+      enabled: true
+    aci.fault.active:
+      enabled: true
+    aci.fault.count:
+      enabled: true
+    aci.resource.count:
+      enabled: true
+    aci.resource.info:
+      enabled: true
+    aci.resource.status:
+      enabled: true
+    aci.scrape.last_success:
+      enabled: true
+    aci.scrape.partial_success:
+      enabled: true
+    aci.tenant.object.count:
+      enabled: true
+    aci.tenant.status:
+      enabled: true
+    catalyst_center.api.rate_limited:
+      enabled: true
+    catalyst_center.api.request.duration:
+      enabled: true
+    catalyst_center.api.request.errors:
+      enabled: true
+    catalyst_center.client.count:
+      enabled: true
+    catalyst_center.client.detail.health.score:
+      enabled: true
+    catalyst_center.client.health.score:
+      enabled: true
+    catalyst_center.client.issue.count:
+      enabled: true
+    catalyst_center.client.network.io:
+      enabled: true
+    catalyst_center.client.unique.count:
+      enabled: true
+    catalyst_center.client.wireless.rssi:
+      enabled: true
+    catalyst_center.client.wireless.snr:
+      enabled: true
+    catalyst_center.device.collection.status:
+      enabled: true
+    catalyst_center.device.detail.communication.status:
+      enabled: true
+    catalyst_center.device.detail.health.score:
+      enabled: true
+    catalyst_center.device.interface.count:
+      enabled: true
+    catalyst_center.device.reachability.status:
+      enabled: true
+    catalyst_center.device.uptime:
+      enabled: true
+    catalyst_center.interface.count:
+      enabled: true
+    catalyst_center.inventory.device.count:
+      enabled: true
+    catalyst_center.issue.active.count:
+      enabled: true
+    catalyst_center.issue.count:
+      enabled: true
+    catalyst_center.network.device.count:
+      enabled: true
+    catalyst_center.network.health.category.score:
+      enabled: true
+    catalyst_center.network.health.entity.count:
+      enabled: true
+    catalyst_center.network.health.entity.score:
+      enabled: true
+    catalyst_center.network.health.score:
+      enabled: true
+    catalyst_center.scrape.last_success:
+      enabled: true
+    catalyst_center.scrape.partial_success:
+      enabled: true
+    catalyst_center.site.client.count:
+      enabled: true
+    catalyst_center.site.client.health.percentage:
+      enabled: true
+    catalyst_center.site.health.count:
+      enabled: true
+    catalyst_center.site.issue.count:
+      enabled: true
+    catalyst_center.site.network_device.count:
+      enabled: true
+    catalyst_center.site.network_device.health.percentage:
+      enabled: true
+    catalyst_center.topology.link.count:
+      enabled: true
+    catalyst_center.topology.node.count:
+      enabled: true
+    cisco.catalyst9800.receiver.active_subscriptions:
+      enabled: true
+    cisco.catalyst9800.receiver.compact_gpb_payloads:
+      enabled: true
+    cisco.catalyst9800.receiver.decode_errors:
+      enabled: true
+    cisco.catalyst9800.receiver.dropped_datapoints:
+      enabled: true
+    cisco.catalyst9800.receiver.last_success_timestamp:
+      enabled: true
+    cisco.catalyst9800.receiver.reconnects:
+      enabled: true
+    cisco.catalyst9800.receiver.target.last_success_timestamp:
+      enabled: true
+    cisco.catalyst9800.receiver.target.reconnects:
+      enabled: true
+    cisco.catalyst9800.receiver.target.subscription.active:
+      enabled: true
+    cisco.catalyst9800.receiver.target.updates:
+      enabled: true
+    cisco.catalyst9800.receiver.unsupported_paths:
+      enabled: true
+    cisco.catalyst9800.receiver.updates:
+      enabled: true
     cisco.device.up:
       enabled: true
     cisco.interface.admin.status:
       enabled: true
       attributes: ["network.interface.name"]
+    cisco.interface.drop.rate:
+      enabled: true
     cisco.interface.io.rate:
       enabled: true
       attributes: ["network.io.direction","network.interface.name"]
@@ -18,19 +154,34 @@ all_set:
     cisco.interface.utilization:
       enabled: true
       attributes: ["network.io.direction","network.interface.name"]
-    cisco.optics.chromatic_dispersion:
+    cisco.iosxr.receiver.active_subscriptions:
       enabled: true
-      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
-    cisco.optics.dgd:
+    cisco.iosxr.receiver.compact_gpb_payloads:
       enabled: true
-      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.iosxr.receiver.decode_errors:
+      enabled: true
+    cisco.iosxr.receiver.dropped_datapoints:
+      enabled: true
+    cisco.iosxr.receiver.last_success_timestamp:
+      enabled: true
+    cisco.iosxr.receiver.reconnects:
+      enabled: true
+    cisco.iosxr.receiver.target.last_success_timestamp:
+      enabled: true
+    cisco.iosxr.receiver.target.reconnects:
+      enabled: true
+    cisco.iosxr.receiver.target.subscription.active:
+      enabled: true
+    cisco.iosxr.receiver.target.updates:
+      enabled: true
+    cisco.iosxr.receiver.unsupported_paths:
+      enabled: true
+    cisco.iosxr.receiver.updates:
+      enabled: true
     cisco.optics.esnr:
       enabled: true
       attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
     cisco.optics.laser_bias_current:
-      enabled: true
-      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
-    cisco.optics.osnr:
       enabled: true
       attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
     cisco.optics.pre_fec_ber:
@@ -39,12 +190,6 @@ all_set:
     cisco.optics.present:
       enabled: true
       attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.profile","cisco.optics.experimental"]
-    cisco.optics.q_factor:
-      enabled: true
-      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
-    cisco.optics.q_margin:
-      enabled: true
-      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
     cisco.optics.rx_power:
       enabled: true
       attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
@@ -77,8 +222,10 @@ all_set:
       attributes: ["cisco.wlc.ap.mac","cisco.wlc.wlan.id"]
     system.cpu.utilization:
       enabled: true
+      attributes: ["cisco.node.name"]
     system.memory.utilization:
       enabled: true
+      attributes: ["cisco.location.fru","cisco.location.slot","cisco.location.bay","cisco.location.chassis"]
     system.network.errors:
       enabled: true
       attributes: ["network.io.direction","network.interface.name"]
@@ -97,11 +244,19 @@ all_set:
     system.uptime:
       enabled: true
   resource_attributes:
+    cisco.os.boot_mode:
+      enabled: true
     cisco.os.name:
       enabled: true
     cisco.platform.family:
       enabled: true
+    cisco.product.family:
+      enabled: true
     cisco.telemetry.transport:
+      enabled: true
+    device.manufacturer:
+      enabled: true
+    device.model.identifier:
       enabled: true
     host.id:
       enabled: true
@@ -112,14 +267,152 @@ all_set:
     hw.type:
       enabled: true
     os.name:
+      enabled: true
+    os.version:
       enabled: true
 reaggregate_set:
   metrics:
+    aci.api.endpoint.error:
+      enabled: true
+    aci.api.rate_limited:
+      enabled: true
+    aci.api.request.duration:
+      enabled: true
+    aci.api.request.errors:
+      enabled: true
+    aci.audit.record.count:
+      enabled: true
+    aci.controller.up:
+      enabled: true
+    aci.endpoint.count:
+      enabled: true
+    aci.endpoint.present:
+      enabled: true
+    aci.event.count:
+      enabled: true
+    aci.fabric.health:
+      enabled: true
+    aci.fault.active:
+      enabled: true
+    aci.fault.count:
+      enabled: true
+    aci.resource.count:
+      enabled: true
+    aci.resource.info:
+      enabled: true
+    aci.resource.status:
+      enabled: true
+    aci.scrape.last_success:
+      enabled: true
+    aci.scrape.partial_success:
+      enabled: true
+    aci.tenant.object.count:
+      enabled: true
+    aci.tenant.status:
+      enabled: true
+    catalyst_center.api.rate_limited:
+      enabled: true
+    catalyst_center.api.request.duration:
+      enabled: true
+    catalyst_center.api.request.errors:
+      enabled: true
+    catalyst_center.client.count:
+      enabled: true
+    catalyst_center.client.detail.health.score:
+      enabled: true
+    catalyst_center.client.health.score:
+      enabled: true
+    catalyst_center.client.issue.count:
+      enabled: true
+    catalyst_center.client.network.io:
+      enabled: true
+    catalyst_center.client.unique.count:
+      enabled: true
+    catalyst_center.client.wireless.rssi:
+      enabled: true
+    catalyst_center.client.wireless.snr:
+      enabled: true
+    catalyst_center.device.collection.status:
+      enabled: true
+    catalyst_center.device.detail.communication.status:
+      enabled: true
+    catalyst_center.device.detail.health.score:
+      enabled: true
+    catalyst_center.device.interface.count:
+      enabled: true
+    catalyst_center.device.reachability.status:
+      enabled: true
+    catalyst_center.device.uptime:
+      enabled: true
+    catalyst_center.interface.count:
+      enabled: true
+    catalyst_center.inventory.device.count:
+      enabled: true
+    catalyst_center.issue.active.count:
+      enabled: true
+    catalyst_center.issue.count:
+      enabled: true
+    catalyst_center.network.device.count:
+      enabled: true
+    catalyst_center.network.health.category.score:
+      enabled: true
+    catalyst_center.network.health.entity.count:
+      enabled: true
+    catalyst_center.network.health.entity.score:
+      enabled: true
+    catalyst_center.network.health.score:
+      enabled: true
+    catalyst_center.scrape.last_success:
+      enabled: true
+    catalyst_center.scrape.partial_success:
+      enabled: true
+    catalyst_center.site.client.count:
+      enabled: true
+    catalyst_center.site.client.health.percentage:
+      enabled: true
+    catalyst_center.site.health.count:
+      enabled: true
+    catalyst_center.site.issue.count:
+      enabled: true
+    catalyst_center.site.network_device.count:
+      enabled: true
+    catalyst_center.site.network_device.health.percentage:
+      enabled: true
+    catalyst_center.topology.link.count:
+      enabled: true
+    catalyst_center.topology.node.count:
+      enabled: true
+    cisco.catalyst9800.receiver.active_subscriptions:
+      enabled: true
+    cisco.catalyst9800.receiver.compact_gpb_payloads:
+      enabled: true
+    cisco.catalyst9800.receiver.decode_errors:
+      enabled: true
+    cisco.catalyst9800.receiver.dropped_datapoints:
+      enabled: true
+    cisco.catalyst9800.receiver.last_success_timestamp:
+      enabled: true
+    cisco.catalyst9800.receiver.reconnects:
+      enabled: true
+    cisco.catalyst9800.receiver.target.last_success_timestamp:
+      enabled: true
+    cisco.catalyst9800.receiver.target.reconnects:
+      enabled: true
+    cisco.catalyst9800.receiver.target.subscription.active:
+      enabled: true
+    cisco.catalyst9800.receiver.target.updates:
+      enabled: true
+    cisco.catalyst9800.receiver.unsupported_paths:
+      enabled: true
+    cisco.catalyst9800.receiver.updates:
+      enabled: true
     cisco.device.up:
       enabled: true
     cisco.interface.admin.status:
       enabled: true
       attributes: []
+    cisco.interface.drop.rate:
+      enabled: true
     cisco.interface.io.rate:
       enabled: true
       attributes: []
@@ -132,31 +425,40 @@ reaggregate_set:
     cisco.interface.utilization:
       enabled: true
       attributes: []
-    cisco.optics.chromatic_dispersion:
+    cisco.iosxr.receiver.active_subscriptions:
       enabled: true
-      attributes: []
-    cisco.optics.dgd:
+    cisco.iosxr.receiver.compact_gpb_payloads:
       enabled: true
-      attributes: []
+    cisco.iosxr.receiver.decode_errors:
+      enabled: true
+    cisco.iosxr.receiver.dropped_datapoints:
+      enabled: true
+    cisco.iosxr.receiver.last_success_timestamp:
+      enabled: true
+    cisco.iosxr.receiver.reconnects:
+      enabled: true
+    cisco.iosxr.receiver.target.last_success_timestamp:
+      enabled: true
+    cisco.iosxr.receiver.target.reconnects:
+      enabled: true
+    cisco.iosxr.receiver.target.subscription.active:
+      enabled: true
+    cisco.iosxr.receiver.target.updates:
+      enabled: true
+    cisco.iosxr.receiver.unsupported_paths:
+      enabled: true
+    cisco.iosxr.receiver.updates:
+      enabled: true
     cisco.optics.esnr:
       enabled: true
       attributes: []
     cisco.optics.laser_bias_current:
       enabled: true
       attributes: []
-    cisco.optics.osnr:
-      enabled: true
-      attributes: []
     cisco.optics.pre_fec_ber:
       enabled: true
       attributes: []
     cisco.optics.present:
-      enabled: true
-      attributes: []
-    cisco.optics.q_factor:
-      enabled: true
-      attributes: []
-    cisco.optics.q_margin:
       enabled: true
       attributes: []
     cisco.optics.rx_power:
@@ -191,8 +493,10 @@ reaggregate_set:
       attributes: []
     system.cpu.utilization:
       enabled: true
+      attributes: []
     system.memory.utilization:
       enabled: true
+      attributes: []
     system.network.errors:
       enabled: true
       attributes: []
@@ -211,11 +515,19 @@ reaggregate_set:
     system.uptime:
       enabled: true
   resource_attributes:
+    cisco.os.boot_mode:
+      enabled: true
     cisco.os.name:
       enabled: true
     cisco.platform.family:
       enabled: true
+    cisco.product.family:
+      enabled: true
     cisco.telemetry.transport:
+      enabled: true
+    device.manufacturer:
+      enabled: true
+    device.model.identifier:
       enabled: true
     host.id:
       enabled: true
@@ -227,13 +539,151 @@ reaggregate_set:
       enabled: true
     os.name:
       enabled: true
+    os.version:
+      enabled: true
 none_set:
   metrics:
+    aci.api.endpoint.error:
+      enabled: false
+    aci.api.rate_limited:
+      enabled: false
+    aci.api.request.duration:
+      enabled: false
+    aci.api.request.errors:
+      enabled: false
+    aci.audit.record.count:
+      enabled: false
+    aci.controller.up:
+      enabled: false
+    aci.endpoint.count:
+      enabled: false
+    aci.endpoint.present:
+      enabled: false
+    aci.event.count:
+      enabled: false
+    aci.fabric.health:
+      enabled: false
+    aci.fault.active:
+      enabled: false
+    aci.fault.count:
+      enabled: false
+    aci.resource.count:
+      enabled: false
+    aci.resource.info:
+      enabled: false
+    aci.resource.status:
+      enabled: false
+    aci.scrape.last_success:
+      enabled: false
+    aci.scrape.partial_success:
+      enabled: false
+    aci.tenant.object.count:
+      enabled: false
+    aci.tenant.status:
+      enabled: false
+    catalyst_center.api.rate_limited:
+      enabled: false
+    catalyst_center.api.request.duration:
+      enabled: false
+    catalyst_center.api.request.errors:
+      enabled: false
+    catalyst_center.client.count:
+      enabled: false
+    catalyst_center.client.detail.health.score:
+      enabled: false
+    catalyst_center.client.health.score:
+      enabled: false
+    catalyst_center.client.issue.count:
+      enabled: false
+    catalyst_center.client.network.io:
+      enabled: false
+    catalyst_center.client.unique.count:
+      enabled: false
+    catalyst_center.client.wireless.rssi:
+      enabled: false
+    catalyst_center.client.wireless.snr:
+      enabled: false
+    catalyst_center.device.collection.status:
+      enabled: false
+    catalyst_center.device.detail.communication.status:
+      enabled: false
+    catalyst_center.device.detail.health.score:
+      enabled: false
+    catalyst_center.device.interface.count:
+      enabled: false
+    catalyst_center.device.reachability.status:
+      enabled: false
+    catalyst_center.device.uptime:
+      enabled: false
+    catalyst_center.interface.count:
+      enabled: false
+    catalyst_center.inventory.device.count:
+      enabled: false
+    catalyst_center.issue.active.count:
+      enabled: false
+    catalyst_center.issue.count:
+      enabled: false
+    catalyst_center.network.device.count:
+      enabled: false
+    catalyst_center.network.health.category.score:
+      enabled: false
+    catalyst_center.network.health.entity.count:
+      enabled: false
+    catalyst_center.network.health.entity.score:
+      enabled: false
+    catalyst_center.network.health.score:
+      enabled: false
+    catalyst_center.scrape.last_success:
+      enabled: false
+    catalyst_center.scrape.partial_success:
+      enabled: false
+    catalyst_center.site.client.count:
+      enabled: false
+    catalyst_center.site.client.health.percentage:
+      enabled: false
+    catalyst_center.site.health.count:
+      enabled: false
+    catalyst_center.site.issue.count:
+      enabled: false
+    catalyst_center.site.network_device.count:
+      enabled: false
+    catalyst_center.site.network_device.health.percentage:
+      enabled: false
+    catalyst_center.topology.link.count:
+      enabled: false
+    catalyst_center.topology.node.count:
+      enabled: false
+    cisco.catalyst9800.receiver.active_subscriptions:
+      enabled: false
+    cisco.catalyst9800.receiver.compact_gpb_payloads:
+      enabled: false
+    cisco.catalyst9800.receiver.decode_errors:
+      enabled: false
+    cisco.catalyst9800.receiver.dropped_datapoints:
+      enabled: false
+    cisco.catalyst9800.receiver.last_success_timestamp:
+      enabled: false
+    cisco.catalyst9800.receiver.reconnects:
+      enabled: false
+    cisco.catalyst9800.receiver.target.last_success_timestamp:
+      enabled: false
+    cisco.catalyst9800.receiver.target.reconnects:
+      enabled: false
+    cisco.catalyst9800.receiver.target.subscription.active:
+      enabled: false
+    cisco.catalyst9800.receiver.target.updates:
+      enabled: false
+    cisco.catalyst9800.receiver.unsupported_paths:
+      enabled: false
+    cisco.catalyst9800.receiver.updates:
+      enabled: false
     cisco.device.up:
       enabled: false
     cisco.interface.admin.status:
       enabled: false
       attributes: ["network.interface.name"]
+    cisco.interface.drop.rate:
+      enabled: false
     cisco.interface.io.rate:
       enabled: false
       attributes: ["network.io.direction","network.interface.name"]
@@ -246,19 +696,34 @@ none_set:
     cisco.interface.utilization:
       enabled: false
       attributes: ["network.io.direction","network.interface.name"]
-    cisco.optics.chromatic_dispersion:
+    cisco.iosxr.receiver.active_subscriptions:
       enabled: false
-      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
-    cisco.optics.dgd:
+    cisco.iosxr.receiver.compact_gpb_payloads:
       enabled: false
-      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.iosxr.receiver.decode_errors:
+      enabled: false
+    cisco.iosxr.receiver.dropped_datapoints:
+      enabled: false
+    cisco.iosxr.receiver.last_success_timestamp:
+      enabled: false
+    cisco.iosxr.receiver.reconnects:
+      enabled: false
+    cisco.iosxr.receiver.target.last_success_timestamp:
+      enabled: false
+    cisco.iosxr.receiver.target.reconnects:
+      enabled: false
+    cisco.iosxr.receiver.target.subscription.active:
+      enabled: false
+    cisco.iosxr.receiver.target.updates:
+      enabled: false
+    cisco.iosxr.receiver.unsupported_paths:
+      enabled: false
+    cisco.iosxr.receiver.updates:
+      enabled: false
     cisco.optics.esnr:
       enabled: false
       attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
     cisco.optics.laser_bias_current:
-      enabled: false
-      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
-    cisco.optics.osnr:
       enabled: false
       attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
     cisco.optics.pre_fec_ber:
@@ -267,12 +732,6 @@ none_set:
     cisco.optics.present:
       enabled: false
       attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.profile","cisco.optics.experimental"]
-    cisco.optics.q_factor:
-      enabled: false
-      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
-    cisco.optics.q_margin:
-      enabled: false
-      attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
     cisco.optics.rx_power:
       enabled: false
       attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
@@ -305,8 +764,10 @@ none_set:
       attributes: ["cisco.wlc.ap.mac","cisco.wlc.wlan.id"]
     system.cpu.utilization:
       enabled: false
+      attributes: ["cisco.node.name"]
     system.memory.utilization:
       enabled: false
+      attributes: ["cisco.location.fru","cisco.location.slot","cisco.location.bay","cisco.location.chassis"]
     system.network.errors:
       enabled: false
       attributes: ["network.io.direction","network.interface.name"]
@@ -325,11 +786,19 @@ none_set:
     system.uptime:
       enabled: false
   resource_attributes:
+    cisco.os.boot_mode:
+      enabled: false
     cisco.os.name:
       enabled: false
     cisco.platform.family:
       enabled: false
+    cisco.product.family:
+      enabled: false
     cisco.telemetry.transport:
+      enabled: false
+    device.manufacturer:
+      enabled: false
+    device.model.identifier:
       enabled: false
     host.id:
       enabled: false
@@ -340,9 +809,15 @@ none_set:
     hw.type:
       enabled: false
     os.name:
+      enabled: false
+    os.version:
       enabled: false
 filter_set_include:
   resource_attributes:
+    cisco.os.boot_mode:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
     cisco.os.name:
       enabled: true
       metrics_include:
@@ -351,7 +826,19 @@ filter_set_include:
       enabled: true
       metrics_include:
         - regexp: ".*"
+    cisco.product.family:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
     cisco.telemetry.transport:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
+    device.manufacturer:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
+    device.model.identifier:
       enabled: true
       metrics_include:
         - regexp: ".*"
@@ -372,11 +859,19 @@ filter_set_include:
       metrics_include:
         - regexp: ".*"
     os.name:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
+    os.version:
       enabled: true
       metrics_include:
         - regexp: ".*"
 filter_set_exclude:
   resource_attributes:
+    cisco.os.boot_mode:
+      enabled: true
+      metrics_exclude:
+        - strict: "cisco.os.boot_mode-val"
     cisco.os.name:
       enabled: true
       metrics_exclude:
@@ -385,10 +880,22 @@ filter_set_exclude:
       enabled: true
       metrics_exclude:
         - strict: "cisco.platform.family-val"
+    cisco.product.family:
+      enabled: true
+      metrics_exclude:
+        - strict: "cisco.product.family-val"
     cisco.telemetry.transport:
       enabled: true
       metrics_exclude:
         - strict: "cisco.telemetry.transport-val"
+    device.manufacturer:
+      enabled: true
+      metrics_exclude:
+        - strict: "device.manufacturer-val"
+    device.model.identifier:
+      enabled: true
+      metrics_exclude:
+        - strict: "device.model.identifier-val"
     host.id:
       enabled: true
       metrics_exclude:
@@ -409,3 +916,7 @@ filter_set_exclude:
       enabled: true
       metrics_exclude:
         - strict: "os.name-val"
+    os.version:
+      enabled: true
+      metrics_exclude:
+        - strict: "os.version-val"

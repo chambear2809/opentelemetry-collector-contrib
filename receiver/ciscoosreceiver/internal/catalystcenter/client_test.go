@@ -4,11 +4,14 @@
 package catalystcenter
 
 import (
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -27,6 +30,70 @@ func TestClientRetryValidationPreservesExplicitZero(t *testing.T) {
 		_, err = NewClient(Config{Endpoint: "https://catalyst.example.test", Username: "admin", Password: "password", MaxRetries: retries})
 		require.ErrorContains(t, err, "invalid catalyst center max retries")
 	}
+}
+
+func TestClientRetriesIncompleteSuccessfulResponseBody(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/dna/system/api/v1/auth/token" {
+			_, _ = w.Write([]byte(`{"Token":"token"}`))
+			return
+		}
+		if requests.Add(1) == 1 {
+			w.Header().Set("Content-Length", "100")
+			_, _ = w.Write([]byte(`{"response":`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"response":{"ok":true}}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", MaxRetries: 1})
+	require.NoError(t, err)
+	response, err := GetResponseJSON[map[string]bool](t.Context(), client, "test.get", "/dna/intent/api/v1/test", nil)
+	require.NoError(t, err)
+	assert.True(t, response["ok"])
+	assert.Equal(t, int64(2), requests.Load())
+}
+
+func TestClientRefreshesTokenAfterIncompleteUnauthorizedResponse(t *testing.T) {
+	var authRequests atomic.Int64
+	var dataRequests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/dna/system/api/v1/auth/token":
+			token := "token-1"
+			if authRequests.Add(1) == 2 {
+				token = "token-2"
+			}
+			_, _ = w.Write([]byte(`{"Token":"` + token + `"}`))
+		case "/dna/intent/api/v1/network-device/count":
+			dataRequests.Add(1)
+			if r.Header.Get("X-Auth-Token") == "token-1" {
+				w.Header().Set("Content-Length", "100")
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte(`expired`))
+				return
+			}
+			assert.Equal(t, "token-2", r.Header.Get("X-Auth-Token"))
+			_, _ = w.Write([]byte(`{"response":4}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	// Ordinary request retries are disabled: the second request is the one
+	// bounded auth refresh that follows rejection of the cached token.
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", MaxRetries: 0})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	count, err := GetCount(t.Context(), client, "devices.count", "/dna/intent/api/v1/network-device/count", nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(4), count)
+	assert.Equal(t, int64(2), authRequests.Load())
+	assert.Equal(t, int64(2), dataRequests.Load())
 }
 
 func TestClientAuthenticationRetryPolicy(t *testing.T) {
@@ -57,6 +124,18 @@ func TestClientAuthenticationRetryPolicy(t *testing.T) {
 			authenticate: func(w http.ResponseWriter, attempt int64) {
 				if attempt == 1 {
 					http.Error(w, "unavailable", http.StatusServiceUnavailable)
+					return
+				}
+				_, _ = w.Write([]byte(`{"Token":"token-1"}`))
+			},
+			wantAuthRequests: 2,
+		},
+		{
+			name: "incomplete successful authentication body",
+			authenticate: func(w http.ResponseWriter, attempt int64) {
+				if attempt == 1 {
+					w.Header().Set("Content-Length", "100")
+					_, _ = w.Write([]byte(`{"Token":`))
 					return
 				}
 				_, _ = w.Write([]byte(`{"Token":"token-1"}`))
@@ -125,10 +204,291 @@ func TestClientRetriesAuthenticationTransportFailure(t *testing.T) {
 	assert.Equal(t, int64(2), transport.attempts.Load())
 }
 
+func TestClientCertificateVerificationFailureIsTerminal(t *testing.T) {
+	newClient := func(t *testing.T) (*Client, *certificateFailureTransport) {
+		client, err := NewClient(Config{
+			Endpoint:   "https://catalyst.example.test",
+			Username:   "admin",
+			Password:   "password",
+			MaxRetries: 3,
+		})
+		require.NoError(t, err)
+		client.spacing = 0
+		transport := &certificateFailureTransport{}
+		client.client.Transport = transport
+		return client, transport
+	}
+
+	t.Run("authentication", func(t *testing.T) {
+		client, transport := newClient(t)
+		_, err := GetCount(t.Context(), client, "devices.count", "/dna/intent/api/v1/network-device/count", nil)
+		require.Error(t, err)
+		assert.True(t, httpclient.IsCertificateVerificationError(err))
+		assert.Equal(t, int64(1), transport.attempts.Load())
+	})
+
+	t.Run("data", func(t *testing.T) {
+		client, transport := newClient(t)
+		client.tokenMu.Lock()
+		client.token = "token-1"
+		client.tokenExpiry = time.Now().Add(time.Hour)
+		client.tokenGeneration = 1
+		client.tokenMu.Unlock()
+
+		_, err := GetCount(t.Context(), client, "devices.count", "/dna/intent/api/v1/network-device/count", nil)
+		require.Error(t, err)
+		assert.True(t, httpclient.IsCertificateVerificationError(err))
+		assert.Equal(t, int64(1), transport.attempts.Load())
+	})
+}
+
+func TestClientAuthenticationFailuresEnterSharedBackoff(t *testing.T) {
+	tests := []struct {
+		name             string
+		authenticate     func(http.ResponseWriter)
+		data             func(http.ResponseWriter)
+		wantAuthRequests int64
+		wantDataRequests int64
+		wantFailures     int
+	}{
+		{
+			name: "login rejected",
+			authenticate: func(w http.ResponseWriter) {
+				http.Error(w, "invalid credentials", http.StatusUnauthorized)
+			},
+			data: func(w http.ResponseWriter) {
+				_, _ = w.Write([]byte(`{"response":1}`))
+			},
+			wantAuthRequests: 1,
+			wantFailures:     1,
+		},
+		{
+			name: "issued tokens rejected",
+			authenticate: func(w http.ResponseWriter) {
+				_, _ = w.Write([]byte(`{"Token":"rejected-token"}`))
+			},
+			data: func(w http.ResponseWriter) {
+				http.Error(w, "token rejected", http.StatusUnauthorized)
+			},
+			wantAuthRequests: 2,
+			wantDataRequests: 2,
+			wantFailures:     2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var authRequests atomic.Int64
+			var dataRequests atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/dna/system/api/v1/auth/token" {
+					authRequests.Add(1)
+					tt.authenticate(w)
+					return
+				}
+				dataRequests.Add(1)
+				tt.data(w)
+			}))
+			defer server.Close()
+
+			client, err := NewClient(Config{
+				Endpoint:   server.URL,
+				Username:   "admin",
+				Password:   "password",
+				Timeout:    time.Second,
+				MaxRetries: 0,
+			})
+			require.NoError(t, err)
+			client.spacing = 0
+
+			for _, path := range []string{"/first", "/second"} {
+				_, requestErr := GetCount(t.Context(), client, path, path, nil)
+				require.ErrorContains(t, requestErr, "HTTP 401")
+			}
+			assert.Equal(t, tt.wantAuthRequests, authRequests.Load())
+			assert.Equal(t, tt.wantDataRequests, dataRequests.Load())
+			client.tokenMu.Lock()
+			assert.Equal(t, tt.wantFailures, client.authFailures)
+			client.tokenMu.Unlock()
+		})
+	}
+}
+
+func TestClientConcurrentRequestsShareLogin(t *testing.T) {
+	const callers = 16
+	loginStarted := make(chan struct{})
+	releaseLogin := make(chan struct{})
+	var startedOnce sync.Once
+	var loginCalls atomic.Int64
+	var dataCalls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/dna/system/api/v1/auth/token" {
+			loginCalls.Add(1)
+			startedOnce.Do(func() { close(loginStarted) })
+			<-releaseLogin
+			_, _ = w.Write([]byte(`{"Token":"shared-token"}`))
+			return
+		}
+		if r.Header.Get("X-Auth-Token") != "shared-token" {
+			http.Error(w, "missing shared token", http.StatusUnauthorized)
+			return
+		}
+		dataCalls.Add(1)
+		_, _ = w.Write([]byte(`{"response":1}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:   server.URL,
+		Username:   "admin",
+		Password:   "password",
+		Timeout:    5 * time.Second,
+		MaxRetries: 0,
+	})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	errs := make(chan error, callers)
+	var workers sync.WaitGroup
+	for range callers {
+		workers.Go(func() {
+			_, requestErr := GetCount(t.Context(), client, "count", "/count", nil)
+			errs <- requestErr
+		})
+	}
+	<-loginStarted
+	close(releaseLogin)
+	workers.Wait()
+	close(errs)
+	for requestErr := range errs {
+		require.NoError(t, requestErr)
+	}
+	assert.Equal(t, int64(1), loginCalls.Load())
+	assert.Equal(t, int64(callers), dataCalls.Load())
+}
+
+func TestClientAuthBackoffResetsOnlyAfterAcceptedDataRequest(t *testing.T) {
+	thirdDataStarted := make(chan struct{})
+	releaseThirdData := make(chan struct{})
+	var thirdStartedOnce sync.Once
+	var releaseOnce sync.Once
+	releaseThird := func() { releaseOnce.Do(func() { close(releaseThirdData) }) }
+	t.Cleanup(releaseThird)
+	var authCalls atomic.Int64
+	var dataCalls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/dna/system/api/v1/auth/token" {
+			switch authCalls.Add(1) {
+			case 1:
+				_, _ = w.Write([]byte(`{"Token":"token-1"}`))
+			case 2:
+				_, _ = w.Write([]byte(`{"Token":"token-2"}`))
+			default:
+				_, _ = w.Write([]byte(`{"Token":"token-3"}`))
+			}
+			return
+		}
+		dataCalls.Add(1)
+		if r.Header.Get("X-Auth-Token") != "token-3" {
+			http.Error(w, "token rejected", http.StatusUnauthorized)
+			return
+		}
+		thirdStartedOnce.Do(func() { close(thirdDataStarted) })
+		<-releaseThirdData
+		_, _ = w.Write([]byte(`{"response":3}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Endpoint:   server.URL,
+		Username:   "admin",
+		Password:   "password",
+		Timeout:    5 * time.Second,
+		MaxRetries: 0,
+	})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	_, err = GetCount(t.Context(), client, "first", "/count", nil)
+	require.ErrorContains(t, err, "HTTP 401")
+	_, err = GetCount(t.Context(), client, "cached", "/count", nil)
+	require.ErrorContains(t, err, "HTTP 401")
+	assert.Equal(t, int64(2), authCalls.Load())
+	assert.Equal(t, int64(2), dataCalls.Load())
+
+	client.tokenMu.Lock()
+	assert.Equal(t, 2, client.authFailures)
+	client.lastAuthAt = time.Now().Add(-catalystCenterAuthBackoffFor(client.authFailures))
+	client.tokenMu.Unlock()
+
+	result := make(chan error, 1)
+	go func() {
+		_, requestErr := GetCount(t.Context(), client, "recovered", "/count", nil)
+		result <- requestErr
+	}()
+	select {
+	case <-thirdDataStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for recovered data request")
+	}
+	client.tokenMu.Lock()
+	assert.Equal(t, 2, client.authFailures, "a token response alone must not reset the failure streak")
+	assert.Equal(t, "token-3", client.token)
+	client.tokenMu.Unlock()
+
+	releaseThird()
+	require.NoError(t, <-result)
+	client.tokenMu.Lock()
+	assert.Zero(t, client.authFailures)
+	assert.NoError(t, client.lastAuthErr)
+	assert.True(t, client.lastAuthAt.IsZero())
+	client.tokenMu.Unlock()
+	assert.Equal(t, int64(3), authCalls.Load())
+	assert.Equal(t, int64(3), dataCalls.Load())
+}
+
+func TestClientStaleUnauthorizedDoesNotClearNewerToken(t *testing.T) {
+	client, err := NewClient(Config{
+		Endpoint: "https://catalyst.example.test",
+		Username: "admin",
+		Password: "password",
+	})
+	require.NoError(t, err)
+
+	client.tokenMu.Lock()
+	client.token = "new-token"
+	client.tokenExpiry = time.Now().Add(time.Hour)
+	client.tokenGeneration = 4
+	client.tokenMu.Unlock()
+
+	client.rejectToken(tokenSnapshot{value: "old-token", generation: 3}, &APIError{StatusCode: http.StatusUnauthorized})
+	client.tokenMu.Lock()
+	assert.Equal(t, "new-token", client.token)
+	assert.Equal(t, uint64(4), client.tokenGeneration)
+	assert.Zero(t, client.authFailures)
+	client.tokenMu.Unlock()
+
+	client.rejectToken(tokenSnapshot{value: "new-token", generation: 4}, &APIError{StatusCode: http.StatusUnauthorized})
+	client.tokenMu.Lock()
+	assert.Empty(t, client.token)
+	assert.Equal(t, uint64(5), client.tokenGeneration)
+	assert.Equal(t, 1, client.authFailures)
+	client.tokenMu.Unlock()
+}
+
 type failOnceTransport struct {
 	next     http.RoundTripper
 	path     string
 	attempts atomic.Int64
+}
+
+type certificateFailureTransport struct {
+	attempts atomic.Int64
+}
+
+func (t *certificateFailureTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	t.attempts.Add(1)
+	return nil, x509.UnknownAuthorityError{}
 }
 
 func (t *failOnceTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -225,6 +585,19 @@ func TestClientSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {
 	}))
 	defer server.Close()
 
+	verifiedClient, err := NewClient(Config{
+		Endpoint:   server.URL,
+		Username:   "admin",
+		Password:   "password",
+		Timeout:    time.Second,
+		MaxRetries: 0,
+	})
+	require.NoError(t, err)
+	verifiedClient.spacing = 0
+	_, err = GetCount(t.Context(), verifiedClient, "devices.count", "/dna/intent/api/v1/network-device/count", nil)
+	require.ErrorContains(t, err, "trust the issuing CA in the Collector host trust store (preferred)")
+	require.ErrorContains(t, err, "set catalyst_center.insecure_skip_verify: true")
+
 	client, err := NewClient(Config{
 		Endpoint:           server.URL,
 		Username:           "admin",
@@ -304,6 +677,41 @@ func TestClientGetPagination(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 3)
 	assert.Equal(t, "three", got[2].Hostname)
+}
+
+func TestClientGetPaginationContinuesAfterShortPageWhenCountHasMore(t *testing.T) {
+	var dataCalls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/dna/system/api/v1/auth/token":
+			_, _ = w.Write([]byte(`{"Token":"token-1"}`))
+		case "/dna/intent/api/v1/network-device":
+			dataCalls.Add(1)
+			assert.Equal(t, "2", r.URL.Query().Get("limit"))
+			switch r.URL.Query().Get("offset") {
+			case "1":
+				_, _ = w.Write([]byte(`{"response":[{"hostname":"one"}],"page":{"limit":2,"offset":1,"count":2}}`))
+			case "2":
+				_, _ = w.Write([]byte(`{"response":[{"hostname":"two"}],"page":{"limit":2,"offset":2,"count":2}}`))
+			default:
+				t.Fatalf("unexpected offset %q", r.URL.Query().Get("offset"))
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", PageSize: 2, Timeout: time.Second, MaxRetries: 1})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	got, err := GetPaginatedJSON[Device](t.Context(), client, "devices", "/dna/intent/api/v1/network-device", nil, 0)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, "one", got[0].Hostname)
+	assert.Equal(t, "two", got[1].Hostname)
+	assert.Equal(t, int64(2), dataCalls.Load())
 }
 
 func TestClientGetPaginationAppliesEndpointPageLimitAndPageEnvelope(t *testing.T) {
@@ -395,6 +803,94 @@ func TestClientPostPagination(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 3)
 	assert.Equal(t, "three", got[2].IssueID)
+}
+
+func TestClientPostPaginationContinuesAfterShortPageWhenCountHasMore(t *testing.T) {
+	var dataCalls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/dna/system/api/v1/auth/token":
+			_, _ = w.Write([]byte(`{"Token":"token-1"}`))
+		case "/dna/data/api/v1/assuranceIssues/query":
+			dataCalls.Add(1)
+			var body map[string]any
+			if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
+				http.Error(w, "invalid request body", http.StatusBadRequest)
+				return
+			}
+			page := body["page"].(map[string]any)
+			assert.Equal(t, float64(2), page["limit"])
+			switch page["offset"] {
+			case float64(1):
+				_, _ = w.Write([]byte(`{"response":[{"issueId":"one"}],"page":{"limit":2,"offset":1,"count":2}}`))
+			case float64(2):
+				_, _ = w.Write([]byte(`{"response":[{"issueId":"two"}],"page":{"limit":2,"offset":2,"count":2}}`))
+			default:
+				t.Fatalf("unexpected offset %v", page["offset"])
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", PageSize: 2, Timeout: time.Second, MaxRetries: 1})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	got, err := PostPaginatedJSON[Issue](t.Context(), client, "issues.query", "/dna/data/api/v1/assuranceIssues/query", map[string]any{"filters": []any{}}, 0)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, "one", got[0].IssueID)
+	assert.Equal(t, "two", got[1].IssueID)
+	assert.Equal(t, int64(2), dataCalls.Load())
+}
+
+func TestClientPostPaginationAppliesEndpointPageLimitAndAdvancesOffsets(t *testing.T) {
+	firstPage := make([]Issue, 25)
+	for i := range firstPage {
+		firstPage[i].IssueID = strconv.Itoa(i + 1)
+	}
+	var dataCalls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/dna/system/api/v1/auth/token":
+			_, _ = w.Write([]byte(`{"Token":"token-1"}`))
+		case "/dna/data/api/v1/assuranceIssues/query":
+			dataCalls.Add(1)
+			var body map[string]any
+			if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
+				http.Error(w, "invalid request body", http.StatusBadRequest)
+				return
+			}
+			page := body["page"].(map[string]any)
+			assert.Equal(t, float64(25), page["limit"])
+			switch page["offset"] {
+			case float64(1):
+				assert.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+					"response": firstPage,
+					"page":     map[string]any{"limit": 25, "offset": 1, "count": 26},
+				}))
+			case float64(26):
+				_, _ = w.Write([]byte(`{"response":[{"issueId":"26"}],"page":{"limit":25,"offset":26,"count":26}}`))
+			default:
+				t.Fatalf("unexpected offset %v", page["offset"])
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", PageSize: 100, Timeout: time.Second, MaxRetries: 1})
+	require.NoError(t, err)
+	client.spacing = 0
+
+	got, err := PostPaginatedJSONWithPageLimit[Issue](t.Context(), client, "issues.query", "/dna/data/api/v1/assuranceIssues/query", map[string]any{"filters": []any{}}, 0, 25)
+	require.NoError(t, err)
+	require.Len(t, got, 26)
+	assert.Equal(t, "26", got[25].IssueID)
+	assert.Equal(t, int64(2), dataCalls.Load())
 }
 
 func TestClientPostPaginationCapsOverReturnedPage(t *testing.T) {

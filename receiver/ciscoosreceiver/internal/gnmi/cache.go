@@ -8,13 +8,16 @@ import (
 	"fmt"
 	"maps"
 	"sort"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 // CapacityError reports a hard retained-state limit. Active series, atomic
-// baselines, and removal tombstones share the configured limit. Mutation is
-// transactional when this error is returned.
+// baselines, authoritative removal tombstones, and semantic-invalidation
+// watermarks share the configured limit. Mutation is transactional when this
+// error is returned.
 type CapacityError struct {
 	Limit                  int
 	Current                int
@@ -39,12 +42,23 @@ func (e *CapacityError) Error() string {
 // CacheNotification applies mapped updates and canonical branch deletes from
 // one wire notification.
 type CacheNotification struct {
+	// OwnerID is a stable configured-stream identity. Entries may transfer when
+	// two streams intentionally produce one output identity, but destructive
+	// selectors, atomic baselines, authoritative tombstones, semantic
+	// watermarks, and stale checks remain isolated to this owner. Empty
+	// preserves the ownerless namespace used by legacy internal callers.
+	OwnerID   string
 	Prefix    Path
 	Timestamp time.Time
 	Atomic    bool
 	Touched   []Path
 	Updates   []MappedPoint
 	Deletes   []Path
+	// Invalidates withdraws matching derived cache entries without claiming an
+	// authoritative source deletion. It records a durable semantic watermark
+	// that rejects older state while admitting a valid correction at the same
+	// source timestamp.
+	Invalidates []Path
 }
 
 // CacheResult describes accepted and removed output points. Removed contains
@@ -67,7 +81,7 @@ type CacheTransaction struct {
 	cache      *Cache
 	result     CacheResult
 	commitPlan func()
-	done       bool
+	done       atomic.Bool
 }
 
 // Result returns the prepared notification result. Its mapped points do not
@@ -82,10 +96,9 @@ func (tx *CacheTransaction) Result() CacheResult {
 // Commit atomically publishes the prepared cache mutation and releases the
 // cache lock. It is safe to call more than once.
 func (tx *CacheTransaction) Commit() {
-	if tx == nil || tx.done {
+	if tx == nil || !tx.done.CompareAndSwap(false, true) {
 		return
 	}
-	tx.done = true
 	defer tx.cache.mu.Unlock()
 	if tx.commitPlan != nil {
 		tx.commitPlan()
@@ -95,34 +108,44 @@ func (tx *CacheTransaction) Commit() {
 // Rollback discards the prepared cache mutation and releases the cache lock.
 // It is safe to call more than once.
 func (tx *CacheTransaction) Rollback() {
-	if tx == nil || tx.done {
+	if tx == nil || !tx.done.CompareAndSwap(false, true) {
 		return
 	}
-	tx.done = true
 	tx.cache.mu.Unlock()
 }
 
 type cacheEntry struct {
 	point         MappedPoint
+	ownerID       string
+	sourceKey     string
 	retainedBytes int64
 }
 
 type atomicBaseline struct {
 	prefix        Path
 	timestamp     time.Time
+	ownerID       string
 	retainedBytes int64
 }
 
 type stateTombstone struct {
-	path          Path
-	timestamp     time.Time
+	path      Path
+	timestamp time.Time
+	ownerID   string
+	// allowEqual distinguishes a local semantic-invalidation watermark from an
+	// authoritative delete. Both reject older state; only the watermark admits
+	// a valid correction at the same source timestamp.
+	allowEqual    bool
 	retainedBytes int64
 }
 
 const (
 	// DefaultMaxCacheRetainedBytes is the receiver-wide retained-memory ceiling
-	// partitioned across configured targets by the shared gNMI receiver.
-	DefaultMaxCacheRetainedBytes    int64 = 256 * 1024 * 1024
+	// partitioned across configured targets by the shared gNMI receiver. The
+	// 1.5 GiB limit covers the owner-indexed qualification workload of 450,000
+	// active series plus 50,000 retained correctness barriers; the separate
+	// auxiliary-state ceiling remains independent.
+	DefaultMaxCacheRetainedBytes    int64 = 1536 * 1024 * 1024
 	maxCachedPointAttributes              = 64
 	maxCachedAttributeBytes               = 64 * 1024
 	maxCachedMetricNameBytes              = 256
@@ -156,27 +179,34 @@ const (
 )
 
 // CacheUsage reports the cache's retained-state usage. Total is the sum of
-// Entries, AtomicBaselines, and Tombstones.
+// Entries, AtomicBaselines, Tombstones, and InvalidationWatermarks.
 type CacheUsage struct {
-	Entries         int
-	AtomicBaselines int
-	Tombstones      int
-	Total           int
-	Limit           int
+	Entries                int
+	AtomicBaselines        int
+	Tombstones             int
+	InvalidationWatermarks int
+	Total                  int
+	Limit                  int
 }
 
 // Cache is a bounded, concurrency-safe mapped-series state cache. Active
-// mapped series, atomic baselines, and removal tombstones share one hard limit.
+// mapped series, atomic baselines, authoritative removal tombstones, and
+// semantic-invalidation watermarks share one hard limit. Within one owner, a
+// source path maps to at most one output series; this makes a source-path
+// watermark a complete freshness boundary for its derived state.
 type Cache struct {
 	mu               sync.RWMutex
 	maxSeries        int
 	maxRetainedBytes int64
 	retainedBytes    int64
 	entries          map[string]cacheEntry
+	sources          map[string]string
 	atomic           map[string]atomicBaseline
 	tombstone        map[string]stateTombstone
 	tombIndex        *tombstonePrefixIndex
 	tombCount        int
+	watermarkCount   int
+	owners           map[string]*cacheOwnerState
 }
 
 // NewCache constructs a cache with a mandatory positive retained-state limit.
@@ -198,9 +228,11 @@ func NewCacheWithLimits(maxSeries int, maxRetainedBytes int64) (*Cache, error) {
 		maxSeries:        maxSeries,
 		maxRetainedBytes: maxRetainedBytes,
 		entries:          make(map[string]cacheEntry),
+		sources:          make(map[string]string),
 		atomic:           make(map[string]atomicBaseline),
 		tombstone:        make(map[string]stateTombstone),
 		tombIndex:        newTombstonePrefixIndex(),
+		owners:           make(map[string]*cacheOwnerState),
 	}, nil
 }
 
@@ -212,7 +244,7 @@ func (c *Cache) Len() int {
 }
 
 // StateLen returns the total retained-state count, including active entries,
-// atomic baselines, and removal tombstones.
+// atomic baselines, removal tombstones, and semantic-invalidation watermarks.
 func (c *Cache) StateLen() int {
 	if c == nil {
 		return 0
@@ -230,11 +262,12 @@ func (c *Cache) Usage() CacheUsage {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return CacheUsage{
-		Entries:         len(c.entries),
-		AtomicBaselines: len(c.atomic),
-		Tombstones:      c.tombCount,
-		Total:           c.stateLenLocked(),
-		Limit:           c.maxSeries,
+		Entries:                len(c.entries),
+		AtomicBaselines:        len(c.atomic),
+		Tombstones:             c.tombCount - c.watermarkCount,
+		InvalidationWatermarks: c.watermarkCount,
+		Total:                  c.stateLenLocked(),
+		Limit:                  c.maxSeries,
 	}
 }
 
@@ -266,18 +299,33 @@ func (c *Cache) RetainedByteCapacity() int64 {
 
 // AtomicBaseline returns the timestamp of an exact-prefix atomic baseline.
 func (c *Cache) AtomicBaseline(prefix Path) (time.Time, bool) {
+	return c.AtomicBaselineForOwner("", prefix)
+}
+
+// AtomicBaselineForOwner returns the timestamp of an exact-prefix atomic
+// baseline retained for one configured subscription owner.
+func (c *Cache) AtomicBaselineForOwner(ownerID string, prefix Path) (time.Time, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	baseline, ok := c.atomic[prefix.Key()]
+	baseline, ok := c.atomic[cacheOwnerPathKey(ownerID, prefix)]
 	return baseline.timestamp, ok
 }
 
 // IsStale reports whether path is at or below a branch removed by an atomic
 // replacement or explicit delete at the same or a later timestamp.
 func (c *Cache) IsStale(path Path, timestamp time.Time) bool {
+	return c.IsStaleForOwner("", path, timestamp)
+}
+
+// IsStaleForOwner reports whether a path is stale within one configured
+// subscription owner's independently versioned view of the target tree.
+// Authoritative deletes reject equal and older timestamps; local semantic
+// watermarks reject only older timestamps so an equal-time correction remains
+// admissible.
+func (c *Cache) IsStaleForOwner(ownerID string, path Path, timestamp time.Time) bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.isStale(path, timestamp)
+	return c.isStaleForOwner(ownerID, path, timestamp)
 }
 
 // StaleQuery is one timestamped path checked by IsStaleBatch.
@@ -289,14 +337,27 @@ type StaleQuery struct {
 // IsStaleBatch returns a consistent stale-state snapshot for a bounded set of
 // queries. One structural-work budget is shared by the complete batch, so many
 // individually valid paths cannot repeatedly traverse an adversarial retained
-// tombstone trie without bound. An error returns no partial results.
+// state-barrier trie without bound. An error returns no partial results.
 func (c *Cache) IsStaleBatch(queries []StaleQuery) ([]bool, error) {
-	return c.isStaleBatch(queries, maxCacheStructuralPlanningOperations)
+	return c.IsStaleBatchForOwner("", queries)
+}
+
+// IsStaleBatchForOwner applies IsStaleForOwner to a bounded query batch under
+// one cache read lock and one structural-work budget.
+func (c *Cache) IsStaleBatchForOwner(ownerID string, queries []StaleQuery) ([]bool, error) {
+	return c.isStaleBatchForOwner(ownerID, queries, maxCacheStructuralPlanningOperations)
 }
 
 func (c *Cache) isStaleBatch(queries []StaleQuery, maximumStructuralOperations int) ([]bool, error) {
+	return c.isStaleBatchForOwner("", queries, maximumStructuralOperations)
+}
+
+func (c *Cache) isStaleBatchForOwner(ownerID string, queries []StaleQuery, maximumStructuralOperations int) ([]bool, error) {
 	if c == nil {
 		return nil, errors.New("gNMI state cache cannot be nil")
+	}
+	if err := validateCacheOwnerID(ownerID, false); err != nil {
+		return nil, err
 	}
 	if maximumStructuralOperations <= 0 {
 		return nil, errors.New("cache structural planning operation limit must be positive")
@@ -327,7 +388,8 @@ func (c *Cache) isStaleBatch(queries []StaleQuery, maximumStructuralOperations i
 				maximumStructuralOperations,
 			)
 		}
-		stale, complete := c.tombIndex.isStaleForStructuralPlan(
+		stale, complete := c.tombIndex.isStaleForOwnerForStructuralPlan(
+			ownerID,
 			queries[index].Path,
 			queries[index].Timestamp,
 			budget,
@@ -386,16 +448,24 @@ func (c *Cache) prepare(notification CacheNotification, maximumStructuralOperati
 	if err := validateCacheNotificationPaths(notification); err != nil {
 		return nil, err
 	}
-	deletePlan, err := buildCacheSelectorPlan(notification.Deletes)
-	if err != nil {
-		return nil, err
+	if notification.Atomic && len(notification.Invalidates) > 0 {
+		return nil, errors.New("atomic cache notification contains a locally invalidated value")
+	}
+	deletePlan, deletePlanErr := buildCacheSelectorPlan(notification.Deletes)
+	if deletePlanErr != nil {
+		return nil, deletePlanErr
+	}
+	invalidationPlan, invalidationPlanErr := buildCacheSelectorPlan(notification.Invalidates)
+	if invalidationPlanErr != nil {
+		return nil, invalidationPlanErr
 	}
 	touchedIndex := buildCachePathIndex(notification.Touched)
 	updateIndex := buildCacheUpdateIndex(notification.Updates)
 	// The gNMI atomic bit describes an update transaction. On a notification
 	// carrying only deletes it has no snapshot-replacement semantics; treating
 	// it as a snapshot would incorrectly erase the entire notification prefix.
-	atomicSnapshot := notification.Atomic && (len(notification.Updates) > 0 || len(notification.Touched) > 0 || len(notification.Deletes) == 0)
+	atomicSnapshot := notification.Atomic &&
+		(len(notification.Updates) > 0 || len(notification.Touched) > 0 || len(notification.Deletes) == 0)
 	c.mu.Lock()
 	handedOff := false
 	defer func() {
@@ -403,7 +473,12 @@ func (c *Cache) prepare(notification CacheNotification, maximumStructuralOperati
 			c.mu.Unlock()
 		}
 	}()
-	if err := c.validatePlanningWorkLocked(notification, atomicSnapshot, len(deletePlan.selectors)); err != nil {
+	if err := c.validatePlanningWorkLocked(
+		notification,
+		atomicSnapshot,
+		len(deletePlan.selectors),
+		len(invalidationPlan.selectors),
+	); err != nil {
 		return nil, err
 	}
 	structuralBudget := &cacheStructuralPlanningBudget{maximum: maximumStructuralOperations}
@@ -421,12 +496,17 @@ func (c *Cache) prepare(notification CacheNotification, maximumStructuralOperati
 	result := CacheResult{}
 	entryRemovals := map[string]cacheEntry{}
 	entryRemovalPaths := map[string]Path{}
+	entryInvalidations := map[string]struct{}{}
+	invalidationCoveredPaths := map[string]struct{}{}
+	invalidationRemovedPaths := map[string]struct{}{}
 	entryUpdates := map[string]cacheEntry{}
+	stagedSourceBindings := map[string]string{}
 	var entryReplacements map[string]cacheEntry
 	baselineRemovals := map[string]struct{}{}
 	tombstoneUpdates := map[string]stateTombstone{}
 	tombstoneRemovals := map[string]stateTombstone{}
 	plannedTombstones := newTombstonePrefixIndex()
+	plannedTombstoneValues := map[string]stateTombstone{}
 	applied := make([]MappedPoint, 0, len(notification.Updates))
 	planRemoval := func(key string, entry cacheEntry, path Path) {
 		if _, planned := entryRemovals[key]; !planned {
@@ -434,11 +514,22 @@ func (c *Cache) prepare(notification CacheNotification, maximumStructuralOperati
 			entryRemovalPaths[key] = path
 		}
 	}
-	planTombstone := func(path Path) error {
-		// Delete/atomic selectors are staged before retained entries are scanned.
-		// Check that sparse transaction trie first so each removal-generated path
-		// short-circuits on its staged ancestor instead of re-traversing the full
-		// retained tombstone trie once per removed entry.
+	stagePlannedTombstone := func(tombstone stateTombstone) error {
+		if !structuralBudget.consumePath(tombstone.path) {
+			return structuralPlanningError()
+		}
+		key := cacheOwnerPathKey(notification.OwnerID, tombstone.path)
+		plannedTombstoneValues[key] = tombstone
+		indexed := tombstone
+		indexed.ownerID = ""
+		plannedTombstones.upsert(key, indexed)
+		return nil
+	}
+	planStateBarrier := func(path Path, allowEqual bool) error {
+		// Authoritative delete/atomic selectors and semantic-invalidation
+		// watermarks are staged before retained entries are scanned. Check the
+		// sparse transaction trie first so each selected path short-circuits on
+		// its staged ancestor instead of re-traversing the retained trie.
 		stale, complete := plannedTombstones.isStaleForStructuralPlan(path, notification.Timestamp, structuralBudget)
 		if !complete {
 			return structuralPlanningError()
@@ -446,19 +537,65 @@ func (c *Cache) prepare(notification CacheNotification, maximumStructuralOperati
 		if stale {
 			return nil
 		}
-		stale, complete = c.tombIndex.isStaleForStructuralPlan(path, notification.Timestamp, structuralBudget)
+		if allowEqual {
+			covered, watermarkComplete := plannedTombstones.coversWatermarkForStructuralPlan(
+				path,
+				notification.Timestamp,
+				structuralBudget,
+			)
+			if !watermarkComplete {
+				return structuralPlanningError()
+			}
+			if covered {
+				return nil
+			}
+		}
+		stale, complete = c.tombIndex.isStaleForOwnerForStructuralPlan(
+			notification.OwnerID,
+			path,
+			notification.Timestamp,
+			structuralBudget,
+		)
 		if !complete {
 			return structuralPlanningError()
 		}
 		if stale {
-			return nil
+			// The retained ancestor already supplies the durable stale-state
+			// boundary, but this notification's selector must still participate in
+			// the sparse removal plan. This is especially important for idempotent
+			// redelivery of a delete followed by an update at one timestamp.
+			return stagePlannedTombstone(stateTombstone{
+				path:       path,
+				timestamp:  notification.Timestamp,
+				allowEqual: allowEqual,
+			})
 		}
-		key := path.Key()
-		if existing, ok := c.tombstoneFor(path); ok && !notification.Timestamp.After(existing.timestamp) {
-			return nil
+		if allowEqual {
+			covered, watermarkComplete := c.tombIndex.coversWatermarkForOwnerForStructuralPlan(
+				notification.OwnerID,
+				path,
+				notification.Timestamp,
+				structuralBudget,
+			)
+			if !watermarkComplete {
+				return structuralPlanningError()
+			}
+			if covered {
+				return nil
+			}
 		}
-		if existing, ok := tombstoneUpdates[key]; ok && !notification.Timestamp.After(existing.timestamp) {
-			return nil
+		key := cacheOwnerPathKey(notification.OwnerID, path)
+		if existing, ok := c.tombstoneForOwner(notification.OwnerID, path); ok {
+			if notification.Timestamp.Before(existing.timestamp) ||
+				(notification.Timestamp.Equal(existing.timestamp) && (!existing.allowEqual || allowEqual)) {
+				return nil
+			}
+		}
+		if existing, ok := tombstoneUpdates[key]; ok {
+			if notification.Timestamp.Before(existing.timestamp) ||
+				(notification.Timestamp.Equal(existing.timestamp) && (!existing.allowEqual || allowEqual)) {
+				return nil
+			}
 		}
 		stagedDominated, complete := plannedTombstones.dominatedForStructuralPlan(path, notification.Timestamp, structuralBudget)
 		if !complete {
@@ -468,36 +605,56 @@ func (c *Cache) prepare(notification CacheNotification, maximumStructuralOperati
 			if stagedKey == key {
 				continue
 			}
-			staged := tombstoneUpdates[stagedKey]
+			staged := plannedTombstoneValues[stagedKey]
+			if allowEqual && staged.timestamp.Equal(notification.Timestamp) && !staged.allowEqual {
+				continue
+			}
 			if !structuralBudget.consumePath(staged.path) {
 				return structuralPlanningError()
 			}
 			delete(tombstoneUpdates, stagedKey)
+			delete(plannedTombstoneValues, stagedKey)
 			plannedTombstones.remove(stagedKey, staged.path)
 		}
-		existingDominated, complete := c.tombIndex.dominatedForStructuralPlan(path, notification.Timestamp, structuralBudget)
+		existingDominated, complete := c.tombIndex.dominatedForOwnerForStructuralPlan(
+			notification.OwnerID,
+			path,
+			notification.Timestamp,
+			structuralBudget,
+		)
 		if !complete {
 			return structuralPlanningError()
 		}
 		for existingKey := range existingDominated {
-			if existingKey != key {
-				tombstoneRemovals[existingKey] = c.tombstone[existingKey]
+			if existingKey == key {
+				continue
 			}
+			existing := c.tombstone[existingKey]
+			if allowEqual && existing.timestamp.Equal(notification.Timestamp) && !existing.allowEqual {
+				continue
+			}
+			tombstoneRemovals[existingKey] = existing
 		}
 		clonedPath := path.Clone()
 		tombstoneUpdates[key] = stateTombstone{
-			path:          clonedPath,
-			timestamp:     notification.Timestamp,
-			retainedBytes: estimateTombstoneRetainedBytes(key, clonedPath),
+			path:       clonedPath,
+			timestamp:  notification.Timestamp,
+			ownerID:    notification.OwnerID,
+			allowEqual: allowEqual,
+			retainedBytes: saturatingRetainedByteAdd(
+				estimateTombstoneRetainedBytes(key, clonedPath, notification.OwnerID),
+				estimateCacheOwnerReferenceRetainedBytes(notification.OwnerID),
+			),
 		}
-		if !structuralBudget.consumePath(tombstoneUpdates[key].path) {
-			return structuralPlanningError()
-		}
-		plannedTombstones.upsert(key, tombstoneUpdates[key])
-		return nil
+		return stagePlannedTombstone(tombstoneUpdates[key])
 	}
 	if atomicSnapshot {
-		stale, complete := c.tombIndex.isStaleForStructuralPlan(notification.Prefix, notification.Timestamp, structuralBudget)
+		stale, complete := c.tombIndex.isStaleForOwnerForStructuralPlan(
+			notification.OwnerID,
+			notification.Prefix,
+			notification.Timestamp,
+			structuralBudget,
+		)
 		if !complete {
 			return nil, structuralPlanningError()
 		}
@@ -507,13 +664,16 @@ func (c *Cache) prepare(notification CacheNotification, maximumStructuralOperati
 			return preparedResult(result), nil
 		}
 	}
-	operationCount := len(notification.Updates) + len(deletePlan.selectors)
+	operationCount := len(notification.Updates) + len(deletePlan.selectors) + len(invalidationPlan.selectors)
 	if operationCount == 0 {
 		operationCount = 1
 	}
 	for key, baseline := range c.atomic {
 		if !structuralBudget.consume() {
 			return nil, structuralPlanningError()
+		}
+		if baseline.ownerID != notification.OwnerID {
+			continue
 		}
 		atomicOverlap := false
 		baselineSelectedByAtomic := false
@@ -551,7 +711,11 @@ func (c *Cache) prepare(notification CacheNotification, maximumStructuralOperati
 		if !complete {
 			return nil, structuralPlanningError()
 		}
-		if !atomicOverlap && !touchedOverlap && !updateOverlap && !deleteOverlap {
+		invalidationOverlap, complete := invalidationPlan.index.overlapsForStructuralPlan(baseline.prefix, structuralBudget)
+		if !complete {
+			return nil, structuralPlanningError()
+		}
+		if !atomicOverlap && !touchedOverlap && !updateOverlap && !deleteOverlap && !invalidationOverlap {
 			continue
 		}
 		if notification.Timestamp.Before(baseline.timestamp) {
@@ -571,7 +735,8 @@ func (c *Cache) prepare(notification CacheNotification, maximumStructuralOperati
 			baselineRemovals[key] = struct{}{}
 			removed = true
 		}
-		if !removed && !atomicSnapshot && notification.Timestamp.After(baseline.timestamp) && (touchedOverlap || updateOverlap) {
+		if !removed && !atomicSnapshot && notification.Timestamp.After(baseline.timestamp) &&
+			(touchedOverlap || updateOverlap || invalidationOverlap) {
 			baselineRemovals[key] = struct{}{}
 			result.AtomicBaselinesInvalidated++
 			removed = true
@@ -583,7 +748,8 @@ func (c *Cache) prepare(notification CacheNotification, maximumStructuralOperati
 	}
 
 	if atomicSnapshot {
-		if previous, ok := c.atomic[notification.Prefix.Key()]; ok && !notification.Timestamp.After(previous.timestamp) {
+		prefixKey := cacheOwnerPathKey(notification.OwnerID, notification.Prefix)
+		if previous, ok := c.atomic[prefixKey]; ok && !notification.Timestamp.After(previous.timestamp) {
 			result.AtomicBaselinesInvalidated = 0
 			if notification.Timestamp.Equal(previous.timestamp) {
 				result.Duplicates += len(notification.Updates)
@@ -593,22 +759,25 @@ func (c *Cache) prepare(notification CacheNotification, maximumStructuralOperati
 			result.Rejected = true
 			return preparedResult(result), nil
 		}
-		if err := planTombstone(notification.Prefix); err != nil {
+		if err := planStateBarrier(notification.Prefix, false); err != nil {
 			return nil, err
 		}
 	}
 	for _, deleted := range deletePlan.selectors {
-		if err := planTombstone(deleted); err != nil {
+		if err := planStateBarrier(deleted, false); err != nil {
 			return nil, err
 		}
 	}
-	if atomicSnapshot || len(deletePlan.selectors) > 0 {
+	if atomicSnapshot || len(deletePlan.selectors) > 0 || len(invalidationPlan.selectors) > 0 {
 		// cacheEntry is an immutable transaction snapshot; pointers would add an
 		// allocation for every cached series.
 		//nolint:gocritic // Copying the snapshot is intentional while the cache lock is held.
 		for key, entry := range c.entries {
 			if !structuralBudget.consume() {
 				return nil, structuralPlanningError()
+			}
+			if entry.ownerID != notification.OwnerID {
+				continue
 			}
 			path, complete := seriesPathForStructuralPlan(entry.point.Source, structuralBudget)
 			if !complete {
@@ -629,7 +798,24 @@ func (c *Cache) prepare(notification CacheNotification, maximumStructuralOperati
 					return nil, structuralPlanningError()
 				}
 			}
-			if !selectedByAtomic && !selectedByDelete {
+			selectedByInvalidation := false
+			if !selectedByAtomic && !selectedByDelete && len(invalidationPlan.selectors) > 0 {
+				var complete bool
+				selectedByInvalidation, complete = invalidationPlan.index.selectsForStructuralPlan(path, structuralBudget)
+				if !complete {
+					return nil, structuralPlanningError()
+				}
+			}
+			if !selectedByAtomic && !selectedByDelete && !selectedByInvalidation {
+				continue
+			}
+			if selectedByInvalidation && !entry.point.Timestamp.Before(notification.Timestamp) {
+				invalidationCoveredPaths[path.Key()] = struct{}{}
+				if entry.point.Timestamp.After(notification.Timestamp) {
+					result.OutOfOrder++
+				} else {
+					result.Duplicates++
+				}
 				continue
 			}
 			if entry.point.Timestamp.After(notification.Timestamp) {
@@ -637,6 +823,20 @@ func (c *Cache) prepare(notification CacheNotification, maximumStructuralOperati
 				continue
 			}
 			planRemoval(key, entry, path)
+			if selectedByInvalidation {
+				entryInvalidations[key] = struct{}{}
+				invalidationRemovedPaths[path.Key()] = struct{}{}
+			}
+		}
+	}
+	for _, invalidated := range invalidationPlan.selectors {
+		pathKey := invalidated.Key()
+		_, removed := invalidationRemovedPaths[pathKey]
+		if _, covered := invalidationCoveredPaths[pathKey]; covered && !removed {
+			continue
+		}
+		if err := planStateBarrier(invalidated, true); err != nil {
+			return nil, err
 		}
 	}
 	// Every removal is selected by an atomic prefix or collapsed delete that was
@@ -646,6 +846,9 @@ func (c *Cache) prepare(notification CacheNotification, maximumStructuralOperati
 	for key := range entryRemovals {
 		if !structuralBudget.consume() {
 			return nil, structuralPlanningError()
+		}
+		if _, invalidated := entryInvalidations[key]; invalidated {
+			continue
 		}
 		selected, complete := plannedTombstones.isStaleForStructuralPlan(
 			entryRemovalPaths[key],
@@ -673,20 +876,45 @@ func (c *Cache) prepare(notification CacheNotification, maximumStructuralOperati
 		if !complete {
 			return nil, structuralPlanningError()
 		}
-		stale, complete := c.tombIndex.isStaleForStructuralPlan(pointPath, point.Timestamp, structuralBudget)
+		key := point.Key()
+		current, exists := entryUpdates[key]
+		currentFromRemoval := false
+		if !exists {
+			if removed, planned := entryRemovals[key]; planned && point.Source.Key() == removed.point.Source.Key() {
+				current, exists = removed, true
+				currentFromRemoval = true
+			} else if !planned {
+				current, exists = c.entries[key]
+			}
+		}
+		_, currentWasInvalidated := entryInvalidations[key]
+		if currentFromRemoval && point.Timestamp.Equal(current.point.Timestamp) && !currentWasInvalidated {
+			result.Duplicates++
+			// A delete followed by the same update is already represented by
+			// the retained point. Keep it on equal-timestamp redelivery while
+			// the tombstone continues to protect against older resurrection.
+			delete(entryRemovals, key)
+			delete(entryRemovalPaths, key)
+			continue
+		}
+		if currentFromRemoval && currentWasInvalidated {
+			// Invalidation is a local withdrawal, not an authoritative source
+			// event. Treat a correction in the same transaction as fresh state,
+			// including when it carries the same source timestamp.
+			exists = false
+		}
+		stale, complete := c.tombIndex.isStaleForOwnerForStructuralPlan(
+			notification.OwnerID,
+			pointPath,
+			point.Timestamp,
+			structuralBudget,
+		)
 		if !complete {
 			return nil, structuralPlanningError()
 		}
 		if stale {
 			result.OutOfOrder++
 			continue
-		}
-		key := point.Key()
-		current, exists := entryUpdates[key]
-		if !exists {
-			if _, removed := entryRemovals[key]; !removed {
-				current, exists = c.entries[key]
-			}
 		}
 		if exists {
 			switch {
@@ -704,29 +932,76 @@ func (c *Cache) prepare(notification CacheNotification, maximumStructuralOperati
 				entryReplacements[key] = current
 			}
 		}
-		// A strictly newer update of the exact deleted source path supersedes
-		// that tombstone. Retaining it would consume correctness-state capacity
-		// forever and could prevent a valid series from returning at the limit.
-		// Ancestor tombstones remain: they still protect deleted siblings.
-		if tombstone, ok := c.tombstoneFor(pointPath); ok && point.Timestamp.After(tombstone.timestamp) {
-			tombstoneRemovals[pointPath.Key()] = tombstone
+		// A strictly newer update supersedes an exact authoritative delete. A
+		// semantic-invalidation watermark is also superseded by an exact valid
+		// correction at the same timestamp. Ancestor barriers remain because
+		// they still protect selected siblings.
+		barrierKey := cacheOwnerPathKey(notification.OwnerID, pointPath)
+		if tombstone, ok := c.tombstoneForOwner(notification.OwnerID, pointPath); ok &&
+			(point.Timestamp.After(tombstone.timestamp) ||
+				(tombstone.allowEqual && point.Timestamp.Equal(tombstone.timestamp))) {
+			tombstoneRemovals[barrierKey] = tombstone
 		}
+		if staged, ok := tombstoneUpdates[barrierKey]; ok &&
+			staged.allowEqual && !point.Timestamp.Before(staged.timestamp) {
+			if !structuralBudget.consumePath(staged.path) {
+				return nil, structuralPlanningError()
+			}
+			delete(tombstoneUpdates, barrierKey)
+			delete(plannedTombstoneValues, barrierKey)
+			plannedTombstones.remove(barrierKey, staged.path)
+		}
+		sourceKey := cacheOwnerPathKey(notification.OwnerID, pointPath)
+		if previous, staged := entryUpdates[key]; staged && previous.sourceKey != sourceKey {
+			delete(stagedSourceBindings, previous.sourceKey)
+		}
+		if outputKey, bound := stagedSourceBindings[sourceKey]; bound && outputKey != key {
+			return nil, errors.New("cache owner maps one source path to multiple output series")
+		}
+		stagedSourceBindings[sourceKey] = key
 		entryUpdates[key] = cacheEntry{
-			point:         point,
-			retainedBytes: estimateCacheEntryRetainedBytes(key, point),
+			point:     point,
+			ownerID:   notification.OwnerID,
+			sourceKey: sourceKey,
+			retainedBytes: saturatingRetainedByteAdd(
+				estimateCacheEntryRetainedBytes(key, point, notification.OwnerID),
+				estimateCacheOwnerReferenceRetainedBytes(notification.OwnerID),
+			),
 		}
 		applied = append(applied, point)
+	}
+	// An equal-timestamp delete redelivery can cancel a planned removal after a
+	// different output series temporarily observed that removal. Revalidate
+	// every staged binding against the complete final entry plan so update order
+	// cannot publish two outputs for one owner/source.
+	for sourceKey, outputKey := range stagedSourceBindings {
+		boundOutputKey, bound := c.sources[sourceKey]
+		if !bound || boundOutputKey == outputKey {
+			continue
+		}
+		_, released := entryRemovals[boundOutputKey]
+		if replacement, replaced := entryUpdates[boundOutputKey]; replaced &&
+			replacement.sourceKey != sourceKey {
+			released = true
+		}
+		if !released {
+			return nil, errors.New("cache owner maps one source path to multiple output series")
+		}
 	}
 
 	var baselineKey string
 	var baselineUpdate atomicBaseline
 	if atomicSnapshot {
-		baselineKey = notification.Prefix.Key()
+		baselineKey = cacheOwnerPathKey(notification.OwnerID, notification.Prefix)
 		baselinePrefix := notification.Prefix.Clone()
 		baselineUpdate = atomicBaseline{
-			prefix:        baselinePrefix,
-			timestamp:     notification.Timestamp,
-			retainedBytes: estimateBaselineRetainedBytes(baselineKey, baselinePrefix),
+			prefix:    baselinePrefix,
+			timestamp: notification.Timestamp,
+			ownerID:   notification.OwnerID,
+			retainedBytes: saturatingRetainedByteAdd(
+				estimateBaselineRetainedBytes(baselineKey, baselinePrefix),
+				estimateCacheOwnerReferenceRetainedBytes(notification.OwnerID),
+			),
 		}
 	}
 
@@ -749,9 +1024,10 @@ func (c *Cache) prepare(notification CacheNotification, maximumStructuralOperati
 		}
 	}
 	newTombstones := 0
-	for key, tombstone := range tombstoneUpdates {
+	for key := range tombstoneUpdates {
+		tombstone := tombstoneUpdates[key]
 		_, removed := tombstoneRemovals[key]
-		if _, exists := c.tombstoneFor(tombstone.path); !exists || removed {
+		if _, exists := c.tombstoneForOwner(tombstone.ownerID, tombstone.path); !exists || removed {
 			newTombstones++
 		}
 	}
@@ -793,13 +1069,83 @@ func (c *Cache) prepare(notification CacheNotification, maximumStructuralOperati
 			finalRetainedBytes -= existing.retainedBytes
 		}
 	}
-	for key, update := range tombstoneUpdates {
+	for key := range tombstoneUpdates {
+		update := tombstoneUpdates[key]
 		if existing, exists := c.tombstone[key]; exists {
 			if _, removed := tombstoneRemovals[key]; !removed {
 				finalRetainedBytes -= existing.retainedBytes
 			}
 		}
 		finalRetainedBytes = saturatingRetainedByteAdd(finalRetainedBytes, update.retainedBytes)
+	}
+
+	ownerPlan := newCacheOwnerIndexPlan(c)
+	for key := range entryRemovals {
+		if err := ownerPlan.remove(entryRemovals[key].ownerID, key, cacheOwnerEntry); err != nil {
+			return nil, err
+		}
+	}
+	for key := range entryUpdates {
+		if existing, exists := c.entries[key]; exists {
+			if _, removed := entryRemovals[key]; !removed {
+				if err := ownerPlan.remove(existing.ownerID, key, cacheOwnerEntry); err != nil {
+					return nil, err
+				}
+			}
+		}
+		if err := ownerPlan.add(entryUpdates[key].ownerID, key, cacheOwnerEntry); err != nil {
+			return nil, err
+		}
+	}
+	for key := range baselineRemovals {
+		if existing, exists := c.atomic[key]; exists {
+			if err := ownerPlan.remove(existing.ownerID, key, cacheOwnerAtomicBaseline); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if atomicSnapshot {
+		if existing, exists := c.atomic[baselineKey]; exists {
+			if _, removed := baselineRemovals[baselineKey]; !removed {
+				if err := ownerPlan.remove(existing.ownerID, baselineKey, cacheOwnerAtomicBaseline); err != nil {
+					return nil, err
+				}
+			}
+		}
+		if err := ownerPlan.add(baselineUpdate.ownerID, baselineKey, cacheOwnerAtomicBaseline); err != nil {
+			return nil, err
+		}
+	}
+	for key := range tombstoneRemovals {
+		existing := tombstoneRemovals[key]
+		if err := ownerPlan.remove(existing.ownerID, key, cacheOwnerTombstone); err != nil {
+			return nil, err
+		}
+	}
+	for key := range tombstoneUpdates {
+		update := tombstoneUpdates[key]
+		if existing, exists := c.tombstone[key]; exists {
+			if _, removed := tombstoneRemovals[key]; !removed {
+				if err := ownerPlan.remove(existing.ownerID, key, cacheOwnerTombstone); err != nil {
+					return nil, err
+				}
+			}
+		}
+		if err := ownerPlan.add(update.ownerID, key, cacheOwnerTombstone); err != nil {
+			return nil, err
+		}
+	}
+	ownerRetainedBytesDelta, err := ownerPlan.retainedBytesDelta()
+	if err != nil {
+		return nil, err
+	}
+	if ownerRetainedBytesDelta < 0 {
+		if finalRetainedBytes < -ownerRetainedBytesDelta {
+			return nil, errors.New("gNMI state cache retained-byte accounting underflow")
+		}
+		finalRetainedBytes += ownerRetainedBytesDelta
+	} else {
+		finalRetainedBytes = saturatingRetainedByteAdd(finalRetainedBytes, ownerRetainedBytesDelta)
 	}
 	if finalRetainedBytes < 0 {
 		return nil, errors.New("gNMI state cache retained-byte accounting underflow")
@@ -813,6 +1159,23 @@ func (c *Cache) prepare(notification CacheNotification, maximumStructuralOperati
 			CurrentRetainedBytes:   c.retainedBytes,
 			RequestedRetainedBytes: finalRetainedBytes,
 		}
+	}
+
+	sourceRemovals := map[string]string{}
+	for key := range entryRemovals {
+		removed := entryRemovals[key]
+		if removed.sourceKey != "" {
+			sourceRemovals[removed.sourceKey] = key
+		}
+	}
+	sourceUpdates := make(map[string]string, len(entryUpdates))
+	for key := range entryUpdates {
+		update := entryUpdates[key]
+		if existing, exists := c.entries[key]; exists &&
+			existing.sourceKey != "" && existing.sourceKey != update.sourceKey {
+			sourceRemovals[existing.sourceKey] = key
+		}
+		sourceUpdates[update.sourceKey] = key
 	}
 
 	result.Applied = make([]MappedPoint, len(applied))
@@ -851,19 +1214,26 @@ func (c *Cache) prepare(notification CacheNotification, maximumStructuralOperati
 		for key := range entryRemovals {
 			delete(c.entries, key)
 		}
+		for sourceKey, outputKey := range sourceRemovals {
+			if c.sources[sourceKey] == outputKey {
+				delete(c.sources, sourceKey)
+			}
+		}
 		maps.Copy(c.entries, entryUpdates)
+		maps.Copy(c.sources, sourceUpdates)
 		for key := range baselineRemovals {
 			delete(c.atomic, key)
 		}
-		for _, tombstone := range tombstoneRemovals {
-			c.removeTombstone(tombstone)
+		for key := range tombstoneRemovals {
+			c.removeTombstone(tombstoneRemovals[key])
 		}
-		for _, tombstone := range tombstoneUpdates {
-			c.putTombstone(tombstone)
+		for key := range tombstoneUpdates {
+			c.putTombstone(tombstoneUpdates[key])
 		}
 		if atomicSnapshot {
 			c.atomic[baselineKey] = baselineUpdate
 		}
+		ownerPlan.apply()
 		c.retainedBytes = finalRetainedBytes
 	}
 	handedOff = true
@@ -875,17 +1245,22 @@ func (c *Cache) prepare(notification CacheNotification, maximumStructuralOperati
 // selection is charged as one scan; baseline overlap is conservatively charged
 // against every notification selector because keyed-superset trie walks can
 // visit most selector branches in the worst case.
-func (c *Cache) validatePlanningWorkLocked(notification CacheNotification, atomicSnapshot bool, deletes int) error {
+func (c *Cache) validatePlanningWorkLocked(
+	notification CacheNotification,
+	atomicSnapshot bool,
+	deletes int,
+	invalidations int,
+) error {
 	entryScan := 0
-	if atomicSnapshot || deletes > 0 {
+	if atomicSnapshot || deletes > 0 || invalidations > 0 {
 		entryScan = len(c.entries)
 	}
 	if entryScan > maxCachePlanningComparisons {
 		return fmt.Errorf("cache notification planning work exceeds %d comparisons", maxCachePlanningComparisons)
 	}
 	work := entryScan
-	baselineSelectors := deletes + len(notification.Touched) + len(notification.Updates)
-	tombstoneSelectors := deletes + len(notification.Updates)
+	baselineSelectors := deletes + invalidations + len(notification.Touched) + len(notification.Updates)
+	tombstoneSelectors := deletes + invalidations + len(notification.Updates)
 	if atomicSnapshot {
 		baselineSelectors++
 		tombstoneSelectors++
@@ -921,8 +1296,8 @@ func pathsOverlap(left, right Path) bool {
 	return left.HasPrefix(right) || right.HasPrefix(left)
 }
 
-func (c *Cache) isStale(path Path, timestamp time.Time) bool {
-	return c.tombIndex.isStale(path, timestamp)
+func (c *Cache) isStaleForOwner(ownerID string, path Path, timestamp time.Time) bool {
+	return c.tombIndex.isStaleForOwner(ownerID, path, timestamp)
 }
 
 // stateLenLocked returns total retained state. The caller must hold c.mu for
@@ -931,31 +1306,55 @@ func (c *Cache) stateLenLocked() int {
 	return len(c.entries) + len(c.atomic) + c.tombCount
 }
 
-func (c *Cache) tombstoneFor(path Path) (stateTombstone, bool) {
-	tombstone, ok := c.tombstone[path.Key()]
+func cacheOwnerPathKey(ownerID string, path Path) string {
+	pathKey := path.Key()
+	if ownerID == "" {
+		return pathKey
+	}
+	var key strings.Builder
+	appendKeyPart(&key, ownerID)
+	appendKeyPart(&key, pathKey)
+	return key.String()
+}
+
+func (c *Cache) tombstoneForOwner(ownerID string, path Path) (stateTombstone, bool) {
+	tombstone, ok := c.tombstone[cacheOwnerPathKey(ownerID, path)]
 	return tombstone, ok
 }
 
 func (c *Cache) putTombstone(tombstone stateTombstone) {
-	key := tombstone.path.Key()
-	if _, exists := c.tombstone[key]; !exists {
+	key := cacheOwnerPathKey(tombstone.ownerID, tombstone.path)
+	existing, exists := c.tombstone[key]
+	if !exists {
 		c.tombCount++
+	} else if existing.allowEqual {
+		c.watermarkCount--
+	}
+	if tombstone.allowEqual {
+		c.watermarkCount++
 	}
 	c.tombstone[key] = tombstone
 	c.tombIndex.upsert(key, tombstone)
 }
 
 func (c *Cache) removeTombstone(tombstone stateTombstone) {
-	key := tombstone.path.Key()
-	if _, exists := c.tombstone[key]; !exists {
+	key := cacheOwnerPathKey(tombstone.ownerID, tombstone.path)
+	existing, exists := c.tombstone[key]
+	if !exists {
 		return
 	}
 	delete(c.tombstone, key)
-	c.tombIndex.remove(key, tombstone.path)
+	c.tombIndex.removeForOwner(tombstone.ownerID, key, tombstone.path)
 	c.tombCount--
+	if existing.allowEqual {
+		c.watermarkCount--
+	}
 }
 
 func validateCacheNotificationPaths(notification CacheNotification) error {
+	if err := validateCacheOwnerID(notification.OwnerID, false); err != nil {
+		return err
+	}
 	if err := validateCacheNotificationOperationCount(notification); err != nil {
 		return err
 	}
@@ -992,6 +1391,15 @@ func validateCacheNotificationPaths(notification CacheNotification) error {
 			return err
 		}
 	}
+	for index := range notification.Invalidates {
+		pathBytes, err := validatePath(notification.Invalidates[index])
+		if err != nil {
+			return fmt.Errorf("cache notification invalidation path %d: %w", index, err)
+		}
+		if err := reserveBytes(pathBytes); err != nil {
+			return err
+		}
+	}
 	for index := range notification.Updates {
 		pathBytes, err := validateSeries(notification.Updates[index].Source)
 		if err != nil {
@@ -1014,11 +1422,15 @@ func validateCacheNotificationOperationCount(notification CacheNotification) err
 		return fmt.Errorf("cache notification exceeds %d operations", maxCacheNotificationOperations)
 	}
 	operations += len(notification.Deletes)
+	if len(notification.Invalidates) > maxCacheNotificationOperations-operations {
+		return fmt.Errorf("cache notification exceeds %d operations", maxCacheNotificationOperations)
+	}
+	operations += len(notification.Invalidates)
 	if len(notification.Updates) > maxCacheNotificationOperations-operations {
 		return fmt.Errorf("cache notification exceeds %d operations", maxCacheNotificationOperations)
 	}
-	if len(notification.Updates) > maxDecodedNotificationPoints {
-		return fmt.Errorf("cache notification exceeds %d mapped updates", maxDecodedNotificationPoints)
+	if len(notification.Updates) > maxDecodedNotificationPoints-len(notification.Invalidates) {
+		return fmt.Errorf("cache notification exceeds %d mapped updates and invalidations", maxDecodedNotificationPoints)
 	}
 	if len(notification.Touched) > maxNotificationWireOperations || len(notification.Deletes) > maxNotificationWireOperations-len(notification.Touched) {
 		return fmt.Errorf("cache notification exceeds %d touched/delete operations", maxNotificationWireOperations)
@@ -1065,13 +1477,22 @@ func validateMappedPointPayload(point MappedPoint) (int, error) {
 	return attributeBytes + metadataBytes, nil
 }
 
-func estimateCacheEntryRetainedBytes(key string, point MappedPoint) int64 {
+func estimateCacheEntryRetainedBytes(key string, point MappedPoint, owners ...string) int64 {
+	ownerID := ""
+	if len(owners) > 0 {
+		ownerID = owners[0]
+	}
 	bytes := retainedMappedPointBytes + retainedCacheMapEntryBytes + retainedStringBytes(key)
 	bytes = saturatingRetainedByteAdd(bytes, estimateSeriesRetainedBytes(point.Source))
 	bytes = saturatingRetainedByteAdd(bytes, retainedStringBytes(point.Metric.Name))
 	bytes = saturatingRetainedByteAdd(bytes, retainedStringBytes(point.Metric.Description))
 	bytes = saturatingRetainedByteAdd(bytes, retainedStringBytes(point.Metric.Unit))
-	return saturatingRetainedByteAdd(bytes, estimateStringMapRetainedBytes(point.Attributes))
+	bytes = saturatingRetainedByteAdd(bytes, estimateStringMapRetainedBytes(point.Attributes))
+	sourceKey := cacheOwnerPathKey(ownerID, point.Source.Path())
+	return saturatingRetainedByteAdd(
+		bytes,
+		saturatingRetainedByteAdd(retainedCacheMapEntryBytes, retainedStringBytes(sourceKey)),
+	)
 }
 
 func estimateBaselineRetainedBytes(key string, prefix Path) int64 {
@@ -1079,9 +1500,18 @@ func estimateBaselineRetainedBytes(key string, prefix Path) int64 {
 	return saturatingRetainedByteAdd(bytes, estimatePathRetainedBytes(prefix))
 }
 
-func estimateTombstoneRetainedBytes(key string, path Path) int64 {
+func estimateTombstoneRetainedBytes(key string, path Path, owners ...string) int64 {
+	ownerID := ""
+	if len(owners) > 0 {
+		ownerID = owners[0]
+	}
 	bytes := retainedCacheMapEntryBytes + retainedStringBytes(key)
 	bytes = saturatingRetainedByteAdd(bytes, estimatePathRetainedBytes(path))
+	// tombstonePrefixIndex retains a separately allocated, length-prefixed
+	// composite scope key for (subscription owner, configured target, gNMI
+	// Path.target). The path strings themselves can share the tombstone's backing
+	// storage, but this builder-produced map key cannot.
+	bytes = saturatingRetainedByteAdd(bytes, estimateTombstoneScopeKeyRetainedBytes(path, ownerID))
 	indexBytes := retainedTombstoneRootIndexBytes
 	for _, elem := range path.Elements {
 		indexBytes = saturatingRetainedByteAdd(indexBytes, retainedTombstonePathElementBytes)
@@ -1093,9 +1523,22 @@ func estimateTombstoneRetainedBytes(key string, path Path) int64 {
 	return saturatingRetainedByteAdd(bytes, indexBytes)
 }
 
+func estimateTombstoneScopeKeyRetainedBytes(path Path, owners ...string) int64 {
+	ownerID := ""
+	if len(owners) > 0 {
+		ownerID = owners[0]
+	}
+	keyBytes := canonicalKeyPartBytes(path.Target) + canonicalKeyPartBytes(path.PathTarget)
+	if ownerID != "" {
+		keyBytes += canonicalKeyPartBytes(ownerID)
+	}
+	return saturatingRetainedByteAdd(retainedStringHeaderBytes, int64(keyBytes))
+}
+
 func estimateSeriesRetainedBytes(series Series) int64 {
 	bytes := retainedPathBaseBytes + retainedSliceHeaderBytes
 	bytes = saturatingRetainedByteAdd(bytes, retainedStringBytes(series.Target))
+	bytes = saturatingRetainedByteAdd(bytes, retainedStringBytes(series.PathTarget))
 	bytes = saturatingRetainedByteAdd(bytes, retainedStringBytes(series.Origin))
 	bytes = saturatingRetainedByteAdd(bytes, retainedStringBytes(series.Leaf))
 	for _, elem := range series.Elements {
@@ -1107,6 +1550,7 @@ func estimateSeriesRetainedBytes(series Series) int64 {
 func estimatePathRetainedBytes(path Path) int64 {
 	bytes := retainedPathBaseBytes + retainedSliceHeaderBytes
 	bytes = saturatingRetainedByteAdd(bytes, retainedStringBytes(path.Target))
+	bytes = saturatingRetainedByteAdd(bytes, retainedStringBytes(path.PathTarget))
 	bytes = saturatingRetainedByteAdd(bytes, retainedStringBytes(path.Origin))
 	for _, elem := range path.Elements {
 		bytes = saturatingRetainedByteAdd(bytes, estimatePathElementRetainedBytes(elem))

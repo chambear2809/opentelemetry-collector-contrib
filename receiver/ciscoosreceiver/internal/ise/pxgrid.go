@@ -9,8 +9,10 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -19,17 +21,26 @@ import (
 	"time"
 
 	"golang.org/x/net/websocket"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/httpclient"
 )
 
 const (
-	pxGridDefaultPath      = "/pxgrid"
-	pxGridDefaultWSOrigin  = "https://localhost/"
-	stompHeartbeatInterval = 30 * time.Second
-	stompMaxFrameBytes     = 4 * 1024 * 1024
-	stompMaxBodyBytes      = 4 * 1024 * 1024
-	stompMaxHeaders        = 256
-	stompMaxHeaderBytes    = 64 * 1024
-	stompMaxLineBytes      = 8 * 1024
+	pxGridDefaultPath                  = "/pxgrid"
+	pxGridDefaultWSOrigin              = "https://localhost/"
+	pxGridWebSocketPingInterval        = 54 * time.Second
+	pxGridWebSocketPingWriteTimeout    = time.Second
+	pxGridWebSocketCloseWriteTimeout   = 100 * time.Millisecond
+	stompMaxFrameBytes                 = 4 * 1024 * 1024
+	stompMaxBodyBytes                  = 4 * 1024 * 1024
+	stompMaxHeaders                    = 256
+	stompMaxHeaderBytes                = 64 * 1024
+	stompMaxLineBytes                  = 8 * 1024
+	pxGridCAConfigPath                 = "ise.pxgrid.ca_file"
+	pxGridInsecureSkipVerifyConfigPath = "ise.pxgrid.insecure_skip_verify"
+	maxPxGridCertificatePEMBytes       = 1024 * 1024
+	maxPxGridPrivateKeyPEMBytes        = 128 * 1024
+	maxPxGridCAPEMBytes                = 1024 * 1024
 )
 
 // PxGridConfig controls the Cisco ISE pxGrid client.
@@ -39,6 +50,7 @@ type PxGridConfig struct {
 	Password              string
 	CertFile              string
 	KeyFile               string
+	KeyPassword           string
 	CAFile                string
 	ServerName            string
 	InsecureSkipVerify    bool
@@ -70,6 +82,16 @@ type PxGridSubscription struct {
 	AlternateTopicProperties []string
 }
 
+// PxGridSubscriptionLifecycle reports successful subscription protocol
+// transitions without exposing message contents. Callbacks run synchronously
+// and must return promptly. Ready runs after CONNECTED is received and
+// SUBSCRIBE is written. Acknowledged runs only after an ACK frame is written
+// successfully for a MESSAGE whose handler returned nil.
+type PxGridSubscriptionLifecycle struct {
+	Ready        func()
+	Acknowledged func()
+}
+
 // StompMessage is a decoded pxGrid STOMP MESSAGE frame.
 type StompMessage struct {
 	Topic     string
@@ -77,6 +99,10 @@ type StompMessage struct {
 	Headers   map[string]string
 	Body      []byte
 }
+
+var pxGridWebSocketPingCodec = websocket.Codec{Marshal: func(any) ([]byte, byte, error) {
+	return nil, websocket.PingFrame, nil
+}}
 
 // NewPxGridClient creates a pxGrid client.
 func NewPxGridClient(cfg PxGridConfig) (*PxGridClient, error) {
@@ -96,6 +122,9 @@ func NewPxGridClient(cfg PxGridConfig) (*PxGridClient, error) {
 	if cfg.Password == "" && (cfg.CertFile == "" || cfg.KeyFile == "") {
 		return nil, errors.New("pxGrid password or client certificate/key is required")
 	}
+	if cfg.KeyPassword != "" && (cfg.CertFile == "" || cfg.KeyFile == "") {
+		return nil, errors.New("pxGrid key_password requires both cert_file and key_file")
+	}
 	timeout := cfg.Timeout
 	if timeout <= 0 {
 		timeout = defaultRequestTimeout
@@ -107,15 +136,17 @@ func NewPxGridClient(cfg PxGridConfig) (*PxGridClient, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = tlsConfig
 	rest, err := NewClient(Config{
-		Endpoint:           pxGridRESTEndpoint(parsed).String(),
-		Username:           cfg.NodeName,
-		Password:           cfg.Password,
-		AllowEmptyPassword: true,
-		UserAgent:          cfg.UserAgent,
-		Timeout:            timeout,
-		MaxRetries:         cfg.MaxRetries,
-		PageSize:           defaultPageSize,
-		InsecureSkipVerify: cfg.InsecureSkipVerify,
+		Endpoint:                     pxGridRESTEndpoint(parsed).String(),
+		Username:                     cfg.NodeName,
+		Password:                     cfg.Password,
+		AllowEmptyPassword:           true,
+		UserAgent:                    cfg.UserAgent,
+		Timeout:                      timeout,
+		MaxRetries:                   cfg.MaxRetries,
+		PageSize:                     defaultPageSize,
+		InsecureSkipVerify:           cfg.InsecureSkipVerify,
+		caConfigPath:                 pxGridCAConfigPath,
+		insecureSkipVerifyConfigPath: pxGridInsecureSkipVerifyConfigPath,
 	})
 	if err != nil {
 		return nil, err
@@ -243,6 +274,42 @@ func (c *PxGridClient) Version(ctx context.Context) (Object, error) {
 // subscribes until ctx is cancelled. Calling Subscribe again performs fresh
 // discovery so reconnects pick up ISE service changes.
 func (c *PxGridClient) Subscribe(ctx context.Context, subscription PxGridSubscription, handler func(StompMessage) error) error {
+	return c.subscribe(ctx, subscription, PxGridSubscriptionLifecycle{}, handler)
+}
+
+// SubscribeWithReady is Subscribe with an optional readiness callback. The
+// callback runs after the client receives STOMP CONNECTED and successfully
+// writes SUBSCRIBE. It does not imply broker acceptance because the client does
+// not request a STOMP receipt. Once an endpoint is ready, a later disconnect is
+// returned immediately instead of silently failing over; ordinary Subscribe
+// retains its endpoint failover behavior.
+func (c *PxGridClient) SubscribeWithReady(
+	ctx context.Context,
+	subscription PxGridSubscription,
+	onReady func(),
+	handler func(StompMessage) error,
+) error {
+	return c.subscribe(ctx, subscription, PxGridSubscriptionLifecycle{Ready: onReady}, handler)
+}
+
+// SubscribeWithLifecycle is Subscribe with protocol lifecycle callbacks. A
+// non-nil Ready callback also selects strict continuous-connection behavior:
+// once ready, a disconnect is returned instead of hidden by endpoint failover.
+func (c *PxGridClient) SubscribeWithLifecycle(
+	ctx context.Context,
+	subscription PxGridSubscription,
+	lifecycle PxGridSubscriptionLifecycle,
+	handler func(StompMessage) error,
+) error {
+	return c.subscribe(ctx, subscription, lifecycle, handler)
+}
+
+func (c *PxGridClient) subscribe(
+	ctx context.Context,
+	subscription PxGridSubscription,
+	lifecycle PxGridSubscriptionLifecycle,
+	handler func(StompMessage) error,
+) error {
 	service := strings.TrimSpace(subscription.Service)
 	if service == "" {
 		return errors.New("pxGrid subscription service is required")
@@ -301,9 +368,22 @@ func (c *PxGridClient) Subscribe(ctx context.Context, subscription PxGridSubscri
 				attempts = append(attempts, fmt.Errorf("pubsub node %q access secret: %w", peerNodeName, secretErr))
 				continue
 			}
-			if err := c.subscribeEndpoint(ctx, wsURL, peerNodeName, secret, topic, handler); err != nil {
+			endpointReady := false
+			endpointReadyCallback := func() {
+				endpointReady = true
+				if lifecycle.Ready != nil {
+					lifecycle.Ready()
+				}
+			}
+			if err := c.subscribeEndpointWithReady(ctx, wsURL, peerNodeName, secret, topic, endpointReadyCallback, lifecycle.Acknowledged, handler); err != nil {
 				if ctx.Err() != nil {
 					return ctx.Err()
+				}
+				// Readiness callers are qualifying one continuous connection. Once
+				// that connection reached STOMP CONNECTED and sent SUBSCRIBE, do not
+				// hide its failure by silently moving to another advertised endpoint.
+				if lifecycle.Ready != nil && endpointReady {
+					return fmt.Errorf("pxGrid subscription ended after readiness: %w", err)
 				}
 				attempts = append(attempts, fmt.Errorf("pubsub node %q topic property %q: %w", peerNodeName, topicProperty, err))
 				continue
@@ -314,7 +394,13 @@ func (c *PxGridClient) Subscribe(ctx context.Context, subscription PxGridSubscri
 	return fmt.Errorf("pxGrid subscription service %q has no usable endpoint for topic properties [%s]: %w", service, strings.Join(topicProperties, ", "), errors.Join(attempts...))
 }
 
-func (c *PxGridClient) subscribeEndpoint(ctx context.Context, wsURL, peerNodeName, secret, topic string, handler func(StompMessage) error) error {
+func (c *PxGridClient) subscribeEndpointWithReady(
+	ctx context.Context,
+	wsURL, peerNodeName, secret, topic string,
+	onReady func(),
+	onAcknowledged func(),
+	handler func(StompMessage) error,
+) error {
 	config, err := websocket.NewConfig(wsURL, pxGridDefaultWSOrigin)
 	if err != nil {
 		return err
@@ -327,15 +413,36 @@ func (c *PxGridClient) subscribeEndpoint(ctx context.Context, wsURL, peerNodeNam
 	config.Protocol = []string{"v12.stomp"}
 	ws, err := config.DialContext(ctx)
 	if err != nil {
-		return err
+		// x/net/websocket's DialError predates error unwrapping. Inspect its
+		// exported cause so typed x509 failures still receive the shared hint.
+		var dialErr *websocket.DialError
+		if errors.As(err, &dialErr) && dialErr.Err != nil {
+			decoratedCause := httpclient.DecorateCertificateVerificationError(dialErr.Err, pxGridCAConfigPath, pxGridInsecureSkipVerifyConfigPath)
+			var certificateErr *httpclient.CertificateVerificationError
+			if errors.As(decoratedCause, &certificateErr) {
+				return errors.Join(err, decoratedCause)
+			}
+		}
+		return httpclient.DecorateCertificateVerificationError(err, pxGridCAConfigPath, pxGridInsecureSkipVerifyConfigPath)
 	}
-	defer ws.Close()
+	// Cisco's pxGrid WebSocket samples send STOMP payloads as binary messages.
+	// Conn.Write uses PayloadType for every subsequent STOMP data write.
+	ws.PayloadType = websocket.BinaryFrame
+	closed := false
+	closeWS := func() {
+		if closed {
+			return
+		}
+		closed = true
+		_ = closeWebSocketNow(ws)
+	}
+	defer closeWS()
 	ws.MaxPayloadBytes = stompMaxFrameBytes
 
 	if writeErr := writeSTOMPContext(ctx, ws, c.ioTimeout, "CONNECT", map[string]string{
 		"accept-version": "1.2",
 		"host":           peerNodeName,
-		"heart-beat":     "30000,30000",
+		"heart-beat":     "0,0",
 	}, nil); writeErr != nil {
 		return writeErr
 	}
@@ -353,9 +460,18 @@ func (c *PxGridClient) subscribeEndpoint(ctx context.Context, wsURL, peerNodeNam
 	}, nil); err != nil {
 		return err
 	}
+	// The handshake read is request-bounded. Steady-state subscriptions may be
+	// legitimately idle, so clear that deadline and rely on context cancellation
+	// plus bounded WebSocket Ping keepalives.
+	if err := ws.SetReadDeadline(time.Time{}); err != nil {
+		return fmt.Errorf("clear pxGrid WebSocket handshake read deadline: %w", err)
+	}
+	if onReady != nil {
+		onReady()
+	}
 
-	heartbeat := time.NewTicker(stompHeartbeatInterval)
-	defer heartbeat.Stop()
+	ping := time.NewTicker(pxGridWebSocketPingInterval)
+	defer ping.Stop()
 	readCtx, cancelRead := context.WithCancel(ctx)
 	type readResult struct {
 		frame stompFrame
@@ -366,7 +482,7 @@ func (c *PxGridClient) subscribeEndpoint(ctx context.Context, wsURL, peerNodeNam
 	go func() {
 		defer close(readerDone)
 		for {
-			frame, readErr := readSTOMPWithDeadline(ws, maxDuration(c.ioTimeout, 2*stompHeartbeatInterval))
+			frame, readErr := readSTOMP(ws)
 			if readErr != nil {
 				select {
 				case readCh <- readResult{err: readErr}:
@@ -386,7 +502,7 @@ func (c *PxGridClient) subscribeEndpoint(ctx context.Context, wsURL, peerNodeNam
 		// delivery, close the socket to interrupt a blocked WebSocket read, and
 		// join the goroutine before the caller starts another endpoint attempt.
 		cancelRead()
-		_ = ws.Close()
+		closeWS()
 		<-readerDone
 	}()
 	for {
@@ -395,10 +511,10 @@ func (c *PxGridClient) subscribeEndpoint(ctx context.Context, wsURL, peerNodeNam
 			// Closing the socket is the only reliable way to interrupt a peer
 			// that completed the WebSocket handshake but stopped reading or
 			// writing STOMP frames.
-			_ = ws.Close()
+			closeWS()
 			return ctx.Err()
-		case <-heartbeat.C:
-			if err := writeWebSocketContext(ctx, ws, c.ioTimeout, []byte("\n")); err != nil {
+		case <-ping.C:
+			if err := writeWebSocketPingContext(ctx, ws, min(c.ioTimeout, pxGridWebSocketPingWriteTimeout)); err != nil {
 				return err
 			}
 		case result := <-readCh:
@@ -434,6 +550,9 @@ func (c *PxGridClient) subscribeEndpoint(ctx context.Context, wsURL, peerNodeNam
 			// redelivers the message under its at-least-once contract.
 			if err := writeSTOMPContext(ctx, ws, c.ioTimeout, "ACK", map[string]string{"id": ackID}, nil); err != nil {
 				return fmt.Errorf("acknowledge pxGrid STOMP message: %w", err)
+			}
+			if onAcknowledged != nil {
+				onAcknowledged()
 			}
 		}
 	}
@@ -507,6 +626,9 @@ func validatePxGridURL(rawURL string, allowedSchemes ...string) error {
 	parsed, err := url.Parse(rawURL)
 	if err != nil || parsed.Host == "" || parsed.User != nil {
 		return errors.New("invalid discovered pxGrid URL")
+	}
+	if parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		return errors.New("discovered pxGrid URL must not contain a query or fragment")
 	}
 	for _, scheme := range allowedSchemes {
 		if strings.EqualFold(parsed.Scheme, scheme) {
@@ -593,14 +715,16 @@ func (c *PxGridClient) accessSecret(ctx context.Context, peerNodeName string) (s
 
 func (c *PxGridClient) discoveredRESTClient(endpoint, secret string) (*Client, error) {
 	client, err := NewClient(Config{
-		Endpoint:           endpoint,
-		Username:           c.nodeName,
-		Password:           secret,
-		AllowEmptyPassword: false,
-		UserAgent:          c.userAgent,
-		Timeout:            c.rest.client.Timeout,
-		MaxRetries:         c.rest.retries,
-		PageSize:           c.rest.pageSize,
+		Endpoint:                     endpoint,
+		Username:                     c.nodeName,
+		Password:                     secret,
+		AllowEmptyPassword:           false,
+		UserAgent:                    c.userAgent,
+		Timeout:                      c.rest.client.Timeout,
+		MaxRetries:                   c.rest.retries,
+		PageSize:                     c.rest.pageSize,
+		caConfigPath:                 c.rest.caConfigPath,
+		insecureSkipVerifyConfigPath: c.rest.insecureSkipVerifyConfigPath,
 	})
 	if err != nil {
 		return nil, err
@@ -618,7 +742,7 @@ func pxGridTLSConfig(cfg PxGridConfig) (*tls.Config, error) {
 		tlsConfig.InsecureSkipVerify = true
 	}
 	if cfg.CAFile != "" {
-		caBytes, err := os.ReadFile(cfg.CAFile)
+		caBytes, err := readPxGridPEMFile(cfg.CAFile, "ca_file", maxPxGridCAPEMBytes)
 		if err != nil {
 			return nil, err
 		}
@@ -632,13 +756,77 @@ func pxGridTLSConfig(cfg PxGridConfig) (*tls.Config, error) {
 		if cfg.CertFile == "" || cfg.KeyFile == "" {
 			return nil, errors.New("pxGrid cert_file and key_file must be provided together")
 		}
-		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
+		cert, err := loadPxGridKeyPair(cfg.CertFile, cfg.KeyFile, cfg.KeyPassword)
 		if err != nil {
 			return nil, err
 		}
 		tlsConfig.Certificates = []tls.Certificate{cert}
 	}
 	return tlsConfig, nil
+}
+
+func loadPxGridKeyPair(certFile, keyFile, keyPassword string) (tls.Certificate, error) {
+	certPEM, err := readPxGridPEMFile(certFile, "cert_file", maxPxGridCertificatePEMBytes)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	keyPEM, err := readPxGridPEMFile(keyFile, "key_file", maxPxGridPrivateKeyPEMBytes)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	defer clear(keyPEM)
+	if keyPassword == "" {
+		certificate, pairErr := tls.X509KeyPair(certPEM, keyPEM)
+		if pairErr != nil {
+			return tls.Certificate{}, fmt.Errorf("failed to load pxGrid client certificate and private key: %w", pairErr)
+		}
+		return certificate, nil
+	}
+
+	block, remainder := pem.Decode(keyPEM)
+	if block == nil || block.Type != "ENCRYPTED PRIVATE KEY" || len(bytes.TrimSpace(remainder)) != 0 {
+		return tls.Certificate{}, errors.New("pxGrid key_file must contain exactly one PEM ENCRYPTED PRIVATE KEY when key_password is configured")
+	}
+
+	password := []byte(keyPassword)
+	privateKey, err := parseEncryptedPKCS8PrivateKey(block.Bytes, password)
+	clear(password)
+	if err != nil {
+		return tls.Certificate{}, errors.New("failed to decrypt pxGrid PKCS#8 private key; verify key_password and key format")
+	}
+
+	decryptedDER, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		return tls.Certificate{}, errors.New("failed to prepare decrypted pxGrid PKCS#8 private key")
+	}
+	defer clear(decryptedDER)
+	decryptedPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: decryptedDER})
+	defer clear(decryptedPEM)
+
+	certificate, err := tls.X509KeyPair(certPEM, decryptedPEM)
+	if err != nil {
+		return tls.Certificate{}, fmt.Errorf("failed to load pxGrid client certificate and decrypted private key: %w", err)
+	}
+	return certificate, nil
+}
+
+func readPxGridPEMFile(path, field string, maxBytes int64) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read pxGrid %s: %w", field, err)
+	}
+	defer file.Close()
+
+	contents, err := io.ReadAll(io.LimitReader(file, maxBytes+1))
+	if err != nil {
+		clear(contents)
+		return nil, fmt.Errorf("failed to read pxGrid %s: %w", field, err)
+	}
+	if int64(len(contents)) > maxBytes {
+		clear(contents)
+		return nil, fmt.Errorf("pxGrid %s exceeds the %d-byte size limit", field, maxBytes)
+	}
+	return contents, nil
 }
 
 type stompFrame struct {
@@ -670,11 +858,19 @@ func writeSTOMPContext(ctx context.Context, ws *websocket.Conn, timeout time.Dur
 	})
 }
 
-func writeWebSocketContext(ctx context.Context, ws *websocket.Conn, timeout time.Duration, payload []byte) error {
+func writeWebSocketPingContext(ctx context.Context, ws *websocket.Conn, timeout time.Duration) error {
 	return withWebSocketWriteContext(ctx, ws, timeout, func() error {
-		_, err := ws.Write(payload)
-		return err
+		return pxGridWebSocketPingCodec.Send(ws, struct{}{})
 	})
+}
+
+// closeWebSocketNow gives x/net/websocket a brief opportunity to send its
+// Close control frame while guaranteeing that a writer or automatic Pong
+// already holding the write lock cannot make shutdown wait indefinitely.
+func closeWebSocketNow(ws *websocket.Conn) error {
+	deadlineErr := ws.SetWriteDeadline(time.Now().Add(pxGridWebSocketCloseWriteTimeout))
+	closeErr := ws.Close()
+	return errors.Join(deadlineErr, closeErr)
 }
 
 func withWebSocketWriteContext(ctx context.Context, ws *websocket.Conn, timeout time.Duration, write func() error) error {
@@ -687,15 +883,29 @@ func withWebSocketWriteContext(ctx context.Context, ws *websocket.Conn, timeout 
 	if err := ws.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
 		return err
 	}
+	cancelDeadlineDone := make(chan struct{})
 	stopCancelDeadline := context.AfterFunc(ctx, func() {
+		defer close(cancelDeadlineDone)
 		_ = ws.SetWriteDeadline(time.Now())
 	})
-	err := write()
-	stopCancelDeadline()
+	writeErr := write()
+	if !stopCancelDeadline() {
+		// If cancellation won the race, wait for its deadline write to finish so
+		// it cannot reinstall an expired deadline after the clear below.
+		<-cancelDeadlineDone
+	}
+	// x/net/websocket writes automatic Pong control frames from the reader.
+	// Do not leave an application-write deadline installed: an otherwise healthy
+	// idle subscription could receive a later server Ping after that deadline and
+	// fail its automatic Pong with an i/o timeout.
+	clearErr := ws.SetWriteDeadline(time.Time{})
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return ctxErr
 	}
-	return err
+	if writeErr != nil {
+		return writeErr
+	}
+	return clearErr
 }
 
 type stompReadResult struct {
@@ -713,7 +923,7 @@ func readSTOMPContext(ctx context.Context, ws *websocket.Conn, timeout time.Dura
 	case read := <-result:
 		return read.frame, read.err
 	case <-ctx.Done():
-		_ = ws.Close()
+		_ = closeWebSocketNow(ws)
 		<-result
 		return stompFrame{}, ctx.Err()
 	}
@@ -727,13 +937,6 @@ func readSTOMPWithDeadline(ws *websocket.Conn, timeout time.Duration) (stompFram
 		return stompFrame{}, err
 	}
 	return readSTOMP(ws)
-}
-
-func maxDuration(left, right time.Duration) time.Duration {
-	if left > right {
-		return left
-	}
-	return right
 }
 
 func readSTOMP(ws *websocket.Conn) (stompFrame, error) {

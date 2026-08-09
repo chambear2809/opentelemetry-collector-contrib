@@ -36,14 +36,20 @@ type Interface struct {
 	InputPackets  int64
 	OutputPackets int64
 
-	InputUnicast         int64
-	OutputUnicast        int64
-	InputBroadcast       int64
-	InputMulticast       int64
-	OutputBroadcast      int64
-	OutputMulticast      int64
-	HasInputPacketTypes  bool
-	HasOutputPacketTypes bool
+	InputUnicast   int64
+	OutputUnicast  int64
+	InputBroadcast int64
+	// InputBroadcastMulticast is the IOS/IOS-XE "Received ... broadcasts"
+	// aggregate. Cisco defines that field as the total number of broadcast or
+	// multicast packets, so it must not be exported as a broadcast subtype.
+	InputBroadcastMulticast int64
+	InputMulticast          int64
+	InputIPMulticast        int64
+	InputTotalMulticast     int64
+	OutputBroadcast         int64
+	OutputMulticast         int64
+	HasInputPacketTypes     bool
+	HasOutputPacketTypes    bool
 
 	InputRateBits     int64
 	OutputRateBits    int64
@@ -67,18 +73,27 @@ const (
 
 func NewInterface(name string) *Interface {
 	return &Interface{
-		Name:          name,
-		AdminStatus:   StatusDown,
-		OperStatus:    StatusDown,
-		InputErrors:   invalidCounterValue,
-		OutputErrors:  invalidCounterValue,
-		InputDrops:    invalidCounterValue,
-		OutputDrops:   invalidCounterValue,
-		InputBytes:    invalidCounterValue,
-		OutputBytes:   invalidCounterValue,
-		InputPackets:  invalidCounterValue,
-		OutputPackets: invalidCounterValue,
-		Counters:      map[string]int64{},
+		Name:                    name,
+		AdminStatus:             StatusDown,
+		OperStatus:              StatusDown,
+		InputErrors:             invalidCounterValue,
+		OutputErrors:            invalidCounterValue,
+		InputDrops:              invalidCounterValue,
+		OutputDrops:             invalidCounterValue,
+		InputBytes:              invalidCounterValue,
+		OutputBytes:             invalidCounterValue,
+		InputPackets:            invalidCounterValue,
+		OutputPackets:           invalidCounterValue,
+		InputUnicast:            invalidCounterValue,
+		OutputUnicast:           invalidCounterValue,
+		InputBroadcast:          invalidCounterValue,
+		InputBroadcastMulticast: invalidCounterValue,
+		InputMulticast:          invalidCounterValue,
+		InputIPMulticast:        invalidCounterValue,
+		InputTotalMulticast:     invalidCounterValue,
+		OutputBroadcast:         invalidCounterValue,
+		OutputMulticast:         invalidCounterValue,
+		Counters:                map[string]int64{},
 	}
 }
 
@@ -307,8 +322,11 @@ func parseInterfaces(output string, logger *zap.Logger) []*Interface {
 		}
 
 		if !newIfRegexp.MatchString(line) {
-			if current != nil && current.Validate() {
-				interfaces = append(interfaces, current)
+			if current != nil {
+				finalizeInterfacePacketTypes(current)
+				if current.Validate() {
+					interfaces = append(interfaces, current)
+				}
 			}
 			matches := deviceNameRegexp.FindStringSubmatch(line)
 			if matches == nil {
@@ -383,9 +401,8 @@ func parseInterfaces(output string, logger *zap.Logger) []*Interface {
 		case inputMiscRegexp.MatchString(line):
 			matches := inputMiscRegexp.FindStringSubmatch(line)
 			recordCounter(current, "watchdog", str2int64(matches[1]))
-			if current.InputMulticast == 0 {
-				current.InputMulticast = str2int64(matches[2])
-			}
+			current.InputTotalMulticast = str2int64(matches[2])
+			current.HasInputPacketTypes = true
 			recordCounter(current, "pause_input", str2int64(matches[3]))
 		case outputMiscRegexp.MatchString(line):
 			matches := outputMiscRegexp.FindStringSubmatch(line)
@@ -463,12 +480,12 @@ func parseInterfaces(output string, logger *zap.Logger) []*Interface {
 			}
 		case multiBroadIOSXE.MatchString(line):
 			matches := multiBroadIOSXE.FindStringSubmatch(line)
-			current.InputBroadcast = str2int64(matches[1])
-			current.InputMulticast = str2int64(matches[2])
+			current.InputBroadcastMulticast = str2int64(matches[1])
+			current.InputIPMulticast = str2int64(matches[2])
 			current.HasInputPacketTypes = true
 		case multiBroadIOS.MatchString(line):
 			matches := multiBroadIOS.FindStringSubmatch(line)
-			current.InputBroadcast = str2int64(matches[1])
+			current.InputBroadcastMulticast = str2int64(matches[1])
 			current.HasInputPacketTypes = true
 		case nxBroadcastBytesRegexp.MatchString(line):
 			matches := nxBroadcastBytesRegexp.FindStringSubmatch(line)
@@ -639,6 +656,7 @@ func parseInterfaces(output string, logger *zap.Logger) []*Interface {
 	}
 
 	if current != nil {
+		finalizeInterfacePacketTypes(current)
 		if current.Validate() {
 			interfaces = append(interfaces, current)
 		} else {
@@ -649,6 +667,20 @@ func parseInterfaces(output string, logger *zap.Logger) []*Interface {
 	logger.Info("Parsed interfaces", zap.Int("count", len(interfaces)))
 
 	return interfaces
+}
+
+func finalizeInterfacePacketTypes(intf *Interface) {
+	// IOS and IOS-XE report an aggregate broadcast-or-multicast count on the
+	// "Received ... broadcasts" line. The later "... multicast ..." field is
+	// the total multicast counter; the parenthesized IP multicast value is only
+	// a subset and cannot stand in for it. Resolve the fields after parsing the
+	// full interface so line order cannot change the result.
+	if validCounter(intf.InputTotalMulticast) {
+		intf.InputMulticast = intf.InputTotalMulticast
+		if validCounter(intf.InputBroadcastMulticast) && intf.InputBroadcastMulticast >= intf.InputTotalMulticast {
+			intf.InputBroadcast = intf.InputBroadcastMulticast - intf.InputTotalMulticast
+		}
+	}
 }
 
 func parseInterfaceCounterTables(output string, logger *zap.Logger) map[string]map[string]int64 {
@@ -691,34 +723,8 @@ func parseInterfaceCounterTables(output string, logger *zap.Logger) map[string]m
 }
 
 func mergeInterfaceCounterTables(interfaces []*Interface, counterTables map[string]map[string]int64) []*Interface {
-	if len(counterTables) == 0 {
-		return interfaces
-	}
-
-	byName := make(map[string]*Interface, len(interfaces)*2)
-	for _, intf := range interfaces {
-		byName[intf.Name] = intf
-		byName[normalizeInterfaceName(intf.Name)] = intf
-	}
-
-	for tableName, counters := range counterTables {
-		intf := byName[tableName]
-		if intf == nil {
-			intf = byName[normalizeInterfaceName(tableName)]
-		}
-		if intf == nil {
-			intf = NewInterface(tableName)
-			interfaces = append(interfaces, intf)
-			byName[tableName] = intf
-			byName[normalizeInterfaceName(tableName)] = intf
-		}
-
-		for counterName, value := range counters {
-			applyInterfaceCounterValue(intf, counterName, value)
-		}
-	}
-
-	return interfaces
+	budget := newInterfaceCounterEnrichmentBudget(interfaces, len(interfaces)+len(counterTables))
+	return mergeInterfaceCounterTablesWithinBudget(interfaces, counterTables, budget)
 }
 
 func hasKnownCounterHeader(headers []string) bool {

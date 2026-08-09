@@ -362,7 +362,7 @@
         {
           "name": "Optics And VAST Media Temperature",
           "description": "Value: compares Cisco optics drift with VAST media temperature. Interpretation: physical-layer or thermal symptoms can explain errors and latency before logical storage metrics clearly fail.",
-          "signalflow": "data('cisco.transceiver.sensor', filter=filter('sensor.type', 'rx_power')).mean(by=['host.name', 'network.interface.name']).publish(label='Cisco RX power'); data('cisco.transceiver.sensor', filter=filter('sensor.type', 'tx_power')).mean(by=['host.name', 'network.interface.name']).publish(label='Cisco TX power'); data('vast_ssd_metrics_Hardware_temperature').mean(by=['vast.cluster', 'ssd']).publish(label='VAST SSD temp')",
+          "signalflow": "data('cisco.transceiver.sensor', filter=filter('cisco.transceiver.sensor', 'rx_power')).mean(by=['host.name', 'network.interface.name']).publish(label='Cisco RX power'); data('cisco.transceiver.sensor', filter=filter('cisco.transceiver.sensor', 'tx_power')).mean(by=['host.name', 'network.interface.name']).publish(label='Cisco TX power'); data('vast_ssd_metrics_Hardware_temperature').mean(by=['vast.cluster', 'ssd']).publish(label='VAST SSD temp')",
           "legend_dimension": "network.interface.name"
         }
       ]

@@ -4,6 +4,9 @@
 package ciscoosreceiver
 
 import (
+	"crypto/sha256"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,7 +18,8 @@ import (
 )
 
 func TestBuildSharedGNMIStreamsDefaultsIntervalsAndStableOrder(t *testing.T) {
-	target := GNMITargetConfig{Name: "xe-1", Platform: gnmiPlatformIOSXE, MaxStreams: 4}
+	target := subscriptionTestTarget(gnmiProductCatalyst9800, 4)
+	target.Name = "xe-1"
 	streams, err := buildSharedGNMIStreams(target)
 	require.NoError(t, err)
 	require.Len(t, streams, 3)
@@ -54,16 +58,13 @@ func TestBuildSharedGNMIStreamsDefaultsIntervalsAndStableOrder(t *testing.T) {
 
 func TestBuildSharedGNMIStreamsOriginGroupingAndDeduplication(t *testing.T) {
 	t.Run("IOS XR splits prefix origins and deduplicates controller optics", func(t *testing.T) {
-		target := GNMITargetConfig{
-			Name:       "xr-1",
-			Platform:   gnmiPlatformIOSXR,
-			MaxStreams: 2,
-			Profiles:   subscriptionProfilesOnly(builtinGNMIProfileOptics),
-		}
+		target := subscriptionTestTarget(gnmiProductASR9000, 2)
+		target.Name = "xr-1"
+		target.Profiles = subscriptionProfilesOnly(builtinGNMIProfileOptics)
 		target.Profiles.Optics.Required = true
 		streams, err := buildSharedGNMIStreams(target)
 		require.NoError(t, err)
-		require.Len(t, streams, 2)
+		require.Len(t, streams, 1)
 		assert.Len(t, streams, estimateGNMIStreams(target.withDefaults()))
 		for _, stream := range streams {
 			assert.Equal(t, builtinGNMIProfileOptics, stream.Profile)
@@ -73,20 +74,15 @@ func TestBuildSharedGNMIStreamsOriginGroupingAndDeduplication(t *testing.T) {
 		}
 		byOrigin := sharedStreamsByOrigin(streams)
 		controller := byOrigin["Cisco-IOS-XR-controller-optics-oper"]
-		require.Len(t, controller.Paths, 2, "duplicate optics-info request path must be removed")
-		assert.Len(t, controller.Mappings, 16, "DOM controller + lane and coherent mappings remain lossless")
-		otu := byOrigin["Cisco-IOS-XR-controller-otu-oper"]
-		require.Len(t, otu.Paths, 1)
-		assert.Len(t, otu.Mappings, 2)
+		require.Len(t, controller.Paths, 2)
+		assert.Len(t, controller.Mappings, 8, "exact 24.4 controller and lane mappings must remain lossless")
+		assert.NotContains(t, byOrigin, "Cisco-IOS-XR-controller-otu-oper", "unsafe string and split-mantissa OTU values must not be subscribed")
 	})
 
 	t.Run("NX keeps per-path origins in one profile stream", func(t *testing.T) {
-		target := GNMITargetConfig{
-			Name:       "nx-1",
-			Platform:   gnmiPlatformNXOS,
-			MaxStreams: 1,
-			Profiles:   subscriptionProfilesOnly(builtinGNMIProfileOptics),
-		}
+		target := subscriptionTestTarget(gnmiProductNexus9000, 1)
+		target.Name = "nx-1"
+		target.Profiles = subscriptionProfilesOnly(builtinGNMIProfileOptics)
 		streams, err := buildSharedGNMIStreams(target)
 		require.NoError(t, err)
 		require.Len(t, streams, 1)
@@ -237,10 +233,11 @@ func TestBuildBuiltinProfileStreamsExtendsDMEPathToSelectedCatalogLists(t *testi
 func TestBuildSharedGNMIStreamsCustomMappingsAndModes(t *testing.T) {
 	scale := .001
 	target := GNMITargetConfig{
-		Name:       "xr-custom",
-		Platform:   gnmiPlatformIOSXR,
-		MaxStreams: 1,
-		Profiles:   subscriptionProfilesOnly(),
+		Name:            "xr-custom",
+		Product:         gnmiProductASR9000,
+		SoftwareVersion: "24.4.1",
+		MaxStreams:      1,
+		Profiles:        subscriptionProfilesOnly(),
 		CustomSubscriptions: []GNMICustomSubscriptionConfig{{
 			Name:           "custom-optic",
 			Origin:         "vendor-optics",
@@ -289,8 +286,61 @@ func TestBuildSharedGNMIStreamsCustomMappingsAndModes(t *testing.T) {
 	}, converted.Mapping.KeyAttributes)
 }
 
+func TestBuildSharedGNMINXOpenConfigProfilesSeparateWireOriginFromModels(t *testing.T) {
+	for _, test := range []struct {
+		product, version string
+	}{
+		{product: gnmiProductNexus9000, version: "10.6(1)"},
+		{product: gnmiProductNexus3500, version: "10.5(1)"},
+	} {
+		t.Run(test.product, func(t *testing.T) {
+			target := subscriptionTestTarget(test.product, 2)
+			target.Profiles = subscriptionProfilesOnly(builtinGNMIProfileIdentity, builtinGNMIProfileInterfaces)
+			streams, err := buildSharedGNMIStreams(target)
+			require.NoError(t, err)
+			require.Len(t, streams, 2)
+
+			expectedModels := map[string]string{
+				builtinGNMIProfileIdentity:   "openconfig-system",
+				builtinGNMIProfileInterfaces: "openconfig-interfaces",
+			}
+			for _, stream := range streams {
+				expectedModel, ok := expectedModels[stream.Profile]
+				require.True(t, ok, stream.Profile)
+				assert.Equal(t, []string{expectedModel}, stream.RequiredModels)
+				require.NotEmpty(t, stream.Paths)
+				for _, path := range stream.Paths {
+					assert.Equal(t, builtinGNMIOriginOpenConfig, path.Origin)
+				}
+				for _, catalogMapping := range stream.Mappings {
+					if catalogMapping.Mapping.Source.Origin != builtinGNMISyntheticReceiverOrigin {
+						assert.Equal(t, builtinGNMIOriginOpenConfig, catalogMapping.Mapping.Source.Origin)
+					}
+				}
+
+				request, requestErr := buildSharedGNMISubscribeRequest(target, stream, gnmipb.Encoding_JSON)
+				require.NoError(t, requestErr)
+				list := request.GetSubscribe()
+				require.NotNil(t, list)
+				assert.Nil(t, list.GetPrefix())
+				for _, subscription := range list.GetSubscription() {
+					assert.Equal(t, builtinGNMIOriginOpenConfig, subscription.GetPath().GetOrigin())
+				}
+			}
+
+			contract, _, err := resolveGNMIProductContract(test.product, test.version)
+			require.NoError(t, err)
+			models := requiredGNMIModels(contract, streams)
+			assert.Equal(t, []string{"openconfig-interfaces", "openconfig-platform", "openconfig-system"}, models)
+			assert.NotContains(t, models, builtinGNMIOriginOpenConfig)
+		})
+	}
+}
+
 func TestBuildSharedGNMIStreamsPreservesBuiltinStaticAttributes(t *testing.T) {
-	target := GNMITargetConfig{Name: "nx-1", Platform: gnmiPlatformNXOS, MaxStreams: 1, Profiles: subscriptionProfilesOnly(builtinGNMIProfileOptics)}
+	target := subscriptionTestTarget(gnmiProductNexus9000, 1)
+	target.Name = "nx-1"
+	target.Profiles = subscriptionProfilesOnly(builtinGNMIProfileOptics)
 	streams, err := buildSharedGNMIStreams(target)
 	require.NoError(t, err)
 	require.Len(t, streams, 1)
@@ -306,7 +356,8 @@ func TestBuildSharedGNMIStreamsPreservesBuiltinStaticAttributes(t *testing.T) {
 }
 
 func TestBuildSharedGNMIStreamsEnforcesMaxStreams(t *testing.T) {
-	target := GNMITargetConfig{Name: "xe-1", Platform: gnmiPlatformIOSXE, MaxStreams: 2}
+	target := subscriptionTestTarget(gnmiProductCatalyst9800, 2)
+	target.Name = "xe-1"
 	_, err := buildSharedGNMIStreams(target)
 	require.ErrorContains(t, err, "requires 3 compatible subscription streams")
 
@@ -328,7 +379,7 @@ func TestBuildSharedGNMIStreamsRejectsCatalogedButUnimplementedProfile(t *testin
 func TestBuildSharedGNMISubscribeRequestModesAndOriginPlacement(t *testing.T) {
 	tests := []struct {
 		name            string
-		platform        string
+		product         string
 		mode            string
 		streamMode      string
 		wantMode        gnmipb.SubscriptionList_Mode
@@ -352,7 +403,7 @@ func TestBuildSharedGNMISubscribeRequestModesAndOriginPlacement(t *testing.T) {
 				PollInterval:   time.Minute,
 				Paths:          []sharedGNMIPath{{Origin: "openconfig-interfaces", Path: "interfaces/interface/state/counters"}},
 			}
-			req, err := buildSharedGNMISubscribeRequest(GNMITargetConfig{Platform: test.platform}, stream, gnmipb.Encoding_JSON_IETF)
+			req, err := buildSharedGNMISubscribeRequest(subscriptionTestTarget(test.product, 1), stream, gnmipb.Encoding_JSON_IETF)
 			require.NoError(t, err)
 			list := req.GetSubscribe()
 			require.NotNil(t, list)
@@ -372,7 +423,7 @@ func TestBuildSharedGNMISubscribeRequestModesAndOriginPlacement(t *testing.T) {
 	require.ErrorContains(t, err, "unsupported gNMI stream mode")
 
 	xeStream := sharedGNMIStream{Profile: builtinGNMIProfileOptics, Mode: gnmiModeStream, SampleInterval: 30 * time.Second, Paths: []sharedGNMIPath{{Origin: builtinGNMIOriginRFC7951, Path: "Cisco-IOS-XE-transceiver-oper:transceiver-oper-data/transceiver"}}}
-	xeReq, err := buildSharedGNMISubscribeRequest(GNMITargetConfig{Platform: gnmiPlatformIOSXE}, xeStream, gnmipb.Encoding_JSON_IETF)
+	xeReq, err := buildSharedGNMISubscribeRequest(subscriptionTestTarget(gnmiProductCatalyst9800, 1), xeStream, gnmipb.Encoding_JSON_IETF)
 	require.NoError(t, err)
 	assert.Equal(t, builtinGNMIOriginRFC7951, xeReq.GetSubscribe().Prefix.Origin)
 	assert.Equal(t, "Cisco-IOS-XE-transceiver-oper:transceiver-oper-data", xeReq.GetSubscribe().Subscription[0].Path.Elem[0].Name)
@@ -381,13 +432,146 @@ func TestBuildSharedGNMISubscribeRequestModesAndOriginPlacement(t *testing.T) {
 		{Origin: builtinGNMIOriginDME, Path: "sys/intf"},
 		{Origin: builtinGNMIOriginNXDevice, Path: "System/intf-items/phys-items/PhysIf-list/phys-items/fcotdd-items"},
 	}}
-	nxReq, err := buildSharedGNMISubscribeRequest(GNMITargetConfig{Platform: gnmiPlatformNXOS}, nxStream, gnmipb.Encoding_JSON)
+	nxReq, err := buildSharedGNMISubscribeRequest(subscriptionTestTarget(gnmiProductNexus9000, 1), nxStream, gnmipb.Encoding_JSON)
 	require.NoError(t, err)
-	assert.Nil(t, nxReq.GetSubscribe().Prefix)
-	require.Len(t, nxReq.GetSubscribe().Subscription, 2)
-	assert.Equal(t, builtinGNMIOriginDME, nxReq.GetSubscribe().Subscription[0].Path.Origin)
-	assert.Len(t, nxReq.GetSubscribe().Subscription[0].Path.Elem, 2)
-	assert.Equal(t, builtinGNMIOriginNXDevice, nxReq.GetSubscribe().Subscription[1].Path.Origin)
+	nxList := nxReq.GetSubscribe()
+	assert.Nil(t, nxList.Prefix)
+	assert.Equal(t, gnmipb.Encoding_JSON, nxList.GetEncoding())
+	assert.Equal(t, gnmipb.SubscriptionList_STREAM, nxList.GetMode())
+	assert.False(t, nxList.GetUpdatesOnly())
+	assert.False(t, nxList.GetAllowAggregation())
+	assert.Nil(t, nxList.GetQos())
+	assert.Empty(t, nxReq.GetExtension())
+	require.Len(t, nxList.Subscription, 2)
+	assert.Equal(t, builtinGNMIOriginDME, nxList.Subscription[0].Path.Origin)
+	assert.Len(t, nxList.Subscription[0].Path.Elem, 2)
+	assert.Equal(t, builtinGNMIOriginNXDevice, nxList.Subscription[1].Path.Origin)
+	for _, subscription := range nxList.Subscription {
+		assert.Empty(t, subscription.GetPath().GetTarget())
+		assert.Equal(t, gnmipb.SubscriptionMode_SAMPLE, subscription.GetMode())
+		assert.Positive(t, subscription.GetSampleInterval())
+		assert.Zero(t, subscription.GetHeartbeatInterval())
+		assert.False(t, subscription.GetSuppressRedundant())
+	}
+
+	_, err = buildSharedGNMISubscribeRequest(subscriptionTestTarget(gnmiProductNexus9000, 1), nxStream, gnmipb.Encoding_JSON_IETF)
+	require.ErrorContains(t, err, "not approved")
+
+	nxStream.Mode = gnmiModePoll
+	_, err = buildSharedGNMISubscribeRequest(subscriptionTestTarget(gnmiProductNexus9000, 1), nxStream, gnmipb.Encoding_JSON)
+	require.ErrorContains(t, err, "SAMPLE STREAM subscriptions")
+}
+
+func TestBuildCatalystSwitchSubscribeRequestUsesConservativeWireContract(t *testing.T) {
+	for _, product := range []string{gnmiProductCatalyst9300, gnmiProductCatalyst9500} {
+		t.Run(product, func(t *testing.T) {
+			target := subscriptionTestTarget(product, 1)
+			target.Profiles = subscriptionProfilesOnly(builtinGNMIProfileInterfaces)
+			streams, err := buildSharedGNMIStreams(target)
+			require.NoError(t, err)
+			require.Len(t, streams, 1)
+			stream := streams[0]
+			assert.Equal(t, gnmiModeStream, stream.Mode)
+			assert.Equal(t, time.Minute, stream.SampleInterval)
+			require.Len(t, stream.Paths, 1)
+			assert.NotContains(t, stream.Paths[0].Path, "*")
+
+			request, err := buildSharedGNMISubscribeRequest(target, stream, gnmipb.Encoding_JSON_IETF)
+			require.NoError(t, err)
+			list := request.GetSubscribe()
+			require.NotNil(t, list)
+			assert.Equal(t, gnmipb.Encoding_JSON_IETF, list.GetEncoding())
+			assert.Equal(t, gnmipb.SubscriptionList_STREAM, list.GetMode())
+			assert.False(t, list.GetUpdatesOnly())
+			assert.False(t, list.GetAllowAggregation())
+			assert.Nil(t, list.GetQos())
+			assert.Empty(t, request.GetExtension())
+			require.NotNil(t, list.GetPrefix())
+			assert.Equal(t, builtinGNMIOriginRFC7951, list.GetPrefix().GetOrigin())
+			assert.Empty(t, list.GetPrefix().GetTarget())
+			require.Len(t, list.GetSubscription(), 1)
+			subscription := list.GetSubscription()[0]
+			assert.Equal(t, gnmipb.SubscriptionMode_SAMPLE, subscription.GetMode())
+			assert.Equal(t, uint64(time.Minute.Nanoseconds()), subscription.GetSampleInterval())
+			assert.Zero(t, subscription.GetHeartbeatInterval())
+			assert.False(t, subscription.GetSuppressRedundant())
+			assert.Empty(t, subscription.GetPath().GetOrigin())
+			assert.Empty(t, subscription.GetPath().GetTarget())
+			require.Len(t, subscription.GetPath().GetElem(), 3)
+			assert.Equal(t, "openconfig-interfaces:interfaces", subscription.GetPath().GetElem()[0].GetName())
+			assert.Equal(t, "interface", subscription.GetPath().GetElem()[1].GetName())
+			assert.Equal(t, "state", subscription.GetPath().GetElem()[2].GetName())
+
+			encoding, err := negotiateSharedGNMIEncoding(target, &gnmipb.CapabilityResponse{
+				SupportedEncodings: []gnmipb.Encoding{gnmipb.Encoding_PROTO, gnmipb.Encoding_JSON, gnmipb.Encoding_JSON_IETF},
+			}, streams)
+			require.NoError(t, err)
+			assert.Equal(t, gnmipb.Encoding_JSON_IETF, encoding)
+
+			_, err = negotiateSharedGNMIEncoding(target, &gnmipb.CapabilityResponse{
+				SupportedEncodings: []gnmipb.Encoding{gnmipb.Encoding_PROTO, gnmipb.Encoding_JSON},
+			}, streams)
+			require.ErrorContains(t, err, "no encoding authorized")
+
+			rejections := []struct {
+				name     string
+				encoding gnmipb.Encoding
+				mutate   func(*sharedGNMIStream)
+				want     string
+			}{
+				{name: "JSON", encoding: gnmipb.Encoding_JSON, want: "not approved"},
+				{name: "PROTO", encoding: gnmipb.Encoding_PROTO, want: "not approved"},
+				{name: "ONCE", encoding: gnmipb.Encoding_JSON_IETF, mutate: func(candidate *sharedGNMIStream) {
+					candidate.Mode = gnmiModeOnce
+				}, want: "SAMPLE STREAM subscriptions"},
+				{name: "POLL", encoding: gnmipb.Encoding_JSON_IETF, mutate: func(candidate *sharedGNMIStream) {
+					candidate.Mode = gnmiModePoll
+				}, want: "SAMPLE STREAM subscriptions"},
+				{name: "updates_only", encoding: gnmipb.Encoding_JSON_IETF, mutate: func(candidate *sharedGNMIStream) {
+					candidate.UpdatesOnly = true
+				}, want: "updates_only must be false"},
+				{name: "aggregation", encoding: gnmipb.Encoding_JSON_IETF, mutate: func(candidate *sharedGNMIStream) {
+					candidate.AllowAggregation = true
+				}, want: "allow_aggregation must be false"},
+				{name: "qos", encoding: gnmipb.Encoding_JSON_IETF, mutate: func(candidate *sharedGNMIStream) {
+					value := uint32(0)
+					candidate.QoSMarking = &value
+				}, want: "qos_marking is not qualified"},
+				{name: "extension", encoding: gnmipb.Encoding_JSON_IETF, mutate: func(candidate *sharedGNMIStream) {
+					value := uint32(1)
+					candidate.GNMIExtensions.Depth = &value
+				}, want: "gnmi_extensions.depth is not qualified"},
+				{name: "target_defined", encoding: gnmipb.Encoding_JSON_IETF, mutate: func(candidate *sharedGNMIStream) {
+					candidate.Paths[0].StreamMode = gnmiStreamModeTargetDefined
+				}, want: "stream_mode must be sample"},
+				{name: "heartbeat", encoding: gnmipb.Encoding_JSON_IETF, mutate: func(candidate *sharedGNMIStream) {
+					value := time.Minute
+					candidate.Paths[0].HeartbeatInterval = &value
+				}, want: "optional subscription flags are not qualified"},
+				{name: "suppress_redundant", encoding: gnmipb.Encoding_JSON_IETF, mutate: func(candidate *sharedGNMIStream) {
+					value := false
+					candidate.Paths[0].SuppressRedundant = &value
+				}, want: "optional subscription flags are not qualified"},
+				{name: "wildcard", encoding: gnmipb.Encoding_JSON_IETF, mutate: func(candidate *sharedGNMIStream) {
+					candidate.Paths[0].Path = "openconfig-interfaces:interfaces/interface[name=*]/state"
+				}, want: "explicit asterisk wildcard"},
+				{name: "sub-second SAMPLE", encoding: gnmipb.Encoding_JSON_IETF, mutate: func(candidate *sharedGNMIStream) {
+					candidate.SampleInterval = 500 * time.Millisecond
+				}, want: "between 1s and 604800s"},
+			}
+			for _, rejection := range rejections {
+				t.Run("rejects "+rejection.name, func(t *testing.T) {
+					candidate := stream
+					candidate.Paths = append([]sharedGNMIPath(nil), stream.Paths...)
+					if rejection.mutate != nil {
+						rejection.mutate(&candidate)
+					}
+					_, requestErr := buildSharedGNMISubscribeRequest(target, candidate, rejection.encoding)
+					require.ErrorContains(t, requestErr, rejection.want)
+				})
+			}
+		})
+	}
 }
 
 func TestBuildSharedGNMISubscribeRequestRejectsMixedPrefixOrigins(t *testing.T) {
@@ -395,8 +579,21 @@ func TestBuildSharedGNMISubscribeRequestRejectsMixedPrefixOrigins(t *testing.T) 
 		{Origin: "module-a", Path: "a/b"},
 		{Origin: "module-b", Path: "c/d"},
 	}}
-	_, err := buildSharedGNMISubscribeRequest(GNMITargetConfig{Platform: gnmiPlatformIOSXR}, stream, gnmipb.Encoding_JSON)
-	require.ErrorContains(t, err, "mixes prefix origins")
+	_, err := buildSharedGNMISubscribeRequest(subscriptionTestTarget(gnmiProductASR9000, 1), stream, gnmipb.Encoding_JSON)
+	require.ErrorContains(t, err, "mixes prefix (path_target, origin) pairs")
+}
+
+func TestBuildSharedGNMISubscribeRequestRejectsMalformedRFC7951Namespace(t *testing.T) {
+	stream := sharedGNMIStream{
+		Profile: "bad", Mode: gnmiModeStream, SampleInterval: time.Minute,
+		Paths: []sharedGNMIPath{{Origin: builtinGNMIOriginRFC7951, Path: "a:b:c/state"}},
+	}
+	_, err := buildSharedGNMISubscribeRequest(
+		subscriptionTestTarget(gnmiProductCatalyst9800, 1),
+		stream,
+		gnmipb.Encoding_JSON_IETF,
+	)
+	require.ErrorContains(t, err, "namespace form required")
 }
 
 func TestNegotiateSharedGNMIEncoding(t *testing.T) {
@@ -409,6 +606,10 @@ func TestNegotiateSharedGNMIEncoding(t *testing.T) {
 	assert.Equal(t, gnmipb.Encoding_JSON, encoding)
 
 	encoding, err = negotiateSharedGNMIEncoding(base, &gnmipb.CapabilityResponse{SupportedEncodings: []gnmipb.Encoding{gnmipb.Encoding_PROTO, gnmipb.Encoding_JSON}}, dme)
+	require.NoError(t, err)
+	assert.Equal(t, gnmipb.Encoding_JSON, encoding)
+
+	encoding, err = negotiateSharedGNMIEncoding(base, &gnmipb.CapabilityResponse{SupportedEncodings: []gnmipb.Encoding{gnmipb.Encoding_JSON_IETF, gnmipb.Encoding_JSON}}, withoutDME)
 	require.NoError(t, err)
 	assert.Equal(t, gnmipb.Encoding_JSON, encoding)
 
@@ -508,8 +709,8 @@ func assertAllPathsHaveOneOrigin(t *testing.T, paths []sharedGNMIPath) {
 	t.Helper()
 	require.NotEmpty(t, paths)
 	origin := paths[0].Origin
-	for _, path := range paths[1:] {
-		assert.Equal(t, origin, path.Origin)
+	for i := 1; i < len(paths); i++ {
+		assert.Equal(t, origin, paths[i].Origin)
 	}
 }
 

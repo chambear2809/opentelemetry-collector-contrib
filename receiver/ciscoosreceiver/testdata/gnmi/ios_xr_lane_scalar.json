@@ -1,0 +1,27 @@
+{
+  "timestamp": "1782993600000000000",
+  "prefix": {
+    "origin": "Cisco-IOS-XR-controller-optics-oper",
+    "elem": [
+      {"name": "optics-oper"},
+      {"name": "optics-ports"},
+      {"name": "optics-port", "key": {"name": "HundredGigE0/0/0/0"}},
+      {"name": "optics-lanes"},
+      {"name": "optics-lane", "key": {"number": "0"}}
+    ]
+  },
+  "update": [
+    {
+      "path": {"elem": [{"name": "laser-bias-current-milli-amps"}]},
+      "val": {"uintVal": "640"}
+    },
+    {
+      "path": {"elem": [{"name": "receive-power"}]},
+      "val": {"intVal": "-215"}
+    },
+    {
+      "path": {"elem": [{"name": "transmit-power"}]},
+      "val": {"intVal": "-105"}
+    }
+  ]
+}

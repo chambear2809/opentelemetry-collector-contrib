@@ -93,6 +93,15 @@ func TestGNMIDialOutValidationOwnsDependencySecurityContract(t *testing.T) {
 	))
 }
 
+func TestGNMIDialOutStreamIdleTimeoutValidation(t *testing.T) {
+	require.NoError(t, validateGNMIDialOutStreamIdleTimeout(0))
+	require.NoError(t, validateGNMIDialOutStreamIdleTimeout(time.Second))
+	require.NoError(t, validateGNMIDialOutStreamIdleTimeout(time.Hour))
+	require.ErrorContains(t, validateGNMIDialOutStreamIdleTimeout(time.Second-time.Nanosecond), "stream_idle_timeout")
+	require.ErrorContains(t, validateGNMIDialOutStreamIdleTimeout(time.Hour+time.Nanosecond), "stream_idle_timeout")
+	assert.Equal(t, defaultGNMIDialOutStreamIdle, effectiveGNMIDialOutStreamIdleTimeout(0))
+}
+
 func TestGNMIDialOutIdentityBindingValidation(t *testing.T) {
 	server := configgrpc.NewDefaultServerConfig()
 	server.NetAddr.Endpoint = "127.0.0.1:57500"

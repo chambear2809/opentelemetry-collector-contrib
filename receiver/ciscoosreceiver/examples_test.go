@@ -20,10 +20,11 @@ import (
 
 func TestShippedCiscoOSReceiverExamplesUnmarshalAndValidate(t *testing.T) {
 	tests := []struct {
-		name      string
-		path      string
-		resolve   func(*Config)
-		assertion func(*testing.T, *Config)
+		name        string
+		path        string
+		receiverKey string
+		resolve     func(*Config)
+		assertion   func(*testing.T, *Config)
 	}{
 		{
 			name: "secure gNMI",
@@ -35,6 +36,19 @@ func TestShippedCiscoOSReceiverExamplesUnmarshalAndValidate(t *testing.T) {
 				assert.Equal(t, "nx_os", target.ProductFamily)
 				assert.Equal(t, 2*time.Minute, target.SyncTimeout)
 				assert.Equal(t, []string{"json", "json_ietf"}, target.EncodingPreference)
+			},
+		},
+		{
+			name: "Catalyst switch gNMI",
+			path: filepath.Join("examples", "gnmi-catalyst-switches.yaml"),
+			assertion: func(t *testing.T, cfg *Config) {
+				require.Len(t, cfg.GNMI.Targets, 2)
+				assert.Equal(t, gnmiProductCatalyst9300, cfg.GNMI.Targets[0].Product)
+				assert.Equal(t, gnmiReviewedIOSXESwitchRelease17181, cfg.GNMI.Targets[0].SoftwareVersion)
+				assert.True(t, cfg.GNMI.Targets[0].AllowUnqualified)
+				assert.Equal(t, gnmiProductCatalyst9500, cfg.GNMI.Targets[1].Product)
+				assert.Equal(t, gnmiReviewedIOSXESwitchRelease17181, cfg.GNMI.Targets[1].SoftwareVersion)
+				assert.True(t, cfg.GNMI.Targets[1].AllowUnqualified)
 			},
 		},
 		{
@@ -53,13 +67,61 @@ func TestShippedCiscoOSReceiverExamplesUnmarshalAndValidate(t *testing.T) {
 				assert.False(t, cfg.SDWAN.RealtimeDetails.Enabled)
 			},
 		},
+		{
+			name:        "ACI to Splunk Observability Cloud",
+			path:        filepath.Join("examples", "aci-splunk-o11y.yaml"),
+			receiverKey: "cisco_os/aci",
+			resolve: func(cfg *Config) {
+				cfg.ACI.Controllers[0].Endpoint = "https://apic.example.test"
+				cfg.ACI.CAFile = "/etc/otelcol/apic-ca.pem"
+				cfg.ACI.ServerName = "apic.example.test"
+			},
+			assertion: func(t *testing.T, cfg *Config) {
+				assert.True(t, cfg.ACI.Enabled)
+				require.Len(t, cfg.ACI.Controllers, 1)
+				assert.Equal(t, "apic-primary", cfg.ACI.Controllers[0].Name)
+				assert.Equal(t, "/etc/otelcol/apic-ca.pem", cfg.ACI.CAFile)
+				assert.Equal(t, "apic.example.test", cfg.ACI.ServerName)
+				assert.False(t, cfg.ACI.InsecureSkipVerify)
+				assert.True(t, cfg.ACI.Logs.Faults.Enabled)
+				assert.True(t, cfg.ACI.Logs.Audit.Enabled)
+				assert.True(t, cfg.ACI.Logs.Events.Enabled)
+			},
+		},
+		{
+			name:        "FMC to Splunk Observability Cloud",
+			path:        filepath.Join("examples", "fmc-splunk-o11y.yaml"),
+			receiverKey: "cisco_os/fmc",
+			resolve: func(cfg *Config) {
+				cfg.FMC.Controllers[0].Endpoint = "https://fmc.example.test"
+			},
+			assertion: func(t *testing.T, cfg *Config) {
+				assert.True(t, cfg.FMC.Enabled)
+				require.Len(t, cfg.FMC.Controllers, 1)
+				assert.Equal(t, "fmc-primary", cfg.FMC.Controllers[0].Name)
+				assert.False(t, cfg.FMC.InsecureSkipVerify)
+				assert.True(t, cfg.FMC.Manager.Enabled)
+				assert.True(t, cfg.FMC.Inventory.Enabled)
+				assert.True(t, cfg.FMC.Interfaces.Enabled)
+				assert.True(t, cfg.FMC.Health.Enabled)
+				assert.True(t, cfg.FMC.VPN.Enabled)
+				assert.True(t, cfg.FMC.HA.Enabled)
+				assert.True(t, cfg.FMC.Policy.Enabled)
+				assert.True(t, cfg.FMC.Deployments.Enabled)
+				assert.False(t, cfg.FMC.Audit.Enabled)
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			conf, err := confmaptest.LoadConf(tt.path)
 			require.NoError(t, err)
-			receiverConf, err := conf.Sub("receivers::cisco_os")
+			receiverKey := tt.receiverKey
+			if receiverKey == "" {
+				receiverKey = "cisco_os"
+			}
+			receiverConf, err := conf.Sub("receivers::" + receiverKey)
 			require.NoError(t, err)
 
 			cfg := NewFactory().CreateDefaultConfig().(*Config)

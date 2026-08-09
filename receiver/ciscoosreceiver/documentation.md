@@ -12,6 +12,542 @@ metrics:
     enabled: false
 ```
 
+### aci.api.endpoint.error
+
+APIC class or endpoint-family scrape failures.
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| {error} | Sum | Int | Cumulative | true | Development |
+
+### aci.api.rate_limited
+
+APIC requests that received HTTP 429.
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| {request} | Sum | Int | Cumulative | true | Development |
+
+### aci.api.request.duration
+
+Average duration of APIC API request attempts within the scrape for each matching request-attribute set.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| s | Gauge | Double | Development |
+
+### aci.api.request.errors
+
+APIC API request failures.
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| {error} | Sum | Int | Cumulative | true | Development |
+
+### aci.audit.record.count
+
+Recent APIC audit records by bounded operation, status, and severity attributes.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+### aci.controller.up
+
+Whether an APIC controller API was reachable for the scrape.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+### aci.endpoint.count
+
+Endpoint count by bounded tenant/EPG context.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+### aci.endpoint.present
+
+Endpoint MAC/IP presence.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+### aci.event.count
+
+Recent APIC event records by bounded operation, status, and severity attributes.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+### aci.fabric.health
+
+Fabric, pod, node, or tenant health score where exposed by APIC.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Double | Development |
+
+### aci.fault.active
+
+Active APIC fault instance.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+### aci.fault.count
+
+Active APIC fault counts by bounded attributes.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+### aci.resource.count
+
+APIC resources grouped by bounded group, class, type, status, and severity.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+### aci.resource.info
+
+Bounded metadata for APIC managed objects.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+### aci.resource.status
+
+Encoded APIC object status with original state attributes.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+### aci.scrape.last_success
+
+Unix timestamp of the most recent fully successful APIC scrape.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| s | Gauge | Int | Development |
+
+### aci.scrape.partial_success
+
+Whether one or more APIC endpoint families failed during the scrape.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+### aci.tenant.object.count
+
+Tenant object counts by bounded tenant/VRF/BD/EPG attributes.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+### aci.tenant.status
+
+Tenant, VRF, bridge domain, EPG, app profile, contract, or L3Out status.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+### catalyst_center.api.rate_limited
+
+Requests that received HTTP 429.
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| {request} | Sum | Int | Cumulative | true | Development |
+
+### catalyst_center.api.request.duration
+
+Average duration of Catalyst Center API request attempts within the scrape for each matching request-attribute set.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| s | Gauge | Double | Development |
+
+### catalyst_center.api.request.errors
+
+Catalyst Center API request failures.
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+| {error} | Sum | Int | Cumulative | true | Development |
+
+### catalyst_center.client.count
+
+Client count by health category.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {client} | Gauge | Int | Development |
+
+### catalyst_center.client.detail.health.score
+
+Targeted client-detail health score by client, health type, and reason.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Double | Development |
+
+### catalyst_center.client.health.score
+
+Client health score by site and score category.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Double | Development |
+
+### catalyst_center.client.issue.count
+
+Issue count for a targeted client detail lookup.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {issue} | Gauge | Int | Development |
+
+### catalyst_center.client.network.io
+
+Client transmit and receive bytes.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| By | Gauge | Double | Development |
+
+### catalyst_center.client.unique.count
+
+Unique client count by health category.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {client} | Gauge | Int | Development |
+
+### catalyst_center.client.wireless.rssi
+
+RSSI for a targeted wireless client.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| dB{mW} | Gauge | Double | Development |
+
+### catalyst_center.client.wireless.snr
+
+SNR for a targeted wireless client.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| dB | Gauge | Double | Development |
+
+### catalyst_center.device.collection.status
+
+Encoded Catalyst Center collection status.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+### catalyst_center.device.detail.communication.status
+
+Targeted device communication status.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+### catalyst_center.device.detail.health.score
+
+Targeted device-detail health score.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Double | Development |
+
+### catalyst_center.device.interface.count
+
+Interface count reported for a device.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {interface} | Gauge | Int | Development |
+
+### catalyst_center.device.reachability.status
+
+Encoded device reachability status with the original status retained as an attribute.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+### catalyst_center.device.uptime
+
+Device uptime reported by Catalyst Center.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| s | Gauge | Int | Development |
+
+### catalyst_center.interface.count
+
+Interface inventory count.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {interface} | Gauge | Int | Development |
+
+### catalyst_center.inventory.device.count
+
+Network-device inventory count.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {device} | Gauge | Int | Development |
+
+### catalyst_center.issue.active.count
+
+Active Assurance issues grouped by severity, priority, status, category, entity type, and site.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {item} | Gauge | Int | Development |
+
+### catalyst_center.issue.count
+
+Assurance issue count in the configured lookback window.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {issue} | Gauge | Int | Development |
+
+### catalyst_center.network.device.count
+
+Network device count by health state.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {device} | Gauge | Int | Development |
+
+### catalyst_center.network.health.category.score
+
+Network health score by device category.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Double | Development |
+
+### catalyst_center.network.health.entity.count
+
+Entity count by health state.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {device} | Gauge | Int | Development |
+
+### catalyst_center.network.health.entity.score
+
+Network health score by Assurance entity.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+### catalyst_center.network.health.score
+
+Latest global Catalyst Center network health score.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+### catalyst_center.scrape.last_success
+
+Unix timestamp of the most recent fully successful Catalyst Center scrape.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| s | Gauge | Int | Development |
+
+### catalyst_center.scrape.partial_success
+
+Whether one or more Catalyst Center endpoint families failed during a scrape.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+### catalyst_center.site.client.count
+
+Site client population by client type and health state.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {client} | Gauge | Int | Development |
+
+### catalyst_center.site.client.health.percentage
+
+Percent of healthy clients by site.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| % | Gauge | Double | Development |
+
+### catalyst_center.site.health.count
+
+Site health counts for devices, clients, wireless, APs, WLCs, switches, routers, and issues.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {item} | Gauge | Int | Development |
+
+### catalyst_center.site.issue.count
+
+Site issue counts by priority.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {issue} | Gauge | Int | Development |
+
+### catalyst_center.site.network_device.count
+
+Site network-device population by role and health state.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {device} | Gauge | Int | Development |
+
+### catalyst_center.site.network_device.health.percentage
+
+Percent of healthy network devices by site.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| % | Gauge | Double | Development |
+
+### catalyst_center.topology.link.count
+
+Physical topology link count globally and by link status.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {link} | Gauge | Int | Development |
+
+### catalyst_center.topology.node.count
+
+Physical topology node count globally and by node attributes.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {node} | Gauge | Int | Development |
+
+### cisco.catalyst9800.receiver.active_subscriptions
+
+Current number of active Catalyst 9800 telemetry subscriptions.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+|  | Gauge | Int | Development |
+
+### cisco.catalyst9800.receiver.compact_gpb_payloads
+
+Compact GPB payload rows in the current MDT message; the rows are not generically decoded.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+|  | Gauge | Int | Development |
+
+### cisco.catalyst9800.receiver.decode_errors
+
+Catalyst 9800 telemetry decode failures.
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+|  | Sum | Int | Cumulative | true | Development |
+
+### cisco.catalyst9800.receiver.dropped_datapoints
+
+Catalyst 9800 datapoints dropped by the receiver cardinality guard.
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+|  | Sum | Int | Cumulative | true | Development |
+
+### cisco.catalyst9800.receiver.last_success_timestamp
+
+Unix timestamp of the last successful Catalyst 9800 telemetry update.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+|  | Gauge | Int | Development |
+
+### cisco.catalyst9800.receiver.reconnects
+
+Catalyst 9800 telemetry reconnect attempts.
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+|  | Sum | Int | Cumulative | true | Development |
+
+### cisco.catalyst9800.receiver.target.last_success_timestamp
+
+Unix timestamp of the individual target's last successful update.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+|  | Gauge | Int | Development |
+
+### cisco.catalyst9800.receiver.target.reconnects
+
+Reconnect attempts for an individual target.
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+|  | Sum | Int | Cumulative | true | Development |
+
+### cisco.catalyst9800.receiver.target.subscription.active
+
+Whether an individual configured target has an active subscription.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+|  | Gauge | Int | Development |
+
+### cisco.catalyst9800.receiver.target.updates
+
+Updates received from an individual target.
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+|  | Sum | Int | Cumulative | true | Development |
+
+### cisco.catalyst9800.receiver.unsupported_paths
+
+Catalyst 9800 telemetry paths rejected or pruned as unsupported.
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+|  | Sum | Int | Cumulative | true | Development |
+
+### cisco.catalyst9800.receiver.updates
+
+Catalyst 9800 telemetry updates and deletes received.
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+|  | Sum | Int | Cumulative | true | Development |
+
 ### cisco.device.up
 
 Device availability (1 = up, 0 = down)
@@ -22,7 +558,7 @@ Device availability (1 = up, 0 = down)
 
 ### cisco.interface.admin.status
 
-Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)
+Cisco interface administrative status (1 = administratively enabled, 0 = not administratively enabled)
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
@@ -34,13 +570,21 @@ Cisco interface administrative status (1 = administratively enabled, 0 = adminis
 | ---- | ----------- | ------ | ----------------- | ------------------- |
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 
+### cisco.interface.drop.rate
+
+APIC interface packet-drop rate when exposed by statistics classes.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {drop}/s | Gauge | Double | Development |
+
 ### cisco.interface.io.rate
 
 The device-reported interface traffic rate
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
-| bit/s | Gauge | Int | Development |
+| bit/s | Gauge | Double | Development |
 
 #### Attributes
 
@@ -55,7 +599,7 @@ The device-reported interface packet rate
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
-| {packet}/s | Gauge | Int | Development |
+| {packet}/s | Gauge | Double | Development |
 
 #### Attributes
 
@@ -93,45 +637,105 @@ Cisco interface traffic utilization as a ratio of line speed
 | network.io.direction | Direction of flow of bytes/operations (receive or transmit) | Str: ``receive``, ``transmit`` | Recommended | - |
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 
-### cisco.optics.chromatic_dispersion
+### cisco.iosxr.receiver.active_subscriptions
 
-Coherent optical chromatic dispersion
-
-| Unit | Metric Type | Value Type | Stability |
-| ---- | ----------- | ---------- | --------- |
-| ps/nm | Gauge | Double | Development |
-
-#### Attributes
-
-| Name | Description | Values | Requirement Level | Semantic Convention |
-| ---- | ----------- | ------ | ----------------- | ------------------- |
-| network.interface.name | The name of the network interface | Any Str | Recommended | - |
-| cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
-| cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
-| cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
-
-### cisco.optics.dgd
-
-Coherent optical differential group delay
+Active gNMI dial-in targets.
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
-| ps | Gauge | Double | Development |
+|  | Gauge | Int | Development |
 
-#### Attributes
+### cisco.iosxr.receiver.compact_gpb_payloads
 
-| Name | Description | Values | Requirement Level | Semantic Convention |
-| ---- | ----------- | ------ | ----------------- | ------------------- |
-| network.interface.name | The name of the network interface | Any Str | Recommended | - |
-| cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
-| cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
-| cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
+Compact GPB payload rows in the current MDT message; the rows are not generically decoded.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+|  | Gauge | Int | Development |
+
+### cisco.iosxr.receiver.decode_errors
+
+JSON/YANG decode failures.
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+|  | Sum | Int | Cumulative | true | Development |
+
+### cisco.iosxr.receiver.dropped_datapoints
+
+Datapoints dropped by the receiver cardinality guard.
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+|  | Sum | Int | Cumulative | true | Development |
+
+### cisco.iosxr.receiver.last_success_timestamp
+
+Unix timestamp of the last successful gNMI update.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+|  | Gauge | Int | Development |
+
+### cisco.iosxr.receiver.reconnects
+
+gNMI reconnect attempts after subscription failures.
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+|  | Sum | Int | Cumulative | true | Development |
+
+### cisco.iosxr.receiver.target.last_success_timestamp
+
+Unix timestamp of the individual target's last successful update.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+|  | Gauge | Int | Development |
+
+### cisco.iosxr.receiver.target.reconnects
+
+Reconnect attempts for an individual target.
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+|  | Sum | Int | Cumulative | true | Development |
+
+### cisco.iosxr.receiver.target.subscription.active
+
+Whether an individual configured target has an active subscription.
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+|  | Gauge | Int | Development |
+
+### cisco.iosxr.receiver.target.updates
+
+Updates received from an individual target.
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+|  | Sum | Int | Cumulative | true | Development |
+
+### cisco.iosxr.receiver.unsupported_paths
+
+Paths rejected or pruned by gNMI capabilities.
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+|  | Sum | Int | Cumulative | true | Development |
+
+### cisco.iosxr.receiver.updates
+
+gNMI updates and deletes received.
+
+| Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
+| ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
+|  | Sum | Int | Cumulative | true | Development |
 
 ### cisco.optics.esnr
 
-Effective signal-to-noise ratio reported by a qualified VDM sensor
+Effective signal-to-noise ratio reported by an allowlisted device VDM sensor
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
@@ -144,7 +748,7 @@ Effective signal-to-noise ratio reported by a qualified VDM sensor
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 | cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
 | cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
+| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm`` | Recommended | - |
 | cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
 
 ### cisco.optics.laser_bias_current
@@ -162,25 +766,7 @@ Optical transmitter laser bias current
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 | cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
 | cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
-| cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
-
-### cisco.optics.osnr
-
-Coherent optical signal-to-noise ratio
-
-| Unit | Metric Type | Value Type | Stability |
-| ---- | ----------- | ---------- | --------- |
-| dB | Gauge | Double | Development |
-
-#### Attributes
-
-| Name | Description | Values | Requirement Level | Semantic Convention |
-| ---- | ----------- | ------ | ----------------- | ------------------- |
-| network.interface.name | The name of the network interface | Any Str | Recommended | - |
-| cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
-| cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
+| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm`` | Recommended | - |
 | cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
 
 ### cisco.optics.pre_fec_ber
@@ -198,7 +784,7 @@ Pre-forward-error-correction bit error ratio
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 | cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
 | cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
+| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm`` | Recommended | - |
 | cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
 
 ### cisco.optics.present
@@ -215,43 +801,7 @@ Optical module or lane presence (1 = present, 0 = absent)
 | ---- | ----------- | ------ | ----------------- | ------------------- |
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 | cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
-| cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
-
-### cisco.optics.q_factor
-
-Coherent optical Q-factor
-
-| Unit | Metric Type | Value Type | Stability |
-| ---- | ----------- | ---------- | --------- |
-| dB | Gauge | Double | Development |
-
-#### Attributes
-
-| Name | Description | Values | Requirement Level | Semantic Convention |
-| ---- | ----------- | ------ | ----------------- | ------------------- |
-| network.interface.name | The name of the network interface | Any Str | Recommended | - |
-| cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
-| cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
-| cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
-
-### cisco.optics.q_margin
-
-Coherent optical Q-margin
-
-| Unit | Metric Type | Value Type | Stability |
-| ---- | ----------- | ---------- | --------- |
-| dB | Gauge | Double | Development |
-
-#### Attributes
-
-| Name | Description | Values | Requirement Level | Semantic Convention |
-| ---- | ----------- | ------ | ----------------- | ------------------- |
-| network.interface.name | The name of the network interface | Any Str | Recommended | - |
-| cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
-| cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
+| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm`` | Recommended | - |
 | cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
 
 ### cisco.optics.rx_power
@@ -260,7 +810,7 @@ Received optical power
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
-| dB[mW] | Gauge | Double | Development |
+| dB{mW} | Gauge | Double | Development |
 
 #### Attributes
 
@@ -269,7 +819,7 @@ Received optical power
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 | cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
 | cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
+| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm`` | Recommended | - |
 | cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
 
 ### cisco.optics.tdecq
@@ -287,7 +837,7 @@ Transmitter and dispersion eye closure for PAM4 reported by a sensor explicitly 
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 | cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
 | cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
+| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm`` | Recommended | - |
 | cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
 
 ### cisco.optics.tec_current
@@ -305,7 +855,7 @@ Thermoelectric cooler current when the device reports the sensor in milliamperes
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 | cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
 | cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
+| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm`` | Recommended | - |
 | cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
 
 ### cisco.optics.tec_utilization
@@ -323,7 +873,7 @@ Thermoelectric cooler utilization normalized to a unitless ratio
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 | cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
 | cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
+| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm`` | Recommended | - |
 | cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
 
 ### cisco.optics.temperature
@@ -341,7 +891,7 @@ Optical module temperature
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 | cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
 | cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
+| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm`` | Recommended | - |
 | cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
 
 ### cisco.optics.tx_power
@@ -350,7 +900,7 @@ Transmitted optical power
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
-| dB[mW] | Gauge | Double | Development |
+| dB{mW} | Gauge | Double | Development |
 
 #### Attributes
 
@@ -359,7 +909,7 @@ Transmitted optical power
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 | cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
 | cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
+| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm`` | Recommended | - |
 | cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
 
 ### cisco.optics.voltage
@@ -377,7 +927,7 @@ Optical module supply voltage
 | network.interface.name | The name of the network interface | Any Str | Recommended | - |
 | cisco.optics.lane | The device-reported optical lane identifier | Any Str | Recommended | - |
 | cisco.optics.sensor | The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted | Any Str | Recommended | - |
-| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
+| cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm`` | Recommended | - |
 | cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
 
 ### cisco.wlc.ap.join.status
@@ -426,19 +976,34 @@ Catalyst 9800 associated client count
 
 ### system.cpu.utilization
 
-Percentage of CPU time in use.
+Ratio of CPU time in use, from 0 to 1.
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
 | 1 | Gauge | Double | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.node.name | Device-reported node name within a modular chassis | Any Str | Recommended | - |
 
 ### system.memory.utilization
 
-Percentage of memory bytes in use.
+Ratio of memory bytes in use, from 0 to 1.
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
 | 1 | Gauge | Double | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.location.fru | Device-reported field-replaceable-unit identifier | Any Str | Recommended | - |
+| cisco.location.slot | Device-reported hardware slot identifier | Any Str | Recommended | - |
+| cisco.location.bay | Device-reported hardware bay identifier | Any Str | Recommended | - |
+| cisco.location.chassis | Device-reported hardware chassis identifier | Any Str | Recommended | - |
 
 ### system.network.errors
 
@@ -457,7 +1022,7 @@ The number of errors encountered
 
 ### system.network.interface.status
 
-Interface operational status (1 = up, 0 = down)
+Interface operational status (1 = up, 0 = not up)
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
@@ -486,7 +1051,7 @@ The number of bytes transmitted and received
 
 ### system.network.packet.count
 
-The number of packets transmitted or received, categorized by type
+The number of packets transmitted or received by direction and, when available, packet type
 
 | Unit | Metric Type | Value Type | Aggregation Temporality | Monotonic | Stability |
 | ---- | ----------- | ---------- | ----------------------- | --------- | --------- |
@@ -527,6 +1092,7 @@ The time the Cisco device has been running
 
 | Name | Description | Values | Enabled | Semantic Convention | Stability |
 | ---- | ----------- | ------ | ------- | ------------------- | --------- |
+| cisco.os.boot_mode | Verified IOS XE boot mode when required by the product contract | Any Str | true | - | - |
 | cisco.os.name | Normalized Cisco operating-system family | Any Str | true | - | - |
 | cisco.platform.family | Normalized Cisco platform or generated-catalog product family | Any Str | true | - | - |
 | cisco.telemetry.transport | Cisco telemetry transport that produced the metrics | Any Str | true | - | - |
@@ -535,6 +1101,7 @@ The time the Cisco device has been running
 | host.name | Cisco resource hostname or configured display name | Any Str | true | - | - |
 | hw.type | Type of the physical hardware | Any Str | true | - | - |
 | os.name | Human-readable Cisco operating-system name | Any Str | true | - | - |
+| os.version | Device-reported software version; shared gNMI emits the canonical live-verified public release | Any Str | true | - | - |
 
 ## Internal Telemetry
 
@@ -554,13 +1121,48 @@ Number of gNMI authentication or authorization failures
 | ---- | ----------- | ------ | ------------------- |
 | cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
 
-### otelcol_ciscoosreceiver_gnmi_cache_utilization
+### otelcol_ciscoosreceiver_gnmi_auxiliary_state_utilization
 
-Fraction of the configured retained gNMI state cache currently in use, including mapped series, atomic baselines, and delete tombstones
+Maximum of the retained-entry and retained-byte utilization for the target's gNMI auxiliary-state partition
 
 | Unit | Metric Type | Value Type | Stability |
 | ---- | ----------- | ---------- | --------- |
 | 1 | Gauge | Double | Development |
+
+#### Attributes
+
+| Name | Description | Values | Semantic Convention |
+| ---- | ----------- | ------ | ------------------- |
+| cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
+
+### otelcol_ciscoosreceiver_gnmi_cache_owner_resets
+
+Number of silent owner-scoped gNMI cache resets performed before an updates-only stream reconnects
+
+| Unit | Metric Type | Value Type | Monotonic | Stability |
+| ---- | ----------- | ---------- | --------- | --------- |
+| {reset} | Sum | Int | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Semantic Convention |
+| ---- | ----------- | ------ | ------------------- |
+| cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
+| cisco.gnmi.profile | gNMI subscription profile name | Any Str | - |
+
+### otelcol_ciscoosreceiver_gnmi_cache_utilization
+
+Maximum of the retained-entry and retained-byte utilization for the target's gNMI cache partition
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Double | Development |
+
+#### Attributes
+
+| Name | Description | Values | Semantic Convention |
+| ---- | ----------- | ------ | ------------------- |
+| cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
 
 ### otelcol_ciscoosreceiver_gnmi_connections
 
@@ -578,7 +1180,7 @@ Current number of established gNMI connections
 
 ### otelcol_ciscoosreceiver_gnmi_consumer_refusals
 
-Number of metric chunks refused by the downstream consumer and dropped without device reconnect
+Number of metric chunks refused by the downstream consumer before the affected gNMI profile reconnects
 
 | Unit | Metric Type | Value Type | Monotonic | Stability |
 | ---- | ----------- | ---------- | --------- | --------- |
@@ -638,7 +1240,7 @@ Number of duplicate gNMI leaf updates suppressed by the state cache
 
 ### otelcol_ciscoosreceiver_gnmi_invalid_timestamps
 
-Number of invalid Cisco timestamps replaced with receipt time
+Number of invalid or excessively future-dated Cisco timestamps rejected before cache mutation
 
 | Unit | Metric Type | Value Type | Monotonic | Stability |
 | ---- | ----------- | ---------- | --------- | --------- |
@@ -665,6 +1267,50 @@ Unix time of the most recent successfully decoded gNMI notification
 | ---- | ----------- | ------ | ------------------- |
 | cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
 | cisco.gnmi.profile | gNMI subscription profile name | Any Str | - |
+
+### otelcol_ciscoosreceiver_gnmi_out_of_order_updates
+
+Number of stale gNMI cache operations suppressed by source timestamp ordering
+
+| Unit | Metric Type | Value Type | Monotonic | Stability |
+| ---- | ----------- | ---------- | --------- | --------- |
+| {update} | Sum | Int | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Semantic Convention |
+| ---- | ----------- | ------ | ------------------- |
+| cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
+| cisco.gnmi.profile | gNMI subscription profile name | Any Str | - |
+
+### otelcol_ciscoosreceiver_gnmi_preflight_failures
+
+Number of terminal gNMI product-contract preflight compatibility failures. This metric emits only identity_missing, identity_ambiguous, product_mismatch, release_mismatch, missing_model, unsupported_model_version, unsupported_encoding, unsupported_gnmi_version, unsupported_boot_mode, or malformed_identity; profile-degradation reasons in the shared attribute catalog are not emitted here.
+
+| Unit | Metric Type | Value Type | Monotonic | Stability |
+| ---- | ----------- | ---------- | --------- | --------- |
+| {failure} | Sum | Int | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Semantic Convention |
+| ---- | ----------- | ------ | ------------------- |
+| cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
+| cisco.gnmi.reason | Bounded reason for a gNMI health or degradation event | Str: ``bisection_limit``, ``cache_limit``, ``identity_ambiguous``, ``identity_missing``, ``incompatible_path_group``, ``malformed_identity``, ``malformed_update``, ``missing_model``, ``product_mismatch``, ``release_mismatch``, ``unsupported_boot_mode``, ``unsupported_encoding``, ``unsupported_gnmi_version``, ``unsupported_model_version``, ``unsupported_path``, ``unsupported_request_options`` | - |
+
+### otelcol_ciscoosreceiver_gnmi_product_verified
+
+Whether the gNMI target passed product, model, release, required boot-mode, and capability verification
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Semantic Convention |
+| ---- | ----------- | ------ | ------------------- |
+| cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
 
 ### otelcol_ciscoosreceiver_gnmi_profile_degraded
 
@@ -725,6 +1371,22 @@ Number of decoded gNMI values without an explicit metric mapping
 | ---- | ----------- | ------ | ------------------- |
 | cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
 | cisco.gnmi.profile | gNMI subscription profile name | Any Str | - |
+
+### otelcol_ciscoosreceiver_gnmi_unsupported_value_kinds
+
+Number of bounded opaque or aggregate gNMI TypedValues ignored by kind
+
+| Unit | Metric Type | Value Type | Monotonic | Stability |
+| ---- | ----------- | ---------- | --------- | --------- |
+| {value} | Sum | Int | true | Development |
+
+#### Attributes
+
+| Name | Description | Values | Semantic Convention |
+| ---- | ----------- | ------ | ------------------- |
+| cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
+| cisco.gnmi.profile | gNMI subscription profile name | Any Str | - |
+| cisco.gnmi.value_kind | Bounded gNMI TypedValue kind that was safely ignored because it has no configured scalar decoder | Str: ``any``, ``bytes``, ``leaflist``, ``proto_bytes`` | - |
 
 ### otelcol_ciscoosreceiver_gnmi_updates
 

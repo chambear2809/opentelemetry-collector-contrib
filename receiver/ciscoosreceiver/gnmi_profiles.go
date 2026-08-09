@@ -23,6 +23,7 @@ const (
 	builtinGNMIProfileOptics               = "optics"
 	builtinGNMIProfileCatalyst9800Wireless = "catalyst_9800_wireless"
 	builtinGNMIOriginRFC7951               = "rfc7951"
+	builtinGNMIOriginOpenConfig            = "openconfig"
 	builtinGNMIOriginDME                   = "DME"
 	builtinGNMIOriginNXDevice              = "Cisco-NX-OS-device"
 	builtinGNMISyntheticReceiverOrigin     = "cisco_os"

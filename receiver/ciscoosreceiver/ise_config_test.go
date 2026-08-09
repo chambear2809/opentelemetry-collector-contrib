@@ -54,6 +54,7 @@ func TestISEConfigValidatePageSizeAndLookbacks(t *testing.T) {
 	cfg.ISE.MaxResults = 100_001
 	cfg.ISE.AuthFailures.MaxResults = -1
 	cfg.ISE.Sessions.MaxResults = 100_001
+	cfg.ISE.SessionDetails.MaxResults = -1
 
 	err := cfg.Validate()
 	require.Error(t, err)
@@ -64,6 +65,7 @@ func TestISEConfigValidatePageSizeAndLookbacks(t *testing.T) {
 	assert.Contains(t, err.Error(), "ise.max_results must not exceed the hard pagination limit of 100000")
 	assert.Contains(t, err.Error(), "ise.auth_failures.max_results must not be negative")
 	assert.Contains(t, err.Error(), "ise.sessions.max_results must not exceed the hard pagination limit of 100000")
+	assert.Contains(t, err.Error(), "ise.session_details.max_results must not be negative")
 }
 
 func TestISEConfigValidatePxGridCredentials(t *testing.T) {
@@ -79,6 +81,26 @@ func TestISEConfigValidatePxGridCredentials(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ise.pxgrid.node_name must be provided")
 	assert.Contains(t, err.Error(), "ise.pxgrid.password or both ise.pxgrid.cert_file and ise.pxgrid.key_file must be provided")
+}
+
+func TestISEConfigValidatePxGridKeyPasswordRequiresCertificateAndKey(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	cfg.ISE.Enabled = true
+	cfg.ISE.Endpoint = "https://ise.example.com"
+	cfg.ISE.Auth.Username = "admin"
+	cfg.ISE.Auth.Password = configopaque.String("password")
+	cfg.ISE.PxGrid.Enabled = true
+	cfg.ISE.PxGrid.NodeName = "otel-collector"
+	cfg.ISE.PxGrid.Password = configopaque.String("pxgrid-secret")
+	cfg.ISE.PxGrid.KeyPassword = configopaque.String("private-key-secret")
+
+	err := cfg.Validate()
+	require.ErrorContains(t, err, "ise.pxgrid.key_password requires both ise.pxgrid.cert_file and ise.pxgrid.key_file")
+	assert.NotContains(t, err.Error(), string(cfg.ISE.PxGrid.KeyPassword))
+
+	cfg.ISE.PxGrid.CertFile = "/etc/otelcol/pxgrid.crt"
+	cfg.ISE.PxGrid.KeyFile = "/etc/otelcol/pxgrid.key"
+	require.NoError(t, cfg.Validate())
 }
 
 func TestISEConfigValidatePxGridServiceOrigins(t *testing.T) {
@@ -154,6 +176,90 @@ func TestISEConfigRejectsPlaintextDataConnectCredentials(t *testing.T) {
 	assert.ErrorContains(t, err, "ise.data_connect.ssl must be true because Data Connect credentials require TLS")
 }
 
+func TestISEConfigValidatesDataConnectPEMTrust(t *testing.T) {
+	validConfig := func() *Config {
+		cfg := createDefaultConfig().(*Config)
+		cfg.ISE.Enabled = true
+		cfg.ISE.Endpoint = "https://ise.example.com"
+		cfg.ISE.Auth.Username = "admin"
+		cfg.ISE.Auth.Password = configopaque.String("password")
+		cfg.ISE.DataConnect.Enabled = true
+		cfg.ISE.DataConnect.Host = "192.0.2.10"
+		cfg.ISE.DataConnect.ServiceName = "cpm10"
+		cfg.ISE.DataConnect.Username = "dataconnect"
+		cfg.ISE.DataConnect.Password = configopaque.String("db-secret")
+		return cfg
+	}
+
+	t.Run("PEM CA and server name", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.ISE.DataConnect.CAFile = "/etc/otelcol/ise-data-connect-ca.pem"
+		cfg.ISE.DataConnect.ServerName = "ise.example.com"
+		require.NoError(t, cfg.Validate())
+	})
+
+	t.Run("wallet and server name", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.ISE.DataConnect.WalletDir = "/etc/otelcol/ise-wallet"
+		cfg.ISE.DataConnect.ServerName = "ise.example.com"
+		require.NoError(t, cfg.Validate())
+	})
+
+	tests := []struct {
+		name        string
+		configure   func(*ISEDataConnectConfig)
+		errorString string
+	}{
+		{
+			name: "wallet and CA are ambiguous",
+			configure: func(cfg *ISEDataConnectConfig) {
+				cfg.WalletDir = "/etc/otelcol/ise-wallet"
+				cfg.CAFile = "/etc/otelcol/ise-data-connect-ca.pem"
+			},
+			errorString: "wallet_dir cannot be combined with ca_file",
+		},
+		{
+			name: "CA requires verification",
+			configure: func(cfg *ISEDataConnectConfig) {
+				cfg.CAFile = "/etc/otelcol/ise-data-connect-ca.pem"
+				cfg.SSLVerify = false
+			},
+			errorString: "ca_file requires ssl_verify to be true",
+		},
+		{
+			name: "server name requires verification",
+			configure: func(cfg *ISEDataConnectConfig) {
+				cfg.ServerName = "ise.example.com"
+				cfg.SSLVerify = false
+			},
+			errorString: "server_name requires ssl_verify to be true",
+		},
+		{
+			name: "server name excludes scheme",
+			configure: func(cfg *ISEDataConnectConfig) {
+				cfg.ServerName = "https://ise.example.com"
+			},
+			errorString: "server_name must be a valid hostname or IP address without a scheme or port",
+		},
+		{
+			name: "CA file excludes surrounding whitespace",
+			configure: func(cfg *ISEDataConnectConfig) {
+				cfg.CAFile = " /etc/otelcol/ise-data-connect-ca.pem"
+			},
+			errorString: "ca_file must not contain surrounding whitespace",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			tt.configure(&cfg.ISE.DataConnect)
+			err := cfg.Validate()
+			require.Error(t, err)
+			assert.ErrorContains(t, err, tt.errorString)
+		})
+	}
+}
+
 func TestISEConfigValidateDataConnectAdditionalViews(t *testing.T) {
 	cfg := createDefaultConfig().(*Config)
 	cfg.ISE.Enabled = true
@@ -204,4 +310,14 @@ func TestISEWithDefaultsPreservesExplicitDisabledGroups(t *testing.T) {
 	assert.False(t, resolved.Deployment.Enabled)
 	assert.Equal(t, defaultISEConfig().Deployment.MaxResults, resolved.Deployment.MaxResults)
 	assert.Equal(t, ISEPxGridSubscriptionConfig{}, resolved.PxGrid.Subscriptions)
+}
+
+func TestISEDefaultsUseReleaseSafeCoreProfile(t *testing.T) {
+	cfg := defaultISEConfig()
+	for name, group := range cfg.groups() {
+		assert.Equal(t, name == "sessions", group.Enabled, "unexpected default state for ISE group %s", name)
+	}
+	assert.False(t, cfg.SessionDetails.Enabled)
+	assert.False(t, cfg.PxGrid.Enabled)
+	assert.False(t, cfg.DataConnect.Enabled)
 }

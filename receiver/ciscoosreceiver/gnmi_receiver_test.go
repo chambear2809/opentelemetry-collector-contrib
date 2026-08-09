@@ -41,6 +41,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	grpcmetadata "google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
 	internalgnmi "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/gnmi"
@@ -53,6 +54,65 @@ const (
 	runtimeTestPassword   = "runtime-password"
 	runtimeTestServerName = "gnmi.runtime.test"
 )
+
+func TestSharedGNMIConcurrentSubscriptionsReuseVerifiedConnection(t *testing.T) {
+	material := runtimeTestTLSMaterial(t)
+	fake := &runtimeTestGNMIServer{}
+	var peersMu sync.Mutex
+	subscribePeers := map[string]struct{}{}
+	fake.subscribe = func(stream grpc.BidiStreamingServer[gnmipb.SubscribeRequest, gnmipb.SubscribeResponse]) error {
+		peerInfo, ok := peer.FromContext(stream.Context())
+		if !ok || peerInfo.Addr == nil {
+			return status.Error(codes.Internal, "missing Subscribe peer")
+		}
+		peerAddress := peerInfo.Addr.String()
+		peersMu.Lock()
+		subscribePeers[peerAddress] = struct{}{}
+		peersMu.Unlock()
+
+		request, err := stream.Recv()
+		if err != nil {
+			return err
+		}
+		fake.recordRequest(request)
+		subscriptions := request.GetSubscribe().GetSubscription()
+		if len(subscriptions) != 1 {
+			return status.Error(codes.InvalidArgument, "expected one test subscription")
+		}
+		if err := stream.Send(&gnmipb.SubscribeResponse{Response: &gnmipb.SubscribeResponse_Update{Update: &gnmipb.Notification{
+			Timestamp: time.Now().UnixNano(),
+			Prefix:    &gnmipb.Path{Origin: runtimeTestOrigin},
+			Update: []*gnmipb.Update{{
+				Path: subscriptions[0].GetPath(),
+				Val:  &gnmipb.TypedValue{Value: &gnmipb.TypedValue_IntVal{IntVal: 1}},
+			}},
+		}}}); err != nil {
+			return err
+		}
+		if err := stream.Send(&gnmipb.SubscribeResponse{Response: &gnmipb.SubscribeResponse_SyncResponse{SyncResponse: true}}); err != nil {
+			return err
+		}
+		<-stream.Context().Done()
+		return stream.Context().Err()
+	}
+	endpoint, listener := runtimeTestStartGNMIServer(t, fake, material.serverTLS(false))
+	target := runtimeTestTarget(endpoint, material.caFile, gnmiModeStream, runtimeTestMapping("first/value", "runtime.connection.first"))
+	target.MaxStreams = 2
+	target.CustomSubscriptions = append(target.CustomSubscriptions, GNMICustomSubscriptionConfig{
+		Name: "runtime-second", Origin: runtimeTestOrigin, Mode: gnmiModeStream, SampleInterval: time.Second,
+		Mappings: []GNMIMetricMappingConfig{runtimeTestMapping("second/value", "runtime.connection.second")},
+	})
+	sink := &consumertest.MetricsSink{}
+	runtimeTestStartReceiver(t, receivertest.NewNopSettings(componentmetadata.Type), target, 10, sink)
+	require.Eventually(t, func() bool {
+		return runtimeTestMetricPointCountAll(sink.AllMetrics(), "runtime.connection.first") == 1 &&
+			runtimeTestMetricPointCountAll(sink.AllMetrics(), "runtime.connection.second") == 1
+	}, 5*time.Second, 10*time.Millisecond)
+	assert.Equal(t, int64(1), listener.accepts.Load(), "Capabilities, identity Get, and concurrent Subscribe RPCs must share one verified connection")
+	peersMu.Lock()
+	assert.Len(t, subscribePeers, 1)
+	peersMu.Unlock()
+}
 
 func TestSharedGNMIRuntimeTLSMetadataOnceAndLosslessChunks(t *testing.T) {
 	material := runtimeTestTLSMaterial(t)
@@ -89,10 +149,11 @@ func TestSharedGNMIRuntimeTLSMetadataOnceAndLosslessChunks(t *testing.T) {
 	runtimeTestWaitDone(t, receiver)
 
 	fakeSnapshot := fake.snapshot()
-	assert.Equal(t, int64(1), listener.accepts.Load(), "all RPCs and subscriptions must share one HTTP/2 connection")
+	assert.Equal(t, int64(1), listener.accepts.Load(), "Capabilities, identity Get, and Subscribe share one verified connection")
 	assert.Equal(t, 1, fakeSnapshot.capabilitiesCalls)
 	assert.Equal(t, 1, fakeSnapshot.subscribeCalls)
-	assert.Zero(t, fakeSnapshot.getCalls)
+	assert.Equal(t, 1, fakeSnapshot.getCalls)
+	assert.Zero(t, fakeSnapshot.identitySubscribeCalls)
 	assert.Zero(t, fakeSnapshot.setCalls)
 	assert.Equal(t, runtimeTestUsername, runtimeTestMetadataValue(fakeSnapshot.capabilitiesMetadata, "username"))
 	assert.Equal(t, runtimeTestPassword, runtimeTestMetadataValue(fakeSnapshot.capabilitiesMetadata, "password"))
@@ -168,6 +229,13 @@ func TestSharedGNMIAvailabilityRefusalReleasesGateAndRetries(t *testing.T) {
 	t.Cleanup(receiver.telemetry.shutdown)
 	require.Len(t, receiver.targets, 1)
 	target := receiver.targets[0]
+	target.setVerifiedIdentity(verifiedGNMIIdentity{
+		Product: gnmiProductASR9000, OSFamily: gnmiPlatformIOSXR,
+		ModelIdentifier: "ASR-9904", SoftwareVersion: "24.4.1",
+	})
+	for _, stream := range target.streams {
+		target.recordStreamProgress(stream)
+	}
 
 	receiver.emitTargetAvailable(t.Context(), target)
 	assert.False(t, target.sessionUp.Load(), "a refused up signal must remain eligible for retry")
@@ -178,6 +246,195 @@ func TestSharedGNMIAvailabilityRefusalReleasesGateAndRetries(t *testing.T) {
 	assert.Equal(t, int64(2), rejecting.calls.Load())
 	assert.Equal(t, int64(1), rejecting.accepted.Load())
 	assert.Empty(t, receiver.notificationSlots)
+}
+
+func TestSharedGNMICuratedQualificationTracksBisectionGroups(t *testing.T) {
+	original := sharedGNMIRuntimeStream{sharedGNMIStream: sharedGNMIStream{
+		Profile: builtinGNMIProfileSystem,
+		Paths: []sharedGNMIPath{
+			{Origin: "openconfig-system", Path: "system/state/hostname"},
+			{Origin: "openconfig-system", Path: "system/state/current-datetime"},
+		},
+	}}
+	target := &sharedGNMITargetRuntime{
+		streams:               []sharedGNMIRuntimeStream{original},
+		degradedQualification: map[string]struct{}{},
+	}
+	target.resetSessionQualification()
+	require.Len(t, target.pendingQualification, 1)
+
+	groups := [][]sharedGNMIPath{{original.Paths[0]}, {original.Paths[1]}}
+	target.replacePendingQualificationStream(original, groups)
+	require.Len(t, target.pendingQualification, 2)
+
+	first := original
+	first.Paths = groups[0]
+	target.recordStreamProgress(first)
+	assert.False(t, target.sessionQualifiedForAvailability(), "one accepted split group is still pending")
+
+	second := original
+	second.Paths = groups[1]
+	target.recordStreamProgress(second)
+	assert.True(t, target.sessionQualifiedForAvailability(), "all accepted split groups reached progress")
+}
+
+func TestSharedGNMIRequiredCustomStreamIsQualificationObligation(t *testing.T) {
+	requiredCustom := sharedGNMIRuntimeStream{sharedGNMIStream: sharedGNMIStream{
+		Profile: "required-custom", Required: true,
+		Paths: []sharedGNMIPath{{Origin: "openconfig-system", Path: "system/state"}},
+	}}
+	target := &sharedGNMITargetRuntime{
+		streams:               []sharedGNMIRuntimeStream{requiredCustom},
+		degradedQualification: map[string]struct{}{},
+	}
+	target.resetSessionQualification()
+	require.Len(t, target.pendingQualification, 1)
+	assert.False(t, target.sessionQualifiedForAvailability())
+
+	target.recordStreamProgress(requiredCustom)
+	assert.True(t, target.sessionQualifiedForAvailability())
+	target.markQualificationDegraded(requiredCustom)
+	assert.False(t, target.sessionQualifiedForAvailability())
+}
+
+func TestSharedGNMIMalformedUpdateDoesNotSatisfyQualification(t *testing.T) {
+	cfg := validGNMITestConfig()
+	sink := &consumertest.MetricsSink{}
+	created, err := newSharedGNMIReceiver(
+		receivertest.NewNopSettings(componentmetadata.Type),
+		cfg,
+		sink,
+	)
+	require.NoError(t, err)
+	receiver := created.(*sharedGNMIReceiver)
+	t.Cleanup(receiver.telemetry.shutdown)
+	require.Len(t, receiver.targets, 1)
+	target := receiver.targets[0]
+	require.NotEmpty(t, target.streams)
+	stream := target.streams[0]
+	target.resetSessionQualification()
+	require.NotEmpty(t, target.pendingQualification)
+
+	response := &gnmipb.SubscribeResponse{Response: &gnmipb.SubscribeResponse_Update{Update: &gnmipb.Notification{
+		Timestamp: time.Now().UnixNano(),
+		Update: []*gnmipb.Update{{
+			Path: &gnmipb.Path{Elem: []*gnmipb.PathElem{{Name: "state"}}},
+			Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonIetfVal{
+				JsonIetfVal: []byte(`{"unterminated":`),
+			}},
+		}},
+	}}}
+	synced, err := receiver.handleSubscribeResponse(t.Context(), target, stream, response)
+	require.NoError(t, err)
+	assert.False(t, synced)
+	assert.NotEmpty(t, target.pendingQualification)
+	assert.Contains(t, target.degradedQualification, stream.Profile)
+	assert.False(t, target.sessionQualifiedForAvailability())
+	assert.Zero(t, runtimeTestMetricPointCountAll(sink.AllMetrics(), "cisco.device.up"))
+
+	synced, err = receiver.handleSubscribeResponse(t.Context(), target, stream, &gnmipb.SubscribeResponse{
+		Response: &gnmipb.SubscribeResponse_SyncResponse{SyncResponse: true},
+	})
+	require.NoError(t, err)
+	assert.True(t, synced)
+	assert.False(t, target.sessionQualifiedForAvailability(), "a later sync cannot repair a malformed enabled-profile update")
+	assert.Zero(t, runtimeTestMetricPointCountAll(sink.AllMetrics(), "cisco.device.up"))
+}
+
+func TestSharedGNMILateQualificationDegradationEmitsDownOnce(t *testing.T) {
+	cfg := validGNMITestConfig()
+	sink := &consumertest.MetricsSink{}
+	created, err := newSharedGNMIReceiver(
+		receivertest.NewNopSettings(componentmetadata.Type),
+		cfg,
+		sink,
+	)
+	require.NoError(t, err)
+	receiver := created.(*sharedGNMIReceiver)
+	t.Cleanup(receiver.telemetry.shutdown)
+	require.Len(t, receiver.targets, 1)
+	target := receiver.targets[0]
+	target.setVerifiedIdentity(verifiedGNMIIdentity{
+		Product: gnmiProductASR9000, OSFamily: gnmiPlatformIOSXR,
+		ModelIdentifier: "ASR-9904", SoftwareVersion: "24.4.1",
+	})
+	for _, stream := range target.streams {
+		target.recordStreamProgress(stream)
+	}
+	receiver.emitTargetAvailable(t.Context(), target)
+	require.True(t, target.sessionUp.Load())
+	require.Equal(t, []int64{1}, runtimeTestDeviceUpValuesAll(sink.AllMetrics()))
+
+	target.markQualificationDegraded(target.streams[0])
+	receiver.emitTargetUnavailable(t.Context(), target)
+	assert.False(t, target.sessionUp.Load())
+	assert.False(t, target.sessionQualifiedForAvailability())
+	assert.Equal(t, []int64{1, 0}, runtimeTestDeviceUpValuesAll(sink.AllMetrics()))
+
+	receiver.emitTargetUnavailable(t.Context(), target)
+	assert.Equal(t, []int64{1, 0}, runtimeTestDeviceUpValuesAll(sink.AllMetrics()),
+		"repeated degradation must not duplicate the down transition")
+}
+
+func TestSharedGNMILateQualificationDownRefusalRemainsRetryable(t *testing.T) {
+	cfg := validGNMITestConfig()
+	consumer := &runtimeTestRejectingDownConsumer{}
+	created, err := newSharedGNMIReceiver(
+		receivertest.NewNopSettings(componentmetadata.Type),
+		cfg,
+		consumer,
+	)
+	require.NoError(t, err)
+	receiver := created.(*sharedGNMIReceiver)
+	t.Cleanup(receiver.telemetry.shutdown)
+	target := receiver.targets[0]
+	target.setVerifiedIdentity(verifiedGNMIIdentity{
+		Product: gnmiProductASR9000, OSFamily: gnmiPlatformIOSXR,
+		ModelIdentifier: "ASR-9904", SoftwareVersion: "24.4.1",
+	})
+	for _, stream := range target.streams {
+		target.recordStreamProgress(stream)
+	}
+	receiver.emitTargetAvailable(t.Context(), target)
+	require.True(t, target.sessionUp.Load())
+
+	target.markQualificationDegraded(target.streams[0])
+	receiver.emitTargetUnavailable(t.Context(), target)
+	assert.True(t, target.sessionUp.Load(), "a refused down transition must remain eligible for retry")
+	assert.True(t, consumer.rejected.Load())
+	assert.Equal(t, []int64{1}, runtimeTestDeviceUpValuesAll(consumer.sink.AllMetrics()))
+
+	receiver.emitTargetAvailable(t.Context(), target)
+	assert.False(t, target.sessionUp.Load())
+	assert.Equal(t, []int64{1, 0}, runtimeTestDeviceUpValuesAll(consumer.sink.AllMetrics()))
+}
+
+func TestSharedGNMIStreamAndPathKeysRejectNULBoundaryCollisions(t *testing.T) {
+	first := sharedGNMIPath{PathTarget: "a\x00b", Origin: "c", Path: "d"}
+	second := sharedGNMIPath{PathTarget: "a", Origin: "b\x00c", Path: "d"}
+	assert.NotEqual(t, sharedGNMIPathKey(first), sharedGNMIPathKey(second))
+	assert.NotEqual(t,
+		sharedGNMIQualificationStreamKey(sharedGNMIStream{Profile: "profile", Paths: []sharedGNMIPath{first}}),
+		sharedGNMIQualificationStreamKey(sharedGNMIStream{Profile: "profile", Paths: []sharedGNMIPath{second}}),
+	)
+}
+
+func TestOpticalPresenceIdentityRejectsNULBoundaryCollision(t *testing.T) {
+	first, firstAttrs := opticalPresenceIdentity(map[string]string{
+		"network.interface.name": "Ethernet1",
+		"cisco.optics.lane":      "1\x00dom",
+		"cisco.optics.profile":   "lane",
+	})
+	second, secondAttrs := opticalPresenceIdentity(map[string]string{
+		"network.interface.name": "Ethernet1",
+		"cisco.optics.lane":      "1",
+		"cisco.optics.profile":   "dom\x00lane",
+	})
+	require.NotEmpty(t, first)
+	require.NotEmpty(t, second)
+	assert.NotEqual(t, first, second)
+	assert.Equal(t, "1\x00dom", firstAttrs["cisco.optics.lane"])
+	assert.Equal(t, "dom\x00lane", secondAttrs["cisco.optics.profile"])
 }
 
 func TestSharedGNMIRuntimePollWaitsForSyncAndSerializesPolls(t *testing.T) {
@@ -367,10 +624,11 @@ func TestSharedGNMIRuntimeBisectionIsolatesBadPathOnOneConnection(t *testing.T) 
 			receiver.targets[0].pathIsolated(sharedGNMIPath{Origin: runtimeTestOrigin, Path: "bad/value"})
 	}, 5*time.Second, 20*time.Millisecond)
 
-	assert.Equal(t, int64(1), listener.accepts.Load(), "bisection must reuse the target connection")
+	assert.Equal(t, int64(1), listener.accepts.Load(), "configured Subscribe and bisection probes reuse the verified connection")
 	snapshot := fake.snapshot()
 	assert.Equal(t, 4, snapshot.subscribeCalls, "combined rejection, two discard-only probes, and one final good subscription")
-	assert.Zero(t, snapshot.getCalls)
+	assert.Equal(t, 1, snapshot.getCalls)
+	assert.Zero(t, snapshot.identitySubscribeCalls)
 	assert.Zero(t, snapshot.setCalls)
 	for _, metadata := range snapshot.subscribeMetadata {
 		assert.Equal(t, runtimeTestUsername, runtimeTestMetadataValue(metadata, "username"))
@@ -383,6 +641,38 @@ func TestSharedGNMIRuntimeBisectionIsolatesBadPathOnOneConnection(t *testing.T) 
 	shutdownCtx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	require.NoError(t, receiver.Shutdown(shutdownCtx))
+}
+
+func TestSharedGNMIRuntimeBisectionSilentProbeIsTimeBounded(t *testing.T) {
+	material := runtimeTestTLSMaterial(t)
+	fake := &runtimeTestGNMIServer{}
+	fake.subscribe = func(stream grpc.BidiStreamingServer[gnmipb.SubscribeRequest, gnmipb.SubscribeResponse]) error {
+		request, err := stream.Recv()
+		if err != nil {
+			return err
+		}
+		fake.recordRequest(request)
+		paths := runtimeTestSubscribedPaths(request)
+		if len(paths) > 1 || runtimeTestContains(paths, "bad/value") {
+			return status.Error(codes.InvalidArgument, "unsupported test path")
+		}
+		<-stream.Context().Done()
+		return stream.Context().Err()
+	}
+	endpoint, _ := runtimeTestStartGNMIServer(t, fake, material.serverTLS(false))
+	target := runtimeTestTarget(endpoint, material.caFile, gnmiModeStream,
+		runtimeTestMapping("bad/value", "runtime.bad.value"),
+		runtimeTestMapping("good/value", "runtime.good.value"),
+	)
+
+	started := time.Now()
+	err := runtimeTestServeTarget(t, target)
+	require.Error(t, err)
+	assert.Equal(t, codes.DeadlineExceeded, status.Code(err))
+	assert.Less(t, time.Since(started), time.Second)
+	assert.Equal(t, 3, fake.snapshot().subscribeCalls, "combined rejection and two bounded half probes")
+	var compatibility *sharedGNMICompatibilityError
+	assert.NotErrorAs(t, err, &compatibility, "a silent diagnostic probe is a retryable session failure")
 }
 
 func TestSharedGNMIRuntimeBisectionAtStreamLimitDoesNotDeadlock(t *testing.T) {
@@ -437,7 +727,7 @@ func TestSharedGNMIRuntimeBisectionAtStreamLimitDoesNotDeadlock(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return fake.snapshot().subscribeCalls >= 7 && runtimeTestMetricPointCountAll(sink.AllMetrics(), "runtime.good.one") > 0
 	}, 5*time.Second, 20*time.Millisecond)
-	assert.Equal(t, int64(1), listener.accepts.Load(), "bisection probes must reuse the target connection")
+	assert.Equal(t, int64(1), listener.accepts.Load(), "configured streams and bisection probes reuse the verified connection")
 	for _, path := range []string{"bad-1/value", "bad-2/value"} {
 		assert.True(t, receiver.targets[0].pathIsolated(sharedGNMIPath{Origin: runtimeTestOrigin, Path: path}), path)
 	}
@@ -505,17 +795,20 @@ func TestSharedGNMIRuntimeCombinationRejectionContinuesGroupsWithinStreamLimit(t
 		if len(paths) > 2 {
 			return status.Error(codes.InvalidArgument, "device accepts at most two paths per stream")
 		}
+		updates := make([]*gnmipb.Update, 0, len(paths))
 		for index, path := range paths {
-			if err := stream.Send(&gnmipb.SubscribeResponse{Response: &gnmipb.SubscribeResponse_Update{Update: &gnmipb.Notification{
-				Timestamp: time.Now().Add(time.Duration(index) * time.Nanosecond).UnixNano(),
-				Prefix:    &gnmipb.Path{Origin: runtimeTestOrigin},
-				Update: []*gnmipb.Update{{
-					Path: runtimeTestProtoPath(t, path),
-					Val:  &gnmipb.TypedValue{Value: &gnmipb.TypedValue_IntVal{IntVal: int64(index + 1)}},
-				}},
-			}}}); err != nil {
-				return err
-			}
+			updates = append(updates, &gnmipb.Update{
+				Path: runtimeTestProtoPath(t, path),
+				Val:  &gnmipb.TypedValue{Value: &gnmipb.TypedValue_IntVal{IntVal: int64(index + 1)}},
+			})
+		}
+		if err := stream.Send(&gnmipb.SubscribeResponse{Response: &gnmipb.SubscribeResponse_Update{Update: &gnmipb.Notification{
+			Timestamp: time.Now().UnixNano(),
+			Prefix:    &gnmipb.Path{Origin: runtimeTestOrigin},
+			Atomic:    true,
+			Update:    updates,
+		}}}); err != nil {
+			return err
 		}
 		if err := stream.Send(&gnmipb.SubscribeResponse{Response: &gnmipb.SubscribeResponse_SyncResponse{SyncResponse: true}}); err != nil {
 			return err
@@ -537,14 +830,80 @@ func TestSharedGNMIRuntimeCombinationRejectionContinuesGroupsWithinStreamLimit(t
 	require.Eventually(t, func() bool {
 		return fake.snapshot().subscribeCalls >= 6 &&
 			runtimeTestMetricPointCountAll(sink.AllMetrics(), "runtime.split.a") > 0 &&
-			runtimeTestMetricPointCountAll(sink.AllMetrics(), "runtime.split.d") > 0
+			runtimeTestMetricPointCountAll(sink.AllMetrics(), "runtime.split.d") > 0 &&
+			len(receiver.targets[0].cache.Snapshot()) == 4
 	}, 5*time.Second, 20*time.Millisecond)
 	assert.False(t, receiver.targets[0].profileStopped("runtime-custom"))
 	assert.Equal(t, int64(1), listener.accepts.Load())
+	assert.Len(t, receiver.targets[0].cache.Snapshot(), 4,
+		"atomic snapshots from separately bisected subscriptions must preserve sibling state")
 
 	shutdownCtx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	require.NoError(t, receiver.Shutdown(shutdownCtx))
+}
+
+func TestSharedGNMIBisectedStreamsSeparateCacheScopeFromLogicalRuntimeKey(t *testing.T) {
+	original := sharedGNMIRuntimeStream{sharedGNMIStream: sharedGNMIStream{
+		OwnerID: "logical-owner",
+		Paths: []sharedGNMIPath{
+			{Origin: "openconfig", Path: "system/first"},
+			{Origin: "openconfig", Path: "system/second"},
+		},
+	}}
+	first := sharedGNMIBisectedRuntimeStream(original, original.Paths[:1])
+	second := sharedGNMIBisectedRuntimeStream(original, original.Paths[1:])
+
+	assert.Equal(t, sharedGNMIRuntimeStreamKey(original), sharedGNMIRuntimeStreamKey(first))
+	assert.Equal(t, sharedGNMIRuntimeStreamKey(first), sharedGNMIRuntimeStreamKey(second))
+	assert.NotEqual(t, sharedGNMICacheOwnerID(first), sharedGNMICacheOwnerID(second))
+	assert.NotEqual(t, original.OwnerID, sharedGNMICacheOwnerID(first))
+	assert.Equal(t, sharedGNMICacheOwnerID(first), sharedGNMICacheOwnerID(sharedGNMIBisectedRuntimeStream(original, original.Paths[:1])))
+	reordered := sharedGNMIBisectedRuntimeStream(original, []sharedGNMIPath{original.Paths[1], original.Paths[0]})
+	assert.Equal(t, sharedGNMICacheOwnerID(reordered), sharedGNMICacheOwnerID(sharedGNMIBisectedRuntimeStream(original, original.Paths)),
+		"physical ownership must depend on the subscription set, not path order")
+	resolvedSubset := sharedGNMIResolvedRuntimeStreams(original, [][]sharedGNMIPath{original.Paths[:1]})
+	require.Len(t, resolvedSubset, 1)
+	assert.NotEqual(t, original.OwnerID, sharedGNMICacheOwnerID(resolvedSubset[0]),
+		"a single strict-subset resolution is still a physical topology change")
+	resolvedReordered := sharedGNMIResolvedRuntimeStreams(original, [][]sharedGNMIPath{{original.Paths[1], original.Paths[0]}})
+	require.Len(t, resolvedReordered, 1)
+	assert.Equal(t, original.OwnerID, sharedGNMICacheOwnerID(resolvedReordered[0]),
+		"an identical selector set does not require a cache-owner transition")
+	target := &sharedGNMITargetRuntime{stopped: map[string]struct{}{}}
+	target.stopStream(first)
+	assert.True(t, target.streamStopped(second), "stopping one physical group must stop its logical siblings")
+}
+
+func TestSharedGNMICacheTopologyKeepsNestedSplitCandidateWhenSiblingProgresses(t *testing.T) {
+	cache, err := internalgnmi.NewCache(20)
+	require.NoError(t, err)
+	receiver := &sharedGNMIReceiver{}
+	original := sharedGNMIRuntimeStream{sharedGNMIStream: sharedGNMIStream{
+		OwnerID: "logical-owner",
+		Paths: []sharedGNMIPath{
+			{Origin: "openconfig", Path: "system/first"},
+			{Origin: "openconfig", Path: "system/second"},
+			{Origin: "openconfig", Path: "system/third"},
+		},
+	}}
+	target := &sharedGNMITargetRuntime{
+		cache:           cache,
+		stopped:         map[string]struct{}{},
+		cacheTopologies: map[string]*sharedGNMICacheTopology{original.OwnerID: {current: []string{original.OwnerID}}},
+	}
+	firstSplit := sharedGNMIBisectedRuntimeStreams(original, [][]sharedGNMIPath{original.Paths[:2], original.Paths[2:]})
+	require.NoError(t, receiver.reconcileCacheTopology(t.Context(), target, firstSplit[0]))
+	require.NoError(t, receiver.reconcileCacheTopology(t.Context(), target, firstSplit[1]))
+	assert.Equal(t, sharedGNMICacheTopologyOwners(firstSplit[0]), target.cacheTopologies[original.OwnerID].current)
+
+	nested := sharedGNMIBisectedRuntimeStreams(firstSplit[0], [][]sharedGNMIPath{firstSplit[0].Paths[:1], firstSplit[0].Paths[1:]})
+	require.NoError(t, receiver.reconcileCacheTopology(t.Context(), target, nested[0]))
+	require.NoError(t, receiver.reconcileCacheTopology(t.Context(), target, firstSplit[1]))
+	assert.NotEmpty(t, target.cacheTopologies[original.OwnerID].candidate,
+		"progress from an unchanged sibling must not abandon the nested split candidate")
+	require.NoError(t, receiver.reconcileCacheTopology(t.Context(), target, nested[1]))
+	assert.Equal(t, sharedGNMICacheTopologyOwners(nested[0]), target.cacheTopologies[original.OwnerID].current)
 }
 
 func TestSharedGNMIRuntimeConsumerRefusalReconnectsAndRedeliversEqualTimestamp(t *testing.T) {
@@ -588,7 +947,7 @@ func TestSharedGNMIRuntimeConsumerRefusalReconnectsAndRedeliversEqualTimestamp(t
 		require.FailNow(t, "timed out waiting for refusal reconnect and redelivery")
 	}
 
-	assert.Equal(t, int64(2), listener.accepts.Load())
+	assert.Equal(t, int64(2), listener.accepts.Load(), "each retry creates one new verified session connection")
 	assert.Equal(t, int64(1), rejecting.refusals.Load())
 	assert.Equal(t, int64(2), rejecting.accepted.Load())
 	assert.Equal(t, 2, fake.snapshot().subscribeCalls)
@@ -621,6 +980,38 @@ func TestSharedGNMIRuntimeRejectsWrongCAAndSAN(t *testing.T) {
 	})
 }
 
+func TestSharedGNMIRuntimeSelfSignedTLSRequiresExplicitOptIn(t *testing.T) {
+	fake := &runtimeTestGNMIServer{}
+	fake.subscribe = func(stream grpc.BidiStreamingServer[gnmipb.SubscribeRequest, gnmipb.SubscribeResponse]) error {
+		request, err := stream.Recv()
+		if err != nil {
+			return err
+		}
+		fake.recordRequest(request)
+		return stream.Send(&gnmipb.SubscribeResponse{Response: &gnmipb.SubscribeResponse_SyncResponse{SyncResponse: true}})
+	}
+	endpoint, _ := runtimeTestStartGNMIServer(t, fake, runtimeTestSelfSignedServerTLS(t))
+
+	t.Run("default deny", func(t *testing.T) {
+		target := runtimeTestTarget(endpoint, "", gnmiModeOnce, runtimeTestMapping("system/value", "runtime.self_signed.value"))
+		target.ConnectTimeout = 100 * time.Millisecond
+		err := runtimeTestServeTarget(t, target)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "tls.ca_file")
+		assert.ErrorContains(t, err, "tls.insecure_skip_verify: true")
+	})
+
+	t.Run("explicit lab opt-in", func(t *testing.T) {
+		target := runtimeTestTarget(endpoint, "", gnmiModeOnce, runtimeTestMapping("system/value", "runtime.self_signed.value"))
+		target.TLS.InsecureSkipVerify = true
+		require.NoError(t, runtimeTestServeTarget(t, target))
+	})
+
+	snapshot := fake.snapshot()
+	assert.Equal(t, 1, snapshot.capabilitiesCalls)
+	assert.Equal(t, 1, snapshot.subscribeCalls)
+}
+
 func TestSharedGNMIRuntimeMutualTLSWithoutPasswordMetadata(t *testing.T) {
 	material := runtimeTestTLSMaterial(t)
 	fake := &runtimeTestGNMIServer{}
@@ -647,7 +1038,8 @@ func TestSharedGNMIRuntimeMutualTLSWithoutPasswordMetadata(t *testing.T) {
 	assert.Empty(t, runtimeTestMetadataValue(snapshot.capabilitiesMetadata, "username"))
 	require.Len(t, snapshot.subscribeMetadata, 1)
 	assert.Empty(t, runtimeTestMetadataValue(snapshot.subscribeMetadata[0], "password"))
-	assert.Zero(t, snapshot.getCalls)
+	assert.Equal(t, 1, snapshot.getCalls)
+	assert.Zero(t, snapshot.identitySubscribeCalls)
 	assert.Zero(t, snapshot.setCalls)
 }
 
@@ -669,7 +1061,9 @@ func TestSharedGNMIRuntimeOnceRequiresCleanCompletionAfterSync(t *testing.T) {
 	target := runtimeTestTarget(endpoint, material.caFile, gnmiModeOnce, runtimeTestMapping("system/value", "runtime.once.completion"))
 	err := runtimeTestServeTarget(t, target)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "post-sync failure")
+	assert.Equal(t, codes.Internal, status.Code(err))
+	assert.NotContains(t, err.Error(), "post-sync failure")
+	assert.Contains(t, err.Error(), "code=Internal")
 }
 
 func TestSharedGNMIRuntimeAuthenticationFailureUsesSlowBackoff(t *testing.T) {
@@ -724,6 +1118,8 @@ func TestSharedGNMIInBandErrorsAreSanitizedAndKeepClassification(t *testing.T) {
 	for name, receive := range map[string]func(
 		grpc.BidiStreamingClient[gnmipb.SubscribeRequest, gnmipb.SubscribeResponse],
 		*gnmiResponseAdmission,
+		*sharedGNMITargetRuntime,
+		sharedGNMIRuntimeStream,
 	) error{
 		"until sync": receiveSharedGNMIProbeUntilSync,
 		"once":       receiveSharedGNMIProbeOnce,
@@ -732,7 +1128,7 @@ func TestSharedGNMIInBandErrorsAreSanitizedAndKeepClassification(t *testing.T) {
 			probeCtx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			stream := &singleUpdateGNMIClientStream{ctx: probeCtx, response: response(codes.InvalidArgument)}
-			err := receive(stream, nil)
+			err := receive(stream, nil, nil, sharedGNMIRuntimeStream{})
 			require.Error(t, err)
 			var probeUnsupported *sharedGNMIUnsupportedError
 			require.ErrorAs(t, err, &probeUnsupported)
@@ -848,6 +1244,18 @@ func TestSharedGNMINXReconnectRequiresFreshSensorIdentity(t *testing.T) {
 
 	var session atomic.Int64
 	fake := &runtimeTestGNMIServer{}
+	fake.capabilities = func(context.Context) (*gnmipb.CapabilityResponse, error) {
+		return &gnmipb.CapabilityResponse{
+			SupportedEncodings: []gnmipb.Encoding{gnmipb.Encoding_JSON},
+			SupportedModels: []*gnmipb.ModelData{
+				{Name: "openconfig-platform"},
+				{Name: builtinGNMIOriginDME},
+			},
+		}, nil
+	}
+	fake.get = func(context.Context, *gnmipb.GetRequest) (*gnmipb.GetResponse, error) {
+		return runtimeTestNXIdentityResponse("N9K-C93180YC-FX3", "10.6(1)"), nil
+	}
 	fake.subscribe = func(stream grpc.BidiStreamingServer[gnmipb.SubscribeRequest, gnmipb.SubscribeResponse]) error {
 		request, err := stream.Recv()
 		if err != nil {
@@ -880,7 +1288,7 @@ func TestSharedGNMINXReconnectRequiresFreshSensorIdentity(t *testing.T) {
 	profiles := runtimeTestDisabledProfiles()
 	profiles.Optics.Enabled = &enabled
 	targetConfig := GNMITargetConfig{
-		Name: "nx-reconnect", Endpoint: endpoint, Platform: gnmiPlatformNXOS, MaxStreams: 1,
+		Name: "nx-reconnect", Endpoint: endpoint, Product: gnmiProductNexus9000, SoftwareVersion: "10.6(1)", MaxStreams: 1,
 		Credentials: GNMICredentialsConfig{
 			Mode: gnmiCredentialUsernamePassword, Username: runtimeTestUsername, Password: configopaque.String(runtimeTestPassword),
 		},
@@ -965,7 +1373,7 @@ func TestNormalizeNXNotificationBoundsAndInvalidatesSensorState(t *testing.T) {
 	cache, err := internalgnmi.NewCache(1)
 	require.NoError(t, err)
 	target, err := newSharedGNMITargetRuntime(GNMITargetConfig{
-		Name: "nx-state", Platform: gnmiPlatformNXOS, MaxStreams: 1,
+		Name: "nx-state", Product: gnmiProductNexus9000, SoftwareVersion: "10.6(1)", MaxStreams: 1,
 		Profiles: subscriptionProfilesOnly(builtinGNMIProfileOptics),
 	}, cache)
 	require.NoError(t, err)
@@ -1088,7 +1496,7 @@ func TestNormalizeNXNotificationAuxiliaryBudgetsAreIsolatedByTarget(t *testing.T
 		cache, err := internalgnmi.NewCache(10)
 		require.NoError(t, err)
 		target, buildErr := newSharedGNMITargetRuntimeWithBudget(GNMITargetConfig{
-			Name: name, Platform: gnmiPlatformNXOS, MaxStreams: 1,
+			Name: name, Product: gnmiProductNexus9000, SoftwareVersion: "10.6(1)", MaxStreams: 1,
 			Profiles: subscriptionProfilesOnly(builtinGNMIProfileOptics),
 		}, cache, newSharedGNMIAuxiliaryBudget(1))
 		require.NoError(t, buildErr)
@@ -1143,7 +1551,7 @@ func TestNXSensorTransactionRollsBackAfterMappedCacheCapacityFailure(t *testing.
 
 	budget := newSharedGNMIAuxiliaryBudget(1)
 	target, err := newSharedGNMITargetRuntimeWithBudget(GNMITargetConfig{
-		Name: "nx-rollback", Platform: gnmiPlatformNXOS, MaxStreams: 1,
+		Name: "nx-rollback", Product: gnmiProductNexus9000, SoftwareVersion: "10.6(1)", MaxStreams: 1,
 		Profiles: subscriptionProfilesOnly(builtinGNMIProfileOptics),
 	}, cache, budget)
 	require.NoError(t, err)
@@ -1192,7 +1600,7 @@ func TestProcessNXNotificationAtomicallyReplacesCacheAndAuxiliaryStateAtCapacity
 		MaxDatapointsPerChunk: 10,
 		MaxCachedSeries:       3,
 		Targets: []GNMITargetConfig{{
-			Name: "nx-integrated", Platform: gnmiPlatformNXOS, MaxStreams: 1,
+			Name: "nx-integrated", Product: gnmiProductNexus9000, SoftwareVersion: "10.6(1)", MaxStreams: 1,
 			Profiles: subscriptionProfilesOnly(builtinGNMIProfileOptics),
 		}},
 	}
@@ -1385,6 +1793,7 @@ func (s *runtimeTestGNMIServer) Capabilities(ctx context.Context, _ *gnmipb.Capa
 	metadata, _ := grpcmetadata.FromIncomingContext(ctx)
 	s.mu.Lock()
 	s.capabilitiesCalls++
+	s.rpcOrder = append(s.rpcOrder, "Capabilities")
 	s.capabilitiesMetadata = metadata.Copy()
 	fn := s.capabilities
 	s.mu.Unlock()
@@ -1435,11 +1844,19 @@ func (s *runtimeTestGNMIServer) Subscribe(stream grpc.BidiStreamingServer[gnmipb
 	return fn(&runtimeTestPrefetchedSubscribeServer{BidiStreamingServer: stream, first: request})
 }
 
-func (s *runtimeTestGNMIServer) Get(context.Context, *gnmipb.GetRequest) (*gnmipb.GetResponse, error) {
+func (s *runtimeTestGNMIServer) Get(ctx context.Context, request *gnmipb.GetRequest) (*gnmipb.GetResponse, error) {
+	metadata, _ := grpcmetadata.FromIncomingContext(ctx)
 	s.mu.Lock()
 	s.getCalls++
+	s.rpcOrder = append(s.rpcOrder, "Get")
+	s.getMetadata = append(s.getMetadata, metadata.Copy())
+	s.getRequests = append(s.getRequests, request)
+	fn := s.get
 	s.mu.Unlock()
-	return nil, status.Error(codes.Unimplemented, "Get forbidden in runtime test")
+	if fn != nil {
+		return fn(ctx, request)
+	}
+	return runtimeTestXRIdentityResponse("ASR-9904", "24.4.1"), nil
 }
 
 func (s *runtimeTestGNMIServer) Set(context.Context, *gnmipb.SetRequest) (*gnmipb.SetResponse, error) {
@@ -1602,6 +2019,27 @@ func runtimeTestTLSMaterial(t *testing.T) runtimeTestTLSFiles {
 	}
 }
 
+func runtimeTestSelfSignedServerTLS(t *testing.T) *tls.Config {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), cryptorand.Reader)
+	require.NoError(t, err)
+	template := &x509.Certificate{
+		SerialNumber: runtimeTestSerial(t),
+		Subject:      pkix.Name{CommonName: runtimeTestServerName},
+		DNSNames:     []string{runtimeTestServerName},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	certificateDER, err := x509.CreateCertificate(cryptorand.Reader, template, template, &key.PublicKey, key)
+	require.NoError(t, err)
+	return &tls.Config{
+		Certificates: []tls.Certificate{{Certificate: [][]byte{certificateDER}, PrivateKey: key}},
+		MinVersion:   tls.VersionTLS12,
+	}
+}
+
 func runtimeTestSignedCertificate(
 	t *testing.T,
 	directory, name string,
@@ -1660,10 +2098,11 @@ func runtimeTestStartGNMIServer(t *testing.T, fake *runtimeTestGNMIServer, tlsCo
 
 func runtimeTestTarget(endpoint, caFile, mode string, mappings ...GNMIMetricMappingConfig) GNMITargetConfig {
 	return GNMITargetConfig{
-		Name:       "runtime-target",
-		Endpoint:   endpoint,
-		Platform:   gnmiPlatformIOSXR,
-		MaxStreams: 1,
+		Name:            "runtime-target",
+		Endpoint:        endpoint,
+		Product:         gnmiProductASR9000,
+		SoftwareVersion: "24.4.1",
+		MaxStreams:      1,
 		Credentials: GNMICredentialsConfig{
 			Mode: gnmiCredentialUsernamePassword, Username: runtimeTestUsername, Password: configopaque.String(runtimeTestPassword),
 		},
@@ -1674,6 +2113,45 @@ func runtimeTestTarget(endpoint, caFile, mode string, mappings ...GNMIMetricMapp
 			SampleInterval: 10 * time.Millisecond, PollInterval: 10 * time.Millisecond, Mappings: mappings,
 		}},
 	}
+}
+
+func runtimeTestXRIdentityResponse(model, version string) *gnmipb.GetResponse {
+	return &gnmipb.GetResponse{Notification: []*gnmipb.Notification{{
+		Timestamp: time.Now().UnixNano(),
+		Prefix:    &gnmipb.Path{Origin: "Cisco-IOS-XR-install-oper"},
+		Update: []*gnmipb.Update{
+			{
+				Path: &gnmipb.Path{Elem: []*gnmipb.PathElem{{Name: "install"}, {Name: "version"}, {Name: "chassis-pid"}}},
+				Val:  &gnmipb.TypedValue{Value: &gnmipb.TypedValue_StringVal{StringVal: model}},
+			},
+			{
+				Path: &gnmipb.Path{Elem: []*gnmipb.PathElem{{Name: "install"}, {Name: "version"}, {Name: "label"}}},
+				Val:  &gnmipb.TypedValue{Value: &gnmipb.TypedValue_StringVal{StringVal: version}},
+			},
+		},
+	}}}
+}
+
+func runtimeTestNXIdentityResponse(model, version string) *gnmipb.GetResponse {
+	component := []*gnmipb.PathElem{
+		{Name: "components"},
+		{Name: "component", Key: map[string]string{"name": "Chassis"}},
+		{Name: "state"},
+	}
+	path := func(leaf string) *gnmipb.Path {
+		elements := append([]*gnmipb.PathElem(nil), component...)
+		elements = append(elements, &gnmipb.PathElem{Name: leaf})
+		return &gnmipb.Path{Elem: elements}
+	}
+	return &gnmipb.GetResponse{Notification: []*gnmipb.Notification{{
+		Timestamp: time.Now().UnixNano(),
+		Prefix:    &gnmipb.Path{Origin: "openconfig"},
+		Update: []*gnmipb.Update{
+			{Path: path("type"), Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_StringVal{StringVal: "openconfig-platform-types:CHASSIS"}}},
+			{Path: path("model-name"), Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_StringVal{StringVal: model}}},
+			{Path: path("software-version"), Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_StringVal{StringVal: version}}},
+		},
+	}}}
 }
 
 func runtimeTestMapping(path, metricName string) GNMIMetricMappingConfig {
@@ -1796,6 +2274,29 @@ func runtimeTestMetricPointCountAll(metrics []pmetric.Metrics, name string) int 
 	return total
 }
 
+func runtimeTestDeviceUpValuesAll(metrics []pmetric.Metrics) []int64 {
+	var values []int64
+	for _, batch := range metrics {
+		for i := 0; i < batch.ResourceMetrics().Len(); i++ {
+			scopes := batch.ResourceMetrics().At(i).ScopeMetrics()
+			for j := 0; j < scopes.Len(); j++ {
+				items := scopes.At(j).Metrics()
+				for k := 0; k < items.Len(); k++ {
+					item := items.At(k)
+					if item.Name() != "cisco.device.up" || item.Type() != pmetric.MetricTypeGauge {
+						continue
+					}
+					points := item.Gauge().DataPoints()
+					for pointIndex := 0; pointIndex < points.Len(); pointIndex++ {
+						values = append(values, points.At(pointIndex).IntValue())
+					}
+				}
+			}
+		}
+	}
+	return values
+}
+
 func runtimeTestMetricPointCount(metrics pmetric.Metrics, name string) int {
 	total := 0
 	for i := 0; i < metrics.ResourceMetrics().Len(); i++ {
@@ -1825,6 +2326,23 @@ type runtimeTestRejectingConsumer struct {
 	calls       atomic.Int64
 	refusals    atomic.Int64
 	accepted    atomic.Int64
+}
+
+type runtimeTestRejectingDownConsumer struct {
+	sink     consumertest.MetricsSink
+	rejected atomic.Bool
+}
+
+func (*runtimeTestRejectingDownConsumer) Capabilities() consumer.Capabilities {
+	return consumer.Capabilities{MutatesData: false}
+}
+
+func (c *runtimeTestRejectingDownConsumer) ConsumeMetrics(ctx context.Context, metrics pmetric.Metrics) error {
+	if slices.Contains(runtimeTestDeviceUpValuesAll([]pmetric.Metrics{metrics}), int64(0)) &&
+		c.rejected.CompareAndSwap(false, true) {
+		return errors.New("intentional down-transition refusal")
+	}
+	return c.sink.ConsumeMetrics(ctx, metrics)
 }
 
 func (*runtimeTestRejectingConsumer) Capabilities() consumer.Capabilities {

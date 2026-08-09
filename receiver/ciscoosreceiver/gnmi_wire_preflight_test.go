@@ -47,6 +47,16 @@ func TestGNMIResponsePreflightCodecRoundTrip(t *testing.T) {
 				Msg: []byte{0xff, 0x00, 0x80}, // Registered payloads are intentionally opaque.
 			}}}},
 		},
+		&gnmipb.GetResponse{
+			Notification: []*gnmipb.Notification{{
+				Timestamp: 456,
+				Prefix:    &gnmipb.Path{Origin: "openconfig"},
+				Update: []*gnmipb.Update{{
+					Path: &gnmipb.Path{Elem: []*gnmipb.PathElem{{Name: "components"}, {Name: "component", Key: map[string]string{"name": "Chassis"}}, {Name: "state"}, {Name: "model-name"}}},
+					Val:  &gnmipb.TypedValue{Value: &gnmipb.TypedValue_StringVal{StringVal: "N9K-C93180YC-FX3"}},
+				}},
+			}},
+		},
 		&gnmipb.SubscribeResponse{
 			Response: &gnmipb.SubscribeResponse_Update{Update: &gnmipb.Notification{
 				Timestamp: 123,
@@ -116,6 +126,7 @@ func TestGNMIResponsePreflightCodecRejectsMalformedWire(t *testing.T) {
 		err   string
 	}{
 		{name: "invalid field zero", raw: []byte{0}, value: &gnmipb.CapabilityResponse{}, err: "malformed tag"},
+		{name: "malformed Get response", raw: []byte{0}, value: &gnmipb.GetResponse{}, err: "malformed tag"},
 		{name: "group", raw: protowire.AppendTag(nil, 1, protowire.StartGroupType), value: &gnmipb.SubscribeResponse{}, err: "forbidden group"},
 		{name: "wrong known wire type", raw: capabilityWrongWire, value: &gnmipb.CapabilityResponse{}, err: "wire type"},
 		{name: "invalid UTF-8", raw: capabilityInvalidUTF8, value: &gnmipb.CapabilityResponse{}, err: "invalid UTF-8"},
@@ -159,6 +170,10 @@ func TestGNMIResponsePreflightCodecEnforcesAggregateLimits(t *testing.T) {
 		Update: []*gnmipb.Update{{Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonVal{JsonVal: []byte("not-json")}}}},
 	}}})
 	require.NoError(t, err)
+	getWire, err := proto.Marshal(&gnmipb.GetResponse{Notification: []*gnmipb.Notification{{
+		Update: []*gnmipb.Update{{Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_StringVal{StringVal: strings.Repeat("x", 128)}}}},
+	}}})
+	require.NoError(t, err)
 
 	tests := []struct {
 		name   string
@@ -168,6 +183,7 @@ func TestGNMIResponsePreflightCodecEnforcesAggregateLimits(t *testing.T) {
 		err    string
 	}{
 		{name: "message bytes", limits: func(l *gnmiWirePreflightLimits) { l.maxMessageBytes = len(capabilityWire) - 1 }, raw: capabilityWire, value: &gnmipb.CapabilityResponse{}, err: "message exceeds"},
+		{name: "oversized Get response", limits: func(l *gnmiWirePreflightLimits) { l.maxMessageBytes = len(getWire) - 1 }, raw: getWire, value: &gnmipb.GetResponse{}, err: "message exceeds"},
 		{name: "objects", limits: func(l *gnmiWirePreflightLimits) { l.maxObjects = 2 }, raw: capabilityWire, value: &gnmipb.CapabilityResponse{}, err: "object count"},
 		{name: "operations", limits: func(l *gnmiWirePreflightLimits) { l.maxOperations = 1 }, raw: capabilityWire, value: &gnmipb.CapabilityResponse{}, err: "operation count"},
 		{name: "strings", limits: func(l *gnmiWirePreflightLimits) { l.maxStringBytes = 3 }, raw: capabilityWire, value: &gnmipb.CapabilityResponse{}, err: "string bytes"},
@@ -381,6 +397,51 @@ func TestInvokeGNMICapabilitiesReleasesLeaseOnAllErrors(t *testing.T) {
 	assert.Empty(t, admission.slots)
 }
 
+func TestInvokeGNMIGetReleasesLeaseOnAllErrors(t *testing.T) {
+	raw, err := proto.Marshal(&gnmipb.GetResponse{Notification: []*gnmipb.Notification{{Timestamp: 1}}})
+	require.NoError(t, err)
+	for _, tt := range []struct {
+		name  string
+		wires [][]byte
+		err   error
+	}{
+		{
+			name:  "response then non-OK trailer",
+			wires: [][]byte{raw},
+			err:   status.Error(codes.Unavailable, "trailer failure"),
+		},
+		{
+			name:  "second unary response",
+			wires: [][]byte{raw, raw},
+			err:   status.Error(codes.Internal, "cardinality violation"),
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			admission := newGNMIResponseAdmissionWithLimit(1)
+			codec := newGNMIResponsePreflightCodec(defaultGNMIWirePreflightLimits())
+			codec.admission = admission
+			codec.done = t.Context().Done()
+			conn := &scriptedGNMICapabilityConn{codec: codec, wires: tt.wires, err: tt.err}
+			response, invokeErr := invokeGNMIGet(t.Context(), conn, admission, 1, &gnmipb.GetRequest{})
+			require.Nil(t, response)
+			require.ErrorIs(t, invokeErr, tt.err)
+			assert.Empty(t, admission.slots)
+			assert.Empty(t, admission.leases)
+		})
+	}
+
+	admission := newGNMIResponseAdmissionWithLimit(1)
+	codec := newGNMIResponsePreflightCodec(defaultGNMIWirePreflightLimits())
+	codec.admission = admission
+	conn := &scriptedGNMICapabilityConn{codec: codec, wires: [][]byte{raw}}
+	response, err := invokeGNMIGet(t.Context(), conn, admission, 1, &gnmipb.GetRequest{})
+	require.NoError(t, err)
+	require.NotNil(t, response)
+	assert.Len(t, admission.slots, 1, "successful Get retains its decoded response")
+	admission.release(response)
+	assert.Empty(t, admission.slots)
+}
+
 func TestGNMIResponseAdmissionUsesExactRPCContext(t *testing.T) {
 	material := runtimeTestTLSMaterial(t)
 	server := &runtimeTestGNMIServer{}
@@ -520,7 +581,10 @@ func TestGNMIClientConnectionsForceResponsePreflightCodec(t *testing.T) {
 			targetName:   "legacy-test",
 		}
 		err := session.run(t.Context())
-		require.ErrorContains(t, err, "gNMI response preflight")
+		require.Error(t, err)
+		assert.Equal(t, codes.Internal, status.Code(err))
+		assert.Contains(t, err.Error(), "code=Internal")
+		assert.NotContains(t, err.Error(), "gNMI response preflight")
 	})
 }
 

@@ -21,12 +21,6 @@
         "applyIfExists": true
       },
       {
-        "property": "host.ip",
-        "alias": "Router IP",
-        "description": "Cisco IOS XR router address.",
-        "applyIfExists": true
-      },
-      {
         "property": "network.interface.name",
         "alias": "Interface",
         "description": "IOS XR network interface.",
@@ -116,31 +110,31 @@
           "secondary_visualization": "Sparkline",
           "name": "Interface Administrative And Operational State",
           "description": "Value: identifies interfaces that are disabled, down, or in an unexpected state. Interpretation: compare admin and operational state per interface; admin-up and oper-down points to a physical, peer, optic, or lower-layer issue.",
-          "signalflow": "data('cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.admin_status_info').mean(by=['host.name', 'network.interface.name', 'value']).publish(label='Admin state'); data('cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.oper_status_info').mean(by=['host.name', 'network.interface.name', 'value']).publish(label='Oper state')",
+          "signalflow": "data('cisco.iosxr.yang.__v1.m1.s21_openconfig_2Dinterfaces.p4.s10_interfaces.s9_interface.s5_state.s12_admin_2Dstatus.i').mean(by=['host.name', 'network.interface.name', 'value']).publish(label='Admin state'); data('cisco.iosxr.yang.__v1.m1.s21_openconfig_2Dinterfaces.p4.s10_interfaces.s9_interface.s5_state.s11_oper_2Dstatus.i').mean(by=['host.name', 'network.interface.name', 'value']).publish(label='Oper state')",
           "legend_dimension": "network.interface.name"
         },
         {
           "name": "Interface Octet Rate",
           "description": "Value: compares ingress and egress traffic to find silence, asymmetry, or a change around an incident. Interpretation: an unexpected zero, one-way traffic, or a sharp rate change should be correlated with state, errors, discards, and peer-side evidence.",
-          "signalflow": "data('cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Ingress octets/sec'); data('cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.out_octets').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Egress octets/sec')",
+          "signalflow": "data('cisco.iosxr.yang.__v1.m1.s21_openconfig_2Dinterfaces.p5.s10_interfaces.s9_interface.s5_state.s8_counters.s9_in_2Doctets.n').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Ingress octets/sec'); data('cisco.iosxr.yang.__v1.m1.s21_openconfig_2Dinterfaces.p5.s10_interfaces.s9_interface.s5_state.s8_counters.s10_out_2Doctets.n').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Egress octets/sec')",
           "legend_dimension": "network.interface.name"
         },
         {
           "name": "Interface Packet Rate",
           "description": "Value: shows packet pressure and direction independently of frame size. Interpretation: packet-rate spikes with modest octet rate can reveal small-packet load, while one-sided or absent packet flow narrows the affected direction.",
-          "signalflow": "data('cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_pkts').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Ingress packets/sec'); data('cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.out_pkts').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Egress packets/sec')",
+          "signalflow": "data('cisco.iosxr.yang.__v1.m1.s21_openconfig_2Dinterfaces.p5.s10_interfaces.s9_interface.s5_state.s8_counters.s7_in_2Dpkts.n').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Ingress packets/sec'); data('cisco.iosxr.yang.__v1.m1.s21_openconfig_2Dinterfaces.p5.s10_interfaces.s9_interface.s5_state.s8_counters.s8_out_2Dpkts.n').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Egress packets/sec')",
           "legend_dimension": "network.interface.name"
         },
         {
           "name": "Interface Errors And Discards",
           "description": "Value: distinguishes corrupt or failed traffic from congestion, queue, or policy drops. Interpretation: errors point toward the physical path or framing; discards with clean error counters point toward capacity, buffering, policy, or forwarding behavior.",
-          "signalflow": "data('cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_errors').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Ingress errors/sec'); data('cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.out_errors').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Egress errors/sec'); data('cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_discards').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Ingress discards/sec'); data('cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.out_discards').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Egress discards/sec')",
+          "signalflow": "data('cisco.iosxr.yang.__v1.m1.s21_openconfig_2Dinterfaces.p5.s10_interfaces.s9_interface.s5_state.s8_counters.s9_in_2Derrors.n').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Ingress errors/sec'); data('cisco.iosxr.yang.__v1.m1.s21_openconfig_2Dinterfaces.p5.s10_interfaces.s9_interface.s5_state.s8_counters.s10_out_2Derrors.n').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Egress errors/sec'); data('cisco.iosxr.yang.__v1.m1.s21_openconfig_2Dinterfaces.p5.s10_interfaces.s9_interface.s5_state.s8_counters.s11_in_2Ddiscards.n').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Ingress discards/sec'); data('cisco.iosxr.yang.__v1.m1.s21_openconfig_2Dinterfaces.p5.s10_interfaces.s9_interface.s5_state.s8_counters.s12_out_2Ddiscards.n').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Egress discards/sec')",
           "legend_dimension": "network.interface.name"
         },
         {
           "name": "Interface MTU",
           "description": "Value: exposes MTU differences that can explain selective reachability, fragmentation, or application-specific loss. Interpretation: compare MTU across both ends of the path and with the encapsulation requirement when only larger packets fail.",
-          "signalflow": "data('cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.mtu').mean(by=['host.name', 'network.interface.name']).publish(label='MTU')",
+          "signalflow": "data('cisco.iosxr.yang.__v1.m1.s21_openconfig_2Dinterfaces.p4.s10_interfaces.s9_interface.s5_state.s3_mtu.n').mean(by=['host.name', 'network.interface.name']).publish(label='MTU')",
           "legend_dimension": "network.interface.name"
         }
       ]
@@ -155,14 +149,14 @@
           "type": "Text",
           "name": "Value Provided",
           "description": "Value: explains how to use optional IOS XR control-plane path groups without mistaking absent configuration for receiver failure. Interpretation: validate update and model coverage first, then use route counts and module-specific filters to focus on BGP, ISIS, MPLS, segment routing, NTP, or PTP telemetry enabled for the target.",
-          "markdown": "## Value Provided\nIOS XR native YANG leaves are normalized under `cisco.iosxr.yang.<module>...`. Enable only the path groups supported by the router and needed by the operating model. Use the YANG Module filter to isolate BGP, ISIS, MPLS, segment-routing, NTP, or PTP data, and return to the telemetry-trust dashboard if a selected group produces no updates.",
+          "markdown": "## Value Provided\nIOS XR native YANG leaves use reversible `cisco.iosxr.yang.__v1...` schema identities. These exact charts target direct gNMI tuples; dial-out names also frame encoding-path and source-path tuples. Enable only the path groups supported by the router and needed by the operating model. Use the YANG Module filter to isolate BGP, ISIS, MPLS, segment-routing, NTP, or PTP data, and return to the telemetry-trust dashboard if a selected group produces no updates.",
           "width": 12,
           "height": 2
         },
         {
           "name": "IPv4 RIB Routes By Protocol",
           "description": "Value: tracks route inventory by the protocol and table dimensions exported by the IOS XR IPv4 RIB model. Interpretation: abrupt route-count loss or unexpected divergence between protocols should be correlated with neighbor and adjacency state on the router.",
-          "signalflow": "data('cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.rib.rib_table_ids.rib_table_id.summary_protos.summary_proto.route_count').mean(by=['host.name', 'cisco.yang.path']).publish(label='IPv4 routes')",
+          "signalflow": "data('cisco.iosxr.yang.__v1.m1.s29_Cisco_2DIOS_2DXR_2Dip_2Drib_2Dipv4_2Doper.p6.s3_rib.s13_rib_2Dtable_2Dids.s12_rib_2Dtable_2Did.s14_summary_2Dprotos.s13_summary_2Dproto.s11_route_2Dcount.n').mean(by=['host.name', 'cisco.yang.path']).publish(label='IPv4 routes')",
           "legend_dimension": "host.name"
         },
         {

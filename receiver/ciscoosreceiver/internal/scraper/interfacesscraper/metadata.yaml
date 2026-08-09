@@ -152,12 +152,21 @@ attributes:
     description: Type of packet
     type: string
     enum: [unicast, multicast, broadcast]
+  network.peer.address:
+    description: Legacy topology neighbor management address
+    type: string
+  network.peer.name:
+    description: Legacy topology neighbor system, chassis, port, or object name
+    type: string
+  network.protocol.name:
+    description: Legacy topology discovery protocol name
+    type: string
 
 metrics:
   cisco.interface.admin.status:
     enabled: true
     stability: development
-    description: Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)
+    description: Cisco interface administrative status (1 = administratively enabled, 0 = not administratively enabled)
     unit: "1"
     gauge:
       value_type: int
@@ -189,7 +198,7 @@ metrics:
     description: The device-reported interface traffic rate
     unit: "bit/s"
     gauge:
-      value_type: int
+      value_type: double
     attributes: [network.io.direction, network.interface.description, network.interface.mac, network.interface.name, network.interface.speed]
 
   cisco.interface.packet.rate:
@@ -198,7 +207,7 @@ metrics:
     description: The device-reported interface packet rate
     unit: "{packet}/s"
     gauge:
-      value_type: int
+      value_type: double
     attributes: [network.io.direction, network.interface.description, network.interface.mac, network.interface.name, network.interface.speed]
 
   cisco.interface.pause.frames:
@@ -366,7 +375,7 @@ metrics:
   cisco.scrape.partial_success:
     enabled: true
     stability: development
-    description: Cisco receiver scrape partial success status (1 = partial success, 0 = complete success)
+    description: Whether the scrape completed with at least one command-family failure.
     unit: "1"
     gauge:
       value_type: int
@@ -384,16 +393,16 @@ metrics:
   cisco.topology.neighbor.info:
     enabled: true
     stability: development
-    description: Cisco LLDP or CDP topology neighbor edge information
+    description: LLDP, CDP, and fabric-link neighbor information.
     unit: "1"
     gauge:
       value_type: int
-    attributes: [cisco.topology.protocol, network.interface.name, cisco.topology.neighbor.name, cisco.topology.neighbor.interface, cisco.topology.neighbor.platform, cisco.topology.neighbor.address]
+    attributes: [cisco.topology.protocol, network.interface.name, cisco.topology.neighbor.name, cisco.topology.neighbor.interface, cisco.topology.neighbor.platform, cisco.topology.neighbor.address, network.peer.name, network.peer.address, network.protocol.name]
 
   cisco.transceiver.sensor:
     enabled: true
     stability: development
-    description: "Cisco transceiver digital optical monitoring sensor value. The physical unit varies by sensor type and is carried in the cisco.transceiver.sensor.unit attribute (Cel, V, mA, dBm, or 1 when unitless)."
+    description: "Digital optical monitoring sensor values, such as temperature, voltage, current, or optical receive/transmit power. The actual physical unit is in `cisco.transceiver.sensor.unit`."
     unit: "1"
     gauge:
       value_type: double
@@ -431,7 +440,7 @@ metrics:
   system.network.interface.status:
     enabled: true
     stability: development
-    description: Interface operational status (1 = up, 0 = down)
+    description: Interface operational status (1 = up, 0 = not up)
     unit: "1"
     gauge:
       value_type: int
@@ -451,7 +460,7 @@ metrics:
   system.network.packet.count:
     enabled: true
     stability: development
-    description: The number of packets transmitted or received, categorized by type
+    description: The number of packets transmitted or received by direction and, when available, packet type
     unit: "{packet}"
     sum:
       value_type: int

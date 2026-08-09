@@ -29,6 +29,29 @@ func TestDecodeObjectPreservesLargeGenericInteger(t *testing.T) {
 	assert.Equal(t, "9007199254740993", number.String())
 }
 
+func TestDecodeObjectWrapsTopLevelJSONScalars(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		body string
+		want string
+	}{
+		{name: "number", body: `42`, want: "42"},
+		{name: "string", body: `"enabled"`, want: "enabled"},
+		{name: "boolean", body: `true`, want: "true"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			obj, err := decodeObject([]byte(tt.body))
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, String(obj, "value"))
+		})
+	}
+}
+
+func TestDecodeObjectRejectsTopLevelJSONArray(t *testing.T) {
+	_, err := decodeObject([]byte(`[{"id":"one"}]`))
+	require.ErrorContains(t, err, "expected a JSON object or scalar")
+}
+
 func TestDecodeObjectsExtractsERSXMLResources(t *testing.T) {
 	body := []byte(`<SearchResult total="2"><resources><resource><name>nad-1</name><id>1</id></resource><resource><name>nad-2</name><id>2</id></resource></resources></SearchResult>`)
 	objects, _, err := decodeObjects(body)
@@ -50,6 +73,19 @@ func TestDecodeObjectsExtractsMNTXMLSessionRows(t *testing.T) {
 	assert.Equal(t, 2, total)
 	require.Len(t, objects, 2)
 	assert.Equal(t, "bob", String(objects[1], "user_name"))
+}
+
+func TestDecodeObjectsHandlesCurrentMNTActiveListAndEmptyList(t *testing.T) {
+	objects, total, err := decodeObjects([]byte(`<activeList noOfActiveSession="1"><activeSession><user_name>alice</user_name></activeSession></activeList>`))
+	require.NoError(t, err)
+	assert.Equal(t, 1, total)
+	require.Len(t, objects, 1)
+	assert.Equal(t, "alice", String(objects[0], "user_name"))
+
+	objects, total, err = decodeObjects([]byte(`<activeList noOfActiveSession="0"></activeList>`))
+	require.NoError(t, err)
+	assert.Equal(t, 0, total)
+	assert.Empty(t, objects)
 }
 
 func TestDecodeXMLObjectRejectsUnsafeDepthBeforeMaterializing(t *testing.T) {
