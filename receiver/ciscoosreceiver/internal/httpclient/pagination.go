@@ -20,28 +20,14 @@ const (
 
 // PaginationByteBudget tracks aggregate raw page bytes for one operation.
 type PaginationByteBudget struct {
-	used    int
-	maximum int
-}
-
-// NewPaginationByteBudget creates an aggregate pagination budget. Values that
-// are non-positive or exceed the hard ceiling resolve to the hard ceiling.
-func NewPaginationByteBudget(maximum int) PaginationByteBudget {
-	if maximum <= 0 || maximum > HardMaxPaginationBytes {
-		maximum = HardMaxPaginationBytes
-	}
-	return PaginationByteBudget{maximum: maximum}
+	used int
 }
 
 // Charge reserves one page before it is decoded. An over-budget page is not
 // decoded or appended, so callers can safely return their prior partial slice.
 func (b *PaginationByteBudget) Charge(operation string, pageBytes, partialResults int) error {
-	maximum := b.maximum
-	if maximum <= 0 || maximum > HardMaxPaginationBytes {
-		maximum = HardMaxPaginationBytes
-	}
-	if pageBytes < 0 || pageBytes > maximum-b.used {
-		return NewPaginationLimitError(operation, "byte", maximum, partialResults)
+	if pageBytes < 0 || pageBytes > HardMaxPaginationBytes-b.used {
+		return NewPaginationLimitError(operation, "byte", HardMaxPaginationBytes, partialResults)
 	}
 	b.used += pageBytes
 	return nil
@@ -54,18 +40,12 @@ type PaginationLimitError struct {
 	Kind      string
 	Maximum   int
 	Results   int
-	Hard      bool
 }
 
 func (e *PaginationLimitError) Error() string {
-	source := "configured"
-	if e.Hard {
-		source = "hard"
-	}
 	return fmt.Sprintf(
-		"paginate %s: %s %s limit of %d exhausted after %d partial results",
+		"paginate %s: hard %s limit of %d exhausted after %d partial results",
 		e.Operation,
-		source,
 		e.Kind,
 		e.Maximum,
 		e.Results,
@@ -83,18 +63,6 @@ func EffectivePaginationResultLimit(configured int) (limit int, hard bool) {
 
 // NewPaginationLimitError builds the common partial-result exhaustion error.
 func NewPaginationLimitError(operation, kind string, maximum, results int) error {
-	return &PaginationLimitError{
-		Operation: operation,
-		Kind:      kind,
-		Maximum:   maximum,
-		Results:   results,
-		Hard:      true,
-	}
-}
-
-// NewConfiguredPaginationLimitError reports partial results caused by a
-// caller-configured result cap rather than a non-configurable safety ceiling.
-func NewConfiguredPaginationLimitError(operation, kind string, maximum, results int) error {
 	return &PaginationLimitError{
 		Operation: operation,
 		Kind:      kind,

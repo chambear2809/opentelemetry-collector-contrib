@@ -170,7 +170,7 @@ func TestOpticalAuxiliaryReservationsRollbackAndReleaseOnlyAtCommit(t *testing.T
 
 func TestNXDeletePlanningDeduplicatesSelectorsAndStopsBoundedCrossProducts(t *testing.T) {
 	targetConfig := GNMITargetConfig{
-		Name: "nx-planning", Product: gnmiProductNexus9000, SoftwareVersion: "10.6(1)", MaxStreams: 1,
+		Name: "nx-planning", Platform: gnmiPlatformNXOS, MaxStreams: 1,
 		Profiles: subscriptionProfilesOnly(builtinGNMIProfileOptics),
 	}
 	receiver, target, stream := newDeliveryTestReceiver(t, targetConfig, 10, consumertest.NewNop())
@@ -236,7 +236,7 @@ func TestNXDeletePlanningDeduplicatesSelectorsAndStopsBoundedCrossProducts(t *te
 
 func TestNXDeleteOnlyAtomicNotificationPreservesSiblingAuxiliaryState(t *testing.T) {
 	targetConfig := GNMITargetConfig{
-		Name: "nx-delete-only", Product: gnmiProductNexus9000, SoftwareVersion: "10.6(1)", MaxStreams: 1,
+		Name: "nx-delete-only", Platform: gnmiPlatformNXOS, MaxStreams: 1,
 		Profiles: subscriptionProfilesOnly(builtinGNMIProfileOptics),
 	}
 	_, target, _ := newDeliveryTestReceiver(t, targetConfig, 10, consumertest.NewNop())
@@ -281,7 +281,7 @@ func TestNXDeleteOnlyAtomicNotificationPreservesSiblingAuxiliaryState(t *testing
 
 func TestNXDMESlashPackedExpansionIsRejectedBeforeNormalization(t *testing.T) {
 	targetConfig := GNMITargetConfig{
-		Name: "nx-packed-path", Product: gnmiProductNexus9000, SoftwareVersion: "10.6(1)", MaxStreams: 1,
+		Name: "nx-packed-path", Platform: gnmiPlatformNXOS, MaxStreams: 1,
 		Profiles: subscriptionProfilesOnly(builtinGNMIProfileOptics),
 	}
 	receiver, target, stream := newDeliveryTestReceiver(t, targetConfig, 10, consumertest.NewNop())
@@ -461,7 +461,7 @@ func newAuxiliaryTestNXTarget(
 	cache, err := internalgnmi.NewCache(100)
 	require.NoError(t, err)
 	target, err := newSharedGNMITargetRuntimeWithBudget(GNMITargetConfig{
-		Name: name, Product: gnmiProductNexus9000, SoftwareVersion: "10.6(1)", MaxStreams: 1,
+		Name: name, Platform: gnmiPlatformNXOS, MaxStreams: 1,
 		Profiles: subscriptionProfilesOnly(builtinGNMIProfileOptics),
 	}, cache, newSharedGNMIAuxiliaryBudgetWithLimits(maximum, maximumBytes))
 	require.NoError(t, err)

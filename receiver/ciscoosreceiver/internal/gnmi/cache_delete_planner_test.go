@@ -238,20 +238,6 @@ func TestCachePlanningWorkLimitRejectsKeyedSelectorCrossProduct(t *testing.T) {
 	require.Nil(t, transaction)
 	require.ErrorContains(t, err, "planning work exceeds 5000000 comparisons")
 	assert.Equal(t, baselines, cache.Usage().AtomicBaselines)
-
-	invalidations := make([]Path, selectors)
-	for index := range invalidations {
-		invalidations[index] = Path{
-			Target: "switch-1", Origin: "openconfig",
-			Elements: []PathElem{{Name: "interfaces"}, {Name: "interface", Keys: map[string]string{"b": fmt.Sprintf("%d", index)}}},
-		}
-	}
-	transaction, err = cache.Prepare(CacheNotification{
-		Timestamp: timestamp.Add(time.Second), Invalidates: invalidations,
-	})
-	require.Nil(t, transaction)
-	require.ErrorContains(t, err, "planning work exceeds 5000000 comparisons")
-	assert.Equal(t, baselines, cache.Usage().AtomicBaselines)
 }
 
 func TestCacheStructuralPlanningBoundsKeySubsetTrieWork(t *testing.T) {
@@ -406,55 +392,6 @@ func TestCacheStructuralPlanningChargesRetainedSeriesPathMaterialization(t *test
 	assert.Equal(t, beforeBytes, cache.RetainedBytes())
 }
 
-func TestCachePlanningPreflightChargesInvalidationsAgainstRetainedBarriers(t *testing.T) {
-	const (
-		barrierCount      = 2_501
-		invalidationCount = 2_000
-	)
-	cache, err := NewCache(barrierCount + invalidationCount + 10)
-	require.NoError(t, err)
-	timestamp := time.Unix(100, 0)
-	for index := range barrierCount {
-		path := Path{
-			Target: "switch-1",
-			Origin: "openconfig",
-			Elements: []PathElem{
-				{Name: "retained"},
-				{Name: fmt.Sprintf("barrier-%04d", index)},
-			},
-		}
-		key := path.Key()
-		barrier := stateTombstone{
-			path: path, timestamp: timestamp,
-			retainedBytes: estimateTombstoneRetainedBytes(key, path),
-		}
-		cache.putTombstone(barrier)
-		cache.retainedBytes = saturatingRetainedByteAdd(cache.retainedBytes, barrier.retainedBytes)
-	}
-	invalidations := make([]Path, invalidationCount)
-	for index := range invalidationCount {
-		invalidations[index] = Path{
-			Target: "switch-1",
-			Origin: "openconfig",
-			Elements: []PathElem{
-				{Name: "incoming"},
-				{Name: fmt.Sprintf("invalidation-%04d", index)},
-			},
-		}
-	}
-	beforeUsage := cache.Usage()
-	beforeBytes := cache.RetainedBytes()
-
-	transaction, err := cache.Prepare(CacheNotification{
-		Timestamp:   timestamp.Add(time.Second),
-		Invalidates: invalidations,
-	})
-	require.Nil(t, transaction)
-	require.ErrorContains(t, err, "cache notification planning work exceeds 5000000 comparisons")
-	assert.Equal(t, beforeUsage, cache.Usage())
-	assert.Equal(t, beforeBytes, cache.RetainedBytes())
-}
-
 func TestCacheRetainedEstimatorsChargeSparseBucketsAndKeyedTombstoneTrie(t *testing.T) {
 	oneEntryMapBytes := estimateStringMapRetainedBytes(map[string]string{"k": "v"})
 	assert.GreaterOrEqual(t, oneEntryMapBytes, int64(370),
@@ -477,28 +414,4 @@ func TestCacheRetainedEstimatorsChargeSparseBucketsAndKeyedTombstoneTrie(t *test
 	var capacity *CapacityError
 	require.ErrorAs(t, err, &capacity)
 	assert.Equal(t, keyedBytes, capacity.RequestedRetainedBytes)
-}
-
-func TestTombstoneRetainedEstimatorChargesCompositeScopeKey(t *testing.T) {
-	path := Path{
-		Target:     "configured-target",
-		PathTarget: "wire-path-target",
-		Origin:     "openconfig",
-		Elements:   []PathElem{{Name: "system"}},
-	}
-	scopeKey := tombstoneScopeKey(path.Target, path.PathTarget)
-	assert.Equal(t, retainedStringBytes(scopeKey), estimateTombstoneScopeKeyRetainedBytes(path))
-
-	key := path.Key()
-	withoutScopeKey := retainedCacheMapEntryBytes + retainedStringBytes(key)
-	withoutScopeKey = saturatingRetainedByteAdd(withoutScopeKey, estimatePathRetainedBytes(path))
-	withoutScopeKey = saturatingRetainedByteAdd(
-		withoutScopeKey,
-		retainedTombstoneRootIndexBytes+retainedTombstonePathElementBytes,
-	)
-	assert.Equal(
-		t,
-		saturatingRetainedByteAdd(withoutScopeKey, retainedStringBytes(scopeKey)),
-		estimateTombstoneRetainedBytes(key, path),
-	)
 }

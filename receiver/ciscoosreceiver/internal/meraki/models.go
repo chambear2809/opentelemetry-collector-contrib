@@ -3,11 +3,6 @@
 
 package meraki // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/meraki"
 
-import (
-	"encoding/json"
-	"strconv"
-)
-
 // Device describes a Meraki organization inventory device.
 type Device struct {
 	Name        string   `json:"name"`
@@ -50,32 +45,27 @@ type DeviceMemoryUsage struct {
 	Name        string     `json:"name"`
 	MAC         string     `json:"mac"`
 	Network     NetworkRef `json:"network"`
-	Provisioned *float64   `json:"provisioned"`
+	Provisioned float64    `json:"provisioned"`
 	Used        struct {
-		Median *float64 `json:"median"`
+		Median float64 `json:"median"`
 	} `json:"used"`
 	Free struct {
-		Median *float64 `json:"median"`
+		Median float64 `json:"median"`
 	} `json:"free"`
-	Intervals []DeviceMemoryInterval `json:"intervals"`
-}
-
-// DeviceMemoryInterval is one timestamped memory snapshot.
-type DeviceMemoryInterval struct {
-	StartTS string `json:"startTs"`
-	EndTS   string `json:"endTs"`
-	Memory  struct {
-		Used struct {
-			Median      *float64 `json:"median"`
-			Percentages struct {
-				Maximum *float64 `json:"maximum"`
-				Median  *float64 `json:"median"`
-			} `json:"percentages"`
-		} `json:"used"`
-		Free struct {
-			Median *float64 `json:"median"`
-		} `json:"free"`
-	} `json:"memory"`
+	Intervals []struct {
+		Memory struct {
+			Used struct {
+				Median      float64 `json:"median"`
+				Percentages struct {
+					Maximum float64 `json:"maximum"`
+					Median  float64 `json:"median"`
+				} `json:"percentages"`
+			} `json:"used"`
+			Free struct {
+				Median float64 `json:"median"`
+			} `json:"free"`
+		} `json:"memory"`
+	} `json:"intervals"`
 }
 
 // SwitchPortsStatus describes switch port status for one switch.
@@ -108,26 +98,21 @@ type SwitchPortsUsage struct {
 	Network NetworkRef `json:"network"`
 	Model   string     `json:"model"`
 	Ports   []struct {
-		PortID    string                    `json:"portId"`
-		Intervals []SwitchPortUsageInterval `json:"intervals"`
+		PortID    string `json:"portId"`
+		Intervals []struct {
+			Data struct {
+				Usage DirectionalNumber `json:"usage"`
+			} `json:"data"`
+			Bandwidth struct {
+				Usage DirectionalNumber `json:"usage"`
+			} `json:"bandwidth"`
+			Energy struct {
+				Usage struct {
+					Total float64 `json:"total"`
+				} `json:"usage"`
+			} `json:"energy"`
+		} `json:"intervals"`
 	} `json:"ports"`
-}
-
-// SwitchPortUsageInterval is one timestamped switch-port usage snapshot.
-type SwitchPortUsageInterval struct {
-	StartTS string `json:"startTs"`
-	EndTS   string `json:"endTs"`
-	Data    struct {
-		Usage DirectionalNumber `json:"usage"`
-	} `json:"data"`
-	Bandwidth struct {
-		Usage DirectionalNumber `json:"usage"`
-	} `json:"bandwidth"`
-	Energy struct {
-		Usage struct {
-			Total float64 `json:"total"`
-		} `json:"usage"`
-	} `json:"energy"`
 }
 
 // DirectionalNumber is a total/upstream/downstream value used by Meraki usage endpoints.
@@ -139,15 +124,11 @@ type DirectionalNumber struct {
 
 // UplinkStatus describes appliance or device uplink status.
 type UplinkStatus struct {
-	NetworkID        string `json:"networkId"`
-	Serial           string `json:"serial"`
-	Model            string `json:"model"`
-	LastReportedAt   string `json:"lastReportedAt"`
-	HighAvailability struct {
-		Enabled bool   `json:"enabled"`
-		Role    string `json:"role"`
-	} `json:"highAvailability"`
-	Uplinks []struct {
+	NetworkID      string `json:"networkId"`
+	Serial         string `json:"serial"`
+	Model          string `json:"model"`
+	LastReportedAt string `json:"lastReportedAt"`
+	Uplinks        []struct {
 		Interface      string `json:"interface"`
 		Status         string `json:"status"`
 		IP             string `json:"ip"`
@@ -165,18 +146,15 @@ type UplinkStatus struct {
 
 // UplinkLossLatency describes uplink loss and latency time-series samples.
 type UplinkLossLatency struct {
-	NetworkID  string                    `json:"networkId"`
-	Serial     string                    `json:"serial"`
-	Uplink     string                    `json:"uplink"`
-	IP         string                    `json:"ip"`
-	TimeSeries []UplinkLossLatencySample `json:"timeSeries"`
-}
-
-// UplinkLossLatencySample is one timestamped loss and latency observation.
-type UplinkLossLatencySample struct {
-	TS          string  `json:"ts"`
-	LossPercent float64 `json:"lossPercent"`
-	LatencyMS   float64 `json:"latencyMs"`
+	NetworkID  string `json:"networkId"`
+	Serial     string `json:"serial"`
+	Uplink     string `json:"uplink"`
+	IP         string `json:"ip"`
+	TimeSeries []struct {
+		TS          string  `json:"ts"`
+		LossPercent float64 `json:"lossPercent"`
+		LatencyMS   float64 `json:"latencyMs"`
+	} `json:"timeSeries"`
 }
 
 // WirelessClientsOverview describes wireless client counts for one AP.
@@ -278,8 +256,8 @@ type VPNStats struct {
 		NetworkID    string `json:"networkId"`
 		NetworkName  string `json:"networkName"`
 		UsageSummary struct {
-			ReceivedInKilobytes FlexibleInt64 `json:"receivedInKilobytes"`
-			SentInKilobytes     FlexibleInt64 `json:"sentInKilobytes"`
+			ReceivedInKilobytes int64 `json:"receivedInKilobytes"`
+			SentInKilobytes     int64 `json:"sentInKilobytes"`
 		} `json:"usageSummary"`
 		LatencySummaries []struct {
 			SenderUplink   string  `json:"senderUplink"`
@@ -310,28 +288,6 @@ type VPNStats struct {
 			MaxMOS         float64 `json:"maxMos"`
 		} `json:"mosSummaries"`
 	} `json:"merakiVpnPeers"`
-}
-
-// FlexibleInt64 decodes Meraki numeric fields that can arrive as JSON numbers or quoted strings.
-type FlexibleInt64 int64
-
-// UnmarshalJSON accepts either a JSON number or a base-10 string.
-func (v *FlexibleInt64) UnmarshalJSON(data []byte) error {
-	var number int64
-	if err := json.Unmarshal(data, &number); err == nil {
-		*v = FlexibleInt64(number)
-		return nil
-	}
-	var text string
-	if err := json.Unmarshal(data, &text); err != nil {
-		return err
-	}
-	parsed, err := strconv.ParseInt(text, 10, 64)
-	if err != nil {
-		return err
-	}
-	*v = FlexibleInt64(parsed)
-	return nil
 }
 
 // PowerModuleStatus describes power module state by device.
@@ -370,52 +326,39 @@ type NameValue struct {
 	Value string `json:"value"`
 }
 
-// TransceiverReadings describes appliance or switch transceiver sensor windows.
+// TransceiverReadings describes appliance transceiver sensor windows.
 type TransceiverReadings struct {
 	Serial  string     `json:"serial"`
 	Network NetworkRef `json:"network"`
 	Ports   []struct {
-		PortID        string               `json:"portId"`
-		InterfaceName string               `json:"interfaceName"`
-		Readings      []TransceiverReading `json:"readings"`
+		PortID        string `json:"portId"`
+		InterfaceName string `json:"interfaceName"`
+		Readings      []struct {
+			SFPProductID string `json:"sfpProductId"`
+			ByMetric     struct {
+				Power struct {
+					Transmit SummaryValue `json:"transmit"`
+					Receive  SummaryValue `json:"receive"`
+				} `json:"power"`
+				Temperature struct {
+					Celsius SummaryValue `json:"celsius"`
+				} `json:"temperature"`
+				SupplyVoltage struct {
+					Level SummaryValue `json:"level"`
+				} `json:"supplyVoltage"`
+				LaserBiasCurrent struct {
+					Draw SummaryValue `json:"draw"`
+				} `json:"laserBiasCurrent"`
+			} `json:"byMetric"`
+		} `json:"readings"`
 	} `json:"ports"`
-}
-
-// TransceiverReading is one timestamped DOM snapshot.
-type TransceiverReading struct {
-	StartTS      string `json:"startTs"`
-	EndTS        string `json:"endTs"`
-	SFPProductID string `json:"sfpProductId"`
-	ByMetric     struct {
-		Power struct {
-			Transmit SummaryValue `json:"transmit"`
-			Receive  SummaryValue `json:"receive"`
-		} `json:"power"`
-		Temperature struct {
-			Celsius SummaryValue `json:"celsius"`
-		} `json:"temperature"`
-		SupplyVoltage struct {
-			Level SummaryValue `json:"level"`
-		} `json:"supplyVoltage"`
-		LaserBiasCurrent struct {
-			Draw SummaryValue `json:"draw"`
-		} `json:"laserBiasCurrent"`
-	} `json:"byMetric"`
 }
 
 // SummaryValue is a min/max/median metric value.
 type SummaryValue struct {
-	Minimum *float64 `json:"minimum"`
-	Maximum *float64 `json:"maximum"`
-	Median  *float64 `json:"median"`
-}
-
-// MedianValue returns the reported median while preserving an explicit zero.
-func (v SummaryValue) MedianValue() (float64, bool) {
-	if v.Median == nil {
-		return 0, false
-	}
-	return *v.Median, true
+	Minimum float64 `json:"minimum"`
+	Maximum float64 `json:"maximum"`
+	Median  float64 `json:"median"`
 }
 
 // AppliancePerformance describes per-device MX performance score.

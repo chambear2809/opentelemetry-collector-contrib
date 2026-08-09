@@ -15,7 +15,7 @@ import (
 
 // Config holds configuration for the system scraper.
 type Config struct {
-	MetricsBuilderConfig metadata.MetricsBuilderConfig `mapstructure:",squash"`
+	metadata.MetricsBuilderConfig `mapstructure:",squash"`
 	// Device and Timeout are passed from the main receiver config (not from YAML)
 	Device            connection.DeviceConfig `mapstructure:"-"`
 	Timeout           time.Duration           `mapstructure:"-"`

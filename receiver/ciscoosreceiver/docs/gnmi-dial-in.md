@@ -1,4 +1,4 @@
-# Product-Contract gNMI Dial-In
+# Production gNMI Dial-In
 
 The shared `cisco_os.gnmi` client collects normalized metrics from IOS XE, IOS XR, and NX-OS. Endpoint ownership is a
 static inventory, while product identity and exact catalog-row selection are automatic. Each session uses Capabilities
@@ -14,31 +14,12 @@ exact product/release/domain row marked **Live Qualified** is supported. `Catalo
 a product row to Live Qualified.
 
 The fake-server and synthetic implementation gates can be completed without physical devices. Upstream submission still
-requires human code-owner agreement on the configuration, security model, metric contract, and hardware plan. Exact-build
-live hardware, physical-optics, and backend-delivery validation remain qualification gates; this document does not treat
-their absence as qualification.
+requires human code-owner agreement on the configuration, security model, metric contract, and hardware plan. CML,
+physical-optics, and Splunk validation remain release gates; this document does not treat their absence as qualification.
 
 Existing `ios_xr.dial_out` and `catalyst_9800.dial_out` configurations remain available. Legacy dial-in targets keep
-their legacy decoder and metric names for one fork release and emit a deprecation warning. Every endpoint has one owner
-across the shared and both legacy dial-in lists; case/trailing-dot DNS variants and equivalent IP spellings are
-canonicalized for this ownership check.
-
-## Migration from OS-family targets
-
-`gnmi.targets[].platform` is retained only so the decoder can return an actionable migration error. It never selects a
-contract, including when the target contains only custom subscriptions. Replace it with both required fields:
-
-```yaml
-# Before (rejected)
-platform: nx_os
-
-# After
-product: nexus_9000
-software_version: "10.6(1)"
-```
-
-There is no OS-family compatibility fallback. Choose the product that matches the deployed chassis, configure its
-expected software release identifier, and restart the receiver after correcting a terminal qualification failure.
+their legacy decoder and metric names for one fork release and emit a deprecation warning. Do not configure the same
+endpoint in both a legacy dial-in section and `gnmi.targets`.
 
 ## Secure configuration
 
@@ -65,7 +46,7 @@ receivers:
           tls:
             ca_file: /etc/otel/cisco-ca.pem
             min_version: "1.2"
-            server_name_override: access-switch-01.example.net
+            server_name_override: nexus01.example.net
             reload_interval: 1h
           profiles:
             identity:
@@ -98,45 +79,8 @@ enabled profile that has no implemented path definition for the expected platfor
 coverage registry does not create a subscription by itself.
 
 Credentials modes are `username_password`, `mtls`, and `mtls_username_password`. mTLS modes also require
-`tls.cert_file` and `tls.key_file`. TLS is mandatory: plaintext `tls.insecure` and TLS versions below 1.2 are rejected.
-Certificate verification is enabled by default. Prefer `tls.ca_file` plus `tls.server_name_override`; isolated labs with
-self-signed device certificates may explicitly set `tls.insecure_skip_verify: true`. Arbitrary metadata headers are not
-supported.
-
-For an IOS XE password-authenticated production endpoint, the device-side qualification baseline is:
-
-```text
-gnxi
-gnxi secure-trustpoint <device-server-trustpoint>
-gnxi secure-password-auth
-gnxi secure-port 9339
-gnxi secure-server
-no gnxi server
-gnxi read-only
-no gnxi enable-gnoi
-```
-
-Use `secure-client-auth` for mTLS and both authentication flags for combined mTLS plus username/password. Confirm the
-effective flags, ports, and service state with `show gnxi state detail` and `show gnxi state stats`; do not infer them
-from the presence of `secure-server`. The insecure and secure listeners can run simultaneously, which is why
-`no gnxi server` is an explicit gate. The bare `gnxi` command starts the gNXI process; it is not a configuration
-submode. `gnxi server` is the separate insecure-listener command and remains disabled above.
-
-The pinned IOS XE 17.18.1
-[`Cisco-IOS-XE-gnmi-cfg`](https://github.com/YangModels/yang/blob/63fa41359e1a5d14c844a3a87d8b7d9c000d1e44/vendor/cisco/xe/17181/Cisco-IOS-XE-gnmi-cfg.yang)
-model defaults `enable-gnoi` to `true` and `read-only` to `false`. `gnxi read-only` makes gNMI Set return
-`PERMISSION_DENIED` and disables all gNOI services; `no gnxi enable-gnoi` independently disables those services.
-Both commands are mandatory defense in depth. Retain `show running-config` gNXI lines, `show gnxi state detail`, and
-`show gnxi state stats`, and use a separate administrative read channel to verify the effective
-`Cisco-IOS-XE-gnmi-cfg:gnmi-cfg-data/config/read-only=true` and `enable-gnoi=false` leaves. A configured line alone is
-not effective-state evidence.
-
-IOS XE's gNXI listener can expose gNOI certificate management, OS installation, and factory-reset operations. Current
-Cisco documentation does not establish reliable gNMI path-level data authorization, so a dedicated collector account or
-certificate must pass the controlled negative gNMI Set and gNOI tests below behind a management ACL/firewall. The
-reviewed switch release `17.18.1` predates Cisco's `gnxi secure-vrf` feature, documented from 17.18.2. Use verified
-management-plane ACL/firewall/control-plane isolation for 17.18.1; do not configure a later command or broaden the
-product contract without a separate schema and device qualification.
+`tls.cert_file` and `tls.key_file`. Verified TLS is mandatory: `tls.insecure`, `tls.insecure_skip_verify`, and TLS
+versions below 1.2 are rejected. Arbitrary metadata headers are not supported.
 
 `encoding_preference` is an ordered list of concrete `proto`, `json_ietf`, and `json` choices and defaults to
 `[json_ietf, json]`. Selection happens only after intersecting the preference with the exact catalog path and target
@@ -192,27 +136,11 @@ The summary below describes the existing baseline contracts; catalog presence is
 The identity, system, and interfaces profiles reuse the receiver's existing normalized metrics instead of creating
 platform-specific duplicates:
 
-Every product's interface profile emits `system.network.interface.status`, `cisco.interface.admin.status`, and the
-cumulative sums `system.network.io`, `system.network.errors`, `system.network.packet.count`, and
-`system.network.packet.dropped`. It does not emit `cisco.interface.speed`, `cisco.interface.io.rate`,
-`cisco.interface.packet.rate`, or `cisco.interface.utilization`.
-
-After verification, shared-gNMI resources include `cisco.product.family`, `device.manufacturer=Cisco`, the verified
-`device.model.identifier`, canonical `os.version`, and, when required and verified by the product contract,
-`cisco.os.boot_mode`. For IOS XE, `os.version` is the public release label and excludes the internal install build,
-`version-extension`, and SMU state. Existing `cisco.os.name` and `os.name` remain available.
-`cisco.platform.family` is retained as a legacy OS-family alias for compatibility; new grouping should use
-`cisco.product.family`.
-
-The receiver's internal telemetry exposes
-`otelcol_ciscoosreceiver_gnmi_product_verified{cisco.gnmi.target}` and the cumulative
-`otelcol_ciscoosreceiver_gnmi_preflight_failures{cisco.gnmi.target,cisco.gnmi.reason}`. Preflight reasons are bounded
-to `identity_missing`, `identity_ambiguous`, `product_mismatch`, `release_mismatch`, `missing_model`,
-`unsupported_model_version`, `unsupported_boot_mode`, `unsupported_gnmi_version`, `unsupported_encoding`, and
-`malformed_identity`. Post-preflight stream degradation uses bounded `bisection_limit`, `cache_limit`,
-`incompatible_path_group`, `unsupported_path`, and `unsupported_request_options` reasons. Self-telemetry separately
-counts rejected invalid timestamps, ignored out-of-order updates, owner resets, and unsupported TypedValue kinds
-without using device-controlled labels.
+- `cisco.device.up`, `system.cpu.utilization`, `system.memory.utilization`, and `system.uptime`.
+- `system.network.interface.status`, `system.network.io`, `system.network.errors`,
+  `system.network.packet.count`, and `system.network.packet.dropped`.
+- `cisco.interface.admin.status`, `cisco.interface.speed`, `cisco.interface.io.rate`,
+  `cisco.interface.packet.rate`, and `cisco.interface.utilization`.
 
 The optics profile emits explicit gauges. `network.interface.name`, `cisco.optics.lane`, an allowlisted
 `cisco.optics.sensor`, `cisco.optics.profile`, and `cisco.optics.experimental` identify their source as applicable.
@@ -222,28 +150,27 @@ The optics profile emits explicit gauges. `network.interface.name`, `cisco.optic
 | DOM | `cisco.optics.temperature` | `Cel` |
 | DOM | `cisco.optics.voltage` | `V` |
 | DOM | `cisco.optics.laser_bias_current` | `mA` |
-| DOM | `cisco.optics.rx_power` | `dB{mW}` |
-| DOM | `cisco.optics.tx_power` | `dB{mW}` |
+| DOM | `cisco.optics.rx_power` | `dB[mW]` |
+| DOM | `cisco.optics.tx_power` | `dB[mW]` |
 | DOM | `cisco.optics.present` | `1` |
 | VDM | `cisco.optics.esnr` | `dB` |
 | VDM | `cisco.optics.tdecq` | `dB` |
 | VDM | `cisco.optics.pre_fec_ber` | `1` |
 | VDM | `cisco.optics.tec_current` | `mA` |
 | VDM | `cisco.optics.tec_utilization` | `1` |
-
-`dB{mW}` preserves the device's dBm scale using a valid UCUM annotation. UCUM braces are human-readable annotations,
-so consumers must not treat this spelling as a machine-convertible 1 mW reference.
-
-IOS XE and IOS XR currently map DOM metrics only. IOS XR uses controller and lane DOM leaves and has no coherent
-profile. NX DME maps allowlisted DOM and VDM sensor descriptions. All of these optics paths are experimental.
+| Coherent | `cisco.optics.q_factor` | `dB` |
+| Coherent | `cisco.optics.q_margin` | `dB` |
+| Coherent | `cisco.optics.osnr` | `dB` |
+| Coherent | `cisco.optics.dgd` | `ps` |
+| Coherent | `cisco.optics.chromatic_dispersion` | `ps/nm` |
 
 `cisco.optics.tec_current` and `cisco.optics.tec_utilization` are mutually selected from the sensor's reported unit.
 TDECQ is emitted only when an allowlisted description explicitly identifies TDECQ and the unit is dB. NX-OS's
 "PAM4 level transition parameter" is not TDECQ and is never aliased to it. Unknown sensor IDs are counted as unmapped,
 not exported as new metrics.
 
-Every optical reading sets `cisco.optics.experimental=true` until its exact physical-hardware gate below passes. It
-must not be described as production-ready before qualification.
+NX-OS VDM and IOS XR coherent readings set `cisco.optics.experimental=true` until their physical-hardware gates below
+pass. They must not be described as production-ready before qualification.
 
 ## Removal, freshness, and bounds
 
@@ -256,13 +183,11 @@ Removed readings stop producing samples. When physical presence is semantically 
 "no recorded value" flag for staleness because the SignalFx datapoint translation path does not preserve that flag.
 
 Notifications are split losslessly into consumer calls of at most `max_datapoints_per_chunk` datapoints. Data is never
-trimmed. `max_cached_series` sets one receiver-wide count ceiling for active mapped series, atomic baselines,
-authoritative delete tombstones, and semantic-invalidation watermarks. The independent auxiliary entry ceiling is four
-times that value, accounting for one NX sensor identity and the optical source, presence-count, and attribute entries
-associated with a cached optical series. Each count ceiling is deterministically partitioned across selected targets.
-The cache and auxiliary state also have separate receiver-wide
-retained-byte ceilings: 1.5 GiB for cache correctness state and 256 MiB for auxiliary state, yielding a 1.75 GiB combined
-accounted ceiling. Their conservative byte
+trimmed. `max_cached_series` sets one receiver-wide count ceiling for active mapped series, atomic baselines, and delete
+tombstones. The independent auxiliary entry ceiling is four times that value, accounting for one NX sensor identity and
+the optical source, presence-count, and attribute entries associated with a cached optical series. Each count ceiling is
+deterministically partitioned across selected targets. The cache and auxiliary state also have separate
+256 MiB receiver-wide retained-byte ceilings, yielding a 512 MiB combined accounted ceiling; their conservative byte
 estimates include retained keys, paths, strings, attributes, and sparse-map overhead. The count multiplier provides
 structural headroom while the auxiliary byte ceiling remains the primary defense against oversized metadata. Count and byte budgets are divided
 as evenly as possible, with remainders assigned in configuration order, so one target cannot consume another target's
@@ -283,12 +208,8 @@ each plan is independently limited to 32 MiB of staged payload accounting. The t
 also share a separate cancellation-aware eight-slot processing gate held from direct notification decoding through
 downstream data and health delivery.
 
-Device timestamps are normalized from seconds, milliseconds, microseconds, or nanoseconds. Device time must be
-synchronized within five seconds. A future value no more than five seconds ahead is clamped to receipt time so it
-cannot poison cache ordering. A zero value, a value before year 2000, or a value more than five seconds in the future
-is dropped, counted as an invalid timestamp, and leaves the curated profile qualification-degraded until receiver
-restart; receipt-time fallback is never committed to cache. Older out-of-order state is ignored and counted without
-advancing stream progress or target availability.
+Device timestamps are normalized from seconds, milliseconds, microseconds, or nanoseconds. Values outside year 2000
+through receipt time plus 24 hours fall back to receipt time and increment the invalid-timestamp counter.
 
 ## Security model and rotation
 
@@ -299,9 +220,8 @@ and [IOS XR](https://www.cisco.com/c/en/us/td/docs/iosxr/ncs560/programmability/
 
 - Give every device a unique server private key and certificate with its hostname or management IP in the SAN. Never
   reuse a device private key. Distribute only the enterprise CA chain to collector shards.
-- Use one read-only AAA account per collector shard, rotate it centrally, and test Capabilities, only the bounded
-  contract identity Get paths, and Subscribe while Set and other Get paths are denied. Keep a controlled local break-glass
-  account.
+- Use one read-only AAA account per collector shard, rotate it centrally, and test that Capabilities and Subscribe
+  succeed while Set is denied. Keep a controlled local break-glass account.
 - Optional mTLS uses one short-lived client identity per collector shard and a shared client-CA trust anchor on devices.
   Enable it only after the platform's certificate-to-user authorization mapping is validated.
 - IOS XE supports PKI auto-enrollment and renewal, and IOS XR 24.x supports trustpoint renewal. NX-OS 10.6 documents
@@ -312,34 +232,6 @@ and [IOS XR](https://www.cisco.com/c/en/us/td/docs/iosxr/ncs560/programmability/
   through a config reload or controlled shard rollout. Test device-side and collector-side rotations.
 - Management-VRF isolation, ACLs, Kubernetes NetworkPolicies, and VM outbound firewalls are defense in depth, not a
   substitute for TLS and AAA. Unencrypted production gNMI is prohibited.
-
-### Controlled Catalyst authorization test
-
-C9300/C9500 authorization evidence must be produced outside the receiver and its live harness. Perform the following
-only on a disposable or fully isolated exact-PID/exact-build lab switch with no production traffic:
-
-1. Preserve the startup and running configuration, establish out-of-band console access and a rollback timer, and record
-   the exact PID, topology, image filename, internal install version, `version-extension`, and SMUs.
-2. Apply the secure baseline above through a separate administrative channel. Capture the sanitized gNXI running
-   configuration, `show gnxi state detail`, `show gnxi state stats`, and an administrative read of the effective
-   `read-only=true` and `enable-gnoi=false` YANG leaves.
-3. With a separate one-off client using the exact collector account or certificate, issue a syntactically valid gNMI Set
-   against a reversible test-only configuration leaf using its already-current value. Require gRPC
-   `PERMISSION_DENIED`, then independently prove the configuration did not change. Stop and invalidate the run if the
-   request succeeds or returns any other status.
-4. With the same collector identity, call only a non-mutating gNOI read operation, such as certificate inventory. Require
-   policy denial or service-level unavailability (`PERMISSION_DENIED` or `UNIMPLEMENTED`). A timeout, transport failure,
-   generic `UNAVAILABLE`, or an unreachable listener is not proof that gNOI is disabled. Never invoke certificate
-   install/rotate, OS install/activate, reboot, or factory reset during this test.
-5. Sanitize credentials and private material, but retain the exact request operation/path, gRPC status and message,
-   timestamp, collector-identity fingerprint, before/after configuration digest, and effective-state captures. Hash the
-   immutable artifact as `sha256:<64 lowercase hex characters>` and make it independently retrievable by the backend
-   assertion service.
-
-For C9300/C9500, set that digest as `CISCOOS_E2E_GNMI_AUTHORIZATION_EVIDENCE_SHA256`. The read-only live harness never
-issues Set or gNOI calls. It passes only the digest to the backend and requires the response to echo the exact digest and
-attest `server_read_only=true`, `gnoi_disabled=true`, `negative_set_permission_denied=true`, and
-`negative_gnoi_permission_denied_or_unimplemented=true`. Missing, mismatched, omitted, or false evidence fails qualification.
 
 ## Deployment
 
@@ -361,8 +253,7 @@ decode/unmapped growth, cache use above 80 percent, stream churn, consumer refus
 expiry.
 
 For an authentication alert, stop rapid retries, confirm the shard account is not locked, verify Capabilities and
-the bounded identity Get and Subscribe permissions while Set remains denied, rotate the credential, then roll one shard.
-For a certificate alert, verify SAN and chain first,
+Subscribe permissions, rotate the credential, then roll one shard. For a certificate alert, verify SAN and chain first,
 rotate one device or shard, force a new TLS handshake, and confirm last-success before continuing. For cache pressure,
 identify the profile and series growth, then split the static inventory without overlapping ownership.
 
@@ -402,7 +293,7 @@ chunking portion:
 
 ```sh
 CISCOOS_GNMI_RUN_SCALE_QUALIFICATION=1 GOMAXPROCS=4 go test ./internal/gnmi \
-  -run '^TestInternalGNMIScaleQualification_100Targets5000Ports500KStateCapacity$' -count=1 -v
+  -run '^TestInternalGNMIScaleQualification_100Targets5000Ports500KSeries$' -count=1 -v
 ```
 
 This opt-in harness uses an explicit 1.25 GiB retained-accounting limit for its deliberately high-overhead synthetic
@@ -416,6 +307,6 @@ That harness does not
 exercise 100 TLS listeners, reconnect recovery, exporter queues, or hardware. Those portions of the scale gate remain
 mandatory in the deployment environment.
 
-Splunk Observability Cloud acceptance verifies metric names and dimensions, UCUM units (especially `dB{mW}`),
+Splunk Observability Cloud acceptance verifies metric names and dimensions, UCUM units (especially `dB[mW]`),
 presence/freshness behavior, dashboards, and predictive-model inputs. Removal must stop new optical samples, and
 detectors must exclude `present=0` and stale ports.

@@ -5,7 +5,7 @@ cover Cisco OS SSH collection, Nexus switch SSH collection, Meraki, Intersight, 
 Catalyst SD-WAN, Nexus Dashboard/NDFC/Insights/Orchestrator/Data Broker, ACI/APIC, FMC, ISE, IOS XR telemetry, and
 VAST Storage telemetry for Cisco AI PODs.
 
-The general Cisco OS bundle creates one dashboard group named `Cisco OS Receiver` with an overview dashboard plus focused pages:
+The SSH-focused bundle creates one dashboard group named `Cisco OS Receiver` with an overview dashboard plus focused pages:
 
 | Dashboard | Value Provided |
 | --- | --- |
@@ -17,7 +17,6 @@ The general Cisco OS bundle creates one dashboard group named `Cisco OS Receiver
 | `05 Hardware Optics And Physical Health` | Connects hardware component state, thermal pressure, optical power, transceiver temperature, voltage, and bias current to packet loss or device instability. |
 | `06 Secure Networking` | Blends Cisco OS edge datapath, QFP drops, control-plane protection, protocol errors, and Meraki MX uplink/VPN/cellular/appliance signals. |
 | `07 Campus Networking` | Blends Cisco OS switching/L2/optics with Meraki switching and wireless experience: ports, PoE, APs, SSIDs, clients, RF, topology, and power. |
-| `08 Shared gNMI Operational Health` | Proves product qualification, connections, subscriptions, freshness, profile health, decode and delivery quality, and retained-state capacity for shared-gNMI targets. |
 
 The Meraki-focused bundle creates a second dashboard group named `Cisco Meraki Receiver`:
 
@@ -83,18 +82,9 @@ The Cisco ISE-focused bundle creates a dashboard group named `Cisco ISE Receiver
 | Dashboard | Value Provided |
 | --- | --- |
 | `00 ISE API Trust And Deployment` | Proves whether ISE API polling, endpoint-family coverage, and deployment/node status are healthy before operators trust identity evidence. |
-| `01 AAA Failures Sessions And Posture` | Connects bounded RADIUS/TACACS failure, active-session, posture, and profiler dimensions; correlated ISE logs retain user, endpoint, and network-device identity. |
+| `01 AAA Failures Sessions And Posture` | Connects RADIUS/TACACS failures, active sessions, endpoint posture, and profiler evidence to users, endpoints, and network devices. |
 | `02 Policy TrustSec Alarms And Certificates` | Correlates access behavior with policy objects, TrustSec state, platform alarms, certificate expiry, licensing, and webhook delivery. |
 | `03 pxGrid And Data Connect Coverage` | Validates opt-in pxGrid service/subscription state and Data Connect query health for real-time and historical ISE evidence. |
-
-The Secure Firewall-focused bundle creates a dashboard group named `Cisco Secure Firewall Management Center Receiver`:
-
-| Dashboard | Value Provided |
-| --- | --- |
-| `00 FMC API Trust And Fleet` | Proves whether FMC collection is trustworthy and which managed firewalls are affected before operators act on downstream symptoms. |
-| `01 Firewall Interface And Health` | Separates firewall availability, interface state, chassis/resource symptoms, and health evidence from FMC collection failures. |
-| `02 VPN And HA Availability` | Correlates VPN tunnel/gateway state with FMC and managed-firewall HA, cluster, monitored-interface, and failover evidence. |
-| `03 Policy Deployment And Change Evidence` | Connects policy/object inventory, pending or failed deployments, and bounded audit/config-change evidence to incident timing. |
 
 The Nexus controller-focused bundle creates an API-first dashboard group named `Cisco Nexus Controller Receiver`:
 
@@ -104,7 +94,7 @@ The Nexus controller-focused bundle creates an API-first dashboard group named `
 | `01 Nexus Dashboard Platform And NDFC Fabric` | Correlates ND platform service health, CPU/memory/storage pressure, NDFC fabric health, switch inventory, config compliance, deployment state, endpoint/vPC counts, and interface symptoms. |
 | `02 Insights Root Cause And Advisories` | Turns Insights anomalies, advisories, scores, confidence, status, resource health, and active evidence into a root-cause queue for triage and autopsy. |
 | `03 Orchestrator And Data Broker Operations` | Tracks NDO/OneManage deployments, policy deltas, resource status, site/schema impact, and Data Broker TAP/SPAN/rule/session health for change and packet-visibility workflows. |
-| `04 ACI Fabric Tenant Endpoint Impact` | Correlates APIC controller health, ACI node availability/resource pressure, active faults, tenant/VRF/BD/EPG policy objects, endpoint presence, interface rates/utilization/counters, and topology neighbors. |
+| `04 ACI Fabric Tenant Endpoint Impact` | Correlates APIC controller health, ACI node availability/resource pressure, active faults, tenant/VRF/BD/EPG policy objects, endpoint presence, interfaces, optional traffic/drop counters, and topology neighbors. |
 
 The SSH/NX-OS Nexus switch bundle creates a dashboard group named `Cisco Nexus Switch Receiver`:
 
@@ -151,18 +141,12 @@ root-level `metrics` exact-name or glob filters for families that should not be 
 
 The Splunk UI imports dashboard JSON that was exported from the UI. Splunk documents that editing those exported JSON files is unsupported, so this package uses the supported Observability Cloud REST APIs for dashboard groups, dashboards, and charts.
 
-Use an organization access token with the API permission or a session token. The principal must have the Splunk
-Observability Cloud admin or power role for chart, dashboard, and dashboard-group writes:
+Set a Splunk Observability Cloud API token with dashboard write access:
 
 ```shell
 export SPLUNK_REALM=us1
 export SPLUNK_ACCESS_TOKEN=<api-token>
 ```
-
-The default API endpoint is derived from `SPLUNK_REALM`. A private proxy can be selected with
-`SPLUNK_O11Y_API_URL` or `--api-url`, but the URL must use HTTPS, must not contain credentials, a query, or a
-fragment, and must be the final non-redirecting endpoint. The importer never follows redirects while carrying the
-Splunk access token.
 
 Validate the bundle without calling Splunk:
 
@@ -175,21 +159,10 @@ python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashb
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-catalyst-9800-dashboard-group.bundle.json --dry-run
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-sdwan-dashboard-group.bundle.json --dry-run
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-ise-dashboard-group.bundle.json --dry-run
-python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-fmc-dashboard-group.bundle.json --dry-run
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-nexus-controller-dashboard-group.bundle.json --dry-run
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-nexus-switch-dashboard-group.bundle.json --dry-run
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-ios-xr-dashboard-group.bundle.json --dry-run
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-vast-storage-dashboard-group.bundle.json --dry-run
-```
-
-Run a disposable live API qualification. The non-empty prefix is mandatory, and every created object is deleted after
-read-back verification or after a failure:
-
-```shell
-python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py \
-  --all \
-  --smoke-test \
-  --prefix "Cisco OS validation 20260704T193536Z - "
 ```
 
 Import the dashboard group:
@@ -203,38 +176,13 @@ python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashb
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-catalyst-9800-dashboard-group.bundle.json
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-sdwan-dashboard-group.bundle.json
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-ise-dashboard-group.bundle.json
-python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-fmc-dashboard-group.bundle.json
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-nexus-controller-dashboard-group.bundle.json
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-nexus-switch-dashboard-group.bundle.json
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-ios-xr-dashboard-group.bundle.json
 python3 receiver/ciscoosreceiver/dashboards/splunk-o11y/import_splunk_o11y_dashboards.py --bundle receiver/ciscoosreceiver/dashboards/splunk-o11y/cisco-vast-storage-dashboard-group.bundle.json
 ```
 
-Normal imports also read every created group, dashboard, and chart back from Splunk and verify names, relationships,
-chart types, SignalFlow, filters, and layouts before returning success. A verification failure triggers the same
-best-effort rollback as a create failure.
-
-Use `--prefix "Lab - "` to create a separate copy for testing. When the Splunk write-permissions feature is enabled,
-repeat `--team-id <TEAM_ID>` to link the group to those teams and make them the authorized writers for the group and
-its dashboards. Without explicit permissions, Splunk makes custom dashboard groups and dashboards editable and
-deletable by all users in the organization.
-
-The importer validates every requested bundle and checks every requested group name before creating anything. It
-fails on an exact duplicate group name unless `--allow-duplicate` is explicit. If a create fails, it makes a
-best-effort rollback of the dashboards, charts, and groups whose IDs Splunk returned; an `--all` failure also rolls
-back bundles completed earlier in that invocation. Review any `rollback warning` before retrying. GET and DELETE
-requests retry throttles and transient server/transport failures. Non-idempotent POST requests retry explicit HTTP
-429 throttles while honoring `Retry-After`, but do not retry ambiguous transport or 5xx failures that could otherwise
-create an unknown duplicate. Successful API response bodies are limited to 16 MiB. Error bodies are read only through
-a 64 KiB bound and are never included in terminal output, preventing a proxy or API from reflecting submitted content
-or the access token into logs.
-
-For a first production rollout, use `--smoke-test` with a temporary prefix. It creates every requested object, reads
-it back to verify names, relationships, chart types, SignalFlow, filters, and layouts, and then deletes it in the same
-process. The chart endpoint has been observed to require `TimeSeriesChart`; the published API enum/example says
-`TimeSeries`, while its prose and the observed accepted subtype say `TimeSeriesChart`. The importer and its regression
-tests preserve that compatibility behavior. No sanitized API transcript is retained in-tree, so this observation is
-not recorded as a live qualification in the validation matrix.
+Use `--prefix "Lab - "` to create a separate copy for testing.
 
 ## Bundle Format
 
@@ -242,8 +190,7 @@ not recorded as a live qualification in the validation matrix.
 `cisco-meraki-dashboard-group.bundle.json`, `cisco-intersight-dashboard-group.bundle.json`,
 `cisco-catalyst-center-dashboard-group.bundle.json`, `cisco-catalyst-9800-dashboard-group.bundle.json`,
 `cisco-sdwan-dashboard-group.bundle.json`, `cisco-ise-dashboard-group.bundle.json`,
-`cisco-fmc-dashboard-group.bundle.json`,
-`cisco-nexus-controller-dashboard-group.bundle.json`,
+`cisco-nexus-controller-dashboard-group.bundle.json`, and
 `cisco-ios-xr-dashboard-group.bundle.json`, and
 `cisco-vast-storage-dashboard-group.bundle.json` are small
 repo-native bundles. The importer converts them into Splunk Observability Cloud API payloads:
@@ -252,15 +199,7 @@ repo-native bundles. The importer converts them into Splunk Observability Cloud 
 - `POST /v2/chart` creates each chart with SignalFlow.
 - `POST /v2/dashboard` places charts into dashboards in the group.
 
-The importer translates dashboard-wide bundle `filters.variables` into the current Splunk v2 API representation,
-including the required empty `value` list when no default selection is configured. Review-only `description` and
-`applyIfExists` fields are not sent. The bundles include variables for device, interface, fabric/site, and
-product-specific identifiers such as the verified shared-gNMI product family and target/profile, Meraki serials, Intersight Moids, Catalyst device IDs, Catalyst 9800
-AP/client/SSID attributes, SD-WAN system IPs/site IDs/applications, NDFC switch IDs, ACI node IDs, FMC policy and
-domain identifiers, ISE node/protocol/policy dimensions, and IOS XR YANG module/transport dimensions. The repo-native
-`TimeSeriesChart` type is preserved for compatibility with the observed chart-endpoint behavior. Dry-run mode validates the bundle schema,
-chart types and layout bounds, dashboard and chart descriptions, SignalFlow presence, text-panel markdown, duplicate
-names, and dashboard variables.
+The importer passes dashboard-wide `filters.variables` from each bundle into every dashboard payload. The bundles include variables for device, interface, fabric/site, and product-specific identifiers such as Meraki serials, Intersight Moids, Catalyst device IDs, Catalyst 9800 AP/client/SSID attributes, SD-WAN system IPs/site IDs/applications, NDFC switch IDs, ACI node IDs, ISE endpoint/user identifiers, and IOS XR YANG module/transport dimensions. Dry-run mode validates bundle shape, dashboard and chart descriptions, SignalFlow presence, text-panel markdown, duplicate names, and dashboard variables.
 
 This keeps the source reviewable while still making the dashboards importable into a real Splunk Observability organization.
 
@@ -286,7 +225,7 @@ or `counters` groups are enabled.
 
 The Cisco OS receiver observes the switch side of RoCEv2. For full RDMA autopsy, pair these dashboards with host/NIC telemetry for CNP packets, retransmits, retry or timeout errors, RNR NAKs, QP errors, RDMA CM failures, MTU, and DSCP/PCP/traffic-class mapping.
 
-For Meraki dashboards, configure the receiver with at least one `meraki.organizations` or `meraki.devices` target. The fleet/API page should populate for any Meraki target. WAN/VPN panels require appliance data, wireless panels require wireless devices, and switching/physical panels require switch, power module, topology, or transceiver endpoint data exposed by the Meraki organization. Switch DOM charts require Meraki beta enrollment plus `meraki.switch_transceivers.enabled: true`; appliance DOM remains enabled without that opt-in.
+For Meraki dashboards, configure the receiver with at least one `meraki.organizations` or `meraki.devices` target. The fleet/API page should populate for any Meraki target. WAN/VPN panels require appliance data, wireless panels require wireless devices, and switching/physical panels require switch, power module, topology, or transceiver endpoint data exposed by the Meraki organization.
 
 For Intersight dashboards, configure the receiver with `intersight.enabled: true` and Intersight API-key authentication.
 The fleet/API page should populate for any reachable Intersight account. Incident evidence panels require active or
@@ -318,20 +257,11 @@ trust, deployment, network-device, endpoint, session, auth-failure, posture, pro
 license, and webhook panels populate from REST-safe groups. pxGrid and Data Connect pages require
 `ise.pxgrid.enabled` or `ise.data_connect.enabled` plus their dedicated credentials because those feeds are opt-in.
 
-For FMC dashboards, configure `fmc.enabled: true` with at least one reachable FMC controller and read-only API
-credentials. API trust and fleet panels populate from manager and inventory collection. Interface, health, VPN, HA,
-policy, deployment, and audit panels require their matching FMC groups; eStreamer connection, intrusion, packet, and
-file events remain high-cardinality logs and are intentionally not converted into dashboard metric dimensions.
-
 For Nexus Dashboard/NDFC/Insights/NDO/Data Broker dashboards, configure `nexus_dashboard.enabled: true` with API-key
 auth where possible. Broad controller trust and inventory panels populate with only the ND endpoint; interface and
-policy-detail panels need exact target filters because several NDFC detail APIs are switch- or fabric-scoped:
-`fabrics` expands fabric switch-overview and endpoint operations, `switch_serials` expands policy deployment, and
-`switch_ids` expands interface statistics. With their groups enabled, an absent selector intentionally emits
-`nexus_dashboard.service.skipped`, sets `nexus_dashboard.scrape.partial_success=1`, and prevents
-`nexus_dashboard.scrape.last_success` from advancing. Missing apps are expected in some environments and are surfaced
-through `nexus_dashboard.service.unavailable`. For clean platform-only collection, explicitly disable `ndfc`,
-`insights`, `orchestrator`, `data_broker`, and `performance`; all collection groups otherwise default to enabled.
+policy-detail panels need target filters such as `switch_ids`, `switch_serials`, and `fabrics` because several NDFC
+detail APIs are switch- or fabric-scoped. Missing apps are expected in some environments and are surfaced through
+`nexus_dashboard.service.unavailable`, `nexus_dashboard.service.skipped`, and `nexus_dashboard.scrape.partial_success`.
 
 For ACI dashboards, configure `aci.enabled: true` with at least one APIC controller. Fabric and fault panels populate
 from APIC class queries; tenant, endpoint, and topology pages become more useful when `aci.targets` is scoped to the

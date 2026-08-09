@@ -7,8 +7,6 @@ $defs:
         $ref: nexus_controller_group_config
       auth:
         $ref: controller_auth_config
-      ca_file:
-        type: string
       controller_health:
         $ref: nexus_controller_group_config
       controllers:
@@ -30,16 +28,12 @@ $defs:
         $ref: nexus_controller_group_config
       insecure_skip_verify:
         type: boolean
-      logs:
-        $ref: aci_logs_config
       max_retries:
         type: integer
       nodes:
         $ref: nexus_controller_group_config
       page_size:
         type: integer
-      server_name:
-        type: string
       stats:
         $ref: nexus_controller_group_config
       targets:
@@ -58,22 +52,6 @@ $defs:
         type: string
       name:
         type: string
-  aci_log_signal_config:
-    description: ACILogSignalConfig controls one APIC log signal independently from its metric collection group. A signal defaults to disabled. When present, the signal setting must be a non-null mapping.
-    type: object
-    properties:
-      enabled:
-        type: boolean
-  aci_logs_config:
-    description: ACILogsConfig controls the APIC record classes emitted as logs. When present, the logs setting must be a non-null mapping.
-    type: object
-    properties:
-      audit:
-        $ref: aci_log_signal_config
-      events:
-        $ref: aci_log_signal_config
-      faults:
-        $ref: aci_log_signal_config
   aci_target_filters:
     description: ACITargetFilters limits APIC collection to relevant nodes, tenants, and objects.
     type: object
@@ -178,16 +156,11 @@ $defs:
         type: integer
         x-customType: uint32
       module_paths:
-        description: ModulePaths contains up to 64 regular .yang files or directories. Startup bounds traversal to 100,000 entries, 10,000 files, 16 MiB per file, and 128 MiB of module data across all configured paths.
         type: array
         items:
           type: string
       rate_limiting:
         $ref: /receiver/yanggrpcreceiver.rate_limiting_config
-      stream_idle_timeout:
-        description: StreamIdleTimeout closes a dial-out stream that sends no telemetry frame for this duration. Zero selects the production default of 30 minutes.
-        type: string
-        format: duration
     allOf:
       - $ref: go.opentelemetry.io/collector/config/configgrpc.server_config
   catalyst_9800_path_group_config:
@@ -557,7 +530,7 @@ $defs:
       username:
         type: string
   gnmi_custom_subscription_config:
-    description: GNMICustomSubscriptionConfig defines explicitly mapped custom scalar paths. Origin is independent of every path; raw origin:path strings are rejected by the path parser. PathTarget is decoder-only and always rejected because every built-in direct-device product contract forbids proxy target prefixes.
+    description: GNMICustomSubscriptionConfig defines explicitly mapped custom scalar paths. Origin is independent of every path; raw origin:path strings are rejected by the path parser.
     type: object
     properties:
       encoding:
@@ -568,36 +541,18 @@ $defs:
           $ref: gnmi_metric_mapping_config
       mode:
         type: string
-      models:
-        description: Models lists exact Capabilities ModelData names required by this stream. It is mandatory for the generic OpenConfig origin because that origin is not itself a YANG module name.
-        type: array
-        items:
-          type: string
       name:
         type: string
       origin:
         type: string
-      path_target:
-        description: PathTarget is a decoder-only migration field retained so validation can return an actionable error. It is never added to a contract-governed request.
-        type: string
-      paths:
-        type: array
-        items:
-          $ref: gnmi_subscription_path_config
       poll_interval:
         type: string
         format: duration
-      qos_marking:
-        x-pointer: true
-        type: integer
-        x-customType: uint32
       required:
         type: boolean
       sample_interval:
         type: string
         format: duration
-      updates_only:
-        type: boolean
   gnmi_dial_out_identity_binding_config:
     description: GNMIDialOutIdentityBindingConfig binds one or more network sources to the node IDs those sources are permitted to claim in MDT telemetry payloads.
     type: object
@@ -670,29 +625,10 @@ $defs:
         x-customType: float64
       unit:
         type: string
-  gnmi_path_options_config:
-    description: GNMIPathOptionsConfig controls how one path behaves within a STREAM SubscriptionList. Pointer fields preserve omission, including the gNMI SAMPLE convention where an explicit zero requests the fastest supported interval.
-    type: object
-    properties:
-      heartbeat_interval:
-        x-pointer: true
-        type: string
-        format: duration
-      sample_interval:
-        x-pointer: true
-        type: string
-        format: duration
-      stream_mode:
-        type: string
-      suppress_redundant:
-        x-pointer: true
-        type: boolean
   gnmi_profile_config:
     description: 'GNMIProfileConfig controls one curated subscription profile. Pointer booleans preserve the distinction between an omitted value and enabled: false.'
     type: object
     properties:
-      allow_aggregation:
-        type: boolean
       enabled:
         x-pointer: true
         type: boolean
@@ -753,9 +689,6 @@ $defs:
     description: GNMITargetConfig identifies one statically owned dial-in target.
     type: object
     properties:
-      allow_unqualified:
-        description: AllowUnqualified explicitly acknowledges that the selected product contract requires an opt-in because retained physical-device qualification is incomplete. It is rejected for contracts that do not require this acknowledgement.
-        type: boolean
       capabilities_timeout:
         type: string
         format: duration
@@ -773,7 +706,6 @@ $defs:
         items:
           type: string
       endpoint:
-        description: Endpoint is a direct-device TCP endpoint in strict host:port form.
         type: string
       keepalive:
         $ref: gnmi_keepalive_config
@@ -784,10 +716,6 @@ $defs:
       name:
         type: string
       platform:
-        description: Platform remains decoder-only so configurations from the OS-family preview receive an actionable migration error instead of an unknown-key diagnostic. It is never used to select profiles or runtime behavior.
-        type: string
-      product:
-        description: 'Product is one of the canonical product contracts: catalyst_9300, catalyst_9500, catalyst_9800, asr_9000, ncs_5500, nexus_9000, or nexus_3500.'
         type: string
       product_family:
         type: string
@@ -799,7 +727,7 @@ $defs:
       tls:
         $ref: gnmitls_config
   gnmitls_config:
-    description: GNMITLSConfig exposes the TLS settings used by the shared client. Plaintext transport is always rejected. Certificate verification can be disabled only through the explicit lab-oriented InsecureSkipVerify option.
+    description: GNMITLSConfig exposes only verified TLS settings used by the shared client. The insecure fields are retained solely so configuration validation can reject them with a specific error rather than silently accepting them.
     type: object
     properties:
       ca_file:
@@ -961,16 +889,11 @@ $defs:
         type: integer
         x-customType: uint32
       module_paths:
-        description: ModulePaths contains up to 64 regular .yang files or directories. Startup bounds traversal to 100,000 entries, 10,000 files, 16 MiB per file, and 128 MiB of module data across all configured paths.
         type: array
         items:
           type: string
       rate_limiting:
         $ref: /receiver/yanggrpcreceiver.rate_limiting_config
-      stream_idle_timeout:
-        description: StreamIdleTimeout closes a dial-out stream that sends no telemetry frame for this duration. Zero selects the production default of 30 minutes.
-        type: string
-        format: duration
     allOf:
       - $ref: go.opentelemetry.io/collector/config/configgrpc.server_config
   iosxr_path_group_config:
@@ -999,7 +922,6 @@ $defs:
         x-optional: true
         type: boolean
       heartbeat_interval:
-        x-pointer: true
         type: string
         format: duration
       mode:
@@ -1103,8 +1025,6 @@ $defs:
         $ref: ise_px_grid_config
       server_name:
         type: string
-      session_details:
-        $ref: ise_group_config
       session_lookback:
         type: string
         format: duration
@@ -1126,8 +1046,6 @@ $defs:
         type: array
         items:
           type: string
-      ca_file:
-        type: string
       enabled:
         type: boolean
       full_views:
@@ -1143,8 +1061,6 @@ $defs:
         type: integer
       row_limit:
         type: integer
-      server_name:
-        type: string
       service_name:
         type: string
       ssl:
@@ -1193,8 +1109,6 @@ $defs:
         type: boolean
       key_file:
         type: string
-      key_password:
-        $ref: go.opentelemetry.io/collector/config/configopaque.string
       max_results:
         type: integer
       node_name:
@@ -1275,16 +1189,12 @@ $defs:
         type: array
         items:
           $ref: meraki_device_config
-      insecure_skip_verify:
-        type: boolean
       max_retries:
         type: integer
       organizations:
         type: array
         items:
           $ref: meraki_organization_config
-      switch_transceivers:
-        $ref: meraki_switch_transceivers_config
       user_agent:
         type: string
   meraki_device_config:
@@ -1319,12 +1229,6 @@ $defs:
           type: string
       tags_filter_type:
         type: string
-  meraki_switch_transceivers_config:
-    description: MerakiSwitchTransceiversConfig controls the Meraki switch DOM beta endpoint.
-    type: object
-    properties:
-      enabled:
-        type: boolean
   metric_config:
     description: MetricConfig controls whether a named metric or metric-name glob is forwarded by the Cisco OS receiver.
     type: object
@@ -1343,8 +1247,6 @@ $defs:
     description: NexusDashboardConfig defines Nexus Dashboard, NDFC, Insights, NDO, OneManage, and Data Broker polling settings.
     type: object
     properties:
-      api_profile:
-        type: string
       auth:
         $ref: controller_auth_config
       data_broker:
@@ -1614,10 +1516,5 @@ properties:
   sdwan:
     description: SDWAN contains Cisco Catalyst SD-WAN Manager API polling settings.
     $ref: sdwan_config
-  storage:
-    description: StorageID is an optional Collector storage extension used to persist delivery-safe receiver checkpoints across restarts.
-    x-pointer: true
-    type: string
-    x-customType: go.opentelemetry.io/collector/component.ID
 allOf:
   - $ref: go.opentelemetry.io/collector/scraper/scraperhelper.controller_config

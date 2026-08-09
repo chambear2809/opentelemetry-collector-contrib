@@ -27,17 +27,6 @@ func TestPaginationLimitErrorIsTypedAndExplicit(t *testing.T) {
 	var limitErr *PaginationLimitError
 	require.ErrorAs(t, err, &limitErr)
 	assert.Equal(t, 42, limitErr.Results)
-	assert.True(t, limitErr.Hard)
-	assert.ErrorContains(t, err, "hard page limit")
-	assert.ErrorContains(t, err, "partial results")
-}
-
-func TestConfiguredPaginationLimitErrorIsExplicit(t *testing.T) {
-	err := NewConfiguredPaginationLimitError("inventory", "result", 25, 25)
-	var limitErr *PaginationLimitError
-	require.ErrorAs(t, err, &limitErr)
-	assert.False(t, limitErr.Hard)
-	assert.ErrorContains(t, err, "configured result limit")
 	assert.ErrorContains(t, err, "partial results")
 }
 

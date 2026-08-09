@@ -1700,7 +1700,7 @@ func TestMetricsBuilder(t *testing.T) {
 					validatedMetrics["cisco.scrape.partial_success"] = true
 					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-					assert.Equal(t, "Whether the scrape completed with at least one command-family failure.", mi.Description())
+					assert.Equal(t, "Cisco receiver scrape partial success status (1 = partial success, 0 = complete success)", mi.Description())
 					assert.Equal(t, "1", mi.Unit())
 					dp := mi.Gauge().DataPoints().At(0)
 					assert.Equal(t, start, dp.StartTimestamp())
@@ -1726,7 +1726,7 @@ func TestMetricsBuilder(t *testing.T) {
 					validatedMetrics["system.cpu.utilization"] = true
 					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-					assert.Equal(t, "Ratio of CPU time in use, from 0 to 1.", mi.Description())
+					assert.Equal(t, "Percentage of CPU time in use.", mi.Description())
 					assert.Equal(t, "1", mi.Unit())
 					dp := mi.Gauge().DataPoints().At(0)
 					assert.Equal(t, start, dp.StartTimestamp())
@@ -1738,7 +1738,7 @@ func TestMetricsBuilder(t *testing.T) {
 					validatedMetrics["system.memory.utilization"] = true
 					assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
 					assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
-					assert.Equal(t, "Ratio of memory bytes in use, from 0 to 1.", mi.Description())
+					assert.Equal(t, "Percentage of memory bytes in use.", mi.Description())
 					assert.Equal(t, "1", mi.Unit())
 					dp := mi.Gauge().DataPoints().At(0)
 					assert.Equal(t, start, dp.StartTimestamp())

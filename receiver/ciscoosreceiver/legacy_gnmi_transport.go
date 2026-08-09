@@ -33,15 +33,14 @@ type legacyGNMISession struct {
 	settings receiver.Settings
 	host     component.Host
 
-	clientConfig                 configgrpc.ClientConfig
-	username                     string
-	password                     string
-	skipCapabilities             bool
-	pollInterval                 time.Duration
-	targetName                   string
-	onceCloseLog                 string
-	insecureSkipVerifyConfigPath string
-	responseAdmission            *gnmiResponseAdmission
+	clientConfig      configgrpc.ClientConfig
+	username          string
+	password          string
+	skipCapabilities  bool
+	pollInterval      time.Duration
+	targetName        string
+	onceCloseLog      string
+	responseAdmission *gnmiResponseAdmission
 
 	buildRequest func(*gnmi.CapabilityResponse) (*gnmi.SubscribeRequest, error)
 	onSubscribed func()
@@ -54,10 +53,7 @@ type legacyGNMIResponseEvent struct {
 	err    error
 }
 
-func (s legacyGNMISession) run(ctx context.Context) (runErr error) {
-	defer func() {
-		runErr = sanitizedGNMIRPCError(runErr)
-	}()
+func (s legacyGNMISession) run(ctx context.Context) error {
 	sessionCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -72,7 +68,7 @@ func (s legacyGNMISession) run(ctx context.Context) (runErr error) {
 		)),
 	)
 	if err != nil {
-		return s.decorateTLSConnectionError(sanitizedGNMIRPCError(err))
+		return err
 	}
 	defer conn.Close()
 
@@ -128,7 +124,7 @@ func (s legacyGNMISession) run(ctx context.Context) (runErr error) {
 	switch request.GetSubscribe().GetMode() {
 	case gnmi.SubscriptionList_ONCE:
 		if closeErr := stream.CloseSend(); closeErr != nil {
-			s.settings.Logger.Debug(s.onceCloseLog, zap.String("target", s.targetName), zap.Error(sanitizedGNMIRPCError(closeErr)))
+			s.settings.Logger.Debug(s.onceCloseLog, zap.String("target", s.targetName), zap.Error(closeErr))
 		}
 		if err := waitLegacyGNMISync(sessionCtx, events); err != nil {
 			return err
@@ -144,17 +140,6 @@ func (s legacyGNMISession) run(ctx context.Context) (runErr error) {
 	default:
 		return fmt.Errorf("unsupported legacy gNMI subscription mode %s", request.GetSubscribe().GetMode())
 	}
-}
-
-func (s legacyGNMISession) decorateTLSConnectionError(err error) error {
-	if err == nil || s.insecureSkipVerifyConfigPath == "" || s.clientConfig.TLS.InsecureSkipVerify {
-		return err
-	}
-	return fmt.Errorf(
-		"%w; verify endpoint reachability, gNMI service availability, TLS minimum version, and certificate trust via tls.ca_file and tls.server_name_override; if the endpoint uses a self-signed certificate in an isolated lab, set %s: true",
-		err,
-		s.insecureSkipVerifyConfigPath,
-	)
 }
 
 func (s legacyGNMISession) runPoll(

@@ -4,8 +4,6 @@
 package ciscoosreceiver
 
 import (
-	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,6 +15,7 @@ import (
 	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
+	"go.opentelemetry.io/collector/confmap/xconfmap"
 	"go.opentelemetry.io/collector/scraper/scraperhelper"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/connection"
@@ -39,413 +38,6 @@ func validTestDevice() DeviceConfig {
 		Password:           configopaque.String("password"),
 		InsecureSkipVerify: true,
 	})
-}
-
-func TestDefaultACIConfigKeepsMetricsEnabledAndLogsDisabled(t *testing.T) {
-	cfg := defaultACIConfig()
-
-	assert.True(t, cfg.Faults.Enabled)
-	assert.True(t, cfg.Audit.Enabled)
-	assert.True(t, cfg.Events.Enabled)
-	assert.False(t, cfg.Logs.Faults.Enabled)
-	assert.False(t, cfg.Logs.Audit.Enabled)
-	assert.False(t, cfg.Logs.Events.Enabled)
-	assert.False(t, cfg.hasLogs())
-}
-
-func TestACILogOptInActivatesACIValidationWithAnotherValidProvider(t *testing.T) {
-	cfg := createDefaultConfig().(*Config)
-	cfg.Meraki.Auth.APIKey = configopaque.String("meraki-key")
-	cfg.Meraki.Organizations = []MerakiOrganizationConfig{{OrganizationID: "123456"}}
-
-	assert.False(t, cfg.ACI.hasTarget())
-	require.NoError(t, cfg.Validate(), "safe-default ACI logs must remain inert")
-
-	cfg.ACI.Logs.Audit.Enabled = true
-	assert.True(t, cfg.ACI.hasTarget(), "an explicit ACI log opt-in must express ACI configuration intent")
-	err := cfg.Validate()
-	require.ErrorContains(t, err, "aci.controllers must include at least one APIC endpoint")
-	assert.ErrorContains(t, err, "aci.auth.username must be provided")
-	assert.ErrorContains(t, err, "aci.auth.password must be provided")
-}
-
-func TestACILogOnlyIntentActivatesACIValidationWithoutAnotherProvider(t *testing.T) {
-	cfg := createDefaultConfig().(*Config)
-	cfg.ACI.Logs.Events.Enabled = true
-
-	assert.True(t, cfg.ACI.hasTarget())
-	err := cfg.Validate()
-	require.ErrorContains(t, err, "aci.controllers must include at least one APIC endpoint")
-	assert.ErrorContains(t, err, "aci.auth.username must be provided")
-	assert.ErrorContains(t, err, "aci.auth.password must be provided")
-}
-
-func TestConfigUnmarshalACILogOptInAndLegacyCompatibility(t *testing.T) {
-	tests := []struct {
-		name             string
-		aci              map[string]any
-		wantMetricFaults bool
-		wantLogs         ACILogsConfig
-	}{
-		{
-			name:             "omitted log config stays disabled",
-			aci:              map[string]any{},
-			wantMetricFaults: true,
-		},
-		{
-			name: "new signal settings opt in independently",
-			aci: map[string]any{
-				"logs": map[string]any{
-					"faults": map[string]any{"enabled": true},
-					"audit":  map[string]any{"enabled": false},
-					"events": map[string]any{"enabled": true},
-				},
-			},
-			wantMetricFaults: true,
-			wantLogs: ACILogsConfig{
-				Faults: ACILogSignalConfig{Enabled: true},
-				Events: ACILogSignalConfig{Enabled: true},
-			},
-		},
-		{
-			name: "explicit legacy group opt in remains compatible",
-			aci: map[string]any{
-				"faults": map[string]any{"enabled": true},
-				"audit":  map[string]any{"enabled": false},
-			},
-			wantMetricFaults: true,
-			wantLogs: ACILogsConfig{
-				Faults: ACILogSignalConfig{Enabled: true},
-			},
-		},
-		{
-			name: "new explicit setting overrides legacy opt in",
-			aci: map[string]any{
-				"faults": map[string]any{"enabled": true},
-				"logs": map[string]any{
-					"faults": map[string]any{"enabled": false},
-				},
-			},
-			wantMetricFaults: true,
-		},
-		{
-			name: "new empty signal block keeps safe default over legacy opt in",
-			aci: map[string]any{
-				"faults": map[string]any{"enabled": true},
-				"logs": map[string]any{
-					"faults": map[string]any{},
-				},
-			},
-			wantMetricFaults: true,
-		},
-		{
-			name: "log opt in does not reenable fault metrics",
-			aci: map[string]any{
-				"faults": map[string]any{"enabled": false},
-				"logs": map[string]any{
-					"faults": map[string]any{"enabled": true},
-				},
-			},
-			wantMetricFaults: false,
-			wantLogs: ACILogsConfig{
-				Faults: ACILogSignalConfig{Enabled: true},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := createDefaultConfig().(*Config)
-			require.NoError(t, cfg.Unmarshal(confmap.NewFromStringMap(map[string]any{"aci": tt.aci})))
-
-			assert.Equal(t, tt.wantMetricFaults, cfg.ACI.Faults.Enabled)
-			assert.Equal(t, tt.wantLogs.Faults.Enabled, cfg.ACI.Logs.Faults.Enabled)
-			assert.Equal(t, tt.wantLogs.Audit.Enabled, cfg.ACI.Logs.Audit.Enabled)
-			assert.Equal(t, tt.wantLogs.Events.Enabled, cfg.ACI.Logs.Events.Enabled)
-		})
-	}
-}
-
-func TestConfigUnmarshalRejectsMalformedACILogSettings(t *testing.T) {
-	type malformedShape struct {
-		name    string
-		value   any
-		nullErr bool
-	}
-	shapes := []malformedShape{
-		{name: "boolean", value: false},
-		{name: "null", value: nil, nullErr: true},
-		{name: "string", value: "enabled"},
-		{name: "list", value: []any{"enabled"}},
-	}
-	type testCase struct {
-		name    string
-		aci     map[string]any
-		wantErr string
-	}
-
-	tests := make([]testCase, 0, len(shapes)*4)
-	for _, shape := range shapes {
-		wantErr := "logs"
-		if shape.nullErr {
-			wantErr = "aci.logs must be a map and cannot be null"
-		}
-		tests = append(tests, testCase{
-			name: "top-level logs/" + shape.name,
-			aci: map[string]any{
-				"faults": map[string]any{"enabled": true},
-				"logs":   shape.value,
-			},
-			wantErr: wantErr,
-		})
-
-		for _, signal := range []string{"faults", "audit", "events"} {
-			wantSignalErr := "logs"
-			if shape.nullErr {
-				wantSignalErr = fmt.Sprintf("aci.logs.%s must be a map and cannot be null", signal)
-			}
-			tests = append(tests, testCase{
-				name: signal + " signal/" + shape.name,
-				aci: map[string]any{
-					signal: map[string]any{"enabled": true},
-					"logs": map[string]any{signal: shape.value},
-				},
-				wantErr: wantSignalErr,
-			})
-		}
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := createDefaultConfig().(*Config)
-			err := cfg.Unmarshal(confmap.NewFromStringMap(map[string]any{"aci": tt.aci}))
-			require.Error(t, err)
-			assert.Contains(t, strings.ToLower(err.Error()), strings.ToLower(tt.wantErr))
-			assert.False(t, cfg.ACI.hasLogs(), "malformed input must never enable ACI logs")
-		})
-	}
-}
-
-func TestConfigUnmarshalRejectsNullACILogSettingsFromYAML(t *testing.T) {
-	type testCase struct {
-		name    string
-		yaml    string
-		wantErr string
-	}
-	tests := []testCase{
-		{
-			name:    "top-level logs",
-			yaml:    "aci:\n  logs: null\n",
-			wantErr: "aci.logs must be a map and cannot be null",
-		},
-	}
-	for _, signal := range []string{"faults", "audit", "events"} {
-		tests = append(tests, testCase{
-			name:    signal + " signal",
-			yaml:    fmt.Sprintf("aci:\n  logs:\n    %s: null\n", signal),
-			wantErr: fmt.Sprintf("aci.logs.%s must be a map and cannot be null", signal),
-		})
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "config.yaml")
-			require.NoError(t, os.WriteFile(path, []byte(tt.yaml), 0o600))
-			cm, err := confmaptest.LoadConf(path)
-			require.NoError(t, err)
-
-			cfg := createDefaultConfig().(*Config)
-			err = cfg.Unmarshal(cm)
-			require.ErrorContains(t, err, tt.wantErr)
-			assert.False(t, cfg.ACI.hasLogs(), "YAML null must never enable ACI logs")
-		})
-	}
-}
-
-func TestConfigValidateRejectsUnsafeDeviceSelection(t *testing.T) {
-	tests := []struct {
-		name    string
-		config  DeviceSelectionConfig
-		wantErr string
-	}{
-		{
-			name:    "blank include",
-			config:  DeviceSelectionConfig{Include: DeviceSelectionMatchConfig{Serials: []string{" "}}},
-			wantErr: "include.serials[0] cannot be empty",
-		},
-		{
-			name:    "blank exclude",
-			config:  DeviceSelectionConfig{Exclude: DeviceSelectionMatchConfig{DeviceIDs: []string{"\t"}}},
-			wantErr: "exclude.device_ids[0] cannot be empty",
-		},
-		{
-			name:    "invalid IP",
-			config:  DeviceSelectionConfig{Include: DeviceSelectionMatchConfig{HostIPs: []string{"192.0.2.999"}}},
-			wantErr: "include.host_ips[0] must be a valid IP address",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := createDefaultConfig().(*Config)
-			cfg.Devices = []DeviceConfig{validTestDevice()}
-			cfg.Scrapers = map[component.Type]component.Config{component.MustNewType("system"): nil}
-			cfg.DeviceSelection = tt.config
-			require.ErrorContains(t, cfg.Validate(), tt.wantErr)
-		})
-	}
-}
-
-func TestControllerConfigRejectsDuplicateEffectiveIdentities(t *testing.T) {
-	t.Run("SSH normalized endpoint", func(t *testing.T) {
-		for _, tt := range []struct {
-			name       string
-			firstHost  string
-			secondHost string
-			endpoint   string
-		}{
-			{name: "DNS case and trailing dot", firstHost: "Router.EXAMPLE.test.", secondHost: "router.example.test", endpoint: "router.example.test:22"},
-			{name: "canonical IPv6", firstHost: "2001:0db8:0:0:0:0:0:10", secondHost: "2001:db8::10", endpoint: "[2001:db8::10]:22"},
-		} {
-			t.Run(tt.name, func(t *testing.T) {
-				first := validTestDevice()
-				first.Host = tt.firstHost
-				second := validTestDevice()
-				second.Host = tt.secondHost
-				cfg := createDefaultConfig().(*Config)
-				cfg.Devices = []DeviceConfig{first, second}
-				cfg.Scrapers = map[component.Type]component.Config{component.MustNewType("system"): nil}
-
-				require.ErrorContains(t, cfg.Validate(), fmt.Sprintf("devices[1] endpoint %q duplicates devices[0] after host normalization", tt.endpoint))
-			})
-		}
-	})
-
-	t.Run("SSH same host different port", func(t *testing.T) {
-		first := validTestDevice()
-		second := validTestDevice()
-		second.Host = "192.168.1.1"
-		second.Port = 2222
-		cfg := createDefaultConfig().(*Config)
-		cfg.Devices = []DeviceConfig{first, second}
-		cfg.Scrapers = map[component.Type]component.Config{component.MustNewType("system"): nil}
-
-		require.NoError(t, cfg.Validate())
-	})
-
-	t.Run("ACI normalized endpoint", func(t *testing.T) {
-		cfg := createDefaultConfig().(*Config)
-		cfg.ACI.Enabled = true
-		cfg.ACI.Controllers = []ACIControllerConfig{
-			{Endpoint: "https://APIC.example.test", Name: "apic-a"},
-			{Endpoint: "https://apic.example.test:443/", Name: "apic-b"},
-		}
-		cfg.ACI.Auth.Username = "admin"
-		cfg.ACI.Auth.Password = configopaque.String("password")
-
-		require.ErrorContains(t, cfg.validateACI(), "aci.controllers[1].endpoint duplicates aci.controllers[0].endpoint after URL normalization")
-	})
-
-	t.Run("FMC effective name", func(t *testing.T) {
-		cfg := createDefaultConfig().(*Config)
-		cfg.FMC.Enabled = true
-		cfg.FMC.Controllers = []FMCControllerConfig{
-			{Endpoint: "https://fmc-a.example.test", Name: "production-fmc"},
-			{Endpoint: "https://fmc-b.example.test", Name: "PRODUCTION-FMC"},
-		}
-		cfg.FMC.Auth.Username = "admin"
-		cfg.FMC.Auth.Password = configopaque.String("password")
-
-		require.ErrorContains(t, cfg.validateFMC(), "fmc.controllers[1].name duplicates the effective name of fmc.controllers[0]")
-	})
-
-	t.Run("eStreamer default port", func(t *testing.T) {
-		cfg := createDefaultConfig().(*Config)
-		cfg.FMC.EStreamer.Enabled = true
-		cfg.FMC.EStreamer.Targets = []FMCEStreamerTargetConfig{
-			{Endpoint: "FMC.example.test", Name: "stream-a"},
-			{Endpoint: "fmc.example.test:8302", Name: "stream-b"},
-		}
-		cfg.FMC.EStreamer.TLS.CertFile = "client.crt"
-		cfg.FMC.EStreamer.TLS.KeyFile = "client.key"
-
-		require.ErrorContains(t, cfg.validateFMCEStreamer(), "fmc.estreamer.targets[1].endpoint duplicates fmc.estreamer.targets[0].endpoint after address normalization")
-	})
-}
-
-func TestValidateACITLSConfig(t *testing.T) {
-	for _, tt := range []struct {
-		name    string
-		config  ACIConfig
-		wantErr string
-	}{
-		{
-			name: "private CA with DNS server name",
-			config: ACIConfig{
-				CAFile:     filepath.Join("certs", "apic-ca.pem"),
-				ServerName: "apic.example.com",
-			},
-		},
-		{
-			name:   "IP server name",
-			config: ACIConfig{ServerName: "192.0.2.10"},
-		},
-		{
-			name:    "CA path surrounding whitespace",
-			config:  ACIConfig{CAFile: " /etc/otelcol/apic-ca.pem"},
-			wantErr: "aci.ca_file must not contain surrounding whitespace",
-		},
-		{
-			name:    "CA path NUL",
-			config:  ACIConfig{CAFile: "apic\x00.pem"},
-			wantErr: "aci.ca_file must be a valid file path",
-		},
-		{
-			name:    "server name surrounding whitespace",
-			config:  ACIConfig{ServerName: " apic.example.com "},
-			wantErr: "aci.server_name must not contain surrounding whitespace",
-		},
-		{
-			name:    "server name URL",
-			config:  ACIConfig{ServerName: "https://apic.example.com"},
-			wantErr: "aci.server_name must be a valid hostname or IP address without a scheme or port",
-		},
-		{
-			name:    "server name port",
-			config:  ACIConfig{ServerName: "apic.example.com:443"},
-			wantErr: "aci.server_name must be a valid hostname or IP address without a scheme or port",
-		},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			err := validateACITLSConfig(tt.config)
-			if tt.wantErr == "" {
-				require.NoError(t, err)
-				return
-			}
-			require.ErrorContains(t, err, tt.wantErr)
-		})
-	}
-}
-
-func TestACIConfigUnmarshalTLSSettings(t *testing.T) {
-	cfg := NewFactory().CreateDefaultConfig().(*Config)
-	require.NoError(t, cfg.Unmarshal(confmap.NewFromStringMap(map[string]any{
-		"aci": map[string]any{
-			"ca_file":     "/etc/otelcol/apic-ca.pem",
-			"server_name": "apic.example.com",
-		},
-	})))
-	assert.Equal(t, "/etc/otelcol/apic-ca.pem", cfg.ACI.CAFile)
-	assert.Equal(t, "apic.example.com", cfg.ACI.ServerName)
-}
-
-func TestACIConfigTLSSettingsActivateValidation(t *testing.T) {
-	cfg := NewFactory().CreateDefaultConfig().(*Config)
-	cfg.ACI.ServerName = "https://apic.example.com"
-
-	err := cfg.Validate()
-	require.ErrorContains(t, err, "aci.server_name must be a valid hostname or IP address without a scheme or port")
-	require.ErrorContains(t, err, "aci.controllers must include at least one APIC endpoint")
 }
 
 func TestConfigValidate(t *testing.T) {
@@ -1066,26 +658,6 @@ func TestConfigValidate(t *testing.T) {
 			expectedErr: "",
 		},
 		{
-			name: "invalid nexus dashboard api profile",
-			config: &Config{
-				ControllerConfig: scraperhelper.ControllerConfig{
-					Timeout:            30 * time.Second,
-					CollectionInterval: 60 * time.Second,
-				},
-				NexusDashboard: NexusDashboardConfig{
-					Enabled:    true,
-					Endpoint:   "https://nd.example.com",
-					APIProfile: "automatic",
-					Auth: ControllerAuthConfig{
-						Mode:     "api_key",
-						Username: "admin",
-						APIKey:   configopaque.String("nd-api-key"),
-					},
-				},
-			},
-			expectedErr: "nexus_dashboard.api_profile must be legacy or unified",
-		},
-		{
 			name: "valid aci target",
 			config: &Config{
 				ControllerConfig: scraperhelper.ControllerConfig{
@@ -1317,7 +889,7 @@ func TestConfigValidate(t *testing.T) {
 					CollectionInterval: 60 * time.Second,
 				},
 				Metrics: map[string]MetricConfig{
-					"cisco.iosxr.yang.__v1.[": {Enabled: false},
+					"cisco.iosxr.yang.[": {Enabled: false},
 				},
 				Meraki: MerakiConfig{
 					Auth:          MerakiAuthConfig{APIKey: configopaque.String("meraki-key")},
@@ -1512,17 +1084,6 @@ func TestMerakiConfigRejectsCredentialsInBaseURL(t *testing.T) {
 	require.ErrorContains(t, cfg.Validate(), "meraki.base_url must not include user information")
 }
 
-func TestMerakiConfigRejectsUnknownProductType(t *testing.T) {
-	cfg := NewFactory().CreateDefaultConfig().(*Config)
-	cfg.Meraki.Auth.APIKey = configopaque.String("secret")
-	cfg.Meraki.Organizations = []MerakiOrganizationConfig{{
-		OrganizationID: "org-1",
-		ProductTypes:   []string{"switch", "swich"},
-	}}
-
-	require.ErrorContains(t, cfg.Validate(), "meraki.organizations[0].product_types[1] must be one of")
-}
-
 func TestConfigRejectsBlankProviderTargetFilters(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -1702,8 +1263,6 @@ func TestConfigUnmarshal(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, sub.Unmarshal(cfg))
-	require.NotNil(t, cfg.StorageID)
-	assert.Equal(t, "file_storage/cisco_os", cfg.StorageID.String())
 	require.Len(t, cfg.Devices, 2)
 	assert.Equal(t, "enable-password", string(cfg.Devices[0].Auth.EnablePassword))
 	assert.Equal(t, []string{"device-1", "edge-1"}, cfg.DeviceSelection.Include.HostNames)
@@ -1719,11 +1278,9 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.False(t, cfg.Metrics["sdwan.app_route.loss"].Enabled)
 	assert.False(t, cfg.Metrics["system.network.errors"].Enabled)
 	assert.False(t, cfg.Metrics["cisco.wlc.client.*"].Enabled)
-	assert.False(t, cfg.Metrics["cisco.iosxr.yang.__v1.*"].Enabled)
+	assert.False(t, cfg.Metrics["cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.*"].Enabled)
 	assert.Equal(t, "https://api.meraki.com/api/v1", cfg.Meraki.BaseURL)
 	assert.Equal(t, 3, cfg.Meraki.MaxRetries)
-	assert.True(t, cfg.Meraki.InsecureSkipVerify)
-	assert.True(t, cfg.Meraki.SwitchTransceivers.Enabled)
 	assert.Equal(t, "meraki-key", string(cfg.Meraki.Auth.APIKey))
 	require.Len(t, cfg.Meraki.Organizations, 1)
 	assert.Equal(t, "123456", cfg.Meraki.Organizations[0].OrganizationID)
@@ -1801,7 +1358,6 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.Equal(t, 75, cfg.SDWAN.CloudOnRamp.MaxResults)
 	assert.True(t, cfg.NexusDashboard.Enabled)
 	assert.Equal(t, "https://nexus-dashboard.example.com", cfg.NexusDashboard.Endpoint)
-	assert.Equal(t, nexusDashboardAPIProfileUnified, cfg.NexusDashboard.APIProfile)
 	assert.True(t, cfg.NexusDashboard.InsecureSkipVerify)
 	assert.Equal(t, "api_key", cfg.NexusDashboard.Auth.Mode)
 	assert.Equal(t, "admin", cfg.NexusDashboard.Auth.Username)
@@ -1829,9 +1385,6 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.Equal(t, []string{"101"}, cfg.ACI.Targets.NodeIDs)
 	assert.Equal(t, []string{"prod"}, cfg.ACI.Targets.Tenants)
 	assert.Equal(t, 300, cfg.ACI.Faults.MaxResults)
-	assert.True(t, cfg.ACI.Logs.Faults.Enabled)
-	assert.True(t, cfg.ACI.Logs.Audit.Enabled)
-	assert.False(t, cfg.ACI.Logs.Events.Enabled)
 	assert.Equal(t, 400, cfg.ACI.Endpoints.MaxResults)
 	assert.Equal(t, 500, cfg.ACI.Tenants.MaxResults)
 	assert.True(t, cfg.FMC.Enabled)
@@ -1892,16 +1445,11 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.Equal(t, []string{"Employees"}, cfg.ISE.Targets.SecurityGroupNames)
 	assert.Equal(t, []string{"com.cisco.ise.session"}, cfg.ISE.Targets.PxGridServices)
 	assert.Equal(t, 750, cfg.ISE.Sessions.MaxResults)
-	assert.True(t, cfg.ISE.SessionDetails.Enabled)
-	assert.Equal(t, 125, cfg.ISE.SessionDetails.MaxResults)
 	assert.Equal(t, 300, cfg.ISE.AuthFailures.MaxResults)
 	assert.Equal(t, 200, cfg.ISE.TrustSec.MaxResults)
 	assert.True(t, cfg.ISE.PxGrid.Enabled)
 	assert.Equal(t, "otel-collector", cfg.ISE.PxGrid.NodeName)
 	assert.Equal(t, "pxgrid-secret", string(cfg.ISE.PxGrid.Password))
-	assert.Equal(t, "/etc/otelcol/pxgrid.crt", cfg.ISE.PxGrid.CertFile)
-	assert.Equal(t, "/etc/otelcol/pxgrid.key", cfg.ISE.PxGrid.KeyFile)
-	assert.Equal(t, "pxgrid-key-password", string(cfg.ISE.PxGrid.KeyPassword))
 	assert.True(t, cfg.ISE.PxGrid.Streaming)
 	assert.True(t, cfg.ISE.PxGrid.Subscriptions.RadiusFailures)
 	assert.True(t, cfg.ISE.DataConnect.Enabled)
@@ -2013,29 +1561,6 @@ func TestConfigUnmarshal(t *testing.T) {
 	assert.Equal(t, 16, interfaceCfg.Transceiver.MaxInterfaces)
 }
 
-func TestConfigUnmarshalDefaultsEmptyMetricEntryToEnabled(t *testing.T) {
-	cfg := createDefaultConfig().(*Config)
-	require.NoError(t, cfg.Unmarshal(confmap.NewFromStringMap(map[string]any{
-		"metrics": map[string]any{
-			"empty":          map[string]any{},
-			"explicit_true":  map[string]any{"enabled": true},
-			"explicit_false": map[string]any{"enabled": false},
-		},
-	})))
-
-	assert.True(t, cfg.Metrics["empty"].Enabled)
-	assert.True(t, cfg.Metrics["explicit_true"].Enabled)
-	assert.False(t, cfg.Metrics["explicit_false"].Enabled)
-	assert.True(t, cfg.metricEnabled("empty"))
-	assert.False(t, cfg.metricEnabled("explicit_false"))
-}
-
-func TestNexusDashboardAPIProfileDefaultsToLegacy(t *testing.T) {
-	cfg := NewFactory().CreateDefaultConfig().(*Config)
-	assert.Equal(t, nexusDashboardAPIProfileLegacy, cfg.NexusDashboard.APIProfile)
-	assert.Equal(t, nexusDashboardAPIProfileLegacy, normalizeNexusDashboardAPIProfile(""))
-}
-
 func TestConfigUnmarshalNil(t *testing.T) {
 	cfg := &Config{}
 	err := cfg.Unmarshal(nil)
@@ -2073,7 +1598,7 @@ func TestConfigValidationIncludesDynamicScrapers(t *testing.T) {
 			cfg := NewFactory().CreateDefaultConfig().(*Config)
 			cfg.Devices = []DeviceConfig{validTestDevice()}
 			cfg.Scrapers = map[component.Type]component.Config{component.MustNewType(tt.name): tt.scraper}
-			require.ErrorContains(t, cfg.Validate(), tt.wantErr)
+			require.ErrorContains(t, xconfmap.Validate(cfg), tt.wantErr)
 		})
 	}
 }

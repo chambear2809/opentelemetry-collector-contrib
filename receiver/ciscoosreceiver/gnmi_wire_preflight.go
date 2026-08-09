@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"unicode/utf8"
 
 	gnmipb "github.com/openconfig/gnmi/proto/gnmi"
@@ -167,7 +166,6 @@ type gnmiResponsePreflightCodec struct {
 	limits    gnmiWirePreflightLimits
 	admission *gnmiResponseAdmission
 	done      <-chan struct{}
-	rejected  atomic.Bool
 }
 
 func newGNMIResponsePreflightCodec(limits gnmiWirePreflightLimits) *gnmiResponsePreflightCodec {
@@ -187,8 +185,6 @@ func (c *gnmiResponsePreflightCodec) Unmarshal(data mem.BufferSlice, value any) 
 	switch value.(type) {
 	case *gnmipb.CapabilityResponse:
 		kind = gnmiWireCapabilityResponse
-	case *gnmipb.GetResponse:
-		kind = gnmiWireGetResponse
 	case *gnmipb.SubscribeResponse:
 		kind = gnmiWireSubscribeResponse
 	default:
@@ -196,7 +192,6 @@ func (c *gnmiResponsePreflightCodec) Unmarshal(data mem.BufferSlice, value any) 
 	}
 
 	if data.Len() > c.limits.maxMessageBytes {
-		c.rejected.Store(true)
 		return fmt.Errorf("gNMI response preflight: message exceeds %d bytes", c.limits.maxMessageBytes)
 	}
 	if err := c.admission.acquire(value, c.done); err != nil {
@@ -208,7 +203,6 @@ func (c *gnmiResponsePreflightCodec) Unmarshal(data mem.BufferSlice, value any) 
 	defer buffer.Free()
 	if err := preflightGNMIWireMessage(buffer.ReadOnlyData(), kind, c.limits); err != nil {
 		c.admission.release(value)
-		c.rejected.Store(true)
 		return fmt.Errorf("gNMI response preflight: %w", err)
 	}
 	// Delegate the already-materialized buffer. Passing the original fragmented
@@ -236,34 +230,6 @@ func gnmiResponsePreflightCallOption(
 	return grpc.ForceCodecV2(codec)
 }
 
-// gnmiLocalResponsePreflightError marks a rejection produced by this client's
-// response codec. A remote endpoint can choose any gRPC status description,
-// including the codec's diagnostic text, so callers must never classify a
-// response as terminal by matching an error string.
-type gnmiLocalResponsePreflightError struct{ err error }
-
-func (*gnmiLocalResponsePreflightError) Error() string {
-	return "gNMI response preflight rejected a malformed or oversized response"
-}
-
-func (e *gnmiLocalResponsePreflightError) Unwrap() error { return e.err }
-
-func localGNMIResponsePreflightRejected(err error) bool {
-	var rejected *gnmiLocalResponsePreflightError
-	return errors.As(err, &rejected)
-}
-
-func configuredGNMIResponsePreflightCodec(
-	maxRecvMsgSizeMiB int,
-	admission *gnmiResponseAdmission,
-	done <-chan struct{},
-) *gnmiResponsePreflightCodec {
-	codec := newGNMIResponsePreflightCodec(gnmiWirePreflightLimitsForRecvSize(maxRecvMsgSizeMiB))
-	codec.admission = admission
-	codec.done = done
-	return codec
-}
-
 // invokeGNMICapabilities retains ownership of the response destination even
 // when grpc-go rejects a response trailer or unary cardinality. Generated gNMI
 // code returns nil in those cases, which would otherwise make a codec-acquired
@@ -275,50 +241,16 @@ func invokeGNMICapabilities(
 	maxRecvMsgSizeMiB int,
 ) (*gnmipb.CapabilityResponse, error) {
 	response := &gnmipb.CapabilityResponse{}
-	codec := configuredGNMIResponsePreflightCodec(maxRecvMsgSizeMiB, admission, ctx.Done())
 	err := conn.Invoke(
 		ctx,
 		gnmipb.GNMI_Capabilities_FullMethodName,
 		&gnmipb.CapabilityRequest{},
 		response,
 		grpc.StaticMethod(),
-		grpc.ForceCodecV2(codec),
+		gnmiResponsePreflightCallOption(maxRecvMsgSizeMiB, admission, ctx.Done()),
 	)
 	if err != nil {
 		admission.release(response)
-		if codec.rejected.Load() {
-			err = &gnmiLocalResponsePreflightError{err: err}
-		}
-		return nil, err
-	}
-	return response, nil
-}
-
-// invokeGNMIGet retains ownership of the response destination on every unary
-// error path so a codec-acquired response-admission lease can always be
-// released by this package.
-func invokeGNMIGet(
-	ctx context.Context,
-	conn grpc.ClientConnInterface,
-	admission *gnmiResponseAdmission,
-	maxRecvMsgSizeMiB int,
-	request *gnmipb.GetRequest,
-) (*gnmipb.GetResponse, error) {
-	response := &gnmipb.GetResponse{}
-	codec := configuredGNMIResponsePreflightCodec(maxRecvMsgSizeMiB, admission, ctx.Done())
-	err := conn.Invoke(
-		ctx,
-		gnmipb.GNMI_Get_FullMethodName,
-		request,
-		response,
-		grpc.StaticMethod(),
-		grpc.ForceCodecV2(codec),
-	)
-	if err != nil {
-		admission.release(response)
-		if codec.rejected.Load() {
-			err = &gnmiLocalResponsePreflightError{err: err}
-		}
 		return nil, err
 	}
 	return response, nil
@@ -345,7 +277,6 @@ type gnmiWireMessageKind uint8
 const (
 	gnmiWireCapabilityResponse gnmiWireMessageKind = iota
 	gnmiWireModelData
-	gnmiWireGetResponse
 	gnmiWireSubscribeResponse
 	gnmiWireNotification
 	gnmiWireUpdate
@@ -381,8 +312,6 @@ func (k gnmiWireMessageKind) String() string {
 		return "CapabilityResponse"
 	case gnmiWireModelData:
 		return "ModelData"
-	case gnmiWireGetResponse:
-		return "GetResponse"
 	case gnmiWireSubscribeResponse:
 		return "SubscribeResponse"
 	case gnmiWireNotification:
@@ -754,15 +683,6 @@ func gnmiWireKnownField(message gnmiWireMessageKind, number protowire.Number) (g
 	case gnmiWireModelData:
 		if number >= 1 && number <= 3 {
 			return stringField, true
-		}
-	case gnmiWireGetResponse:
-		switch number {
-		case 1:
-			return nested(gnmiWireNotification), true
-		case 2:
-			return nested(gnmiWireError), true
-		case 3:
-			return nested(gnmiWireExtension), true
 		}
 	case gnmiWireSubscribeResponse:
 		switch number {

@@ -106,13 +106,13 @@
         {
           "name": "Intersight API Errors",
           "description": "Value: surfaces API signing, permission, endpoint, and transient failures. Interpretation: non-zero values by operation explain missing resource families.",
-          "signalflow": "data('intersight.api.request.errors').rate().sum(by=['intersight.api.operation', 'http.response.status_code']).publish(label='API errors/sec')",
+          "signalflow": "data('intersight.api.request.errors').sum(by=['intersight.api.operation', 'http.response.status_code']).publish(label='API errors')",
           "legend_dimension": "intersight.api.operation"
         },
         {
           "name": "Intersight Rate Limits",
-          "description": "Value: shows the rate of HTTP 429s from Intersight. Interpretation: repeated rate limits mean collection scope, interval, or group caps may need tuning.",
-          "signalflow": "data('intersight.api.rate_limited').rate().sum(by=['intersight.api.operation']).publish(label='Rate limited/sec')",
+          "description": "Value: shows HTTP 429s from Intersight. Interpretation: repeated rate limits mean collection scope, interval, or group caps may need tuning.",
+          "signalflow": "data('intersight.api.rate_limited').sum(by=['intersight.api.operation']).publish(label='Rate limited')",
           "legend_dimension": "intersight.api.operation"
         },
         {
@@ -412,8 +412,8 @@
         {
           "name": "UCS Memory Module Size",
           "description": "Value: shows DIMM/module capacity reported by UCS telemetry. Interpretation: missing or unexpectedly small modules identify capacity, inventory, or hardware replacement issues.",
-          "signalflow": "data('intersight.ucs.memory.module.size').mean(by=['host.name']).publish(label='Memory module size')",
-          "legend_dimension": "host.name"
+          "signalflow": "data('intersight.ucs.memory.module.size').mean(by=['host.name', 'intersight.memory.module']).publish(label='Memory module size')",
+          "legend_dimension": "intersight.memory.module"
         }
       ]
     },

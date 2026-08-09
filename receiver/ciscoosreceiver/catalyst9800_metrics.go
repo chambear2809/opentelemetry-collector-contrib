@@ -5,7 +5,6 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 
 import (
 	"context"
-	"math"
 	"net"
 	"sort"
 	"strings"
@@ -83,92 +82,72 @@ func appendCatalyst9800HealthMetrics(md pmetric.Metrics, health *catalyst9800Hea
 	sm := rm.ScopeMetrics().AppendEmpty()
 	sm.Scope().SetName("github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/catalyst9800")
 	snap := health.snapshotForTarget(ctx.targetName)
-	appendIntGaugeMetric(sm, "cisco.catalyst9800.receiver.active_subscriptions", snap.activeSubscriptions, ts, nil)
-	appendIntSumMetric(sm, "cisco.catalyst9800.receiver.updates", snap.updatesReceived, ts, nil)
-	appendIntSumMetric(sm, "cisco.catalyst9800.receiver.decode_errors", snap.decodeErrors, ts, nil)
-	appendIntSumMetric(sm, "cisco.catalyst9800.receiver.unsupported_paths", snap.unsupportedPaths, ts, nil)
-	appendIntSumMetric(sm, "cisco.catalyst9800.receiver.reconnects", snap.reconnects, ts, nil)
-	appendIntSumMetric(sm, "cisco.catalyst9800.receiver.dropped_datapoints", snap.droppedDatapoints, ts, nil)
-	appendIntGaugeMetric(sm, "cisco.wlc.controller.receiver.active_subscriptions", snap.activeSubscriptions, ts, nil)
-	appendIntSumMetric(sm, "cisco.wlc.controller.receiver.updates", snap.updatesReceived, ts, nil)
-	appendIntSumMetric(sm, "cisco.wlc.controller.receiver.decode_errors", snap.decodeErrors, ts, nil)
+	appendGaugeMetric(sm, "cisco.catalyst9800.receiver.active_subscriptions", float64(snap.activeSubscriptions), ts, nil)
+	appendSumMetric(sm, "cisco.catalyst9800.receiver.updates", float64(snap.updatesReceived), ts, nil)
+	appendSumMetric(sm, "cisco.catalyst9800.receiver.decode_errors", float64(snap.decodeErrors), ts, nil)
+	appendSumMetric(sm, "cisco.catalyst9800.receiver.unsupported_paths", float64(snap.unsupportedPaths), ts, nil)
+	appendSumMetric(sm, "cisco.catalyst9800.receiver.reconnects", float64(snap.reconnects), ts, nil)
+	appendSumMetric(sm, "cisco.catalyst9800.receiver.dropped_datapoints", float64(snap.droppedDatapoints), ts, nil)
+	appendSumMetric(sm, "cisco.catalyst9800.receiver.compact_gpb_payloads", float64(snap.compactGPBPayloads), ts, nil)
+	appendGaugeMetric(sm, "cisco.wlc.controller.receiver.active_subscriptions", float64(snap.activeSubscriptions), ts, nil)
+	appendSumMetric(sm, "cisco.wlc.controller.receiver.updates", float64(snap.updatesReceived), ts, nil)
+	appendSumMetric(sm, "cisco.wlc.controller.receiver.decode_errors", float64(snap.decodeErrors), ts, nil)
 	if !snap.lastSuccess.IsZero() {
-		appendIntGaugeMetric(sm, "cisco.catalyst9800.receiver.last_success_timestamp", snap.lastSuccess.Unix(), ts, nil)
+		appendGaugeMetric(sm, "cisco.catalyst9800.receiver.last_success_timestamp", float64(snap.lastSuccess.Unix()), ts, nil)
 	}
 	if ctx.targetName != "" {
-		appendIntGaugeMetric(sm, "cisco.catalyst9800.receiver.target.subscription.active", boolToInt(snap.targetActive), ts, nil)
-		appendIntSumMetric(sm, "cisco.catalyst9800.receiver.target.updates", snap.targetUpdatesReceived, ts, nil)
-		appendIntSumMetric(sm, "cisco.catalyst9800.receiver.target.reconnects", snap.targetReconnects, ts, nil)
+		appendGaugeMetric(sm, "cisco.catalyst9800.receiver.target.subscription.active", float64(boolToInt(snap.targetActive)), ts, nil)
+		appendSumMetric(sm, "cisco.catalyst9800.receiver.target.updates", float64(snap.targetUpdatesReceived), ts, nil)
+		appendSumMetric(sm, "cisco.catalyst9800.receiver.target.reconnects", float64(snap.targetReconnects), ts, nil)
 		if !snap.targetLastSuccess.IsZero() {
-			appendIntGaugeMetric(sm, "cisco.catalyst9800.receiver.target.last_success_timestamp", snap.targetLastSuccess.Unix(), ts, nil)
+			appendGaugeMetric(sm, "cisco.catalyst9800.receiver.target.last_success_timestamp", float64(snap.targetLastSuccess.Unix()), ts, nil)
 		}
-		appendIntGaugeMetric(sm, "cisco.wlc.controller.receiver.subscription.active", boolToInt(snap.targetActive), ts, nil)
+		appendGaugeMetric(sm, "cisco.wlc.controller.receiver.subscription.active", float64(boolToInt(snap.targetActive)), ts, nil)
 	}
 }
 
-func appendCatalyst9800MetricNumberIndexed(builder *indexedMetricBuilder, module string, path dynamicYANGPath, value metricNumber, ts pcommon.Timestamp, attrs map[string]string) {
-	metricType := pmetric.MetricTypeGauge
-	if isCatalyst9800CounterMetric(path.normalized) {
-		metricType = pmetric.MetricTypeSum
-	}
-	canonical, ok := canonicalDynamicYANGNumber(metricType, value)
-	if !ok {
-		builder.rejectNoncanonicalDynamicYANGNumber(value)
+func appendCatalyst9800MetricNumberIndexed(builder *indexedMetricBuilder, module string, pathParts []string, value metricNumber, ts pcommon.Timestamp, attrs map[string]string) {
+	if builder.budget != nil && !builder.budget.allowMetricName("cisco.catalyst9800.yang", module, pathParts, "") {
 		return
 	}
-	value = canonical
-	name, ok := dynamicYANGMetricName(
-		"cisco.catalyst9800.yang",
-		module,
-		path.identity,
-		dynamicYANGMetricVariantNumber,
-		builder.dynamicYANGMetricNameLimit(),
-	)
-	if !ok {
-		builder.rejectDatapoint()
-		return
+	name := catalyst9800MetricName(module, pathParts)
+	var appended bool
+	if isCatalyst9800CounterMetric(pathParts) {
+		appended = builder.appendNumber(name, pmetric.MetricTypeSum, value, ts, attrs)
+	} else {
+		appended = builder.appendNumber(name, pmetric.MetricTypeGauge, value, ts, attrs)
 	}
-	appended := builder.appendNumber(name, metricType, value, ts, attrs)
 	if appended {
-		appendCatalyst9800AliasesForValueIndexed(builder, module, path.normalized, value, ts, attrs)
+		appendCatalyst9800AliasesForValueIndexed(builder, module, pathParts, value, ts, attrs)
 	}
 }
 
-func appendCatalyst9800InfoMetricIndexed(builder *indexedMetricBuilder, module string, path dynamicYANGPath, value string, ts pcommon.Timestamp, attrs map[string]string) {
-	name, ok := dynamicYANGMetricName(
-		"cisco.catalyst9800.yang",
-		module,
-		path.identity,
-		dynamicYANGMetricVariantInfo,
-		builder.dynamicYANGMetricNameLimit(),
-	)
-	if !ok {
-		builder.rejectDatapoint()
+func appendCatalyst9800InfoMetricIndexed(builder *indexedMetricBuilder, module string, pathParts []string, value string, ts pcommon.Timestamp, attrs map[string]string) {
+	if builder.budget != nil && !builder.budget.allowMetricName("cisco.catalyst9800.yang", module, pathParts, "_info") {
 		return
 	}
+	name := catalyst9800MetricName(module, pathParts) + "_info"
 	if !builder.appendInfo(name, value, ts, attrs) {
 		return
 	}
-	appendCatalyst9800AliasesForValueIndexed(builder, module, path.normalized, value, ts, attrs)
+	appendCatalyst9800AliasesForValueIndexed(builder, module, pathParts, value, ts, attrs)
+}
+
+func catalyst9800MetricName(module string, pathParts []string) string {
+	parts := []string{"cisco", "catalyst9800", "yang"}
+	if module != "" {
+		parts = append(parts, sanitizeMetricSegment(module))
+	}
+	for _, part := range pathParts {
+		if cleaned := sanitizeMetricSegment(part); cleaned != "" {
+			parts = append(parts, cleaned)
+		}
+	}
+	return strings.Join(parts, ".")
 }
 
 func isCatalyst9800CounterMetric(pathParts []string) bool {
-	if isUnambiguousYANGCounter(pathParts) {
-		return true
-	}
-	if len(pathParts) == 0 {
-		return false
-	}
-	// These exact leaves are cumulative in yanggrpcreceiver's bundled
-	// Cisco-IOS-XE-interfaces-oper schema, but intentionally do not match the
-	// shared word heuristic. Keep the exceptions exact so similarly named rate
-	// or state leaves remain gauges.
-	switch pathParts[len(pathParts)-1] {
-	case "num-flaps", "in-unknown-protos", "in-unknown-protos-64":
-		return true
-	default:
-		return false
-	}
+	return isUnambiguousYANGCounter(pathParts)
 }
 
 func appendCatalyst9800AliasesForValue(sm pmetric.ScopeMetrics, module string, pathParts []string, value any, ts pcommon.Timestamp, attrs map[string]string) {
@@ -202,37 +181,12 @@ func appendCatalyst9800AliasesForValueIndexed(builder *indexedMetricBuilder, mod
 		if len(unit) > 0 {
 			metricUnit = unit[0]
 		}
-		governedValue, ok := catalyst9800GovernedAliasNumber(builder, name, numericValue)
-		if !ok {
-			return
-		}
-		builder.appendNumberWithUnit(name, metricType, governedValue, ts, next, metricUnit)
+		builder.appendNumberWithUnit(name, metricType, numericValue, ts, next, metricUnit)
 	}
-	appendPercentageRatio := func(name string, extra map[string]string) {
-		if !numeric {
-			return
-		}
-		raw := numericValue.doubleValue
-		if numericValue.isInt {
-			raw = float64(numericValue.intValue)
-		}
-		ratio, ok := catalyst9800PercentageRatio(raw)
-		if !ok {
-			return
-		}
-		builder.appendNumberWithUnit(name, pmetric.MetricTypeGauge, doubleMetricNumber(ratio), ts, mergeStringAttrs(aliasAttrs, extra), "1")
-	}
-	appendState := func(name string, extra map[string]string, unit ...string) {
+	appendState := func(name string, extra map[string]string) {
 		next := mergeStringAttrs(aliasAttrs, extra)
-		metricUnit := ""
-		if len(unit) > 0 {
-			metricUnit = unit[0]
-		}
 		if numeric {
-			governedValue, ok := catalyst9800GovernedAliasNumber(builder, name, numericValue)
-			if ok {
-				builder.appendNumberWithUnit(name, pmetric.MetricTypeGauge, governedValue, ts, next, metricUnit)
-			}
+			builder.appendNumber(name, pmetric.MetricTypeGauge, numericValue, ts, next)
 			return
 		}
 		if textValue == "" {
@@ -240,12 +194,12 @@ func appendCatalyst9800AliasesForValueIndexed(builder *indexedMetricBuilder, mod
 		}
 		next["state"] = textValue
 		if state, ok := catalyst9800StateNumeric(textValue); ok {
-			builder.appendNumberWithUnit(name, pmetric.MetricTypeGauge, intMetricNumber(state), ts, next, metricUnit)
+			builder.appendNumber(name, pmetric.MetricTypeGauge, doubleMetricNumber(state), ts, next)
 			return
 		}
-		builder.appendNumberWithUnit(name, pmetric.MetricTypeGauge, intMetricNumber(1), ts, next, metricUnit)
+		builder.appendNumber(name, pmetric.MetricTypeGauge, doubleMetricNumber(1), ts, next)
 	}
-	appendInfo := func(name, attrName string, unit ...string) {
+	appendInfo := func(name, attrName string) {
 		next := mergeStringAttrs(aliasAttrs, nil)
 		if numeric {
 			textValue = numericValue.String()
@@ -254,79 +208,75 @@ func appendCatalyst9800AliasesForValueIndexed(builder *indexedMetricBuilder, mod
 			return
 		}
 		next[attrName] = textValue
-		metricUnit := ""
-		if len(unit) > 0 {
-			metricUnit = unit[0]
-		}
-		builder.appendNumberWithUnit(name, pmetric.MetricTypeGauge, doubleMetricNumber(1), ts, next, metricUnit)
+		builder.appendNumber(name, pmetric.MetricTypeGauge, doubleMetricNumber(1), ts, next)
 	}
 
 	switch leaf {
 	case "is_joined":
-		appendState("cisco.wlc.ap.join.status", nil, "1")
+		appendState("cisco.wlc.ap.join.status", nil)
 	case "last_join_failure_type", "last_error_type":
-		appendInfo("cisco.wlc.ap.join.failure.reason.info", "failure.reason", "1")
+		appendInfo("cisco.wlc.ap.join.failure.reason.info", "failure.reason")
 	case "disconnects", "num_disconnects", "ap_disconnect_count":
-		appendNumber("cisco.wlc.ap.disconnect", nil, true, "{disconnect}")
+		appendNumber("cisco.wlc.ap.disconnect", nil, true)
 	case "disconnect_reason", "ap_disconnect_reason":
-		appendInfo("cisco.wlc.ap.disconnect.reason.info", "reason", "1")
+		appendInfo("cisco.wlc.ap.disconnect.reason.info", "reason")
 	case "ap_operation_state", "capwap_state":
-		appendState("cisco.wlc.ap.capwap.state", nil, "1")
+		appendState("cisco.wlc.ap.capwap.state", nil)
 	case "link_encryption_enabled":
 		appendState("cisco.wlc.ap.capwap.encryption.enabled", nil)
 	case "rx_util_percentage", "tx_util_percentage", "cca_util_percentage", "rx_noise_channel_utilization", "non_wifi_inter", "bss_chan_util":
-		appendPercentageRatio("cisco.wlc.rf.channel.utilization", map[string]string{"utilization.type": catalyst9800UtilizationType(leaf)})
+		appendNumber("cisco.wlc.rf.channel.utilization", map[string]string{"utilization.type": catalyst9800UtilizationType(leaf)}, false)
 		if strings.Contains(pathText, "ssid_counters") {
-			appendPercentageRatio("cisco.wlc.ssid.channel.utilization", map[string]string{"utilization.type": catalyst9800UtilizationType(leaf)})
+			appendNumber("cisco.wlc.ssid.channel.utilization", map[string]string{"utilization.type": catalyst9800UtilizationType(leaf)}, false)
 		}
 	case "noise_floor", "noise":
-		appendNumber("cisco.wlc.rf.noise_floor", nil, false, "dB{mW}")
+		appendNumber("cisco.wlc.rf.noise_floor", nil, false)
 	case "stations", "num_clients", "client_count":
-		appendNumber("cisco.wlc.rf.client.count", nil, false, "{client}")
+		appendNumber("cisco.wlc.rf.client.count", nil, false)
 	case "chan_changes", "channel_change_count":
-		appendNumber("cisco.wlc.rf.channel.change.count", nil, true, "{change}")
+		appendNumber("cisco.wlc.rf.channel.change.count", nil, true)
 	case "best_chan":
 		appendNumber("cisco.wlc.rf.channel.recommended", nil, false)
 	case "num_assoc_clients":
-		appendNumber("cisco.wlc.ssid.client.count", nil, false, "{client}")
+		appendNumber("cisco.wlc.ssid.client.count", nil, false)
 	case "tx_bytes_data":
 		appendNumber("cisco.wlc.ssid.network.io", map[string]string{"direction": "tx"}, true, "By")
 	case "rx_bytes_data":
 		appendNumber("cisco.wlc.ssid.network.io", map[string]string{"direction": "rx"}, true, "By")
 	case "tx_retries", "tx_retries_data", "rx_retries", "rx_retries_data":
-		appendNumber("cisco.wlc.ssid.retry.count", map[string]string{"direction": catalyst9800Direction(leaf)}, true, "{retry}")
+		appendNumber("cisco.wlc.ssid.retry.count", map[string]string{"direction": catalyst9800Direction(leaf)}, true)
 	case "co_state":
-		appendState("cisco.wlc.client.connection.state", nil, "1")
+		appendState("cisco.wlc.client.connection.state", nil)
 	case "exclude_reason":
-		appendInfo("cisco.wlc.client.auth.failure.reason.info", "failure.reason", "1")
+		appendInfo("cisco.wlc.client.auth.failure.reason.info", "failure.reason")
 	case "most_recent_rssi", "rssi":
-		appendNumber("cisco.wlc.client.wireless.rssi", nil, false, "dB{mW}")
+		appendNumber("cisco.wlc.client.wireless.rssi", nil, false)
 	case "most_recent_snr", "snr":
-		appendNumber("cisco.wlc.client.wireless.snr", nil, false, "dB")
+		appendNumber("cisco.wlc.client.wireless.snr", nil, false)
 	case "dot11_roam_type", "mm_client_roam_type", "roam_type":
-		appendInfo("cisco.wlc.client.roam.type.info", "roam.type", "1")
+		appendInfo("cisco.wlc.client.roam.type.info", "roam.type")
 	case "roam_failure_count":
-		appendNumber("cisco.wlc.client.roam.failure.count", nil, true, "{failure}")
+		appendNumber("cisco.wlc.client.roam.failure.count", nil, true)
 	case "ulink_status", "peer_status", "link_status", "connection_status":
-		appendState("cisco.wlc.mobility.peer.status", map[string]string{"status.type": strings.TrimSuffix(leaf, "_status")}, "1")
+		appendState("cisco.wlc.mobility.peer.status", map[string]string{"status.type": strings.TrimSuffix(leaf, "_status")})
 	case "l2_roam_cnt":
-		appendNumber("cisco.wlc.mobility.roam.count", map[string]string{"roam.layer": "l2"}, true, "{roam}")
-		appendNumber("cisco.wlc.client.roam.count", map[string]string{"roam.layer": "l2"}, true, "{roam}")
+		appendNumber("cisco.wlc.mobility.roam.count", map[string]string{"roam.layer": "l2"}, true)
+		appendNumber("cisco.wlc.client.roam.count", map[string]string{"roam.layer": "l2"}, true)
 	case "l3_roam_cnt":
-		appendNumber("cisco.wlc.mobility.roam.count", map[string]string{"roam.layer": "l3"}, true, "{roam}")
-		appendNumber("cisco.wlc.client.roam.count", map[string]string{"roam.layer": "l3"}, true, "{roam}")
+		appendNumber("cisco.wlc.mobility.roam.count", map[string]string{"roam.layer": "l3"}, true)
+		appendNumber("cisco.wlc.client.roam.count", map[string]string{"roam.layer": "l3"}, true)
 	case "handoff_sent", "handoff_received", "handoff_received_ok", "handoff_sent_ok":
-		appendNumber("cisco.wlc.mobility.handoff.count", map[string]string{"handoff.type": leaf}, true, "{handoff}")
+		appendNumber("cisco.wlc.mobility.handoff.count", map[string]string{"handoff.type": leaf}, true)
 	case "handoff_sent_fail", "handoff_received_fail", "handoff_fail", "handoff_failure":
-		appendNumber("cisco.wlc.mobility.handoff.failure.count", map[string]string{"handoff.type": leaf}, true, "{failure}")
+		appendNumber("cisco.wlc.mobility.handoff.failure.count", map[string]string{"handoff.type": leaf}, true)
 	case "ha_state", "peer_state":
-		appendState("cisco.wlc.ha.state", map[string]string{"ha.role": catalyst9800HARole(leaf)}, "1")
+		appendState("cisco.wlc.ha.state", map[string]string{"ha.role": catalyst9800HARole(leaf)})
 	case "ha_enabled":
-		appendState("cisco.wlc.ha.enabled", nil, "1")
+		appendState("cisco.wlc.ha.enabled", nil)
 	case "switchover_count":
-		appendNumber("cisco.wlc.ha.switchover.count", nil, true, "{switchover}")
+		appendNumber("cisco.wlc.ha.switchover.count", nil, true)
 	case "standby_failure_count":
-		appendNumber("cisco.wlc.ha.standby.failure.count", nil, true, "{failure}")
+		appendNumber("cisco.wlc.ha.standby.failure.count", nil, true)
 	case "access_accepts":
 		appendNumber("cisco.wlc.auth.radius.access.accept.count", nil, true)
 	case "access_rejects":
@@ -343,14 +293,14 @@ func appendCatalyst9800AliasesForValueIndexed(builder *indexedMetricBuilder, mod
 		appendNumber("cisco.wlc.auth.radius.response.count", map[string]string{"radius.counter": leaf}, true)
 	case "five_seconds", "one_minute", "five_minutes", "five_sec", "one_min", "five_min":
 		if strings.Contains(pathText, "cpu") {
-			appendPercentageRatio("cisco.wlc.controller.cpu.utilization", map[string]string{"interval": leaf})
+			appendNumber("cisco.wlc.controller.cpu.utilization", map[string]string{"interval": leaf}, false)
 		}
 	case "memory_used", "used_memory", "memory_free", "free_memory":
 		appendNumber("cisco.wlc.controller.memory.bytes", map[string]string{"state": catalyst9800MemoryState(leaf)}, false)
 	}
 
 	if leaf != "ap_operation_state" && leaf != "capwap_state" && strings.Contains(pathText, "capwap") && strings.HasSuffix(leaf, "state") {
-		appendState("cisco.wlc.ap.capwap.state", nil, "1")
+		appendState("cisco.wlc.ap.capwap.state", nil)
 	}
 	if strings.Contains(pathText, "traffic_stats") {
 		switch leaf {
@@ -360,59 +310,6 @@ func appendCatalyst9800AliasesForValueIndexed(builder *indexedMetricBuilder, mod
 			appendNumber("cisco.wlc.client.network.packets", map[string]string{"direction": catalyst9800Direction(leaf)}, true, "{packet}")
 		}
 	}
-}
-
-func catalyst9800GovernedAliasNumber(builder *indexedMetricBuilder, name string, value metricNumber) (metricNumber, bool) {
-	descriptor, governed := fixedMetricDescriptors[name]
-	if !governed {
-		panic("Catalyst 9800 alias is missing a fixed metric descriptor: " + name)
-	}
-	switch descriptor.valueType {
-	case fixedMetricValueTypeInt:
-		if value.isInt {
-			return value, true
-		}
-		const maxExactFloat64Integer = float64(1 << 53)
-		if math.IsNaN(value.doubleValue) || math.IsInf(value.doubleValue, 0) ||
-			math.Trunc(value.doubleValue) != value.doubleValue ||
-			value.doubleValue < -maxExactFloat64Integer || value.doubleValue > maxExactFloat64Integer {
-			builder.rejectDatapoint()
-			return metricNumber{}, false
-		}
-		return intMetricNumber(int64(value.doubleValue)), true
-	case fixedMetricValueTypeDouble:
-		if value.isInt {
-			return doubleMetricNumber(float64(value.intValue)), true
-		}
-		return value, true
-	default:
-		panic("Catalyst 9800 alias has an unknown governed numeric type: " + name)
-	}
-}
-
-func (b *indexedMetricBuilder) rejectDatapoint() {
-	if b.budget != nil {
-		b.budget.drop(false)
-	}
-	if b.finalBudget != nil {
-		b.finalBudget.dropped++
-	}
-}
-
-func (b *indexedMetricBuilder) rejectNoncanonicalDynamicYANGNumber(value metricNumber) {
-	// validNumber owns the established nonfinite decode-error and dropped-point
-	// accounting. Other representation conflicts are ordinary dropped points.
-	if b.budget != nil && !b.budget.validNumber(value) {
-		return
-	}
-	b.rejectDatapoint()
-}
-
-func catalyst9800PercentageRatio(value float64) (float64, bool) {
-	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 100 {
-		return 0, false
-	}
-	return value / 100, true
 }
 
 func catalyst9800AliasAttrs(attrs map[string]string) map[string]string {
@@ -509,7 +406,7 @@ func catalyst9800CanonicalPath(pathParts []string) string {
 	return strings.Join(parts, ".")
 }
 
-func catalyst9800StateNumeric(value string) (int64, bool) {
+func catalyst9800StateNumeric(value string) (float64, bool) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "true", "yes", "up", "on", "active", "enabled", "joined", "join", "connected", "ready", "ok", "success", "succeeded", "run", "operational":
 		return 1, true
@@ -581,7 +478,6 @@ type catalyst9800AliasSource struct {
 	metric    pmetric.Metric
 	module    string
 	parts     []string
-	info      bool
 	yangPath  string
 	transport string
 }
@@ -591,7 +487,7 @@ type catalyst9800AliasScope struct {
 	sources []catalyst9800AliasSource
 }
 
-func newCatalyst9800NormalizingConsumer(next consumer.Metrics, config Catalyst9800Config, selector deviceSelectionMatcher, transport string, health *catalyst9800Health) consumer.Metrics {
+func newCatalyst9800NormalizingConsumer(next consumer.Metrics, config Catalyst9800Config, selector deviceSelectionMatcher, transport string, health *catalyst9800Health) consumer.Metrics { //nolint:unparam // Transport remains explicit because the normalizer owns transport attribution.
 	return &catalyst9800NormalizingConsumer{next: next, config: config, selector: selector, transport: transport, health: health}
 }
 
@@ -655,69 +551,21 @@ func (c *catalyst9800NormalizingConsumer) normalize(md pmetric.Metrics, budget *
 			for k := range originalLen {
 				metric := metrics.At(k)
 				originalName := metric.Name()
-				if c.transport == catalyst9800TelemetryTransportDialIn {
-					dynamic := strings.HasPrefix(originalName, "cisco.catalyst9800.yang.__v1.")
-					_, fixed := governedFixedMetricNames[originalName]
-					trustedFixed := fixed && (strings.HasPrefix(originalName, "cisco.catalyst9800.") || strings.HasPrefix(originalName, "cisco.wlc."))
-					if !dynamic && !trustedFixed {
-						dropDynamicYANGMetric(metric, budget)
-						continue
+				switch originalName {
+				case "cisco.yang_grpc.compact_gpb_payloads":
+					metric.SetName("cisco.catalyst9800.receiver.compact_gpb_payloads")
+					if c.health != nil {
+						c.health.addCompactGPBPayloads(metricNumericTotal(metric))
 					}
-					if dynamic && !enforceDialInDynamicYANGContract(metric, budget) {
-						continue
-					}
-					annotateMetricDatapoints(metric, module, encodingPath, c.transport, budget)
-					continue
-				}
-				switch {
-				case originalName == "cisco.yang_grpc.compact_gpb_payloads" && isTrustedCompactGPBDiagnostic(metric):
-					normalizeCompactGPBDiagnostic(
-						metric,
-						"cisco.catalyst9800.receiver.compact_gpb_payloads",
-						"Compact GPB payload rows in the current MDT message; the rows are not generically decoded.",
-					)
 				default:
-					if !strings.HasPrefix(originalName, "cisco.") {
-						dropDynamicYANGMetric(metric, budget)
-						continue
+					if strings.HasPrefix(originalName, "cisco.") && !strings.HasPrefix(originalName, "cisco.catalyst9800.") && !strings.HasPrefix(originalName, "cisco.wlc.") {
+						name := strings.TrimPrefix(originalName, "cisco.")
+						parts := strings.Split(name, ".")
+						aliasScope.sources = append(aliasScope.sources, catalyst9800AliasSource{
+							metric: metric, module: module, parts: parts, yangPath: encodingPath, transport: c.transport,
+						})
+						metric.SetName(catalyst9800MetricName(module, parts))
 					}
-					info := dynamicYANGMetricIsInfoVariant(metric)
-					path, ok := dialOutDynamicYANGPathParts(metric, originalName, encodingPath, info)
-					if !ok {
-						dropDynamicYANGMetric(metric, budget)
-						continue
-					}
-					variant := dynamicYANGMetricVariantNumber
-					if info {
-						variant = dynamicYANGMetricVariantInfo
-						if !enforceDynamicYANGInfoContract(metric, budget) {
-							continue
-						}
-					} else {
-						metricType := pmetric.MetricTypeGauge
-						if isCatalyst9800CounterMetric(path.normalized) {
-							metricType = pmetric.MetricTypeSum
-						}
-						if !enforceDynamicYANGNumberContract(metric, metricType, budget) {
-							continue
-						}
-					}
-					name, ok := dynamicYANGDialOutMetricName(
-						"cisco.catalyst9800.yang",
-						module,
-						path.encodingIdentity,
-						path.sourceIdentity,
-						variant,
-						budget.limits.maxMetricNameBytes,
-					)
-					if !ok {
-						dropDynamicYANGMetric(metric, budget)
-						continue
-					}
-					aliasScope.sources = append(aliasScope.sources, catalyst9800AliasSource{
-						metric: metric, module: module, parts: path.aliases, info: info, yangPath: encodingPath, transport: c.transport,
-					})
-					metric.SetName(name)
 				}
 				// Reserve and annotate every canonical datapoint before any alias is
 				// attempted anywhere in the batch. Aliases may use only the budget
@@ -737,7 +585,6 @@ func (c *catalyst9800NormalizingConsumer) normalize(md pmetric.Metrics, budget *
 				source.metric,
 				source.module,
 				source.parts,
-				source.info,
 				source.yangPath,
 				source.transport,
 			)
@@ -753,9 +600,13 @@ func (c *catalyst9800NormalizingConsumer) normalize(md pmetric.Metrics, budget *
 	})
 }
 
-func appendCatalyst9800AliasesFromMetric(builder *indexedMetricBuilder, metric pmetric.Metric, module string, parts []string, info bool, yangPath, transport string) {
+func appendCatalyst9800AliasesFromMetric(builder *indexedMetricBuilder, metric pmetric.Metric, module string, parts []string, yangPath, transport string) {
 	ts := pcommon.NewTimestampFromTime(time.Now())
 	aliasParts := parts
+	if len(aliasParts) > 0 && strings.HasSuffix(aliasParts[len(aliasParts)-1], "_info") {
+		aliasParts = append([]string{}, aliasParts...)
+		aliasParts[len(aliasParts)-1] = strings.TrimSuffix(aliasParts[len(aliasParts)-1], "_info")
+	}
 	addCommonAttrs := func(attrs pcommon.Map) map[string]string {
 		out := pcommonMapToStringMap(attrs)
 		if module != "" {
@@ -777,7 +628,7 @@ func appendCatalyst9800AliasesFromMetric(builder *indexedMetricBuilder, metric p
 			if dp.Timestamp() != 0 {
 				ts = dp.Timestamp()
 			}
-			if info {
+			if strings.HasSuffix(metric.Name(), "_info") {
 				if v, ok := dp.Attributes().Get("value"); ok {
 					appendCatalyst9800AliasesForValueIndexed(builder, module, aliasParts, v.AsString(), ts, addCommonAttrs(dp.Attributes()))
 				}

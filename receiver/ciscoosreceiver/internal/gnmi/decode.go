@@ -24,9 +24,6 @@ import (
 
 const (
 	maxJSONTypedValueBytes          = 4 * 1024 * 1024
-	maxUnsupportedTypedValueBytes   = maxJSONTypedValueBytes
-	maxUnsupportedTypedValueNodes   = 100_000
-	maxUnsupportedTypedValueDepth   = 128
 	maxNotificationWireOperations   = 100_000
 	maxDecodedNotificationPoints    = 50_000
 	maxDecodedNotificationJSONNodes = 100_000
@@ -138,43 +135,6 @@ type notificationDecodeBudget struct {
 	points          int
 	jsonNodes       int
 	pathStringBytes int
-}
-
-// undecodablePathCollector retains each exact invalid scalar path once. Its
-// paths share the decoded notification's point and path/string budgets, while
-// the additional canonical keys used for deduplication are charged explicitly.
-// Aggregate object and list-container paths are never added merely because a
-// descendant is invalid.
-type undecodablePathCollector struct {
-	budget *notificationDecodeBudget
-	seen   map[string]struct{}
-	paths  []Path
-}
-
-func (c *undecodablePathCollector) add(path Path) error {
-	if c == nil || c.budget == nil {
-		return errors.New("undecodable path collector is not initialized")
-	}
-	pathBytes, err := validatePath(path)
-	if err != nil {
-		return err
-	}
-	key := path.Key()
-	if _, exists := c.seen[key]; exists {
-		return nil
-	}
-	if err := c.budget.reservePathStringBytes(pathBytes); err != nil {
-		return err
-	}
-	if err := c.budget.reservePoint(path, Value{}); err != nil {
-		return err
-	}
-	if c.seen == nil {
-		c.seen = make(map[string]struct{})
-	}
-	c.seen[key] = struct{}{}
-	c.paths = append(c.paths, path)
-	return nil
 }
 
 func (b *notificationDecodeBudget) reservePathStringBytes(amount int) error {
@@ -359,7 +319,6 @@ func decodeNotificationWithSchemaAndLimits(
 		seen[key] = struct{}{}
 		resolved = append(resolved, resolvedUpdate{path: full, update: update})
 	}
-	undecodable := &undecodablePathCollector{budget: budget}
 	for _, item := range slices.Backward(resolved) {
 		full := item.path
 		update := item.update
@@ -376,87 +335,9 @@ func decodeNotificationWithSchemaAndLimits(
 		if err != nil {
 			return DecodedNotification{}, stats, err
 		}
-		if exactMappedScalarMissing(registry, full, points) {
-			if err := undecodable.add(full); err != nil {
-				return DecodedNotification{}, stats, err
-			}
-		}
 		out.Updates = append(out.Updates, points...)
 	}
-	out.Undecodable = undecodable.paths
 	return out, stats, nil
-}
-
-// exactMappedScalarMissing reports only a fully keyed exact source contract
-// whose wire update produced no scalar at that same path. Descendant points do
-// not satisfy a scalar contract at their aggregate parent, while an unmatched
-// aggregate root remains benign.
-func exactMappedScalarMissing(registry *Registry, path Path, points []Point) bool {
-	if registry == nil {
-		return false
-	}
-	for index := range points {
-		if seriesMatchesExactPath(points[index].Series, path) {
-			return false
-		}
-	}
-	series, err := path.SplitLeaf()
-	if err != nil {
-		return false
-	}
-	_, status := registry.MapWithStatus(Point{Series: series})
-	return status == MappingInvalidValue
-}
-
-func seriesMatchesExactPath(series Series, path Path) bool {
-	if series.Target != path.Target ||
-		series.PathTarget != path.PathTarget ||
-		series.Origin != path.Origin ||
-		len(path.Elements) != len(series.Elements)+1 {
-		return false
-	}
-	for index := range series.Elements {
-		if series.Elements[index].Name != path.Elements[index].Name ||
-			!maps.Equal(series.Elements[index].Keys, path.Elements[index].Keys) {
-			return false
-		}
-	}
-	leaf := path.Elements[len(path.Elements)-1]
-	return leaf.Name == series.Leaf && len(leaf.Keys) == 0
-}
-
-// ResolveUpdateValue returns the current TypedValue representation of an
-// update. When both fields are present, val takes precedence as required by the
-// field's replacement semantics. Deprecated Value encodings are translated
-// explicitly so legacy senders are never accepted and then silently dropped.
-//
-//nolint:staticcheck // Supporting the deprecated field is the purpose of this compatibility boundary.
-func ResolveUpdateValue(update *gnmipb.Update) (*gnmipb.TypedValue, error) {
-	if update == nil {
-		return nil, nil
-	}
-	if typed := update.GetVal(); typed != nil {
-		return typed, nil
-	}
-	legacy := update.GetValue()
-	if legacy == nil {
-		return nil, nil
-	}
-	raw := legacy.GetValue()
-	switch legacy.GetType() {
-	case gnmipb.Encoding_JSON:
-		return &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonVal{JsonVal: raw}}, nil
-	case gnmipb.Encoding_JSON_IETF:
-		return &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonIetfVal{JsonIetfVal: raw}}, nil
-	case gnmipb.Encoding_ASCII:
-		return &gnmipb.TypedValue{Value: &gnmipb.TypedValue_AsciiVal{AsciiVal: string(raw)}}, nil
-	case gnmipb.Encoding_BYTES:
-		return &gnmipb.TypedValue{Value: &gnmipb.TypedValue_BytesVal{BytesVal: raw}}, nil
-	case gnmipb.Encoding_PROTO:
-		return &gnmipb.TypedValue{Value: &gnmipb.TypedValue_ProtoBytes{ProtoBytes: raw}}, nil
-	default:
-		return nil, fmt.Errorf("legacy value has unknown encoding %d", legacy.GetType())
-	}
 }
 
 //nolint:staticcheck // gNMI still defines deprecated float and decimal wire variants that must be decoded.
@@ -469,9 +350,6 @@ func decodeValue(
 ) ([]Point, int, error) {
 	if typed == nil {
 		return nil, 1, nil
-	}
-	if typed == nil {
-		return rejectScalar()
 	}
 	appendScalar := func(value Value) ([]Point, int, error) {
 		if err := budget.reservePoint(path, value); err != nil {
@@ -491,21 +369,21 @@ func decodeValue(
 		return appendScalar(UintValue(value.UintVal))
 	case *gnmipb.TypedValue_FloatVal:
 		if math.IsNaN(float64(value.FloatVal)) || math.IsInf(float64(value.FloatVal), 0) {
-			return rejectScalar()
+			return nil, 1, nil
 		}
 		return appendScalar(DoubleValue(float64(value.FloatVal)))
 	case *gnmipb.TypedValue_DoubleVal:
 		if math.IsNaN(value.DoubleVal) || math.IsInf(value.DoubleVal, 0) {
-			return rejectScalar()
+			return nil, 1, nil
 		}
 		return appendScalar(DoubleValue(value.DoubleVal))
 	case *gnmipb.TypedValue_DecimalVal:
 		if value.DecimalVal == nil || value.DecimalVal.Precision > 308 {
-			return rejectScalar()
+			return nil, 1, nil
 		}
 		decoded := float64(value.DecimalVal.Digits) / math.Pow10(int(value.DecimalVal.Precision))
 		if math.IsNaN(decoded) || math.IsInf(decoded, 0) {
-			return rejectScalar()
+			return nil, 1, nil
 		}
 		return appendScalar(DoubleValue(decoded))
 	case *gnmipb.TypedValue_BoolVal:
@@ -633,12 +511,6 @@ func walkJSON(
 	}
 	switch value := value.(type) {
 	case map[string]any:
-		if len(value) == 0 {
-			if err := undecodable.add(path); err != nil {
-				return 0, err
-			}
-			return 0, nil
-		}
 		keys := make([]string, 0, len(value))
 		for key := range value {
 			keys = append(keys, key)
@@ -699,16 +571,10 @@ func walkJSON(
 		}
 		return unmapped, nil
 	case nil:
-		if err := undecodable.add(path); err != nil {
-			return 0, err
-		}
 		return 1, nil
 	default:
 		canonical, ok := canonicalJSONScalar(value)
 		if !ok {
-			if err := undecodable.add(path); err != nil {
-				return 0, err
-			}
 			return 1, nil
 		}
 		if err := budget.reservePoint(path, canonical); err != nil {

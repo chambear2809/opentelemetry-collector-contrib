@@ -61,24 +61,6 @@ func TestIOSXRSystemMemoryPath(t *testing.T) {
 	t.Fatal("system.memory path is missing from the IOS XR path catalog")
 }
 
-func TestIOSXRCurrentNativePaths(t *testing.T) {
-	expectedPaths := map[string]string{
-		"interfaces.counters":      "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/generic-counters",
-		"interfaces.rates":         "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/data-rate",
-		"fib.srv6loc":              "Cisco-IOS-XR-fib-common-oper:cef-accounting/vrfs/vrf/afis/afi/pfx/srv6locs/srv6loc",
-		"bgp.flowspec":             "Cisco-IOS-XR-flowspec-oper:flow-spec/vrfs/vrf/afs/af/flows/flow",
-		"security_policy.flowspec": "Cisco-IOS-XR-flowspec-oper:flow-spec/summary",
-	}
-
-	for _, def := range iosXRPathCatalog {
-		if expected, ok := expectedPaths[def.ID]; ok {
-			assert.Equal(t, expected, def.Path)
-			delete(expectedPaths, def.ID)
-		}
-	}
-	require.Empty(t, expectedPaths, "current native paths are missing from the IOS XR path catalog")
-}
-
 func TestResolveIOSXRPathSelectionDeduplicatesAndExcludes(t *testing.T) {
 	groups := defaultIOSXRPathGroups()
 	groups["interfaces"] = IOSXRPathGroupConfig{Enabled: true}

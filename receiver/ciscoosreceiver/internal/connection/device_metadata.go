@@ -5,9 +5,7 @@ package connection // import "github.com/open-telemetry/opentelemetry-collector-
 
 import (
 	"regexp"
-	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 )
 
@@ -23,35 +21,6 @@ type DeviceMetadata struct {
 	Serial     string
 	Uptime     time.Duration
 	DetectedAt time.Time
-}
-
-// DeviceMetadataStore shares the most recently verified identity for one
-// configured target across its independent SSH scrapers. It deliberately
-// retains the last identity while a reconnect is failing so device-selection
-// decisions remain stable for scrape-health telemetry.
-type DeviceMetadataStore struct {
-	current atomic.Pointer[DeviceMetadata]
-}
-
-// Store replaces the target's last verified metadata snapshot.
-func (s *DeviceMetadataStore) Store(metadata DeviceMetadata) {
-	if s == nil {
-		return
-	}
-	snapshot := metadata
-	s.current.Store(&snapshot)
-}
-
-// Load returns the target's last verified metadata snapshot, if any.
-func (s *DeviceMetadataStore) Load() (DeviceMetadata, bool) {
-	if s == nil {
-		return DeviceMetadata{}, false
-	}
-	metadata := s.current.Load()
-	if metadata == nil {
-		return DeviceMetadata{}, false
-	}
-	return *metadata, true
 }
 
 func (m DeviceMetadata) UptimeSeconds(now time.Time) int64 {
@@ -73,14 +42,14 @@ func parseDeviceMetadataFromShowVersion(output string, detectedAt time.Time) Dev
 	metadata.OSVersion = firstNonEmpty(
 		firstSubmatch(output, `(?im)\bCisco IOS XE Software,\s+Version\s+([^\r\n,]+)`),
 		firstSubmatch(output, `(?im)\bCisco IOS Software,[^\r\n]*,\s+Version\s+([^\r\n,]+)`),
-		classicIOSVersionFromShowVersion(output),
 		firstSubmatch(output, `(?im)\bNXOS:\s+version\s+([^\r\n\[]+)`),
 		firstSubmatch(output, `(?im)\bNX-OS.*?Version\s+([^\r\n,]+)`),
 		firstSubmatch(output, `(?im)\bSystem version:\s+([^\r\n]+)`),
 	)
 	metadata.HostName = firstNonEmpty(
 		firstSubmatch(output, `(?im)^\s*Device name:\s*(\S+)`),
-		hostNameFromUptime(output),
+		firstSubmatch(output, `(?im)^\s*Kernel uptime is\s+(\S+)`),
+		firstSubmatch(output, `(?im)^(\S+)\s+uptime is\s+`),
 	)
 	metadata.Model = firstNonEmpty(
 		firstSubmatch(output, `(?im)^\s*cisco\s+(\S+)\s+\([^)]+\)\s+processor`),
@@ -101,25 +70,6 @@ func parseDeviceMetadataFromShowVersion(output string, detectedAt time.Time) Dev
 	metadata.HostID = metadata.Serial
 	metadata.OSVersion = cleanMetadataValue(metadata.OSVersion)
 	return metadata
-}
-
-func hostNameFromUptime(output string) string {
-	hostName := firstSubmatch(output, `(?im)^(\S+)\s+uptime is\s+`)
-	if strings.EqualFold(hostName, "kernel") {
-		return ""
-	}
-	if _, err := strconv.ParseUint(hostName, 10, 64); err == nil {
-		return ""
-	}
-	return hostName
-}
-
-func classicIOSVersionFromShowVersion(output string) string {
-	matches := classicIOSShowVersionPair.FindStringSubmatch(output)
-	if len(matches) != 2 {
-		return ""
-	}
-	return strings.TrimSpace(matches[1])
 }
 
 func parseCiscoUptime(output string) time.Duration {

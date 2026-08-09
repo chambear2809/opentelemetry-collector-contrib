@@ -1,63 +1,8 @@
 # Cisco OS Receiver Metrics
 
-This guide lists the fixed metrics emitted by the Cisco OS receiver, documents its dynamic YANG metric patterns, and
-explains in plain language why someone might monitor them. It is written for operators who may not know Cisco or
-networking terms yet.
+This guide lists every metric emitted by the Cisco OS receiver and explains, in plain language, why someone might monitor it. It is written for operators who may not know Cisco or networking terms yet.
 
-Fixed-name governance is exact for metric name, description, instrument, numeric type, unit, monotonicity, and
-temporality across the receiver and both child scrapers. Attribute governance is deliberately narrower: required and
-optional attributes are checked for `cisco.topology.neighbor.info`, and shared-gNMI builtin mappings have a typed
-optional-attribute union. Other API, CLI, and direct-telemetry attributes remain source-conditional; the fixed catalog
-does not claim an exhaustive attribute union for those emitters.
-
-The fixed wire contracts use integer datapoints for IOS XR and Catalyst 9800 receiver health and for discrete WLC
-status, count, counter, and byte aliases; continuous WLC measurements remain double gauges with cataloged units.
-Compact-GPB diagnostics are a single per-message integer gauge and carry no receiver-health state. Direct
-gNMI and GPB-KV dynamic datapoints retain an injective raw source identity in `cisco.yang.source_path`. Direct-gNMI
-structured scalar paths are unchanged; JSON descendants use `rawGNMIPath#/escaped/key` framing, with the fragment
-encoded as a JSON Pointer so the structured-to-JSON boundary and arbitrary object keys remain unambiguous. Complex-array
-entries are emitted only when every entry has a recognized stable identity, including singleton arrays, so
-an anonymous occupant cannot silently inherit a prior series identity. The normalized
-`cisco.topology.*` attributes are additive: ACI continues to emit its legacy `network.peer.name`,
-`network.peer.address`, and `network.protocol.name` attributes.
-
-The broad `cisco.catalyst9800.yang.` and `cisco.iosxr.yang.` namespaces are reserved for pattern-governed model output
-and are outside exact fixed-name completeness. Receiver-generated names use the current `__v1` encoding. After the
-product prefix, the common grammar is `__v1.(m0|m1.<segment>)`: `m0` means no module and `m1` is followed by its raw
-module value. Direct gNMI then uses `p<count>.<segment>...`; dial-out uses
-`(e0|e1.e<count>.<segment>...).p<count>.<segment>...`, so canonical nonempty encoding-path containers and raw GPB-KV
-source-path segments are separate tuples. `e0` represents the deliberate absent/empty encoding-path class. A nonempty
-`encoding_path` is accepted only in slash-delimited canonical form, with no surrounding whitespace or slash and no
-empty segment; noncanonical input is rejected rather than normalized. Only a valid `module:local-name` before any
-predicate bracket changes the effective module. Colons in retained predicate values such as MAC or IPv6 identities
-remain segment data. Numeric and info variants
-end in `.n` and `.i`. A segment is `s<byte-count>_<bytes>`, where ASCII letters and digits remain readable and every
-other byte is escaped as `_HH`. These length and count frames preserve case, punctuation, module qualifiers, segment
-boundaries, the dial-out encoding/source boundary, and the transparent `content` segment. Target and list-key values
-remain attributes rather than entering metric names.
-
-For direct gNMI, differing nonempty prefix and relative-path origins are rejected and counted. Otherwise the one
-nonempty effective origin is the module frame before any module-qualified path fallback. Dial-out accepts only raw
-yang_grpc `cisco.*` metrics plus its exact compact-GPB diagnostic; apparent fixed, product, or alias prefixes from a
-device are still framed, and non-`cisco.*` input is rejected. Every dynamic datapoint retains
-`cisco.yang.source_path`. The active final-name budget applies to the completed encoded name and is capped at 1024
-bytes; overflow is rejected without truncation.
-
-Numeric `.n` streams have one deterministic contract per encoded leaf: gauges are finite double datapoints and known
-counters are cumulative monotonic sums with int64 datapoints. Parser-less dial-out gauges are raw carriers and are
-promoted to sums only when deterministic path classification identifies a counter. An incoming sum is never demoted
-to a gauge, and a sum classified as a counter must already be cumulative and monotonic. Exact int-to-double and
-integral double-to-int conversions are accepted, including exactly representable int64 values beyond 2^53; inexact
-gauge integers, fractional or out-of-range counters, incompatible instruments, unset points, and nonnumeric dynamic instruments are
-dropped and counted rather than rounded or silently coerced. Info `.i` streams are double gauges with the original
-text, including a present empty string, on `value`. JSON null remains absent. This is a breaking replacement for the former sanitized dynamic names and mixed source numeric
-representations. Fixed catalogs, stable `cisco.wlc.*` aliases, and normal shared-gNMI profiles are unchanged. Custom
-shared-gNMI mappings remain a separate exact configuration-time contract and cannot claim any fixed name or any
-current/future name in either broad YANG namespace.
-
-The receiver has two SSH scrapers plus API polling and telemetry paths for Meraki, Intersight, Catalyst Center,
-Catalyst 9800 WLCs, Catalyst SD-WAN Manager, Nexus Dashboard/NDFC, APIC, Secure Firewall Management Center, Cisco
-Identity Services Engine, secure normalized gNMI dial-in, and IOS XR MDT:
+The receiver has two SSH scrapers plus API polling and telemetry paths for Meraki, Intersight, Catalyst Center, Catalyst 9800 WLCs, Catalyst SD-WAN Manager, Nexus Dashboard/NDFC, APIC, and Secure Firewall Management Center:
 
 - `system`: device availability, CPU, memory, protocol, control-plane, routing, forwarding, and router dataplane health.
 - `interfaces`: physical and logical port traffic, errors, packet drops, link status, L2 topology, LACP, vPC, and transceiver sensors.
@@ -69,18 +14,9 @@ Identity Services Engine, secure normalized gNMI dial-in, and IOS XR MDT:
 - `nexus_dashboard`: API-first polling for Nexus Dashboard platform health, NDFC LAN/NX-OS fabrics, Insights/Analyze anomalies, Orchestrator/OneManage deployment state, Data Broker sessions, and interface performance.
 - `aci`: APIC class-query polling for ACI controller health, fabric nodes, faults, audit/events, tenant objects, endpoint presence, topology, and bounded stats.
 - `fmc`: Secure Firewall Management Center REST polling for FMC-managed FTD/ASA inventory, interfaces, health, VPN, HA/failover, policy, deployment, audit evidence, and optional eStreamer security-event logs.
-- `ise`: Cisco Identity Services Engine REST/OpenAPI/ERS/MnT polling for deployment, network-device, endpoint, session,
-  authentication, posture, profiler, policy, TrustSec, alarm, certificate, license, and webhook evidence, with opt-in
-  pxGrid streaming and Data Connect queries.
-- `gnmi`: Product-contract-gated secure gNMI dial-in for Catalyst 9300/9500 on exact IOS XE 17.18.1, Catalyst 9800
-  on IOS XE 17.18.x, ASR 9000/NCS 5500 on 24.4.x, Nexus 9000 on 10.6(x), and Nexus 3500 on 10.5(x), with bounded
-  preflight, cache, path-group, stream, and cardinality controls plus receiver self-telemetry for qualification,
-  subscription health, and retained-state pressure.
 - `ios_xr`: IOS XR gNMI dial-in and MDT gRPC dial-out telemetry for ASR 9000 and NCS routers, normalized from YANG paths into generic `cisco.iosxr.*` metrics.
 
-Device-scoped SSH metrics include the following resource attributes. API account, controller, organization, network,
-and aggregate resources include the attributes that exist at that scope; for example, they can omit `host.ip`,
-`host.type`, or `os.version`. Shared gNMI adds `host.ip` only when the configured endpoint host is an IP literal.
+All metrics include these resource attributes:
 
 | Attribute | Meaning |
 | --- | --- |
@@ -92,40 +28,17 @@ and aggregate resources include the attributes that exist at that scope; for exa
 | `os.name` | Device operating system, such as `IOS XE`, `IOS`, or `NX-OS`. |
 | `os.version` | Device operating system version reported by `show version` when available. |
 
-Shared gNMI emits device telemetry only after live identity verification. Its verified resource adds these values:
-
-| Attribute | Meaning |
-| --- | --- |
-| `cisco.product.family` | Canonical configured and verified family: `catalyst_9300`, `catalyst_9500`, `catalyst_9800`, `asr_9000`, `ncs_5500`, `nexus_9000`, or `nexus_3500`. |
-| `device.manufacturer` | `Cisco`. |
-| `device.model.identifier` | Unambiguous chassis model returned by the product-specific identity probe. |
-| `os.version` | Canonical running software release identifier compared with required `software_version`. For IOS XE this is the public release label; it excludes the internal install build, `version-extension`, and SMU state. |
-| `cisco.os.boot_mode` | Verified IOS XE boot mode when the product contract requires it. Catalyst 9300/9500 contracts accept only `install`. |
-| `cisco.os.name` | Derived Cisco OS family. |
-| `os.name` | Human-readable derived OS name. |
-| `cisco.platform.family` | Legacy shared-gNMI OS-family alias retained for compatibility; use `cisco.product.family` for product grouping. |
-
 Controller/API paths add these correlation attributes when available:
 
 | Attribute | Meaning |
 | --- | --- |
 | `cisco.controller.type` | Controller source, such as `nexus_dashboard` or `apic`. |
 | `cisco.controller.endpoint` | Controller endpoint used for the API poll. |
-| `meraki.organization.id` | Meraki organization ID. |
-| `meraki.network.id` | Meraki network ID. |
-| `meraki.device.serial` | Meraki device serial. |
-| `meraki.device.product_type` | Meraki appliance, switch, wireless, sensor, or other product family. |
-| `intersight.endpoint` | Intersight API endpoint. |
-| `intersight.moid` | Intersight managed-object ID. |
-| `intersight.resource.type` | Intersight object family. |
-| `intersight.serial` | Intersight-reported hardware serial. |
 | `cisco.fabric.name` | Fabric name reported by NDFC, Insights, NDO, or APIC-derived context. |
 | `cisco.site.name` | Site name reported by Nexus Dashboard services. |
 | `cisco.switch.role` | Switch role, such as leaf, spine, border leaf, or controller. |
 | `cisco.switch.serial` | Nexus switch serial used to correlate API, SSH, and MDT/YANG telemetry. |
 | `catalyst_center.device.family` | Catalyst Center device family reported by inventory or topology APIs. |
-| `catalyst_center.device.id` | Catalyst Center device ID. |
-| `catalyst_center.device.serial` | Catalyst Center device serial. |
 | `catalyst_center.device.role` | Catalyst Center device role reported by inventory or topology APIs. |
 | `catalyst_center.health.state` | Bounded health-state label such as total or good for site population counts. |
 | `catalyst_center.site.name` | Catalyst Center site name or hierarchy. |
@@ -136,44 +49,24 @@ Controller/API paths add these correlation attributes when available:
 | `sdwan.personality` | Catalyst SD-WAN personality, such as Manager, Controller, Validator, WAN Edge, or SD-Routing role. |
 | `sdwan.tloc.color` | Catalyst SD-WAN transport color. |
 | `sdwan.application` | Bounded SD-WAN application name for app-route and AI/SaaS path views. |
-| `sdwan.chassis_serial` / `sdwan.board_serial` | SD-WAN hardware identities. |
-| `sdwan.device.type` / `sdwan.device.model` | SD-WAN device family and model. |
 | `aci.node.id` | APIC node ID for ACI switches and controllers. |
-| `aci.controller.name` | APIC controller name. |
-| `aci.dn` / `aci.class` | ACI distinguished name and managed-object class. |
-| `aci.resource.type` | Normalized ACI object family. |
 | `aci.operation` | Bounded APIC endpoint family or evidence operation. |
 | `fmc.controller.name` | FMC controller display name. |
 | `fmc.domain.uuid` | FMC domain UUID used for `/api/fmc_config/v1/domain/{domainUUID}` requests. |
 | `fmc.operation` | Bounded FMC endpoint family or evidence operation. |
 | `fmc.resource.type` | Normalized FMC object type, such as device, interface, policy, deployment, HA, VPN, or audit record. |
-| `fmc.object.id` / `fmc.group` | FMC managed-object ID and collection group. |
-| `fmc.policy.id` / `fmc.policy.name` | FMC policy identity when applicable. |
-| `cisco.device.serial` | Provider-reported Cisco device serial, including FMC-managed firewalls. |
-| `ise.node.name` | ISE deployment node name. |
-| `ise.network_device.name` | Network access device associated with authentication, session, or policy evidence. |
-| `ise.endpoint.mac` | Endpoint MAC address used to correlate access, posture, and profiler evidence. |
-| `ise.protocol` | Bounded access protocol such as RADIUS or TACACS. |
-| `ise.endpoint` | Configured ISE API endpoint. |
 | `cisco.os.name` | Direct telemetry OS name, such as `ios_xe` for Catalyst 9800 or `ios_xr` for IOS XR. |
-| `cisco.platform.family` | Legacy shared-gNMI OS-family alias. Older direct Catalyst 9800 and IOS XR telemetry retains its existing platform-family values for compatibility. |
-| `cisco.product.family` | Canonical product family for a live-verified shared-gNMI target. |
+| `cisco.platform.family` | Direct telemetry platform family, such as `catalyst_9800`, ASR 9000, or NCS 5500. |
 | `cisco.yang.path` | Original gNMI/MDT YANG path or encoding path. Direct gNMI decoding percent-encodes structural bytes such as `/`, `%`, `[`, `]`, and `=` inside individual path components so different wire paths remain distinct. |
-| `cisco.yang.source_path` | Injective raw direct-gNMI or GPB-KV field path retained when a normalized metric name could otherwise conflate distinct YANG identifiers. Direct-gNMI JSON descendants use an unambiguous `rawGNMIPath#/JSON-pointer` boundary. Structured scalar paths retain their original form unless gNMI `Path.Target` is set; targeted paths use the injective `@target=<percent-encoded-target>@/rawGNMIPath` frame so identical paths from different targets remain distinct. |
-| `cisco.yang.module` | Effective leaf YANG module encoded in the dynamic metric name, such as `wireless-access-point-oper`, `openconfig-interfaces`, or a Cisco native module. A module-qualified direct-JSON descendant updates this value from its parent module. |
+| `cisco.yang.source_path` | Injective GPB-KV field path retained when a normalized metric name could otherwise conflate distinct YANG identifiers. |
+| `cisco.yang.module` | YANG module inferred from the path, such as `wireless-access-point-oper`, `openconfig-interfaces`, or a Cisco native module. |
 | `cisco.telemetry.transport` | Direct telemetry direction, such as `gnmi_dial_in` or `mdt_grpc_dial_out`. |
 | `cisco.wlc.ap.mac` | Catalyst 9800 AP radio/base MAC when present in the YANG key or JSON payload. |
 | `cisco.wlc.ssid` | Catalyst 9800 SSID name when present. |
 | `cisco.wlc.client.mac` | Catalyst 9800 client MAC when present. |
 | `nexus_dashboard.operation` | Bounded Nexus Dashboard endpoint family or evidence operation. |
-| `nexus_dashboard.product` / `nexus_dashboard.resource.type` | Nexus Dashboard application and object family. |
 | `ndfc.switch.id` | NDFC switch database ID used by some NDFC interface/performance APIs. |
 | `nd.service.name` | Nexus Dashboard service/app name. |
-
-Unless a product-specific section says otherwise, controller state metrics use the shared numeric encoding: `1` for
-healthy, online, reachable, or successful; `2` for informational, pending, or degraded; `3` for warning, minor, or
-major; and `4` for critical, error, failed, or offline. Unknown source strings are retained as bounded attributes but
-do not produce a numeric status datapoint.
 
 For direct IOS XR and Catalyst 9800 JSON payloads, every multi-entry complex array is preflighted before child metrics
 are emitted. Every entry must contribute a recognized identity, and those effective identities must be unique after the
@@ -217,9 +110,6 @@ For most users, start with these metrics before enabling the larger troubleshoot
 | `fmc.api.request.errors` | Shows FMC REST failures, including token, permission, endpoint, and rate-limit issues. |
 | `fmc.deployment.status` | Shows deployment job, deployable-device, and pending-change state for managed firewalls. |
 | `fmc.vpn.tunnel.status` | Shows site-to-site and remote-access VPN health where exposed by FMC. |
-| `ise.api.request.errors` | Shows ISE REST/OpenAPI/ERS/MnT failures, including credential, permission, endpoint, and rate-limit issues. |
-| `ise.radius.failure.count` | Shows RADIUS authentication failures by bounded protocol, outcome, failure, message, and policy context; user, endpoint, and network-device identities remain in logs. |
-| `ise.session.active.count` | Shows the current active-session population reported by ISE. |
 | `cisco.catalyst9800.receiver.decode_errors` | Shows Catalyst 9800 gNMI/gRPC decode failures. |
 | `cisco.wlc.ap.join.status` | Shows whether APs are joined to the WLC. |
 | `cisco.wlc.rf.channel.utilization` | Shows wireless channel utilization for RF congestion views. |
@@ -251,71 +141,9 @@ receivers:
         enabled: false
       cisco.wlc.client.*:
         enabled: false
-      cisco.iosxr.yang.__v1.*:
+      cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.*:
         enabled: false
 ```
-
-## Shared gNMI Normalized Profile Metrics
-
-The product-contract-gated `gnmi.targets` catalog is deliberately narrower than the receiver's complete metric
-inventory:
-
-| Products | Default normalized metrics |
-| --- | --- |
-| Catalyst 9300 and Catalyst 9500 (exact IOS XE 17.18.1, INSTALL mode) | `cisco.device.up`, `system.cpu.utilization`, per-location `system.memory.utilization`, interface status, and cumulative interface counters |
-| Catalyst 9800 | `cisco.device.up`, `system.cpu.utilization`, per-location `system.memory.utilization`, interface status, and cumulative interface counters |
-| ASR 9000 and NCS 5500 | `cisco.device.up`, per-node `system.cpu.utilization`, interface status, and cumulative interface counters; no memory or uptime |
-| Nexus 9000 and Nexus 3500 | `cisco.device.up`, interface status, and cumulative interface counters; no system profile |
-
-Interface status is `system.network.interface.status` and `cisco.interface.admin.status`. Cumulative counters are
-`system.network.io`, `system.network.errors`, `system.network.packet.count`, and
-`system.network.packet.dropped`. Shared gNMI does not emit interface speed, rates, or utilization and does not emit
-`system.uptime`.
-
-These rows describe implemented mappings, not retained live-device qualification. Catalyst 9300 and Catalyst 9500
-exact-build qualification is `Not run`; one chassis group in gNMI hardware inventory does not prove standalone
-topology, so qualification must retain an external topology record and treat standalone, StackWise, and StackWise
-Virtual as separate evidence scopes. Their target configurations therefore require the explicit
-`allow_unqualified: true` acknowledgement until retained physical-device qualification is complete.
-The contract rejects every other IOS XE release and rejects BUNDLE, unknown, ambiguous, or missing boot-mode
-identity; this is an implemented preflight boundary, not evidence that a physical device has been qualified.
-
-## Shared gNMI Collector Self-Telemetry
-
-The shared `gnmi.targets` path reports its own health through the Collector's internal telemetry endpoint. These are
-not receiver-pipeline OTLP metrics: scrape or export Collector self-telemetry separately if they are needed in Splunk
-Observability Cloud. Prometheus-style export exposes the `otelcol_`-prefixed names below.
-
-| Metric | Type | Operational Use |
-| --- | --- | --- |
-| `otelcol_ciscoosreceiver_gnmi_connections` | Gauge | Current established gNMI connections by target. |
-| `otelcol_ciscoosreceiver_gnmi_subscriptions` | Gauge | Active subscription streams by target and profile. |
-| `otelcol_ciscoosreceiver_gnmi_updates` | Cumulative sum | Decoded leaf updates by target and profile. |
-| `otelcol_ciscoosreceiver_gnmi_last_success_unixtime` | Gauge | Unix time of the most recent successfully decoded notification. |
-| `otelcol_ciscoosreceiver_gnmi_preflight_failures` | Cumulative sum | Terminal product-contract preflight compatibility failures by target and bounded reason. |
-| `otelcol_ciscoosreceiver_gnmi_product_verified` | Gauge | Whether the target passed product, model, release, and capability verification. |
-| `otelcol_ciscoosreceiver_gnmi_reconnects` | Cumulative sum | Transport reconnect attempts by target. |
-| `otelcol_ciscoosreceiver_gnmi_authentication_failures` | Cumulative sum | Authentication or authorization failures by target. |
-| `otelcol_ciscoosreceiver_gnmi_decode_errors` | Cumulative sum | Decode failures by target and profile. |
-| `otelcol_ciscoosreceiver_gnmi_consumer_refusals` | Cumulative sum | Downstream consumer refusals by target and profile. |
-| `otelcol_ciscoosreceiver_gnmi_profile_degraded` | Gauge | Profile degradation state and bounded reason. |
-| `otelcol_ciscoosreceiver_gnmi_unmapped_values` | Cumulative sum | Decoded values without an explicit stable metric mapping. |
-| `otelcol_ciscoosreceiver_gnmi_deletes` | Cumulative sum | Delete paths applied to retained state. |
-| `otelcol_ciscoosreceiver_gnmi_duplicate_updates` | Cumulative sum | Duplicate updates suppressed by retained state. |
-| `otelcol_ciscoosreceiver_gnmi_invalid_timestamps` | Cumulative sum | Invalid or excessively future-dated device timestamps rejected before cache mutation. |
-| `otelcol_ciscoosreceiver_gnmi_out_of_order_updates` | Cumulative sum | Stale cache operations suppressed by source-timestamp ordering. |
-| `otelcol_ciscoosreceiver_gnmi_cache_owner_resets` | Cumulative sum | Silent owner-scoped cache resets before an updates-only stream reconnects. |
-| `otelcol_ciscoosreceiver_gnmi_unsupported_value_kinds` | Cumulative sum | Bounded opaque or aggregate typed values ignored by kind. |
-| `otelcol_ciscoosreceiver_gnmi_cache_utilization` | Gauge | Maximum entry or byte utilization of the target's cache partition. |
-| `otelcol_ciscoosreceiver_gnmi_auxiliary_state_utilization` | Gauge | Maximum entry or byte utilization of the target's auxiliary-state partition. |
-
-Preflight-failure reasons are bounded to `identity_missing`, `identity_ambiguous`, `product_mismatch`,
-`release_mismatch`, `missing_model`, `unsupported_model_version`, `unsupported_gnmi_version`,
-`unsupported_encoding`, `unsupported_boot_mode`, and `malformed_identity`. `unsupported_model_version` means an
-advertised model name was present but its organization/version tuple did not match the pinned contract;
-`unsupported_boot_mode` means a boot-mode-gated contract did not resolve to its required mode. Compatibility failures
-quarantine only the affected target until receiver restart; transport, authentication, and temporary RPC failures
-remain retryable.
 
 ## Meraki API Metrics
 
@@ -333,24 +161,15 @@ Meraki-specific gauges for cloud-only or windowed values.
 | `meraki.uplink.status` | Gauge, int | `1` | WAN/uplink active state. | Alert on failed appliance uplinks. |
 | `meraki.uplink.loss` | Gauge, double | `%` | Latest Dashboard uplink packet-loss sample. | Detect WAN degradation before a full outage. |
 | `meraki.uplink.latency` | Gauge, double | `ms` | Latest Dashboard uplink latency sample. | Track WAN performance and ISP issues. |
-| `meraki.switch.port.usage` | Gauge, double | `kBy` | Windowed switch port usage. | See recent port usage without treating it as a cumulative counter. |
+| `meraki.switch.port.usage` | Gauge, double | `KBy` | Windowed switch port usage. | See recent port usage without treating it as a cumulative counter. |
 | `meraki.switch.port.alert.active` | Gauge, int | `1` | Current port warning or error state by severity and reason. | Alert on persistent port faults without incrementing a synthetic counter on every poll. |
-| `meraki.switch.port.poe.allocated` | Gauge, int | `1` | Whether Dashboard reports that PoE is allocated to the switch port. | Find access devices affected by missing port power. |
-| `meraki.uplink.cellular.signal.rsrp` | Gauge, double | `dB{mW}` | Cellular uplink reference-signal received power. | Detect weak LTE/5G backup coverage. |
-| `meraki.uplink.cellular.signal.rsrq` | Gauge, double | `dB` | Cellular uplink reference-signal received quality. | Detect noisy or degraded cellular backup paths. |
 | `meraki.wireless.client.count` | Gauge, int | `{client}` | Wireless client counts by status. | Monitor AP load and client connectivity. |
 | `meraki.wireless.channel_utilization` | Gauge, double | `%` | Wi-Fi, non-Wi-Fi, and total channel utilization by band. | Find RF congestion. |
-| `meraki.wireless.packet.count` | Gauge, int | `{packet}` | Windowed wireless packet count by direction. | Correlate client load with packet-volume changes. |
-| `meraki.wireless.packet.loss` | Gauge, int | `{packet}` | Windowed wireless lost-packet count by direction. | Quantify RF or client-path loss. |
 | `meraki.wireless.packet.loss_percentage` | Gauge, double | `%` | Wireless packet loss percentage by direction. | Detect poor wireless quality. |
 | `meraki.wireless.ssid.status` | Gauge, int | `1` | Whether an SSID is enabled, advertised, and broadcasting on a BSS. | Catch unintended SSID outages. |
 | `meraki.appliance.performance.score` | Gauge, double | `1` | Meraki appliance performance score. | Watch MX performance health. |
 | `meraki.vpn.peer.status` | Gauge, int | `1` | Auto VPN or third-party VPN peer reachability. | Alert on VPN peer outages. |
-| `meraki.vpn.peer.usage` | Gauge, int | `kBy` | Windowed VPN peer usage by direction. | Track VPN traffic volume. |
-| `meraki.vpn.peer.latency` | Gauge, double | `ms` | Windowed VPN peer latency by sender and receiver uplink. | Detect slow tunnel paths. |
-| `meraki.vpn.peer.loss` | Gauge, double | `%` | Windowed VPN peer loss by sender and receiver uplink. | Detect lossy tunnel paths. |
-| `meraki.vpn.peer.jitter` | Gauge, double | `ms` | Windowed VPN peer jitter by sender and receiver uplink. | Detect unstable real-time application paths. |
-| `meraki.vpn.peer.mos` | Gauge, double | `1` | Windowed VPN peer mean opinion score. | Track voice-quality degradation across VPN paths. |
+| `meraki.vpn.peer.usage` | Gauge, int | `KBy` | Windowed VPN peer usage by direction. | Track VPN traffic volume. |
 | `meraki.power.module.status` | Gauge, int | `1` | Power module connection/powering status. | Detect PSU or power module failures. |
 
 Meraki does not synthesize SSH-only parity gaps where the Dashboard API has no safe polling equivalent, including
@@ -368,10 +187,9 @@ fields such as descriptions, affected object names, failure reasons, and audit p
 | --- | --- | --- | --- | --- |
 | `intersight.api.request.duration` | Gauge, double | `s` | Average duration of Intersight API request attempts within the scrape for each matching request-attribute set. | Detect slow API responses, permission gaps, or endpoint families that need tuning. |
 | `intersight.api.request.errors` | Sum, int, cumulative | `{error}` | Intersight API request failures. | Alert on broken credentials, signing failures, endpoint errors, or repeated API failures. |
-| `intersight.api.rate_limited` | Sum, int, cumulative | `{request}` | Requests that received HTTP 429. | Confirm the receiver is hitting Intersight rate limits. |
+| `intersight.api.rate_limited` | Gauge, int | `{request}` | Requests that received HTTP 429. | Confirm the receiver is hitting Intersight rate limits. |
 | `intersight.scrape.partial_success` | Gauge, int | `1` | Whether one or more Intersight endpoint families failed during a scrape. | Keep dashboards honest when part of the API surface is unavailable. |
-| `intersight.scrape.last_success` | Gauge, int | `s` | Unix timestamp of the most recent fully successful Intersight scrape. | Detect stale or persistently partial Intersight data. |
-| `intersight.telemetry.query.rows` | Gauge, int | `{row}` | Per-query telemetry rows classified by the bounded `intersight.telemetry.outcome` attribute as emitted, capped, filtered, sparse, invalid, or malformed. | Prove GroupBy coverage and distinguish expected sparse data from selection, cap, or payload-shape loss. |
+| `intersight.scrape.last_success` | Gauge, int | `s` | Unix timestamp of the most recent completed Intersight scrape. | Detect stale Intersight data. |
 | `intersight.resource.info` | Gauge, int | `1` | Inventory metadata for an Intersight resource. | Build inventory and drilldown pages without making status labels too broad. |
 | `intersight.resource.status` | Gauge, int | `1` | Encoded resource status, with the original status retained as an attribute. | Standardize online, healthy, degraded, failed, and unknown state across object families. |
 | `intersight.resource.count` | Gauge, int | `1` | Resource count grouped by type, status, and severity. | Track fleet composition and health by domain. |
@@ -379,18 +197,13 @@ fields such as descriptions, affected object names, failure reasons, and audit p
 | `intersight.alarm.count` | Gauge, int | `1` | Active alarm counts by bounded attributes. | Create severity and acknowledgement rollups. |
 | `intersight.advisory.active` | Gauge, int | `1` | Active advisory or security advisory exposure. | Identify assets exposed to known field notices or security advisories. |
 | `intersight.hcl.status` | Gauge, int | `1` | Hardware compatibility/compliance status. | Catch unsupported combinations before maintenance or upgrades. |
-| `intersight.hcl.status.count` | Gauge, int | `1` | HCL/compliance records grouped by bounded status and resource attributes. | Track compatibility coverage and drift. |
 | `intersight.workflow.status` | Gauge, int | `1` | Workflow execution status. | Detect failed upgrades, deployments, or policy actions. |
-| `intersight.workflow.count` | Gauge, int | `1` | Workflow records grouped by bounded status attributes. | Quantify workflow failures or backlogs. |
 | `intersight.task.status` | Gauge, int | `1` | Workflow task execution status. | Find the specific failed step behind a workflow problem. |
-| `intersight.task.count` | Gauge, int | `1` | Workflow task records grouped by bounded status attributes. | Quantify failed or stalled workflow steps. |
 | `intersight.techsupport.status` | Gauge, int | `1` | Tech-support collection/upload status. | Track evidence bundle creation for support cases. |
-| `intersight.techsupport.count` | Gauge, int | `1` | Tech-support jobs grouped by bounded status attributes. | Quantify support-bundle failures or backlog. |
 | `intersight.audit.record.count` | Gauge, int | `1` | Recent audit/config-change records by user. | Correlate configuration changes with incidents. |
 | `intersight.firmware.bundle.info` | Gauge, int | `1` | Firmware bundle identity with the version in `intersight.firmware.version`. | Find firmware drift without encoding arbitrary version strings as status codes. |
 | `intersight.target.connection_status` | Gauge, int | `1` | Target connection state reported by Intersight. | Detect disconnected targets and device connector issues. |
 | `intersight.compute.available_memory` | Gauge, int | `MBy` | Available server memory reported by Intersight. | Spot capacity constraints on managed compute. |
-| `system.cpu.logical.count` | Gauge, int | `{cpu}` | CPU core count reported by Intersight. | Inventory logical compute capacity. |
 | `intersight.compute.thread.count` | Gauge, int | `{thread}` | CPU thread count reported by Intersight. | Inventory compute capacity. |
 | `intersight.fault.count` | Gauge, int | `{fault}` | Fault summary values from compute or HyperFlex objects. | Highlight objects carrying summarized faults. |
 | `intersight.storage.media_error.count` | Gauge, int | `{error}` | Media errors reported by storage disks. | Detect disk degradation. |
@@ -406,7 +219,7 @@ fields such as descriptions, affected object names, failure reasons, and audit p
 | `intersight.virtual_machine.cpu.count` | Gauge, int | `{cpu}` | vCPU count for a VM. | Correlate VM sizing with host and cluster health. |
 | `intersight.virtual_machine.memory` | Gauge, int | `MBy` | VM configured memory. | Correlate VM sizing with memory pressure. |
 | `intersight.virtual_machine.power_state` | Gauge, int | `1` | Encoded VM power state. | Spot powered-off or unexpectedly running VMs. |
-| `intersight.ucs.fan.speed` | Gauge, double | `1/min` | Mean fan speed from Intersight telemetry GroupBy. | Detect cooling issues and fan anomalies. |
+| `intersight.ucs.fan.speed` | Gauge, double | `rpm` | Mean fan speed from Intersight telemetry GroupBy. | Detect cooling issues and fan anomalies. |
 | `intersight.ucs.fan.speed_ratio` | Gauge, double | `%` | Mean fan speed as a percentage of maximum. | Identify abnormal fan duty cycles. |
 | `intersight.ucs.host.power` | Gauge, double | `W` | Mean host power from Intersight telemetry GroupBy. | Watch power draw and capacity. |
 | `intersight.ucs.host.energy` | Gauge, double | `J` | Host energy consumption from Intersight telemetry. | Track energy use across managed hosts. |
@@ -450,8 +263,8 @@ fields such as descriptions, affected object names, failure reasons, and audit p
 | `intersight.ucs.fan.status` | Gauge, double | `1` | Fan operational status from Intersight telemetry. | Identify failed or unhealthy fans. |
 | `intersight.ucs.memory.status` | Gauge, double | `1` | Memory module operational status from Intersight telemetry. | Identify unhealthy DIMMs. |
 | `intersight.ucs.temperature.status` | Gauge, double | `1` | Temperature sensor operational status from Intersight telemetry. | Identify unhealthy thermal sensors. |
-| `intersight.ucs.signal_power.receive` | Gauge, double | `dB{mW}` | Transceiver receive optical power. | Detect weak or dirty optical paths. |
-| `intersight.ucs.signal_power.transmit` | Gauge, double | `dB{mW}` | Transceiver transmit optical power. | Detect transceiver or fiber degradation. |
+| `intersight.ucs.signal_power.receive` | Gauge, double | `dBm` | Transceiver receive optical power. | Detect weak or dirty optical paths. |
+| `intersight.ucs.signal_power.transmit` | Gauge, double | `dBm` | Transceiver transmit optical power. | Detect transceiver or fiber degradation. |
 | `intersight.hyperflex.read.iops` | Gauge, double | `{operation}/s` | HyperFlex read IOPS. | Detect storage load and imbalance. |
 | `intersight.hyperflex.write.iops` | Gauge, double | `{operation}/s` | HyperFlex write IOPS. | Detect storage load and imbalance. |
 | `intersight.hyperflex.read.latency` | Gauge, double | `ms` | HyperFlex read latency. | Alert on storage latency. |
@@ -473,9 +286,9 @@ without turning every endpoint into a high-cardinality metric series.
 | --- | --- | --- | --- | --- |
 | `catalyst_center.api.request.duration` | Gauge, double | `s` | Average duration of Catalyst Center API request attempts within the scrape for each matching request-attribute set. | Detect slow Assurance APIs, auth problems, and endpoint failures. |
 | `catalyst_center.api.request.errors` | Sum, int, cumulative | `{error}` | Catalyst Center API request failures. | Alert on broken credentials, permission gaps, rate limits, or repeated API failures. |
-| `catalyst_center.api.rate_limited` | Sum, int, cumulative | `{request}` | Requests that received HTTP 429. | Confirm polling pressure against Catalyst Center. |
+| `catalyst_center.api.rate_limited` | Gauge, int | `{request}` | Requests that received HTTP 429. | Confirm polling pressure against Catalyst Center. |
 | `catalyst_center.scrape.partial_success` | Gauge, int | `1` | Whether one or more Catalyst Center endpoint families failed during a scrape. | Keep dashboards honest when only part of Assurance data was collected. |
-| `catalyst_center.scrape.last_success` | Gauge, int | `s` | Unix timestamp of the most recent fully successful Catalyst Center scrape. | Detect stale or persistently partial Catalyst Center data. |
+| `catalyst_center.scrape.last_success` | Gauge, int | `s` | Unix timestamp of the most recent completed Catalyst Center scrape. | Detect stale Catalyst Center data. |
 | `catalyst_center.inventory.device.count` | Gauge, int | `{device}` | Network-device inventory count. | Detect inventory scope, permission, or collection changes. |
 | `catalyst_center.device.reachability.status` | Gauge, int | `1` | Encoded device reachability status with the original status retained as an attribute. | Find unreachable or partially reachable devices quickly. |
 | `catalyst_center.device.collection.status` | Gauge, int | `1` | Encoded Catalyst Center collection status. | Separate device outages from managed/unmanaged or collection-state problems. |
@@ -504,7 +317,7 @@ without turning every endpoint into a high-cardinality metric series.
 | `catalyst_center.device.detail.communication.status` | Gauge, int | `1` | Targeted device communication status. | Explain stale or missing detail data for an affected device. |
 | `catalyst_center.client.detail.health.score` | Gauge, double | `1` | Targeted client-detail health score by client, health type, and reason. | Troubleshoot a known affected client MAC address. |
 | `catalyst_center.client.issue.count` | Gauge, int | `{issue}` | Issue count for a targeted client detail lookup. | Confirm whether Catalyst Center has client-specific issue evidence. |
-| `catalyst_center.client.wireless.rssi` | Gauge, double | `dB{mW}` | RSSI for a targeted wireless client. | Diagnose weak RF or roaming symptoms. |
+| `catalyst_center.client.wireless.rssi` | Gauge, double | `dBm` | RSSI for a targeted wireless client. | Diagnose weak RF or roaming symptoms. |
 | `catalyst_center.client.wireless.snr` | Gauge, double | `dB` | SNR for a targeted wireless client. | Diagnose interference or poor wireless quality. |
 | `catalyst_center.client.network.io` | Gauge, double | `By` | Client transmit and receive bytes. | Correlate client traffic silence or spikes with access symptoms. |
 
@@ -514,8 +327,7 @@ including `cisco.device.up`, `system.network.interface.status`, `cisco.interface
 
 ## Catalyst SD-WAN Metrics And Logs
 
-Catalyst SD-WAN support polls read-only SD-WAN Manager APIs. Default groups avoid the highest-cardinality feature
-areas, but their per-device request volume must still be qualified against the selected fleet size and scrape timeout.
+Catalyst SD-WAN support polls read-only SD-WAN Manager APIs. Default groups are safe for continuous fleet monitoring.
 Realtime and high-cardinality feature areas are opt-in and report `sdwan.service.unavailable` or
 `sdwan.service.skipped` when a feature, license, target filter, or endpoint is not available.
 
@@ -523,14 +335,12 @@ Realtime and high-cardinality feature areas are opt-in and report `sdwan.service
 | --- | --- | --- | --- | --- |
 | `sdwan.api.request.duration` | Gauge, double | `s` | Average duration of SD-WAN Manager API request attempts within the scrape for each matching request-attribute set. | Detect slow Manager APIs before trusting SD-WAN telemetry. |
 | `sdwan.api.request.errors` | Sum, int, cumulative | `{error}` | API, auth, permission, timeout, or decode failures. | Alert on broken credentials, role gaps, endpoint failures, or rate limits. |
-| `sdwan.api.rate_limited` | Sum, int, cumulative | `{request}` | Requests that received HTTP 429. | Confirm the receiver is hitting SD-WAN Manager rate limits. |
+| `sdwan.api.rate_limited` | Gauge, int | `{request}` | Requests that received HTTP 429. | Confirm the receiver is hitting SD-WAN Manager rate limits. |
 | `sdwan.scrape.partial_success` | Gauge, int | `1` | Whether one or more SD-WAN endpoint families failed or were skipped. | Keep dashboards honest when only part of SD-WAN data was collected. |
-| `sdwan.scrape.last_success` | Gauge, int | `s` | Unix timestamp of the most recent fully successful SD-WAN scrape. | Detect stale or persistently partial SD-WAN data. |
+| `sdwan.scrape.last_success` | Gauge, int | `s` | Unix timestamp of the most recent completed SD-WAN scrape. | Detect stale SD-WAN data. |
 | `sdwan.service.unavailable` | Gauge, int | `1` | Feature or endpoint was unavailable, unauthorized, unsupported, or missing. | Distinguish real network symptoms from API/product coverage gaps. |
 | `sdwan.service.skipped` | Gauge, int | `1` | Feature or endpoint was skipped because target scope was missing. | Show when opt-in incident groups need filters or supported targets. |
-| `sdwan.manager.up` | Gauge, int | `1` | Whether at least one SD-WAN Manager API operation succeeded in the scrape. | Separate Manager/API availability from partial endpoint failures. |
-| `sdwan.manager.endpoint.status` | Gauge, int | `1` | Whether a Manager endpoint family returned data. | Find missing Manager API families before trusting dependent panels. |
-| `sdwan.manager.health.score` | Gauge, double | `1` | Manager cluster or resource health value where exposed. | Detect Manager-side degradation. |
+| `sdwan.manager.up` | Gauge, int | `1` | SD-WAN Manager collection target is configured and scraping. | Prove the controller target is part of the active pipeline. |
 | `sdwan.manager.status` | Gauge, int | `1` | Encoded SD-WAN Manager status. | Detect Manager or cluster health degradation. |
 | `sdwan.inventory.device.count` | Gauge, int | `{device}` | Device inventory count after target and shared selection. | Detect device scope, permission, or inventory changes. |
 | `sdwan.resource.info` | Gauge, int | `1` | Stable SD-WAN resource identity. | Build inventory and drilldown pages. |
@@ -544,8 +354,8 @@ Realtime and high-cardinality feature areas are opt-in and report `sdwan.service
 | `sdwan.control.actual_connections` | Gauge, int | `{connection}` | Actual control connections when exposed. | Detect missing vSmart/controller sessions. |
 | `sdwan.bfd.session.status` | Gauge, int | `1` | Encoded BFD session status. | Find partial site or transport failure even when control plane is up. |
 | `sdwan.bfd.session.count` | Gauge, int | `{item}` | BFD session count grouped by status and path attributes. | Spot site-wide or color-specific tunnel loss. |
-| `sdwan.bfd.session.transitions` | Sum, int, cumulative | `{transition}` | BFD session transition count. | Detect flapping tunnels. |
-| `sdwan.bfd.session.flap.count` | Sum, int, cumulative | `{flap}` | BFD flap count where exposed. | Correlate instability with incident windows. |
+| `sdwan.bfd.session.transitions` | Gauge, int | `{transition}` | BFD session transition count. | Detect flapping tunnels. |
+| `sdwan.bfd.session.flap.count` | Gauge, int | `{flap}` | BFD flap count where exposed. | Correlate instability with incident windows. |
 | `sdwan.app_route.latency` | Gauge, double | `ms` | Application-aware routing latency. | Troubleshoot SaaS, AI/model API, and custom app path quality. |
 | `sdwan.app_route.jitter` | Gauge, double | `ms` | Application-aware routing jitter. | Find unstable paths for latency-sensitive applications. |
 | `sdwan.app_route.loss` | Gauge, double | `%` | Application-aware routing loss. | Detect WAN path degradation. |
@@ -566,28 +376,21 @@ correlation without turning event text into metric dimensions.
 
 ## Nexus Dashboard, NDFC, Insights, Orchestrator, And Data Broker Metrics And Logs
 
-Nexus Dashboard support is API-first and switch-centered. With `api_profile: legacy`, NDFC, Insights, Orchestrator,
-and Data Broker objects are correlated back to Nexus switch identity with serial, switch ID, fabric, site, role,
-interface, service, and controller endpoint attributes whenever the API response exposes them. Missing or disabled
-legacy-profile apps do not fail the whole scrape: the receiver emits partial-success and unavailable-service metrics
-so dashboards can distinguish fabric problems from management-plane coverage gaps. The `unified` profile currently
-polls only the verified platform and Manage metric routes. Its nested hardware and summary payloads provide API health
-and generic resource-presence evidence; their numeric values are not yet mapped into dedicated telemetry.
+Nexus Dashboard support is API-first and switch-centered. NDFC, Insights, Orchestrator, and Data Broker objects are
+correlated back to Nexus switch identity with serial, switch ID, fabric, site, role, interface, service, and controller
+endpoint attributes whenever the API response exposes them. Missing or disabled apps do not fail the whole scrape:
+the receiver emits partial-success and unavailable-service metrics so dashboards can distinguish fabric problems from
+management-plane coverage gaps.
 
 | Metric | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
 | `nexus_dashboard.api.request.duration` | Gauge, double | `s` | Average duration of Nexus Dashboard API request attempts within the scrape for each matching request-attribute set. | Detect slow or failing controller APIs before trusting fabric data. |
 | `nexus_dashboard.api.request.errors` | Sum, int, cumulative | `{error}` | Nexus Dashboard API request failures. | Alert on broken credentials, permission gaps, rate limits, or app/API failures. |
-| `nexus_dashboard.api.endpoint.error` | Sum, int, cumulative | `{error}` | Endpoint-family scrape failures. | Identify the failed ND app or endpoint while preserving other results. |
-| `nexus_dashboard.api.rate_limited` | Sum, int, cumulative | `{request}` | Requests that received HTTP 429. | Detect polling pressure against the controller. |
+| `nexus_dashboard.api.rate_limited` | Gauge, int | `{request}` | Requests that received HTTP 429. | Detect polling pressure against the controller. |
 | `nexus_dashboard.scrape.partial_success` | Gauge, int | `1` | Whether one or more endpoint families failed or were skipped. | Keep dashboards honest when an ND service is absent or a target filter is missing. |
-| `nexus_dashboard.scrape.last_success` | Gauge, int | `s` | Unix timestamp of the most recent fully successful Nexus Dashboard scrape. | Detect stale or persistently partial controller data. |
 | `nexus_dashboard.service.unavailable` | Gauge, int | `1` | ND service endpoint unavailable, disabled, unauthorized, or not installed. | Explain why Insights, NDFC, NDO, or Data Broker charts are empty. |
-| `nexus_dashboard.service.skipped` | Gauge, int | `1` | ND endpoint family skipped because target scope was not configured. | Distinguish an intentional scope gap from an app outage. |
-| `nexus_dashboard.service.health` | Gauge, int | `1` | Encoded Nexus Dashboard service health. | Find degraded platform or application services. |
 | `nexus_dashboard.resource.info` | Gauge, int | `1` | Bounded metadata for controller resources. | Build inventory and troubleshooting drilldowns. |
 | `nexus_dashboard.resource.status` | Gauge, int | `1` | Encoded status with the original status string retained as an attribute. | Normalize healthy, degraded, failed, and unknown states across ND services. |
-| `nexus_dashboard.resource.count` | Gauge, int | `1` | Controller resources grouped by bounded product, group, type, status, and severity. | Track object coverage and unexpected inventory changes. |
 | `nexus_dashboard.audit.record.count` | Gauge, int | `1` | Recent Nexus Dashboard audit records by bounded product, operation, status, and severity attributes. | Correlate controller-side changes with fabric incidents without high-cardinality labels. |
 | `nexus_dashboard.event.count` | Gauge, int | `1` | Recent events, anomalies, advisories, alerts, and root causes by bounded product, operation, status, and severity attributes. | Surface change and incident evidence as dashboard-friendly counts. |
 | `nexus_dashboard.fabric.health` | Gauge, double | `1` | NDFC fabric, switch, or site health score when exposed by the API. | Find unhealthy fabrics before drilling into switches and interfaces. |
@@ -598,44 +401,33 @@ and generic resource-presence evidence; their numeric values are not yet mapped 
 | `nexus_dashboard.insights.anomaly.count` | Gauge, int | `1` | Insights anomaly/advisory count by severity and category. | Track fabric risk and anomaly volume without high-cardinality labels. |
 | `nexus_dashboard.insights.score` | Gauge, double | `1` | Insights site, fabric, anomaly, advisory, or recommendation score. | Prioritize unhealthy sites/fabrics. |
 | `nexus_dashboard.insights.confidence` | Gauge, double | `1` | Root-cause confidence where exposed by Insights. | Prefer high-confidence evidence during autopsy. |
-| `nexus_dashboard.insights.status` | Gauge, int | `1` | Encoded Insights anomaly, advisory, or recommendation status. | Find active or unresolved Insights evidence. |
 | `nexus_dashboard.orchestrator.deployment.status` | Gauge, int | `1` | NDO/OneManage deployment, schema, template, or site-sync status. | Detect multi-site policy drift or failed rollout state. |
-| `nexus_dashboard.orchestrator.deployment.count` | Gauge, double | `{deployment}` | NDO/OneManage deployments grouped by bounded status attributes. | Quantify failed or pending multi-site changes. |
 | `nexus_dashboard.orchestrator.policy_delta.count` | Gauge, double | `{delta}` | Policy delta count reported by NDO/OneManage. | Identify undeployed or divergent policy. |
 | `nexus_dashboard.data_broker.status` | Gauge, int | `1` | Data Broker broker, TAP, SPAN, rule, filter, or session status. | Keep packet visibility paths observable during troubleshooting. |
 | `nexus_dashboard.data_broker.rule.count` | Gauge, double | `{rule}` | Data Broker rule count. | Track visibility rule drift or unexpected rule removal. |
 | `nexus_dashboard.data_broker.session.count` | Gauge, double | `{session}` | Data Broker session count. | Confirm visibility sessions exist when packet captures are expected. |
-| `nexus_dashboard.storage.utilization` | Gauge, double | `1` | Nexus Dashboard storage utilization as a ratio. | Detect platform storage pressure before services degrade. |
-| `nexus_dashboard.vpc.peer.count` | Gauge, double | `{peer}` | vPC peer count reported by NDFC. | Detect missing redundant peers from the controller view. |
 
-With `api_profile: legacy`, Nexus Dashboard logs are emitted for NDFC audits/events, Insights
-anomalies/advisories/root-cause evidence, NDO audit/deployment records, and Data Broker events. Every record includes
-`event.domain=nexus_dashboard`, `event.name`, `nexus_dashboard.group`, `nexus_dashboard.status`,
-`nexus_dashboard.severity`, and bounded correlation attributes such as `host.id`, `cisco.switch.serial`,
-`ndfc.switch.id`, `cisco.fabric.name`, `cisco.site.name`, and `user.name` when present. The `unified` profile does not
-register log endpoints until current audit/event routes are verified.
+Nexus Dashboard logs are emitted for NDFC audits/events, Insights anomalies/advisories/root-cause evidence, NDO
+audit/deployment records, and Data Broker events. Every record includes `event.domain=nexus_dashboard`, `event.name`,
+`nexus_dashboard.group`, `nexus_dashboard.status`, `nexus_dashboard.severity`, and bounded correlation attributes such
+as `host.id`, `cisco.switch.serial`, `ndfc.switch.id`, `cisco.fabric.name`, `cisco.site.name`, and `user.name` when present.
 
 ## Cisco ACI/APIC Metrics And Logs
 
 ACI support polls APIC class endpoints directly. This provides controller-side troubleshooting even when SSH to every
 ACI leaf/spine is not practical. Metrics stay bounded around health, state, counts, endpoint presence, interface
-symptoms, and audit/event rollups; high-cardinality fault, audit, and event evidence can be emitted through explicit
-signal-specific log opt-ins.
+symptoms, and audit/event rollups; high-cardinality fault, audit, and event evidence is emitted as logs.
 
 | Metric | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
 | `aci.api.request.duration` | Gauge, double | `s` | Average duration of APIC API request attempts within the scrape for each matching request-attribute set. | Detect slow APICs, auth problems, and API endpoint failures. |
 | `aci.api.request.errors` | Sum, int, cumulative | `{error}` | APIC API request failures. | Alert on broken credentials, permission gaps, or repeated APIC errors. |
-| `aci.api.endpoint.error` | Sum, int, cumulative | `{error}` | APIC class or endpoint-family scrape failures. | Identify the failed class query while preserving other APIC results. |
-| `aci.api.rate_limited` | Sum, int, cumulative | `{request}` | APIC requests that received HTTP 429. | Detect polling pressure and tune page size or interval. |
 | `aci.controller.up` | Gauge, int | `1` | Whether an APIC controller API was reachable for the scrape. | Separate APIC reachability issues from fabric faults. |
 | `aci.scrape.partial_success` | Gauge, int | `1` | Whether one or more APIC endpoint families failed during the scrape. | Keep dashboards honest when only part of APIC data was collected. |
-| `aci.scrape.last_success` | Gauge, int | `s` | Unix timestamp of the most recent fully successful APIC scrape. | Detect stale or persistently partial ACI data. |
 | `aci.resource.info` | Gauge, int | `1` | Bounded metadata for APIC managed objects. | Build inventory and object drilldowns. |
 | `aci.resource.status` | Gauge, int | `1` | Encoded APIC object status with original state attributes. | Normalize state across fabric, tenant, endpoint, and topology classes. |
-| `aci.resource.count` | Gauge, int | `1` | APIC resources grouped by bounded group, class, type, status, and severity. | Track class-query coverage and unexpected inventory changes. |
 | `aci.audit.record.count` | Gauge, int | `1` | Recent APIC audit records by bounded operation, status, and severity attributes. | Correlate APIC-side changes with incidents without high-cardinality labels. |
-| `aci.event.count` | Gauge, int | `1` | Recent APIC event records by bounded operation, status, and severity attributes. | Surface event evidence in dashboards while keeping allowlisted event detail in opt-in logs. |
+| `aci.event.count` | Gauge, int | `1` | Recent APIC event records by bounded operation, status, and severity attributes. | Surface event evidence in dashboards while keeping full event text in logs. |
 | `aci.fabric.health` | Gauge, double | `1` | Fabric, pod, node, or tenant health score where exposed by APIC. | Detect unhealthy ACI domains quickly. |
 | `aci.fault.active` | Gauge, int | `1` | Active APIC fault instance. | Drive fault triage by code, severity, domain, and type. |
 | `aci.fault.count` | Gauge, int | `1` | Active APIC fault counts by bounded attributes. | Build severity and domain rollups. |
@@ -644,81 +436,53 @@ signal-specific log opt-ins.
 | `aci.tenant.status` | Gauge, int | `1` | Tenant, VRF, bridge domain, EPG, app profile, contract, or L3Out status. | Correlate network incidents with tenant and policy state. |
 | `aci.tenant.object.count` | Gauge, int | `1` | Tenant object counts by bounded tenant/VRF/BD/EPG attributes. | Track policy/object drift. |
 | `system.network.interface.status` | Gauge, int | `1` | Interface state from APIC. | Alert on leaf/spine or workload-facing interface changes. |
-| `cisco.interface.io.rate` | Gauge, double | `bit/s` | APIC interface traffic rate when exposed by stats classes. | Correlate ACI link pressure with fabric faults and endpoint impact. |
-| `cisco.interface.packet.rate` | Gauge, double | `{packet}/s` | APIC interface packet rate when exposed by statistics classes. | Detect packet-rate pressure or traffic silence. |
-| `cisco.interface.drop.rate` | Gauge, double | `{drop}/s` | APIC interface packet-drop rate when exposed by statistics classes. | Detect lossy leaf, spine, or workload-facing paths. |
+| `cisco.interface.io.rate` | Gauge, double | `By/s` | APIC interface byte rate when exposed by stats classes. | Correlate ACI link pressure with fabric faults and endpoint impact. |
 | `system.cpu.utilization` | Gauge, double | `1` | APIC-reported CPU utilization. | Detect controller or node resource pressure. |
 | `system.memory.utilization` | Gauge, double | `1` | APIC-reported memory utilization. | Detect controller or node memory pressure. |
 | `cisco.topology.neighbor.info` | Gauge, int | `1` | LLDP, CDP, and fabric-link neighbor information. | Reconstruct physical and logical topology during incidents. |
 
-ACI logs default to disabled independently from the enabled metric groups. `aci.logs.faults.enabled`,
-`aci.logs.audit.enabled`, and `aci.logs.events.enabled` opt into the corresponding APIC record class. Bodies contain
-only the signal-specific scalar allowlists in the
-[ACI configuration guide](../README.md#cisco-aciapic-configuration). Resource attributes, event timestamp/severity,
-`aci.status`, `aci.severity`, and `user.name` are derived only from that sanitized envelope plus fixed endpoint and
-configured controller metadata. Raw APIC aliases, `changeSet`, session identifiers, unknown attributes, and nested
-values are neither consulted nor forwarded. Deduplication hashes the complete sanitized semantic record, excludes
-only replica-local audit `id`/`dn` copies when `txId` is present, and remains scoped to a configured controller.
-Without `storage`, deduplication state is process-local and a restart can replay records inside the configured lookback.
-When `storage` is configured, accepted ACI deduplication state is checkpointed across restarts subject to the bounded
-unflushed and fail-open replay windows documented in the receiver's durable-checkpoint guidance. Live ACI restart
-delivery and replay behavior remains unqualified.
+ACI logs are emitted for active faults, audit/config changes, and event records. Every record includes
+`event.domain=aci`, `event.name`, `aci.group`, `aci.status`, `aci.severity`, `aci.dn`, `aci.class`, `aci.node.id`,
+`cisco.switch.serial`, and `user.name` when present.
 
 ## Cisco ISE Metrics And Logs
 
 Cisco ISE support is identity, access, and policy evidence for the same incidents investigated with Catalyst,
-wireless, SD-WAN, Nexus, ACI, and firewall telemetry. Only the three scalar MnT session counters default on;
-row-level `session_details`, other REST groups, pxGrid, and Data Connect are opt-in.
+wireless, SD-WAN, Nexus, ACI, and firewall telemetry. REST-safe APIs default on; pxGrid and Data Connect are opt-in.
 
 | Metric | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
 | `ise.api.request.duration` | Gauge, double | `s` | Average duration of ISE REST/OpenAPI/ERS/MnT and pxGrid REST request attempts within the scrape for each matching request-attribute set. | Detect slow or failing ISE APIs before trusting identity data. |
 | `ise.api.request.errors` | Sum, int, cumulative | `{error}` | ISE API request failures. | Alert on broken credentials, disabled API services, permission gaps, and endpoint errors. |
-| `ise.api.rate_limited` | Sum, int, cumulative | `{request}` | ISE API requests that were rate limited. | Tune collection interval, page size, and enabled groups. |
-| `ise.api.endpoint.error` | Sum, int, cumulative | `{error}` | Endpoint-family scrape failures. | Show exactly which ISE service failed while preserving partial data. |
+| `ise.api.rate_limited` | Gauge, int | `{request}` | ISE API requests that were rate limited. | Tune collection interval, page size, and enabled groups. |
+| `ise.api.endpoint.error` | Gauge, int | `{error}` | Endpoint-family scrape failures. | Show exactly which ISE service failed while preserving partial data. |
 | `ise.scrape.partial_success` | Gauge, int | `1` | Whether one or more ISE endpoint families failed or were skipped. | Keep dashboards honest when only part of ISE data was collected. |
-| `ise.scrape.last_success` | Gauge, int | `s` | Unix timestamp of the most recent fully successful ISE scrape. | Detect stale or persistently partial ISE data. |
 | `ise.service.unavailable` | Gauge, int | `1` | ISE API, pxGrid, or Data Connect service unavailable, disabled, unauthorized, or not installed. | Explain empty posture, pxGrid, or historical panels. |
-| `ise.service.skipped` | Gauge, int | `1` | ISE service or endpoint family skipped because required target scope was not configured. | Distinguish a scoped opt-in gap from an ISE outage. |
-| `ise.controller.up` | Gauge, int | `1` | Whether any ISE REST, pxGrid, or Data Connect operation succeeded in the scrape. | Separate ISE/API availability from partial endpoint failures. |
+| `ise.controller.up` | Gauge, int | `1` | ISE receiver target is configured and being scraped. | Separate collector configuration from ISE/API availability. |
 | `ise.resource.info` | Gauge, int | `1` | Bounded metadata for ISE resources and evidence records. | Build inventory and drilldowns without making text fields metric dimensions. |
 | `ise.resource.status` | Gauge, int | `1` | Encoded resource state with original status as an attribute. | Normalize healthy, pending, warning, and failed ISE states. |
 | `ise.deployment.node.count` | Gauge, int | `{item}` | Deployment node/persona records by bounded status. | Detect missing or unhealthy PAN/MnT/PSN coverage. |
-| `ise.deployment.node.status` | Gauge, int | `1` | Encoded deployment node/persona status. | Find unhealthy PAN, MnT, or PSN nodes. |
 | `ise.network_device.count` | Gauge, int | `{item}` | Network access device inventory count. | Confirm Catalyst, WLC, SD-WAN, and firewall devices are represented in ISE. |
-| `ise.network_device.status` | Gauge, int | `1` | Encoded network-access-device status. | Find network devices that are unavailable or misrepresented in ISE. |
 | `ise.endpoint.count` | Gauge, int | `{item}` | Endpoint inventory and rejected endpoint counts. | Spot endpoint churn, rejection, or missing posture/profile data. |
-| `ise.endpoint.status` | Gauge, int | `1` | Encoded endpoint inventory status. | Identify inactive, rejected, or otherwise unhealthy endpoint records. |
 | `ise.session.active.count` | Gauge, double | `{session}` | Active session counters from MnT. | Detect authentication/session spikes or drops. |
 | `ise.session.count` | Gauge, int | `{item}` | Session evidence records by bounded attributes. | Correlate user/device sessions with network incidents. |
 | `ise.radius.failure.count` | Gauge, int | `{item}` | RADIUS authentication failure records. | Triage 802.1X/MAB/VPN/wireless access failures. |
 | `ise.tacacs.failure.count` | Gauge, int | `{item}` | TACACS authentication/authorization/accounting failure records. | Triage network-admin login and command authorization failures. |
-| `ise.auth.failure.reason.info` | Gauge, int | `1` | Bounded authentication-failure reason evidence. | Separate identity, policy, credential, and network-device causes without using raw event text as dimensions. |
 | `ise.accounting.session.count` | Gauge, int | `{item}` | Accounting/session records from available APIs or Data Connect views. | Reconstruct access/session history. |
 | `ise.endpoint.posture.status` | Gauge, int | `1` | Endpoint posture state encoded numerically. | Alert on noncompliant or unknown posture. |
-| `ise.endpoint.posture.count` | Gauge, int | `{item}` | Endpoint posture records by bounded posture status. | Quantify compliant, noncompliant, and unknown populations. |
-| `ise.endpoint.profile.count` | Gauge, int | `{item}` | Endpoint profiler records by bounded object type. | Detect profiler coverage or classification drift. |
 | `ise.policy.object.count` | Gauge, int | `{item}` | Network-access, device-admin, TACACS, and policy object counts. | Detect policy coverage and drift. |
-| `ise.policy.status` | Gauge, int | `1` | Encoded policy object status. | Find disabled, pending, or failed policy objects. |
 | `ise.trustsec.resource.count` | Gauge, int | `{item}` | SGT, SGACL, and SG mapping records. | Correlate TrustSec policy state with segmentation incidents. |
-| `ise.trustsec.resource.status` | Gauge, int | `1` | Encoded TrustSec resource status. | Find unhealthy SGT, SGACL, or mapping state. |
-| `ise.profiler.policy.status` | Gauge, int | `1` | Encoded profiler-policy status. | Detect disabled or failed endpoint classification policy. |
 | `ise.alarm.count` | Gauge, int | `{item}` | ISE alarm rules and active/recent alarm instances by bounded severity/status. | Surface ISE platform or policy incidents. |
-| `ise.certificate.count` | Gauge, int | `{item}` | Certificate inventory count by bounded object type. | Detect missing certificate families or unexpected inventory changes. |
 | `ise.certificate.expiration` | Gauge, int | `s` | Certificate expiration Unix timestamp. | Prevent API, EAP, pxGrid, or portal certificate outages. |
-| `ise.license.count` | Gauge, int | `{item}` | License inventory count by bounded type and status. | Track license coverage and unexpected inventory changes. |
 | `ise.license.status` | Gauge, int | `1` | ISE license status encoded numerically. | Detect licensing failures that can affect policy services. |
 | `ise.webhook.delivery.count` | Gauge, int | `{item}` | Recent webhook delivery evidence count. | Verify webhook-based downstream evidence paths. |
 | `ise.pxgrid.service.status` | Gauge, int | `1` | pxGrid service lookup and pxGrid Cloud/Direct status. | Confirm pxGrid service discovery works before relying on subscriptions. |
 | `ise.pxgrid.subscription.status` | Gauge, int | `1` | Configured pxGrid subscription status by topic. | Show whether streaming topics are expected to be active. |
-| `ise.pxgrid.message.count` | Gauge, int | `{item}` | pxGrid messages by bounded topic, object type, protocol, and outcome. | Confirm the feed is active and identify bursts of access evidence. |
 | `ise.dataconnect.query.duration` | Gauge, double | `s` | Duration of each Data Connect query. | Detect slow or failing historical reporting views. |
 | `ise.dataconnect.query.rows` | Gauge, int | `{row}` | Rows returned from each allowlisted Data Connect view. | Validate view coverage and row caps. |
-| `ise.dataconnect.query.errors` | Sum, int, cumulative | `{error}` | Data Connect query failures. | Alert on wallet, TLS, credential, view, or database availability issues. |
-| `ise.dataconnect.row.count` | Gauge, int | `{item}` | Data Connect evidence rows by bounded view and outcome attributes. | Correlate historical evidence volume with query coverage and row caps. |
+| `ise.dataconnect.query.errors` | Gauge, int | `{error}` | Data Connect query failures. | Alert on wallet, TLS, credential, view, or database availability issues. |
 
-ISE logs preserve raw REST/OpenAPI/ERS/MnT objects, pxGrid messages, and Data Connect rows. MnT `ActiveList` and
-`AuthList` records require the opt-in `session_details` group. Each record includes
+ISE logs preserve raw REST/OpenAPI/ERS/MnT objects, pxGrid messages, and Data Connect rows. Each record includes
 `event.domain=ise`, `event.name`, `ise.group`, `ise.object.type`, and bounded correlation attributes for node,
 protocol, outcome, failure reason, message code, policy set/rule, authorization profile, network device, endpoint MAC,
 user, and event/session/audit IDs when present.
@@ -738,11 +502,11 @@ records, not bounded scrape metrics.
 | --- | --- | --- | --- | --- |
 | `fmc.api.request.duration` | Gauge, double | `s` | Average duration of FMC REST request attempts within the scrape for each matching request-attribute set. | Detect slow FMC APIs, endpoint failures, and auth/token pressure. |
 | `fmc.api.request.errors` | Sum, int, cumulative | `{error}` | FMC REST request failures. | Alert on broken credentials, permission gaps, missing endpoint families, or repeated FMC errors. |
-| `fmc.api.endpoint.error` | Sum, int, cumulative | `{error}` | FMC endpoint-family scrape failures. | Show exactly which REST family failed while preserving partial data from other groups. |
-| `fmc.api.rate_limited` | Sum, int, cumulative | `{request}` | FMC REST requests that were rate limited. | Tune page size, collection interval, and enabled groups before data goes stale. |
+| `fmc.api.endpoint.error` | Gauge, int | `{error}` | FMC endpoint-family scrape failures. | Show exactly which REST family failed while preserving partial data from other groups. |
+| `fmc.api.rate_limited` | Gauge, int | `{request}` | FMC REST requests that were rate limited. | Tune page size, collection interval, and enabled groups before data goes stale. |
 | `fmc.manager.up` | Gauge, int | `1` | Whether the FMC REST API was reachable for the scrape. | Separate controller reachability issues from firewall health issues. |
 | `fmc.scrape.partial_success` | Gauge, int | `1` | Whether one or more FMC endpoint families failed during the scrape. | Keep dashboards honest when only part of FMC data was collected. |
-| `fmc.scrape.last_success` | Gauge, int | `s` | Unix timestamp of the most recent fully successful FMC scrape. | Detect stale or persistently partial controller telemetry. |
+| `fmc.scrape.last_success` | Gauge, int | `s` | Unix timestamp of the most recent FMC scrape completion. | Detect stale controller telemetry. |
 | `fmc.resource.info` | Gauge, int | `1` | Bounded metadata for FMC managed objects. | Build inventory, chassis, policy, VPN, HA, and deployment drilldowns. |
 | `fmc.resource.status` | Gauge, int | `1` | Encoded FMC object status with original state attributes. | Normalize state across devices, chassis, interfaces, health metrics, policies, jobs, and HA/VPN objects. |
 | `fmc.resource.count` | Gauge, int | `1` | FMC resources by group, operation, resource type, status, and severity. | Track object volume and spot missing endpoint families. |
@@ -766,64 +530,44 @@ Catalyst 9800 telemetry is emitted from gNMI dial-in subscriptions and MDT gRPC 
 full model coverage while stable `cisco.wlc.*` aliases give dashboards product-oriented names across gNMI JSON and
 gRPC KV-GPB inputs.
 
-Generic YANG metrics and most stable aliases currently have an empty OTLP metric-unit descriptor; the physical units
-shown below describe the source values and must not be used for automatic scaling. RF, SSID, and controller CPU
-utilization aliases set unit `1`; `cisco.wlc.ssid.network.io`, `cisco.wlc.client.network.io`, and
-`cisco.wlc.client.network.packets` set `By`, `By`, and `{packet}` respectively.
-
-These generic YANG rows describe the pattern-governed contract above, not an enumerable catalog of exact metric names.
-
 | Metric Pattern | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
-| `cisco.catalyst9800.yang.__v1.<framed-schema-tuple>.n` | Gauge/double or cumulative monotonic sum/int | empty | Numeric YANG leaves from Cisco IOS XE wireless/controller models under the reversible contract above. | Keep full C9800 model coverage without conflating raw identifiers or changing a stream's descriptor. |
-| `cisco.catalyst9800.yang.__v1.<framed-schema-tuple>.i` | Gauge, double | empty | String, enum, identity, and list leaves represented by value `1`, with the original value on the `value` attribute. | Preserve AP, client, HA, CAPWAP, and mobility states as bounded info metrics. |
-| `cisco.wlc.ap.join.status` | Gauge, int | `1` | Whether an AP is joined. | Alert on APs that leave the controller. |
-| `cisco.wlc.ap.join.failure.reason.info` | Gauge, double | `1` | Current AP join failure reason evidence. | Find certificate, discovery, authorization, or CAPWAP join issues. |
-| `cisco.wlc.ap.disconnect` | Sum, int | `{disconnect}` | AP disconnect counter. | Detect unstable AP/WLC connectivity. |
-| `cisco.wlc.ap.disconnect.reason.info` | Gauge, double | `1` | Current AP disconnect reason evidence. | Explain unstable AP/WLC connectivity. |
-| `cisco.wlc.ap.capwap.state` | Gauge, int | `1` | CAPWAP/AP operational state with state text as an attribute. | Confirm AP control tunnels are operational. |
-| `cisco.wlc.rf.channel.utilization` | Gauge, double | `1` | RF/channel utilization normalized to a ratio from 0 to 1. | Find congested or noisy channels. |
-| `cisco.wlc.rf.noise_floor` | Gauge, double | `dB{mW}` | RF noise floor. | Detect interference and RF health problems. |
-| `cisco.wlc.rf.client.count` | Gauge, int | `{client}` | Client count per radio/RRM measurement. | Identify overloaded radios. |
-| `cisco.wlc.rf.channel.change.count` | Sum, int | `{change}` | DCA/channel change counters. | Spot unstable RF environments. |
-| `cisco.wlc.ssid.client.count` | Gauge, int | `{client}` | Associated clients per SSID/BSSID. | Track SSID load. |
-| `cisco.wlc.ssid.channel.utilization` | Gauge, double | `1` | SSID/BSSID channel utilization normalized to a ratio from 0 to 1. | Compare SSID experience across APs and radios. |
-| `cisco.wlc.ssid.network.io` | Sum, int | `By` | SSID traffic by direction. | Trend wireless traffic volume by WLAN. |
-| `cisco.wlc.ssid.retry.count` | Sum, int | `{retry}` | SSID retry counters. | Detect poor airtime quality or client retries. |
-| `cisco.wlc.client.connection.state` | Gauge, int | `1` | Client connection state. | Detect clients stuck before run/connected state. |
-| `cisco.wlc.client.auth.failure.reason.info` | Gauge, double | `1` | Client auth/exclusion failure reason. | Troubleshoot RADIUS, policy, and exclusion problems. |
-| `cisco.wlc.client.roam.count` | Sum, int | `{roam}` | Client or mobility roam counter. | Track roaming activity and unexpected churn. |
-| `cisco.wlc.client.roam.type.info` | Gauge, double | `1` | Current client roam type evidence. | Explain roaming behavior without treating enum values as counters. |
-| `cisco.wlc.client.roam.failure.count` | Sum, int | `{failure}` | Client roam failure counters. | Detect roaming issues across APs or mobility peers. |
-| `cisco.wlc.client.wireless.rssi` | Gauge, double | `dB{mW}` | Client RSSI. | Find weak-signal clients. |
+| `cisco.catalyst9800.yang.<module>.<path>.<leaf>` | Gauge or sum, int or double | model-defined | Numeric YANG leaves from Cisco IOS XE wireless/controller models. Integral values are preserved as int64 datapoints when representable; other numeric values use double datapoints. Known counters are cumulative sums; other values are gauges. | Keep full C9800 model coverage without waiting for a custom parser per leaf. |
+| `cisco.catalyst9800.yang.<module>.<path>.<leaf>_info` | Gauge, int | `1` | String, enum, identity, and list leaves with the original value on the `value` attribute. | Preserve AP, client, HA, CAPWAP, and mobility states as bounded info metrics. |
+| `cisco.wlc.ap.join.status` | Gauge, double | `1` | Whether an AP is joined. | Alert on APs that leave the controller. |
+| `cisco.wlc.ap.join.failure.reason.info` | Gauge | `1` | Current AP join failure reason evidence. | Find certificate, discovery, authorization, or CAPWAP join issues. |
+| `cisco.wlc.ap.disconnect` | Sum | `{disconnect}` | AP disconnect counter. | Detect unstable AP/WLC connectivity. |
+| `cisco.wlc.ap.disconnect.reason.info` | Gauge | `1` | Current AP disconnect reason evidence. | Explain unstable AP/WLC connectivity. |
+| `cisco.wlc.ap.capwap.state` | Gauge | `1` | CAPWAP/AP operational state with state text as an attribute. | Confirm AP control tunnels are operational. |
+| `cisco.wlc.rf.channel.utilization` | Gauge, double | `%` | RF/channel utilization by utilization type. | Find congested or noisy channels. |
+| `cisco.wlc.rf.noise_floor` | Gauge, double | `dBm` | RF noise floor. | Detect interference and RF health problems. |
+| `cisco.wlc.rf.client.count` | Gauge, double | `{client}` | Client count per radio/RRM measurement. | Identify overloaded radios. |
+| `cisco.wlc.rf.channel.change.count` | Sum, double | `{change}` | DCA/channel change counters. | Spot unstable RF environments. |
+| `cisco.wlc.ssid.client.count` | Gauge, double | `{client}` | Associated clients per SSID/BSSID. | Track SSID load. |
+| `cisco.wlc.ssid.channel.utilization` | Gauge, double | `%` | SSID/BSSID channel utilization. | Compare SSID experience across APs and radios. |
+| `cisco.wlc.ssid.network.io` | Sum, double | `By` | SSID traffic by direction. | Trend wireless traffic volume by WLAN. |
+| `cisco.wlc.ssid.retry.count` | Sum, double | `{retry}` | SSID retry counters. | Detect poor airtime quality or client retries. |
+| `cisco.wlc.client.connection.state` | Gauge | `1` | Client connection state. | Detect clients stuck before run/connected state. |
+| `cisco.wlc.client.auth.failure.reason.info` | Gauge | `1` | Client auth/exclusion failure reason. | Troubleshoot RADIUS, policy, and exclusion problems. |
+| `cisco.wlc.client.roam.count` | Sum | `{roam}` | Client or mobility roam counter. | Track roaming activity and unexpected churn. |
+| `cisco.wlc.client.roam.type.info` | Gauge | `1` | Current client roam type evidence. | Explain roaming behavior without treating enum values as counters. |
+| `cisco.wlc.client.roam.failure.count` | Sum, double | `{failure}` | Client roam failure counters. | Detect roaming issues across APs or mobility peers. |
+| `cisco.wlc.client.wireless.rssi` | Gauge, double | `dBm` | Client RSSI. | Find weak-signal clients. |
 | `cisco.wlc.client.wireless.snr` | Gauge, double | `dB` | Client SNR. | Diagnose poor client RF quality. |
-| `cisco.wlc.mobility.peer.status` | Gauge, int | `1` | Mobility peer/link status. | Alert on broken mobility tunnels or peers. |
-| `cisco.wlc.mobility.roam.count` | Sum, int | `{roam}` | L2/L3 mobility roam counters. | Track mobility handoff volume. |
-| `cisco.wlc.mobility.handoff.count` | Sum, int | `{handoff}` | Successful handoff counters. | Confirm mobility handoffs are completing. |
-| `cisco.wlc.mobility.handoff.failure.count` | Sum, int | `{failure}` | Failed handoff counters. | Detect mobility-domain problems. |
-| `cisco.wlc.ha.state` | Gauge, int | `1` | Local or peer HA state. | Confirm active/standby WLC health. |
-| `cisco.wlc.ha.enabled` | Gauge, int | `1` | Whether HA is enabled. | Detect missing redundancy. |
-| `cisco.wlc.ha.switchover.count` | Sum, int | `{switchover}` | HA switchover counter. | Correlate client/AP events with controller failovers. |
-| `cisco.wlc.ha.standby.failure.count` | Sum, int | `{failure}` | Standby failure counter. | Alert on degraded redundancy. |
-| `cisco.wlc.auth.radius.*` | Counters: sum, int; delays: gauge, double | cataloged per metric | RADIUS accepts, rejects, timeouts, delays, responses, and bad authenticators. | Separate WLAN client failures from upstream AAA problems. |
-| `cisco.wlc.controller.*` | Gauge or sum, typed per exact metric | cataloged per metric | Controller CPU uses double; memory and receiver health use int. | Detect WLC or collector-side telemetry health issues. |
-| `cisco.catalyst9800.receiver.*` | Gauge or sum, int | empty | Receiver active subscriptions, updates, decode errors, unsupported paths, reconnects, dropped datapoints, compact GPB payloads, and last success timestamp. | Confirm the telemetry pipeline is live and bounded. |
-| `cisco.catalyst9800.receiver.target.subscription.active` | Gauge, int | empty | Whether an individual configured target has an active subscription. | Isolate one failed WLC target from aggregate receiver state. |
-| `cisco.catalyst9800.receiver.target.updates` | Sum, int, cumulative | empty | Updates received from an individual target. | Detect a target whose stream is connected but silent. |
-| `cisco.catalyst9800.receiver.target.reconnects` | Sum, int, cumulative | empty | Reconnect attempts for an individual target. | Detect target-specific transport instability. |
-| `cisco.catalyst9800.receiver.target.last_success_timestamp` | Gauge, int | empty | Unix timestamp of the individual target's last successful update. | Alert on target-specific stale telemetry. |
-| `cisco.wlc.ap.capwap.encryption.enabled` | Gauge, int | empty | Whether CAPWAP link encryption is enabled. | Detect unexpected control/data tunnel encryption posture. |
-| `cisco.wlc.rf.channel.recommended` | Gauge, int | empty | Controller-recommended RF channel. | Correlate DCA recommendations with channel changes. |
-| `cisco.wlc.client.network.io` | Sum, int, cumulative | `By` | Client traffic volume by direction. | Detect client traffic silence or spikes. |
-| `cisco.wlc.client.network.packets` | Sum, int, cumulative | `{packet}` | Client packet volume by direction. | Detect client packet-rate shifts. |
-
-Catalyst 9800 state aliases retain the original enum on the `state` attribute. Use that attribute for detectors:
-unrecognized non-empty states are emitted as informational value `1`, and a numeric `0` can represent an expected
-standby role as well as an unhealthy state. Do not treat every `1` as healthy or every `0` as failed without an
-enum- and role-specific condition.
+| `cisco.wlc.mobility.peer.status` | Gauge | `1` | Mobility peer/link status. | Alert on broken mobility tunnels or peers. |
+| `cisco.wlc.mobility.roam.count` | Sum, double | `{roam}` | L2/L3 mobility roam counters. | Track mobility handoff volume. |
+| `cisco.wlc.mobility.handoff.count` | Sum, double | `{handoff}` | Successful handoff counters. | Confirm mobility handoffs are completing. |
+| `cisco.wlc.mobility.handoff.failure.count` | Sum, double | `{failure}` | Failed handoff counters. | Detect mobility-domain problems. |
+| `cisco.wlc.ha.state` | Gauge | `1` | Local or peer HA state. | Confirm active/standby WLC health. |
+| `cisco.wlc.ha.enabled` | Gauge, double | `1` | Whether HA is enabled. | Detect missing redundancy. |
+| `cisco.wlc.ha.switchover.count` | Sum, double | `{switchover}` | HA switchover counter. | Correlate client/AP events with controller failovers. |
+| `cisco.wlc.ha.standby.failure.count` | Sum, double | `{failure}` | Standby failure counter. | Alert on degraded redundancy. |
+| `cisco.wlc.auth.radius.*` | Gauge or sum | model-defined | RADIUS accepts, rejects, timeouts, delays, responses, and bad authenticators. | Separate WLAN client failures from upstream AAA problems. |
+| `cisco.wlc.controller.*` | Gauge or sum | model-defined | Controller CPU/memory and receiver health aliases. | Detect WLC or collector-side telemetry health issues. |
+| `cisco.catalyst9800.receiver.*` | Gauge or sum | `{event}` | Receiver active subscriptions, updates, decode errors, unsupported paths, reconnects, dropped datapoints, compact GPB payloads, and last success timestamp. | Confirm the telemetry pipeline is live and bounded. |
 
 Catalyst 9800 metrics include `host.*`, `hw.type=network`, `cisco.os.name=ios_xe`,
-`cisco.platform.family=catalyst_9800`, `cisco.yang.path`, `cisco.yang.source_path`, `cisco.yang.module`, `cisco.telemetry.transport`, and WLC
+`cisco.platform.family=catalyst_9800`, `cisco.yang.path`, `cisco.yang.module`, `cisco.telemetry.transport`, and WLC
 correlation attributes such as `cisco.wlc.ap.mac`, `cisco.wlc.ap.name`, `cisco.wlc.radio.slot`,
 `cisco.wlc.wlan.id`, `cisco.wlc.ssid`, `cisco.wlc.client.mac`, and `cisco.wlc.mobility.node_ip`.
 
@@ -833,30 +577,20 @@ IOS XR telemetry is emitted from gNMI dial-in subscriptions and MDT gRPC dial-ou
 families, generic decoded YANG leaves use a predictable metric namespace rather than a fixed hand-authored list for
 every leaf.
 
-Generic IOS XR YANG metrics and direct receiver-health metrics currently have an empty OTLP metric-unit descriptor.
-The source model still defines how operators should interpret each value; do not use the descriptor for automatic
-scaling.
-
-These generic YANG rows describe the pattern-governed contract above, not an enumerable catalog of exact metric names.
-
 | Metric Pattern | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
-| `cisco.iosxr.yang.__v1.<framed-schema-tuple>.n` | Gauge/double or cumulative monotonic sum/int | empty | Numeric YANG leaves from OpenConfig or Cisco IOS XR native models under the reversible contract above. | Build broad model coverage without conflating raw identifiers or changing a stream's descriptor. |
-| `cisco.iosxr.yang.__v1.<framed-schema-tuple>.i` | Gauge, double | empty | String, enum, identity, and list leaves represented by value `1`, with the original value on the `value` attribute. | Preserve states such as admin/oper status, neighbor state, alarm text, and component identity as bounded info metrics. |
-| `cisco.iosxr.receiver.active_subscriptions` | Gauge, int | empty | Active gNMI dial-in targets. | Detect target selection mistakes or subscriptions that never start. |
-| `cisco.iosxr.receiver.updates` | Sum, int, cumulative | empty | gNMI updates and deletes received. | Confirm that subscriptions are producing telemetry. |
-| `cisco.iosxr.receiver.decode_errors` | Sum, int, cumulative | empty | JSON/YANG decode failures. | Alert when a model or encoding change starts dropping data. |
-| `cisco.iosxr.receiver.unsupported_paths` | Sum, int, cumulative | empty | Paths rejected or pruned by gNMI capabilities. | Catch path groups that are unavailable on a platform, line card, or IOS XR release. |
-| `cisco.iosxr.receiver.reconnects` | Sum, int, cumulative | empty | gNMI reconnect attempts after subscription failures. | Detect unstable telemetry sessions or endpoint availability issues. |
-| `cisco.iosxr.receiver.dropped_datapoints` | Sum, int, cumulative | empty | Datapoints dropped by the receiver cardinality guard. | Tune path groups, intervals, and caps before overwhelming downstream storage. |
-| `cisco.iosxr.receiver.compact_gpb_payloads` | Gauge, int | empty | Compact GPB rows in the current MDT notification that were not generically decoded. | Make compact GPB visibility explicit without carrying one target's notification count into another target. |
-| `cisco.iosxr.receiver.last_success_timestamp` | Gauge, int | empty | Unix timestamp of the last successful gNMI update. | Alert on stale IOS XR telemetry. |
-| `cisco.iosxr.receiver.target.subscription.active` | Gauge, int | empty | Whether an individual configured target has an active subscription. | Isolate one failed router target from aggregate receiver state. |
-| `cisco.iosxr.receiver.target.updates` | Sum, int, cumulative | empty | Updates received from an individual target. | Detect a target whose stream is connected but silent. |
-| `cisco.iosxr.receiver.target.reconnects` | Sum, int, cumulative | empty | Reconnect attempts for an individual target. | Detect target-specific transport instability. |
-| `cisco.iosxr.receiver.target.last_success_timestamp` | Gauge, int | empty | Unix timestamp of the individual target's last successful update. | Alert on target-specific stale telemetry. |
+| `cisco.iosxr.yang.<module>.<path>.<leaf>` | Gauge or sum, int or double | model-defined | Numeric YANG leaves from OpenConfig or Cisco IOS XR native models. Integral values are preserved as int64 datapoints when representable; other numeric values use double datapoints. Known counters are cumulative sums; other values are gauges. | Build coverage for interfaces, optics, routing, FIB, BGP, ISIS, MPLS, SR/SRv6, QoS, ASIC, and platform health without waiting for a custom parser per leaf. |
+| `cisco.iosxr.yang.<module>.<path>.<leaf>_info` | Gauge, int | `1` | String, enum, identity, and list leaves with the original value on the `value` attribute. | Preserve states such as admin/oper status, neighbor state, alarm text, and component identity as bounded info metrics. |
+| `cisco.iosxr.receiver.active_subscriptions` | Gauge, int | `{subscription}` | Active gNMI dial-in targets. | Detect target selection mistakes or subscriptions that never start. |
+| `cisco.iosxr.receiver.updates` | Sum, int, cumulative | `{update}` | gNMI updates and deletes received. | Confirm that subscriptions are producing telemetry. |
+| `cisco.iosxr.receiver.decode_errors` | Sum, int, cumulative | `{error}` | JSON/YANG decode failures. | Alert when a model or encoding change starts dropping data. |
+| `cisco.iosxr.receiver.unsupported_paths` | Sum, int, cumulative | `{path}` | Paths rejected or pruned by gNMI capabilities. | Catch path groups that are unavailable on a platform, line card, or IOS XR release. |
+| `cisco.iosxr.receiver.reconnects` | Sum, int, cumulative | `{reconnect}` | gNMI reconnect attempts after subscription failures. | Detect unstable telemetry sessions or endpoint availability issues. |
+| `cisco.iosxr.receiver.dropped_datapoints` | Sum, int, cumulative | `{datapoint}` | Datapoints dropped by the receiver cardinality guard. | Tune path groups, intervals, and caps before overwhelming downstream storage. |
+| `cisco.iosxr.receiver.compact_gpb_payloads` | Sum or gauge, int | `{payload}` | MDT compact `data_gpb` rows received but not generically decoded. | Make compact GPB visibility explicit so operators can switch to KV-GPB or add model-specific protobuf decoding. |
+| `cisco.iosxr.receiver.last_success_timestamp` | Gauge, int | `s` | Unix timestamp of the last successful gNMI update. | Alert on stale IOS XR telemetry. |
 
-IOS XR metrics include `cisco.yang.path`, `cisco.yang.source_path`, `cisco.yang.module`, `cisco.telemetry.transport`, `cisco.platform.family`,
+IOS XR metrics include `cisco.yang.path`, `cisco.yang.module`, `cisco.telemetry.transport`, `cisco.platform.family`,
 `host.*`, `hw.type=network`, and normalized datapoint keys such as `network.interface.name`, `network.vrf.name`, and
 `network.peer.address` when those keys are present in the YANG path or JSON payload.
 
@@ -942,8 +676,8 @@ Enable with `scrapers.interfaces.rates.enabled: true`.
 
 | Metric | Type | Unit | What It Tells You | Why Monitor It |
 | --- | --- | --- | --- | --- |
-| `cisco.interface.io.rate` | Gauge, double | `bit/s` | Device-reported traffic rate for an interface. | Use this for near-real-time bandwidth monitoring without calculating rates from byte counters. |
-| `cisco.interface.packet.rate` | Gauge, double | `{packet}/s` | Device-reported packet rate for an interface. | Useful when packet volume matters more than data volume, such as small-packet floods. |
+| `cisco.interface.io.rate` | Gauge, int | `bit/s` | Device-reported traffic rate for an interface. | Use this for near-real-time bandwidth monitoring without calculating rates from byte counters. |
+| `cisco.interface.packet.rate` | Gauge, int | `{packet}/s` | Device-reported packet rate for an interface. | Useful when packet volume matters more than data volume, such as small-packet floods. |
 
 ## Optional Detailed Interface Counter Metrics
 
@@ -1115,24 +849,28 @@ Enable with `scrapers.interfaces.l2_topology.enabled: true` or an individual `sc
 | `cisco.port_channel.status` | Gauge, int | `1` | Whether the port channel itself is up. | Alert when a bundled link goes down or becomes suspended. |
 | `cisco.vpc.consistency.failures` | Gauge, int | `{failure}` | Number of vPC consistency failures by check. | Finds mismatches between paired switches before they cause outages. |
 | `cisco.vpc.status` | Gauge, int | `1` | vPC peer or member status. | Monitors whether a paired-switch topology is healthy. |
-| `cisco.topology.neighbor.info` | Gauge, int | `1` | LLDP, CDP, and fabric-link neighbor information. | Build topology maps and spot devices connected to the wrong ports. |
+| `cisco.topology.neighbor.info` | Gauge, int | `1` | LLDP or CDP neighbor edge information for a local interface. | Build topology maps and spot devices connected to the wrong ports. |
 
 Common L2 topology attributes:
 
-`cisco.topology.neighbor.info` has no required metric attributes. The following nine catalog attributes are optional because
-LLDP, CDP, fabric-link, Meraki, and APIC sources do not all report every field:
-
 | Attribute | Meaning |
 | --- | --- |
+| `cisco.errdisabled.reason` | Why the device disabled the interface. |
+| `cisco.l2.vlan` | VLAN identifier. |
+| `cisco.l2.stp.state` | STP state. |
+| `cisco.lacp.error.type` | LACP error category. |
+| `cisco.lacp.packet.type` | LACP packet category. |
+| `cisco.port_channel.name` | Port-channel name. |
+| `cisco.port_channel.state` | Port-channel or member state. |
+| `cisco.vpc.check` | vPC consistency check name. |
+| `cisco.vpc.domain` | vPC domain identifier. |
+| `cisco.vpc.peer` | vPC peer or member identifier. |
+| `cisco.vpc.state` | vPC state. |
 | `cisco.topology.protocol` | Discovery protocol, `lldp` or `cdp`. |
-| `network.interface.name` | Local interface on which the neighbor was observed. |
 | `cisco.topology.neighbor.name` | Neighbor system name or device ID. |
 | `cisco.topology.neighbor.interface` | Neighbor interface identifier. |
 | `cisco.topology.neighbor.platform` | Neighbor platform when reported by the device. |
 | `cisco.topology.neighbor.address` | Neighbor management address when reported by the device. |
-| `network.peer.name` | Legacy peer name retained for compatible Meraki and APIC topology sources. |
-| `network.peer.address` | Legacy peer address retained for compatible Meraki and APIC topology sources. |
-| `network.protocol.name` | Legacy discovery protocol name retained for compatible topology sources. |
 
 ## Optional Transceiver Metrics
 
@@ -1150,33 +888,6 @@ Common transceiver attributes:
 | `cisco.transceiver.sensor` | Sensor name, such as temperature or optical power. |
 | `cisco.transceiver.lane` | Sensor lane identifier for multi-lane optics. |
 | `cisco.transceiver.sensor.unit` | Sensor unit, such as `Cel`, `V`, `mA`, `dBm`, or `1`. |
-| `meraki.transceiver.sfp_product_id` | Meraki-reported SFP product identifier; this is not an optical lane identifier. |
-
-## Normalized gNMI Optics Metrics
-
-Shared gNMI optical profiles define stable metrics for the implemented IOS XE, IOS XR, and NX-OS path contracts. All
-optics profiles remain experimental, disabled by default, and independently subject to physical qualification. IOS XE
-and IOS XR expose DOM mappings; IOS XR is limited to controller and lane DOM mappings and has no coherent profile. NX
-DME exposes allowlisted DOM and VDM sensor mappings. All metrics are gauges and use `network.interface.name`,
-`cisco.optics.lane`, `cisco.optics.profile`, and `cisco.optics.experimental`; sensor-bearing metrics also include the
-normalized allowlisted `cisco.optics.sensor`.
-
-`dB{mW}` preserves device-reported dBm-scale values with a valid UCUM annotation. Braced UCUM text is a
-human-readable annotation, not a machine-convertible 1 mW reference.
-
-| Metric | Unit | Operational Use |
-| --- | --- | --- |
-| `cisco.optics.present` | `1` | Detect a missing module or lane before interpreting absent sensor data. |
-| `cisco.optics.rx_power` | `dB{mW}` | Detect weak receive power, dirty fiber, or path loss. |
-| `cisco.optics.tx_power` | `dB{mW}` | Detect transmitter or optical-launch degradation. |
-| `cisco.optics.laser_bias_current` | `mA` | Detect transmitter aging or bias drift. |
-| `cisco.optics.voltage` | `V` | Detect module supply instability. |
-| `cisco.optics.temperature` | `Cel` | Detect thermal pressure at the optic. |
-| `cisco.optics.esnr` | `dB` | Track effective SNR from an allowlisted, device-reported VDM sensor. |
-| `cisco.optics.pre_fec_ber` | `1` | Detect rising bit errors before FEC can no longer recover the signal. |
-| `cisco.optics.tdecq` | `dB` | Track PAM4 transmitter and dispersion eye closure when explicitly identified by the sensor. |
-| `cisco.optics.tec_current` | `mA` | Track thermoelectric cooler current when the device reports milliamperes. |
-| `cisco.optics.tec_utilization` | `1` | Track normalized thermoelectric cooler utilization and remaining thermal headroom. |
 
 ## Splunk O11y Dashboard Starting Points
 

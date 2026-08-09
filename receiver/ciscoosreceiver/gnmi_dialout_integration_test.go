@@ -41,8 +41,8 @@ func TestGNMIDialOutNetworkPathDeliversNormalizedTelemetry(t *testing.T) {
 	}{
 		{
 			name:         "IOS XR",
-			encodingPath: "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/generic-counters",
-			metricPrefix: "cisco.iosxr.yang.__v1.",
+			encodingPath: "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/latest/generic-counters",
+			metricPrefix: "cisco.iosxr.yang.",
 			transport:    iosXRTelemetryTransportDialOut,
 			create: func(endpoint string, next consumer.Metrics) (receiver.Metrics, error) {
 				cfg := defaultIOSXRConfig()
@@ -59,7 +59,7 @@ func TestGNMIDialOutNetworkPathDeliversNormalizedTelemetry(t *testing.T) {
 		{
 			name:         "Catalyst 9800",
 			encodingPath: "Cisco-IOS-XE-wireless-access-point-oper:access-point-oper-data/access-point",
-			metricPrefix: "cisco.catalyst9800.yang.__v1.",
+			metricPrefix: "cisco.catalyst9800.yang.",
 			transport:    catalyst9800TelemetryTransportDialOut,
 			create: func(endpoint string, next consumer.Metrics) (receiver.Metrics, error) {
 				cfg := defaultCatalyst9800Config()

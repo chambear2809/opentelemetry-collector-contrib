@@ -2,17 +2,11 @@
 
 Research date: 2026-05-26
 
-> [!IMPORTANT]
-> This is a historical design artifact, not the emitted metric contract. Proposed names in the tables below can differ
-> from the implementation, which deliberately collapses many advanced product objects into `sdwan.resource.status`
-> and `sdwan.collection.object.count`. Use [Cisco OS Receiver Metrics](metrics.md) and the importable
-> [Splunk Observability dashboards](../dashboards/splunk-o11y/README.md) for current names and coverage.
-
 This note describes how to incorporate Cisco Catalyst SD-WAN Manager, formerly vManage, into the Cisco OS receiver with the same operating model used for Meraki, Intersight, Catalyst Center, Nexus Dashboard, and ACI.
 
 Implementation note: the final receiver implementation extends this initial research into full first-class `sdwan`
 configuration, auth, client, metrics/log receivers, shared device selection, full opt-in product group coverage, and a
-16-page Splunk Observability dashboard bundle. The dashboard coverage is broader than the first-pass eight-page sketch
+12-page Splunk Observability dashboard bundle. The dashboard coverage is broader than the first-pass eight-page sketch
 below and includes dedicated pages for policy/security, AppQoE/flows, Cloud OnRamp/multicloud, routing/branch services,
 lifecycle/hardware/energy, alarm/event/audit evidence, and Network-Wide Path Insight/ThousandEyes agent status.
 
@@ -27,7 +21,7 @@ lifecycle/hardware/energy, alarm/event/audit evidence, and Network-Wide Path Ins
 
 Primary references:
 
-- Cisco Catalyst SD-WAN Manager API 20.18 documentation: https://developer.cisco.com/docs/sdwan/20-18/
+- Cisco Catalyst SD-WAN Manager API 20.18 Monitoring and Troubleshooting: https://developer.cisco.com/docs/sdwan/monitoring-and-troubleshooting-overview/
 - Cisco Catalyst SD-WAN Manager API getting started and authentication: https://developer.cisco.com/docs/sdwan/getting-started/ and https://developer.cisco.com/docs/sdwan/authentication/
 - Cisco SD-WAN Manager REST API examples and rate-limit guidance: https://www.cisco.com/c/en/us/td/docs/routers/sdwan/configuration/sdwan-xe-gs-book/appendix-vmanage-how-tos.html
 - Cisco SD-WAN alarm, event, and audit queries: https://developer.cisco.com/docs/sdwan/alarm-and-event/
@@ -159,7 +153,7 @@ Core API and scrape metrics:
 | `sdwan.api.request.errors` | `{error}` | API/auth/permission/timeout/parse failures. |
 | `sdwan.api.rate_limited` | `{request}` | HTTP 429 pressure. |
 | `sdwan.scrape.partial_success` | `1` | One or more endpoint families failed or were skipped. |
-| `sdwan.scrape.last_success` | `s` | Last fully successful scrape timestamp. |
+| `sdwan.scrape.last_success` | `s` | Last completed scrape timestamp. |
 | `sdwan.api.endpoint.error` | `{error}` | Endpoint-family error when a collection group fails. |
 
 Inventory and lifecycle:
@@ -411,8 +405,8 @@ Detector starting set:
    - Add detector blueprints and incident workflow.
 
 6. Live validation.
-   - The `e2e` smoke test uses bounded `CISCOOS_E2E_SDWAN_*` environment variables and requires an explicit system-IP target.
-   - The first Manager 20.18 live run found the singular `/event` endpoint and string-valued `last_n_hours` compatibility requirements. See the [validation matrix](validation-matrix.md) for the post-fix result and remaining production gates.
+   - Add `e2e` smoke tests using `CISCOOS_E2E_SDWAN_*` environment variables.
+   - Validate against a lab SD-WAN Manager with at least one WAN Edge, one controller, BFD sessions, app-route data, and recent alarm/event/audit records.
 
 ## Risks And Mitigations
 

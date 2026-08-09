@@ -77,7 +77,7 @@
         {
           "name": "Nexus Dashboard API Errors",
           "description": "Value: surfaces Nexus Dashboard API failures. Interpretation: non-zero values by operation explain missing NDFC, Insights, NDO, or Data Broker data.",
-          "signalflow": "data('nexus_dashboard.api.request.errors').rate().sum(by=['nexus_dashboard.api.operation', 'http.response.status_code']).publish(label='ND API errors/sec')",
+          "signalflow": "data('nexus_dashboard.api.request.errors').sum(by=['nexus_dashboard.api.operation', 'http.response.status_code']).publish(label='ND API errors')",
           "legend_dimension": "nexus_dashboard.api.operation"
         },
         {
@@ -102,14 +102,14 @@
         },
         {
           "name": "Nexus Dashboard Endpoint Failures And Skips",
-          "description": "Value: identifies the error rate for failed endpoints and the current set of intentionally skipped ND/NDFC/Insights/NDO/Data Broker endpoint families. Interpretation: use this to separate missing permissions or uninstalled apps from healthy empty results.",
-          "signalflow": "data('nexus_dashboard.api.endpoint.error').rate().sum(by=['nexus_dashboard.product', 'nexus_dashboard.group', 'nexus_dashboard.api.operation']).publish(label='Endpoint errors/sec'); data('nexus_dashboard.service.skipped').sum(by=['nexus_dashboard.product', 'nexus_dashboard.group', 'nexus_dashboard.api.operation']).publish(label='Skipped endpoints')",
+          "description": "Value: identifies failed or intentionally skipped ND/NDFC/Insights/NDO/Data Broker endpoint families. Interpretation: use this to separate missing permissions or uninstalled apps from healthy empty results.",
+          "signalflow": "data('nexus_dashboard.api.endpoint.error').sum(by=['nexus_dashboard.product', 'nexus_dashboard.group', 'nexus_dashboard.api.operation']).publish(label='Endpoint errors'); data('nexus_dashboard.service.skipped').sum(by=['nexus_dashboard.product', 'nexus_dashboard.group', 'nexus_dashboard.api.operation']).publish(label='Skipped endpoints')",
           "legend_dimension": "nexus_dashboard.group"
         },
         {
           "name": "APIC API Errors",
           "description": "Value: surfaces APIC API failures. Interpretation: non-zero values by controller and operation explain missing ACI class data.",
-          "signalflow": "data('aci.api.request.errors').rate().sum(by=['aci.controller.name', 'aci.api.operation', 'http.response.status_code']).publish(label='APIC API errors/sec')",
+          "signalflow": "data('aci.api.request.errors').sum(by=['aci.controller.name', 'aci.api.operation', 'http.response.status_code']).publish(label='APIC API errors')",
           "legend_dimension": "aci.api.operation"
         },
         {
@@ -120,8 +120,8 @@
         },
         {
           "name": "APIC Endpoint Errors And Rate Limits",
-          "description": "Value: shows APIC class-query failure and API rate-limit rates. Interpretation: non-zero values explain missing fabric, tenant, endpoint, or topology objects.",
-          "signalflow": "data('aci.api.endpoint.error').rate().sum(by=['aci.controller.name', 'aci.api.operation', 'aci.class']).publish(label='APIC endpoint errors/sec'); data('aci.api.rate_limited').rate().sum(by=['aci.controller.name', 'aci.api.operation']).publish(label='APIC rate limited/sec')",
+          "description": "Value: shows APIC class-query failures and API rate-limit evidence. Interpretation: non-zero values explain missing fabric, tenant, endpoint, or topology objects.",
+          "signalflow": "data('aci.api.endpoint.error').sum(by=['aci.controller.name', 'aci.api.operation', 'aci.class']).publish(label='APIC endpoint errors'); data('aci.api.rate_limited').sum(by=['aci.controller.name', 'aci.api.operation']).publish(label='APIC rate limited')",
           "legend_dimension": "aci.api.operation"
         },
         {
@@ -156,8 +156,8 @@
         },
         {
           "name": "Nexus Dashboard Rate Limits",
-          "description": "Value: surfaces Nexus Dashboard API throttling rate by operation. Interpretation: non-zero rates explain stale or missing controller, NDFC, Insights, Orchestrator, or Data Broker panels.",
-          "signalflow": "data('nexus_dashboard.api.rate_limited').rate().sum(by=['nexus_dashboard.api.operation', 'http.response.status_code']).publish(label='ND rate limited/sec')",
+          "description": "Value: surfaces Nexus Dashboard API throttling by operation. Interpretation: non-zero rate-limit counts explain stale or missing controller, NDFC, Insights, Orchestrator, or Data Broker panels.",
+          "signalflow": "data('nexus_dashboard.api.rate_limited').sum(by=['nexus_dashboard.api.operation', 'http.response.status_code']).publish(label='ND rate limited')",
           "legend_dimension": "nexus_dashboard.api.operation"
         }
       ]
@@ -255,7 +255,7 @@
         {
           "name": "Insights Anomaly Count",
           "description": "Value: counts active anomalies and advisories by severity/category. Interpretation: prioritize critical and high-confidence evidence.",
-          "signalflow": "data('nexus_dashboard.insights.anomaly.count').sum(by=['nexus_dashboard.insights.severity', 'nexus_dashboard.insights.category']).publish(label='Anomalies')",
+          "signalflow": "data('nexus_dashboard.insights.anomaly.count').sum(by=['nexus_dashboard.insights.severity', 'nexus_dashboard.insights.category', 'cisco.fabric.name', 'cisco.site.name']).publish(label='Anomalies')",
           "legend_dimension": "nexus_dashboard.insights.severity"
         },
         {
@@ -431,9 +431,9 @@
           "legend_dimension": "network.interface.name"
         },
         {
-          "name": "ACI Interface Traffic Utilization And Counters",
-          "description": "Value: correlates APIC interface rates and utilization with RMON byte, packet, error, and discard counters. Interpretation: traffic silence, saturation, packet spikes, errors, or drops near affected nodes explain workload impact.",
-          "signalflow": "data('cisco.interface.io.rate', filter=filter('cisco.controller.type', 'apic')).mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Interface bit/s'); data('cisco.interface.packet.rate', filter=filter('cisco.controller.type', 'apic')).mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Interface packets/sec'); data('cisco.interface.drop.rate', filter=filter('cisco.controller.type', 'apic')).mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Interface drops/sec'); data('cisco.interface.utilization', filter=filter('cisco.controller.type', 'apic')).mean(by=['host.name', 'network.interface.name', 'network.io.direction']).scale(100).publish(label='Utilization %'); data('system.network.io', filter=filter('cisco.controller.type', 'apic')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='RMON bytes/sec'); data('system.network.packet.count', filter=filter('cisco.controller.type', 'apic')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='RMON packets/sec'); data('system.network.errors', filter=filter('cisco.controller.type', 'apic')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='RMON errors/sec'); data('system.network.packet.dropped', filter=filter('cisco.controller.type', 'apic')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='RMON drops/sec')",
+          "name": "ACI Interface Traffic And Drops",
+          "description": "Value: correlates optional APIC interface traffic, packet, and drop-rate counters. Interpretation: traffic silence, packet spikes, or drops near affected nodes explain workload impact.",
+          "signalflow": "data('cisco.interface.io.rate', filter=filter('cisco.controller.type', 'apic')).mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Interface rate'); data('cisco.interface.packet.rate', filter=filter('cisco.controller.type', 'apic')).mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Packets/sec'); data('cisco.interface.drop.rate', filter=filter('cisco.controller.type', 'apic')).mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Drops')",
           "legend_dimension": "network.interface.name"
         },
         {
