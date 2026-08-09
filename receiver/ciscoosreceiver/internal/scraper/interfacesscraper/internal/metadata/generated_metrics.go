@@ -169,7 +169,7 @@ var MetricsInfo = metricsInfo{
 	},
 	CiscoTopologyNeighborInfo: metricInfo{
 		Name:       "cisco.topology.neighbor.info",
-		Attributes: []string{"cisco.topology.protocol", "network.interface.name", "cisco.topology.neighbor.name", "cisco.topology.neighbor.interface", "cisco.topology.neighbor.platform", "cisco.topology.neighbor.address"},
+		Attributes: []string{"cisco.topology.protocol", "network.interface.name", "cisco.topology.neighbor.name", "cisco.topology.neighbor.interface", "cisco.topology.neighbor.platform", "cisco.topology.neighbor.address", "network.peer.name", "network.peer.address", "network.protocol.name"},
 	},
 	CiscoTransceiverSensor: metricInfo{
 		Name:       "cisco.transceiver.sensor",
@@ -255,7 +255,7 @@ type metricCiscoInterfaceAdminStatus struct {
 // init fills cisco.interface.admin.status metric with initial data.
 func (m *metricCiscoInterfaceAdminStatus) init() {
 	m.data.SetName("cisco.interface.admin.status")
-	m.data.SetDescription("Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)")
+	m.data.SetDescription("Cisco interface administrative status (1 = administratively enabled, 0 = not administratively enabled)")
 	m.data.SetUnit("1")
 	m.data.SetEmptyGauge()
 	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
@@ -542,7 +542,7 @@ type metricCiscoInterfaceIoRate struct {
 	data          pmetric.Metric                   // data buffer for generated metric.
 	config        CiscoInterfaceIoRateMetricConfig // metric config provided by user.
 	capacity      int                              // max observed number of data points added to the metric.
-	aggDataPoints []int64                          // slice containing number of aggregated datapoints at each index
+	aggDataPoints []float64                        // slice containing number of aggregated datapoints at each index
 }
 
 // init fills cisco.interface.io.rate metric with initial data.
@@ -555,7 +555,7 @@ func (m *metricCiscoInterfaceIoRate) init() {
 	m.aggDataPoints = m.aggDataPoints[:0]
 }
 
-func (m *metricCiscoInterfaceIoRate) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, networkIoDirectionAttributeValue string, networkInterfaceDescriptionAttributeValue string, networkInterfaceMacAttributeValue string, networkInterfaceNameAttributeValue string, networkInterfaceSpeedAttributeValue string) {
+func (m *metricCiscoInterfaceIoRate) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64, networkIoDirectionAttributeValue string, networkInterfaceDescriptionAttributeValue string, networkInterfaceMacAttributeValue string, networkInterfaceNameAttributeValue string, networkInterfaceSpeedAttributeValue string) {
 	if !m.config.Enabled {
 		return
 	}
@@ -586,24 +586,24 @@ func (m *metricCiscoInterfaceIoRate) recordDataPoint(start pcommon.Timestamp, ts
 		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
 			switch s = m.config.AggregationStrategy; s {
 			case AggregationStrategySum, AggregationStrategyAvg:
-				dpi.SetIntValue(dpi.IntValue() + val)
+				dpi.SetDoubleValue(dpi.DoubleValue() + val)
 				m.aggDataPoints[i] += 1
 				return
 			case AggregationStrategyMin:
-				if dpi.IntValue() > val {
-					dpi.SetIntValue(val)
+				if dpi.DoubleValue() > val {
+					dpi.SetDoubleValue(val)
 				}
 				return
 			case AggregationStrategyMax:
-				if dpi.IntValue() < val {
-					dpi.SetIntValue(val)
+				if dpi.DoubleValue() < val {
+					dpi.SetDoubleValue(val)
 				}
 				return
 			}
 		}
 	}
 
-	dp.SetIntValue(val)
+	dp.SetDoubleValue(val)
 	m.aggDataPoints = append(m.aggDataPoints, 1)
 	dp.MoveTo(dps.AppendEmpty())
 }
@@ -620,7 +620,7 @@ func (m *metricCiscoInterfaceIoRate) emit(metrics pmetric.MetricSlice) {
 	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
 		if m.config.AggregationStrategy == AggregationStrategyAvg {
 			for i, aggCount := range m.aggDataPoints {
-				m.data.Gauge().DataPoints().At(i).SetIntValue(m.data.Gauge().DataPoints().At(i).IntValue() / aggCount)
+				m.data.Gauge().DataPoints().At(i).SetDoubleValue(m.data.Gauge().DataPoints().At(i).DoubleValue() / aggCount)
 			}
 		}
 		m.updateCapacity()
@@ -643,7 +643,7 @@ type metricCiscoInterfacePacketRate struct {
 	data          pmetric.Metric                       // data buffer for generated metric.
 	config        CiscoInterfacePacketRateMetricConfig // metric config provided by user.
 	capacity      int                                  // max observed number of data points added to the metric.
-	aggDataPoints []int64                              // slice containing number of aggregated datapoints at each index
+	aggDataPoints []float64                            // slice containing number of aggregated datapoints at each index
 }
 
 // init fills cisco.interface.packet.rate metric with initial data.
@@ -656,7 +656,7 @@ func (m *metricCiscoInterfacePacketRate) init() {
 	m.aggDataPoints = m.aggDataPoints[:0]
 }
 
-func (m *metricCiscoInterfacePacketRate) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, networkIoDirectionAttributeValue string, networkInterfaceDescriptionAttributeValue string, networkInterfaceMacAttributeValue string, networkInterfaceNameAttributeValue string, networkInterfaceSpeedAttributeValue string) {
+func (m *metricCiscoInterfacePacketRate) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64, networkIoDirectionAttributeValue string, networkInterfaceDescriptionAttributeValue string, networkInterfaceMacAttributeValue string, networkInterfaceNameAttributeValue string, networkInterfaceSpeedAttributeValue string) {
 	if !m.config.Enabled {
 		return
 	}
@@ -687,24 +687,24 @@ func (m *metricCiscoInterfacePacketRate) recordDataPoint(start pcommon.Timestamp
 		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
 			switch s = m.config.AggregationStrategy; s {
 			case AggregationStrategySum, AggregationStrategyAvg:
-				dpi.SetIntValue(dpi.IntValue() + val)
+				dpi.SetDoubleValue(dpi.DoubleValue() + val)
 				m.aggDataPoints[i] += 1
 				return
 			case AggregationStrategyMin:
-				if dpi.IntValue() > val {
-					dpi.SetIntValue(val)
+				if dpi.DoubleValue() > val {
+					dpi.SetDoubleValue(val)
 				}
 				return
 			case AggregationStrategyMax:
-				if dpi.IntValue() < val {
-					dpi.SetIntValue(val)
+				if dpi.DoubleValue() < val {
+					dpi.SetDoubleValue(val)
 				}
 				return
 			}
 		}
 	}
 
-	dp.SetIntValue(val)
+	dp.SetDoubleValue(val)
 	m.aggDataPoints = append(m.aggDataPoints, 1)
 	dp.MoveTo(dps.AppendEmpty())
 }
@@ -721,7 +721,7 @@ func (m *metricCiscoInterfacePacketRate) emit(metrics pmetric.MetricSlice) {
 	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
 		if m.config.AggregationStrategy == AggregationStrategyAvg {
 			for i, aggCount := range m.aggDataPoints {
-				m.data.Gauge().DataPoints().At(i).SetIntValue(m.data.Gauge().DataPoints().At(i).IntValue() / aggCount)
+				m.data.Gauge().DataPoints().At(i).SetDoubleValue(m.data.Gauge().DataPoints().At(i).DoubleValue() / aggCount)
 			}
 		}
 		m.updateCapacity()
@@ -2311,7 +2311,7 @@ type metricCiscoScrapePartialSuccess struct {
 // init fills cisco.scrape.partial_success metric with initial data.
 func (m *metricCiscoScrapePartialSuccess) init() {
 	m.data.SetName("cisco.scrape.partial_success")
-	m.data.SetDescription("Cisco receiver scrape partial success status (1 = partial success, 0 = complete success)")
+	m.data.SetDescription("Whether the scrape completed with at least one command-family failure.")
 	m.data.SetUnit("1")
 	m.data.SetEmptyGauge()
 }
@@ -2414,14 +2414,14 @@ type metricCiscoTopologyNeighborInfo struct {
 // init fills cisco.topology.neighbor.info metric with initial data.
 func (m *metricCiscoTopologyNeighborInfo) init() {
 	m.data.SetName("cisco.topology.neighbor.info")
-	m.data.SetDescription("Cisco LLDP or CDP topology neighbor edge information")
+	m.data.SetDescription("LLDP, CDP, and fabric-link neighbor information.")
 	m.data.SetUnit("1")
 	m.data.SetEmptyGauge()
 	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
 	m.aggDataPoints = m.aggDataPoints[:0]
 }
 
-func (m *metricCiscoTopologyNeighborInfo) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoTopologyProtocolAttributeValue string, networkInterfaceNameAttributeValue string, ciscoTopologyNeighborNameAttributeValue string, ciscoTopologyNeighborInterfaceAttributeValue string, ciscoTopologyNeighborPlatformAttributeValue string, ciscoTopologyNeighborAddressAttributeValue string) {
+func (m *metricCiscoTopologyNeighborInfo) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoTopologyProtocolAttributeValue string, networkInterfaceNameAttributeValue string, ciscoTopologyNeighborNameAttributeValue string, ciscoTopologyNeighborInterfaceAttributeValue string, ciscoTopologyNeighborPlatformAttributeValue string, ciscoTopologyNeighborAddressAttributeValue string, networkPeerNameAttributeValue string, networkPeerAddressAttributeValue string, networkProtocolNameAttributeValue string) {
 	if !m.config.Enabled {
 		return
 	}
@@ -2446,6 +2446,15 @@ func (m *metricCiscoTopologyNeighborInfo) recordDataPoint(start pcommon.Timestam
 	}
 	if slices.Contains(m.config.EnabledAttributes, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborAddress) {
 		dp.Attributes().PutStr("cisco.topology.neighbor.address", ciscoTopologyNeighborAddressAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkPeerName) {
+		dp.Attributes().PutStr("network.peer.name", networkPeerNameAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkPeerAddress) {
+		dp.Attributes().PutStr("network.peer.address", networkPeerAddressAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkProtocolName) {
+		dp.Attributes().PutStr("network.protocol.name", networkProtocolNameAttributeValue)
 	}
 
 	var s string
@@ -2518,7 +2527,7 @@ type metricCiscoTransceiverSensor struct {
 // init fills cisco.transceiver.sensor metric with initial data.
 func (m *metricCiscoTransceiverSensor) init() {
 	m.data.SetName("cisco.transceiver.sensor")
-	m.data.SetDescription("Cisco transceiver digital optical monitoring sensor value. The physical unit varies by sensor type and is carried in the cisco.transceiver.sensor.unit attribute (Cel, V, mA, dBm, or 1 when unitless).")
+	m.data.SetDescription("Digital optical monitoring sensor values, such as temperature, voltage, current, or optical receive/transmit power. The actual physical unit is in `cisco.transceiver.sensor.unit`.")
 	m.data.SetUnit("1")
 	m.data.SetEmptyGauge()
 	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
@@ -2903,7 +2912,7 @@ type metricSystemNetworkInterfaceStatus struct {
 // init fills system.network.interface.status metric with initial data.
 func (m *metricSystemNetworkInterfaceStatus) init() {
 	m.data.SetName("system.network.interface.status")
-	m.data.SetDescription("Interface operational status (1 = up, 0 = down)")
+	m.data.SetDescription("Interface operational status (1 = up, 0 = not up)")
 	m.data.SetUnit("1")
 	m.data.SetEmptyGauge()
 	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
@@ -3104,7 +3113,7 @@ type metricSystemNetworkPacketCount struct {
 // init fills system.network.packet.count metric with initial data.
 func (m *metricSystemNetworkPacketCount) init() {
 	m.data.SetName("system.network.packet.count")
-	m.data.SetDescription("The number of packets transmitted or received, categorized by type")
+	m.data.SetDescription("The number of packets transmitted or received by direction and, when available, packet type")
 	m.data.SetUnit("{packet}")
 	m.data.SetEmptySum()
 	m.data.Sum().SetIsMonotonic(true)
@@ -3595,12 +3604,12 @@ func (mb *MetricsBuilder) RecordCiscoInterfaceErrdisabledDataPoint(ts pcommon.Ti
 }
 
 // RecordCiscoInterfaceIoRateDataPoint adds a data point to cisco.interface.io.rate metric.
-func (mb *MetricsBuilder) RecordCiscoInterfaceIoRateDataPoint(ts pcommon.Timestamp, val int64, networkIoDirectionAttributeValue AttributeNetworkIoDirection, networkInterfaceDescriptionAttributeValue string, networkInterfaceMacAttributeValue string, networkInterfaceNameAttributeValue string, networkInterfaceSpeedAttributeValue string) {
+func (mb *MetricsBuilder) RecordCiscoInterfaceIoRateDataPoint(ts pcommon.Timestamp, val float64, networkIoDirectionAttributeValue AttributeNetworkIoDirection, networkInterfaceDescriptionAttributeValue string, networkInterfaceMacAttributeValue string, networkInterfaceNameAttributeValue string, networkInterfaceSpeedAttributeValue string) {
 	mb.metricCiscoInterfaceIoRate.recordDataPoint(mb.startTime, ts, val, networkIoDirectionAttributeValue.String(), networkInterfaceDescriptionAttributeValue, networkInterfaceMacAttributeValue, networkInterfaceNameAttributeValue, networkInterfaceSpeedAttributeValue)
 }
 
 // RecordCiscoInterfacePacketRateDataPoint adds a data point to cisco.interface.packet.rate metric.
-func (mb *MetricsBuilder) RecordCiscoInterfacePacketRateDataPoint(ts pcommon.Timestamp, val int64, networkIoDirectionAttributeValue AttributeNetworkIoDirection, networkInterfaceDescriptionAttributeValue string, networkInterfaceMacAttributeValue string, networkInterfaceNameAttributeValue string, networkInterfaceSpeedAttributeValue string) {
+func (mb *MetricsBuilder) RecordCiscoInterfacePacketRateDataPoint(ts pcommon.Timestamp, val float64, networkIoDirectionAttributeValue AttributeNetworkIoDirection, networkInterfaceDescriptionAttributeValue string, networkInterfaceMacAttributeValue string, networkInterfaceNameAttributeValue string, networkInterfaceSpeedAttributeValue string) {
 	mb.metricCiscoInterfacePacketRate.recordDataPoint(mb.startTime, ts, val, networkIoDirectionAttributeValue.String(), networkInterfaceDescriptionAttributeValue, networkInterfaceMacAttributeValue, networkInterfaceNameAttributeValue, networkInterfaceSpeedAttributeValue)
 }
 
@@ -3695,8 +3704,8 @@ func (mb *MetricsBuilder) RecordCiscoSSHReconnectsDataPoint(ts pcommon.Timestamp
 }
 
 // RecordCiscoTopologyNeighborInfoDataPoint adds a data point to cisco.topology.neighbor.info metric.
-func (mb *MetricsBuilder) RecordCiscoTopologyNeighborInfoDataPoint(ts pcommon.Timestamp, val int64, ciscoTopologyProtocolAttributeValue string, networkInterfaceNameAttributeValue string, ciscoTopologyNeighborNameAttributeValue string, ciscoTopologyNeighborInterfaceAttributeValue string, ciscoTopologyNeighborPlatformAttributeValue string, ciscoTopologyNeighborAddressAttributeValue string) {
-	mb.metricCiscoTopologyNeighborInfo.recordDataPoint(mb.startTime, ts, val, ciscoTopologyProtocolAttributeValue, networkInterfaceNameAttributeValue, ciscoTopologyNeighborNameAttributeValue, ciscoTopologyNeighborInterfaceAttributeValue, ciscoTopologyNeighborPlatformAttributeValue, ciscoTopologyNeighborAddressAttributeValue)
+func (mb *MetricsBuilder) RecordCiscoTopologyNeighborInfoDataPoint(ts pcommon.Timestamp, val int64, ciscoTopologyProtocolAttributeValue string, networkInterfaceNameAttributeValue string, ciscoTopologyNeighborNameAttributeValue string, ciscoTopologyNeighborInterfaceAttributeValue string, ciscoTopologyNeighborPlatformAttributeValue string, ciscoTopologyNeighborAddressAttributeValue string, networkPeerNameAttributeValue string, networkPeerAddressAttributeValue string, networkProtocolNameAttributeValue string) {
+	mb.metricCiscoTopologyNeighborInfo.recordDataPoint(mb.startTime, ts, val, ciscoTopologyProtocolAttributeValue, networkInterfaceNameAttributeValue, ciscoTopologyNeighborNameAttributeValue, ciscoTopologyNeighborInterfaceAttributeValue, ciscoTopologyNeighborPlatformAttributeValue, ciscoTopologyNeighborAddressAttributeValue, networkPeerNameAttributeValue, networkPeerAddressAttributeValue, networkProtocolNameAttributeValue)
 }
 
 // RecordCiscoTransceiverSensorDataPoint adds a data point to cisco.transceiver.sensor metric.

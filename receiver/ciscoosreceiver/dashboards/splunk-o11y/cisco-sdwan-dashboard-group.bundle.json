@@ -89,7 +89,7 @@
         {
           "name": "API Request Errors",
           "description": "Value: surfaces failed SD-WAN Manager API calls by operation and HTTP status. Interpretation: non-zero values explain missing inventory, overlay, app-route, alarm, event, audit, or feature-group data.",
-          "signalflow": "data('sdwan.api.request.errors').sum(by=['sdwan.api.operation', 'http.response.status_code', 'sdwan.api.outcome']).publish(label='API errors')",
+          "signalflow": "data('sdwan.api.request.errors').rate().sum(by=['sdwan.api.operation', 'http.response.status_code', 'sdwan.api.outcome']).publish(label='API errors/sec')",
           "legend_dimension": "sdwan.api.operation"
         },
         {
@@ -114,8 +114,8 @@
         },
         {
           "name": "API Rate Limits",
-          "description": "Value: surfaces SD-WAN Manager API throttling by operation. Interpretation: non-zero values explain missing or delayed endpoint data even when authentication succeeds.",
-          "signalflow": "data('sdwan.api.rate_limited').sum(by=['sdwan.api.operation', 'http.response.status_code']).publish(label='Rate limited')",
+          "description": "Value: surfaces the SD-WAN Manager API throttling rate by operation. Interpretation: non-zero values explain missing or delayed endpoint data even when authentication succeeds.",
+          "signalflow": "data('sdwan.api.rate_limited').rate().sum(by=['sdwan.api.operation', 'http.response.status_code']).publish(label='Rate limited/sec')",
           "legend_dimension": "sdwan.api.operation"
         },
         {
@@ -129,13 +129,13 @@
           "secondary_visualization": "Sparkline",
           "name": "Manager Availability And Status",
           "description": "Value: shows whether SD-WAN Manager and exposed manager services are healthy. Interpretation: down or degraded rows mean collection and product state should be investigated before WAN symptoms.",
-          "signalflow": "data('sdwan.manager.up').mean(by=['host.name', 'cisco.controller.endpoint']).publish(label='Manager up'); data('sdwan.manager.status').mean(by=['host.name', 'sdwan.status']).publish(label='Manager status'); data('sdwan.manager.endpoint.status').mean(by=['host.name', 'sdwan.manager.endpoint', 'sdwan.status']).publish(label='Endpoint status')",
+          "signalflow": "data('sdwan.manager.up').mean(by=['host.name', 'cisco.controller.endpoint']).publish(label='Manager up'); data('sdwan.manager.status').mean(by=['host.name', 'sdwan.status']).publish(label='Manager status'); data('sdwan.manager.endpoint.status').mean(by=['host.name', 'cisco.controller.endpoint', 'sdwan.api.operation']).publish(label='Endpoint status')",
           "legend_dimension": "host.name"
         },
         {
           "name": "Manager Health And Inventory Scope",
           "description": "Value: connects manager health score with selected inventory size. Interpretation: falling health or sudden inventory count changes indicate product, permission, or target-scope problems.",
-          "signalflow": "data('sdwan.manager.health.score').mean(by=['host.name']).publish(label='Manager health'); data('sdwan.inventory.device.count').mean(by=['host.name', 'sdwan.personality', 'sdwan.reachability']).publish(label='Inventory devices')",
+          "signalflow": "data('sdwan.manager.health.score').mean(by=['host.name']).publish(label='Manager health'); data('sdwan.inventory.device.count').mean(by=['host.name', 'sdwan.personality', 'sdwan.status']).publish(label='Inventory devices')",
           "legend_dimension": "sdwan.personality"
         }
       ]
@@ -214,8 +214,8 @@
         },
         {
           "name": "BFD Transitions And Flaps",
-          "description": "Value: shows BFD instability counters. Interpretation: rising transitions or flaps during the incident window indicate unstable circuits, provider paths, or transport colors.",
-          "signalflow": "data('sdwan.bfd.session.transitions').sum(by=['host.name', 'sdwan.site.id', 'sdwan.local.color', 'sdwan.remote.color']).publish(label='Transitions'); data('sdwan.bfd.session.flap.count').sum(by=['host.name', 'sdwan.site.id', 'sdwan.local.color', 'sdwan.remote.color']).publish(label='Flaps')",
+          "description": "Value: shows BFD transition and flap rates. Interpretation: rising transition or flap rates during the incident window indicate unstable circuits, provider paths, or transport colors.",
+          "signalflow": "data('sdwan.bfd.session.transitions').rate().sum(by=['host.name', 'sdwan.site.id', 'sdwan.local.color', 'sdwan.remote.color']).publish(label='Transitions/sec'); data('sdwan.bfd.session.flap.count').rate().sum(by=['host.name', 'sdwan.site.id', 'sdwan.local.color', 'sdwan.remote.color']).publish(label='Flaps/sec')",
           "legend_dimension": "sdwan.local.color"
         },
         {
@@ -291,13 +291,13 @@
         {
           "name": "Interface Traffic",
           "description": "Value: shows interface receive/transmit traffic volume from SD-WAN Manager. Interpretation: sudden silence, surge, or asymmetry around the incident points to circuit/path or application shift.",
-          "signalflow": "data('system.network.io', filter=filter('cisco.controller.type', 'sdwan_manager')).sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'sdwan.tloc.color']).publish(label='Interface IO')",
+          "signalflow": "data('system.network.io', filter=filter('cisco.controller.type', 'sdwan_manager')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'sdwan.tloc.color']).publish(label='Interface bytes/sec')",
           "legend_dimension": "network.interface.name"
         },
         {
           "name": "Interface Errors And Drops",
           "description": "Value: shows SD-WAN interface errors and packet drops. Interpretation: new or sustained growth on WAN paths explains app-route loss, failover, or degraded application experience.",
-          "signalflow": "data('system.network.errors', filter=filter('cisco.controller.type', 'sdwan_manager')).sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'sdwan.tloc.color']).publish(label='Errors'); data('system.network.packet.dropped', filter=filter('cisco.controller.type', 'sdwan_manager')).sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'sdwan.tloc.color']).publish(label='Drops')",
+          "signalflow": "data('system.network.errors', filter=filter('cisco.controller.type', 'sdwan_manager')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'sdwan.tloc.color']).publish(label='Errors/sec'); data('system.network.packet.dropped', filter=filter('cisco.controller.type', 'sdwan_manager')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'sdwan.tloc.color']).publish(label='Drops/sec')",
           "legend_dimension": "network.interface.name"
         },
         {
@@ -591,7 +591,7 @@
         {
           "name": "User Symptom Classifier",
           "description": "Value: groups likely user symptoms into loss, latency, jitter, interface drops, and interface errors. Interpretation: compare the largest or newest signal during the ticket window to decide whether to route the incident to WAN, provider, policy/security, or application teams.",
-          "signalflow": "data('sdwan.app_route.loss').mean(by=['sdwan.site.id', 'sdwan.application']).publish(label='Loss'); data('sdwan.app_route.latency').mean(by=['sdwan.site.id', 'sdwan.application']).publish(label='Latency'); data('sdwan.app_route.jitter').mean(by=['sdwan.site.id', 'sdwan.application']).publish(label='Jitter'); data('system.network.errors', filter=filter('cisco.controller.type', 'sdwan_manager')).sum(by=['sdwan.site.id', 'network.interface.name']).publish(label='Errors'); data('system.network.packet.dropped', filter=filter('cisco.controller.type', 'sdwan_manager')).sum(by=['sdwan.site.id', 'network.interface.name']).publish(label='Drops')",
+          "signalflow": "data('sdwan.app_route.loss').mean(by=['sdwan.site.id', 'sdwan.application']).publish(label='Loss'); data('sdwan.app_route.latency').mean(by=['sdwan.site.id', 'sdwan.application']).publish(label='Latency'); data('sdwan.app_route.jitter').mean(by=['sdwan.site.id', 'sdwan.application']).publish(label='Jitter'); data('system.network.errors', filter=filter('cisco.controller.type', 'sdwan_manager')).rate().sum(by=['sdwan.site.id', 'network.interface.name']).publish(label='Errors/sec'); data('system.network.packet.dropped', filter=filter('cisco.controller.type', 'sdwan_manager')).rate().sum(by=['sdwan.site.id', 'network.interface.name']).publish(label='Drops/sec')",
           "legend_dimension": "sdwan.site.id"
         },
         {
@@ -605,7 +605,7 @@
           "secondary_visualization": "Sparkline",
           "name": "Can We Trust This User Impact View",
           "description": "Value: shows whether SD-WAN Manager collection is healthy enough for service desk triage. Interpretation: partial scrape, API errors, unavailable groups, or skipped groups mean the user-impact view may be incomplete.",
-          "signalflow": "data('sdwan.scrape.partial_success').mean(by=['cisco.controller.endpoint']).publish(label='Partial scrape'); data('sdwan.api.request.errors').sum(by=['sdwan.api.operation', 'http.response.status_code']).publish(label='API errors'); data('sdwan.service.unavailable').sum(by=['sdwan.collection.group']).publish(label='Unavailable'); data('sdwan.service.skipped').sum(by=['sdwan.collection.group', 'sdwan.skip.reason']).publish(label='Skipped')",
+          "signalflow": "data('sdwan.scrape.partial_success').mean(by=['cisco.controller.endpoint']).publish(label='Partial scrape'); data('sdwan.api.request.errors').rate().sum(by=['sdwan.api.operation', 'http.response.status_code']).publish(label='API errors/sec'); data('sdwan.service.unavailable').sum(by=['sdwan.collection.group']).publish(label='Unavailable'); data('sdwan.service.skipped').sum(by=['sdwan.collection.group', 'sdwan.skip.reason']).publish(label='Skipped')",
           "legend_dimension": "cisco.controller.endpoint"
         }
       ]
@@ -642,7 +642,7 @@
         {
           "name": "Circuit Traffic Errors And Drops",
           "description": "Value: shows circuit/interface traffic, errors, and drops by site and color. Interpretation: traffic silence, spikes, errors, or drops explain branch slowness, app timeouts, or failover.",
-          "signalflow": "data('system.network.io', filter=filter('cisco.controller.type', 'sdwan_manager')).sum(by=['sdwan.site.id', 'network.interface.name', 'sdwan.tloc.color', 'network.io.direction']).publish(label='Traffic'); data('system.network.errors', filter=filter('cisco.controller.type', 'sdwan_manager')).sum(by=['sdwan.site.id', 'network.interface.name', 'sdwan.tloc.color']).publish(label='Errors'); data('system.network.packet.dropped', filter=filter('cisco.controller.type', 'sdwan_manager')).sum(by=['sdwan.site.id', 'network.interface.name', 'sdwan.tloc.color']).publish(label='Drops')",
+          "signalflow": "data('system.network.io', filter=filter('cisco.controller.type', 'sdwan_manager')).rate().sum(by=['sdwan.site.id', 'network.interface.name', 'sdwan.tloc.color', 'network.io.direction']).publish(label='Traffic bytes/sec'); data('system.network.errors', filter=filter('cisco.controller.type', 'sdwan_manager')).rate().sum(by=['sdwan.site.id', 'network.interface.name', 'sdwan.tloc.color']).publish(label='Errors/sec'); data('system.network.packet.dropped', filter=filter('cisco.controller.type', 'sdwan_manager')).rate().sum(by=['sdwan.site.id', 'network.interface.name', 'sdwan.tloc.color']).publish(label='Drops/sec')",
           "legend_dimension": "network.interface.name"
         },
         {
@@ -732,7 +732,7 @@
         {
           "name": "Likely Owning Team Signals",
           "description": "Value: groups evidence by WAN/interface, overlay/BFD, policy/security, application optimization, and recent change. Interpretation: the strongest signal helps route the bridge to provider/WAN, SD-WAN, security, application, or change owner.",
-          "signalflow": "data('system.network.packet.dropped', filter=filter('cisco.controller.type', 'sdwan_manager')).sum(by=['sdwan.site.id']).publish(label='WAN drops'); data('sdwan.bfd.session.status').mean(by=['sdwan.site.id', 'sdwan.status']).publish(label='Overlay'); data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'policy_qos') or filter('sdwan.collection.group', 'security')).sum(by=['sdwan.collection.group']).publish(label='Policy security'); data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'appqoe') or filter('sdwan.collection.group', 'cloud_onramp')).sum(by=['sdwan.collection.group']).publish(label='App cloud'); data('sdwan.event.count').sum(by=['sdwan.event.type', 'sdwan.severity']).publish(label='Change events')",
+          "signalflow": "data('system.network.packet.dropped', filter=filter('cisco.controller.type', 'sdwan_manager')).rate().sum(by=['sdwan.site.id']).publish(label='WAN drops/sec'); data('sdwan.bfd.session.status').mean(by=['sdwan.site.id', 'sdwan.status']).publish(label='Overlay'); data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'policy_qos') or filter('sdwan.collection.group', 'security')).sum(by=['sdwan.collection.group']).publish(label='Policy security'); data('sdwan.collection.object.count', filter=filter('sdwan.collection.group', 'appqoe') or filter('sdwan.collection.group', 'cloud_onramp')).sum(by=['sdwan.collection.group']).publish(label='App cloud'); data('sdwan.event.count').sum(by=['sdwan.event.type', 'sdwan.severity']).publish(label='Change events')",
           "legend_dimension": "sdwan.collection.group"
         },
         {
@@ -740,7 +740,7 @@
           "secondary_visualization": "Sparkline",
           "name": "Visibility Confidence",
           "description": "Value: shows whether SD-WAN data is complete enough for stakeholder updates. Interpretation: partial scrape, API errors, unavailable groups, or skipped target groups should be disclosed as confidence limits.",
-          "signalflow": "data('sdwan.scrape.partial_success').mean(by=['cisco.controller.endpoint']).publish(label='Partial scrape'); data('sdwan.api.request.errors').sum(by=['sdwan.api.operation']).publish(label='API errors'); data('sdwan.service.unavailable').sum(by=['sdwan.collection.group']).publish(label='Unavailable'); data('sdwan.service.skipped').sum(by=['sdwan.collection.group']).publish(label='Skipped')",
+          "signalflow": "data('sdwan.scrape.partial_success').mean(by=['cisco.controller.endpoint']).publish(label='Partial scrape'); data('sdwan.api.request.errors').rate().sum(by=['sdwan.api.operation']).publish(label='API errors/sec'); data('sdwan.service.unavailable').sum(by=['sdwan.collection.group']).publish(label='Unavailable'); data('sdwan.service.skipped').sum(by=['sdwan.collection.group']).publish(label='Skipped')",
           "legend_dimension": "cisco.controller.endpoint"
         },
         {

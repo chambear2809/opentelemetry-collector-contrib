@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -20,7 +21,27 @@ import (
 
 const defaultMaxSSHCommandOutputBytes = 16 * 1024 * 1024
 
-var errSSHCommandOutputTooLarge = errors.New("SSH command output exceeds limit")
+var (
+	// ErrSSHCommandOutputTooLarge marks a command that received device output
+	// but exceeded the configured in-memory capture bound.
+	ErrSSHCommandOutputTooLarge = errors.New("SSH command output exceeds limit")
+	// ErrCiscoCLICommandRejected marks a bounded Cisco CLI rejection without
+	// retaining or exposing the device's raw output.
+	ErrCiscoCLICommandRejected = errors.New("Cisco CLI command rejected")
+)
+
+var (
+	iosXEShowVersionSignature = regexp.MustCompile(`(?im)^\s*(?:cisco ios xe software|cisco ios software[^\r\n]*(?:\bios[- ]?xe software\b|(?:\b|_)iosxe\b))[^\r\n]*\bversion\s+\S+`)
+	iosShowVersionSignature   = regexp.MustCompile(`(?im)^\s*cisco ios software[^\r\n]*\bversion\s+\S+`)
+	// Older IOS releases split the product banner and the version-bearing image
+	// line. Requiring the adjacent, structured pair avoids treating login-banner
+	// prose containing the well-known product name as command output.
+	classicIOSShowVersionPair = regexp.MustCompile(`(?im)^[ \t]*cisco internetwork operating system software[ \t]*\r?\n[ \t]*(?:cisco[ \t]+)?ios[ \t]*\([ \t]*tm[ \t]*\)[ \t]+(?:[a-z0-9][a-z0-9._+/\-]*[ \t]+)+software[ \t]+\([a-z0-9][a-z0-9._+\-]*\),[ \t]+(?:experimental[ \t]+)?version[ \t]+([^,\s]+)(?:[ \t]+\[[^\]\r\n]+\])?(?:,[^\r\n]*)?[ \t]*\r?$`)
+	nxOSShowVersionSignature  = regexp.MustCompile(`(?im)(?:^\s*(?:nxos|host nxos|system|kickstart):\s*version\s+\S+|^\s*cisco nx-os[^\r\n]*\bversion\s+\S+)`)
+	ciscoCLIRejectionLine     = regexp.MustCompile(`(?im)^[ \t]*%?[ \t]*(?:authorization failed|command authorization failed|not authorized|permission denied|invalid (?:input(?: detected)?|command)|incomplete command|ambiguous command|unknown command|unrecognized command)\b`)
+	ciscoCLIPromptLine        = regexp.MustCompile(`^\S+[>#]\s*$`)
+	ciscoCLIExitLine          = regexp.MustCompile(`^\S+[>#]\s*exit\s*$`)
+)
 
 // Client represents SSH client connection to Cisco device
 type Client struct {
@@ -33,9 +54,12 @@ type Client struct {
 	address        string
 	config         *cryptossh.ClientConfig
 	reconnectCount atomic.Int64
+	deviceMetadata atomic.Pointer[DeviceMetadata]
+	metadataStore  *DeviceMetadataStore
 	connectionMu   sync.Mutex
 	reconnectMu    sync.Mutex
 	closed         bool
+	forceShell     atomic.Bool
 	// maxCommandOutputBytes is test-injectable; zero uses the production cap.
 	maxCommandOutputBytes int
 }
@@ -56,6 +80,12 @@ type boundedCommandBuffer struct {
 func newCommandOutputCapture(limit int) (*boundedCommandBuffer, *boundedCommandBuffer, *commandOutputLimit) {
 	state := &commandOutputLimit{remaining: limit, overflow: make(chan struct{})}
 	return &boundedCommandBuffer{limit: state}, &boundedCommandBuffer{limit: state}, state
+}
+
+// ErrorIndicatesCommandResponse reports whether an error proves that the
+// device returned a command response, even though the response was unusable.
+func ErrorIndicatesCommandResponse(err error) bool {
+	return errors.Is(err, ErrCiscoCLICommandRejected) || errors.Is(err, ErrSSHCommandOutputTooLarge)
 }
 
 func (b *boundedCommandBuffer) Write(payload []byte) (int, error) {
@@ -101,6 +131,10 @@ func (s *Client) commandOutputLimit() int {
 	return defaultMaxSSHCommandOutputBytes
 }
 
+func (s *Client) usesInteractiveShell() bool {
+	return s.EnablePassword != "" || s.forceShell.Load()
+}
+
 // DisablePaging disables CLI pagination so command output is not truncated.
 // This must be called once after establishing the SSH connection, before any
 // show commands are issued. On Cisco IOS/IOS-XE/NX-OS, "terminal length 0"
@@ -117,11 +151,16 @@ func (s *Client) DisablePaging(ctx context.Context) error {
 // directly without interactive pagination. The session is explicitly closed
 // when the context expires so that the underlying goroutine is unblocked.
 func (s *Client) ExecuteCommand(ctx context.Context, command string) (string, error) {
-	if s.EnablePassword != "" {
-		return s.executeCommandInShell(ctx, command, true)
+	if s.usesInteractiveShell() {
+		return s.executeCommandInShell(ctx, command, s.EnablePassword != "")
 	}
 	output, err := s.executeCommand(ctx, command, false)
+	if err != nil && shouldRetryWithInteractiveShell(err) {
+		s.forceShell.Store(true)
+		return s.executeCommandInShell(ctx, command, false)
+	}
 	if err == nil && outputNeedsInteractiveShell(output) {
+		s.forceShell.Store(true)
 		return s.executeCommandInShell(ctx, command, false)
 	}
 	return output, err
@@ -157,15 +196,31 @@ func (s *Client) executeCommandWithSession(ctx context.Context, session *cryptos
 		session.Stdout = stdout
 		session.Stderr = stderr
 		execErr := session.Run(command)
-		out := stdout.String() + stderr.String()
-		// Treat non-zero exit codes from the device as non-fatal: return the
-		// output so parsers can handle it. Only return an error if there is truly
-		// no output AND the session errored (i.e., connection-level failure).
-		if execErr != nil {
+		stdoutOutput := stdout.String()
+		stderrOutput := stderr.String()
+		out := stdoutOutput + stderrOutput
+		// Explicit Cisco CLI rejection lines remain errors, even when the device
+		// reports exit status zero, so optional collectors can try aliases and
+		// record scrape health. Paging initialization deliberately ignores device
+		// exit status and rejection text for compatibility.
+		if !ignoreExitStatus && (ciscoCLIRejectionLine.MatchString(stdoutOutput) || ciscoCLIRejectionLine.MatchString(stderrOutput)) {
 			var exitErr *cryptossh.ExitError
-			if errors.As(execErr, &exitErr) && (out != "" || ignoreExitStatus) {
-				// Device returned output with a non-zero exit — treat as success.
-				execErr = nil
+			if errors.As(execErr, &exitErr) {
+				execErr = fmt.Errorf("%w (exit status %d)", ErrCiscoCLICommandRejected, exitErr.ExitStatus())
+			} else {
+				execErr = ErrCiscoCLICommandRejected
+			}
+		} else if execErr != nil {
+			var exitErr *cryptossh.ExitError
+			if errors.As(execErr, &exitErr) {
+				switch {
+				case ignoreExitStatus:
+					// Paging setup deliberately tolerates any device exit status.
+					execErr = nil
+				case out != "":
+					// Device returned ordinary output with a non-zero exit.
+					execErr = nil
+				}
 			}
 		}
 		resultChan <- result{out, execErr}
@@ -175,7 +230,7 @@ func (s *Client) executeCommandWithSession(ctx context.Context, session *cryptos
 	case r := <-resultChan:
 		session.Close()
 		if outputLimit.Exceeded() {
-			return "", fmt.Errorf("%w: limit is %d bytes", errSSHCommandOutputTooLarge, s.commandOutputLimit())
+			return "", fmt.Errorf("%w: limit is %d bytes", ErrSSHCommandOutputTooLarge, s.commandOutputLimit())
 		}
 		if r.err != nil {
 			return "", fmt.Errorf("command execution failed: %w", r.err)
@@ -192,7 +247,7 @@ func (s *Client) executeCommandWithSession(ctx context.Context, session *cryptos
 
 	case <-outputLimit.overflow:
 		session.Close()
-		return "", fmt.Errorf("%w: limit is %d bytes", errSSHCommandOutputTooLarge, s.commandOutputLimit())
+		return "", fmt.Errorf("%w: limit is %d bytes", ErrSSHCommandOutputTooLarge, s.commandOutputLimit())
 	}
 }
 
@@ -205,7 +260,14 @@ func (s *Client) executeCommandInShell(ctx context.Context, command string, enab
 	if err != nil {
 		return "", fmt.Errorf("failed to create SSH session: %w", err)
 	}
+	return s.executeCommandInShellWithSession(ctx, session, command, enable)
+}
 
+// executeCommandInShellWithSession executes an interactive command on a
+// session that has already been opened. Reconnect uses this helper to
+// initialize and identify a candidate connection without routing back through
+// newSession while reconnectMu is held.
+func (s *Client) executeCommandInShellWithSession(ctx context.Context, session *cryptossh.Session, command string, enable bool) (string, error) {
 	modes := cryptossh.TerminalModes{
 		cryptossh.ECHO:          0,
 		cryptossh.TTY_OP_ISPEED: 14400,
@@ -250,11 +312,19 @@ func (s *Client) executeCommandInShell(ctx context.Context, command string, enab
 		_ = stdin.Close()
 
 		waitErr := session.Wait()
-		out := stdout.String() + stderr.String()
+		stdoutOutput := stdout.String()
+		stderrOutput := stderr.String()
+		out := stdoutOutput + stderrOutput
 		if writeErr != nil {
 			resultChan <- result{out, writeErr}
 			return
 		}
+		classifiedOutput, rejected := classifyInteractiveCiscoCLIOutput(stdoutOutput, stderrOutput)
+		if rejected {
+			resultChan <- result{"", ErrCiscoCLICommandRejected}
+			return
+		}
+		out = classifiedOutput
 		if waitErr != nil {
 			var exitErr *cryptossh.ExitError
 			if errors.As(waitErr, &exitErr) && out != "" {
@@ -268,7 +338,7 @@ func (s *Client) executeCommandInShell(ctx context.Context, command string, enab
 	case r := <-resultChan:
 		session.Close()
 		if outputLimit.Exceeded() {
-			return "", fmt.Errorf("%w: limit is %d bytes", errSSHCommandOutputTooLarge, s.commandOutputLimit())
+			return "", fmt.Errorf("%w: limit is %d bytes", ErrSSHCommandOutputTooLarge, s.commandOutputLimit())
 		}
 		if r.err != nil {
 			return "", fmt.Errorf("command execution failed: %w", r.err)
@@ -284,12 +354,64 @@ func (s *Client) executeCommandInShell(ctx context.Context, command string, enab
 
 	case <-outputLimit.overflow:
 		session.Close()
-		return "", fmt.Errorf("%w: limit is %d bytes", errSSHCommandOutputTooLarge, s.commandOutputLimit())
+		return "", fmt.Errorf("%w: limit is %d bytes", ErrSSHCommandOutputTooLarge, s.commandOutputLimit())
 	}
+}
+
+// classifyInteractiveCiscoCLIOutput distinguishes rejection of the requested
+// command from a tolerated rejection of the paging setup command that is sent
+// first in the same shell. When the final rejection line has substantive
+// output after it, that later output belongs to the requested command and the
+// paging diagnostic is removed. A final rejection with only a prompt/caret is
+// treated as rejection of the requested command.
+func classifyInteractiveCiscoCLIOutput(stdout, stderr string) (string, bool) {
+	output := stdout
+	if output != "" && stderr != "" && !strings.HasSuffix(output, "\n") {
+		output += "\n"
+	}
+	output += stderr
+	matches := ciscoCLIRejectionLine.FindAllStringIndex(output, -1)
+	if len(matches) == 0 {
+		return output, false
+	}
+
+	lastRejection := matches[len(matches)-1]
+	tailStart := len(output)
+	if newline := strings.IndexByte(output[lastRejection[0]:], '\n'); newline >= 0 {
+		tailStart = lastRejection[0] + newline + 1
+	}
+	tail := output[tailStart:]
+	for line := range strings.Lines(tail) {
+		line = strings.TrimSpace(line)
+		if line == "" || line == "^" || strings.EqualFold(line, "exit") || ciscoCLIPromptLine.MatchString(line) || ciscoCLIExitLine.MatchString(line) {
+			continue
+		}
+		return tail, false
+	}
+	return "", true
 }
 
 func outputNeedsInteractiveShell(output string) bool {
 	return strings.Contains(strings.ToLower(output), "line has invalid autocommand")
+}
+
+func shouldRetryWithInteractiveShell(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, net.ErrClosed) {
+		return true
+	}
+	message := strings.ToLower(err.Error())
+	if strings.Contains(message, "failed to disable cli pagination after ssh reconnect") {
+		return false
+	}
+	return strings.Contains(message, "failed to create ssh session") ||
+		strings.Contains(message, "failed to reconnect after session creation failed") ||
+		strings.Contains(message, "command execution timeout") ||
+		strings.Contains(message, "broken pipe") ||
+		strings.Contains(message, "connection reset") ||
+		strings.Contains(message, "eof")
 }
 
 func (s *Client) newSession(ctx context.Context) (*cryptossh.Session, error) {
@@ -410,18 +532,38 @@ func (s *Client) reconnect(ctx context.Context, failedConn *cryptossh.Client) er
 		return err
 	}
 
-	// Cisco pagination settings are scoped to the SSH connection. Reapply the
-	// same initialization performed for the original connection before a show
-	// command is allowed to use this replacement connection. Open the session
-	// directly rather than calling DisablePaging, which would route back through
-	// newSession and could recurse into reconnect.
-	pagingSession, err := s.openSession(ctx, conn)
-	if err == nil {
-		_, err = s.executeCommandWithSession(ctx, pagingSession, "terminal length 0", true)
+	// Interactive-shell mode already prepends "terminal length 0" inside the
+	// PTY-backed command session, so repeating the standalone exec request here
+	// is redundant and can destabilize some IOS XE devices.
+	if !s.usesInteractiveShell() {
+		// Cisco pagination settings are scoped to the SSH connection. Reapply the
+		// same initialization performed for the original connection before a show
+		// command is allowed to use this replacement connection. Open the session
+		// directly rather than calling DisablePaging, which would route back through
+		// newSession and could recurse into reconnect.
+		pagingSession, err := s.openSession(ctx, conn)
+		if err == nil {
+			_, err = s.executeCommandWithSession(ctx, pagingSession, "terminal length 0", true)
+		}
+		if err != nil {
+			_ = conn.Close()
+			return fmt.Errorf("failed to disable CLI pagination after SSH reconnect: %w", err)
+		}
 	}
-	if err != nil {
-		_ = conn.Close()
-		return fmt.Errorf("failed to disable CLI pagination after SSH reconnect: %w", err)
+
+	// Device identity can change behind a stable target after a failover or
+	// replacement. Refresh it on the private candidate connection before that
+	// connection becomes visible. Opening the session directly is important:
+	// DetectDeviceMetadata routes through newSession and would recursively enter
+	// reconnect while reconnectMu is held.
+	var refreshedMetadata *DeviceMetadata
+	if s.deviceMetadata.Load() != nil {
+		metadata, metadataErr := s.detectDeviceMetadataOnConnection(ctx, conn)
+		if metadataErr != nil {
+			_ = conn.Close()
+			return fmt.Errorf("failed to refresh device metadata after SSH reconnect: %w", metadataErr)
+		}
+		refreshedMetadata = &metadata
 	}
 
 	s.connectionMu.Lock()
@@ -431,6 +573,9 @@ func (s *Client) reconnect(ctx context.Context, failedConn *cryptossh.Client) er
 		return net.ErrClosed
 	}
 	stale := s.Connection
+	if refreshedMetadata != nil {
+		s.storeDeviceMetadata(*refreshedMetadata)
+	}
 	s.Connection = conn
 	s.connectionMu.Unlock()
 	if stale != nil && stale != conn {
@@ -443,6 +588,19 @@ func (s *Client) reconnect(ctx context.Context, failedConn *cryptossh.Client) er
 
 func (s *Client) ReconnectCount() int64 {
 	return s.reconnectCount.Load()
+}
+
+func (s *Client) currentDeviceMetadata() (DeviceMetadata, bool) {
+	metadata := s.deviceMetadata.Load()
+	if metadata == nil {
+		return DeviceMetadata{}, false
+	}
+	return *metadata, true
+}
+
+func (s *Client) storeDeviceMetadata(metadata DeviceMetadata) {
+	s.deviceMetadata.Store(&metadata)
+	s.metadataStore.Store(metadata)
 }
 
 // DetectOSType executes "show version" to detect Cisco OS type
@@ -466,27 +624,55 @@ func (s *Client) DetectDeviceMetadata(ctx context.Context) (DeviceMetadata, erro
 
 	s.Logger.Debug("Analyzing show version output", zap.Int("output_length", len(output)))
 
-	metadata := parseDeviceMetadataFromShowVersion(output, time.Now())
-	if metadata.OSType == "" {
-		s.Logger.Warn("Unable to detect OS type from show version output, defaulting to IOS XE")
-		metadata.OSType = "IOS XE"
+	metadata, err := deviceMetadataFromShowVersion(output, time.Now())
+	if err != nil {
+		return DeviceMetadata{}, err
 	}
+	return metadata, nil
+}
 
+func (s *Client) detectDeviceMetadataOnConnection(ctx context.Context, conn *cryptossh.Client) (DeviceMetadata, error) {
+	var (
+		output string
+		err    error
+	)
+	if s.usesInteractiveShell() {
+		var session *cryptossh.Session
+		session, err = s.openSession(ctx, conn)
+		if err == nil {
+			output, err = s.executeCommandInShellWithSession(ctx, session, "show version", s.EnablePassword != "")
+		}
+	} else {
+		var session *cryptossh.Session
+		session, err = s.openSession(ctx, conn)
+		if err == nil {
+			output, err = s.executeCommandWithSession(ctx, session, "show version", false)
+		}
+	}
+	if err != nil {
+		return DeviceMetadata{}, fmt.Errorf("failed to execute 'show version': %w", err)
+	}
+	return deviceMetadataFromShowVersion(output, time.Now())
+}
+
+func deviceMetadataFromShowVersion(output string, detectedAt time.Time) (DeviceMetadata, error) {
+	metadata := parseDeviceMetadataFromShowVersion(output, detectedAt)
+	if metadata.OSType == "" {
+		return DeviceMetadata{}, errors.New("show version did not identify a supported Cisco OS (IOS, IOS XE, or NX-OS)")
+	}
 	return metadata, nil
 }
 
 func detectOSTypeFromShowVersion(output string) string {
-	output = strings.ToLower(output)
+	if ciscoCLIRejectionLine.MatchString(output) {
+		return ""
+	}
 	switch {
-	case strings.Contains(output, "ios xe"):
+	case iosXEShowVersionSignature.MatchString(output):
 		return "IOS XE"
-	case strings.Contains(output, "nx-os") ||
-		strings.Contains(output, "nxos:") ||
-		strings.Contains(output, "host nxos") ||
-		strings.Contains(output, "nexus operating system") ||
-		strings.Contains(output, "nexus9000"):
+	case nxOSShowVersionSignature.MatchString(output):
 		return "NX-OS"
-	case strings.Contains(output, "ios software"):
+	case iosShowVersionSignature.MatchString(output), classicIOSShowVersionPair.MatchString(output):
 		return "IOS"
 	default:
 		return ""

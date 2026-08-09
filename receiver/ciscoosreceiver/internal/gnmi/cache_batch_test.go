@@ -4,6 +4,7 @@
 package gnmi
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -149,6 +150,70 @@ func TestCacheBoundsAtomicBaselineState(t *testing.T) {
 	assert.False(t, ok, "baseline capacity failure must be transactional")
 }
 
+func TestCacheInvalidationOnlyWithdrawsOverlappingAtomicBaselineTransactionally(t *testing.T) {
+	cache, err := NewCache(4)
+	require.NoError(t, err)
+	t1 := time.Unix(100, 0)
+	t2 := t1.Add(time.Second)
+	prefix := testInterfacePrefix()
+	point := testMappedPoint("switch-1", "Ethernet1", "temperature", 41, t1)
+	_, err = cache.Apply(CacheNotification{
+		OwnerID: "owner-a", Prefix: prefix, Timestamp: t1, Atomic: true, Updates: []MappedPoint{point},
+	})
+	require.NoError(t, err)
+
+	prepared, err := cache.Prepare(CacheNotification{
+		OwnerID: "owner-a", Timestamp: t2, Invalidates: []Path{point.Source.Path()},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, prepared.Result().AtomicBaselinesInvalidated)
+	require.Len(t, prepared.Result().Removed, 1)
+	prepared.Rollback()
+	_, hasBaseline := cache.AtomicBaselineForOwner("owner-a", prefix)
+	assert.True(t, hasBaseline)
+	require.Len(t, cache.Snapshot(), 1)
+
+	result, err := cache.Apply(CacheNotification{
+		OwnerID: "owner-a", Timestamp: t2, Invalidates: []Path{point.Source.Path()},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.AtomicBaselinesInvalidated)
+	require.Len(t, result.Removed, 1)
+	_, hasBaseline = cache.AtomicBaselineForOwner("owner-a", prefix)
+	assert.False(t, hasBaseline)
+	assert.Empty(t, cache.Snapshot())
+	assert.Equal(t, 1, cache.Usage().InvalidationWatermarks)
+}
+
+func TestCacheInvalidationCapacityFailurePreservesAtomicBaselineAndEntry(t *testing.T) {
+	cache, err := NewCache(3)
+	require.NoError(t, err)
+	t1 := time.Unix(100, 0)
+	t2 := t1.Add(time.Second)
+	prefix := testInterfacePrefix()
+	point := testMappedPoint("switch-1", "Ethernet1", "temperature", 41, t1)
+	_, err = cache.Apply(CacheNotification{
+		OwnerID: "owner-a", Prefix: prefix, Timestamp: t1, Atomic: true, Updates: []MappedPoint{point},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 3, cache.StateLen())
+
+	first := testMappedPoint("switch-1", "Ethernet2", "temperature", 42, t2)
+	second := testMappedPoint("switch-1", "Ethernet3", "temperature", 43, t2)
+	_, err = cache.Apply(CacheNotification{
+		OwnerID: "owner-a", Timestamp: t2, Invalidates: []Path{point.Source.Path()},
+		Updates: []MappedPoint{first, second},
+	})
+	var capacity *CapacityError
+	require.ErrorAs(t, err, &capacity)
+	_, hasBaseline := cache.AtomicBaselineForOwner("owner-a", prefix)
+	assert.True(t, hasBaseline)
+	require.Len(t, cache.Snapshot(), 1)
+	assert.Equal(t, point.Key(), cache.Snapshot()[0].Key())
+	assert.Equal(t, 1, cache.Usage().Tombstones)
+	assert.Zero(t, cache.Usage().InvalidationWatermarks)
+}
+
 func TestCacheExplicitBranchDeleteReturnsRemovedMappedPoints(t *testing.T) {
 	cache, err := NewCache(10)
 	require.NoError(t, err)
@@ -189,6 +254,453 @@ func TestCacheDeleteOnlyAtomicFlagDoesNotReplacePrefix(t *testing.T) {
 	assert.Equal(t, "Ethernet2", cache.Snapshot()[0].Attributes["network.interface.name"])
 	_, ok := cache.AtomicBaseline(prefix)
 	assert.False(t, ok)
+}
+
+func TestCacheDeleteThenUpdateRedeliveryIsIdempotent(t *testing.T) {
+	cache, err := NewCache(10)
+	require.NoError(t, err)
+	timestamp := time.Unix(100, 0)
+	point := testMappedPoint("switch-1", "Ethernet1", "temperature", 41, timestamp)
+	notification := CacheNotification{
+		OwnerID:   "owner-a",
+		Timestamp: timestamp,
+		Deletes:   []Path{point.Source.Path()},
+		Updates:   []MappedPoint{point},
+	}
+
+	first, err := cache.Apply(notification)
+	require.NoError(t, err)
+	require.Len(t, first.Applied, 1)
+	require.Len(t, cache.Snapshot(), 1, "the update is the final state after the delete")
+
+	redelivery, err := cache.Apply(notification)
+	require.NoError(t, err)
+	assert.Equal(t, 1, redelivery.Duplicates)
+	assert.Empty(t, redelivery.Removed)
+	require.Len(t, cache.Snapshot(), 1, "equal-timestamp redelivery must not erase the final update")
+	assert.Equal(t, point.DoubleValue, cache.Snapshot()[0].DoubleValue)
+	assertCacheRetainedByteInvariant(t, cache)
+
+	reset, err := cache.ResetOwner("owner-a")
+	require.NoError(t, err)
+	assert.Equal(t, 1, reset.Entries)
+	assert.Equal(t, 1, reset.Tombstones)
+	assert.Zero(t, cache.StateLen())
+}
+
+func TestCacheInvalidationWatermarkPreservesFreshnessAndAllowsSameTimestampCorrection(t *testing.T) {
+	cache, err := NewCache(10)
+	require.NoError(t, err)
+	t1 := time.Unix(100, 0)
+	t2 := t1.Add(time.Second)
+	t3 := t2.Add(time.Second)
+	point := testMappedPoint("switch-1", "Ethernet1", "temperature", 41, t1)
+	path := point.Source.Path()
+
+	first, err := cache.Apply(CacheNotification{
+		OwnerID:   "owner-a",
+		Timestamp: t1,
+		Updates:   []MappedPoint{point},
+	})
+	require.NoError(t, err)
+	require.Len(t, first.Applied, 1)
+
+	prepared, err := cache.Prepare(CacheNotification{
+		OwnerID:     "owner-a",
+		Timestamp:   t3,
+		Invalidates: []Path{path},
+	})
+	require.NoError(t, err)
+	require.Len(t, prepared.Result().Removed, 1)
+	prepared.Rollback()
+	require.Len(t, cache.Snapshot(), 1,
+		"rolling back an unpublished invalidation must retain the original entry")
+	assert.Zero(t, cache.Usage().InvalidationWatermarks)
+
+	withdrawal, err := cache.Apply(CacheNotification{
+		OwnerID:     "owner-a",
+		Timestamp:   t3,
+		Invalidates: []Path{path},
+	})
+	require.NoError(t, err)
+	require.Len(t, withdrawal.Removed, 1)
+	assert.Empty(t, cache.Snapshot())
+	assert.Zero(t, cache.Usage().Tombstones,
+		"a local semantic invalidation must not claim an authoritative source delete")
+	assert.Equal(t, 1, cache.Usage().InvalidationWatermarks)
+	assert.True(t, cache.IsStaleForOwner("owner-a", path, t2),
+		"the semantic watermark must reject delayed state older than the malformed value")
+	assert.False(t, cache.IsStaleForOwner("owner-a", path, t3),
+		"the semantic watermark must admit a correction at the same source timestamp")
+	assertCacheRetainedByteInvariant(t, cache)
+
+	point.Timestamp = t2
+	point.DoubleValue = 42
+	delayed, err := cache.Apply(CacheNotification{
+		OwnerID:   "owner-a",
+		Timestamp: t2,
+		Updates:   []MappedPoint{point},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, delayed.OutOfOrder)
+	assert.Empty(t, delayed.Applied)
+	assert.Empty(t, cache.Snapshot())
+
+	point.Timestamp = t3
+	correction, err := cache.Apply(CacheNotification{
+		OwnerID:   "owner-a",
+		Timestamp: t3,
+		Updates:   []MappedPoint{point},
+	})
+	require.NoError(t, err)
+	require.Len(t, correction.Applied, 1)
+	assert.Zero(t, correction.OutOfOrder)
+	assert.Zero(t, correction.Duplicates)
+	require.Len(t, cache.Snapshot(), 1)
+	assert.Equal(t, 42.0, cache.Snapshot()[0].DoubleValue)
+	assert.Zero(t, cache.Usage().Tombstones)
+	assert.Zero(t, cache.Usage().InvalidationWatermarks)
+
+	sameTimestampInvalidation, err := cache.Apply(CacheNotification{
+		OwnerID:     "owner-a",
+		Timestamp:   t3,
+		Invalidates: []Path{path},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, sameTimestampInvalidation.Duplicates)
+	assert.Empty(t, sameTimestampInvalidation.Removed)
+	require.Len(t, cache.Snapshot(), 1,
+		"a valid value at the same timestamp must win over a local semantic invalidation")
+	assert.Zero(t, cache.Usage().InvalidationWatermarks,
+		"an equal-timestamp valid entry already supplies the freshness boundary")
+
+	_, err = cache.Apply(CacheNotification{
+		OwnerID:     "owner-a",
+		Timestamp:   t3.Add(time.Second),
+		Invalidates: []Path{path},
+	})
+	require.NoError(t, err)
+	reset, err := cache.ResetOwner("owner-a")
+	require.NoError(t, err)
+	assert.Equal(t, 1, reset.InvalidationWatermarks)
+	assert.Zero(t, reset.Tombstones)
+	assert.Zero(t, cache.StateLen())
+	assertCacheRetainedByteInvariant(t, cache)
+}
+
+func TestCacheRejectsMultipleOutputSeriesForOneOwnerSource(t *testing.T) {
+	cache, err := NewCache(10)
+	require.NoError(t, err)
+	t1 := time.Unix(100, 0)
+	older := testMappedPoint("switch-1", "Ethernet1", "temperature", 41, t1)
+	fresh := older
+	fresh.Metric = MetricMetadata{Name: "cisco.optics.voltage", Description: "Voltage.", Unit: "V"}
+	fresh.Timestamp = t1.Add(time.Second)
+	fresh.DoubleValue = 3.3
+	require.NotEqual(t, older.Key(), fresh.Key())
+	require.Equal(t, older.Source.Key(), fresh.Source.Key())
+
+	_, err = cache.Apply(CacheNotification{OwnerID: "owner-a", Timestamp: t1, Updates: []MappedPoint{older}})
+	require.NoError(t, err)
+	_, err = cache.Apply(CacheNotification{
+		OwnerID: "owner-a", Timestamp: fresh.Timestamp, Updates: []MappedPoint{fresh},
+	})
+	require.ErrorContains(t, err, "one source path to multiple output series")
+	require.Len(t, cache.Snapshot(), 1)
+	assert.Equal(t, older.Key(), cache.Snapshot()[0].Key())
+	assertCacheRetainedByteInvariant(t, cache)
+
+	_, err = cache.Apply(CacheNotification{
+		OwnerID: "owner-b", Timestamp: fresh.Timestamp, Updates: []MappedPoint{fresh},
+	})
+	require.NoError(t, err)
+	require.Len(t, cache.Snapshot(), 2,
+		"source-to-output uniqueness is isolated by configured stream owner")
+
+	empty, err := NewCache(10)
+	require.NoError(t, err)
+	_, err = empty.Apply(CacheNotification{
+		OwnerID: "owner-a", Timestamp: fresh.Timestamp, Updates: []MappedPoint{older, fresh},
+	})
+	require.ErrorContains(t, err, "one source path to multiple output series")
+	assert.Empty(t, empty.Snapshot(), "a same-notification conflict must be transactional")
+	assert.Zero(t, empty.StateLen())
+}
+
+func TestCacheSourceUniquenessIsIndependentOfDeleteRedeliveryUpdateOrder(t *testing.T) {
+	timestamp := time.Unix(100, 0)
+	original := testMappedPoint("switch-1", "Ethernet1", "temperature", 41, timestamp)
+	other := original
+	other.Metric = MetricMetadata{Name: "cisco.optics.voltage", Description: "Voltage.", Unit: "V"}
+	other.DoubleValue = 3.3
+
+	for _, test := range []struct {
+		name    string
+		updates []MappedPoint
+	}{
+		{name: "new output before redelivered original", updates: []MappedPoint{other, original}},
+		{name: "redelivered original before new output", updates: []MappedPoint{original, other}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cache, err := NewCache(10)
+			require.NoError(t, err)
+			_, err = cache.Apply(CacheNotification{
+				OwnerID: "owner-a", Timestamp: timestamp, Updates: []MappedPoint{original},
+			})
+			require.NoError(t, err)
+
+			_, err = cache.Apply(CacheNotification{
+				OwnerID: "owner-a", Timestamp: timestamp,
+				Deletes: []Path{original.Source.Path()}, Updates: test.updates,
+			})
+			require.ErrorContains(t, err, "one source path to multiple output series")
+			require.Len(t, cache.Snapshot(), 1)
+			assert.Equal(t, original.Key(), cache.Snapshot()[0].Key())
+			assertCacheRetainedByteInvariant(t, cache)
+
+			reset, err := cache.ResetOwner("owner-a")
+			require.NoError(t, err)
+			assert.Equal(t, 1, reset.Entries)
+			assert.Zero(t, cache.StateLen())
+			assert.Empty(t, cache.sources)
+		})
+	}
+}
+
+func TestCacheSourceRebindingUsesCompleteNotificationPlan(t *testing.T) {
+	t1 := time.Unix(100, 0)
+	t2 := t1.Add(time.Second)
+	outputAP := testMappedPoint("switch-1", "Ethernet1", "temperature", 41, t1)
+	outputBQ := testMappedPoint("switch-1", "Ethernet1", "voltage", 3.3, t1)
+	require.NotEqual(t, outputAP.Key(), outputBQ.Key())
+	require.NotEqual(t, outputAP.Source.Key(), outputBQ.Source.Key())
+
+	outputAQ := outputAP
+	outputAQ.Source = outputBQ.Source
+	outputAQ.Timestamp = t2
+	outputAQ.DoubleValue = 42
+	outputBP := outputBQ
+	outputBP.Source = outputAP.Source
+	outputBP.Timestamp = t2
+	outputBP.DoubleValue = 3.4
+	require.Equal(t, outputAP.Key(), outputAQ.Key())
+	require.Equal(t, outputBQ.Key(), outputBP.Key())
+
+	for _, test := range []struct {
+		name    string
+		updates []MappedPoint
+	}{
+		{name: "release retained source before reuse", updates: []MappedPoint{outputAQ, outputBP}},
+		{name: "reuse retained source before release", updates: []MappedPoint{outputBP, outputAQ}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cache, err := NewCache(10)
+			require.NoError(t, err)
+			_, err = cache.Apply(CacheNotification{
+				OwnerID: "owner-a", Timestamp: t1, Updates: []MappedPoint{outputAP},
+			})
+			require.NoError(t, err)
+			beforeBytes := cache.RetainedBytes()
+
+			result, err := cache.Apply(CacheNotification{
+				OwnerID: "owner-a", Timestamp: t2, Updates: test.updates,
+			})
+			require.NoError(t, err)
+			require.Len(t, result.Applied, 2)
+			require.Len(t, cache.Snapshot(), 2)
+			assert.Greater(t, cache.RetainedBytes(), beforeBytes)
+			assertCacheSourceBindings(t, cache, map[string]string{
+				cacheOwnerPathKey("owner-a", outputAQ.Source.Path()): outputAQ.Key(),
+				cacheOwnerPathKey("owner-a", outputBP.Source.Path()): outputBP.Key(),
+			})
+			assertCacheRetainedByteInvariant(t, cache)
+		})
+	}
+}
+
+func TestCacheSourceBindingsCanSwapTransactionally(t *testing.T) {
+	t1 := time.Unix(100, 0)
+	t2 := t1.Add(time.Second)
+	outputAP := testMappedPoint("switch-1", "Ethernet1", "temperature", 41, t1)
+	outputBQ := testMappedPoint("switch-1", "Ethernet1", "voltage", 3.3, t1)
+	outputAQ := outputAP
+	outputAQ.Source = outputBQ.Source
+	outputAQ.Timestamp = t2
+	outputBP := outputBQ
+	outputBP.Source = outputAP.Source
+	outputBP.Timestamp = t2
+
+	for _, updates := range [][]MappedPoint{{outputAQ, outputBP}, {outputBP, outputAQ}} {
+		cache, err := NewCache(10)
+		require.NoError(t, err)
+		_, err = cache.Apply(CacheNotification{
+			OwnerID: "owner-a", Timestamp: t1, Updates: []MappedPoint{outputAP, outputBQ},
+		})
+		require.NoError(t, err)
+		beforeBytes := cache.RetainedBytes()
+
+		result, err := cache.Apply(CacheNotification{
+			OwnerID: "owner-a", Timestamp: t2, Updates: updates,
+		})
+		require.NoError(t, err)
+		require.Len(t, result.Applied, 2)
+		require.Len(t, cache.Snapshot(), 2)
+		assert.Equal(t, beforeBytes, cache.RetainedBytes())
+		assertCacheSourceBindings(t, cache, map[string]string{
+			cacheOwnerPathKey("owner-a", outputAQ.Source.Path()): outputAQ.Key(),
+			cacheOwnerPathKey("owner-a", outputBP.Source.Path()): outputBP.Key(),
+		})
+		assertCacheRetainedByteInvariant(t, cache)
+	}
+}
+
+func assertCacheSourceBindings(t *testing.T, cache *Cache, expected map[string]string) {
+	t.Helper()
+	cache.mu.RLock()
+	defer cache.mu.RUnlock()
+	require.Len(t, cache.sources, len(expected))
+	for sourceKey, outputKey := range expected {
+		assert.Equal(t, outputKey, cache.sources[sourceKey])
+	}
+}
+
+func TestCacheRejectsAtomicNotificationWithLocalInvalidationTransactionally(t *testing.T) {
+	cache, err := NewCache(10)
+	require.NoError(t, err)
+	t1 := time.Unix(100, 0)
+	point := testMappedPoint("switch-1", "Ethernet1", "temperature", 41, t1)
+	_, err = cache.Apply(CacheNotification{Timestamp: t1, Updates: []MappedPoint{point}})
+	require.NoError(t, err)
+
+	_, err = cache.Apply(CacheNotification{
+		Prefix:      testInterfacePrefix(),
+		Timestamp:   t1.Add(time.Second),
+		Atomic:      true,
+		Invalidates: []Path{point.Source.Path()},
+	})
+	require.ErrorContains(t, err, "atomic cache notification contains a locally invalidated value")
+	require.Len(t, cache.Snapshot(), 1)
+	assert.Zero(t, cache.Usage().Tombstones)
+	assert.Zero(t, cache.Usage().InvalidationWatermarks)
+	_, hasBaseline := cache.AtomicBaseline(testInterfacePrefix())
+	assert.False(t, hasBaseline)
+	assertCacheRetainedByteInvariant(t, cache)
+}
+
+func TestCacheAuthoritativeDeleteDominatesEqualTimestampInvalidationWatermark(t *testing.T) {
+	path := testMappedPoint("switch-1", "Ethernet1", "temperature", 41, time.Time{}).Source.Path()
+	parent := path.Clone()
+	parent.Elements = parent.Elements[:len(parent.Elements)-1]
+	timestamp := time.Unix(100, 0)
+
+	for _, test := range []struct {
+		name          string
+		notifications []CacheNotification
+	}{
+		{
+			name: "watermark then delete",
+			notifications: []CacheNotification{
+				{OwnerID: "owner-a", Timestamp: timestamp, Invalidates: []Path{path}},
+				{OwnerID: "owner-a", Timestamp: timestamp, Deletes: []Path{path}},
+			},
+		},
+		{
+			name: "delete then watermark",
+			notifications: []CacheNotification{
+				{OwnerID: "owner-a", Timestamp: timestamp, Deletes: []Path{path}},
+				{OwnerID: "owner-a", Timestamp: timestamp, Invalidates: []Path{path}},
+			},
+		},
+		{
+			name: "same notification",
+			notifications: []CacheNotification{{
+				OwnerID: "owner-a", Timestamp: timestamp,
+				Deletes: []Path{path}, Invalidates: []Path{path},
+			}},
+		},
+		{
+			name: "ancestor delete dominates descendant invalidation",
+			notifications: []CacheNotification{{
+				OwnerID: "owner-a", Timestamp: timestamp,
+				Deletes: []Path{parent}, Invalidates: []Path{path},
+			}},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cache, err := NewCache(10)
+			require.NoError(t, err)
+			seed := testMappedPoint("switch-1", "Ethernet1", "temperature", 41, timestamp.Add(-time.Second))
+			_, err = cache.Apply(CacheNotification{
+				OwnerID: "owner-a", Timestamp: seed.Timestamp, Updates: []MappedPoint{seed},
+			})
+			require.NoError(t, err)
+			for _, notification := range test.notifications {
+				_, err = cache.Apply(notification)
+				require.NoError(t, err)
+			}
+			assert.Equal(t, 1, cache.Usage().Tombstones)
+			assert.Zero(t, cache.Usage().InvalidationWatermarks)
+			assert.True(t, cache.IsStaleForOwner("owner-a", path, timestamp),
+				"an authoritative delete must reject equal-timestamp resurrection")
+
+			point := testMappedPoint("switch-1", "Ethernet1", "temperature", 42, timestamp)
+			result, err := cache.Apply(CacheNotification{
+				OwnerID: "owner-a", Timestamp: timestamp, Updates: []MappedPoint{point},
+			})
+			require.NoError(t, err)
+			assert.Equal(t, 1, result.OutOfOrder)
+			assert.Empty(t, result.Applied)
+			assertCacheRetainedByteInvariant(t, cache)
+		})
+	}
+}
+
+func TestCacheEqualTimestampAncestorWatermarkCoversSoftDescendantsOnly(t *testing.T) {
+	cache, err := NewCache(32)
+	require.NoError(t, err)
+	timestamp := time.Unix(100, 0)
+	parent, err := ParsePath("switch-1", "openconfig", "interfaces/interface[name=Ethernet1]")
+	require.NoError(t, err)
+	_, err = cache.Apply(CacheNotification{
+		OwnerID: "owner-a", Timestamp: timestamp, Invalidates: []Path{parent},
+	})
+	require.NoError(t, err)
+
+	var firstChild Path
+	for index := range 16 {
+		child := parent.Clone()
+		child.Elements = append(child.Elements,
+			PathElem{Name: "state"},
+			PathElem{Name: fmt.Sprintf("leaf-%d", index)},
+		)
+		if index == 0 {
+			firstChild = child
+		}
+		_, err = cache.Apply(CacheNotification{
+			OwnerID: "owner-a", Timestamp: timestamp, Invalidates: []Path{child},
+		})
+		require.NoError(t, err)
+	}
+	assert.Equal(t, 1, cache.Usage().InvalidationWatermarks,
+		"equal-time soft descendants add no freshness coverage beyond their soft ancestor")
+
+	_, err = cache.Apply(CacheNotification{
+		OwnerID: "owner-b", Timestamp: timestamp, Invalidates: []Path{firstChild},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 2, cache.Usage().InvalidationWatermarks,
+		"another owner's watermark must not be covered")
+
+	_, err = cache.Apply(CacheNotification{
+		OwnerID: "owner-a", Timestamp: timestamp, Deletes: []Path{firstChild},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, cache.Usage().Tombstones)
+	assert.Equal(t, 2, cache.Usage().InvalidationWatermarks)
+	assert.True(t, cache.IsStaleForOwner("owner-a", firstChild, timestamp),
+		"an equal-time authoritative child delete is stronger than a soft ancestor")
+	assert.False(t, cache.IsStaleForOwner("owner-a", parent, timestamp),
+		"the soft ancestor must continue to admit an equal-time correction outside the hard child")
 }
 
 func TestCacheDeleteTombstonePreventsStaleResurrection(t *testing.T) {

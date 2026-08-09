@@ -1,40 +1,58 @@
 receivers:
   cisco_os:
     gnmi:
-      # This demonstrates secure configuration, not product qualification.
-      # Enable a domain only when its exact PID/release row is Live Qualified
-      # in docs/gnmi-coverage.md for the intended deployment.
       max_datapoints_per_chunk: 10000
       max_cached_series: 500000
       targets:
         - name: nexus-shard-01
           endpoint: nexus01.example.net:50051
-          platform: nx_os
-          product_family: nx_os
+          product: nexus_9000
+          software_version: "10.6(1)"
           max_recv_msg_size_mib: 16
-          sync_timeout: 2m
-          encoding_preference: [json, json_ietf]
+          # Nexus 9000 and Nexus 3500 share the conservative JSON/SAMPLE
+          # contract. JSON_IETF, PROTO, prefixes, and optional flags are rejected.
+          encoding_preference: [json]
           credentials:
             mode: username_password
             username: otel-telemetry
             password: ${env:CISCO_GNMI_PASSWORD}
           tls:
             ca_file: /etc/otel/cisco-ca.pem
+            # Keep false in production. Set true only in an isolated lab when
+            # the certificate cannot be verified with a trusted CA bundle.
+            insecure_skip_verify: false
             min_version: "1.2"
             server_name_override: nexus01.example.net
             reload_interval: 1h
           profiles:
             identity:
               enabled: true
-            system:
-              enabled: true
             interfaces:
               enabled: true
             optics:
-              enabled: true
-              required: true
-              sample_interval: 30s
-              stream_mode: sample
+              # Enable only after separate chassis/line-card/optic qualification.
+              enabled: false
+          custom_subscriptions:
+            - name: component_temperature
+              # NX-OS uses the generic OpenConfig wire origin. Name every
+              # concrete Capabilities model this custom stream requires.
+              origin: openconfig
+              models: [openconfig-platform]
+              mode: stream
+              sample_interval: 1m
+              encoding_preference: [json]
+              paths:
+                - path: components/component/state/temperature
+                  stream_mode: sample
+              mappings:
+                - path: components/component/state/temperature/instant
+                  metric_name: example.component.temperature
+                  description: Component temperature
+                  unit: Cel
+                  scale: 1
+                  gauge_type: double
+                  path_keys:
+                    component.name: hw.name
 
 processors:
   memory_limiter:

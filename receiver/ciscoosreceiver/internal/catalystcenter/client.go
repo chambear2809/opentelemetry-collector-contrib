@@ -26,12 +26,13 @@ import (
 )
 
 const (
-	defaultUserAgent          = "opentelemetry-collector-contrib-ciscoosreceiver"
-	defaultRequestTimeout     = 30 * time.Second
-	defaultPageSize           = 500
-	defaultRequestSpacing     = 250 * time.Millisecond
-	catalystCenterTokenMargin = 5 * time.Minute
-	catalystCenterTokenTTL    = time.Hour
+	defaultUserAgent             = "opentelemetry-collector-contrib-ciscoosreceiver"
+	defaultRequestTimeout        = 30 * time.Second
+	defaultPageSize              = 500
+	defaultRequestSpacing        = 250 * time.Millisecond
+	catalystCenterTokenMargin    = 5 * time.Minute
+	catalystCenterTokenTTL       = time.Hour
+	insecureSkipVerifyConfigPath = "catalyst_center.insecure_skip_verify"
 )
 
 // Config controls the Catalyst Center API client.
@@ -82,15 +83,45 @@ type Client struct {
 	pageSize       int
 	spacing        time.Duration
 
-	tokenMu     sync.Mutex
-	token       string
-	tokenExpiry time.Time
-	authMu      sync.Mutex
+	tokenMu         sync.Mutex
+	token           string
+	tokenExpiry     time.Time
+	tokenGeneration uint64
+	loginInflight   chan struct{}
+	lastAuthErr     error
+	lastAuthAt      time.Time
+	authFailures    int
 
 	limitMu     sync.Mutex
 	nextRequest time.Time
 
 	OnRequest func(RequestStat)
+}
+
+type tokenSnapshot struct {
+	value      string
+	generation uint64
+}
+
+// catalystCenterAuthBackoffSchedule bounds authentication attempts shared by
+// all endpoint families. A successful token response does not reset the streak:
+// only a data request accepted with that exact token proves it is usable.
+var catalystCenterAuthBackoffSchedule = []time.Duration{
+	1 * time.Second,
+	5 * time.Second,
+	30 * time.Second,
+	5 * time.Minute,
+}
+
+func catalystCenterAuthBackoffFor(failures int) time.Duration {
+	if failures <= 0 {
+		return 0
+	}
+	index := failures - 1
+	if index >= len(catalystCenterAuthBackoffSchedule) {
+		index = len(catalystCenterAuthBackoffSchedule) - 1
+	}
+	return catalystCenterAuthBackoffSchedule[index]
 }
 
 // NewClient creates a Catalyst Center API client.
@@ -259,7 +290,8 @@ func GetPaginatedJSONWithPageLimit[T any](ctx context.Context, c *Client, operat
 			return results, fmt.Errorf("decode catalyst center %s page: %w", operation, err)
 		}
 		results = append(results, page...)
-		complete := len(page) == 0 || len(page) < pageSize || pageInfo.complete(len(page), hasPageInfo)
+		hasTotal := hasPageInfo && pageInfo.Count != nil && *pageInfo.Count >= 0
+		complete := len(page) == 0 || hasTotal && len(results) >= *pageInfo.Count || !hasTotal && len(page) < pageSize
 		truncated := len(results) > resultLimit
 		if len(results) >= resultLimit {
 			results = results[:resultLimit]
@@ -277,6 +309,11 @@ func GetPaginatedJSONWithPageLimit[T any](ctx context.Context, c *Client, operat
 
 // PostPaginatedJSON fetches all pages for a POST endpoint with response and page envelope fields.
 func PostPaginatedJSON[T any](ctx context.Context, c *Client, operation, path string, body map[string]any, maxResults int) ([]T, error) {
+	return PostPaginatedJSONWithPageLimit[T](ctx, c, operation, path, body, maxResults, 0)
+}
+
+// PostPaginatedJSONWithPageLimit fetches POST pages while applying an endpoint-specific page-size cap.
+func PostPaginatedJSONWithPageLimit[T any](ctx context.Context, c *Client, operation, path string, body map[string]any, maxResults, pageLimit int) ([]T, error) {
 	var results []T
 	resultLimit, hardResultLimit := httpclient.EffectivePaginationResultLimit(maxResults)
 	offset := 1
@@ -297,7 +334,7 @@ func PostPaginatedJSON[T any](ctx context.Context, c *Client, operation, path st
 			return results, fmt.Errorf("paginate catalyst center %s response: detected continuation cycle after %d partial results", operation, len(results))
 		}
 		seenOffsets[offset] = struct{}{}
-		pageSize := c.pageSize
+		pageSize := c.pageSizeFor(pageLimit)
 		if remaining := resultLimit - len(results); remaining < pageSize {
 			pageSize = remaining
 		}
@@ -324,7 +361,8 @@ func PostPaginatedJSON[T any](ctx context.Context, c *Client, operation, path st
 			return results, fmt.Errorf("decode catalyst center %s page: %w", operation, err)
 		}
 		results = append(results, page...)
-		complete := len(page) == 0 || len(page) < pageSize || pageInfo.complete(len(page), hasPageInfo)
+		hasTotal := hasPageInfo && pageInfo.Count != nil && *pageInfo.Count >= 0
+		complete := len(page) == 0 || hasTotal && len(results) >= *pageInfo.Count || !hasTotal && len(page) < pageSize
 		truncated := len(results) > resultLimit
 		if len(results) >= resultLimit {
 			results = results[:resultLimit]
@@ -349,60 +387,140 @@ func (c *Client) pageSizeFor(pageLimit int) int {
 }
 
 func (c *Client) do(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, error) {
+	bypassAuthBackoff := false
 	for authAttempt := range 2 {
-		token, err := c.getToken(ctx)
+		token, err := c.getToken(ctx, bypassAuthBackoff)
 		if err != nil {
 			return nil, err
 		}
-		body, err := c.doWithToken(ctx, method, operation, path, query, payload, token)
+		body, err := c.doWithToken(ctx, method, operation, path, query, payload, token.value)
 		if err == nil {
+			c.markAuthSuccess(token)
 			return body, nil
 		}
 		var apiErr *APIError
-		if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusUnauthorized || authAttempt > 0 {
+		if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusUnauthorized {
 			return nil, err
 		}
-		c.invalidateToken()
+		// Invalidate only the token generation used by this request. The operation
+		// that observed the rejection may refresh once inline for normal token
+		// expiry; every other endpoint observes the shared negative-auth backoff.
+		c.rejectToken(token, err)
+		if authAttempt > 0 {
+			return nil, err
+		}
+		bypassAuthBackoff = true
 	}
 	return nil, errors.New("catalyst center request failed")
 }
 
-func (c *Client) getToken(ctx context.Context) (string, error) {
-	c.tokenMu.Lock()
-	if c.token != "" && time.Until(c.tokenExpiry) > catalystCenterTokenMargin {
-		token := c.token
+func (c *Client) getToken(ctx context.Context, bypassAuthBackoff bool) (tokenSnapshot, error) {
+	for {
+		c.tokenMu.Lock()
+		if c.token != "" && time.Until(c.tokenExpiry) > catalystCenterTokenMargin {
+			token := c.tokenSnapshotLocked()
+			c.tokenMu.Unlock()
+			return token, nil
+		}
+		if c.token != "" {
+			// Retire the generation before refreshing so a delayed response using
+			// the expiring token cannot clear or validate the replacement state.
+			c.tokenGeneration++
+			c.token = ""
+			c.tokenExpiry = time.Time{}
+		}
+		if c.loginInflight != nil {
+			inflight := c.loginInflight
+			c.tokenMu.Unlock()
+			select {
+			case <-inflight:
+				// The completed login was the shared attempt for this caller. If it
+				// failed, observe its backoff rather than immediately trying again.
+				bypassAuthBackoff = false
+			case <-ctx.Done():
+				return tokenSnapshot{}, ctx.Err()
+			}
+			continue
+		}
+		if !bypassAuthBackoff && c.authFailures > 0 && time.Since(c.lastAuthAt) < catalystCenterAuthBackoffFor(c.authFailures) {
+			err := c.lastAuthErr
+			c.tokenMu.Unlock()
+			if err == nil {
+				err = errors.New("catalyst center authentication is in backoff")
+			}
+			return tokenSnapshot{}, err
+		}
+		inflight := make(chan struct{})
+		c.loginInflight = inflight
+		c.tokenMu.Unlock()
+
+		tokenValue, err := c.authenticate(ctx)
+
+		c.tokenMu.Lock()
+		c.loginInflight = nil
+		if err != nil {
+			if ctx.Err() == nil {
+				c.recordAuthFailureLocked(err)
+			}
+			close(inflight)
+			c.tokenMu.Unlock()
+			if ctx.Err() != nil {
+				return tokenSnapshot{}, ctx.Err()
+			}
+			return tokenSnapshot{}, err
+		}
+		c.tokenGeneration++
+		c.token = tokenValue
+		c.tokenExpiry = time.Now().Add(catalystCenterTokenTTL)
+		token := c.tokenSnapshotLocked()
+		// Preserve the failure streak until an authenticated data request using
+		// this exact generation succeeds.
+		close(inflight)
 		c.tokenMu.Unlock()
 		return token, nil
 	}
-	c.tokenMu.Unlock()
-
-	c.authMu.Lock()
-	defer c.authMu.Unlock()
-
-	c.tokenMu.Lock()
-	if c.token != "" && time.Until(c.tokenExpiry) > catalystCenterTokenMargin {
-		token := c.token
-		c.tokenMu.Unlock()
-		return token, nil
-	}
-	c.tokenMu.Unlock()
-
-	token, err := c.authenticate(ctx)
-	if err != nil {
-		return "", err
-	}
-	c.tokenMu.Lock()
-	c.token = token
-	c.tokenExpiry = time.Now().Add(catalystCenterTokenTTL)
-	c.tokenMu.Unlock()
-	return token, nil
 }
 
-func (c *Client) invalidateToken() {
+func (c *Client) rejectToken(token tokenSnapshot, authErr error) {
+	if token.value == "" {
+		return
+	}
 	c.tokenMu.Lock()
 	defer c.tokenMu.Unlock()
+	if c.tokenGeneration != token.generation || c.token != token.value {
+		return
+	}
+	c.tokenGeneration++
 	c.token = ""
 	c.tokenExpiry = time.Time{}
+	if authErr == nil {
+		authErr = errors.New("catalyst center authentication rejected")
+	}
+	c.recordAuthFailureLocked(authErr)
+}
+
+func (c *Client) markAuthSuccess(token tokenSnapshot) {
+	if token.value == "" {
+		return
+	}
+	c.tokenMu.Lock()
+	defer c.tokenMu.Unlock()
+	if c.tokenGeneration != token.generation || c.token != token.value {
+		return
+	}
+	c.authFailures = 0
+	c.lastAuthErr = nil
+	c.lastAuthAt = time.Time{}
+}
+
+func (c *Client) recordAuthFailureLocked(err error) {
+	c.authFailures++
+	c.lastAuthErr = err
+	c.lastAuthAt = time.Now()
+}
+
+func (c *Client) tokenSnapshotLocked() tokenSnapshot {
+	return tokenSnapshot{value: c.token, generation: c.tokenGeneration}
 }
 
 func (c *Client) authenticate(ctx context.Context) (string, error) {
@@ -459,8 +577,15 @@ func (c *Client) doRaw(ctx context.Context, method, operation, path string, quer
 		resp, err := c.client.Do(req)
 		duration := time.Since(start)
 		if err != nil {
+			err = httpclient.DecorateCertificateVerificationError(err, "", insecureSkipVerifyConfigPath)
 			lastErr = err
 			c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", Duration: duration, Err: err})
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			if httpclient.IsCertificateVerificationError(err) {
+				return nil, err
+			}
 			if attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, -1) {
 				if ctx.Err() != nil {
 					return nil, ctx.Err()
@@ -473,8 +598,29 @@ func (c *Client) doRaw(ctx context.Context, method, operation, path string, quer
 		bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 		closeErr := resp.Body.Close()
 		if readErr != nil {
-			c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
-			return nil, readErr
+			var responseErr error
+			responseErr = readErr
+			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+				// Preserve the response status even when the body is truncated. In
+				// particular, callers must still retire a cached token rejected by a
+				// 401 response rather than treating it as an unrelated read failure.
+				responseErr = errors.Join(&APIError{StatusCode: resp.StatusCode}, readErr)
+			}
+			c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, RateLimited: resp.StatusCode == http.StatusTooManyRequests, Err: responseErr})
+			lastErr = responseErr
+			retryable := httpclient.IsResponseBodyReadError(readErr) &&
+				(resp.StatusCode >= 200 && resp.StatusCode < 300 || retryableStatus(resp.StatusCode))
+			delay := time.Duration(-1)
+			if retryableStatus(resp.StatusCode) {
+				delay = retryAfter(resp.Header.Get("Retry-After"))
+			}
+			if !retryable || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, delay) {
+				if ctx.Err() != nil {
+					return nil, ctx.Err()
+				}
+				return nil, responseErr
+			}
+			continue
 		}
 		if closeErr != nil {
 			return nil, closeErr
@@ -568,16 +714,9 @@ func decodeResponse(body []byte, out any) error {
 }
 
 type pageMetadata struct {
-	Limit  int `json:"limit"`
-	Offset int `json:"offset"`
-	Count  int `json:"count"`
-}
-
-func (p pageMetadata) complete(items int, ok bool) bool {
-	if !ok || p.Count <= 0 || p.Offset <= 0 {
-		return false
-	}
-	return p.Offset+items > p.Count
+	Limit  int  `json:"limit"`
+	Offset int  `json:"offset"`
+	Count  *int `json:"count"`
 }
 
 func decodePage(body []byte, out any) (pageMetadata, bool, error) {

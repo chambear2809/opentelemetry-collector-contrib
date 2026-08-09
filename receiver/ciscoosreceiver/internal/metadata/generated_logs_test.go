@@ -3,14 +3,15 @@
 package metadata
 
 import (
+	"testing"
+	"time"
+
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
-	"testing"
-	"time"
 )
 
 func TestLogsBuilderAppendLogRecord(t *testing.T) {
@@ -20,14 +21,19 @@ func TestLogsBuilderAppendLogRecord(t *testing.T) {
 	lb := NewLogsBuilder(settings)
 
 	rb := lb.NewResourceBuilder()
+	rb.SetCiscoOsBootMode("cisco.os.boot_mode-val")
 	rb.SetCiscoOsName("cisco.os.name-val")
 	rb.SetCiscoPlatformFamily("cisco.platform.family-val")
+	rb.SetCiscoProductFamily("cisco.product.family-val")
 	rb.SetCiscoTelemetryTransport("cisco.telemetry.transport-val")
+	rb.SetDeviceManufacturer("device.manufacturer-val")
+	rb.SetDeviceModelIdentifier("device.model.identifier-val")
 	rb.SetHostID("host.id-val")
 	rb.SetHostIP("host.ip-val")
 	rb.SetHostName("host.name-val")
 	rb.SetHwType("hw.type-val")
 	rb.SetOsName("os.name-val")
+	rb.SetOsVersion("os.version-val")
 	res := rb.Emit()
 
 	// append the first log record

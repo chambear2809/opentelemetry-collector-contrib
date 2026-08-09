@@ -98,17 +98,17 @@
         {
           "name": "Dashboard API Errors And Rate Limits",
           "description": "Value: separates Meraki API health problems from real network problems. Interpretation: API errors show failed endpoint requests; rate-limited requests mean the receiver hit Dashboard API throttling and may need lower target volume or longer collection intervals.",
-          "signalflow": "data('meraki.api.request.errors').sum(by=['meraki.organization.id', 'meraki.api.operation', 'http.response.status_code']).publish(label='API errors'); data('meraki.api.request.rate_limited').sum(by=['meraki.organization.id', 'meraki.api.operation']).publish(label='Rate limited')",
+          "signalflow": "data('meraki.api.request.errors').rate().sum(by=['meraki.organization.id', 'meraki.api.operation', 'http.response.status_code']).publish(label='API errors/sec'); data('meraki.api.request.rate_limited').rate().sum(by=['meraki.organization.id', 'meraki.api.operation']).publish(label='Rate-limited requests/sec')",
           "legend_dimension": "meraki.api.operation",
           "publish_label_options": [
             {
-              "label": "API errors",
-              "displayName": "API errors",
+              "label": "API errors/sec",
+              "displayName": "API errors/sec",
               "paletteIndex": 8
             },
             {
-              "label": "Rate limited",
-              "displayName": "Rate limited",
+              "label": "Rate-limited requests/sec",
+              "displayName": "Rate-limited requests/sec",
               "paletteIndex": 10
             }
           ]
@@ -260,13 +260,13 @@
         {
           "name": "VPN Peer Usage",
           "description": "Value: shows recent VPN traffic volume by direction so operators can distinguish idle tunnels from loaded tunnels. Interpretation: usage is windowed Meraki data in kilobytes, not a cumulative counter; compare receive and transmit direction for asymmetric traffic.",
-          "signalflow": "data('meraki.vpn.peer.usage').sum(by=['host.name', 'meraki.vpn.peer.name', 'network.io.direction']).publish(label='VPN usage KBy')",
+          "signalflow": "data('meraki.vpn.peer.usage').sum(by=['host.name', 'meraki.vpn.peer.name', 'network.io.direction']).publish(label='VPN usage kBy')",
           "legend_dimension": "meraki.vpn.peer.name",
           "publish_label_options": [
             {
-              "label": "VPN usage KBy",
-              "displayName": "VPN usage KBy",
-              "valueSuffix": " KBy",
+              "label": "VPN usage kBy",
+              "displayName": "VPN usage kBy",
+              "valueSuffix": " kBy",
               "paletteIndex": 3
             }
           ]
@@ -446,13 +446,13 @@
         {
           "name": "Windowed Switch Port Usage",
           "description": "Value: shows Meraki Dashboard port usage windows without treating them as cumulative counters. Interpretation: compare receive/transmit direction for sudden traffic shifts or silence on important ports.",
-          "signalflow": "data('meraki.switch.port.usage').sum(by=['host.name', 'host.id', 'network.interface.name', 'network.io.direction']).publish(label='Port usage KBy')",
+          "signalflow": "data('meraki.switch.port.usage').sum(by=['host.name', 'host.id', 'network.interface.name', 'network.io.direction']).publish(label='Port usage kBy')",
           "legend_dimension": "network.interface.name",
           "publish_label_options": [
             {
-              "label": "Port usage KBy",
-              "displayName": "Port usage KBy",
-              "valueSuffix": " KBy",
+              "label": "Port usage kBy",
+              "displayName": "Port usage kBy",
+              "valueSuffix": " kBy",
               "paletteIndex": 3
             }
           ]
@@ -520,7 +520,7 @@
         {
           "name": "Transceiver Sensors",
           "description": "Value: links Meraki appliance or switch physical-path symptoms to optic power, temperature, voltage, or bias current. Interpretation: drift in RX/TX power, rising temperature, voltage instability, or bias changes before errors suggests optics, cabling, or environmental root cause.",
-          "signalflow": "data('cisco.transceiver.sensor', filter=filter('os.name', 'Meraki')).mean(by=['host.name', 'host.id', 'network.interface.name', 'cisco.transceiver.sensor', 'cisco.transceiver.lane']).publish(label='Transceiver sensor')",
+          "signalflow": "data('cisco.transceiver.sensor', filter=filter('os.name', 'Meraki')).mean(by=['host.name', 'host.id', 'network.interface.name', 'cisco.transceiver.sensor', 'meraki.transceiver.sfp_product_id']).publish(label='Transceiver sensor')",
           "legend_dimension": "cisco.transceiver.sensor",
           "publish_label_options": [
             {

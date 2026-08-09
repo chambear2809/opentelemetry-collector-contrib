@@ -27,12 +27,6 @@
         "applyIfExists": true
       },
       {
-        "property": "host.ip",
-        "alias": "Host IP",
-        "description": "Nexus switch management IP.",
-        "applyIfExists": true
-      },
-      {
         "property": "network.interface.name",
         "alias": "Interface",
         "description": "Nexus interface name.",
@@ -92,8 +86,8 @@
         {
           "name": "Control Plane Process CPU",
           "description": "Value: identifies which control-plane process family is driving CPU. Interpretation: spikes by process point the operator toward routing, management, telemetry, or platform process ownership.",
-          "signalflow": "data('cisco.control_plane.cpu.process.utilization').mean(by=['host.name', 'process.executable.name']).publish(label='Process CPU')",
-          "legend_dimension": "process.executable.name"
+          "signalflow": "data('cisco.control_plane.cpu.process.utilization').mean(by=['host.name', 'cisco.process.name', 'cisco.cpu.window']).publish(label='Process CPU')",
+          "legend_dimension": "cisco.process.name"
         }
       ]
     },
@@ -126,37 +120,37 @@
         {
           "name": "Packet Volume By Type",
           "description": "Value: shows unicast, multicast, and broadcast packet volume by direction. Interpretation: unexpected multicast/broadcast growth can indicate storms, discovery loops, or workload shifts.",
-          "signalflow": "data('system.network.packet.count', filter=filter('hw.type', 'network')).sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'network.packet.type']).publish(label='Packets')",
+          "signalflow": "data('system.network.packet.count', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction', 'network.packet.type']).publish(label='Packets/sec')",
           "legend_dimension": "network.packet.type"
         },
         {
           "name": "Interface Errors And Drops",
           "description": "Value: correlates packet errors and drops by interface. Interpretation: non-zero errors suggest physical or negotiation trouble; drops without errors point toward congestion, buffering, or QoS policy.",
-          "signalflow": "data('system.network.errors', filter=filter('hw.type', 'network')).sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Errors'); data('system.network.packet.dropped', filter=filter('hw.type', 'network')).sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Drops')",
+          "signalflow": "data('system.network.errors', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Errors/sec'); data('system.network.packet.dropped', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Drops/sec')",
           "legend_dimension": "network.interface.name"
         },
         {
           "name": "QoS Queue Bytes",
           "description": "Value: shows byte volume handled by queue or QoS group. Interpretation: high or shifting queue volume identifies the class most affected during congestion.",
-          "signalflow": "data('cisco.interface.qos.queue.bytes').sum(by=['host.name', 'network.interface.name', 'cisco.qos.queue', 'cisco.qos.group', 'cisco.qos.action']).publish(label='Queue bytes')",
+          "signalflow": "data('cisco.interface.qos.queue.bytes').rate().sum(by=['host.name', 'network.interface.name', 'cisco.qos.queue', 'cisco.qos.group', 'cisco.qos.action']).publish(label='Queue bytes/sec')",
           "legend_dimension": "cisco.qos.queue"
         },
         {
           "name": "QoS Policy Bytes",
           "description": "Value: shows class-based policy byte volume by action and direction. Interpretation: drops, marks, or class shifts explain why specific traffic classes are slowed or discarded.",
-          "signalflow": "data('cisco.interface.qos.policy.bytes').sum(by=['host.name', 'network.interface.name', 'cisco.qos.class', 'cisco.qos.action', 'network.io.direction']).publish(label='Policy bytes')",
+          "signalflow": "data('cisco.interface.qos.policy.bytes').rate().sum(by=['host.name', 'network.interface.name', 'cisco.qos.class', 'cisco.qos.action', 'network.io.direction']).publish(label='Policy bytes/sec')",
           "legend_dimension": "cisco.qos.class"
         },
         {
           "name": "LACP Errors",
           "description": "Value: highlights link aggregation control-plane errors. Interpretation: spikes by interface explain member link removal or bundle instability.",
-          "signalflow": "data('cisco.lacp.errors').sum(by=['host.name', 'network.interface.name', 'cisco.lacp.error.type']).publish(label='LACP errors')",
+          "signalflow": "data('cisco.lacp.errors').rate().sum(by=['host.name', 'network.interface.name', 'cisco.lacp.error.type']).publish(label='LACP errors/sec')",
           "legend_dimension": "cisco.lacp.error.type"
         },
         {
           "name": "STP Instances And Changes",
           "description": "Value: shows spanning-tree instance state and topology-change churn. Interpretation: unexpected blocked state or repeated topology changes indicate loop prevention or unstable L2 links.",
-          "signalflow": "data('cisco.l2.stp.instances').sum(by=['host.name', 'cisco.l2.stp.state']).publish(label='STP instances'); data('cisco.l2.stp.topology_changes').sum(by=['host.name', 'network.interface.name']).publish(label='Topology changes')",
+          "signalflow": "data('cisco.l2.stp.instances').sum(by=['host.name', 'cisco.l2.stp.state']).publish(label='STP instances'); data('cisco.l2.stp.topology_changes').rate().sum(by=['host.name', 'network.interface.name']).publish(label='Topology changes/sec')",
           "legend_dimension": "cisco.l2.stp.state"
         }
       ]
@@ -188,7 +182,7 @@
           "secondary_visualization": "Sparkline",
           "name": "VXLAN VNI Status",
           "description": "Value: finds VNI or segment-level VXLAN failures. Interpretation: unhealthy VNI rows point to tenant or segment control-plane issues even when NVE peers appear healthy.",
-          "signalflow": "data('cisco.nve.vni.status').mean(by=['host.name', 'cisco.nve.vni', 'cisco.nve.vrf']).publish(label='VNI status')",
+          "signalflow": "data('cisco.nve.vni.status').mean(by=['host.name', 'cisco.nve.vni', 'cisco.nve.vni.type', 'cisco.nve.state']).publish(label='VNI status')",
           "legend_dimension": "cisco.nve.vni"
         },
         {
@@ -212,7 +206,7 @@
           "secondary_visualization": "Sparkline",
           "name": "vPC Consistency Failures",
           "description": "Value: identifies vPC consistency failures by check. Interpretation: non-zero failures explain dual-homed host outages or blackholing risk.",
-          "signalflow": "data('cisco.vpc.consistency.failures').sum(by=['host.name', 'cisco.vpc.domain', 'cisco.vpc.check']).publish(label='Consistency failures')",
+          "signalflow": "data('cisco.vpc.consistency.failures').sum(by=['host.name', 'cisco.vpc.check']).publish(label='Consistency failures')",
           "legend_dimension": "cisco.vpc.check"
         },
         {
@@ -220,16 +214,16 @@
           "secondary_visualization": "Sparkline",
           "name": "Port Channel Status",
           "description": "Value: shows port-channel and member link health. Interpretation: down bundles or member loss indicates reduced capacity or broken redundant paths.",
-          "signalflow": "data('cisco.port_channel.status').mean(by=['host.name', 'network.interface.name']).publish(label='Port-channel status'); data('cisco.port_channel.member.status').mean(by=['host.name', 'network.interface.name', 'cisco.port_channel.member']).publish(label='Member status')",
-          "legend_dimension": "network.interface.name"
+          "signalflow": "data('cisco.port_channel.status').mean(by=['host.name', 'cisco.port_channel.name', 'cisco.port_channel.state']).publish(label='Port-channel status'); data('cisco.port_channel.member.status').mean(by=['host.name', 'cisco.port_channel.name', 'network.interface.name', 'cisco.port_channel.state']).publish(label='Member status')",
+          "legend_dimension": "cisco.port_channel.name"
         },
         {
           "type": "List",
           "secondary_visualization": "Sparkline",
           "name": "Topology Neighbors",
           "description": "Value: confirms expected LLDP/CDP neighbor visibility. Interpretation: missing or unexpected neighbor rows indicate cabling, peer, or discovery problems.",
-          "signalflow": "data('cisco.topology.neighbor.info').mean(by=['host.name', 'network.interface.name', 'network.peer.name', 'network.protocol.name']).publish(label='Neighbor info')",
-          "legend_dimension": "network.peer.name"
+          "signalflow": "data('cisco.topology.neighbor.info').mean(by=['host.name', 'network.interface.name', 'cisco.topology.neighbor.name', 'cisco.topology.neighbor.interface', 'cisco.topology.protocol']).publish(label='Neighbor info')",
+          "legend_dimension": "cisco.topology.neighbor.name"
         }
       ]
     },
@@ -264,8 +258,8 @@
         {
           "name": "Hardware Temperature",
           "description": "Value: tracks chassis, module, sensor, or platform temperature where exposed. Interpretation: rising or threshold-adjacent temperature explains throttling, fan alarms, or unstable hardware.",
-          "signalflow": "data('cisco.hardware.temperature').mean(by=['host.name', 'cisco.hardware.component']).publish(label='Temperature')",
-          "legend_dimension": "cisco.hardware.component"
+          "signalflow": "data('cisco.hardware.temperature').mean(by=['host.name', 'cisco.hardware.name', 'cisco.hardware.slot', 'cisco.hardware.state']).publish(label='Temperature')",
+          "legend_dimension": "cisco.hardware.name"
         },
         {
           "name": "Interface Traffic Rate",
@@ -276,7 +270,7 @@
         {
           "name": "Interface Errors And Drops",
           "description": "Value: gives physical triage immediate packet-loss context. Interpretation: errors rising with optical or temperature drift point toward physical path or hardware ownership.",
-          "signalflow": "data('system.network.errors', filter=filter('hw.type', 'network')).sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Errors'); data('system.network.packet.dropped', filter=filter('hw.type', 'network')).sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Drops')",
+          "signalflow": "data('system.network.errors', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Errors/sec'); data('system.network.packet.dropped', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Drops/sec')",
           "legend_dimension": "network.interface.name"
         }
       ]

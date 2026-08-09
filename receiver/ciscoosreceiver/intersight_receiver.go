@@ -125,7 +125,7 @@ func newIntersightClient(conf *Config) (*intersight.Client, error) {
 		KeyFile:            conf.Intersight.Auth.KeyFile,
 		Endpoint:           conf.Intersight.Endpoint,
 		UserAgent:          conf.Intersight.UserAgent,
-		Timeout:            conf.Timeout,
+		Timeout:            conf.ControllerConfig.Timeout,
 		MaxRetries:         conf.Intersight.MaxRetries,
 		PageSize:           conf.Intersight.PageSize,
 		InsecureSkipVerify: conf.Intersight.InsecureSkipVerify,
@@ -165,7 +165,7 @@ func (r *intersightMetricsReceiver) Shutdown(ctx context.Context) error {
 func (r *intersightMetricsReceiver) run(ctx context.Context) {
 	defer close(r.done)
 	r.collect(ctx)
-	ticker := time.NewTicker(r.config.CollectionInterval)
+	ticker := time.NewTicker(r.config.ControllerConfig.CollectionInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -178,7 +178,7 @@ func (r *intersightMetricsReceiver) run(ctx context.Context) {
 }
 
 func (r *intersightMetricsReceiver) collect(ctx context.Context) {
-	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
+	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.ControllerConfig.Timeout)
 	defer cancel()
 
 	obsCtx := startMetricsOp(ctx, r.obs)
@@ -245,7 +245,7 @@ func (r *intersightMetricsReceiver) finishScrape(builder *intersightMetricsBuild
 	stats := r.requestStats()
 	outcome := summarizeAPIOutcomes(stats, func(stat intersight.RequestStat) string { return stat.Outcome })
 	rb := builder.accountResource()
-	rb.recordInt("intersight.scrape.partial_success", "Whether one or more Intersight endpoint families failed during the scrape.", "1", boolToInt(partial), nil)
+	rb.recordInt("intersight.scrape.partial_success", "Whether one or more Intersight endpoint families failed during a scrape.", "1", boolToInt(partial), nil)
 	if lastSuccess, ok := r.success.observe(time.Now(), !partial && outcome.succeeded); ok {
 		rb.recordInt("intersight.scrape.last_success", "Unix timestamp of the most recent fully successful Intersight scrape.", "s", lastSuccess.Unix(), nil)
 	}
@@ -284,7 +284,11 @@ func (r *intersightMetricsReceiver) scrapeTelemetry(ctx context.Context, builder
 	if err != nil {
 		return err
 	}
-	builder.recordTelemetry(query, response, selector)
+	results, ok := response.([]any)
+	if !ok {
+		return fmt.Errorf("decode Intersight telemetry.%s response: expected array", query.name)
+	}
+	builder.recordTelemetry(query, results, selector, r.config.Intersight.Telemetry.MaxResults)
 	return nil
 }
 
@@ -322,12 +326,12 @@ func (r *intersightMetricsReceiver) recordAPIRequestMetrics(builder *intersightM
 	}
 	for _, aggregate := range aggregateAPIRequestObservations(observations) {
 		rb := builder.accountResource()
-		rb.recordDouble("intersight.api.request.duration", "Average duration of Intersight API request attempts in this scrape.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
+		rb.recordDouble("intersight.api.request.duration", "Average duration of Intersight API request attempts within the scrape for each matching request-attribute set.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
 		if aggregate.errors > 0 {
-			rb.recordSum("intersight.api.request.errors", "Intersight API request errors.", "{error}", aggregate.errors, aggregate.attrs)
+			rb.recordSum("intersight.api.request.errors", "Intersight API request failures.", "{error}", aggregate.errors, aggregate.attrs)
 		}
 		if aggregate.rateLimited > 0 {
-			rb.recordSum("intersight.api.rate_limited", "Intersight API requests that were rate limited.", "{request}", aggregate.rateLimited, aggregate.attrs)
+			rb.recordSum("intersight.api.rate_limited", "Requests that received HTTP 429.", "{request}", aggregate.rateLimited, aggregate.attrs)
 		}
 	}
 }
@@ -365,7 +369,7 @@ func (r *intersightLogsReceiver) Shutdown(ctx context.Context) error {
 func (r *intersightLogsReceiver) run(ctx context.Context) {
 	defer close(r.done)
 	r.collect(ctx)
-	ticker := time.NewTicker(r.config.CollectionInterval)
+	ticker := time.NewTicker(r.config.ControllerConfig.CollectionInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -378,7 +382,7 @@ func (r *intersightLogsReceiver) run(ctx context.Context) {
 }
 
 func (r *intersightLogsReceiver) collect(ctx context.Context) {
-	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
+	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.ControllerConfig.Timeout)
 	defer cancel()
 
 	r.seen.BeginBatch()
@@ -488,8 +492,10 @@ func (b *intersightMetricsBuilder) accountResource() *resourceMetricsBuilder {
 
 func (b *intersightMetricsBuilder) objectResource(objectType string, obj intersight.Object) *resourceMetricsBuilder {
 	serial := firstNonEmpty(intersight.String(obj, "Serial", "SerialNumber"), firstString(intersight.StringSlice(obj, "Serial")))
-	hostID := firstNonEmpty(serial, intersight.String(obj, "Moid"), intersight.String(obj, "DeviceMoId"), intersight.String(obj, "ClusterUuid", "NodeUuid"), intersight.String(obj, "Name", "HostName"), objectType)
-	rb := b.resource(objectType + ":" + hostID)
+	moid := intersight.String(obj, "Moid")
+	hostID := firstNonEmpty(serial, moid, intersight.String(obj, "DeviceMoId"), intersight.String(obj, "ClusterUuid", "NodeUuid"), intersight.String(obj, "Name", "HostName"), objectType)
+	resourceID := firstNonEmpty(moid, serial, intersight.String(obj, "DeviceMoId"), intersight.String(obj, "ClusterUuid", "NodeUuid"), intersight.String(obj, "Name", "HostName"), objectType)
+	rb := b.resource(objectType + ":" + resourceID)
 	attrs := rb.resource.Attributes()
 	putStr(attrs, "host.id", hostID)
 	putStr(attrs, "host.name", firstNonEmpty(intersight.String(obj, "Name", "HostName"), firstString(intersight.StringSlice(obj, "DeviceHostname")), hostID))
@@ -502,7 +508,7 @@ func (b *intersightMetricsBuilder) objectResource(objectType string, obj intersi
 	putStr(attrs, "host.type", firstNonEmpty(intersight.String(obj, "Model", "PlatformType", "SourceObjectType"), objectType))
 	putStr(attrs, "os.name", "Intersight")
 	putStr(attrs, "os.version", firstNonEmpty(intersight.String(obj, "Firmware", "Version", "BundleVersion", "HxdpBuildVersion"), intersight.String(obj, "DisplayVersion")))
-	putStr(attrs, "intersight.moid", intersight.String(obj, "Moid"))
+	putStr(attrs, "intersight.moid", moid)
 	putStr(attrs, "intersight.resource.type", objectType)
 	putStr(attrs, "intersight.device.registration_moid", intersight.RelationshipMoid(obj, "RegisteredDevice"))
 	putStr(attrs, "intersight.serial", serial)
@@ -563,6 +569,10 @@ func (b *intersightMetricsBuilder) flushCounts() {
 
 func (b *intersightMetricsBuilder) recordObject(endpoint intersightEndpoint, obj intersight.Object) {
 	objectType := intersight.ObjectType(obj, endpoint.objectType)
+	if endpoint.group == "audit" {
+		b.addCount("intersight.audit.record.count", map[string]string{"intersight.audit.user": firstNonEmpty(intersight.String(obj, "UserIdOrEmail", "Email"), "unknown")})
+		return
+	}
 	rb := b.objectResource(objectType, obj)
 	status := objectStatus(obj)
 	severity := strings.ToLower(firstNonEmpty(intersight.String(obj, "Severity", "OrigSeverity"), status))
@@ -574,9 +584,9 @@ func (b *intersightMetricsBuilder) recordObject(endpoint intersightEndpoint, obj
 	}
 	putNonEmpty(infoAttrs, "intersight.model", intersight.String(obj, "Model", "PlatformType"))
 	putNonEmpty(infoAttrs, "intersight.source_object_type", intersight.String(obj, "SourceObjectType", "AffectedMoType", "AffectedObjectType"))
-	rb.recordInt("intersight.resource.info", "Intersight resource metadata.", "1", 1, infoAttrs)
+	rb.recordInt("intersight.resource.info", "Inventory metadata for an Intersight resource.", "1", 1, infoAttrs)
 	if code, ok := statusCode(status); ok {
-		rb.recordInt("intersight.resource.status", "Intersight resource status encoded for troubleshooting.", "1", code, map[string]string{
+		rb.recordInt("intersight.resource.status", "Encoded resource status, with the original status retained as an attribute.", "1", code, map[string]string{
 			"intersight.resource.type": objectType,
 			"intersight.status":        status,
 		})
@@ -590,13 +600,11 @@ func (b *intersightMetricsBuilder) recordObject(endpoint intersightEndpoint, obj
 	switch endpoint.group {
 	case "events":
 		b.recordEventObject(rb, endpoint, obj, objectType, status, severity)
-	case "audit":
-		b.addCount("intersight.audit.record.count", map[string]string{"intersight.audit.user": firstNonEmpty(intersight.String(obj, "UserIdOrEmail", "Email"), "unknown")})
 	case "inventory", "equipment", "network":
 		b.recordInventoryObject(rb, obj, objectType, status)
 	case "firmware":
 		if version := intersight.String(obj, "BundleVersion", "Version"); version != "" {
-			rb.recordInt("intersight.firmware.bundle.info", "Firmware bundle/version information.", "1", 1, map[string]string{"intersight.firmware.version": version})
+			rb.recordInt("intersight.firmware.bundle.info", "Firmware bundle identity with the version in `intersight.firmware.version`.", "1", 1, map[string]string{"intersight.firmware.version": version})
 		}
 	case "storage":
 		b.recordStorageObject(rb, obj)
@@ -618,29 +626,29 @@ func (b *intersightMetricsBuilder) recordEventObject(rb *resourceMetricsBuilder,
 	})
 	switch {
 	case strings.Contains(endpoint.operation, "alarm"):
-		rb.recordInt("intersight.alarm.active", "Active Intersight alarm.", "1", 1, attrs)
+		rb.recordInt("intersight.alarm.active", "Active alarm instances.", "1", 1, attrs)
 		b.addCount("intersight.alarm.count", attrs)
-	case strings.Contains(endpoint.operation, "advisory"):
-		rb.recordInt("intersight.advisory.active", "Active Intersight advisory exposure.", "1", 1, attrs)
+	case strings.Contains(endpoint.operation, "advisory") || strings.Contains(endpoint.operation, "advisories"):
+		rb.recordInt("intersight.advisory.active", "Active advisory or security advisory exposure.", "1", 1, attrs)
 		b.addCount("intersight.advisory.count", attrs)
 	case strings.Contains(endpoint.operation, "hcl"):
 		if code, ok := statusCode(status); ok {
-			rb.recordInt("intersight.hcl.status", "Intersight HCL/compliance status.", "1", code, attrs)
+			rb.recordInt("intersight.hcl.status", "Hardware compatibility/compliance status.", "1", code, attrs)
 		}
 		b.addCount("intersight.hcl.status.count", attrs)
 	case strings.Contains(endpoint.operation, "task"):
 		if code, ok := statusCode(status); ok {
-			rb.recordInt("intersight.task.status", "Intersight task status.", "1", code, attrs)
+			rb.recordInt("intersight.task.status", "Workflow task execution status.", "1", code, attrs)
 		}
 		b.addCount("intersight.task.count", attrs)
 	case strings.Contains(endpoint.operation, "workflow"):
 		if code, ok := statusCode(status); ok {
-			rb.recordInt("intersight.workflow.status", "Intersight workflow status.", "1", code, attrs)
+			rb.recordInt("intersight.workflow.status", "Workflow execution status.", "1", code, attrs)
 		}
 		b.addCount("intersight.workflow.count", attrs)
 	case strings.Contains(endpoint.operation, "techsupport"):
 		if code, ok := statusCode(status); ok {
-			rb.recordInt("intersight.techsupport.status", "Intersight tech-support bundle collection status.", "1", code, attrs)
+			rb.recordInt("intersight.techsupport.status", "Tech-support collection/upload status.", "1", code, attrs)
 		}
 		b.addCount("intersight.techsupport.count", attrs)
 	}
@@ -649,7 +657,7 @@ func (b *intersightMetricsBuilder) recordEventObject(rb *resourceMetricsBuilder,
 func (*intersightMetricsBuilder) recordInventoryObject(rb *resourceMetricsBuilder, obj intersight.Object, objectType, status string) {
 	if strings.Contains(objectType, "DeviceRegistration") || strings.Contains(objectType, "Target") || strings.Contains(objectType, "PhysicalSummary") || strings.Contains(objectType, "Blade") || strings.Contains(objectType, "RackUnit") || strings.Contains(objectType, "Network") {
 		if up, ok := upStatus(status); ok {
-			rb.recordInt("cisco.device.up", "Device availability reported by Cisco Intersight.", "1", up, nil)
+			rb.recordInt("cisco.device.up", "Device availability (1 = up, 0 = down)", "1", up, nil)
 		}
 	}
 	recordIfInt(rb, obj, "NumCpuCores", "system.cpu.logical.count", "Number of CPU cores reported by Intersight.", "{cpu}", nil)
@@ -681,25 +689,40 @@ func (*intersightMetricsBuilder) recordVirtualizationObject(rb *resourceMetricsB
 	recordStringState(rb, "intersight.virtual_machine.power_state", "Virtual machine power state.", intersight.String(obj, "PowerState"))
 }
 
-func (b *intersightMetricsBuilder) recordTelemetry(query intersightTelemetryQuery, response any, selector deviceSelectionMatcher) {
-	results, ok := response.([]any)
-	if !ok {
-		return
+func (b *intersightMetricsBuilder) recordTelemetry(query intersightTelemetryQuery, results []any, selector deviceSelectionMatcher, maxResults int) {
+	outcomes := map[string]int64{"emitted": 0}
+	retained := results
+	if maxResults > 0 && len(retained) > maxResults {
+		outcomes["max_results"] = int64(len(retained) - maxResults)
+		retained = retained[:maxResults]
 	}
-	for _, item := range results {
+	for _, item := range retained {
 		obj, ok := item.(map[string]any)
 		if !ok {
+			outcomes["malformed_row"]++
 			continue
 		}
 		event, ok := obj["event"].(map[string]any)
 		if !ok {
+			outcomes["malformed_row"]++
 			continue
 		}
 		if !selector.allows(intersightTelemetryIdentity(event)) {
+			outcomes["device_filtered"]++
 			continue
 		}
-		value, ok := numberFromAny(event[query.fieldName])
+		rawValue, exists := event[query.fieldName]
+		if !exists {
+			outcomes["missing_value"]++
+			continue
+		}
+		if rawValue == nil {
+			outcomes["null_value"]++
+			continue
+		}
+		value, ok := numberFromAny(rawValue)
 		if !ok {
+			outcomes["invalid_value"]++
 			continue
 		}
 		resourceID := firstNonEmpty(stringFromAny(event["host.name"]), stringFromAny(event["name"]), stringFromAny(event["deviceId"]), query.name)
@@ -723,6 +746,19 @@ func (b *intersightMetricsBuilder) recordTelemetry(query intersightTelemetryQuer
 			putNonEmpty(pointAttrs, "intersight."+strings.ReplaceAll(dim, ".", "_"), stringFromAny(event[dim]))
 		}
 		rb.recordDouble(query.metricName, query.description, query.unit, value, pointAttrs)
+		outcomes["emitted"]++
+	}
+
+	rb := b.accountResource()
+	for _, outcome := range []string{"emitted", "max_results", "device_filtered", "null_value", "missing_value", "invalid_value", "malformed_row"} {
+		rows := outcomes[outcome]
+		if rows == 0 && outcome != "emitted" {
+			continue
+		}
+		rb.recordInt("intersight.telemetry.query.rows", "Per-query telemetry rows classified by the bounded `intersight.telemetry.outcome` attribute as emitted, capped, filtered, sparse, invalid, or malformed.", "{row}", rows, map[string]string{
+			"intersight.telemetry.query":   query.name,
+			"intersight.telemetry.outcome": outcome,
+		})
 	}
 }
 
@@ -770,6 +806,7 @@ func intersightMetricEndpoints() []intersightEndpoint {
 		{group: "inventory", operation: "compute.physical_summaries", path: "/api/v1/compute/PhysicalSummaries", objectType: "compute.PhysicalSummary", selectFields: []string{"Moid", "ObjectType", "Name", "Serial", "Model", "PlatformType", "SourceObjectType", "ConnectionStatus", "OperState", "Operability", "OperPowerState", "MgmtIpAddress", "Ipv4Address", "Firmware", "AvailableMemory", "NumCpuCores", "NumCpus", "NumThreads", "FaultSummary", "ServiceProfile", "RegisteredDevice"}},
 		{group: "inventory", operation: "compute.blades", path: "/api/v1/compute/Blades", objectType: "compute.Blade", selectFields: []string{"Moid", "ObjectType", "Name", "Serial", "Model", "OperState", "Operability", "OperPowerState", "FaultSummary", "RegisteredDevice"}},
 		{group: "inventory", operation: "compute.rack_units", path: "/api/v1/compute/RackUnits", objectType: "compute.RackUnit", selectFields: []string{"Moid", "ObjectType", "Name", "Serial", "Model", "OperState", "Operability", "OperPowerState", "FaultSummary", "RegisteredDevice"}},
+		intersightAuditEndpoint(),
 		{group: "events", operation: "cond.alarms", path: "/api/v1/cond/Alarms", objectType: "cond.Alarm", selectFields: []string{"Moid", "ObjectType", "CreateTime", "ModTime", "Acknowledge", "AffectedMoDisplayName", "AffectedMoId", "AffectedMoType", "AffectedObject", "Code", "CreationTime", "Description", "LastTransitionTime", "Name", "OrigSeverity", "Severity", "RegisteredDevice"}, query: activeAlarmQuery},
 		{group: "events", operation: "cond.hcl_statuses", path: "/api/v1/cond/HclStatuses", objectType: "cond.HclStatus", selectFields: []string{"Moid", "ObjectType", "CreateTime", "ModTime", "Name", "Status", "Model", "Serial", "ManagedObject", "RegisteredDevice"}},
 		{group: "events", operation: "tam.advisory_instances", path: "/api/v1/tam/AdvisoryInstances", objectType: "tam.AdvisoryInstance", selectFields: []string{"Moid", "ObjectType", "CreateTime", "ModTime", "AffectedObjectMoid", "AffectedObjectType", "LastStateChangeTime", "LastVerifiedTime", "State", "AffectedObject", "DeviceRegistration"}, query: recentCreateQuery},
@@ -790,7 +827,7 @@ func intersightMetricEndpoints() []intersightEndpoint {
 		{group: "storage", operation: "storage.controllers", path: "/api/v1/storage/Controllers", objectType: "storage.Controller", selectFields: []string{"Moid", "ObjectType", "Name", "ControllerStatus", "OperState", "Operability", "Model", "Type", "MemoryCorrectableErrors", "RebuildRatePercent", "RegisteredDevice"}},
 		{group: "storage", operation: "storage.physical_disks", path: "/api/v1/storage/PhysicalDisks", objectType: "storage.PhysicalDisk", selectFields: []string{"Moid", "ObjectType", "Name", "DiskState", "DriveState", "Operability", "OperPowerState", "MediaErrorCount", "PredictiveFailureCount", "PercentLifeLeft", "OperatingTemperature", "PowerOnHours", "Serial", "Pid", "RegisteredDevice"}},
 		{group: "storage", operation: "storage.virtual_drives", path: "/api/v1/storage/VirtualDrives", objectType: "storage.VirtualDrive", selectFields: []string{"Moid", "ObjectType", "Name", "ConfigState", "DriveState", "OperState", "Operability", "Size", "VirtualDriveId", "RegisteredDevice"}},
-		{group: "hyperflex", operation: "hyperflex.clusters", path: "/api/v1/hyperflex/Clusters", objectType: "hyperflex.Cluster", selectFields: []string{"Moid", "ObjectType", "Name", "ClusterUuid", "DeviceId", "EncryptionStatus", "FltAggr", "HxdpBuildVersion", "UpgradeStatus", "VmCount", "RegisteredDevice"}},
+		{group: "hyperflex", operation: "hyperflex.clusters", path: "/api/v1/hyperflex/Clusters", objectType: "hyperflex.Cluster", selectFields: []string{"Moid", "ObjectType", "Name", "ClusterUuid", "DeviceId", "EncryptionStatus", "FltAggr", "HxdpBuildVersion", "Status", "UpgradeStatus", "VmCount", "RegisteredDevice"}},
 		{group: "hyperflex", operation: "hyperflex.nodes", path: "/api/v1/hyperflex/Nodes", objectType: "hyperflex.Node", selectFields: []string{"Moid", "ObjectType", "HostName", "Hypervisor", "ModelNumber", "NodeMaintenanceMode", "NodeStatus", "NodeUuid", "Role", "SerialNumber", "Status", "Version", "ClusterMember"}},
 		{group: "kubernetes", operation: "kubernetes.clusters", path: "/api/v1/kubernetes/Clusters", objectType: "kubernetes.Cluster", selectFields: []string{"Moid", "ObjectType", "Name", "ConnectionStatus", "RegisteredDevices"}},
 		{group: "kubernetes", operation: "kubernetes.nodes", path: "/api/v1/kubernetes/Nodes", objectType: "kubernetes.Node", selectFields: []string{"Moid", "ObjectType", "Name", "Status", "RegisteredDevice"}},
@@ -800,7 +837,7 @@ func intersightMetricEndpoints() []intersightEndpoint {
 
 func intersightLogEndpoints() []intersightEndpoint {
 	return []intersightEndpoint{
-		{group: "audit", operation: "aaa.audit_records", path: "/api/v1/aaa/AuditRecords", objectType: "aaa.AuditRecord", selectFields: []string{"Moid", "ObjectType", "CreateTime", "ModTime", "Email", "InstId", "SessionId", "SourceIp", "Timestamp", "UserIdOrEmail"}, query: recentCreateQuery},
+		intersightAuditEndpoint(),
 		{group: "events", operation: "cond.alarms", path: "/api/v1/cond/Alarms", objectType: "cond.Alarm", selectFields: []string{"Moid", "ObjectType", "CreateTime", "ModTime", "Acknowledge", "AffectedMoDisplayName", "AffectedMoId", "AffectedMoType", "AffectedObject", "Code", "CreationTime", "Description", "LastTransitionTime", "Name", "OrigSeverity", "Severity", "RegisteredDevice"}, query: activeAlarmQuery},
 		{group: "events", operation: "tam.advisory_instances", path: "/api/v1/tam/AdvisoryInstances", objectType: "tam.AdvisoryInstance", selectFields: []string{"Moid", "ObjectType", "CreateTime", "ModTime", "AffectedObjectMoid", "AffectedObjectType", "LastStateChangeTime", "LastVerifiedTime", "State", "AffectedObject", "DeviceRegistration"}, query: recentCreateQuery},
 		{group: "events", operation: "tam.security_advisories", path: "/api/v1/tam/SecurityAdvisories", objectType: "tam.SecurityAdvisory", selectFields: []string{"Moid", "ObjectType", "CreateTime", "ModTime", "Name", "Severity", "Status", "State"}, query: recentCreateQuery},
@@ -810,60 +847,64 @@ func intersightLogEndpoints() []intersightEndpoint {
 	}
 }
 
+func intersightAuditEndpoint() intersightEndpoint {
+	return intersightEndpoint{group: "audit", operation: "aaa.audit_records", path: "/api/v1/aaa/AuditRecords", objectType: "aaa.AuditRecord", selectFields: []string{"Moid", "ObjectType", "CreateTime", "ModTime", "Email", "InstId", "SessionId", "SourceIp", "Timestamp", "UserIdOrEmail"}, query: recentCreateQuery}
+}
+
 func intersightTelemetryQueries() []intersightTelemetryQuery {
 	return []intersightTelemetryQuery{
-		{name: "fan_speed", dataSource: "PhysicalEntities", instrument: "hw.fan", dimensions: []string{"host.name"}, field: "hw.fan.speed", fieldName: "hw.fan.speed-Mean", aggregation: "doubleMean", metricName: "intersight.ucs.fan.speed", description: "Mean fan speed from Intersight telemetry.", unit: "rpm"},
-		{name: "fan_speed_ratio", dataSource: "PhysicalEntities", instrument: "hw.fan", dimensions: []string{"host.name"}, field: "hw.fan.speed_ratio", fieldName: "hw.fan.speed_ratio-Mean", aggregation: "doubleMean", metricName: "intersight.ucs.fan.speed_ratio", description: "Mean fan speed ratio from Intersight telemetry.", unit: "%"},
-		{name: "host_power", dataSource: "PhysicalEntities", instrument: "hw.host", dimensions: []string{"name"}, field: "hw.host.power", fieldName: "hw.host.power-Mean", aggregation: "doubleMean", metricName: "intersight.ucs.host.power", description: "Mean host power from Intersight telemetry.", unit: "W"},
-		{name: "host_energy", dataSource: "PhysicalEntities", instrument: "hw.host", dimensions: []string{"name"}, field: "hw.host.energy", fieldName: "hw.host.energy-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.host.energy", description: "Host energy from Intersight telemetry.", unit: "J"},
-		{name: "host_power_state", dataSource: "PhysicalEntities", instrument: "hw.host", dimensions: []string{"name"}, field: "hw.host.power_state", fieldName: "hw.host.power_state-Max", aggregation: "longMax", metricName: "intersight.ucs.host.power_state", description: "Host power state from Intersight telemetry.", unit: "1"},
-		{name: "temperature", dataSource: "PhysicalEntities", instrument: "hw.temperature", dimensions: []string{"host.name"}, field: "hw.temperature", fieldName: "hw.temperature-Mean", aggregation: "doubleMean", metricName: "intersight.ucs.temperature", description: "Mean temperature from Intersight telemetry.", unit: "Cel"},
-		{name: "temperature_high_critical", dataSource: "PhysicalEntities", instrument: "hw.temperature", dimensions: []string{"host.name"}, field: "hw.temperature.limit_high_critical", fieldName: "hw.temperature.limit_high_critical-Max", aggregation: "doubleMax", metricName: "intersight.ucs.temperature.limit_high_critical", description: "High critical temperature threshold from Intersight telemetry.", unit: "Cel"},
-		{name: "temperature_low_critical", dataSource: "PhysicalEntities", instrument: "hw.temperature", dimensions: []string{"host.name"}, field: "hw.temperature.limit_low_critical", fieldName: "hw.temperature.limit_low_critical-Min", aggregation: "doubleMin", metricName: "intersight.ucs.temperature.limit_low_critical", description: "Low critical temperature threshold from Intersight telemetry.", unit: "Cel"},
-		{name: "voltage", dataSource: "PhysicalEntities", instrument: "hw.voltage", dimensions: []string{"host.name"}, field: "hw.voltage", fieldName: "hw.voltage-Mean", aggregation: "doubleMean", metricName: "intersight.ucs.voltage", description: "Mean voltage from Intersight telemetry.", unit: "V"},
-		{name: "current", dataSource: "PhysicalEntities", instrument: "hw.current", dimensions: []string{"host.name"}, field: "hw.current", fieldName: "hw.current-Mean", aggregation: "doubleMean", metricName: "intersight.ucs.current", description: "Mean electric current from Intersight telemetry.", unit: "A"},
-		{name: "cpu_user", dataSource: "HostResources", instrument: "system.cpu", dimensions: []string{"host.name"}, field: "system.cpu.utilization_user", fieldName: "system.cpu.utilization_user-Max", aggregation: "doubleMax", metricName: "system.cpu.utilization", description: "CPU utilization from Intersight telemetry.", unit: "1"},
+		{name: "fan_speed", dataSource: "PhysicalEntities", instrument: "hw.fan", dimensions: []string{"host.name"}, field: "hw.fan.speed", fieldName: "hw.fan.speed-Mean", aggregation: "doubleMean", metricName: "intersight.ucs.fan.speed", description: "Mean fan speed from Intersight telemetry GroupBy.", unit: "1/min"},
+		{name: "fan_speed_ratio", dataSource: "PhysicalEntities", instrument: "hw.fan", dimensions: []string{"host.name"}, field: "hw.fan.speed_ratio", fieldName: "hw.fan.speed_ratio-Mean", aggregation: "doubleMean", metricName: "intersight.ucs.fan.speed_ratio", description: "Mean fan speed as a percentage of maximum.", unit: "%"},
+		{name: "host_power", dataSource: "PhysicalEntities", instrument: "hw.host", dimensions: []string{"name"}, field: "hw.host.power", fieldName: "hw.host.power-Mean", aggregation: "doubleMean", metricName: "intersight.ucs.host.power", description: "Mean host power from Intersight telemetry GroupBy.", unit: "W"},
+		{name: "host_energy", dataSource: "PhysicalEntities", instrument: "hw.host", dimensions: []string{"name"}, field: "hw.host.energy", fieldName: "hw.host.energy-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.host.energy", description: "Host energy consumption from Intersight telemetry.", unit: "J"},
+		{name: "host_power_state", dataSource: "PhysicalEntities", instrument: "hw.host", dimensions: []string{"name"}, field: "hw.host.power_state", fieldName: "hw.host.power_state-Max", aggregation: "longMax", metricName: "intersight.ucs.host.power_state", description: "Encoded host power state from telemetry.", unit: "1"},
+		{name: "temperature", dataSource: "PhysicalEntities", instrument: "hw.temperature", dimensions: []string{"host.name"}, field: "hw.temperature", fieldName: "hw.temperature-Mean", aggregation: "doubleMean", metricName: "intersight.ucs.temperature", description: "Mean temperature from Intersight telemetry GroupBy.", unit: "Cel"},
+		{name: "temperature_high_critical", dataSource: "PhysicalEntities", instrument: "hw.temperature", dimensions: []string{"host.name"}, field: "hw.temperature.limit_high_critical", fieldName: "hw.temperature.limit_high_critical-Max", aggregation: "doubleMax", metricName: "intersight.ucs.temperature.limit_high_critical", description: "High critical temperature threshold.", unit: "Cel"},
+		{name: "temperature_low_critical", dataSource: "PhysicalEntities", instrument: "hw.temperature", dimensions: []string{"host.name"}, field: "hw.temperature.limit_low_critical", fieldName: "hw.temperature.limit_low_critical-Min", aggregation: "doubleMin", metricName: "intersight.ucs.temperature.limit_low_critical", description: "Low critical temperature threshold.", unit: "Cel"},
+		{name: "voltage", dataSource: "PhysicalEntities", instrument: "hw.voltage", dimensions: []string{"host.name"}, field: "hw.voltage", fieldName: "hw.voltage-Mean", aggregation: "doubleMean", metricName: "intersight.ucs.voltage", description: "Mean voltage from Intersight telemetry GroupBy.", unit: "V"},
+		{name: "current", dataSource: "PhysicalEntities", instrument: "hw.current", dimensions: []string{"host.name"}, field: "hw.current", fieldName: "hw.current-Mean", aggregation: "doubleMean", metricName: "intersight.ucs.current", description: "Mean current from Intersight telemetry GroupBy.", unit: "A"},
+		{name: "cpu_user", dataSource: "HostResources", instrument: "system.cpu", dimensions: []string{"host.name"}, field: "system.cpu.utilization_user", fieldName: "system.cpu.utilization_user-Max", aggregation: "doubleMax", metricName: "system.cpu.utilization", description: "Ratio of CPU time in use, from 0 to 1.", unit: "1"},
 		{name: "cpu_system", dataSource: "HostResources", instrument: "system.cpu", dimensions: []string{"host.name"}, field: "system.cpu.utilization_system", fieldName: "system.cpu.utilization_system-Max", aggregation: "doubleMax", metricName: "intersight.ucs.cpu.system.utilization", description: "System CPU utilization from Intersight telemetry.", unit: "1"},
 		{name: "cpu_idle", dataSource: "HostResources", instrument: "system.cpu", dimensions: []string{"host.name"}, field: "system.cpu.utilization_idle", fieldName: "system.cpu.utilization_idle-Max", aggregation: "doubleMax", metricName: "intersight.ucs.cpu.idle.utilization", description: "Idle CPU utilization from Intersight telemetry.", unit: "1"},
-		{name: "memory_utilization", dataSource: "HostResources", instrument: "system.memory", dimensions: []string{"host.name"}, field: "system.memory.utilization", fieldName: "system.memory.utilization-Max", aggregation: "doubleMax", metricName: "system.memory.utilization", description: "Memory utilization from Intersight telemetry.", unit: "1"},
+		{name: "memory_utilization", dataSource: "HostResources", instrument: "system.memory", dimensions: []string{"host.name"}, field: "system.memory.utilization", fieldName: "system.memory.utilization-Max", aggregation: "doubleMax", metricName: "system.memory.utilization", description: "Ratio of memory bytes in use, from 0 to 1.", unit: "1"},
 		{name: "memory_used", dataSource: "PhysicalEntities", instrument: "system.memory", dimensions: []string{"host.name"}, field: "system.memory.usage_used", fieldName: "system.memory.usage_used-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.memory.used", description: "Used system memory from Intersight telemetry.", unit: "By"},
 		{name: "memory_free", dataSource: "PhysicalEntities", instrument: "system.memory", dimensions: []string{"host.name"}, field: "system.memory.usage_free", fieldName: "system.memory.usage_free-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.memory.free", description: "Free system memory from Intersight telemetry.", unit: "By"},
 		{name: "memory_cached", dataSource: "PhysicalEntities", instrument: "system.memory", dimensions: []string{"host.name"}, field: "system.memory.usage_cached", fieldName: "system.memory.usage_cached-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.memory.cached", description: "Cached system memory from Intersight telemetry.", unit: "By"},
 		{name: "memory_module_size", dataSource: "PhysicalEntities", instrument: "hw.memory", dimensions: []string{"host.name"}, field: "hw.memory.size", fieldName: "hw.memory.size-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.memory.module.size", description: "Memory module size from Intersight telemetry.", unit: "By"},
-		{name: "memory_correctable_ecc", dataSource: "PhysicalEntities", instrument: "hw.memory", dimensions: []string{"host.name"}, field: "hw.errors_correctable_ecc_errors", fieldName: "hw.errors_correctable_ecc_errors-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.memory.ecc.correctable", description: "Correctable ECC errors from Intersight telemetry.", unit: "{error}"},
-		{name: "memory_uncorrectable_ecc", dataSource: "PhysicalEntities", instrument: "hw.memory", dimensions: []string{"host.name"}, field: "hw.errors_uncorrectable_ecc_errors", fieldName: "hw.errors_uncorrectable_ecc_errors-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.memory.ecc.uncorrectable", description: "Uncorrectable ECC errors from Intersight telemetry.", unit: "{error}"},
-		{name: "network_rx", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.network.io_receive", fieldName: "hw.network.io_receive-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.receive", description: "Network receive bytes from Intersight telemetry.", unit: "By"},
-		{name: "network_tx", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.network.io_transmit", fieldName: "hw.network.io_transmit-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.transmit", description: "Network transmit bytes from Intersight telemetry.", unit: "By"},
-		{name: "network_errors", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.errors_network_receive_all", fieldName: "hw.errors_network_receive_all-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.receive.errors", description: "Network receive errors from Intersight telemetry.", unit: "{error}"},
-		{name: "network_tx_errors", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.errors_network_transmit_all", fieldName: "hw.errors_network_transmit_all-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.transmit.errors", description: "Network transmit errors from Intersight telemetry.", unit: "{error}"},
-		{name: "network_rx_crc_errors", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.errors_network_receive_crc", fieldName: "hw.errors_network_receive_crc-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.receive.crc_errors", description: "Network receive CRC errors from Intersight telemetry.", unit: "{error}"},
-		{name: "network_rx_discards", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.errors_network_receive_discard", fieldName: "hw.errors_network_receive_discard-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.receive.discards", description: "Network receive discards from Intersight telemetry.", unit: "{discard}"},
-		{name: "network_rx_no_buffer", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.errors_network_receive_no_buffer", fieldName: "hw.errors_network_receive_no_buffer-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.receive.no_buffer", description: "Network receive no-buffer drops from Intersight telemetry.", unit: "{error}"},
-		{name: "network_rx_drops", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.errors_receive_drops", fieldName: "hw.errors_receive_drops-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.receive.drops", description: "Network receive drops from Intersight telemetry.", unit: "{drop}"},
-		{name: "network_tx_discards", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.errors_network_transmit_discard", fieldName: "hw.errors_network_transmit_discard-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.transmit.discards", description: "Network transmit discards from Intersight telemetry.", unit: "{discard}"},
-		{name: "network_rx_packets", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.network.packets_receive_unicast", fieldName: "hw.network.packets_receive_unicast-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.receive.packets", description: "Network receive packets from Intersight telemetry.", unit: "{packet}"},
-		{name: "network_tx_packets", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.network.packets_transmit_unicast", fieldName: "hw.network.packets_transmit_unicast-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.transmit.packets", description: "Network transmit packets from Intersight telemetry.", unit: "{packet}"},
-		{name: "network_rx_pause_frames", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.errors_network_receive_pause", fieldName: "hw.errors_network_receive_pause-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.receive.pause_frames", description: "Network receive pause frames from Intersight telemetry.", unit: "{frame}"},
-		{name: "network_tx_pause_frames", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.errors_network_transmit_pause", fieldName: "hw.errors_network_transmit_pause-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.transmit.pause_frames", description: "Network transmit pause frames from Intersight telemetry.", unit: "{frame}"},
-		{name: "network_tx_drops", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.errors_transmit_drops", fieldName: "hw.errors_transmit_drops-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.transmit.drops", description: "Network transmit drops from Intersight telemetry.", unit: "{drop}"},
-		{name: "network_utilization", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.network.bandwidth.utilization_all", fieldName: "hw.network.bandwidth.utilization_all-Max", aggregation: "doubleMax", metricName: "intersight.ucs.network.utilization", description: "Network bandwidth utilization from Intersight telemetry.", unit: "%"},
-		{name: "network_link_speed", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.network.bandwidth.limit", fieldName: "hw.network.bandwidth.limit-Max", aggregation: "doubleMax", metricName: "intersight.ucs.network.speed", description: "Network operational link speed from Intersight telemetry.", unit: "By/s"},
+		{name: "memory_correctable_ecc", dataSource: "PhysicalEntities", instrument: "hw.memory", dimensions: []string{"host.name"}, field: "hw.errors_correctable_ecc_errors", fieldName: "hw.errors_correctable_ecc_errors-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.memory.ecc.correctable", description: "Correctable memory ECC errors.", unit: "{error}"},
+		{name: "memory_uncorrectable_ecc", dataSource: "PhysicalEntities", instrument: "hw.memory", dimensions: []string{"host.name"}, field: "hw.errors_uncorrectable_ecc_errors", fieldName: "hw.errors_uncorrectable_ecc_errors-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.memory.ecc.uncorrectable", description: "Uncorrectable memory ECC errors.", unit: "{error}"},
+		{name: "network_rx", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.network.io_receive", fieldName: "hw.network.io_receive-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.receive", description: "Network receive volume from Intersight telemetry.", unit: "By"},
+		{name: "network_tx", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.network.io_transmit", fieldName: "hw.network.io_transmit-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.transmit", description: "Network transmit volume from Intersight telemetry.", unit: "By"},
+		{name: "network_errors", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.errors_network_receive_all", fieldName: "hw.errors_network_receive_all-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.receive.errors", description: "Receive errors from Intersight telemetry.", unit: "{error}"},
+		{name: "network_tx_errors", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.errors_network_transmit_all", fieldName: "hw.errors_network_transmit_all-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.transmit.errors", description: "Transmit errors from Intersight telemetry.", unit: "{error}"},
+		{name: "network_rx_crc_errors", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.errors_network_receive_crc", fieldName: "hw.errors_network_receive_crc-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.receive.crc_errors", description: "Receive CRC errors from Intersight telemetry.", unit: "{error}"},
+		{name: "network_rx_discards", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.errors_network_receive_discard", fieldName: "hw.errors_network_receive_discard-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.receive.discards", description: "Receive discards from Intersight telemetry.", unit: "{discard}"},
+		{name: "network_rx_no_buffer", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.errors_network_receive_no_buffer", fieldName: "hw.errors_network_receive_no_buffer-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.receive.no_buffer", description: "Receive no-buffer errors from Intersight telemetry.", unit: "{error}"},
+		{name: "network_rx_drops", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.errors_receive_drops", fieldName: "hw.errors_receive_drops-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.receive.drops", description: "Receive drops from Intersight telemetry.", unit: "{drop}"},
+		{name: "network_tx_discards", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.errors_network_transmit_discard", fieldName: "hw.errors_network_transmit_discard-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.transmit.discards", description: "Transmit discards from Intersight telemetry.", unit: "{discard}"},
+		{name: "network_rx_packets", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.network.packets_receive_unicast", fieldName: "hw.network.packets_receive_unicast-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.receive.packets", description: "Receive packet volume from Intersight telemetry.", unit: "{packet}"},
+		{name: "network_tx_packets", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.network.packets_transmit_unicast", fieldName: "hw.network.packets_transmit_unicast-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.transmit.packets", description: "Transmit packet volume from Intersight telemetry.", unit: "{packet}"},
+		{name: "network_rx_pause_frames", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.errors_network_receive_pause", fieldName: "hw.errors_network_receive_pause-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.receive.pause_frames", description: "Receive pause frames from Intersight telemetry.", unit: "{frame}"},
+		{name: "network_tx_pause_frames", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.errors_network_transmit_pause", fieldName: "hw.errors_network_transmit_pause-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.transmit.pause_frames", description: "Transmit pause frames from Intersight telemetry.", unit: "{frame}"},
+		{name: "network_tx_drops", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.errors_transmit_drops", fieldName: "hw.errors_transmit_drops-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.transmit.drops", description: "Transmit drops from Intersight telemetry.", unit: "{drop}"},
+		{name: "network_utilization", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.network.bandwidth.utilization_all", fieldName: "hw.network.bandwidth.utilization_all-Max", aggregation: "doubleMax", metricName: "intersight.ucs.network.utilization", description: "Network bandwidth utilization.", unit: "%"},
+		{name: "network_link_speed", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.network.bandwidth.limit", fieldName: "hw.network.bandwidth.limit-Max", aggregation: "doubleMax", metricName: "intersight.ucs.network.speed", description: "Operational link speed.", unit: "By/s"},
 		{name: "network_link_status", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.network.up", fieldName: "hw.network.up-Max", aggregation: "longMax", metricName: "intersight.ucs.network.link.status", description: "Network link status from Intersight telemetry.", unit: "1"},
-		{name: "network_link_failures", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.errors_network_link_failures", fieldName: "hw.errors_network_link_failures-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.link_failures", description: "Network link failures from Intersight telemetry.", unit: "{failure}"},
-		{name: "network_signal_losses", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.errors_network_signal_losses", fieldName: "hw.errors_network_signal_losses-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.signal_losses", description: "Network signal losses from Intersight telemetry.", unit: "{error}"},
-		{name: "network_interface_resets", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.network.interface_resets", fieldName: "hw.network.interface_resets-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.interface_resets", description: "Network interface resets from Intersight telemetry.", unit: "{reset}"},
-		{name: "psu_output_power", dataSource: "PhysicalEntities", instrument: "hw.power_supply", dimensions: []string{"host.name"}, field: "hw.power_out", fieldName: "hw.power_out-Mean", aggregation: "doubleMean", metricName: "intersight.ucs.power_supply.output_power", description: "Power supply output power from Intersight telemetry.", unit: "W"},
-		{name: "psu_utilization", dataSource: "PhysicalEntities", instrument: "hw.power_supply", dimensions: []string{"host.name"}, field: "hw.power_supply.utilization", fieldName: "hw.power_supply.utilization-Max", aggregation: "doubleMax", metricName: "intersight.ucs.power_supply.utilization", description: "Power supply utilization from Intersight telemetry.", unit: "%"},
-		{name: "psu_status", dataSource: "PhysicalEntities", instrument: "hw.power_supply", dimensions: []string{"host.name"}, field: "hw.status", fieldName: "hw.status-Min", aggregation: "longMin", metricName: "intersight.ucs.power_supply.status", description: "Power supply operational status from Intersight telemetry.", unit: "1"},
+		{name: "network_link_failures", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.errors_network_link_failures", fieldName: "hw.errors_network_link_failures-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.link_failures", description: "Link failure counters from Intersight telemetry.", unit: "{failure}"},
+		{name: "network_signal_losses", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.errors_network_signal_losses", fieldName: "hw.errors_network_signal_losses-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.signal_losses", description: "Signal-loss counters from Intersight telemetry.", unit: "{error}"},
+		{name: "network_interface_resets", dataSource: "NetworkInterfaces", instrument: "hw.network", dimensions: []string{"host.name"}, field: "hw.network.interface_resets", fieldName: "hw.network.interface_resets-Sum", aggregation: "doubleSum", metricName: "intersight.ucs.network.interface_resets", description: "Interface reset counters from Intersight telemetry.", unit: "{reset}"},
+		{name: "psu_output_power", dataSource: "PhysicalEntities", instrument: "hw.power_supply", dimensions: []string{"host.name"}, field: "hw.power_out", fieldName: "hw.power_out-Mean", aggregation: "doubleMean", metricName: "intersight.ucs.power_supply.output_power", description: "PSU output power.", unit: "W"},
+		{name: "psu_utilization", dataSource: "PhysicalEntities", instrument: "hw.power_supply", dimensions: []string{"host.name"}, field: "hw.power_supply.utilization", fieldName: "hw.power_supply.utilization-Max", aggregation: "doubleMax", metricName: "intersight.ucs.power_supply.utilization", description: "PSU utilization.", unit: "%"},
+		{name: "psu_status", dataSource: "PhysicalEntities", instrument: "hw.power_supply", dimensions: []string{"host.name"}, field: "hw.status", fieldName: "hw.status-Min", aggregation: "longMin", metricName: "intersight.ucs.power_supply.status", description: "PSU operational status from Intersight telemetry.", unit: "1"},
 		{name: "fan_status", dataSource: "PhysicalEntities", instrument: "hw.fan", dimensions: []string{"host.name"}, field: "hw.status", fieldName: "hw.status-Min", aggregation: "longMin", metricName: "intersight.ucs.fan.status", description: "Fan operational status from Intersight telemetry.", unit: "1"},
 		{name: "memory_status", dataSource: "PhysicalEntities", instrument: "hw.memory", dimensions: []string{"host.name"}, field: "hw.status", fieldName: "hw.status-Min", aggregation: "longMin", metricName: "intersight.ucs.memory.status", description: "Memory module operational status from Intersight telemetry.", unit: "1"},
 		{name: "temperature_status", dataSource: "PhysicalEntities", instrument: "hw.temperature", dimensions: []string{"host.name"}, field: "hw.status", fieldName: "hw.status-Min", aggregation: "longMin", metricName: "intersight.ucs.temperature.status", description: "Temperature sensor operational status from Intersight telemetry.", unit: "1"},
-		{name: "signal_power_rx", dataSource: "PhysicalEntities", instrument: "hw.signal_power", dimensions: []string{"host.name"}, field: "hw.signal_power_receive", fieldName: "hw.signal_power_receive-Mean", aggregation: "doubleMean", metricName: "intersight.ucs.signal_power.receive", description: "Transceiver receive signal power from Intersight telemetry.", unit: "dBm"},
-		{name: "signal_power_tx", dataSource: "PhysicalEntities", instrument: "hw.signal_power", dimensions: []string{"host.name"}, field: "hw.signal_power_transmit", fieldName: "hw.signal_power_transmit-Mean", aggregation: "doubleMean", metricName: "intersight.ucs.signal_power.transmit", description: "Transceiver transmit signal power from Intersight telemetry.", unit: "dBm"},
-		{name: "hyperflex_read_iops", dataSource: "HyperFlexClusters", instrument: "hyperflex.cluster", dimensions: []string{"deviceId"}, field: "hyperflex.read.iops", fieldName: "hyperflex.read.iops-Sum", aggregation: "doubleSum", metricName: "intersight.hyperflex.read.iops", description: "HyperFlex read IOPS from Intersight telemetry.", unit: "{operation}/s"},
-		{name: "hyperflex_write_iops", dataSource: "HyperFlexClusters", instrument: "hyperflex.cluster", dimensions: []string{"deviceId"}, field: "hyperflex.write.iops", fieldName: "hyperflex.write.iops-Sum", aggregation: "doubleSum", metricName: "intersight.hyperflex.write.iops", description: "HyperFlex write IOPS from Intersight telemetry.", unit: "{operation}/s"},
-		{name: "hyperflex_read_latency", dataSource: "HyperFlexClusters", instrument: "hyperflex.cluster", dimensions: []string{"deviceId"}, field: "hyperflex.read.latency", fieldName: "hyperflex.read.latency-Max", aggregation: "doubleMax", metricName: "intersight.hyperflex.read.latency", description: "HyperFlex read latency from Intersight telemetry.", unit: "ms"},
-		{name: "hyperflex_write_latency", dataSource: "HyperFlexClusters", instrument: "hyperflex.cluster", dimensions: []string{"deviceId"}, field: "hyperflex.write.latency", fieldName: "hyperflex.write.latency-Max", aggregation: "doubleMax", metricName: "intersight.hyperflex.write.latency", description: "HyperFlex write latency from Intersight telemetry.", unit: "ms"},
+		{name: "signal_power_rx", dataSource: "PhysicalEntities", instrument: "hw.signal_power", dimensions: []string{"host.name"}, field: "hw.signal_power_receive", fieldName: "hw.signal_power_receive-Mean", aggregation: "doubleMean", metricName: "intersight.ucs.signal_power.receive", description: "Transceiver receive optical power.", unit: "dB{mW}"},
+		{name: "signal_power_tx", dataSource: "PhysicalEntities", instrument: "hw.signal_power", dimensions: []string{"host.name"}, field: "hw.signal_power_transmit", fieldName: "hw.signal_power_transmit-Mean", aggregation: "doubleMean", metricName: "intersight.ucs.signal_power.transmit", description: "Transceiver transmit optical power.", unit: "dB{mW}"},
+		{name: "hyperflex_read_iops", dataSource: "HyperFlexClusters", instrument: "hyperflex.cluster", dimensions: []string{"deviceId"}, field: "hyperflex.read.iops", fieldName: "hyperflex.read.iops-Sum", aggregation: "doubleSum", metricName: "intersight.hyperflex.read.iops", description: "HyperFlex read IOPS.", unit: "{operation}/s"},
+		{name: "hyperflex_write_iops", dataSource: "HyperFlexClusters", instrument: "hyperflex.cluster", dimensions: []string{"deviceId"}, field: "hyperflex.write.iops", fieldName: "hyperflex.write.iops-Sum", aggregation: "doubleSum", metricName: "intersight.hyperflex.write.iops", description: "HyperFlex write IOPS.", unit: "{operation}/s"},
+		{name: "hyperflex_read_latency", dataSource: "HyperFlexClusters", instrument: "hyperflex.cluster", dimensions: []string{"deviceId"}, field: "hyperflex.read.latency", fieldName: "hyperflex.read.latency-Max", aggregation: "doubleMax", metricName: "intersight.hyperflex.read.latency", description: "HyperFlex read latency.", unit: "ms"},
+		{name: "hyperflex_write_latency", dataSource: "HyperFlexClusters", instrument: "hyperflex.cluster", dimensions: []string{"deviceId"}, field: "hyperflex.write.latency", fieldName: "hyperflex.write.latency-Max", aggregation: "doubleMax", metricName: "intersight.hyperflex.write.latency", description: "HyperFlex write latency.", unit: "ms"},
 	}
 }
 

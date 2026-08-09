@@ -2,7 +2,7 @@
   "schema": "com.cisco.opentelemetry.ciscoosreceiver.splunk-o11y.dashboard-bundle/v1",
   "group": {
     "name": "Cisco OS Receiver",
-    "description": "Dashboard group for Cisco OS receiver metrics in Splunk Observability Cloud. It includes an overview landing page plus focused pages for telemetry health, interfaces, routing/fabric/redundancy, AI/RDMA/QoS congestion, hardware/optics, secure networking, and campus networking troubleshooting."
+    "description": "Dashboard group for Cisco OS receiver metrics in Splunk Observability Cloud. It includes an overview landing page plus focused pages for telemetry health, interfaces, routing/fabric/redundancy, AI/RDMA/QoS congestion, hardware/optics, secure networking, campus networking, and shared-gNMI product-contract operational troubleshooting."
   },
   "default_time_range_ms": 3600000,
   "default_tags": [
@@ -17,6 +17,7 @@
       {"property": "network.interface.name", "alias": "Interface", "description": "Network interface name.", "applyIfExists": true},
       {"property": "cisco.fabric.name", "alias": "Fabric", "description": "Cisco fabric name.", "applyIfExists": true},
       {"property": "cisco.site.name", "alias": "Site", "description": "Cisco site name.", "applyIfExists": true},
+      {"property": "cisco.product.family", "alias": "Product Family", "description": "Verified shared-gNMI Cisco product family.", "applyIfExists": true},
       {"property": "host.id", "alias": "Host ID", "description": "Stable Cisco host identifier.", "applyIfExists": true},
       {"property": "cisco.switch.serial", "alias": "Switch Serial", "description": "Cisco switch serial number.", "applyIfExists": true}
     ]
@@ -1440,7 +1441,7 @@
         {
           "name": "Campus Utilization Traffic And Packet Rate",
           "description": "Value: shows wired campus saturation, sudden silence, and packet-rate pressure. Interpretation: sustained high utilization, high packet rate, or asymmetric traffic can explain user impact even when links stay up.",
-          "signalflow": "data('cisco.interface.utilization').mean(by=['host.name', 'network.interface.name', 'network.io.direction']).scale(100).publish(label='Cisco utilization %'); data('system.network.io', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Cisco bytes/sec'); data('cisco.interface.packet.rate').mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Cisco packets/sec'); data('cisco.interface.utilization', filter=filter('os.name', 'Meraki')).mean(by=['host.name', 'host.id', 'network.interface.name', 'network.io.direction']).scale(100).publish(label='Meraki utilization %'); data('meraki.switch.port.usage').sum(by=['host.name', 'host.id', 'network.interface.name', 'network.io.direction']).publish(label='Meraki usage KBy')",
+          "signalflow": "data('cisco.interface.utilization').mean(by=['host.name', 'network.interface.name', 'network.io.direction']).scale(100).publish(label='Cisco utilization %'); data('system.network.io', filter=filter('hw.type', 'network')).rate().sum(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Cisco bytes/sec'); data('cisco.interface.packet.rate').mean(by=['host.name', 'network.interface.name', 'network.io.direction']).publish(label='Cisco packets/sec'); data('cisco.interface.utilization', filter=filter('os.name', 'Meraki')).mean(by=['host.name', 'host.id', 'network.interface.name', 'network.io.direction']).scale(100).publish(label='Meraki utilization %'); data('meraki.switch.port.usage').sum(by=['host.name', 'host.id', 'network.interface.name', 'network.io.direction']).publish(label='Meraki usage kBy')",
           "legend_dimension": "network.interface.name"
         },
         {
@@ -1482,6 +1483,90 @@
           "description": "Value: ties endpoint power and physical health to campus symptoms. Interpretation: PoE allocation changes, failed power modules, optical drift, or hot optics explain phones, APs, cameras, or uplinks failing without a routing incident.",
           "signalflow": "data('meraki.switch.port.poe.allocated').mean(by=['host.name', 'host.id', 'network.interface.name']).publish(label='PoE allocated W'); data('meraki.power.module.status').mean(by=['host.name', 'host.id', 'meraki.power.slot', 'meraki.power.module.status']).publish(label='Power module status'); data('cisco.transceiver.sensor', filter=filter('cisco.transceiver.sensor', 'rx_power')).mean(by=['host.name', 'network.interface.name', 'cisco.transceiver.lane']).publish(label='RX optical power dBm'); data('cisco.transceiver.sensor', filter=filter('cisco.transceiver.sensor', 'temperature')).mean(by=['host.name', 'network.interface.name', 'cisco.transceiver.lane']).publish(label='Optic temperature C')",
           "legend_dimension": "network.interface.name"
+        }
+      ]
+    },
+    {
+      "name": "08 Shared gNMI Operational Health",
+      "description": "Value: proves shared-gNMI session preflight, stream delivery, profile health, decode quality, and retained-state capacity before operators trust device telemetry; it does not establish retained live-device qualification.",
+      "value": "Use this compact operational page to distinguish product-contract or release preflight failures from transport, authentication, subscription, decode, downstream delivery, and cache-pressure failures for the seven implemented shared-gNMI product contracts. Dashboard success is operational evidence for one session, not proof that an exact device build or topology is live-qualified.",
+      "chart_density": "HIGH",
+      "filters": {
+        "variables": [
+          {"property": "cisco.gnmi.target", "alias": "gNMI Target", "description": "Static shared-gNMI target name.", "applyIfExists": true},
+          {"property": "cisco.gnmi.profile", "alias": "gNMI Profile", "description": "Shared-gNMI subscription profile.", "applyIfExists": true}
+        ]
+      },
+      "charts": [
+        {
+          "type": "Text",
+          "name": "Value Provided",
+          "description": "Value: explains how to qualify shared-gNMI evidence before using device metrics. Interpretation: read qualification and connection state first, then freshness, degradation, decode quality, and cache capacity to identify the failing layer.",
+          "markdown": "## Shared gNMI Operational Health\nUse this page before trusting normalized shared-gNMI device metrics. Product verification must be 1, preflight failures and profile degradation must remain zero, required subscriptions must be active, the last-success timestamp must advance, and cache utilization must stay below saturation.\n\nThe Catalyst 9300/9500 contract accepts exact IOS XE 17.18.1 in INSTALL mode only. These signals prove the running session passed its implemented contract; they do not replace retained exact-build, physical-topology, security-posture, scale, and backend-delivery qualification. Catalyst 9300/9500 inventory reporting one chassis group does not by itself prove standalone topology.\n\nThe Product Family filter scopes verified device telemetry elsewhere in this dashboard group. Use the gNMI Target and gNMI Profile filters on this page to isolate collector self-telemetry for one configured target or subscription profile.",
+          "width": 12,
+          "height": 2
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Product Qualification",
+          "description": "Value: shows whether each target passed the configured product, chassis, release, model/version, encoding, and required boot-mode contract. Interpretation: verified must be 1; a preflight failure rate identifies the bounded reason that quarantined a target before subscriptions started. This session preflight is not retained physical-device qualification.",
+          "signalflow": "data('otelcol_ciscoosreceiver_gnmi_product_verified').mean(by=['cisco.gnmi.target']).publish(label='Product verified'); data('otelcol_ciscoosreceiver_gnmi_preflight_failures').rate().sum(by=['cisco.gnmi.target', 'cisco.gnmi.reason']).publish(label='Preflight failures/sec')",
+          "legend_dimension": "cisco.gnmi.target"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Connections And Subscriptions",
+          "description": "Value: confirms that qualified targets have an established connection and the expected profile streams. Interpretation: a verified target with zero connections indicates transport or authentication failure; zero for one profile isolates subscription admission or compatibility failure.",
+          "signalflow": "data('otelcol_ciscoosreceiver_gnmi_connections').mean(by=['cisco.gnmi.target']).publish(label='Connections'); data('otelcol_ciscoosreceiver_gnmi_subscriptions').mean(by=['cisco.gnmi.target', 'cisco.gnmi.profile']).publish(label='Subscriptions')",
+          "legend_dimension": "cisco.gnmi.target"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Last Successful Notification",
+          "description": "Value: exposes the Unix timestamp of the most recent successfully decoded notification by target and profile. Interpretation: the timestamp must continue advancing; a flat or old value with an active subscription indicates silent delivery, decode, or downstream-consumer trouble.",
+          "signalflow": "data('otelcol_ciscoosreceiver_gnmi_last_success_unixtime').max(by=['cisco.gnmi.target', 'cisco.gnmi.profile']).publish(label='Last success')",
+          "legend_dimension": "cisco.gnmi.target"
+        },
+        {
+          "name": "Decoded Update Throughput",
+          "description": "Value: shows successfully decoded leaf-update throughput by target and profile. Interpretation: an unexpected drop to zero while subscriptions remain active indicates a silent source stream, path incompatibility, decode failure, or stale device telemetry.",
+          "signalflow": "data('otelcol_ciscoosreceiver_gnmi_updates').rate().sum(by=['cisco.gnmi.target', 'cisco.gnmi.profile']).publish(label='Updates/sec')",
+          "legend_dimension": "cisco.gnmi.target"
+        },
+        {
+          "type": "List",
+          "secondary_visualization": "Sparkline",
+          "name": "Profile Degradation",
+          "description": "Value: identifies subscription profiles intentionally degraded after bounded path, request-option, bisection, or cache safeguards activate. Interpretation: healthy is 0; any 1 should be investigated by target, profile, and reason before treating that profile as complete coverage.",
+          "signalflow": "data('otelcol_ciscoosreceiver_gnmi_profile_degraded').max(by=['cisco.gnmi.target', 'cisco.gnmi.profile', 'cisco.gnmi.reason']).publish(label='Profile degraded')",
+          "legend_dimension": "cisco.gnmi.target"
+        },
+        {
+          "name": "Transport Decode And Delivery Failures",
+          "description": "Value: separates transport churn and rejected credentials from notification decoding and downstream-consumer refusal. Interpretation: rising reconnect or authentication rates point upstream; decode errors identify device payload incompatibility, while consumer refusals identify backpressure after decoding.",
+          "signalflow": "data('otelcol_ciscoosreceiver_gnmi_reconnects').rate().sum(by=['cisco.gnmi.target']).publish(label='Reconnects/sec'); data('otelcol_ciscoosreceiver_gnmi_authentication_failures').rate().sum(by=['cisco.gnmi.target']).publish(label='Authentication failures/sec'); data('otelcol_ciscoosreceiver_gnmi_decode_errors').rate().sum(by=['cisco.gnmi.target', 'cisco.gnmi.profile']).publish(label='Decode errors/sec'); data('otelcol_ciscoosreceiver_gnmi_consumer_refusals').rate().sum(by=['cisco.gnmi.target', 'cisco.gnmi.profile']).publish(label='Consumer refusals/sec')",
+          "legend_dimension": "cisco.gnmi.target"
+        },
+        {
+          "name": "Mapping Timestamp And Ordering Quality",
+          "description": "Value: surfaces decoded values without stable mappings, safely ignored non-scalar value kinds, invalid or excessively future-dated timestamps rejected before cache mutation, and stale cache operations suppressed by source-timestamp ordering. Interpretation: sustained rates mean telemetry is arriving but its model, value shape, clock quality, or delivery order is reducing usable coverage.",
+          "signalflow": "data('otelcol_ciscoosreceiver_gnmi_unmapped_values').rate().sum(by=['cisco.gnmi.target', 'cisco.gnmi.profile']).publish(label='Unmapped values/sec'); data('otelcol_ciscoosreceiver_gnmi_unsupported_value_kinds').rate().sum(by=['cisco.gnmi.target', 'cisco.gnmi.profile', 'cisco.gnmi.value_kind']).publish(label='Unsupported values/sec'); data('otelcol_ciscoosreceiver_gnmi_invalid_timestamps').rate().sum(by=['cisco.gnmi.target', 'cisco.gnmi.profile']).publish(label='Invalid timestamps/sec'); data('otelcol_ciscoosreceiver_gnmi_out_of_order_updates').rate().sum(by=['cisco.gnmi.target', 'cisco.gnmi.profile']).publish(label='Out-of-order updates/sec')",
+          "legend_dimension": "cisco.gnmi.target"
+        },
+        {
+          "name": "Retained State Capacity",
+          "description": "Value: shows the larger of entry and byte utilization for each target's primary cache and auxiliary-state partition. Interpretation: sustained values near 100 percent indicate cardinality or structural-state pressure and can precede cache-limit profile degradation.",
+          "signalflow": "data('otelcol_ciscoosreceiver_gnmi_cache_utilization').max(by=['cisco.gnmi.target']).scale(100).publish(label='Cache utilization %'); data('otelcol_ciscoosreceiver_gnmi_auxiliary_state_utilization').max(by=['cisco.gnmi.target']).scale(100).publish(label='Auxiliary state utilization %')",
+          "legend_dimension": "cisco.gnmi.target"
+        },
+        {
+          "name": "Retained State Activity",
+          "description": "Value: shows deletes applied, duplicate updates suppressed, and owner-scoped resets required before updates-only reconnects. Interpretation: bursts can explain abrupt state changes; repeated owner resets identify streams that reconnect without a safe initial snapshot.",
+          "signalflow": "data('otelcol_ciscoosreceiver_gnmi_deletes').rate().sum(by=['cisco.gnmi.target', 'cisco.gnmi.profile']).publish(label='Deletes/sec'); data('otelcol_ciscoosreceiver_gnmi_duplicate_updates').rate().sum(by=['cisco.gnmi.target', 'cisco.gnmi.profile']).publish(label='Duplicate updates/sec'); data('otelcol_ciscoosreceiver_gnmi_cache_owner_resets').rate().sum(by=['cisco.gnmi.target', 'cisco.gnmi.profile']).publish(label='Cache owner resets/sec')",
+          "legend_dimension": "cisco.gnmi.target"
         }
       ]
     }

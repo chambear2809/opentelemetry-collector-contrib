@@ -64,8 +64,10 @@ func TestIOSXRDialInReceiverSubscribesAndConsumesGNMI(t *testing.T) {
 	target = target.withDefaults(cfg)
 
 	require.NoError(t, receiver.subscribeTarget(t.Context(), target))
-	data := metricsBatchWithName(t, sink.AllMetrics(), "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets")
-	assertMetricExists(t, data, "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets")
+	metricName := mustDynamicYANGName(t, "cisco.iosxr.yang", "openconfig-interfaces",
+		[]string{"interfaces", "interface", "state", "counters", "in-octets"}, dynamicYANGMetricVariantNumber)
+	data := metricsBatchWithName(t, sink.AllMetrics(), metricName)
+	assertMetricExists(t, data, metricName)
 	snapshot := receiver.health.snapshotForTarget("xr-1")
 	assert.Equal(t, int64(0), snapshot.activeSubscriptions)
 	assert.False(t, snapshot.targetActive)
@@ -82,7 +84,10 @@ func TestIOSXRDialInReceiverSubscribesAndConsumesGNMI(t *testing.T) {
 	assert.Equal(t, gnmi.Encoding_JSON_IETF, subscribe.Encoding)
 	assert.Equal(t, gnmi.SubscriptionList_ONCE, subscribe.Mode)
 	require.Len(t, subscribe.Subscription, 1)
-	assert.Equal(t, gnmi.SubscriptionMode_SAMPLE, subscribe.Subscription[0].Mode)
+	assert.Equal(t, gnmi.SubscriptionMode_TARGET_DEFINED, subscribe.Subscription[0].Mode)
+	assert.Zero(t, subscribe.Subscription[0].SampleInterval)
+	assert.Zero(t, subscribe.Subscription[0].HeartbeatInterval)
+	assert.False(t, subscribe.Subscription[0].SuppressRedundant)
 	assert.Equal(t, "admin", firstMetadataValue(fake.capabilitiesMD, "username"))
 	assert.Equal(t, "password", firstMetadataValue(fake.subscribeMD, "password"))
 }
@@ -126,7 +131,9 @@ func TestIOSXRDialInReceiverPollWaitsForInitialSync(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	require.NoError(t, receiver.subscribeTarget(ctx, target))
-	_ = metricsBatchWithName(t, sink.AllMetrics(), "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets")
+	metricName := mustDynamicYANGName(t, "cisco.iosxr.yang", "openconfig-interfaces",
+		[]string{"interfaces", "interface", "state", "counters", "in-octets"}, dynamicYANGMetricVariantNumber)
+	_ = metricsBatchWithName(t, sink.AllMetrics(), metricName)
 	assert.Equal(t, int64(0), receiver.health.snapshot().activeSubscriptions)
 
 	fake.mu.Lock()
@@ -140,12 +147,13 @@ func TestIOSXRDialInReceiverPollWaitsForInitialSync(t *testing.T) {
 }
 
 func TestIOSXRDialInReceiverOnceRequiresCleanEOF(t *testing.T) {
+	const remoteStatusMessage = "device-echoed password=legacy-runtime-secret"
 	fake := &fakeGNMIServer{
 		caps: &gnmi.CapabilityResponse{
 			SupportedModels:    []*gnmi.ModelData{{Name: "openconfig-interfaces"}},
 			SupportedEncodings: []gnmi.Encoding{gnmi.Encoding_JSON_IETF},
 		},
-		afterSyncErr: status.Error(codes.PermissionDenied, "post-sync authorization failure"),
+		afterSyncErr: status.Error(codes.PermissionDenied, remoteStatusMessage),
 	}
 	endpoint := startFakeGNMIServer(t, fake)
 
@@ -172,6 +180,9 @@ func TestIOSXRDialInReceiverOnceRequiresCleanEOF(t *testing.T) {
 	err := receiver.subscribeTarget(t.Context(), target)
 	require.Error(t, err)
 	assert.Equal(t, codes.PermissionDenied, status.Code(err))
+	assert.ErrorContains(t, err, "code=PermissionDenied")
+	assert.NotContains(t, err.Error(), "device-echoed")
+	assert.NotContains(t, err.Error(), "legacy-runtime-secret")
 }
 
 func TestIOSXRDialInReceiverReturnsConsumerRefusal(t *testing.T) {
@@ -236,9 +247,10 @@ func TestIOSXRDialInReceiverShutdownJoinsLegacySessionReader(t *testing.T) {
 		Subscription: IOSXRSubscriptionConfig{Mode: iosXRSubscribeModeStream},
 	}.withDefaults(cfg)
 	next := &releaseBlockingMetricsConsumer{
-		metricName: "cisco.iosxr.yang.openconfig_interfaces.interfaces.interface.state.counters.in_octets",
-		started:    make(chan struct{}),
-		release:    make(chan struct{}),
+		metricName: mustDynamicYANGName(t, "cisco.iosxr.yang", "openconfig-interfaces",
+			[]string{"interfaces", "interface", "state", "counters", "in-octets"}, dynamicYANGMetricVariantNumber),
+		started: make(chan struct{}),
+		release: make(chan struct{}),
 	}
 	t.Cleanup(next.Release)
 	receiver := &iosXRDialInReceiver{
@@ -376,17 +388,18 @@ func TestIOSXREncodingNegotiation(t *testing.T) {
 }
 
 func TestBuildIOSXRSubscribeRequestModesAndGuardrails(t *testing.T) {
+	heartbeat := 10 * time.Second
 	req := buildIOSXRSubscribeRequest(IOSXRSubscriptionConfig{
 		Mode:              iosXRSubscribeModePoll,
 		StreamMode:        iosXRStreamModeTargetDefined,
 		SampleInterval:    30 * time.Second,
-		HeartbeatInterval: 10 * time.Second,
+		HeartbeatInterval: &heartbeat,
 		SuppressRedundant: configoptional.Some(true),
 		UpdatesOnly:       configoptional.Some(true),
 		AllowAggregation:  configoptional.Some(true),
 	}, []iosXRPathDefinition{
 		{ID: "oc", Path: "openconfig-interfaces:interfaces/interface/state", MinSampleInterval: time.Minute},
-		{ID: "native", Path: "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/latest/generic-counters", MinSampleInterval: time.Minute},
+		{ID: "native", Path: "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/generic-counters", MinSampleInterval: time.Minute},
 	}, gnmi.Encoding_JSON)
 
 	subscribe := req.GetSubscribe()
@@ -397,20 +410,25 @@ func TestBuildIOSXRSubscribeRequestModesAndGuardrails(t *testing.T) {
 	assert.True(t, subscribe.AllowAggregation)
 	require.Len(t, subscribe.Subscription, 2)
 	assert.Equal(t, gnmi.SubscriptionMode_TARGET_DEFINED, subscribe.Subscription[0].Mode)
-	assert.Equal(t, gnmi.SubscriptionMode_SAMPLE, subscribe.Subscription[1].Mode)
-	assert.Equal(t, uint64(time.Minute.Nanoseconds()), subscribe.Subscription[0].SampleInterval)
-	assert.Equal(t, uint64((10 * time.Second).Nanoseconds()), subscribe.Subscription[0].HeartbeatInterval)
-	assert.True(t, subscribe.Subscription[0].SuppressRedundant)
+	assert.Equal(t, gnmi.SubscriptionMode_TARGET_DEFINED, subscribe.Subscription[1].Mode)
+	for _, subscription := range subscribe.Subscription {
+		assert.Zero(t, subscription.SampleInterval)
+		assert.Zero(t, subscription.HeartbeatInterval)
+		assert.False(t, subscription.SuppressRedundant)
+	}
 }
 
 func TestBuildIOSXRSubscribeRequestPathDefaultStreamModeOverrides(t *testing.T) {
+	heartbeat := 10 * time.Second
 	req := buildIOSXRSubscribeRequest(IOSXRSubscriptionConfig{
-		Mode:           iosXRSubscribeModeStream,
-		StreamMode:     iosXRStreamModeSample,
-		SampleInterval: 30 * time.Second,
+		Mode:              iosXRSubscribeModeStream,
+		StreamMode:        iosXRStreamModeSample,
+		SampleInterval:    30 * time.Second,
+		HeartbeatInterval: &heartbeat,
+		SuppressRedundant: configoptional.Some(true),
 	}, []iosXRPathDefinition{
 		{ID: "alarms", Path: "Cisco-IOS-XR-alarmgr-server-oper:alarms", DefaultStreamMode: iosXRStreamModeOnChange},
-		{ID: "counters", Path: "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/latest/generic-counters"},
+		{ID: "counters", Path: "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/generic-counters"},
 	}, gnmi.Encoding_JSON)
 
 	subscribe := req.GetSubscribe()
@@ -418,8 +436,50 @@ func TestBuildIOSXRSubscribeRequestPathDefaultStreamModeOverrides(t *testing.T) 
 	require.Len(t, subscribe.Subscription, 2)
 	// Per-path catalog DefaultStreamMode wins over the global sample default.
 	assert.Equal(t, gnmi.SubscriptionMode_ON_CHANGE, subscribe.Subscription[0].Mode)
+	assert.Zero(t, subscribe.Subscription[0].SampleInterval)
+	assert.Equal(t, uint64(heartbeat.Nanoseconds()), subscribe.Subscription[0].HeartbeatInterval)
+	assert.False(t, subscribe.Subscription[0].SuppressRedundant)
 	// Path with no catalog default falls back to the global stream_mode.
 	assert.Equal(t, gnmi.SubscriptionMode_SAMPLE, subscribe.Subscription[1].Mode)
+	assert.Equal(t, uint64((30 * time.Second).Nanoseconds()), subscribe.Subscription[1].SampleInterval)
+	assert.Equal(t, uint64(heartbeat.Nanoseconds()), subscribe.Subscription[1].HeartbeatInterval)
+	assert.True(t, subscribe.Subscription[1].SuppressRedundant)
+}
+
+func TestBuildIOSXRSubscribeRequestTargetDefinedOmitsTimingFields(t *testing.T) {
+	heartbeat := 10 * time.Second
+	req := buildIOSXRSubscribeRequest(IOSXRSubscriptionConfig{
+		Mode:              iosXRSubscribeModeStream,
+		StreamMode:        iosXRStreamModeTargetDefined,
+		SampleInterval:    30 * time.Second,
+		HeartbeatInterval: &heartbeat,
+		SuppressRedundant: configoptional.Some(true),
+	}, []iosXRPathDefinition{{
+		ID:                "interfaces.oc",
+		Path:              "openconfig-interfaces:interfaces/interface/state",
+		MinSampleInterval: time.Minute,
+	}}, gnmi.Encoding_JSON_IETF)
+
+	subscribe := req.GetSubscribe()
+	require.NotNil(t, subscribe)
+	require.Len(t, subscribe.Subscription, 1)
+	assert.Equal(t, gnmi.SubscriptionMode_TARGET_DEFINED, subscribe.Subscription[0].Mode)
+	assert.Zero(t, subscribe.Subscription[0].SampleInterval)
+	assert.Zero(t, subscribe.Subscription[0].HeartbeatInterval)
+	assert.False(t, subscribe.Subscription[0].SuppressRedundant)
+}
+
+func TestBuildIOSXRSubscribeRequestDefaultDoesNotForceHeartbeat(t *testing.T) {
+	req := buildIOSXRSubscribeRequest(defaultIOSXRSubscriptionConfig(), []iosXRPathDefinition{{
+		ID:                "interfaces.counters",
+		Path:              "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/generic-counters",
+		MinSampleInterval: time.Minute,
+	}}, gnmi.Encoding_JSON_IETF)
+
+	subscribe := req.GetSubscribe()
+	require.NotNil(t, subscribe)
+	require.Len(t, subscribe.Subscription, 1)
+	assert.Zero(t, subscribe.Subscription[0].HeartbeatInterval)
 }
 
 func TestDirectGNMIRetryDelayIsBoundedExponentialWithJitter(t *testing.T) {
@@ -503,7 +563,9 @@ func metricGaugeValueExists(batches []pmetric.Metrics, name string, expected flo
 					}
 					dps := metric.Gauge().DataPoints()
 					for l := 0; l < dps.Len(); l++ {
-						if dps.At(l).DoubleValue() == expected {
+						dp := dps.At(l)
+						if (dp.ValueType() == pmetric.NumberDataPointValueTypeDouble && dp.DoubleValue() == expected) ||
+							(dp.ValueType() == pmetric.NumberDataPointValueTypeInt && float64(dp.IntValue()) == expected) {
 							return true
 						}
 					}

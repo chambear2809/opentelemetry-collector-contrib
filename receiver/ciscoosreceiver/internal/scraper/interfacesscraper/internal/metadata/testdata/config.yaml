@@ -70,7 +70,7 @@ all_set:
       enabled: true
     cisco.topology.neighbor.info:
       enabled: true
-      attributes: ["cisco.topology.protocol","network.interface.name","cisco.topology.neighbor.name","cisco.topology.neighbor.interface","cisco.topology.neighbor.platform","cisco.topology.neighbor.address"]
+      attributes: ["cisco.topology.protocol","network.interface.name","cisco.topology.neighbor.name","cisco.topology.neighbor.interface","cisco.topology.neighbor.platform","cisco.topology.neighbor.address","network.peer.name","network.peer.address","network.protocol.name"]
     cisco.transceiver.sensor:
       enabled: true
       attributes: ["network.interface.name","cisco.transceiver.sensor","cisco.transceiver.lane","cisco.transceiver.sensor.unit"]
@@ -292,7 +292,7 @@ none_set:
       enabled: false
     cisco.topology.neighbor.info:
       enabled: false
-      attributes: ["cisco.topology.protocol","network.interface.name","cisco.topology.neighbor.name","cisco.topology.neighbor.interface","cisco.topology.neighbor.platform","cisco.topology.neighbor.address"]
+      attributes: ["cisco.topology.protocol","network.interface.name","cisco.topology.neighbor.name","cisco.topology.neighbor.interface","cisco.topology.neighbor.platform","cisco.topology.neighbor.address","network.peer.name","network.peer.address","network.protocol.name"]
     cisco.transceiver.sensor:
       enabled: false
       attributes: ["network.interface.name","cisco.transceiver.sensor","cisco.transceiver.lane","cisco.transceiver.sensor.unit"]
