@@ -71,8 +71,7 @@ data:
                 identity:
                   enabled: true
                 system:
-                  # NX-OS has no schema-qualified system profile in the supported trains.
-                  enabled: false
+                  enabled: true
                 interfaces:
                   enabled: true
                 optics:

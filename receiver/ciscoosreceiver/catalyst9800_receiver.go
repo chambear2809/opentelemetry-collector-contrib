@@ -107,9 +107,6 @@ func newCatalyst9800DialOutReceiver(set receiver.Settings, cfg Catalyst9800Confi
 	if admissionErr := configureHardenedYangGRPCStreamAdmission(yangCfg, maxStreamsPerClient); admissionErr != nil {
 		return nil, fmt.Errorf("configure Catalyst 9800 dial-out global stream admission: %w", admissionErr)
 	}
-	if idleErr := configureHardenedYangGRPCStreamIdleTimeout(yangCfg, cfg.DialOut.StreamIdleTimeout); idleErr != nil {
-		return nil, fmt.Errorf("configure Catalyst 9800 dial-out stream idle timeout: %w", idleErr)
-	}
 	modulePaths := append([]string(nil), cfg.DialOut.ModulePaths...)
 	yangCfg.YANG.ModulePaths = modulePaths
 	middlewareID, middleware, err := configureGNMIDialOutSecurity(
@@ -268,17 +265,16 @@ func (r *catalyst9800DialInReceiver) subscribeTargetAttempt(ctx context.Context,
 	defer r.setTargetSubscriptionActive(ctx, target, false)
 
 	err := legacyGNMISession{
-		settings:                     r.settings,
-		host:                         r.host,
-		clientConfig:                 target.ClientConfig,
-		username:                     target.Credentials.Username,
-		password:                     string(target.Credentials.Password),
-		skipCapabilities:             target.SkipCapabilities,
-		pollInterval:                 interval,
-		targetName:                   target.Name,
-		onceCloseLog:                 "Catalyst 9800 gNMI once close send failed",
-		insecureSkipVerifyConfigPath: "catalyst_9800.dial_in.targets[].tls.insecure_skip_verify",
-		responseAdmission:            legacyGNMIResponseAdmission(r.processing),
+		settings:          r.settings,
+		host:              r.host,
+		clientConfig:      target.ClientConfig,
+		username:          target.Credentials.Username,
+		password:          string(target.Credentials.Password),
+		skipCapabilities:  target.SkipCapabilities,
+		pollInterval:      interval,
+		targetName:        target.Name,
+		onceCloseLog:      "Catalyst 9800 gNMI once close send failed",
+		responseAdmission: legacyGNMIResponseAdmission(r.processing),
 		onSubscribed: func() {
 			r.setTargetSubscriptionActive(ctx, target, true)
 		},

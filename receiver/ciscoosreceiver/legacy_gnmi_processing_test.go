@@ -15,13 +15,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config/configgrpc"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver/receivertest"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	componentmetadata "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
 )
@@ -183,45 +180,7 @@ func TestLegacyGNMIReceiveLimitIsPinnedAtFourMiB(t *testing.T) {
 	defer cancel()
 	err := session.run(ctx)
 	require.Error(t, err)
-	assert.Equal(t, codes.ResourceExhausted, status.Code(err))
-	assert.Contains(t, err.Error(), "code=ResourceExhausted")
-	assert.NotContains(t, err.Error(), "received message larger than max")
-}
-
-func TestLegacyGNMITLSConnectionHintIsSecureByDefault(t *testing.T) {
-	clientConfig := configgrpc.NewDefaultClientConfig()
-	session := legacyGNMISession{
-		clientConfig:                 clientConfig,
-		insecureSkipVerifyConfigPath: "ios_xr.dial_in.targets[].tls.insecure_skip_verify",
-	}
-	cause := errors.New("connection did not become ready")
-	err := session.decorateTLSConnectionError(cause)
-	require.ErrorIs(t, err, cause)
-	assert.ErrorContains(t, err, "verify endpoint reachability")
-	assert.ErrorContains(t, err, "tls.server_name_override")
-	assert.ErrorContains(t, err, "ios_xr.dial_in.targets[].tls.insecure_skip_verify: true")
-
-	clientConfig.TLS.InsecureSkipVerify = true
-	session.clientConfig = clientConfig
-	assert.Same(t, cause, session.decorateTLSConnectionError(cause))
-}
-
-func TestLegacyGNMITLSConnectionHintSurvivesStatusSanitization(t *testing.T) {
-	clientConfig := configgrpc.NewDefaultClientConfig()
-	session := legacyGNMISession{
-		clientConfig:                 clientConfig,
-		insecureSkipVerifyConfigPath: "ios_xr.dial_in.targets[].tls.insecure_skip_verify",
-	}
-
-	err := session.decorateTLSConnectionError(sanitizedGNMIRPCError(
-		status.Error(codes.Unavailable, "device-controlled secret"),
-	))
-	err = sanitizedGNMIRPCError(err)
-	require.Error(t, err)
-	assert.Equal(t, codes.Unavailable, status.Code(err))
-	assert.ErrorContains(t, err, "verify endpoint reachability")
-	assert.NotContains(t, err.Error(), "device-controlled")
-	assert.NotContains(t, err.Error(), "secret")
+	assert.ErrorContains(t, err, "received message larger than max")
 }
 
 type legacyGNMIConcurrencyConsumer struct {

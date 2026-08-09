@@ -2827,7 +2827,7 @@ type metricCiscoScrapePartialSuccess struct {
 // init fills cisco.scrape.partial_success metric with initial data.
 func (m *metricCiscoScrapePartialSuccess) init() {
 	m.data.SetName("cisco.scrape.partial_success")
-	m.data.SetDescription("Whether the scrape completed with at least one command-family failure.")
+	m.data.SetDescription("Cisco receiver scrape partial success status (1 = partial success, 0 = complete success)")
 	m.data.SetUnit("1")
 	m.data.SetEmptyGauge()
 }
@@ -2929,7 +2929,7 @@ type metricSystemCPUUtilization struct {
 // init fills system.cpu.utilization metric with initial data.
 func (m *metricSystemCPUUtilization) init() {
 	m.data.SetName("system.cpu.utilization")
-	m.data.SetDescription("Ratio of CPU time in use, from 0 to 1.")
+	m.data.SetDescription("Percentage of CPU time in use.")
 	m.data.SetUnit("1")
 	m.data.SetEmptyGauge()
 }
@@ -2979,7 +2979,7 @@ type metricSystemMemoryUtilization struct {
 // init fills system.memory.utilization metric with initial data.
 func (m *metricSystemMemoryUtilization) init() {
 	m.data.SetName("system.memory.utilization")
-	m.data.SetDescription("Ratio of memory bytes in use, from 0 to 1.")
+	m.data.SetDescription("Percentage of memory bytes in use.")
 	m.data.SetUnit("1")
 	m.data.SetEmptyGauge()
 }

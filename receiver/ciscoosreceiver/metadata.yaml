@@ -9,25 +9,6 @@ attributes:
   cisco.gnmi.target:
     description: Static gNMI target name from the receiver configuration
     type: string
-  cisco.gnmi.value_kind:
-    description: Bounded gNMI TypedValue kind that was safely ignored because it has no configured scalar decoder
-    enum: [any, bytes, leaflist, proto_bytes]
-    type: string
-  cisco.location.bay:
-    description: Device-reported hardware bay identifier
-    type: string
-  cisco.location.chassis:
-    description: Device-reported hardware chassis identifier
-    type: string
-  cisco.location.fru:
-    description: Device-reported field-replaceable-unit identifier
-    type: string
-  cisco.location.slot:
-    description: Device-reported hardware slot identifier
-    type: string
-  cisco.node.name:
-    description: Device-reported node name within a modular chassis
-    type: string
   cisco.optics.experimental:
     description: Whether the source platform and optical profile still require physical-hardware qualification
     type: bool
@@ -36,7 +17,7 @@ attributes:
     type: string
   cisco.optics.profile:
     description: The optical telemetry profile that produced the reading
-    enum: [dom, vdm]
+    enum: [dom, vdm, coherent]
     type: string
   cisco.optics.sensor:
     description: The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted
@@ -61,520 +42,18 @@ attributes:
     description: Type of packet
     enum: [unicast, multicast, broadcast]
     type: string
-  network.peer.address:
-    description: Legacy topology neighbor management address
-    type: string
-  network.peer.name:
-    description: Legacy topology neighbor system, chassis, port, or object name
-    type: string
-  network.protocol.name:
-    description: Legacy topology discovery protocol name
-    type: string
 deprecated_type: ciscoos
 description: |
   The Cisco OS Receiver is a modular receiver that collects metrics from Cisco network devices via SSH connections,
   Cisco Meraki Dashboard APIs, Cisco Intersight APIs, Cisco Catalyst Center Assurance APIs, Cisco Catalyst SD-WAN
   Manager APIs, Nexus Dashboard/NDFC APIs, Cisco APIC APIs, Cisco Secure Firewall Management Center APIs, Cisco
-  Identity Services Engine APIs, product-contract-gated secure normalized gNMI dial-in for explicitly configured Catalyst, ASR, NCS,
-  and Nexus products, and IOS XR MDT telemetry. It supports metrics for device, cloud, controller,
+  Identity Services Engine APIs, secure normalized gNMI dial-in for IOS XE, IOS XR, and NX-OS, and IOS XR MDT
+  telemetry. It supports metrics for device, cloud, controller,
   identity, security, core WAN, and infrastructure health plus logs for operational evidence such as faults, anomalies,
   advisories, audits, deployments, workflows, authentication failures, posture, pxGrid session signals, policy changes,
   and Secure Firewall security events.
 display_name: Cisco OS Receiver
 metrics:
-  aci.api.endpoint.error:
-    description: "APIC class or endpoint-family scrape failures."
-    enabled: true
-    stability: development
-    sum:
-      aggregation_temporality: cumulative
-      monotonic: true
-      value_type: int
-    unit: "{error}"
-  aci.api.rate_limited:
-    description: "APIC requests that received HTTP 429."
-    enabled: true
-    stability: development
-    sum:
-      aggregation_temporality: cumulative
-      monotonic: true
-      value_type: int
-    unit: "{request}"
-  aci.api.request.duration:
-    description: "Average duration of APIC API request attempts within the scrape for each matching request-attribute set."
-    enabled: true
-    gauge:
-      value_type: double
-    stability: development
-    unit: "s"
-  aci.api.request.errors:
-    description: "APIC API request failures."
-    enabled: true
-    stability: development
-    sum:
-      aggregation_temporality: cumulative
-      monotonic: true
-      value_type: int
-    unit: "{error}"
-  aci.audit.record.count:
-    description: "Recent APIC audit records by bounded operation, status, and severity attributes."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "1"
-  aci.controller.up:
-    description: "Whether an APIC controller API was reachable for the scrape."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "1"
-  aci.endpoint.count:
-    description: "Endpoint count by bounded tenant/EPG context."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "1"
-  aci.endpoint.present:
-    description: "Endpoint MAC/IP presence."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "1"
-  aci.event.count:
-    description: "Recent APIC event records by bounded operation, status, and severity attributes."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "1"
-  aci.fabric.health:
-    description: "Fabric, pod, node, or tenant health score where exposed by APIC."
-    enabled: true
-    gauge:
-      value_type: double
-    stability: development
-    unit: "1"
-  aci.fault.active:
-    description: "Active APIC fault instance."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "1"
-  aci.fault.count:
-    description: "Active APIC fault counts by bounded attributes."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "1"
-  aci.resource.count:
-    description: "APIC resources grouped by bounded group, class, type, status, and severity."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "1"
-  aci.resource.info:
-    description: "Bounded metadata for APIC managed objects."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "1"
-  aci.resource.status:
-    description: "Encoded APIC object status with original state attributes."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "1"
-  aci.scrape.last_success:
-    description: "Unix timestamp of the most recent fully successful APIC scrape."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "s"
-  aci.scrape.partial_success:
-    description: "Whether one or more APIC endpoint families failed during the scrape."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "1"
-  aci.tenant.object.count:
-    description: "Tenant object counts by bounded tenant/VRF/BD/EPG attributes."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "1"
-  aci.tenant.status:
-    description: "Tenant, VRF, bridge domain, EPG, app profile, contract, or L3Out status."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "1"
-  catalyst_center.api.rate_limited:
-    description: "Requests that received HTTP 429."
-    enabled: true
-    stability: development
-    sum:
-      aggregation_temporality: cumulative
-      monotonic: true
-      value_type: int
-    unit: "{request}"
-  catalyst_center.api.request.duration:
-    description: "Average duration of Catalyst Center API request attempts within the scrape for each matching request-attribute set."
-    enabled: true
-    gauge:
-      value_type: double
-    stability: development
-    unit: "s"
-  catalyst_center.api.request.errors:
-    description: "Catalyst Center API request failures."
-    enabled: true
-    stability: development
-    sum:
-      aggregation_temporality: cumulative
-      monotonic: true
-      value_type: int
-    unit: "{error}"
-  catalyst_center.client.count:
-    description: "Client count by health category."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "{client}"
-  catalyst_center.client.detail.health.score:
-    description: "Targeted client-detail health score by client, health type, and reason."
-    enabled: true
-    gauge:
-      value_type: double
-    stability: development
-    unit: "1"
-  catalyst_center.client.health.score:
-    description: "Client health score by site and score category."
-    enabled: true
-    gauge:
-      value_type: double
-    stability: development
-    unit: "1"
-  catalyst_center.client.issue.count:
-    description: "Issue count for a targeted client detail lookup."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "{issue}"
-  catalyst_center.client.network.io:
-    description: "Client transmit and receive bytes."
-    enabled: true
-    gauge:
-      value_type: double
-    stability: development
-    unit: "By"
-  catalyst_center.client.unique.count:
-    description: "Unique client count by health category."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "{client}"
-  catalyst_center.client.wireless.rssi:
-    description: "RSSI for a targeted wireless client."
-    enabled: true
-    gauge:
-      value_type: double
-    stability: development
-    unit: "dB{mW}"
-  catalyst_center.client.wireless.snr:
-    description: "SNR for a targeted wireless client."
-    enabled: true
-    gauge:
-      value_type: double
-    stability: development
-    unit: "dB"
-  catalyst_center.device.collection.status:
-    description: "Encoded Catalyst Center collection status."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "1"
-  catalyst_center.device.detail.communication.status:
-    description: "Targeted device communication status."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "1"
-  catalyst_center.device.detail.health.score:
-    description: "Targeted device-detail health score."
-    enabled: true
-    gauge:
-      value_type: double
-    stability: development
-    unit: "1"
-  catalyst_center.device.interface.count:
-    description: "Interface count reported for a device."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "{interface}"
-  catalyst_center.device.reachability.status:
-    description: "Encoded device reachability status with the original status retained as an attribute."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "1"
-  catalyst_center.device.uptime:
-    description: "Device uptime reported by Catalyst Center."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "s"
-  catalyst_center.interface.count:
-    description: "Interface inventory count."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "{interface}"
-  catalyst_center.inventory.device.count:
-    description: "Network-device inventory count."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "{device}"
-  catalyst_center.issue.active.count:
-    description: "Active Assurance issues grouped by severity, priority, status, category, entity type, and site."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "{item}"
-  catalyst_center.issue.count:
-    description: "Assurance issue count in the configured lookback window."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "{issue}"
-  catalyst_center.network.device.count:
-    description: "Network device count by health state."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "{device}"
-  catalyst_center.network.health.category.score:
-    description: "Network health score by device category."
-    enabled: true
-    gauge:
-      value_type: double
-    stability: development
-    unit: "1"
-  catalyst_center.network.health.entity.count:
-    description: "Entity count by health state."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "{device}"
-  catalyst_center.network.health.entity.score:
-    description: "Network health score by Assurance entity."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "1"
-  catalyst_center.network.health.score:
-    description: "Latest global Catalyst Center network health score."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "1"
-  catalyst_center.scrape.last_success:
-    description: "Unix timestamp of the most recent fully successful Catalyst Center scrape."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "s"
-  catalyst_center.scrape.partial_success:
-    description: "Whether one or more Catalyst Center endpoint families failed during a scrape."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "1"
-  catalyst_center.site.client.count:
-    description: "Site client population by client type and health state."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "{client}"
-  catalyst_center.site.client.health.percentage:
-    description: "Percent of healthy clients by site."
-    enabled: true
-    gauge:
-      value_type: double
-    stability: development
-    unit: "%"
-  catalyst_center.site.health.count:
-    description: "Site health counts for devices, clients, wireless, APs, WLCs, switches, routers, and issues."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "{item}"
-  catalyst_center.site.issue.count:
-    description: "Site issue counts by priority."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "{issue}"
-  catalyst_center.site.network_device.count:
-    description: "Site network-device population by role and health state."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "{device}"
-  catalyst_center.site.network_device.health.percentage:
-    description: "Percent of healthy network devices by site."
-    enabled: true
-    gauge:
-      value_type: double
-    stability: development
-    unit: "%"
-  catalyst_center.topology.link.count:
-    description: "Physical topology link count globally and by link status."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "{link}"
-  catalyst_center.topology.node.count:
-    description: "Physical topology node count globally and by node attributes."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: "{node}"
-  cisco.catalyst9800.receiver.active_subscriptions:
-    description: "Current number of active Catalyst 9800 telemetry subscriptions."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: ""
-  cisco.catalyst9800.receiver.compact_gpb_payloads:
-    description: "Compact GPB payload rows in the current MDT message; the rows are not generically decoded."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: ""
-  cisco.catalyst9800.receiver.decode_errors:
-    description: "Catalyst 9800 telemetry decode failures."
-    enabled: true
-    stability: development
-    sum:
-      aggregation_temporality: cumulative
-      monotonic: true
-      value_type: int
-    unit: ""
-  cisco.catalyst9800.receiver.dropped_datapoints:
-    description: "Catalyst 9800 datapoints dropped by the receiver cardinality guard."
-    enabled: true
-    stability: development
-    sum:
-      aggregation_temporality: cumulative
-      monotonic: true
-      value_type: int
-    unit: ""
-  cisco.catalyst9800.receiver.last_success_timestamp:
-    description: "Unix timestamp of the last successful Catalyst 9800 telemetry update."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: ""
-  cisco.catalyst9800.receiver.reconnects:
-    description: "Catalyst 9800 telemetry reconnect attempts."
-    enabled: true
-    stability: development
-    sum:
-      aggregation_temporality: cumulative
-      monotonic: true
-      value_type: int
-    unit: ""
-  cisco.catalyst9800.receiver.target.last_success_timestamp:
-    description: "Unix timestamp of the individual target's last successful update."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: ""
-  cisco.catalyst9800.receiver.target.reconnects:
-    description: "Reconnect attempts for an individual target."
-    enabled: true
-    stability: development
-    sum:
-      aggregation_temporality: cumulative
-      monotonic: true
-      value_type: int
-    unit: ""
-  cisco.catalyst9800.receiver.target.subscription.active:
-    description: "Whether an individual configured target has an active subscription."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: ""
-  cisco.catalyst9800.receiver.target.updates:
-    description: "Updates received from an individual target."
-    enabled: true
-    stability: development
-    sum:
-      aggregation_temporality: cumulative
-      monotonic: true
-      value_type: int
-    unit: ""
-  cisco.catalyst9800.receiver.unsupported_paths:
-    description: "Catalyst 9800 telemetry paths rejected or pruned as unsupported."
-    enabled: true
-    stability: development
-    sum:
-      aggregation_temporality: cumulative
-      monotonic: true
-      value_type: int
-    unit: ""
-  cisco.catalyst9800.receiver.updates:
-    description: "Catalyst 9800 telemetry updates and deletes received."
-    enabled: true
-    stability: development
-    sum:
-      aggregation_temporality: cumulative
-      monotonic: true
-      value_type: int
-    unit: ""
   cisco.device.up:
     description: Device availability (1 = up, 0 = down)
     enabled: true
@@ -584,25 +63,18 @@ metrics:
     unit: "1"
   cisco.interface.admin.status:
     attributes: [network.interface.name]
-    description: Cisco interface administrative status (1 = administratively enabled, 0 = not administratively enabled)
+    description: Cisco interface administrative status (1 = administratively enabled, 0 = administratively disabled)
     enabled: true
     gauge:
       value_type: int
     stability: development
     unit: "1"
-  cisco.interface.drop.rate:
-    description: "APIC interface packet-drop rate when exposed by statistics classes."
-    enabled: true
-    gauge:
-      value_type: double
-    stability: development
-    unit: "{drop}/s"
   cisco.interface.io.rate:
     attributes: [network.io.direction, network.interface.name]
     description: The device-reported interface traffic rate
     enabled: true
     gauge:
-      value_type: double
+      value_type: int
     stability: development
     unit: "bit/s"
   cisco.interface.packet.rate:
@@ -610,7 +82,7 @@ metrics:
     description: The device-reported interface packet rate
     enabled: true
     gauge:
-      value_type: double
+      value_type: int
     stability: development
     unit: "{packet}/s"
   cisco.interface.speed:
@@ -629,107 +101,25 @@ metrics:
       value_type: double
     stability: development
     unit: "1"
-  cisco.iosxr.receiver.active_subscriptions:
-    description: "Active gNMI dial-in targets."
+  cisco.optics.chromatic_dispersion:
+    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
+    description: Coherent optical chromatic dispersion
     enabled: true
     gauge:
-      value_type: int
+      value_type: double
     stability: development
-    unit: ""
-  cisco.iosxr.receiver.compact_gpb_payloads:
-    description: "Compact GPB payload rows in the current MDT message; the rows are not generically decoded."
+    unit: "ps/nm"
+  cisco.optics.dgd:
+    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
+    description: Coherent optical differential group delay
     enabled: true
     gauge:
-      value_type: int
+      value_type: double
     stability: development
-    unit: ""
-  cisco.iosxr.receiver.decode_errors:
-    description: "JSON/YANG decode failures."
-    enabled: true
-    stability: development
-    sum:
-      aggregation_temporality: cumulative
-      monotonic: true
-      value_type: int
-    unit: ""
-  cisco.iosxr.receiver.dropped_datapoints:
-    description: "Datapoints dropped by the receiver cardinality guard."
-    enabled: true
-    stability: development
-    sum:
-      aggregation_temporality: cumulative
-      monotonic: true
-      value_type: int
-    unit: ""
-  cisco.iosxr.receiver.last_success_timestamp:
-    description: "Unix timestamp of the last successful gNMI update."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: ""
-  cisco.iosxr.receiver.reconnects:
-    description: "gNMI reconnect attempts after subscription failures."
-    enabled: true
-    stability: development
-    sum:
-      aggregation_temporality: cumulative
-      monotonic: true
-      value_type: int
-    unit: ""
-  cisco.iosxr.receiver.target.last_success_timestamp:
-    description: "Unix timestamp of the individual target's last successful update."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: ""
-  cisco.iosxr.receiver.target.reconnects:
-    description: "Reconnect attempts for an individual target."
-    enabled: true
-    stability: development
-    sum:
-      aggregation_temporality: cumulative
-      monotonic: true
-      value_type: int
-    unit: ""
-  cisco.iosxr.receiver.target.subscription.active:
-    description: "Whether an individual configured target has an active subscription."
-    enabled: true
-    gauge:
-      value_type: int
-    stability: development
-    unit: ""
-  cisco.iosxr.receiver.target.updates:
-    description: "Updates received from an individual target."
-    enabled: true
-    stability: development
-    sum:
-      aggregation_temporality: cumulative
-      monotonic: true
-      value_type: int
-    unit: ""
-  cisco.iosxr.receiver.unsupported_paths:
-    description: "Paths rejected or pruned by gNMI capabilities."
-    enabled: true
-    stability: development
-    sum:
-      aggregation_temporality: cumulative
-      monotonic: true
-      value_type: int
-    unit: ""
-  cisco.iosxr.receiver.updates:
-    description: "gNMI updates and deletes received."
-    enabled: true
-    stability: development
-    sum:
-      aggregation_temporality: cumulative
-      monotonic: true
-      value_type: int
-    unit: ""
+    unit: ps
   cisco.optics.esnr:
     attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
-    description: Effective signal-to-noise ratio reported by an allowlisted device VDM sensor
+    description: Effective signal-to-noise ratio reported by a qualified VDM sensor
     enabled: true
     gauge:
       value_type: double
@@ -743,6 +133,14 @@ metrics:
       value_type: double
     stability: development
     unit: mA
+  cisco.optics.osnr:
+    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
+    description: Coherent optical signal-to-noise ratio
+    enabled: true
+    gauge:
+      value_type: double
+    stability: development
+    unit: dB
   cisco.optics.pre_fec_ber:
     attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
     description: Pre-forward-error-correction bit error ratio
@@ -759,6 +157,22 @@ metrics:
       value_type: int
     stability: development
     unit: "1"
+  cisco.optics.q_factor:
+    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
+    description: Coherent optical Q-factor
+    enabled: true
+    gauge:
+      value_type: double
+    stability: development
+    unit: dB
+  cisco.optics.q_margin:
+    attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
+    description: Coherent optical Q-margin
+    enabled: true
+    gauge:
+      value_type: double
+    stability: development
+    unit: dB
   cisco.optics.rx_power:
     attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
     description: Received optical power
@@ -766,7 +180,7 @@ metrics:
     gauge:
       value_type: double
     stability: development
-    unit: "dB{mW}"
+    unit: "dB[mW]"
   cisco.optics.tdecq:
     attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
     description: Transmitter and dispersion eye closure for PAM4 reported by a sensor explicitly identified as TDECQ in dB
@@ -806,7 +220,7 @@ metrics:
     gauge:
       value_type: double
     stability: development
-    unit: "dB{mW}"
+    unit: "dB[mW]"
   cisco.optics.voltage:
     attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]
     description: Optical module supply voltage
@@ -840,16 +254,14 @@ metrics:
     stability: development
     unit: "{client}"
   system.cpu.utilization:
-    attributes: [cisco.node.name]
-    description: Ratio of CPU time in use, from 0 to 1.
+    description: Percentage of CPU time in use.
     enabled: true
     gauge:
       value_type: double
     stability: development
     unit: "1"
   system.memory.utilization:
-    attributes: [cisco.location.fru, cisco.location.slot, cisco.location.bay, cisco.location.chassis]
-    description: Ratio of memory bytes in use, from 0 to 1.
+    description: Percentage of memory bytes in use.
     enabled: true
     gauge:
       value_type: double
@@ -867,7 +279,7 @@ metrics:
     unit: "{error}"
   system.network.interface.status:
     attributes: [network.interface.name]
-    description: Interface operational status (1 = up, 0 = not up)
+    description: Interface operational status (1 = up, 0 = down)
     enabled: true
     gauge:
       value_type: int
@@ -885,7 +297,7 @@ metrics:
     unit: By
   system.network.packet.count:
     attributes: [network.io.direction, network.packet.type, network.interface.name]
-    description: The number of packets transmitted or received by direction and, when available, packet type
+    description: The number of packets transmitted or received, categorized by type
     enabled: true
     stability: development
     sum:
@@ -911,10 +323,6 @@ metrics:
     stability: development
     unit: s
 resource_attributes:
-  cisco.os.boot_mode:
-    description: Verified IOS XE boot mode when required by the product contract
-    enabled: true
-    type: string
   cisco.os.name:
     description: Normalized Cisco operating-system family
     enabled: true
@@ -925,14 +333,6 @@ resource_attributes:
     type: string
   cisco.telemetry.transport:
     description: Cisco telemetry transport that produced the metrics
-    enabled: true
-    type: string
-  device.manufacturer:
-    description: Manufacturer of the device
-    enabled: true
-    type: string
-  device.model.identifier:
-    description: Verified device chassis model identifier
     enabled: true
     type: string
   host.id:
@@ -955,10 +355,6 @@ resource_attributes:
     description: Human-readable Cisco operating-system name
     enabled: true
     type: string
-  os.version:
-    description: Device-reported software version; shared gNMI emits the canonical live-verified public release
-    enabled: true
-    type: string
 status:
   class: receiver
   codeowners:
@@ -977,26 +373,8 @@ telemetry:
         monotonic: true
         value_type: int
       unit: "{failure}"
-    ciscoosreceiver_gnmi_auxiliary_state_utilization:
-      attributes: [cisco.gnmi.target]
-      description: Maximum of the retained-entry and retained-byte utilization for the target's gNMI auxiliary-state partition
-      enabled: true
-      gauge:
-        value_type: double
-      stability: development
-      unit: "1"
-    ciscoosreceiver_gnmi_cache_owner_resets:
-      attributes: [cisco.gnmi.target, cisco.gnmi.profile]
-      description: Number of silent owner-scoped gNMI cache resets performed before an updates-only stream reconnects
-      enabled: true
-      stability: development
-      sum:
-        monotonic: true
-        value_type: int
-      unit: "{reset}"
     ciscoosreceiver_gnmi_cache_utilization:
-      attributes: [cisco.gnmi.target]
-      description: Maximum of the retained-entry and retained-byte utilization for the target's gNMI cache partition
+      description: Fraction of the configured retained gNMI state cache currently in use, including mapped series, atomic baselines, and delete tombstones
       enabled: true
       gauge:
         value_type: double
@@ -1012,7 +390,7 @@ telemetry:
       unit: "{connection}"
     ciscoosreceiver_gnmi_consumer_refusals:
       attributes: [cisco.gnmi.target, cisco.gnmi.profile]
-      description: Number of metric chunks refused by the downstream consumer before the affected gNMI profile reconnects
+      description: Number of metric chunks refused by the downstream consumer and dropped without device reconnect
       enabled: true
       stability: development
       sum:
@@ -1048,7 +426,7 @@ telemetry:
       unit: "{update}"
     ciscoosreceiver_gnmi_invalid_timestamps:
       attributes: [cisco.gnmi.target, cisco.gnmi.profile]
-      description: Number of invalid or excessively future-dated Cisco timestamps rejected before cache mutation
+      description: Number of invalid Cisco timestamps replaced with receipt time
       enabled: true
       stability: development
       sum:
@@ -1063,36 +441,6 @@ telemetry:
         value_type: int
       stability: development
       unit: s
-    ciscoosreceiver_gnmi_out_of_order_updates:
-      attributes: [cisco.gnmi.target, cisco.gnmi.profile]
-      description: Number of stale gNMI cache operations suppressed by source timestamp ordering
-      enabled: true
-      stability: development
-      sum:
-        monotonic: true
-        value_type: int
-      unit: "{update}"
-    ciscoosreceiver_gnmi_preflight_failures:
-      attributes: [cisco.gnmi.target, cisco.gnmi.reason]
-      description: >-
-        Number of terminal gNMI product-contract preflight compatibility failures. This metric emits only identity_missing,
-        identity_ambiguous, product_mismatch, release_mismatch, missing_model, unsupported_model_version,
-        unsupported_encoding, unsupported_gnmi_version, unsupported_boot_mode, or malformed_identity;
-        profile-degradation reasons in the shared attribute catalog are not emitted here.
-      enabled: true
-      stability: development
-      sum:
-        monotonic: true
-        value_type: int
-      unit: "{failure}"
-    ciscoosreceiver_gnmi_product_verified:
-      attributes: [cisco.gnmi.target]
-      description: Whether the gNMI target passed product, model, release, required boot-mode, and capability verification
-      enabled: true
-      gauge:
-        value_type: int
-      stability: development
-      unit: "1"
     ciscoosreceiver_gnmi_profile_degraded:
       attributes: [cisco.gnmi.target, cisco.gnmi.profile, cisco.gnmi.reason]
       description: Whether a gNMI profile is degraded (1 = degraded, 0 = healthy)
@@ -1121,15 +469,6 @@ telemetry:
     ciscoosreceiver_gnmi_unmapped_values:
       attributes: [cisco.gnmi.target, cisco.gnmi.profile]
       description: Number of decoded gNMI values without an explicit metric mapping
-      enabled: true
-      stability: development
-      sum:
-        monotonic: true
-        value_type: int
-      unit: "{value}"
-    ciscoosreceiver_gnmi_unsupported_value_kinds:
-      attributes: [cisco.gnmi.target, cisco.gnmi.profile, cisco.gnmi.value_kind]
-      description: Number of bounded opaque or aggregate gNMI TypedValues ignored by kind
       enabled: true
       stability: development
       sum:

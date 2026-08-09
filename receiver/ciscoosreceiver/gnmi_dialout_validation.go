@@ -9,7 +9,6 @@ import (
 	"math"
 	"net"
 	"strings"
-	"time"
 
 	"go.opentelemetry.io/collector/config/configgrpc"
 
@@ -23,9 +22,6 @@ const (
 	maximumGNMIDialOutStreams        = 1000
 	defaultGNMIDialOutStreams        = 64
 	maximumGNMIDialOutInFlightMiB    = 256
-	defaultGNMIDialOutStreamIdle     = 30 * time.Minute
-	minimumGNMIDialOutStreamIdle     = time.Second
-	maximumGNMIDialOutStreamIdle     = time.Hour
 )
 
 // effectiveGNMIDialOutMaxStreamsPerClient resolves an omitted per-client cap
@@ -40,27 +36,6 @@ func effectiveGNMIDialOutMaxStreamsPerClient(configured, global uint32) uint32 {
 		return global
 	}
 	return defaultGNMIDialOutStreamsPerIP
-}
-
-func effectiveGNMIDialOutStreamIdleTimeout(configured time.Duration) time.Duration {
-	if configured == 0 {
-		return defaultGNMIDialOutStreamIdle
-	}
-	return configured
-}
-
-func validateGNMIDialOutStreamIdleTimeout(configured time.Duration) error {
-	if configured == 0 {
-		return nil
-	}
-	if configured < minimumGNMIDialOutStreamIdle || configured > maximumGNMIDialOutStreamIdle {
-		return fmt.Errorf(
-			"stream_idle_timeout must be zero or between %s and %s",
-			minimumGNMIDialOutStreamIdle,
-			maximumGNMIDialOutStreamIdle,
-		)
-	}
-	return nil
 }
 
 // validateGNMIDialOutConfig owns the security and resource invariants required

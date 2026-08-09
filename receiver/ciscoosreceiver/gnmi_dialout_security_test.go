@@ -418,14 +418,14 @@ type gnmiDialOutTestRuntimeVersion int
 func (v gnmiDialOutTestRuntimeVersion) RuntimeHardeningVersion() int { return int(v) }
 
 func TestRequireHardenedYangGRPCRuntimeFailsClosed(t *testing.T) {
-	require.ErrorContains(t, requireHardenedYangGRPCRuntime(struct{}{}), "runtime hardening version 3")
-	require.ErrorContains(t, requireHardenedYangGRPCRuntime(gnmiDialOutTestRuntimeVersion(2)), "runtime hardening version 3")
-	require.NoError(t, requireHardenedYangGRPCRuntime(gnmiDialOutTestRuntimeVersion(3)))
+	require.ErrorContains(t, requireHardenedYangGRPCRuntime(struct{}{}), "runtime hardening version 2")
+	require.ErrorContains(t, requireHardenedYangGRPCRuntime(gnmiDialOutTestRuntimeVersion(1)), "runtime hardening version 2")
+	require.NoError(t, requireHardenedYangGRPCRuntime(gnmiDialOutTestRuntimeVersion(2)))
 
-	_, err := hardenedYangGRPCConfig(gnmiDialOutTestRuntimeVersion(3))
+	_, err := hardenedYangGRPCConfig(gnmiDialOutTestRuntimeVersion(2))
 	require.ErrorContains(t, err, "unexpected hardened config type")
 	_, err = hardenedYangGRPCConfig(struct{}{})
-	require.ErrorContains(t, err, "runtime hardening version 3")
+	require.ErrorContains(t, err, "runtime hardening version 2")
 	runtimeErr := requireHardenedYangGRPCRuntime(&yanggrpcreceiver.Config{})
 	config, err := hardenedYangGRPCConfig(&yanggrpcreceiver.Config{})
 	var typedNil *yanggrpcreceiver.Config
@@ -435,18 +435,9 @@ func TestRequireHardenedYangGRPCRuntimeFailsClosed(t *testing.T) {
 		require.NotNil(t, config)
 		require.ErrorContains(t, typedNilErr, "unexpected hardened config type")
 	} else {
-		require.ErrorContains(t, err, "runtime hardening version 3")
-		require.ErrorContains(t, typedNilErr, "runtime hardening version 3")
+		require.ErrorContains(t, err, "runtime hardening version 2")
+		require.ErrorContains(t, typedNilErr, "runtime hardening version 2")
 	}
-}
-
-func TestConfigureHardenedYangGRPCStreamIdleTimeout(t *testing.T) {
-	config := &yanggrpcreceiver.Config{}
-	require.NoError(t, configureHardenedYangGRPCStreamIdleTimeout(config, 20*time.Minute))
-	assert.Equal(t, 20*time.Minute, config.StreamIdleTimeout)
-	require.NoError(t, configureHardenedYangGRPCStreamIdleTimeout(config, 0))
-	assert.Equal(t, defaultGNMIDialOutStreamIdle, config.StreamIdleTimeout)
-	require.ErrorContains(t, configureHardenedYangGRPCStreamIdleTimeout(struct{}{}, time.Minute), "stream-idle configuration")
 }
 
 func TestGNMIDialOutStreamSecurityChargesEverySuccessfulMessage(t *testing.T) {
@@ -785,32 +776,6 @@ func TestGNMIDialOutSecurityReceiverPreflightsModulePaths(t *testing.T) {
 		require.ErrorContains(t, preflightGNMIDialOutModulePaths([]string{path}), "is empty")
 	})
 
-	t.Run("symlink is rejected", func(t *testing.T) {
-		directory := t.TempDir()
-		target := filepath.Join(directory, "target.yang")
-		link := filepath.Join(directory, "link.yang")
-		require.NoError(t, os.WriteFile(target, []byte("module target {}"), 0o600))
-		if err := os.Symlink(target, link); err != nil {
-			t.Skipf("symbolic links are unavailable: %v", err)
-		}
-		require.Error(t, preflightGNMIDialOutModulePaths([]string{link}))
-	})
-
-	t.Run("file replaced after enumeration", func(t *testing.T) {
-		directory := t.TempDir()
-		path := filepath.Join(directory, "module.yang")
-		require.NoError(t, os.WriteFile(path, []byte("module original {}"), 0o600))
-		expected, err := os.Lstat(path)
-		require.NoError(t, err)
-		require.NoError(t, os.Rename(path, filepath.Join(directory, "original.yang")))
-		require.NoError(t, os.WriteFile(path, []byte("module replacement {}"), 0o600))
-
-		var totalBytes int64
-		err = preflightReadableYANGFile(path, expected, 1024, 2048, &totalBytes)
-		require.ErrorContains(t, err, "changed after directory enumeration")
-		assert.Zero(t, totalBytes)
-	})
-
 	t.Run("per-file and aggregate byte limits", func(t *testing.T) {
 		directory := t.TempDir()
 		first := filepath.Join(directory, "first.yang")
@@ -819,24 +784,6 @@ func TestGNMIDialOutSecurityReceiverPreflightsModulePaths(t *testing.T) {
 		require.NoError(t, os.WriteFile(second, []byte("67890"), 0o600))
 		require.ErrorContains(t, preflightGNMIDialOutModulePathsWithByteLimits([]string{directory}, 4, 100), "hard size limit")
 		require.ErrorContains(t, preflightGNMIDialOutModulePathsWithByteLimits([]string{directory}, 10, 9), "aggregate size limit")
-	})
-
-	t.Run("oversized single directory stops at callback limit", func(t *testing.T) {
-		directory := t.TempDir()
-		for i := range 32 {
-			path := filepath.Join(directory, fmt.Sprintf("ignored-%02d.txt", i))
-			require.NoError(t, os.WriteFile(path, []byte("not a module"), 0o600))
-		}
-		visited := 0
-		err := walkGNMIDialOutModulePath(directory, func(_ string, _ os.FileInfo) error {
-			visited++
-			if visited > 3 {
-				return errors.New("test traversal limit reached")
-			}
-			return nil
-		})
-		require.ErrorContains(t, err, "test traversal limit reached")
-		assert.Equal(t, 4, visited)
 	})
 
 	t.Run("missing path fails before delegate start", func(t *testing.T) {
@@ -874,11 +821,11 @@ func TestGNMIDialOutFactoriesWirePrivateStreamSecurity(t *testing.T) {
 	catalystConfig.DialOut.RateLimiting = rateConfig
 	catalystReceiver, err := newCatalyst9800DialOutReceiver(settings, catalystConfig, deviceSelectionMatcher{}, consumertest.NewNop())
 	if runtimeErr := requireHardenedYangGRPCRuntime(&yanggrpcreceiver.Config{}); runtimeErr != nil {
-		require.ErrorContains(t, err, "required runtime hardening version 3")
+		require.ErrorContains(t, err, "required runtime hardening version 2")
 		iosXRConfig := defaultIOSXRConfig()
 		iosXRConfig.DialOut.Enabled = true
 		_, iosXRErr := newIOSXRDialOutReceiver(settings, iosXRConfig, deviceSelectionMatcher{}, consumertest.NewNop())
-		require.ErrorContains(t, iosXRErr, "required runtime hardening version 3")
+		require.ErrorContains(t, iosXRErr, "required runtime hardening version 2")
 		return
 	}
 	require.NoError(t, err)

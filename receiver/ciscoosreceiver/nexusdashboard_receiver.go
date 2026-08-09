@@ -104,69 +104,6 @@ type nexusDashboardLogsReceiver struct {
 	seen *logDeduplicator
 }
 
-type nexusDashboardPaginationContract struct {
-	strategy      nexusdashboard.PaginationStrategy
-	specification string
-	reference     string
-}
-
-type nexusDashboardGroupResultBudget map[string]int
-
-const (
-	nexusDashboardInfraSpec       = "Cisco Nexus Dashboard Infrastructure v1 1.1.136 (Nexus Dashboard API v1, Release 4.2 and above)"
-	nexusDashboardManageSpec      = "Cisco Nexus Dashboard Manage v1 1.1.411 (Nexus Dashboard API v1, Release 4.2 and above)"
-	nexusDashboardNDFCLANSpec     = "Cisco Nexus Dashboard Fabric Controller API - LAN 12.5.0 (Nexus Dashboard API v1, Release 4.2 and above)"
-	nexusDashboardNDOSpec         = "Cisco Nexus Dashboard Orchestrator 5.2.1 (Nexus Dashboard API v1, Release 4.2 and above)"
-	nexusDashboardLegacyInfraSpec = "Legacy infrastructure compatibility route absent from Cisco Nexus Dashboard API 4.2.1 and Infrastructure v1 1.1.136"
-	nexusDashboardLegacyNDFCSpec  = "Legacy NDFC compatibility route absent from Cisco Nexus Dashboard Fabric Controller API - LAN 12.5.0"
-	nexusDashboardLegacyNDOSpec   = "Legacy NDO compatibility route absent from Cisco Nexus Dashboard Orchestrator 5.2.1"
-	nexusDashboardLegacyNISpec    = "Legacy Insights compatibility route absent from Cisco Nexus Dashboard Insights API 6.8.0 and Analyze v1 1.1.209"
-	nexusDashboardLegacyNDDBSpec  = "Legacy Data Broker compatibility route absent from the Cisco Nexus Dashboard API 4.2.1 catalog"
-
-	nexusDashboardInfraSpecURL   = "https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/infra.json"
-	nexusDashboardManageSpecURL  = "https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/manage.json"
-	nexusDashboardNDFCLANSpecURL = "https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/nd-fabric-controller-lan-1242.json"
-	nexusDashboardNDOSpecURL     = "https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/orchestration.json"
-	nexusDashboardLegacySpecURL  = "https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/nexus-dashboard-421.json"
-	nexusDashboardNISpecURL      = "https://pubhub.devnetcloud.com/media/nexus-dashboard-api-v1/docs/reference/nd-insights-v2.json"
-)
-
-var (
-	nexusDashboardPaginationInfraSingle = nexusDashboardPaginationContract{
-		strategy: nexusdashboard.PaginationSingle, specification: nexusDashboardInfraSpec, reference: nexusDashboardInfraSpecURL,
-	}
-	nexusDashboardPaginationManageOffset = nexusDashboardPaginationContract{
-		strategy: nexusdashboard.PaginationOffset, specification: nexusDashboardManageSpec, reference: nexusDashboardManageSpecURL,
-	}
-	nexusDashboardPaginationManageSingle = nexusDashboardPaginationContract{
-		strategy: nexusdashboard.PaginationSingle, specification: nexusDashboardManageSpec, reference: nexusDashboardManageSpecURL,
-	}
-	nexusDashboardPaginationNDFCLANSingle = nexusDashboardPaginationContract{
-		strategy: nexusdashboard.PaginationSingle, specification: nexusDashboardNDFCLANSpec, reference: nexusDashboardNDFCLANSpecURL,
-	}
-	nexusDashboardPaginationNDOSingle = nexusDashboardPaginationContract{
-		strategy: nexusdashboard.PaginationSingle, specification: nexusDashboardNDOSpec, reference: nexusDashboardNDOSpecURL,
-	}
-	nexusDashboardPaginationLegacyInfraUnknown = nexusDashboardPaginationContract{
-		strategy: nexusdashboard.PaginationUnknown, specification: nexusDashboardLegacyInfraSpec, reference: nexusDashboardLegacySpecURL,
-	}
-	nexusDashboardPaginationLegacyManageUnknown = nexusDashboardPaginationContract{
-		strategy: nexusdashboard.PaginationUnknown, specification: "Legacy Manage compatibility route absent from " + nexusDashboardManageSpec, reference: nexusDashboardManageSpecURL,
-	}
-	nexusDashboardPaginationLegacyNDFCUnknown = nexusDashboardPaginationContract{
-		strategy: nexusdashboard.PaginationUnknown, specification: nexusDashboardLegacyNDFCSpec, reference: nexusDashboardNDFCLANSpecURL,
-	}
-	nexusDashboardPaginationLegacyInsightsUnknown = nexusDashboardPaginationContract{
-		strategy: nexusdashboard.PaginationUnknown, specification: nexusDashboardLegacyNISpec, reference: nexusDashboardNISpecURL,
-	}
-	nexusDashboardPaginationLegacyNDOUnknown = nexusDashboardPaginationContract{
-		strategy: nexusdashboard.PaginationUnknown, specification: nexusDashboardLegacyNDOSpec, reference: nexusDashboardNDOSpecURL,
-	}
-	nexusDashboardPaginationLegacyNDDBUnknown = nexusDashboardPaginationContract{
-		strategy: nexusdashboard.PaginationUnknown, specification: nexusDashboardLegacyNDDBSpec, reference: nexusDashboardLegacySpecURL,
-	}
-)
-
 type nexusDashboardEndpoint struct {
 	group       string
 	operation   string
@@ -174,7 +111,6 @@ type nexusDashboardEndpoint struct {
 	objectType  string
 	product     string
 	selectorKey string
-	pagination  nexusDashboardPaginationContract
 	query       func(*Config, time.Time) url.Values
 }
 
@@ -228,7 +164,7 @@ func newNexusDashboardClient(conf *Config) (*nexusdashboard.Client, error) {
 		APIKey:             string(conf.NexusDashboard.Auth.APIKey),
 		Domain:             conf.NexusDashboard.Auth.Domain,
 		UserAgent:          conf.NexusDashboard.UserAgent,
-		Timeout:            conf.ControllerConfig.Timeout,
+		Timeout:            conf.Timeout,
 		MaxRetries:         conf.NexusDashboard.MaxRetries,
 		PageSize:           conf.NexusDashboard.PageSize,
 		InsecureSkipVerify: conf.NexusDashboard.InsecureSkipVerify,
@@ -268,7 +204,7 @@ func (r *nexusDashboardMetricsReceiver) Shutdown(ctx context.Context) error {
 func (r *nexusDashboardMetricsReceiver) run(ctx context.Context) {
 	defer close(r.done)
 	r.collect(ctx)
-	ticker := time.NewTicker(r.config.ControllerConfig.CollectionInterval)
+	ticker := time.NewTicker(r.config.CollectionInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -281,7 +217,7 @@ func (r *nexusDashboardMetricsReceiver) run(ctx context.Context) {
 }
 
 func (r *nexusDashboardMetricsReceiver) collect(ctx context.Context) {
-	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.ControllerConfig.Timeout)
+	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 
 	obsCtx := startMetricsOp(ctx, r.obs)
@@ -301,7 +237,6 @@ func (r *nexusDashboardMetricsReceiver) scrape(ctx context.Context) (pmetric.Met
 	now := time.Now()
 	builder := newNexusDashboardMetricsBuilder(now, r.config.NexusDashboard.Endpoint, r.counters)
 	selector := newDeviceSelectionMatcher(r.config.DeviceSelection)
-	groupBudget := newNexusDashboardGroupResultBudget(r.config.NexusDashboard)
 	partial := false
 
 	endpoints := nexusDashboardMetricEndpointInstances(r.config)
@@ -315,20 +250,8 @@ func (r *nexusDashboardMetricsReceiver) scrape(ctx context.Context) (pmetric.Met
 			builder.recordSkippedEndpoint(*endpoint)
 			continue
 		}
-		maxResults, collect := groupBudget.requestLimit(endpoint.group)
-		if !collect {
-			continue
-		}
-		objects, err := r.client.List(
-			ctx,
-			endpoint.operation,
-			endpoint.path,
-			nexusDashboardEndpointQuery(endpoint.nexusDashboardEndpoint, r.config, now),
-			endpoint.pagination.strategy,
-			maxResults,
-		)
-		groupBudget.consume(endpoint.group, len(objects))
-		for _, obj := range filterNexusDashboardEndpointObjects(objects, *endpoint, r.config) {
+		objects, err := r.client.List(ctx, endpoint.operation, endpoint.path, nexusDashboardEndpointQuery(endpoint.nexusDashboardEndpoint, r.config, now), nexusDashboardGroupMaxResults(r.config.NexusDashboard, endpoint.group))
+		for _, obj := range filterNexusDashboardObjects(objects, r.config.NexusDashboard.Targets) {
 			if !selector.allows(nexusDashboardObjectIdentity(obj)) {
 				continue
 			}
@@ -356,7 +279,7 @@ func (r *nexusDashboardMetricsReceiver) finishScrape(builder *nexusDashboardMetr
 	r.statsMu.Unlock()
 	outcome := summarizeAPIOutcomes(stats, func(stat nexusdashboard.RequestStat) string { return stat.Outcome })
 	rb := builder.controllerResource()
-	rb.recordInt("nexus_dashboard.scrape.partial_success", "Whether one or more endpoint families failed or were skipped.", "1", boolToInt(partial), nil)
+	rb.recordInt("nexus_dashboard.scrape.partial_success", "Whether one or more Nexus Dashboard endpoint families failed or were skipped during the scrape.", "1", boolToInt(partial), nil)
 	if lastSuccess, ok := r.success.observe(time.Now(), !partial && outcome.succeeded); ok {
 		rb.recordInt("nexus_dashboard.scrape.last_success", "Unix timestamp of the most recent fully successful Nexus Dashboard scrape.", "s", lastSuccess.Unix(), nil)
 	}
@@ -391,16 +314,16 @@ func (r *nexusDashboardMetricsReceiver) recordAPIRequestMetrics(builder *nexusDa
 		if stat.StatusCode > 0 {
 			attrs["http.response.status_code"] = strconv.Itoa(stat.StatusCode)
 		}
-		observations = append(observations, apiRequestObservation{attrs: attrs, durationSeconds: stat.Duration.Seconds(), failed: stat.Outcome == "error", rateLimited: stat.RateLimited})
+		observations = append(observations, apiRequestObservation{attrs: attrs, durationSeconds: stat.Duration.Seconds(), failed: stat.Outcome != "success", rateLimited: stat.RateLimited})
 	}
 	for _, aggregate := range aggregateAPIRequestObservations(observations) {
 		rb := builder.controllerResource()
-		rb.recordDouble("nexus_dashboard.api.request.duration", "Average duration of Nexus Dashboard API request attempts within the scrape for each matching request-attribute set.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
+		rb.recordDouble("nexus_dashboard.api.request.duration", "Average duration of Nexus Dashboard API request attempts in this scrape.", "s", aggregate.averageDurationSeconds, aggregate.attrs)
 		if aggregate.errors > 0 {
-			rb.recordSum("nexus_dashboard.api.request.errors", "Nexus Dashboard API request failures.", "{error}", aggregate.errors, aggregate.attrs)
+			rb.recordSum("nexus_dashboard.api.request.errors", "Nexus Dashboard API request errors.", "{error}", aggregate.errors, aggregate.attrs)
 		}
 		if aggregate.rateLimited > 0 {
-			rb.recordSum("nexus_dashboard.api.rate_limited", "Requests that received HTTP 429.", "{request}", aggregate.rateLimited, aggregate.attrs)
+			rb.recordSum("nexus_dashboard.api.rate_limited", "Nexus Dashboard API requests that were rate limited.", "{request}", aggregate.rateLimited, aggregate.attrs)
 		}
 	}
 }
@@ -438,7 +361,7 @@ func (r *nexusDashboardLogsReceiver) Shutdown(ctx context.Context) error {
 func (r *nexusDashboardLogsReceiver) run(ctx context.Context) {
 	defer close(r.done)
 	r.collect(ctx)
-	ticker := time.NewTicker(r.config.ControllerConfig.CollectionInterval)
+	ticker := time.NewTicker(r.config.CollectionInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -451,7 +374,7 @@ func (r *nexusDashboardLogsReceiver) run(ctx context.Context) {
 }
 
 func (r *nexusDashboardLogsReceiver) collect(ctx context.Context) {
-	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.ControllerConfig.Timeout)
+	scrapeCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 
 	r.seen.BeginBatch()
@@ -472,27 +395,14 @@ func (r *nexusDashboardLogsReceiver) scrape(ctx context.Context) (plog.Logs, err
 	now := time.Now()
 	var endpointErrors []error
 	selector := newDeviceSelectionMatcher(r.config.DeviceSelection)
-	groupBudget := newNexusDashboardGroupResultBudget(r.config.NexusDashboard)
 	endpoints := nexusDashboardLogEndpointInstances(r.config)
 	for i := range endpoints {
 		endpoint := &endpoints[i]
 		if !nexusDashboardGroupEnabled(r.config.NexusDashboard, endpoint.group) || endpoint.skipped {
 			continue
 		}
-		maxResults, collect := groupBudget.requestLimit(endpoint.group)
-		if !collect {
-			continue
-		}
-		objects, err := r.client.List(
-			ctx,
-			endpoint.operation,
-			endpoint.path,
-			nexusDashboardEndpointQuery(endpoint.nexusDashboardEndpoint, r.config, now),
-			endpoint.pagination.strategy,
-			maxResults,
-		)
-		groupBudget.consume(endpoint.group, len(objects))
-		for _, obj := range filterNexusDashboardEndpointObjects(objects, *endpoint, r.config) {
+		objects, err := r.client.List(ctx, endpoint.operation, endpoint.path, nexusDashboardEndpointQuery(endpoint.nexusDashboardEndpoint, r.config, now), nexusDashboardGroupMaxResults(r.config.NexusDashboard, endpoint.group))
+		for _, obj := range filterNexusDashboardObjects(objects, r.config.NexusDashboard.Targets) {
 			if !selector.allows(nexusDashboardObjectIdentity(obj)) {
 				continue
 			}
@@ -584,7 +494,7 @@ func (b *nexusDashboardMetricsBuilder) objectResource(endpoint nexusDashboardEnd
 	attrs := rb.resource.Attributes()
 	putStr(attrs, "host.id", hostID)
 	putStr(attrs, "host.name", firstNonEmpty(nexusdashboard.String(obj, "hostName", "hostname", "switchName", "nodeName", "name"), hostID))
-	putIPAttrs(attrs, "host.ip", nexusdashboard.String(obj, "ipAddress"), nexusdashboard.String(obj, "ip"), nexusdashboard.String(obj, "mgmtIpAddress"), nexusdashboard.String(obj, "managementIp"), nexusdashboard.String(obj, "oobMgmtIpAddress"), nexusdashboard.String(obj, "fabricManagementIp"))
+	putIPAttrs(attrs, "host.ip", nexusdashboard.String(obj, "ipAddress"), nexusdashboard.String(obj, "ip"), nexusdashboard.String(obj, "mgmtIpAddress"), nexusdashboard.String(obj, "managementIp"), nexusdashboard.String(obj, "oobMgmtIpAddress"))
 	putStr(attrs, "host.type", firstNonEmpty(nexusdashboard.String(obj, "model", "platform", "deviceType", "role"), endpoint.objectType))
 	putStr(attrs, "hw.type", "network")
 	putStr(attrs, "os.name", firstNonEmpty(nexusdashboard.String(obj, "osType", "imageName"), "NX-OS"))
@@ -633,9 +543,9 @@ func (b *nexusDashboardMetricsBuilder) recordObject(endpoint nexusDashboardEndpo
 		"nexus_dashboard.status":        status,
 		"nexus_dashboard.severity":      severity,
 	})
-	rb.recordInt("nexus_dashboard.resource.info", "Bounded metadata for controller resources.", "1", 1, attrs)
+	rb.recordInt("nexus_dashboard.resource.info", "Nexus Dashboard resource metadata.", "1", 1, attrs)
 	if code, ok := statusCode(status); ok {
-		rb.recordInt("nexus_dashboard.resource.status", "Encoded status with the original status string retained as an attribute.", "1", code, attrs)
+		rb.recordInt("nexus_dashboard.resource.status", "Nexus Dashboard resource status encoded for troubleshooting.", "1", code, attrs)
 	}
 	b.addCount("nexus_dashboard.resource.count", attrs)
 	evidenceAttrs := compactAttrs(map[string]string{
@@ -671,7 +581,7 @@ func (b *nexusDashboardMetricsBuilder) recordObject(endpoint nexusDashboardEndpo
 
 func (*nexusDashboardMetricsBuilder) recordPlatformObject(rb *resourceMetricsBuilder, obj nexusdashboard.Object, status string) {
 	if code, ok := statusCode(status); ok {
-		rb.recordInt("nexus_dashboard.service.health", "Encoded Nexus Dashboard service health.", "1", code, map[string]string{
+		rb.recordInt("nexus_dashboard.service.health", "Nexus Dashboard platform, node, service, license, and storage health.", "1", code, map[string]string{
 			"nd.service.name": nexusdashboard.String(obj, "serviceName", "appName", "featureName", "name"),
 			"nd.node.name":    nexusdashboard.String(obj, "nodeName", "hostName", "name"),
 			"nd.status":       status,
@@ -685,7 +595,7 @@ func (*nexusDashboardMetricsBuilder) recordPlatformObject(rb *resourceMetricsBui
 func (*nexusDashboardMetricsBuilder) recordNDFCObject(rb *resourceMetricsBuilder, obj nexusdashboard.Object, status string) {
 	if looksLikeSwitch(obj) {
 		if up, ok := upStatus(status); ok {
-			rb.recordInt("cisco.device.up", "Device availability (1 = up, 0 = down)", "1", up, nil)
+			rb.recordInt("cisco.device.up", "Nexus switch availability reported by Nexus Dashboard or NDFC.", "1", up, nil)
 		}
 	}
 	recordNexusDashboardFirstNumeric(rb, obj, []string{"health", "healthScore"}, "nexus_dashboard.fabric.health", "Fabric or switch health score reported by NDFC.", "1", nil, 1)
@@ -700,7 +610,7 @@ func (b *nexusDashboardMetricsBuilder) recordInsightsObject(rb *resourceMetricsB
 		"nexus_dashboard.insights.severity": severity,
 		"nexus_dashboard.insights.category": nexusdashboard.String(obj, "category", "type", "anomalyType"),
 	})
-	rb.recordInt("nexus_dashboard.insights.anomaly.active", "Active Insights anomaly or advisory.", "1", 1, attrs)
+	rb.recordInt("nexus_dashboard.insights.anomaly.active", "Active Nexus Dashboard Insights anomaly or advisory.", "1", 1, attrs)
 	b.addCount("nexus_dashboard.insights.anomaly.count", attrs)
 	recordNexusDashboardNumeric(rb, obj, "score", "nexus_dashboard.insights.score", "Insights site, fabric, anomaly, or advisory score.", "1", attrs, 1)
 	recordNexusDashboardNumeric(rb, obj, "confidence", "nexus_dashboard.insights.confidence", "Insights root-cause confidence.", "1", attrs, 0.01)
@@ -732,7 +642,7 @@ func (*nexusDashboardMetricsBuilder) recordPerformanceObject(rb *resourceMetrics
 		attrs := interfaceAttrs(ifName, nexusdashboard.String(obj, "macAddress"), nexusdashboard.String(obj, "description", "descr"), nexusdashboard.String(obj, "speed"))
 		if status := nexusDashboardObjectStatus(obj); status != "" {
 			if up, ok := upStatus(status); ok {
-				rb.recordInt("system.network.interface.status", "Interface operational status (1 = up, 0 = not up)", "1", up, attrs)
+				rb.recordInt("system.network.interface.status", "Interface operational status reported by Nexus Dashboard or NDFC.", "1", up, attrs)
 			}
 		}
 		recordNexusDashboardNumeric(rb, obj, "rxRate", "cisco.interface.io.rate", "Interface traffic rate.", "bit/s", withAttr(attrs, "network.io.direction", "receive"), 1)
@@ -750,7 +660,7 @@ func (b *nexusDashboardMetricsBuilder) recordSkippedEndpoint(endpoint nexusDashb
 		"nexus_dashboard.skip.reason":   "missing_target_filter",
 	})
 	maps.Copy(attrs, endpoint.attrs)
-	b.controllerResource().recordInt("nexus_dashboard.service.skipped", "ND endpoint family skipped because target scope was not configured.", "1", 1, attrs)
+	b.controllerResource().recordInt("nexus_dashboard.service.skipped", "Nexus Dashboard service or target-specific endpoint skipped because the required app or target filter was unavailable.", "1", 1, attrs)
 }
 
 func (b *nexusDashboardMetricsBuilder) recordFailedEndpoint(endpoint nexusDashboardEndpointInstance, err error) {
@@ -765,11 +675,11 @@ func (b *nexusDashboardMetricsBuilder) recordFailedEndpoint(endpoint nexusDashbo
 	if errors.As(err, &apiErr) {
 		attrs["http.response.status_code"] = strconv.Itoa(apiErr.StatusCode)
 		if apiErr.StatusCode == http.StatusNotFound || apiErr.StatusCode == http.StatusForbidden {
-			b.controllerResource().recordInt("nexus_dashboard.service.unavailable", "ND service endpoint unavailable, disabled, unauthorized, or not installed.", "1", 1, attrs)
+			b.controllerResource().recordInt("nexus_dashboard.service.unavailable", "Nexus Dashboard service endpoint unavailable, disabled, unauthorized, or not installed.", "1", 1, attrs)
 			return
 		}
 	}
-	b.controllerResource().recordSum("nexus_dashboard.api.endpoint.error", "Endpoint-family scrape failures.", "{error}", 1, attrs)
+	b.controllerResource().recordSum("nexus_dashboard.api.endpoint.error", "Nexus Dashboard endpoint scrape error.", "{error}", 1, attrs)
 }
 
 func (b *nexusDashboardMetricsBuilder) addCount(name string, attrs map[string]string) {
@@ -848,17 +758,16 @@ func appendNexusDashboardLog(ld plog.Logs, endpoint nexusDashboardEndpointInstan
 }
 
 func nexusDashboardMetricEndpointInstances(cfg *Config) []nexusDashboardEndpointInstance {
-	return expandNexusDashboardEndpoints(nexusDashboardMetricEndpoints(cfg.NexusDashboard.APIProfile), cfg)
+	return expandNexusDashboardEndpoints(nexusDashboardMetricEndpoints(), cfg)
 }
 
 func nexusDashboardLogEndpointInstances(cfg *Config) []nexusDashboardEndpointInstance {
-	return expandNexusDashboardEndpoints(nexusDashboardLogEndpoints(cfg.NexusDashboard.APIProfile), cfg)
+	return expandNexusDashboardEndpoints(nexusDashboardLogEndpoints(), cfg)
 }
 
 func expandNexusDashboardEndpoints(endpoints []nexusDashboardEndpoint, cfg *Config) []nexusDashboardEndpointInstance {
 	var out []nexusDashboardEndpointInstance
-	for i := range endpoints {
-		endpoint := endpoints[i]
+	for _, endpoint := range endpoints {
 		switch endpoint.selectorKey {
 		case "":
 			out = append(out, nexusDashboardEndpointInstance{nexusDashboardEndpoint: endpoint, path: endpoint.path})
@@ -871,7 +780,7 @@ func expandNexusDashboardEndpoints(endpoints []nexusDashboardEndpoint, cfg *Conf
 			for _, fabric := range values {
 				out = append(out, nexusDashboardEndpointInstance{
 					nexusDashboardEndpoint: endpoint,
-					path:                   strings.ReplaceAll(endpoint.path, "{fabricName}", nexusDashboardPathSegment(fabric)),
+					path:                   strings.ReplaceAll(endpoint.path, "{fabricName}", url.PathEscape(fabric)),
 					attrs:                  map[string]string{"cisco.fabric.name": fabric},
 				})
 			}
@@ -884,7 +793,7 @@ func expandNexusDashboardEndpoints(endpoints []nexusDashboardEndpoint, cfg *Conf
 			for _, switchID := range values {
 				out = append(out, nexusDashboardEndpointInstance{
 					nexusDashboardEndpoint: endpoint,
-					path:                   strings.ReplaceAll(endpoint.path, "{switchId}", nexusDashboardPathSegment(switchID)),
+					path:                   strings.ReplaceAll(endpoint.path, "{switchId}", url.PathEscape(switchID)),
 					attrs:                  map[string]string{"ndfc.switch.id": switchID},
 				})
 			}
@@ -897,7 +806,7 @@ func expandNexusDashboardEndpoints(endpoints []nexusDashboardEndpoint, cfg *Conf
 			for _, serial := range values {
 				out = append(out, nexusDashboardEndpointInstance{
 					nexusDashboardEndpoint: endpoint,
-					path:                   strings.ReplaceAll(endpoint.path, "{serialNumber}", nexusDashboardPathSegment(serial)),
+					path:                   strings.ReplaceAll(endpoint.path, "{serialNumber}", url.PathEscape(serial)),
 					attrs:                  map[string]string{"cisco.switch.serial": serial},
 				})
 			}
@@ -906,88 +815,55 @@ func expandNexusDashboardEndpoints(endpoints []nexusDashboardEndpoint, cfg *Conf
 	return out
 }
 
-// nexusDashboardPathSegment returns one escaped path segment. The Nexus
-// Dashboard client preserves endpoint-relative escaped paths when combining
-// them with the configured controller prefix, so this escape is applied once.
-func nexusDashboardPathSegment(value string) string {
-	return url.PathEscape(value)
-}
-
-func nexusDashboardMetricEndpoints(apiProfile string) []nexusDashboardEndpoint {
-	if normalizeNexusDashboardAPIProfile(apiProfile) == nexusDashboardAPIProfileUnified {
-		return nexusDashboardUnifiedMetricEndpoints()
-	}
-	return nexusDashboardLegacyMetricEndpoints()
-}
-
-func nexusDashboardUnifiedMetricEndpoints() []nexusDashboardEndpoint {
+func nexusDashboardMetricEndpoints() []nexusDashboardEndpoint {
 	return []nexusDashboardEndpoint{
-		{group: "platform", product: "platform", operation: "nd.cluster.health", path: "/api/v1/infra/clusterhealth/status", objectType: "nd.cluster", pagination: nexusDashboardPaginationInfraSingle},
-		{group: "platform", product: "platform", operation: "nd.nodes", path: "/api/v1/infra/cluster/nodes", objectType: "nd.node", pagination: nexusDashboardPaginationInfraSingle},
-		{group: "platform", product: "platform", operation: "nd.hardware", path: "/api/v1/infra/systemResources/nodes/hardware", objectType: "nd.node_hardware", pagination: nexusDashboardPaginationInfraSingle},
-		{group: "platform", product: "platform", operation: "nd.system.resources", path: "/api/v1/infra/systemResources/summary", objectType: "nd.system_resources", pagination: nexusDashboardPaginationInfraSingle},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.manage.fabrics", path: "/api/v1/manage/fabrics", objectType: "ndfc.fabric", pagination: nexusDashboardPaginationManageOffset},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.manage.fabric_switches", path: "/api/v1/manage/fabrics/{fabricName}/switches", objectType: "ndfc.switch", selectorKey: "fabric", pagination: nexusDashboardPaginationManageOffset},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.manage.fabric_switches_summary", path: "/api/v1/manage/fabrics/{fabricName}/switches/summary", objectType: "ndfc.switch_summary", selectorKey: "fabric", pagination: nexusDashboardPaginationManageSingle},
+		{group: "platform", product: "platform", operation: "nd.cluster.health", path: "/api/v1/infra/cluster/health", objectType: "nd.cluster"},
+		{group: "platform", product: "platform", operation: "nd.nodes", path: "/api/v1/infra/nodes", objectType: "nd.node"},
+		{group: "platform", product: "platform", operation: "nd.services", path: "/api/v1/infra/services", objectType: "nd.service"},
+		{group: "platform", product: "platform", operation: "nd.apps", path: "/api/v1/infra/apps", objectType: "nd.app"},
+		{group: "platform", product: "platform", operation: "nd.storage", path: "/api/v1/infra/storage", objectType: "nd.storage"},
+		{group: "platform", product: "platform", operation: "nd.licenses", path: "/api/v1/infra/licenses", objectType: "nd.license"},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.manage.fabrics", path: "/api/v1/manage/fabrics", objectType: "ndfc.fabric"},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.manage.fabric_switches", path: "/api/v1/manage/fabric-switches/summary", objectType: "ndfc.switch"},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.fabric.status", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/fabrics/fabricstatus", objectType: "ndfc.fabric_status"},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.switches", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/switches", objectType: "ndfc.switch"},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.fabric.switch_overview", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/fabrics/{fabricName}/switches", objectType: "ndfc.switch", selectorKey: "fabric"},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.vpc.pairs", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/vpcpairs", objectType: "ndfc.vpc"},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.endpoints", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/top-down/fabrics/{fabricName}/endpoints", objectType: "ndfc.endpoint", selectorKey: "fabric"},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.policy.deployment", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/switches/{serialNumber}/intent-config", objectType: "ndfc.policy", selectorKey: "serial"},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.audit", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/audit", objectType: "ndfc.audit", query: recentNexusDashboardQuery},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.events", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/events", objectType: "ndfc.event", query: recentNexusDashboardQuery},
+		{group: "performance", product: "ndfc", operation: "ndfc.interface.stats", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/lanSwitches/{switchId}/interfaces", objectType: "ndfc.interface", selectorKey: "switch_id"},
+		{group: "performance", product: "ndfc", operation: "ndfc.telemetry.sync", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/telemetry/sync/status", objectType: "ndfc.telemetry"},
+		{group: "insights", product: "insights", operation: "insights.anomalies", path: "/nexus/insights/api/v1/anomalies", objectType: "insights.anomaly", query: recentNexusDashboardQuery},
+		{group: "insights", product: "insights", operation: "insights.advisories", path: "/nexus/insights/api/v1/advisories", objectType: "insights.advisory", query: recentNexusDashboardQuery},
+		{group: "insights", product: "insights", operation: "insights.root_causes", path: "/nexus/insights/api/v1/rootcauses", objectType: "insights.root_cause", query: recentNexusDashboardQuery},
+		{group: "insights", product: "insights", operation: "insights.sites", path: "/nexus/insights/api/v1/sites", objectType: "insights.site"},
+		{group: "insights", product: "insights", operation: "insights.flow_analyses", path: "/nexus/insights/api/v1/flow/analyses", objectType: "insights.flow"},
+		{group: "insights", product: "insights", operation: "insights.recommendations", path: "/nexus/insights/api/v1/recommendations", objectType: "insights.recommendation"},
+		{group: "orchestrator", product: "orchestrator", operation: "ndo.sites", path: "/mso/api/v1/sites", objectType: "ndo.site"},
+		{group: "orchestrator", product: "orchestrator", operation: "ndo.schemas", path: "/mso/api/v1/schemas", objectType: "ndo.schema"},
+		{group: "orchestrator", product: "orchestrator", operation: "ndo.deployments", path: "/mso/api/v1/tasks", objectType: "ndo.deployment", query: recentNexusDashboardQuery},
+		{group: "orchestrator", product: "orchestrator", operation: "ndo.alerts", path: "/mso/api/v1/alerts", objectType: "ndo.alert", query: recentNexusDashboardQuery},
+		{group: "orchestrator", product: "orchestrator", operation: "ndo.audit", path: "/mso/api/v1/audit", objectType: "ndo.audit", query: recentNexusDashboardQuery},
+		{group: "data_broker", product: "data_broker", operation: "nddb.health", path: "/api/v1/nddb/health", objectType: "nddb.health"},
+		{group: "data_broker", product: "data_broker", operation: "nddb.switches", path: "/api/v1/nddb/switches", objectType: "nddb.switch"},
+		{group: "data_broker", product: "data_broker", operation: "nddb.rules", path: "/api/v1/nddb/rules", objectType: "nddb.rule"},
+		{group: "data_broker", product: "data_broker", operation: "nddb.sessions", path: "/api/v1/nddb/sessions", objectType: "nddb.session"},
+		{group: "data_broker", product: "data_broker", operation: "nddb.events", path: "/api/v1/nddb/events", objectType: "nddb.event", query: recentNexusDashboardQuery},
 	}
 }
 
-func nexusDashboardLegacyMetricEndpoints() []nexusDashboardEndpoint {
+func nexusDashboardLogEndpoints() []nexusDashboardEndpoint {
 	return []nexusDashboardEndpoint{
-		{group: "platform", product: "platform", operation: "nd.cluster.health", path: "/api/v1/infra/cluster/health", objectType: "nd.cluster", pagination: nexusDashboardPaginationLegacyInfraUnknown},
-		{group: "platform", product: "platform", operation: "nd.nodes", path: "/api/v1/infra/nodes", objectType: "nd.node", pagination: nexusDashboardPaginationLegacyInfraUnknown},
-		{group: "platform", product: "platform", operation: "nd.services", path: "/api/v1/infra/services", objectType: "nd.service", pagination: nexusDashboardPaginationLegacyInfraUnknown},
-		{group: "platform", product: "platform", operation: "nd.apps", path: "/api/v1/infra/apps", objectType: "nd.app", pagination: nexusDashboardPaginationLegacyInfraUnknown},
-		{group: "platform", product: "platform", operation: "nd.storage", path: "/api/v1/infra/storage", objectType: "nd.storage", pagination: nexusDashboardPaginationLegacyInfraUnknown},
-		{group: "platform", product: "platform", operation: "nd.licenses", path: "/api/v1/infra/licenses", objectType: "nd.license", pagination: nexusDashboardPaginationLegacyInfraUnknown},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.manage.fabrics", path: "/api/v1/manage/fabrics", objectType: "ndfc.fabric", pagination: nexusDashboardPaginationManageOffset},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.manage.fabric_switches", path: "/api/v1/manage/fabric-switches/summary", objectType: "ndfc.switch", pagination: nexusDashboardPaginationLegacyManageUnknown},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.fabric.status", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/fabrics/fabricstatus", objectType: "ndfc.fabric_status", pagination: nexusDashboardPaginationNDFCLANSingle},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.switches", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/switches", objectType: "ndfc.switch", pagination: nexusDashboardPaginationLegacyNDFCUnknown},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.fabric.switch_overview", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/fabrics/{fabricName}/switches", objectType: "ndfc.switch", selectorKey: "fabric", pagination: nexusDashboardPaginationLegacyNDFCUnknown},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.vpc.pairs", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/vpcpairs", objectType: "ndfc.vpc", pagination: nexusDashboardPaginationLegacyNDFCUnknown},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.endpoints", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/top-down/fabrics/{fabricName}/endpoints", objectType: "ndfc.endpoint", selectorKey: "fabric", pagination: nexusDashboardPaginationLegacyNDFCUnknown},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.policy.deployment", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/switches/{serialNumber}/intent-config", objectType: "ndfc.policy", selectorKey: "serial", pagination: nexusDashboardPaginationLegacyNDFCUnknown},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.audit", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/audit", objectType: "ndfc.audit", pagination: nexusDashboardPaginationLegacyNDFCUnknown, query: recentNexusDashboardQuery},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.events", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/events", objectType: "ndfc.event", pagination: nexusDashboardPaginationLegacyNDFCUnknown, query: recentNexusDashboardQuery},
-		{group: "performance", product: "ndfc", operation: "ndfc.interface.stats", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/lanSwitches/{switchId}/interfaces", objectType: "ndfc.interface", selectorKey: "switch_id", pagination: nexusDashboardPaginationLegacyNDFCUnknown},
-		{group: "performance", product: "ndfc", operation: "ndfc.telemetry.sync", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/telemetry/sync/status", objectType: "ndfc.telemetry", pagination: nexusDashboardPaginationLegacyNDFCUnknown},
-		{group: "insights", product: "insights", operation: "insights.anomalies", path: "/nexus/insights/api/v1/anomalies", objectType: "insights.anomaly", pagination: nexusDashboardPaginationLegacyInsightsUnknown, query: recentNexusDashboardQuery},
-		{group: "insights", product: "insights", operation: "insights.advisories", path: "/nexus/insights/api/v1/advisories", objectType: "insights.advisory", pagination: nexusDashboardPaginationLegacyInsightsUnknown, query: recentNexusDashboardQuery},
-		{group: "insights", product: "insights", operation: "insights.root_causes", path: "/nexus/insights/api/v1/rootcauses", objectType: "insights.root_cause", pagination: nexusDashboardPaginationLegacyInsightsUnknown, query: recentNexusDashboardQuery},
-		{group: "insights", product: "insights", operation: "insights.sites", path: "/nexus/insights/api/v1/sites", objectType: "insights.site", pagination: nexusDashboardPaginationLegacyInsightsUnknown},
-		{group: "insights", product: "insights", operation: "insights.flow_analyses", path: "/nexus/insights/api/v1/flow/analyses", objectType: "insights.flow", pagination: nexusDashboardPaginationLegacyInsightsUnknown},
-		{group: "insights", product: "insights", operation: "insights.recommendations", path: "/nexus/insights/api/v1/recommendations", objectType: "insights.recommendation", pagination: nexusDashboardPaginationLegacyInsightsUnknown},
-		{group: "orchestrator", product: "orchestrator", operation: "ndo.sites", path: "/mso/api/v1/sites", objectType: "ndo.site", pagination: nexusDashboardPaginationNDOSingle},
-		{group: "orchestrator", product: "orchestrator", operation: "ndo.schemas", path: "/mso/api/v1/schemas", objectType: "ndo.schema", pagination: nexusDashboardPaginationNDOSingle},
-		{group: "orchestrator", product: "orchestrator", operation: "ndo.deployments", path: "/mso/api/v1/tasks", objectType: "ndo.deployment", pagination: nexusDashboardPaginationLegacyNDOUnknown, query: recentNexusDashboardQuery},
-		{group: "orchestrator", product: "orchestrator", operation: "ndo.alerts", path: "/mso/api/v1/alerts", objectType: "ndo.alert", pagination: nexusDashboardPaginationLegacyNDOUnknown, query: recentNexusDashboardQuery},
-		{group: "orchestrator", product: "orchestrator", operation: "ndo.audit", path: "/mso/api/v1/audit", objectType: "ndo.audit", pagination: nexusDashboardPaginationLegacyNDOUnknown, query: recentNexusDashboardQuery},
-		{group: "data_broker", product: "data_broker", operation: "nddb.health", path: "/api/v1/nddb/health", objectType: "nddb.health", pagination: nexusDashboardPaginationLegacyNDDBUnknown},
-		{group: "data_broker", product: "data_broker", operation: "nddb.switches", path: "/api/v1/nddb/switches", objectType: "nddb.switch", pagination: nexusDashboardPaginationLegacyNDDBUnknown},
-		{group: "data_broker", product: "data_broker", operation: "nddb.rules", path: "/api/v1/nddb/rules", objectType: "nddb.rule", pagination: nexusDashboardPaginationLegacyNDDBUnknown},
-		{group: "data_broker", product: "data_broker", operation: "nddb.sessions", path: "/api/v1/nddb/sessions", objectType: "nddb.session", pagination: nexusDashboardPaginationLegacyNDDBUnknown},
-		{group: "data_broker", product: "data_broker", operation: "nddb.events", path: "/api/v1/nddb/events", objectType: "nddb.event", pagination: nexusDashboardPaginationLegacyNDDBUnknown, query: recentNexusDashboardQuery},
-	}
-}
-
-func nexusDashboardLogEndpoints(apiProfile string) []nexusDashboardEndpoint {
-	if normalizeNexusDashboardAPIProfile(apiProfile) == nexusDashboardAPIProfileUnified {
-		return nil
-	}
-	return nexusDashboardLegacyLogEndpoints()
-}
-
-func nexusDashboardLegacyLogEndpoints() []nexusDashboardEndpoint {
-	return []nexusDashboardEndpoint{
-		{group: "ndfc", product: "ndfc", operation: "ndfc.audit", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/audit", objectType: "ndfc.audit", pagination: nexusDashboardPaginationLegacyNDFCUnknown, query: recentNexusDashboardQuery},
-		{group: "ndfc", product: "ndfc", operation: "ndfc.events", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/events", objectType: "ndfc.event", pagination: nexusDashboardPaginationLegacyNDFCUnknown, query: recentNexusDashboardQuery},
-		{group: "insights", product: "insights", operation: "insights.anomalies", path: "/nexus/insights/api/v1/anomalies", objectType: "insights.anomaly", pagination: nexusDashboardPaginationLegacyInsightsUnknown, query: recentNexusDashboardQuery},
-		{group: "insights", product: "insights", operation: "insights.advisories", path: "/nexus/insights/api/v1/advisories", objectType: "insights.advisory", pagination: nexusDashboardPaginationLegacyInsightsUnknown, query: recentNexusDashboardQuery},
-		{group: "insights", product: "insights", operation: "insights.root_causes", path: "/nexus/insights/api/v1/rootcauses", objectType: "insights.root_cause", pagination: nexusDashboardPaginationLegacyInsightsUnknown, query: recentNexusDashboardQuery},
-		{group: "orchestrator", product: "orchestrator", operation: "ndo.audit", path: "/mso/api/v1/audit", objectType: "ndo.audit", pagination: nexusDashboardPaginationLegacyNDOUnknown, query: recentNexusDashboardQuery},
-		{group: "orchestrator", product: "orchestrator", operation: "ndo.deployments", path: "/mso/api/v1/tasks", objectType: "ndo.deployment", pagination: nexusDashboardPaginationLegacyNDOUnknown, query: recentNexusDashboardQuery},
-		{group: "data_broker", product: "data_broker", operation: "nddb.events", path: "/api/v1/nddb/events", objectType: "nddb.event", pagination: nexusDashboardPaginationLegacyNDDBUnknown, query: recentNexusDashboardQuery},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.audit", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/audit", objectType: "ndfc.audit", query: recentNexusDashboardQuery},
+		{group: "ndfc", product: "ndfc", operation: "ndfc.events", path: "/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/control/events", objectType: "ndfc.event", query: recentNexusDashboardQuery},
+		{group: "insights", product: "insights", operation: "insights.anomalies", path: "/nexus/insights/api/v1/anomalies", objectType: "insights.anomaly", query: recentNexusDashboardQuery},
+		{group: "insights", product: "insights", operation: "insights.advisories", path: "/nexus/insights/api/v1/advisories", objectType: "insights.advisory", query: recentNexusDashboardQuery},
+		{group: "insights", product: "insights", operation: "insights.root_causes", path: "/nexus/insights/api/v1/rootcauses", objectType: "insights.root_cause", query: recentNexusDashboardQuery},
+		{group: "orchestrator", product: "orchestrator", operation: "ndo.audit", path: "/mso/api/v1/audit", objectType: "ndo.audit", query: recentNexusDashboardQuery},
+		{group: "orchestrator", product: "orchestrator", operation: "ndo.deployments", path: "/mso/api/v1/tasks", objectType: "ndo.deployment", query: recentNexusDashboardQuery},
+		{group: "data_broker", product: "data_broker", operation: "nddb.events", path: "/api/v1/nddb/events", objectType: "nddb.event", query: recentNexusDashboardQuery},
 	}
 }
 
@@ -1047,36 +923,6 @@ func nexusDashboardGroupMaxResults(cfg NexusDashboardConfig, group string) int {
 	}
 }
 
-func newNexusDashboardGroupResultBudget(cfg NexusDashboardConfig) nexusDashboardGroupResultBudget {
-	budget := nexusDashboardGroupResultBudget{}
-	for _, group := range []string{"platform", "ndfc", "insights", "orchestrator", "data_broker", "performance"} {
-		if maximum := nexusDashboardGroupMaxResults(cfg, group); maximum > 0 {
-			budget[group] = maximum
-		}
-	}
-	return budget
-}
-
-func (b nexusDashboardGroupResultBudget) requestLimit(group string) (int, bool) {
-	remaining, limited := b[group]
-	if !limited {
-		return 0, true
-	}
-	return remaining, remaining > 0
-}
-
-func (b nexusDashboardGroupResultBudget) consume(group string, count int) {
-	remaining, limited := b[group]
-	if !limited {
-		return
-	}
-	remaining -= count
-	if remaining < 0 {
-		remaining = 0
-	}
-	b[group] = remaining
-}
-
 func filterNexusDashboardObjects(objects []nexusdashboard.Object, filters NexusDashboardTargetFilters) []nexusdashboard.Object {
 	needles := makeFilterNeedles(filters.Sites, filters.Fabrics, filters.SwitchSerials, filters.SwitchIDs, filters.InterfaceNames, filters.ServiceNames)
 	if len(needles) == 0 {
@@ -1095,15 +941,6 @@ func filterNexusDashboardObjects(objects []nexusdashboard.Object, filters NexusD
 	return filtered
 }
 
-func filterNexusDashboardEndpointObjects(objects []nexusdashboard.Object, endpoint nexusDashboardEndpointInstance, cfg *Config) []nexusdashboard.Object {
-	if normalizeNexusDashboardAPIProfile(cfg.NexusDashboard.APIProfile) == nexusDashboardAPIProfileUnified {
-		if endpoint.group == "platform" || endpoint.selectorKey != "" {
-			return objects
-		}
-	}
-	return filterNexusDashboardObjects(objects, cfg.NexusDashboard.Targets)
-}
-
 func makeFilterNeedles(groups ...[]string) map[string]struct{} {
 	needles := map[string]struct{}{}
 	for _, group := range groups {
@@ -1118,30 +955,14 @@ func makeFilterNeedles(groups ...[]string) map[string]struct{} {
 }
 
 func nexusDashboardObjectStatus(obj nexusdashboard.Object) string {
-	if healthy, ok := nexusdashboard.Bool(obj, "isHealthy"); ok {
-		if healthy {
-			return "healthy"
-		}
-		return "unhealthy"
-	}
-	status := firstNonEmpty(
-		nexusdashboard.ScalarString(obj, "status", "Status"),
-		nexusdashboard.ScalarString(obj, "operSt", "operState", "operStatus", "operationalState"),
-		nexusdashboard.ScalarString(obj, "state", "State"),
-		nexusdashboard.ScalarString(obj, "health", "healthStatus"),
-		nexusdashboard.ScalarString(obj, "severity", "Severity"),
-		nexusdashboard.ScalarString(obj, "deploymentStatus", "syncStatus", "configStatus", "complianceStatus", "bootstrapStatus"),
+	return firstNonEmpty(
+		nexusdashboard.String(obj, "status", "Status"),
+		nexusdashboard.String(obj, "operSt", "operState", "operStatus"),
+		nexusdashboard.String(obj, "state", "State"),
+		nexusdashboard.String(obj, "health", "healthStatus"),
+		nexusdashboard.String(obj, "severity", "Severity"),
+		nexusdashboard.String(obj, "deploymentStatus", "syncStatus", "configStatus", "complianceStatus"),
 	)
-	if status != "" {
-		return status
-	}
-	if additional, ok := obj["additionalData"].(map[string]any); ok {
-		status = nexusdashboard.ScalarString(nexusdashboard.Object(additional), "discoveryStatus", "nodeStatus", "configSyncStatus", "systemMode")
-		if status != "" {
-			return status
-		}
-	}
-	return ""
 }
 
 func nexusDashboardEvidenceMetric(endpoint nexusDashboardEndpointInstance) string {

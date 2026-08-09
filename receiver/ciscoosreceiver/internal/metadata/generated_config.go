@@ -9,1346 +9,6 @@ import (
 	"go.opentelemetry.io/collector/filter"
 )
 
-// AciAPIEndpointErrorMetricConfig provides config for the aci.api.endpoint.error metric.
-type AciAPIEndpointErrorMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *AciAPIEndpointErrorMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// AciAPIRateLimitedMetricConfig provides config for the aci.api.rate_limited metric.
-type AciAPIRateLimitedMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *AciAPIRateLimitedMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// AciAPIRequestDurationMetricConfig provides config for the aci.api.request.duration metric.
-type AciAPIRequestDurationMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *AciAPIRequestDurationMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// AciAPIRequestErrorsMetricConfig provides config for the aci.api.request.errors metric.
-type AciAPIRequestErrorsMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *AciAPIRequestErrorsMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// AciAuditRecordCountMetricConfig provides config for the aci.audit.record.count metric.
-type AciAuditRecordCountMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *AciAuditRecordCountMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// AciControllerUpMetricConfig provides config for the aci.controller.up metric.
-type AciControllerUpMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *AciControllerUpMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// AciEndpointCountMetricConfig provides config for the aci.endpoint.count metric.
-type AciEndpointCountMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *AciEndpointCountMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// AciEndpointPresentMetricConfig provides config for the aci.endpoint.present metric.
-type AciEndpointPresentMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *AciEndpointPresentMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// AciEventCountMetricConfig provides config for the aci.event.count metric.
-type AciEventCountMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *AciEventCountMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// AciFabricHealthMetricConfig provides config for the aci.fabric.health metric.
-type AciFabricHealthMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *AciFabricHealthMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// AciFaultActiveMetricConfig provides config for the aci.fault.active metric.
-type AciFaultActiveMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *AciFaultActiveMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// AciFaultCountMetricConfig provides config for the aci.fault.count metric.
-type AciFaultCountMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *AciFaultCountMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// AciResourceCountMetricConfig provides config for the aci.resource.count metric.
-type AciResourceCountMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *AciResourceCountMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// AciResourceInfoMetricConfig provides config for the aci.resource.info metric.
-type AciResourceInfoMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *AciResourceInfoMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// AciResourceStatusMetricConfig provides config for the aci.resource.status metric.
-type AciResourceStatusMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *AciResourceStatusMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// AciScrapeLastSuccessMetricConfig provides config for the aci.scrape.last_success metric.
-type AciScrapeLastSuccessMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *AciScrapeLastSuccessMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// AciScrapePartialSuccessMetricConfig provides config for the aci.scrape.partial_success metric.
-type AciScrapePartialSuccessMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *AciScrapePartialSuccessMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// AciTenantObjectCountMetricConfig provides config for the aci.tenant.object.count metric.
-type AciTenantObjectCountMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *AciTenantObjectCountMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// AciTenantStatusMetricConfig provides config for the aci.tenant.status metric.
-type AciTenantStatusMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *AciTenantStatusMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterAPIRateLimitedMetricConfig provides config for the catalyst_center.api.rate_limited metric.
-type CatalystCenterAPIRateLimitedMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterAPIRateLimitedMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterAPIRequestDurationMetricConfig provides config for the catalyst_center.api.request.duration metric.
-type CatalystCenterAPIRequestDurationMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterAPIRequestDurationMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterAPIRequestErrorsMetricConfig provides config for the catalyst_center.api.request.errors metric.
-type CatalystCenterAPIRequestErrorsMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterAPIRequestErrorsMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterClientCountMetricConfig provides config for the catalyst_center.client.count metric.
-type CatalystCenterClientCountMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterClientCountMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterClientDetailHealthScoreMetricConfig provides config for the catalyst_center.client.detail.health.score metric.
-type CatalystCenterClientDetailHealthScoreMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterClientDetailHealthScoreMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterClientHealthScoreMetricConfig provides config for the catalyst_center.client.health.score metric.
-type CatalystCenterClientHealthScoreMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterClientHealthScoreMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterClientIssueCountMetricConfig provides config for the catalyst_center.client.issue.count metric.
-type CatalystCenterClientIssueCountMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterClientIssueCountMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterClientNetworkIoMetricConfig provides config for the catalyst_center.client.network.io metric.
-type CatalystCenterClientNetworkIoMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterClientNetworkIoMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterClientUniqueCountMetricConfig provides config for the catalyst_center.client.unique.count metric.
-type CatalystCenterClientUniqueCountMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterClientUniqueCountMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterClientWirelessRssiMetricConfig provides config for the catalyst_center.client.wireless.rssi metric.
-type CatalystCenterClientWirelessRssiMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterClientWirelessRssiMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterClientWirelessSnrMetricConfig provides config for the catalyst_center.client.wireless.snr metric.
-type CatalystCenterClientWirelessSnrMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterClientWirelessSnrMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterDeviceCollectionStatusMetricConfig provides config for the catalyst_center.device.collection.status metric.
-type CatalystCenterDeviceCollectionStatusMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterDeviceCollectionStatusMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterDeviceDetailCommunicationStatusMetricConfig provides config for the catalyst_center.device.detail.communication.status metric.
-type CatalystCenterDeviceDetailCommunicationStatusMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterDeviceDetailCommunicationStatusMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterDeviceDetailHealthScoreMetricConfig provides config for the catalyst_center.device.detail.health.score metric.
-type CatalystCenterDeviceDetailHealthScoreMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterDeviceDetailHealthScoreMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterDeviceInterfaceCountMetricConfig provides config for the catalyst_center.device.interface.count metric.
-type CatalystCenterDeviceInterfaceCountMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterDeviceInterfaceCountMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterDeviceReachabilityStatusMetricConfig provides config for the catalyst_center.device.reachability.status metric.
-type CatalystCenterDeviceReachabilityStatusMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterDeviceReachabilityStatusMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterDeviceUptimeMetricConfig provides config for the catalyst_center.device.uptime metric.
-type CatalystCenterDeviceUptimeMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterDeviceUptimeMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterInterfaceCountMetricConfig provides config for the catalyst_center.interface.count metric.
-type CatalystCenterInterfaceCountMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterInterfaceCountMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterInventoryDeviceCountMetricConfig provides config for the catalyst_center.inventory.device.count metric.
-type CatalystCenterInventoryDeviceCountMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterInventoryDeviceCountMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterIssueActiveCountMetricConfig provides config for the catalyst_center.issue.active.count metric.
-type CatalystCenterIssueActiveCountMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterIssueActiveCountMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterIssueCountMetricConfig provides config for the catalyst_center.issue.count metric.
-type CatalystCenterIssueCountMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterIssueCountMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterNetworkDeviceCountMetricConfig provides config for the catalyst_center.network.device.count metric.
-type CatalystCenterNetworkDeviceCountMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterNetworkDeviceCountMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterNetworkHealthCategoryScoreMetricConfig provides config for the catalyst_center.network.health.category.score metric.
-type CatalystCenterNetworkHealthCategoryScoreMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterNetworkHealthCategoryScoreMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterNetworkHealthEntityCountMetricConfig provides config for the catalyst_center.network.health.entity.count metric.
-type CatalystCenterNetworkHealthEntityCountMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterNetworkHealthEntityCountMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterNetworkHealthEntityScoreMetricConfig provides config for the catalyst_center.network.health.entity.score metric.
-type CatalystCenterNetworkHealthEntityScoreMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterNetworkHealthEntityScoreMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterNetworkHealthScoreMetricConfig provides config for the catalyst_center.network.health.score metric.
-type CatalystCenterNetworkHealthScoreMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterNetworkHealthScoreMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterScrapeLastSuccessMetricConfig provides config for the catalyst_center.scrape.last_success metric.
-type CatalystCenterScrapeLastSuccessMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterScrapeLastSuccessMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterScrapePartialSuccessMetricConfig provides config for the catalyst_center.scrape.partial_success metric.
-type CatalystCenterScrapePartialSuccessMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterScrapePartialSuccessMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterSiteClientCountMetricConfig provides config for the catalyst_center.site.client.count metric.
-type CatalystCenterSiteClientCountMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterSiteClientCountMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterSiteClientHealthPercentageMetricConfig provides config for the catalyst_center.site.client.health.percentage metric.
-type CatalystCenterSiteClientHealthPercentageMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterSiteClientHealthPercentageMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterSiteHealthCountMetricConfig provides config for the catalyst_center.site.health.count metric.
-type CatalystCenterSiteHealthCountMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterSiteHealthCountMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterSiteIssueCountMetricConfig provides config for the catalyst_center.site.issue.count metric.
-type CatalystCenterSiteIssueCountMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterSiteIssueCountMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterSiteNetworkDeviceCountMetricConfig provides config for the catalyst_center.site.network_device.count metric.
-type CatalystCenterSiteNetworkDeviceCountMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterSiteNetworkDeviceCountMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterSiteNetworkDeviceHealthPercentageMetricConfig provides config for the catalyst_center.site.network_device.health.percentage metric.
-type CatalystCenterSiteNetworkDeviceHealthPercentageMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterSiteNetworkDeviceHealthPercentageMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterTopologyLinkCountMetricConfig provides config for the catalyst_center.topology.link.count metric.
-type CatalystCenterTopologyLinkCountMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterTopologyLinkCountMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CatalystCenterTopologyNodeCountMetricConfig provides config for the catalyst_center.topology.node.count metric.
-type CatalystCenterTopologyNodeCountMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CatalystCenterTopologyNodeCountMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CiscoCatalyst9800ReceiverActiveSubscriptionsMetricConfig provides config for the cisco.catalyst9800.receiver.active_subscriptions metric.
-type CiscoCatalyst9800ReceiverActiveSubscriptionsMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CiscoCatalyst9800ReceiverActiveSubscriptionsMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CiscoCatalyst9800ReceiverCompactGpbPayloadsMetricConfig provides config for the cisco.catalyst9800.receiver.compact_gpb_payloads metric.
-type CiscoCatalyst9800ReceiverCompactGpbPayloadsMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CiscoCatalyst9800ReceiverCompactGpbPayloadsMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CiscoCatalyst9800ReceiverDecodeErrorsMetricConfig provides config for the cisco.catalyst9800.receiver.decode_errors metric.
-type CiscoCatalyst9800ReceiverDecodeErrorsMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CiscoCatalyst9800ReceiverDecodeErrorsMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CiscoCatalyst9800ReceiverDroppedDatapointsMetricConfig provides config for the cisco.catalyst9800.receiver.dropped_datapoints metric.
-type CiscoCatalyst9800ReceiverDroppedDatapointsMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CiscoCatalyst9800ReceiverDroppedDatapointsMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CiscoCatalyst9800ReceiverLastSuccessTimestampMetricConfig provides config for the cisco.catalyst9800.receiver.last_success_timestamp metric.
-type CiscoCatalyst9800ReceiverLastSuccessTimestampMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CiscoCatalyst9800ReceiverLastSuccessTimestampMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CiscoCatalyst9800ReceiverReconnectsMetricConfig provides config for the cisco.catalyst9800.receiver.reconnects metric.
-type CiscoCatalyst9800ReceiverReconnectsMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CiscoCatalyst9800ReceiverReconnectsMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CiscoCatalyst9800ReceiverTargetLastSuccessTimestampMetricConfig provides config for the cisco.catalyst9800.receiver.target.last_success_timestamp metric.
-type CiscoCatalyst9800ReceiverTargetLastSuccessTimestampMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CiscoCatalyst9800ReceiverTargetLastSuccessTimestampMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CiscoCatalyst9800ReceiverTargetReconnectsMetricConfig provides config for the cisco.catalyst9800.receiver.target.reconnects metric.
-type CiscoCatalyst9800ReceiverTargetReconnectsMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CiscoCatalyst9800ReceiverTargetReconnectsMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CiscoCatalyst9800ReceiverTargetSubscriptionActiveMetricConfig provides config for the cisco.catalyst9800.receiver.target.subscription.active metric.
-type CiscoCatalyst9800ReceiverTargetSubscriptionActiveMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CiscoCatalyst9800ReceiverTargetSubscriptionActiveMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CiscoCatalyst9800ReceiverTargetUpdatesMetricConfig provides config for the cisco.catalyst9800.receiver.target.updates metric.
-type CiscoCatalyst9800ReceiverTargetUpdatesMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CiscoCatalyst9800ReceiverTargetUpdatesMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CiscoCatalyst9800ReceiverUnsupportedPathsMetricConfig provides config for the cisco.catalyst9800.receiver.unsupported_paths metric.
-type CiscoCatalyst9800ReceiverUnsupportedPathsMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CiscoCatalyst9800ReceiverUnsupportedPathsMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CiscoCatalyst9800ReceiverUpdatesMetricConfig provides config for the cisco.catalyst9800.receiver.updates metric.
-type CiscoCatalyst9800ReceiverUpdatesMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CiscoCatalyst9800ReceiverUpdatesMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
 // CiscoDeviceUpMetricConfig provides config for the cisco.device.up metric.
 type CiscoDeviceUpMetricConfig struct {
 	Enabled          bool `mapstructure:"enabled"`
@@ -1414,26 +74,6 @@ func (ms *CiscoInterfaceAdminStatusMetricConfig) Validate() error {
 		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
 	}
 
-	return nil
-}
-
-// CiscoInterfaceDropRateMetricConfig provides config for the cisco.interface.drop.rate metric.
-type CiscoInterfaceDropRateMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CiscoInterfaceDropRateMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
 	return nil
 }
 
@@ -1632,13 +272,27 @@ func (ms *CiscoInterfaceUtilizationMetricConfig) Validate() error {
 	return nil
 }
 
-// CiscoIosxrReceiverActiveSubscriptionsMetricConfig provides config for the cisco.iosxr.receiver.active_subscriptions metric.
-type CiscoIosxrReceiverActiveSubscriptionsMetricConfig struct {
+// CiscoOpticsChromaticDispersionMetricAttributeKey specifies the key of an attribute for the cisco.optics.chromatic_dispersion metric.
+type CiscoOpticsChromaticDispersionMetricAttributeKey string
+
+const (
+	CiscoOpticsChromaticDispersionMetricAttributeKeyNetworkInterfaceName    CiscoOpticsChromaticDispersionMetricAttributeKey = "network.interface.name"
+	CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsLane         CiscoOpticsChromaticDispersionMetricAttributeKey = "cisco.optics.lane"
+	CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsSensor       CiscoOpticsChromaticDispersionMetricAttributeKey = "cisco.optics.sensor"
+	CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsProfile      CiscoOpticsChromaticDispersionMetricAttributeKey = "cisco.optics.profile"
+	CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsExperimental CiscoOpticsChromaticDispersionMetricAttributeKey = "cisco.optics.experimental"
+)
+
+// CiscoOpticsChromaticDispersionMetricConfig provides config for the cisco.optics.chromatic_dispersion metric.
+type CiscoOpticsChromaticDispersionMetricConfig struct {
 	Enabled          bool `mapstructure:"enabled"`
 	enabledSetByUser bool
+
+	AggregationStrategy string                                             `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoOpticsChromaticDispersionMetricAttributeKey `mapstructure:"attributes"`
 }
 
-func (ms *CiscoIosxrReceiverActiveSubscriptionsMetricConfig) Unmarshal(parser *confmap.Conf) error {
+func (ms *CiscoOpticsChromaticDispersionMetricConfig) Unmarshal(parser *confmap.Conf) error {
 	if parser == nil {
 		return nil
 	}
@@ -1652,13 +306,45 @@ func (ms *CiscoIosxrReceiverActiveSubscriptionsMetricConfig) Unmarshal(parser *c
 	return nil
 }
 
-// CiscoIosxrReceiverCompactGpbPayloadsMetricConfig provides config for the cisco.iosxr.receiver.compact_gpb_payloads metric.
-type CiscoIosxrReceiverCompactGpbPayloadsMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
+func (ms *CiscoOpticsChromaticDispersionMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoOpticsChromaticDispersionMetricAttributeKeyNetworkInterfaceName, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsLane, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsExperimental:
+		default:
+			return fmt.Errorf("metric cisco.optics.chromatic_dispersion doesn't have an attribute %v, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
 }
 
-func (ms *CiscoIosxrReceiverCompactGpbPayloadsMetricConfig) Unmarshal(parser *confmap.Conf) error {
+// CiscoOpticsDgdMetricAttributeKey specifies the key of an attribute for the cisco.optics.dgd metric.
+type CiscoOpticsDgdMetricAttributeKey string
+
+const (
+	CiscoOpticsDgdMetricAttributeKeyNetworkInterfaceName    CiscoOpticsDgdMetricAttributeKey = "network.interface.name"
+	CiscoOpticsDgdMetricAttributeKeyCiscoOpticsLane         CiscoOpticsDgdMetricAttributeKey = "cisco.optics.lane"
+	CiscoOpticsDgdMetricAttributeKeyCiscoOpticsSensor       CiscoOpticsDgdMetricAttributeKey = "cisco.optics.sensor"
+	CiscoOpticsDgdMetricAttributeKeyCiscoOpticsProfile      CiscoOpticsDgdMetricAttributeKey = "cisco.optics.profile"
+	CiscoOpticsDgdMetricAttributeKeyCiscoOpticsExperimental CiscoOpticsDgdMetricAttributeKey = "cisco.optics.experimental"
+)
+
+// CiscoOpticsDgdMetricConfig provides config for the cisco.optics.dgd metric.
+type CiscoOpticsDgdMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                             `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoOpticsDgdMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoOpticsDgdMetricConfig) Unmarshal(parser *confmap.Conf) error {
 	if parser == nil {
 		return nil
 	}
@@ -1672,203 +358,21 @@ func (ms *CiscoIosxrReceiverCompactGpbPayloadsMetricConfig) Unmarshal(parser *co
 	return nil
 }
 
-// CiscoIosxrReceiverDecodeErrorsMetricConfig provides config for the cisco.iosxr.receiver.decode_errors metric.
-type CiscoIosxrReceiverDecodeErrorsMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CiscoIosxrReceiverDecodeErrorsMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
+func (ms *CiscoOpticsDgdMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoOpticsDgdMetricAttributeKeyNetworkInterfaceName, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsLane, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsExperimental:
+		default:
+			return fmt.Errorf("metric cisco.optics.dgd doesn't have an attribute %v, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]", val)
+		}
 	}
 
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
 	}
 
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CiscoIosxrReceiverDroppedDatapointsMetricConfig provides config for the cisco.iosxr.receiver.dropped_datapoints metric.
-type CiscoIosxrReceiverDroppedDatapointsMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CiscoIosxrReceiverDroppedDatapointsMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CiscoIosxrReceiverLastSuccessTimestampMetricConfig provides config for the cisco.iosxr.receiver.last_success_timestamp metric.
-type CiscoIosxrReceiverLastSuccessTimestampMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CiscoIosxrReceiverLastSuccessTimestampMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CiscoIosxrReceiverReconnectsMetricConfig provides config for the cisco.iosxr.receiver.reconnects metric.
-type CiscoIosxrReceiverReconnectsMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CiscoIosxrReceiverReconnectsMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CiscoIosxrReceiverTargetLastSuccessTimestampMetricConfig provides config for the cisco.iosxr.receiver.target.last_success_timestamp metric.
-type CiscoIosxrReceiverTargetLastSuccessTimestampMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CiscoIosxrReceiverTargetLastSuccessTimestampMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CiscoIosxrReceiverTargetReconnectsMetricConfig provides config for the cisco.iosxr.receiver.target.reconnects metric.
-type CiscoIosxrReceiverTargetReconnectsMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CiscoIosxrReceiverTargetReconnectsMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CiscoIosxrReceiverTargetSubscriptionActiveMetricConfig provides config for the cisco.iosxr.receiver.target.subscription.active metric.
-type CiscoIosxrReceiverTargetSubscriptionActiveMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CiscoIosxrReceiverTargetSubscriptionActiveMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CiscoIosxrReceiverTargetUpdatesMetricConfig provides config for the cisco.iosxr.receiver.target.updates metric.
-type CiscoIosxrReceiverTargetUpdatesMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CiscoIosxrReceiverTargetUpdatesMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CiscoIosxrReceiverUnsupportedPathsMetricConfig provides config for the cisco.iosxr.receiver.unsupported_paths metric.
-type CiscoIosxrReceiverUnsupportedPathsMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CiscoIosxrReceiverUnsupportedPathsMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-// CiscoIosxrReceiverUpdatesMetricConfig provides config for the cisco.iosxr.receiver.updates metric.
-type CiscoIosxrReceiverUpdatesMetricConfig struct {
-	Enabled          bool `mapstructure:"enabled"`
-	enabledSetByUser bool
-}
-
-func (ms *CiscoIosxrReceiverUpdatesMetricConfig) Unmarshal(parser *confmap.Conf) error {
-	if parser == nil {
-		return nil
-	}
-
-	err := parser.Unmarshal(ms)
-	if err != nil {
-		return err
-	}
-
-	ms.enabledSetByUser = parser.IsSet("enabled")
 	return nil
 }
 
@@ -1976,6 +480,58 @@ func (ms *CiscoOpticsLaserBiasCurrentMetricConfig) Validate() error {
 	return nil
 }
 
+// CiscoOpticsOsnrMetricAttributeKey specifies the key of an attribute for the cisco.optics.osnr metric.
+type CiscoOpticsOsnrMetricAttributeKey string
+
+const (
+	CiscoOpticsOsnrMetricAttributeKeyNetworkInterfaceName    CiscoOpticsOsnrMetricAttributeKey = "network.interface.name"
+	CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsLane         CiscoOpticsOsnrMetricAttributeKey = "cisco.optics.lane"
+	CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsSensor       CiscoOpticsOsnrMetricAttributeKey = "cisco.optics.sensor"
+	CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsProfile      CiscoOpticsOsnrMetricAttributeKey = "cisco.optics.profile"
+	CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsExperimental CiscoOpticsOsnrMetricAttributeKey = "cisco.optics.experimental"
+)
+
+// CiscoOpticsOsnrMetricConfig provides config for the cisco.optics.osnr metric.
+type CiscoOpticsOsnrMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                              `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoOpticsOsnrMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoOpticsOsnrMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoOpticsOsnrMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoOpticsOsnrMetricAttributeKeyNetworkInterfaceName, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsLane, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsExperimental:
+		default:
+			return fmt.Errorf("metric cisco.optics.osnr doesn't have an attribute %v, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
 // CiscoOpticsPreFecBerMetricAttributeKey specifies the key of an attribute for the cisco.optics.pre_fec_ber metric.
 type CiscoOpticsPreFecBerMetricAttributeKey string
 
@@ -2067,6 +623,110 @@ func (ms *CiscoOpticsPresentMetricConfig) Validate() error {
 		case CiscoOpticsPresentMetricAttributeKeyNetworkInterfaceName, CiscoOpticsPresentMetricAttributeKeyCiscoOpticsLane, CiscoOpticsPresentMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsPresentMetricAttributeKeyCiscoOpticsExperimental:
 		default:
 			return fmt.Errorf("metric cisco.optics.present doesn't have an attribute %v, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.profile, cisco.optics.experimental]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoOpticsQFactorMetricAttributeKey specifies the key of an attribute for the cisco.optics.q_factor metric.
+type CiscoOpticsQFactorMetricAttributeKey string
+
+const (
+	CiscoOpticsQFactorMetricAttributeKeyNetworkInterfaceName    CiscoOpticsQFactorMetricAttributeKey = "network.interface.name"
+	CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsLane         CiscoOpticsQFactorMetricAttributeKey = "cisco.optics.lane"
+	CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsSensor       CiscoOpticsQFactorMetricAttributeKey = "cisco.optics.sensor"
+	CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsProfile      CiscoOpticsQFactorMetricAttributeKey = "cisco.optics.profile"
+	CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsExperimental CiscoOpticsQFactorMetricAttributeKey = "cisco.optics.experimental"
+)
+
+// CiscoOpticsQFactorMetricConfig provides config for the cisco.optics.q_factor metric.
+type CiscoOpticsQFactorMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                 `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoOpticsQFactorMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoOpticsQFactorMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoOpticsQFactorMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoOpticsQFactorMetricAttributeKeyNetworkInterfaceName, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsLane, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsExperimental:
+		default:
+			return fmt.Errorf("metric cisco.optics.q_factor doesn't have an attribute %v, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoOpticsQMarginMetricAttributeKey specifies the key of an attribute for the cisco.optics.q_margin metric.
+type CiscoOpticsQMarginMetricAttributeKey string
+
+const (
+	CiscoOpticsQMarginMetricAttributeKeyNetworkInterfaceName    CiscoOpticsQMarginMetricAttributeKey = "network.interface.name"
+	CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsLane         CiscoOpticsQMarginMetricAttributeKey = "cisco.optics.lane"
+	CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsSensor       CiscoOpticsQMarginMetricAttributeKey = "cisco.optics.sensor"
+	CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsProfile      CiscoOpticsQMarginMetricAttributeKey = "cisco.optics.profile"
+	CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsExperimental CiscoOpticsQMarginMetricAttributeKey = "cisco.optics.experimental"
+)
+
+// CiscoOpticsQMarginMetricConfig provides config for the cisco.optics.q_margin metric.
+type CiscoOpticsQMarginMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                 `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoOpticsQMarginMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoOpticsQMarginMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoOpticsQMarginMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoOpticsQMarginMetricAttributeKeyNetworkInterfaceName, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsLane, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsExperimental:
+		default:
+			return fmt.Errorf("metric cisco.optics.q_margin doesn't have an attribute %v, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]", val)
 		}
 	}
 
@@ -2593,9 +1253,6 @@ func (ms *CiscoWlcSsidClientCountMetricConfig) Validate() error {
 type SystemCPUUtilizationMetricConfig struct {
 	Enabled          bool `mapstructure:"enabled"`
 	enabledSetByUser bool
-
-	AggregationStrategy string                                   `mapstructure:"aggregation_strategy"`
-	EnabledAttributes   []SystemCPUUtilizationMetricAttributeKey `mapstructure:"attributes"`
 }
 
 func (ms *SystemCPUUtilizationMetricConfig) Unmarshal(parser *confmap.Conf) error {
@@ -2612,41 +1269,10 @@ func (ms *SystemCPUUtilizationMetricConfig) Unmarshal(parser *confmap.Conf) erro
 	return nil
 }
 
-func (ms *SystemCPUUtilizationMetricConfig) Validate() error {
-	for _, val := range ms.EnabledAttributes {
-		switch val {
-		case SystemCPUUtilizationMetricAttributeKeyCiscoNodeName:
-		default:
-			return fmt.Errorf("metric system.cpu.utilization doesn't have an attribute %v, valid attributes: [cisco.node.name]", val)
-		}
-	}
-
-	switch ms.AggregationStrategy {
-	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
-	default:
-		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
-	}
-
-	return nil
-}
-
-// SystemMemoryUtilizationMetricAttributeKey specifies the key of an attribute for the system.memory.utilization metric.
-type SystemMemoryUtilizationMetricAttributeKey string
-
-const (
-	SystemMemoryUtilizationMetricAttributeKeyCiscoLocationFru     SystemMemoryUtilizationMetricAttributeKey = "cisco.location.fru"
-	SystemMemoryUtilizationMetricAttributeKeyCiscoLocationSlot    SystemMemoryUtilizationMetricAttributeKey = "cisco.location.slot"
-	SystemMemoryUtilizationMetricAttributeKeyCiscoLocationBay     SystemMemoryUtilizationMetricAttributeKey = "cisco.location.bay"
-	SystemMemoryUtilizationMetricAttributeKeyCiscoLocationChassis SystemMemoryUtilizationMetricAttributeKey = "cisco.location.chassis"
-)
-
 // SystemMemoryUtilizationMetricConfig provides config for the system.memory.utilization metric.
 type SystemMemoryUtilizationMetricConfig struct {
 	Enabled          bool `mapstructure:"enabled"`
 	enabledSetByUser bool
-
-	AggregationStrategy string                                      `mapstructure:"aggregation_strategy"`
-	EnabledAttributes   []SystemMemoryUtilizationMetricAttributeKey `mapstructure:"attributes"`
 }
 
 func (ms *SystemMemoryUtilizationMetricConfig) Unmarshal(parser *confmap.Conf) error {
@@ -2660,24 +1286,6 @@ func (ms *SystemMemoryUtilizationMetricConfig) Unmarshal(parser *confmap.Conf) e
 	}
 
 	ms.enabledSetByUser = parser.IsSet("enabled")
-	return nil
-}
-
-func (ms *SystemMemoryUtilizationMetricConfig) Validate() error {
-	for _, val := range ms.EnabledAttributes {
-		switch val {
-		case SystemMemoryUtilizationMetricAttributeKeyCiscoLocationFru, SystemMemoryUtilizationMetricAttributeKeyCiscoLocationSlot, SystemMemoryUtilizationMetricAttributeKeyCiscoLocationBay, SystemMemoryUtilizationMetricAttributeKeyCiscoLocationChassis:
-		default:
-			return fmt.Errorf("metric system.memory.utilization doesn't have an attribute %v, valid attributes: [cisco.location.fru, cisco.location.slot, cisco.location.bay, cisco.location.chassis]", val)
-		}
-	}
-
-	switch ms.AggregationStrategy {
-	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
-	default:
-		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
-	}
-
 	return nil
 }
 
@@ -2985,207 +1593,6 @@ type MetricsConfig struct {
 
 func DefaultMetricsConfig() MetricsConfig {
 	return MetricsConfig{
-		AciAPIEndpointError: AciAPIEndpointErrorMetricConfig{
-			Enabled: true,
-		},
-		AciAPIRateLimited: AciAPIRateLimitedMetricConfig{
-			Enabled: true,
-		},
-		AciAPIRequestDuration: AciAPIRequestDurationMetricConfig{
-			Enabled: true,
-		},
-		AciAPIRequestErrors: AciAPIRequestErrorsMetricConfig{
-			Enabled: true,
-		},
-		AciAuditRecordCount: AciAuditRecordCountMetricConfig{
-			Enabled: true,
-		},
-		AciControllerUp: AciControllerUpMetricConfig{
-			Enabled: true,
-		},
-		AciEndpointCount: AciEndpointCountMetricConfig{
-			Enabled: true,
-		},
-		AciEndpointPresent: AciEndpointPresentMetricConfig{
-			Enabled: true,
-		},
-		AciEventCount: AciEventCountMetricConfig{
-			Enabled: true,
-		},
-		AciFabricHealth: AciFabricHealthMetricConfig{
-			Enabled: true,
-		},
-		AciFaultActive: AciFaultActiveMetricConfig{
-			Enabled: true,
-		},
-		AciFaultCount: AciFaultCountMetricConfig{
-			Enabled: true,
-		},
-		AciResourceCount: AciResourceCountMetricConfig{
-			Enabled: true,
-		},
-		AciResourceInfo: AciResourceInfoMetricConfig{
-			Enabled: true,
-		},
-		AciResourceStatus: AciResourceStatusMetricConfig{
-			Enabled: true,
-		},
-		AciScrapeLastSuccess: AciScrapeLastSuccessMetricConfig{
-			Enabled: true,
-		},
-		AciScrapePartialSuccess: AciScrapePartialSuccessMetricConfig{
-			Enabled: true,
-		},
-		AciTenantObjectCount: AciTenantObjectCountMetricConfig{
-			Enabled: true,
-		},
-		AciTenantStatus: AciTenantStatusMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterAPIRateLimited: CatalystCenterAPIRateLimitedMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterAPIRequestDuration: CatalystCenterAPIRequestDurationMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterAPIRequestErrors: CatalystCenterAPIRequestErrorsMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterClientCount: CatalystCenterClientCountMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterClientDetailHealthScore: CatalystCenterClientDetailHealthScoreMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterClientHealthScore: CatalystCenterClientHealthScoreMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterClientIssueCount: CatalystCenterClientIssueCountMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterClientNetworkIo: CatalystCenterClientNetworkIoMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterClientUniqueCount: CatalystCenterClientUniqueCountMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterClientWirelessRssi: CatalystCenterClientWirelessRssiMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterClientWirelessSnr: CatalystCenterClientWirelessSnrMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterDeviceCollectionStatus: CatalystCenterDeviceCollectionStatusMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterDeviceDetailCommunicationStatus: CatalystCenterDeviceDetailCommunicationStatusMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterDeviceDetailHealthScore: CatalystCenterDeviceDetailHealthScoreMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterDeviceInterfaceCount: CatalystCenterDeviceInterfaceCountMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterDeviceReachabilityStatus: CatalystCenterDeviceReachabilityStatusMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterDeviceUptime: CatalystCenterDeviceUptimeMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterInterfaceCount: CatalystCenterInterfaceCountMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterInventoryDeviceCount: CatalystCenterInventoryDeviceCountMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterIssueActiveCount: CatalystCenterIssueActiveCountMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterIssueCount: CatalystCenterIssueCountMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterNetworkDeviceCount: CatalystCenterNetworkDeviceCountMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterNetworkHealthCategoryScore: CatalystCenterNetworkHealthCategoryScoreMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterNetworkHealthEntityCount: CatalystCenterNetworkHealthEntityCountMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterNetworkHealthEntityScore: CatalystCenterNetworkHealthEntityScoreMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterNetworkHealthScore: CatalystCenterNetworkHealthScoreMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterScrapeLastSuccess: CatalystCenterScrapeLastSuccessMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterScrapePartialSuccess: CatalystCenterScrapePartialSuccessMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterSiteClientCount: CatalystCenterSiteClientCountMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterSiteClientHealthPercentage: CatalystCenterSiteClientHealthPercentageMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterSiteHealthCount: CatalystCenterSiteHealthCountMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterSiteIssueCount: CatalystCenterSiteIssueCountMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterSiteNetworkDeviceCount: CatalystCenterSiteNetworkDeviceCountMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterSiteNetworkDeviceHealthPercentage: CatalystCenterSiteNetworkDeviceHealthPercentageMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterTopologyLinkCount: CatalystCenterTopologyLinkCountMetricConfig{
-			Enabled: true,
-		},
-		CatalystCenterTopologyNodeCount: CatalystCenterTopologyNodeCountMetricConfig{
-			Enabled: true,
-		},
-		CiscoCatalyst9800ReceiverActiveSubscriptions: CiscoCatalyst9800ReceiverActiveSubscriptionsMetricConfig{
-			Enabled: true,
-		},
-		CiscoCatalyst9800ReceiverCompactGpbPayloads: CiscoCatalyst9800ReceiverCompactGpbPayloadsMetricConfig{
-			Enabled: true,
-		},
-		CiscoCatalyst9800ReceiverDecodeErrors: CiscoCatalyst9800ReceiverDecodeErrorsMetricConfig{
-			Enabled: true,
-		},
-		CiscoCatalyst9800ReceiverDroppedDatapoints: CiscoCatalyst9800ReceiverDroppedDatapointsMetricConfig{
-			Enabled: true,
-		},
-		CiscoCatalyst9800ReceiverLastSuccessTimestamp: CiscoCatalyst9800ReceiverLastSuccessTimestampMetricConfig{
-			Enabled: true,
-		},
-		CiscoCatalyst9800ReceiverReconnects: CiscoCatalyst9800ReceiverReconnectsMetricConfig{
-			Enabled: true,
-		},
-		CiscoCatalyst9800ReceiverTargetLastSuccessTimestamp: CiscoCatalyst9800ReceiverTargetLastSuccessTimestampMetricConfig{
-			Enabled: true,
-		},
-		CiscoCatalyst9800ReceiverTargetReconnects: CiscoCatalyst9800ReceiverTargetReconnectsMetricConfig{
-			Enabled: true,
-		},
-		CiscoCatalyst9800ReceiverTargetSubscriptionActive: CiscoCatalyst9800ReceiverTargetSubscriptionActiveMetricConfig{
-			Enabled: true,
-		},
-		CiscoCatalyst9800ReceiverTargetUpdates: CiscoCatalyst9800ReceiverTargetUpdatesMetricConfig{
-			Enabled: true,
-		},
-		CiscoCatalyst9800ReceiverUnsupportedPaths: CiscoCatalyst9800ReceiverUnsupportedPathsMetricConfig{
-			Enabled: true,
-		},
-		CiscoCatalyst9800ReceiverUpdates: CiscoCatalyst9800ReceiverUpdatesMetricConfig{
-			Enabled: true,
-		},
 		CiscoDeviceUp: CiscoDeviceUpMetricConfig{
 			Enabled: true,
 		},
@@ -3193,9 +1600,6 @@ func DefaultMetricsConfig() MetricsConfig {
 			Enabled:             true,
 			AggregationStrategy: AggregationStrategyAvg,
 			EnabledAttributes:   []CiscoInterfaceAdminStatusMetricAttributeKey{CiscoInterfaceAdminStatusMetricAttributeKeyNetworkInterfaceName},
-		},
-		CiscoInterfaceDropRate: CiscoInterfaceDropRateMetricConfig{
-			Enabled: true,
 		},
 		CiscoInterfaceIoRate: CiscoInterfaceIoRateMetricConfig{
 			Enabled:             true,
@@ -3217,41 +1621,15 @@ func DefaultMetricsConfig() MetricsConfig {
 			AggregationStrategy: AggregationStrategyAvg,
 			EnabledAttributes:   []CiscoInterfaceUtilizationMetricAttributeKey{CiscoInterfaceUtilizationMetricAttributeKeyNetworkIoDirection, CiscoInterfaceUtilizationMetricAttributeKeyNetworkInterfaceName},
 		},
-		CiscoIosxrReceiverActiveSubscriptions: CiscoIosxrReceiverActiveSubscriptionsMetricConfig{
-			Enabled: true,
+		CiscoOpticsChromaticDispersion: CiscoOpticsChromaticDispersionMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoOpticsChromaticDispersionMetricAttributeKey{CiscoOpticsChromaticDispersionMetricAttributeKeyNetworkInterfaceName, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsLane, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsChromaticDispersionMetricAttributeKeyCiscoOpticsExperimental},
 		},
-		CiscoIosxrReceiverCompactGpbPayloads: CiscoIosxrReceiverCompactGpbPayloadsMetricConfig{
-			Enabled: true,
-		},
-		CiscoIosxrReceiverDecodeErrors: CiscoIosxrReceiverDecodeErrorsMetricConfig{
-			Enabled: true,
-		},
-		CiscoIosxrReceiverDroppedDatapoints: CiscoIosxrReceiverDroppedDatapointsMetricConfig{
-			Enabled: true,
-		},
-		CiscoIosxrReceiverLastSuccessTimestamp: CiscoIosxrReceiverLastSuccessTimestampMetricConfig{
-			Enabled: true,
-		},
-		CiscoIosxrReceiverReconnects: CiscoIosxrReceiverReconnectsMetricConfig{
-			Enabled: true,
-		},
-		CiscoIosxrReceiverTargetLastSuccessTimestamp: CiscoIosxrReceiverTargetLastSuccessTimestampMetricConfig{
-			Enabled: true,
-		},
-		CiscoIosxrReceiverTargetReconnects: CiscoIosxrReceiverTargetReconnectsMetricConfig{
-			Enabled: true,
-		},
-		CiscoIosxrReceiverTargetSubscriptionActive: CiscoIosxrReceiverTargetSubscriptionActiveMetricConfig{
-			Enabled: true,
-		},
-		CiscoIosxrReceiverTargetUpdates: CiscoIosxrReceiverTargetUpdatesMetricConfig{
-			Enabled: true,
-		},
-		CiscoIosxrReceiverUnsupportedPaths: CiscoIosxrReceiverUnsupportedPathsMetricConfig{
-			Enabled: true,
-		},
-		CiscoIosxrReceiverUpdates: CiscoIosxrReceiverUpdatesMetricConfig{
-			Enabled: true,
+		CiscoOpticsDgd: CiscoOpticsDgdMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoOpticsDgdMetricAttributeKey{CiscoOpticsDgdMetricAttributeKeyNetworkInterfaceName, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsLane, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsDgdMetricAttributeKeyCiscoOpticsExperimental},
 		},
 		CiscoOpticsEsnr: CiscoOpticsEsnrMetricConfig{
 			Enabled:             true,
@@ -3263,6 +1641,11 @@ func DefaultMetricsConfig() MetricsConfig {
 			AggregationStrategy: AggregationStrategyAvg,
 			EnabledAttributes:   []CiscoOpticsLaserBiasCurrentMetricAttributeKey{CiscoOpticsLaserBiasCurrentMetricAttributeKeyNetworkInterfaceName, CiscoOpticsLaserBiasCurrentMetricAttributeKeyCiscoOpticsLane, CiscoOpticsLaserBiasCurrentMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsLaserBiasCurrentMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsLaserBiasCurrentMetricAttributeKeyCiscoOpticsExperimental},
 		},
+		CiscoOpticsOsnr: CiscoOpticsOsnrMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoOpticsOsnrMetricAttributeKey{CiscoOpticsOsnrMetricAttributeKeyNetworkInterfaceName, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsLane, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsOsnrMetricAttributeKeyCiscoOpticsExperimental},
+		},
 		CiscoOpticsPreFecBer: CiscoOpticsPreFecBerMetricConfig{
 			Enabled:             true,
 			AggregationStrategy: AggregationStrategyAvg,
@@ -3272,6 +1655,16 @@ func DefaultMetricsConfig() MetricsConfig {
 			Enabled:             true,
 			AggregationStrategy: AggregationStrategyAvg,
 			EnabledAttributes:   []CiscoOpticsPresentMetricAttributeKey{CiscoOpticsPresentMetricAttributeKeyNetworkInterfaceName, CiscoOpticsPresentMetricAttributeKeyCiscoOpticsLane, CiscoOpticsPresentMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsPresentMetricAttributeKeyCiscoOpticsExperimental},
+		},
+		CiscoOpticsQFactor: CiscoOpticsQFactorMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoOpticsQFactorMetricAttributeKey{CiscoOpticsQFactorMetricAttributeKeyNetworkInterfaceName, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsLane, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsQFactorMetricAttributeKeyCiscoOpticsExperimental},
+		},
+		CiscoOpticsQMargin: CiscoOpticsQMarginMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoOpticsQMarginMetricAttributeKey{CiscoOpticsQMarginMetricAttributeKeyNetworkInterfaceName, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsLane, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsQMarginMetricAttributeKeyCiscoOpticsExperimental},
 		},
 		CiscoOpticsRxPower: CiscoOpticsRxPowerMetricConfig{
 			Enabled:             true,
@@ -3326,890 +1719,8 @@ func DefaultMetricsConfig() MetricsConfig {
 		SystemCPUUtilization: SystemCPUUtilizationMetricConfig{
 			Enabled: true,
 		},
-		CiscoTopologyNeighborInfo: CiscoTopologyNeighborInfoMetricConfig{
-			Enabled:             true,
-			AggregationStrategy: AggregationStrategyAvg,
-			EnabledAttributes:   []CiscoTopologyNeighborInfoMetricAttributeKey{CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyProtocol, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkInterfaceName, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborName, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborInterface, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborPlatform, CiscoTopologyNeighborInfoMetricAttributeKeyCiscoTopologyNeighborAddress, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkPeerName, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkPeerAddress, CiscoTopologyNeighborInfoMetricAttributeKeyNetworkProtocolName},
-		},
-		CiscoTransceiverSensor: CiscoTransceiverSensorMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcApCapwapEncryptionEnabled: CiscoWlcApCapwapEncryptionEnabledMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcApCapwapState: CiscoWlcApCapwapStateMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcApDisconnect: CiscoWlcApDisconnectMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcApDisconnectReasonInfo: CiscoWlcApDisconnectReasonInfoMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcApJoinFailureReasonInfo: CiscoWlcApJoinFailureReasonInfoMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcApJoinStatus: CiscoWlcApJoinStatusMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcAuthRadiusAccessAcceptCount: CiscoWlcAuthRadiusAccessAcceptCountMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcAuthRadiusAccessRejectCount: CiscoWlcAuthRadiusAccessRejectCountMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcAuthRadiusBadAuthenticatorCount: CiscoWlcAuthRadiusBadAuthenticatorCountMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcAuthRadiusResponseCount: CiscoWlcAuthRadiusResponseCountMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcAuthRadiusResponseDelayAvg: CiscoWlcAuthRadiusResponseDelayAvgMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcAuthRadiusResponseDelayMax: CiscoWlcAuthRadiusResponseDelayMaxMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcAuthRadiusTimeoutCount: CiscoWlcAuthRadiusTimeoutCountMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcClientAuthFailureReasonInfo: CiscoWlcClientAuthFailureReasonInfoMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcClientConnectionState: CiscoWlcClientConnectionStateMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcClientNetworkIo: CiscoWlcClientNetworkIoMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcClientNetworkPackets: CiscoWlcClientNetworkPacketsMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcClientRoamCount: CiscoWlcClientRoamCountMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcClientRoamFailureCount: CiscoWlcClientRoamFailureCountMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcClientRoamTypeInfo: CiscoWlcClientRoamTypeInfoMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcClientWirelessRssi: CiscoWlcClientWirelessRssiMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcClientWirelessSnr: CiscoWlcClientWirelessSnrMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcControllerCPUUtilization: CiscoWlcControllerCPUUtilizationMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcControllerMemoryBytes: CiscoWlcControllerMemoryBytesMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcControllerReceiverActiveSubscriptions: CiscoWlcControllerReceiverActiveSubscriptionsMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcControllerReceiverDecodeErrors: CiscoWlcControllerReceiverDecodeErrorsMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcControllerReceiverSubscriptionActive: CiscoWlcControllerReceiverSubscriptionActiveMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcControllerReceiverUpdates: CiscoWlcControllerReceiverUpdatesMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcHaEnabled: CiscoWlcHaEnabledMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcHaStandbyFailureCount: CiscoWlcHaStandbyFailureCountMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcHaState: CiscoWlcHaStateMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcHaSwitchoverCount: CiscoWlcHaSwitchoverCountMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcMobilityHandoffCount: CiscoWlcMobilityHandoffCountMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcMobilityHandoffFailureCount: CiscoWlcMobilityHandoffFailureCountMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcMobilityPeerStatus: CiscoWlcMobilityPeerStatusMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcMobilityRoamCount: CiscoWlcMobilityRoamCountMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcRfChannelChangeCount: CiscoWlcRfChannelChangeCountMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcRfChannelRecommended: CiscoWlcRfChannelRecommendedMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcRfChannelUtilization: CiscoWlcRfChannelUtilizationMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcRfClientCount: CiscoWlcRfClientCountMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcRfNoiseFloor: CiscoWlcRfNoiseFloorMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcSsidChannelUtilization: CiscoWlcSsidChannelUtilizationMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcSsidClientCount: CiscoWlcSsidClientCountMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcSsidNetworkIo: CiscoWlcSsidNetworkIoMetricConfig{
-			Enabled: true,
-		},
-		CiscoWlcSsidRetryCount: CiscoWlcSsidRetryCountMetricConfig{
-			Enabled: true,
-		},
-		FmcAPIEndpointError: FmcAPIEndpointErrorMetricConfig{
-			Enabled: true,
-		},
-		FmcAPIRateLimited: FmcAPIRateLimitedMetricConfig{
-			Enabled: true,
-		},
-		FmcAPIRequestDuration: FmcAPIRequestDurationMetricConfig{
-			Enabled: true,
-		},
-		FmcAPIRequestErrors: FmcAPIRequestErrorsMetricConfig{
-			Enabled: true,
-		},
-		FmcAuditRecordCount: FmcAuditRecordCountMetricConfig{
-			Enabled: true,
-		},
-		FmcDeploymentPendingCount: FmcDeploymentPendingCountMetricConfig{
-			Enabled: true,
-		},
-		FmcDeploymentStatus: FmcDeploymentStatusMetricConfig{
-			Enabled: true,
-		},
-		FmcHaStatus: FmcHaStatusMetricConfig{
-			Enabled: true,
-		},
-		FmcHealthEventCount: FmcHealthEventCountMetricConfig{
-			Enabled: true,
-		},
-		FmcHealthStatus: FmcHealthStatusMetricConfig{
-			Enabled: true,
-		},
-		FmcManagerUp: FmcManagerUpMetricConfig{
-			Enabled: true,
-		},
-		FmcPolicyObjectCount: FmcPolicyObjectCountMetricConfig{
-			Enabled: true,
-		},
-		FmcResourceCount: FmcResourceCountMetricConfig{
-			Enabled: true,
-		},
-		FmcResourceInfo: FmcResourceInfoMetricConfig{
-			Enabled: true,
-		},
-		FmcResourceStatus: FmcResourceStatusMetricConfig{
-			Enabled: true,
-		},
-		FmcScrapeLastSuccess: FmcScrapeLastSuccessMetricConfig{
-			Enabled: true,
-		},
-		FmcScrapePartialSuccess: FmcScrapePartialSuccessMetricConfig{
-			Enabled: true,
-		},
-		FmcVpnTunnelStatus: FmcVpnTunnelStatusMetricConfig{
-			Enabled: true,
-		},
-		IntersightAdvisoryActive: IntersightAdvisoryActiveMetricConfig{
-			Enabled: true,
-		},
-		IntersightAdvisoryCount: IntersightAdvisoryCountMetricConfig{
-			Enabled: true,
-		},
-		IntersightAlarmActive: IntersightAlarmActiveMetricConfig{
-			Enabled: true,
-		},
-		IntersightAlarmCount: IntersightAlarmCountMetricConfig{
-			Enabled: true,
-		},
-		IntersightAPIRateLimited: IntersightAPIRateLimitedMetricConfig{
-			Enabled: true,
-		},
-		IntersightAPIRequestDuration: IntersightAPIRequestDurationMetricConfig{
-			Enabled: true,
-		},
-		IntersightAPIRequestErrors: IntersightAPIRequestErrorsMetricConfig{
-			Enabled: true,
-		},
-		IntersightAuditRecordCount: IntersightAuditRecordCountMetricConfig{
-			Enabled: true,
-		},
-		IntersightComputeAvailableMemory: IntersightComputeAvailableMemoryMetricConfig{
-			Enabled: true,
-		},
-		IntersightComputeThreadCount: IntersightComputeThreadCountMetricConfig{
-			Enabled: true,
-		},
-		IntersightFaultCount: IntersightFaultCountMetricConfig{
-			Enabled: true,
-		},
-		IntersightFirmwareBundleInfo: IntersightFirmwareBundleInfoMetricConfig{
-			Enabled: true,
-		},
-		IntersightHclStatus: IntersightHclStatusMetricConfig{
-			Enabled: true,
-		},
-		IntersightHclStatusCount: IntersightHclStatusCountMetricConfig{
-			Enabled: true,
-		},
-		IntersightHyperflexReadIops: IntersightHyperflexReadIopsMetricConfig{
-			Enabled: true,
-		},
-		IntersightHyperflexReadLatency: IntersightHyperflexReadLatencyMetricConfig{
-			Enabled: true,
-		},
-		IntersightHyperflexStatus: IntersightHyperflexStatusMetricConfig{
-			Enabled: true,
-		},
-		IntersightHyperflexWriteIops: IntersightHyperflexWriteIopsMetricConfig{
-			Enabled: true,
-		},
-		IntersightHyperflexWriteLatency: IntersightHyperflexWriteLatencyMetricConfig{
-			Enabled: true,
-		},
-		IntersightKubernetesClusterConnectionStatus: IntersightKubernetesClusterConnectionStatusMetricConfig{
-			Enabled: true,
-		},
-		IntersightResourceCount: IntersightResourceCountMetricConfig{
-			Enabled: true,
-		},
-		IntersightResourceInfo: IntersightResourceInfoMetricConfig{
-			Enabled: true,
-		},
-		IntersightResourceStatus: IntersightResourceStatusMetricConfig{
-			Enabled: true,
-		},
-		IntersightScrapeLastSuccess: IntersightScrapeLastSuccessMetricConfig{
-			Enabled: true,
-		},
-		IntersightScrapePartialSuccess: IntersightScrapePartialSuccessMetricConfig{
-			Enabled: true,
-		},
-		IntersightStorageLifeLeft: IntersightStorageLifeLeftMetricConfig{
-			Enabled: true,
-		},
-		IntersightStorageMediaErrorCount: IntersightStorageMediaErrorCountMetricConfig{
-			Enabled: true,
-		},
-		IntersightStoragePowerOnHours: IntersightStoragePowerOnHoursMetricConfig{
-			Enabled: true,
-		},
-		IntersightStoragePredictiveFailureCount: IntersightStoragePredictiveFailureCountMetricConfig{
-			Enabled: true,
-		},
-		IntersightStorageRebuildRate: IntersightStorageRebuildRateMetricConfig{
-			Enabled: true,
-		},
-		IntersightStorageStatus: IntersightStorageStatusMetricConfig{
-			Enabled: true,
-		},
-		IntersightStorageTemperature: IntersightStorageTemperatureMetricConfig{
-			Enabled: true,
-		},
-		IntersightTargetConnectionStatus: IntersightTargetConnectionStatusMetricConfig{
-			Enabled: true,
-		},
-		IntersightTaskCount: IntersightTaskCountMetricConfig{
-			Enabled: true,
-		},
-		IntersightTaskStatus: IntersightTaskStatusMetricConfig{
-			Enabled: true,
-		},
-		IntersightTechsupportCount: IntersightTechsupportCountMetricConfig{
-			Enabled: true,
-		},
-		IntersightTechsupportStatus: IntersightTechsupportStatusMetricConfig{
-			Enabled: true,
-		},
-		IntersightTelemetryQueryRows: IntersightTelemetryQueryRowsMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsCPUIdleUtilization: IntersightUcsCPUIdleUtilizationMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsCPUSystemUtilization: IntersightUcsCPUSystemUtilizationMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsCurrent: IntersightUcsCurrentMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsFanSpeed: IntersightUcsFanSpeedMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsFanSpeedRatio: IntersightUcsFanSpeedRatioMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsFanStatus: IntersightUcsFanStatusMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsHostEnergy: IntersightUcsHostEnergyMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsHostPower: IntersightUcsHostPowerMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsHostPowerState: IntersightUcsHostPowerStateMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsMemoryCached: IntersightUcsMemoryCachedMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsMemoryEccCorrectable: IntersightUcsMemoryEccCorrectableMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsMemoryEccUncorrectable: IntersightUcsMemoryEccUncorrectableMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsMemoryFree: IntersightUcsMemoryFreeMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsMemoryModuleSize: IntersightUcsMemoryModuleSizeMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsMemoryStatus: IntersightUcsMemoryStatusMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsMemoryUsed: IntersightUcsMemoryUsedMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsNetworkInterfaceResets: IntersightUcsNetworkInterfaceResetsMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsNetworkLinkStatus: IntersightUcsNetworkLinkStatusMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsNetworkLinkFailures: IntersightUcsNetworkLinkFailuresMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsNetworkReceive: IntersightUcsNetworkReceiveMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsNetworkReceiveCrcErrors: IntersightUcsNetworkReceiveCrcErrorsMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsNetworkReceiveDiscards: IntersightUcsNetworkReceiveDiscardsMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsNetworkReceiveDrops: IntersightUcsNetworkReceiveDropsMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsNetworkReceiveErrors: IntersightUcsNetworkReceiveErrorsMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsNetworkReceiveNoBuffer: IntersightUcsNetworkReceiveNoBufferMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsNetworkReceivePackets: IntersightUcsNetworkReceivePacketsMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsNetworkReceivePauseFrames: IntersightUcsNetworkReceivePauseFramesMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsNetworkSignalLosses: IntersightUcsNetworkSignalLossesMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsNetworkSpeed: IntersightUcsNetworkSpeedMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsNetworkTransmit: IntersightUcsNetworkTransmitMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsNetworkTransmitDiscards: IntersightUcsNetworkTransmitDiscardsMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsNetworkTransmitDrops: IntersightUcsNetworkTransmitDropsMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsNetworkTransmitErrors: IntersightUcsNetworkTransmitErrorsMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsNetworkTransmitPackets: IntersightUcsNetworkTransmitPacketsMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsNetworkTransmitPauseFrames: IntersightUcsNetworkTransmitPauseFramesMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsNetworkUtilization: IntersightUcsNetworkUtilizationMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsPowerSupplyOutputPower: IntersightUcsPowerSupplyOutputPowerMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsPowerSupplyStatus: IntersightUcsPowerSupplyStatusMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsPowerSupplyUtilization: IntersightUcsPowerSupplyUtilizationMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsSignalPowerReceive: IntersightUcsSignalPowerReceiveMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsSignalPowerTransmit: IntersightUcsSignalPowerTransmitMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsTemperature: IntersightUcsTemperatureMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsTemperatureLimitHighCritical: IntersightUcsTemperatureLimitHighCriticalMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsTemperatureLimitLowCritical: IntersightUcsTemperatureLimitLowCriticalMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsTemperatureStatus: IntersightUcsTemperatureStatusMetricConfig{
-			Enabled: true,
-		},
-		IntersightUcsVoltage: IntersightUcsVoltageMetricConfig{
-			Enabled: true,
-		},
-		IntersightVirtualMachineCount: IntersightVirtualMachineCountMetricConfig{
-			Enabled: true,
-		},
-		IntersightVirtualMachineCPUCount: IntersightVirtualMachineCPUCountMetricConfig{
-			Enabled: true,
-		},
-		IntersightVirtualMachineMemory: IntersightVirtualMachineMemoryMetricConfig{
-			Enabled: true,
-		},
-		IntersightVirtualMachinePowerState: IntersightVirtualMachinePowerStateMetricConfig{
-			Enabled: true,
-		},
-		IntersightWorkflowCount: IntersightWorkflowCountMetricConfig{
-			Enabled: true,
-		},
-		IntersightWorkflowStatus: IntersightWorkflowStatusMetricConfig{
-			Enabled: true,
-		},
-		IseAccountingSessionCount: IseAccountingSessionCountMetricConfig{
-			Enabled: true,
-		},
-		IseAlarmCount: IseAlarmCountMetricConfig{
-			Enabled: true,
-		},
-		IseAPIEndpointError: IseAPIEndpointErrorMetricConfig{
-			Enabled: true,
-		},
-		IseAPIRateLimited: IseAPIRateLimitedMetricConfig{
-			Enabled: true,
-		},
-		IseAPIRequestDuration: IseAPIRequestDurationMetricConfig{
-			Enabled: true,
-		},
-		IseAPIRequestErrors: IseAPIRequestErrorsMetricConfig{
-			Enabled: true,
-		},
-		IseAuthFailureReasonInfo: IseAuthFailureReasonInfoMetricConfig{
-			Enabled: true,
-		},
-		IseCertificateCount: IseCertificateCountMetricConfig{
-			Enabled: true,
-		},
-		IseCertificateExpiration: IseCertificateExpirationMetricConfig{
-			Enabled: true,
-		},
-		IseControllerUp: IseControllerUpMetricConfig{
-			Enabled: true,
-		},
-		IseDataconnectQueryDuration: IseDataconnectQueryDurationMetricConfig{
-			Enabled: true,
-		},
-		IseDataconnectQueryErrors: IseDataconnectQueryErrorsMetricConfig{
-			Enabled: true,
-		},
-		IseDataconnectQueryRows: IseDataconnectQueryRowsMetricConfig{
-			Enabled: true,
-		},
-		IseDataconnectRowCount: IseDataconnectRowCountMetricConfig{
-			Enabled: true,
-		},
-		IseDeploymentNodeCount: IseDeploymentNodeCountMetricConfig{
-			Enabled: true,
-		},
-		IseDeploymentNodeStatus: IseDeploymentNodeStatusMetricConfig{
-			Enabled: true,
-		},
-		IseEndpointCount: IseEndpointCountMetricConfig{
-			Enabled: true,
-		},
-		IseEndpointPostureCount: IseEndpointPostureCountMetricConfig{
-			Enabled: true,
-		},
-		IseEndpointPostureStatus: IseEndpointPostureStatusMetricConfig{
-			Enabled: true,
-		},
-		IseEndpointProfileCount: IseEndpointProfileCountMetricConfig{
-			Enabled: true,
-		},
-		IseEndpointStatus: IseEndpointStatusMetricConfig{
-			Enabled: true,
-		},
-		IseLicenseCount: IseLicenseCountMetricConfig{
-			Enabled: true,
-		},
-		IseLicenseStatus: IseLicenseStatusMetricConfig{
-			Enabled: true,
-		},
-		IseNetworkDeviceCount: IseNetworkDeviceCountMetricConfig{
-			Enabled: true,
-		},
-		IseNetworkDeviceStatus: IseNetworkDeviceStatusMetricConfig{
-			Enabled: true,
-		},
-		IsePolicyObjectCount: IsePolicyObjectCountMetricConfig{
-			Enabled: true,
-		},
-		IsePolicyStatus: IsePolicyStatusMetricConfig{
-			Enabled: true,
-		},
-		IseProfilerPolicyStatus: IseProfilerPolicyStatusMetricConfig{
-			Enabled: true,
-		},
-		IsePxgridMessageCount: IsePxgridMessageCountMetricConfig{
-			Enabled: true,
-		},
-		IsePxgridServiceStatus: IsePxgridServiceStatusMetricConfig{
-			Enabled: true,
-		},
-		IsePxgridSubscriptionStatus: IsePxgridSubscriptionStatusMetricConfig{
-			Enabled: true,
-		},
-		IseRadiusFailureCount: IseRadiusFailureCountMetricConfig{
-			Enabled: true,
-		},
-		IseResourceInfo: IseResourceInfoMetricConfig{
-			Enabled: true,
-		},
-		IseResourceStatus: IseResourceStatusMetricConfig{
-			Enabled: true,
-		},
-		IseScrapeLastSuccess: IseScrapeLastSuccessMetricConfig{
-			Enabled: true,
-		},
-		IseScrapePartialSuccess: IseScrapePartialSuccessMetricConfig{
-			Enabled: true,
-		},
-		IseServiceSkipped: IseServiceSkippedMetricConfig{
-			Enabled: true,
-		},
-		IseServiceUnavailable: IseServiceUnavailableMetricConfig{
-			Enabled: true,
-		},
-		IseSessionActiveCount: IseSessionActiveCountMetricConfig{
-			Enabled: true,
-		},
-		IseSessionCount: IseSessionCountMetricConfig{
-			Enabled: true,
-		},
-		IseTacacsFailureCount: IseTacacsFailureCountMetricConfig{
-			Enabled: true,
-		},
-		IseTrustsecResourceCount: IseTrustsecResourceCountMetricConfig{
-			Enabled: true,
-		},
-		IseTrustsecResourceStatus: IseTrustsecResourceStatusMetricConfig{
-			Enabled: true,
-		},
-		IseWebhookDeliveryCount: IseWebhookDeliveryCountMetricConfig{
-			Enabled: true,
-		},
-		MerakiAPIRequestDuration: MerakiAPIRequestDurationMetricConfig{
-			Enabled: true,
-		},
-		MerakiAPIRequestErrors: MerakiAPIRequestErrorsMetricConfig{
-			Enabled: true,
-		},
-		MerakiAPIRequestRateLimited: MerakiAPIRequestRateLimitedMetricConfig{
-			Enabled: true,
-		},
-		MerakiAppliancePerformanceScore: MerakiAppliancePerformanceScoreMetricConfig{
-			Enabled: true,
-		},
-		MerakiControllerUp: MerakiControllerUpMetricConfig{
-			Enabled: true,
-		},
-		MerakiDeviceStatus: MerakiDeviceStatusMetricConfig{
-			Enabled: true,
-		},
-		MerakiPowerModuleStatus: MerakiPowerModuleStatusMetricConfig{
-			Enabled: true,
-		},
-		MerakiScrapeLastSuccess: MerakiScrapeLastSuccessMetricConfig{
-			Enabled: true,
-		},
-		MerakiSwitchPortAlertActive: MerakiSwitchPortAlertActiveMetricConfig{
-			Enabled: true,
-		},
-		MerakiSwitchPortPoeAllocated: MerakiSwitchPortPoeAllocatedMetricConfig{
-			Enabled: true,
-		},
-		MerakiSwitchPortUsage: MerakiSwitchPortUsageMetricConfig{
-			Enabled: true,
-		},
-		MerakiUplinkCellularSignalRsrp: MerakiUplinkCellularSignalRsrpMetricConfig{
-			Enabled: true,
-		},
-		MerakiUplinkCellularSignalRsrq: MerakiUplinkCellularSignalRsrqMetricConfig{
-			Enabled: true,
-		},
-		MerakiUplinkLatency: MerakiUplinkLatencyMetricConfig{
-			Enabled: true,
-		},
-		MerakiUplinkLoss: MerakiUplinkLossMetricConfig{
-			Enabled: true,
-		},
-		MerakiUplinkStatus: MerakiUplinkStatusMetricConfig{
-			Enabled: true,
-		},
-		MerakiVpnPeerJitter: MerakiVpnPeerJitterMetricConfig{
-			Enabled: true,
-		},
-		MerakiVpnPeerLatency: MerakiVpnPeerLatencyMetricConfig{
-			Enabled: true,
-		},
-		MerakiVpnPeerLoss: MerakiVpnPeerLossMetricConfig{
-			Enabled: true,
-		},
-		MerakiVpnPeerMos: MerakiVpnPeerMosMetricConfig{
-			Enabled: true,
-		},
-		MerakiVpnPeerStatus: MerakiVpnPeerStatusMetricConfig{
-			Enabled: true,
-		},
-		MerakiVpnPeerUsage: MerakiVpnPeerUsageMetricConfig{
-			Enabled: true,
-		},
-		MerakiWirelessChannelUtilization: MerakiWirelessChannelUtilizationMetricConfig{
-			Enabled: true,
-		},
-		MerakiWirelessClientCount: MerakiWirelessClientCountMetricConfig{
-			Enabled: true,
-		},
-		MerakiWirelessPacketCount: MerakiWirelessPacketCountMetricConfig{
-			Enabled: true,
-		},
-		MerakiWirelessPacketLoss: MerakiWirelessPacketLossMetricConfig{
-			Enabled: true,
-		},
-		MerakiWirelessPacketLossPercentage: MerakiWirelessPacketLossPercentageMetricConfig{
-			Enabled: true,
-		},
-		MerakiWirelessSsidStatus: MerakiWirelessSsidStatusMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardAPIEndpointError: NexusDashboardAPIEndpointErrorMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardAPIRateLimited: NexusDashboardAPIRateLimitedMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardAPIRequestDuration: NexusDashboardAPIRequestDurationMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardAPIRequestErrors: NexusDashboardAPIRequestErrorsMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardAuditRecordCount: NexusDashboardAuditRecordCountMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardConfigCompliance: NexusDashboardConfigComplianceMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardDataBrokerRuleCount: NexusDashboardDataBrokerRuleCountMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardDataBrokerSessionCount: NexusDashboardDataBrokerSessionCountMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardDataBrokerStatus: NexusDashboardDataBrokerStatusMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardDeploymentStatus: NexusDashboardDeploymentStatusMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardEndpointCount: NexusDashboardEndpointCountMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardEventCount: NexusDashboardEventCountMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardFabricHealth: NexusDashboardFabricHealthMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardInsightsAnomalyActive: NexusDashboardInsightsAnomalyActiveMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardInsightsAnomalyCount: NexusDashboardInsightsAnomalyCountMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardInsightsConfidence: NexusDashboardInsightsConfidenceMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardInsightsScore: NexusDashboardInsightsScoreMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardInsightsStatus: NexusDashboardInsightsStatusMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardOrchestratorDeploymentCount: NexusDashboardOrchestratorDeploymentCountMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardOrchestratorDeploymentStatus: NexusDashboardOrchestratorDeploymentStatusMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardOrchestratorPolicyDeltaCount: NexusDashboardOrchestratorPolicyDeltaCountMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardResourceCount: NexusDashboardResourceCountMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardResourceInfo: NexusDashboardResourceInfoMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardResourceStatus: NexusDashboardResourceStatusMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardScrapeLastSuccess: NexusDashboardScrapeLastSuccessMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardScrapePartialSuccess: NexusDashboardScrapePartialSuccessMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardServiceHealth: NexusDashboardServiceHealthMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardServiceSkipped: NexusDashboardServiceSkippedMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardServiceUnavailable: NexusDashboardServiceUnavailableMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardStorageUtilization: NexusDashboardStorageUtilizationMetricConfig{
-			Enabled: true,
-		},
-		NexusDashboardVpcPeerCount: NexusDashboardVpcPeerCountMetricConfig{
-			Enabled: true,
-		},
-		SdwanAPIRateLimited: SdwanAPIRateLimitedMetricConfig{
-			Enabled: true,
-		},
-		SdwanAPIRequestDuration: SdwanAPIRequestDurationMetricConfig{
-			Enabled: true,
-		},
-		SdwanAPIRequestErrors: SdwanAPIRequestErrorsMetricConfig{
-			Enabled: true,
-		},
-		SdwanAppRouteJitter: SdwanAppRouteJitterMetricConfig{
-			Enabled: true,
-		},
-		SdwanAppRouteLatency: SdwanAppRouteLatencyMetricConfig{
-			Enabled: true,
-		},
-		SdwanAppRouteLoss: SdwanAppRouteLossMetricConfig{
-			Enabled: true,
-		},
-		SdwanAppRouteSLAStatus: SdwanAppRouteSLAStatusMetricConfig{
-			Enabled: true,
-		},
-		SdwanBfdSessionCount: SdwanBfdSessionCountMetricConfig{
-			Enabled: true,
-		},
-		SdwanBfdSessionFlapCount: SdwanBfdSessionFlapCountMetricConfig{
-			Enabled: true,
-		},
-		SdwanBfdSessionStatus: SdwanBfdSessionStatusMetricConfig{
-			Enabled: true,
-		},
-		SdwanBfdSessionTransitions: SdwanBfdSessionTransitionsMetricConfig{
-			Enabled: true,
-		},
-		SdwanCollectionObjectCount: SdwanCollectionObjectCountMetricConfig{
-			Enabled: true,
-		},
-		SdwanControlActualConnections: SdwanControlActualConnectionsMetricConfig{
-			Enabled: true,
-		},
-		SdwanControlConnectionCount: SdwanControlConnectionCountMetricConfig{
-			Enabled: true,
-		},
-		SdwanControlConnectionStatus: SdwanControlConnectionStatusMetricConfig{
-			Enabled: true,
-		},
-		SdwanControlExpectedConnections: SdwanControlExpectedConnectionsMetricConfig{
-			Enabled: true,
-		},
-		SdwanDeviceCertificateStatus: SdwanDeviceCertificateStatusMetricConfig{
-			Enabled: true,
-		},
-		SdwanDeviceReachabilityStatus: SdwanDeviceReachabilityStatusMetricConfig{
-			Enabled: true,
-		},
-		SdwanDeviceValidityStatus: SdwanDeviceValidityStatusMetricConfig{
-			Enabled: true,
-		},
-		SdwanEventCount: SdwanEventCountMetricConfig{
-			Enabled: true,
-		},
-		SdwanInventoryDeviceCount: SdwanInventoryDeviceCountMetricConfig{
-			Enabled: true,
-		},
-		SdwanManagerEndpointStatus: SdwanManagerEndpointStatusMetricConfig{
-			Enabled: true,
-		},
-		SdwanManagerHealthScore: SdwanManagerHealthScoreMetricConfig{
-			Enabled: true,
-		},
-		SdwanManagerStatus: SdwanManagerStatusMetricConfig{
-			Enabled: true,
-		},
-		SdwanManagerUp: SdwanManagerUpMetricConfig{
-			Enabled: true,
-		},
-		SdwanResourceInfo: SdwanResourceInfoMetricConfig{
-			Enabled: true,
-		},
-		SdwanResourceStatus: SdwanResourceStatusMetricConfig{
-			Enabled: true,
-		},
-		SdwanScrapeLastSuccess: SdwanScrapeLastSuccessMetricConfig{
-			Enabled: true,
-		},
-		SdwanScrapePartialSuccess: SdwanScrapePartialSuccessMetricConfig{
-			Enabled: true,
-		},
-		SdwanServiceSkipped: SdwanServiceSkippedMetricConfig{
-			Enabled: true,
-		},
-		SdwanServiceUnavailable: SdwanServiceUnavailableMetricConfig{
-			Enabled: true,
-		},
-		SdwanTransportInterfaceStatus: SdwanTransportInterfaceStatusMetricConfig{
-			Enabled: true,
-		},
-		SystemCPULogicalCount: SystemCPULogicalCountMetricConfig{
-			Enabled: true,
-		},
-		SystemCPUUtilization: SystemCPUUtilizationMetricConfig{
-			Enabled:             true,
-			AggregationStrategy: AggregationStrategyAvg,
-			EnabledAttributes:   []SystemCPUUtilizationMetricAttributeKey{SystemCPUUtilizationMetricAttributeKeyCiscoNodeName},
-		},
 		SystemMemoryUtilization: SystemMemoryUtilizationMetricConfig{
-			Enabled:             true,
-			AggregationStrategy: AggregationStrategyAvg,
-			EnabledAttributes:   []SystemMemoryUtilizationMetricAttributeKey{SystemMemoryUtilizationMetricAttributeKeyCiscoLocationFru, SystemMemoryUtilizationMetricAttributeKeyCiscoLocationSlot, SystemMemoryUtilizationMetricAttributeKeyCiscoLocationBay, SystemMemoryUtilizationMetricAttributeKeyCiscoLocationChassis},
+			Enabled: true,
 		},
 		SystemNetworkErrors: SystemNetworkErrorsMetricConfig{
 			Enabled:             true,
@@ -4270,42 +1781,25 @@ func (rac *ResourceAttributeConfig) Unmarshal(parser *confmap.Conf) error {
 
 // ResourceAttributesConfig provides config for cisco_os resource attributes.
 type ResourceAttributesConfig struct {
-	CiscoOsBootMode         ResourceAttributeConfig `mapstructure:"cisco.os.boot_mode"`
 	CiscoOsName             ResourceAttributeConfig `mapstructure:"cisco.os.name"`
 	CiscoPlatformFamily     ResourceAttributeConfig `mapstructure:"cisco.platform.family"`
-	CiscoProductFamily      ResourceAttributeConfig `mapstructure:"cisco.product.family"`
 	CiscoTelemetryTransport ResourceAttributeConfig `mapstructure:"cisco.telemetry.transport"`
-	DeviceManufacturer      ResourceAttributeConfig `mapstructure:"device.manufacturer"`
-	DeviceModelIdentifier   ResourceAttributeConfig `mapstructure:"device.model.identifier"`
 	HostID                  ResourceAttributeConfig `mapstructure:"host.id"`
 	HostIP                  ResourceAttributeConfig `mapstructure:"host.ip"`
 	HostName                ResourceAttributeConfig `mapstructure:"host.name"`
 	HwType                  ResourceAttributeConfig `mapstructure:"hw.type"`
 	OsName                  ResourceAttributeConfig `mapstructure:"os.name"`
-	OsVersion               ResourceAttributeConfig `mapstructure:"os.version"`
 }
 
 func DefaultResourceAttributesConfig() ResourceAttributesConfig {
 	return ResourceAttributesConfig{
-		CiscoOsBootMode: ResourceAttributeConfig{
-			Enabled: true,
-		},
 		CiscoOsName: ResourceAttributeConfig{
 			Enabled: true,
 		},
 		CiscoPlatformFamily: ResourceAttributeConfig{
 			Enabled: true,
 		},
-		CiscoProductFamily: ResourceAttributeConfig{
-			Enabled: true,
-		},
 		CiscoTelemetryTransport: ResourceAttributeConfig{
-			Enabled: true,
-		},
-		DeviceManufacturer: ResourceAttributeConfig{
-			Enabled: true,
-		},
-		DeviceModelIdentifier: ResourceAttributeConfig{
 			Enabled: true,
 		},
 		HostID: ResourceAttributeConfig{
@@ -4321,9 +1815,6 @@ func DefaultResourceAttributesConfig() ResourceAttributesConfig {
 			Enabled: true,
 		},
 		OsName: ResourceAttributeConfig{
-			Enabled: true,
-		},
-		OsVersion: ResourceAttributeConfig{
 			Enabled: true,
 		},
 	}

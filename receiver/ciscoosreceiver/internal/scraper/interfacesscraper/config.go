@@ -17,13 +17,13 @@ import (
 
 // Config holds configuration for the interfaces scraper
 type Config struct {
-	MetricsBuilderConfig metadata.MetricsBuilderConfig `mapstructure:",squash"`
-	Device               connection.DeviceConfig       `mapstructure:"-"` // Passed from receiver config
-	Timeout              time.Duration                 `mapstructure:"-"` // Passed from receiver config
-	Rates                RateCollectionConfig          `mapstructure:"rates"`
-	Counters             CounterCollectionConfig       `mapstructure:"counters"`
-	L2Topology           L2TopologyConfig              `mapstructure:"l2_topology"`
-	Transceiver          TransceiverConfig             `mapstructure:"transceiver"`
+	metadata.MetricsBuilderConfig `mapstructure:",squash"`
+	Device                        connection.DeviceConfig `mapstructure:"-"` // Passed from receiver config
+	Timeout                       time.Duration           `mapstructure:"-"` // Passed from receiver config
+	Rates                         RateCollectionConfig    `mapstructure:"rates"`
+	Counters                      CounterCollectionConfig `mapstructure:"counters"`
+	L2Topology                    L2TopologyConfig        `mapstructure:"l2_topology"`
+	Transceiver                   TransceiverConfig       `mapstructure:"transceiver"`
 }
 
 // RateCollectionConfig controls bounded Cisco rate metrics parsed from show interface.

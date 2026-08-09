@@ -4,7 +4,6 @@
 package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver"
 
 import (
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"slices"
@@ -13,7 +12,6 @@ import (
 	"time"
 
 	gnmipb "github.com/openconfig/gnmi/proto/gnmi"
-	gnmiextpb "github.com/openconfig/gnmi/proto/gnmi_ext"
 
 	internalgnmi "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/gnmi"
 )
@@ -85,16 +83,11 @@ type sharedGNMIEntityLimit struct {
 }
 
 // buildSharedGNMIStreams converts enabled built-in profiles and custom
-// subscriptions into product-contract-approved streams. Prefix-oriented
-// contracts require one (path target, origin) pair per stream. Nexus contracts
-// retain origins on individual paths so DME, device-YANG, and OpenConfig paths
-// can coexist.
+// subscriptions into compatible streams. IOS XE and IOS XR require one prefix
+// origin per stream. NX-OS retains origin on each subscribed path so DME,
+// device-YANG, and OpenConfig paths can coexist in one profile stream.
 func buildSharedGNMIStreams(rawTarget GNMITargetConfig) ([]sharedGNMIStream, error) {
 	target := rawTarget.withDefaults()
-	contract, _, err := gnmiProductContractForTarget(target)
-	if err != nil {
-		return nil, err
-	}
 	var streams []sharedGNMIStream
 
 	for _, profileName := range []string{
@@ -122,9 +115,9 @@ func buildSharedGNMIStreams(rawTarget GNMITargetConfig) ([]sharedGNMIStream, err
 		if !boolValue(profileConfig.Enabled, false) {
 			continue
 		}
-		definition, ok := builtinGNMIProfile(contract, profileName)
+		definition, ok := builtinGNMIProfile(target.Platform, profileName)
 		if !ok {
-			continue
+			return nil, fmt.Errorf("gNMI profile %q is not supported on platform %q", profileName, target.Platform)
 		}
 		profileStreams, err := buildBuiltinProfileStreams(target.Platform, definition, profileConfig, target.SyncTimeout)
 		if err != nil {
@@ -143,9 +136,6 @@ func buildSharedGNMIStreams(rawTarget GNMITargetConfig) ([]sharedGNMIStream, err
 
 	if len(streams) > target.MaxStreams {
 		return nil, fmt.Errorf("target %q requires %d compatible subscription streams, exceeding max_streams %d", target.Name, len(streams), target.MaxStreams)
-	}
-	for i := range streams {
-		normalizeSharedGNMIStreamPlan(target, &streams[i])
 	}
 	return streams, nil
 }
@@ -807,16 +797,10 @@ func mergeSharedGNMIPathSetVariants(
 
 func sortSharedGNMIPaths(paths []sharedGNMIPath) {
 	sort.SliceStable(paths, func(i, j int) bool {
-		if paths[i].PathTarget != paths[j].PathTarget {
-			return paths[i].PathTarget < paths[j].PathTarget
-		}
 		if paths[i].Origin != paths[j].Origin {
 			return paths[i].Origin < paths[j].Origin
 		}
-		if paths[i].Path != paths[j].Path {
-			return paths[i].Path < paths[j].Path
-		}
-		return paths[i].ID < paths[j].ID
+		return paths[i].Path < paths[j].Path
 	})
 }
 
@@ -836,7 +820,7 @@ func buildCustomGNMIStream(subscription GNMICustomSubscriptionConfig, syncTimeou
 		SyncTimeout:    streamSyncTimeout,
 	}
 	for i, configured := range subscription.Mappings {
-		catalogMapping, path, err := convertCustomGNMIMapping(subscription.PathTarget, subscription.Origin, configured)
+		catalogMapping, path, err := convertCustomGNMIMapping(subscription.Origin, configured)
 		if err != nil {
 			return sharedGNMIStream{}, fmt.Errorf("mapping %d: %w", i, err)
 		}
@@ -919,10 +903,6 @@ func convertCustomGNMIMapping(origin string, configured GNMIMetricMappingConfig)
 	if err != nil {
 		return builtinGNMIMapping{}, sharedGNMIPath{}, err
 	}
-	parsed.PathTarget = pathTarget
-	if validationErr := internalgnmi.ValidatePath(parsed); validationErr != nil {
-		return builtinGNMIMapping{}, sharedGNMIPath{}, validationErr
-	}
 	series, err := parsed.SplitLeaf()
 	if err != nil {
 		return builtinGNMIMapping{}, sharedGNMIPath{}, err
@@ -945,10 +925,9 @@ func convertCustomGNMIMapping(origin string, configured GNMIMetricMappingConfig)
 	gauge := internalgnmi.GaugeValueType(configured.GaugeType)
 	converted := builtinGNMIMapping{Mapping: internalgnmi.Mapping{
 		Source: internalgnmi.SourcePath{
-			PathTarget: pathTarget,
-			Origin:     origin,
-			Elements:   elements,
-			Leaf:       series.Leaf,
+			Origin:   origin,
+			Elements: elements,
+			Leaf:     series.Leaf,
 		},
 		Metric: internalgnmi.MetricMetadata{
 			Name:        configured.MetricName,
@@ -962,7 +941,7 @@ func convertCustomGNMIMapping(origin string, configured GNMIMetricMappingConfig)
 	if _, err := internalgnmi.NewRegistry(converted.Mapping); err != nil {
 		return builtinGNMIMapping{}, sharedGNMIPath{}, err
 	}
-	return converted, sharedGNMIPath{PathTarget: pathTarget, Origin: origin, Path: strings.Trim(configured.Path, "/")}, nil
+	return converted, sharedGNMIPath{Origin: origin, Path: strings.Trim(configured.Path, "/")}, nil
 }
 
 func sharedGNMIProfileConfig(profiles GNMIProfilesConfig, name string) GNMIProfileConfig {
@@ -1010,52 +989,20 @@ func sharedGNMIProfileConfig(profiles GNMIProfilesConfig, name string) GNMIProfi
 	}
 }
 
-// buildSharedGNMISubscribeRequest applies the product contract's origin and
-// wildcard policy to an already normalized, independently encoded stream plan.
+// buildSharedGNMISubscribeRequest places IOS XE and IOS XR origins on the
+// SubscriptionList prefix. NX-OS keeps each origin on its individual path.
 func buildSharedGNMISubscribeRequest(target GNMITargetConfig, stream sharedGNMIStream, encoding gnmipb.Encoding) (*gnmipb.SubscribeRequest, error) {
-	contract, _, err := gnmiProductContractForTarget(target)
-	if err != nil {
-		return nil, err
-	}
-	if !gnmiProductApprovesEncoding(contract, encoding) {
-		return nil, fmt.Errorf("encoding %q is not approved for product %s", sharedGNMIEncodingName(encoding), contract.Product)
-	}
-	if contract.RequestPolicy.StreamOnly && stream.Mode != gnmiModeStream {
-		if contract.RequestPolicy.ConservativeSampleOnly {
-			return nil, fmt.Errorf("stream %q supports only SAMPLE STREAM subscriptions on product %s", stream.Profile, contract.Product)
-		}
-		return nil, fmt.Errorf("stream %q mode must be stream on product %s", stream.Profile, contract.Product)
-	}
 	if len(stream.Paths) == 0 {
 		return nil, fmt.Errorf("stream %q has no subscription paths", stream.Profile)
-	}
-	pathOptions := make([]GNMIPathOptionsConfig, 0, len(stream.Paths))
-	for pathIndex := range stream.Paths {
-		path := &stream.Paths[pathIndex]
-		pathOptions = append(pathOptions, GNMIPathOptionsConfig{
-			StreamMode:        path.StreamMode,
-			SampleInterval:    path.SampleInterval,
-			HeartbeatInterval: path.HeartbeatInterval,
-			SuppressRedundant: path.SuppressRedundant,
-		})
-	}
-	if samplePlanErr := validateGNMIProductSamplePlan("stream "+stream.Profile, contract, stream.SampleInterval, pathOptions); samplePlanErr != nil {
-		return nil, samplePlanErr
 	}
 	listMode, err := sharedGNMIListMode(stream.Mode)
 	if err != nil {
 		return nil, err
 	}
-	if err := validateGNMIListOptions(
-		"stream "+stream.Profile,
-		stream.Mode,
-		[]string{sharedGNMIEncodingName(encoding)},
-		stream.UpdatesOnly,
-		stream.AllowAggregation,
-		stream.QoSMarking,
-		stream.GNMIExtensions,
-	); err != nil {
-		return nil, err
+	list := &gnmipb.SubscriptionList{
+		Mode:         listMode,
+		Encoding:     encoding,
+		Subscription: make([]*gnmipb.Subscription, 0, len(stream.Paths)),
 	}
 	streamMode, err := sharedGNMISubscriptionMode(stream.StreamMode)
 	if err != nil {
@@ -1068,30 +1015,14 @@ func buildSharedGNMISubscribeRequest(target GNMITargetConfig, stream sharedGNMIS
 				return nil, fmt.Errorf("stream %q mixes prefix origins %q and %q", stream.Profile, origin, path.Origin)
 			}
 		}
-		list.Prefix = &gnmipb.Path{Target: prefix.PathTarget, Origin: prefix.Origin}
+		list.Prefix = &gnmipb.Path{Origin: origin}
 	}
-	for i := range stream.Paths {
-		path := &stream.Paths[i]
-		if !gnmiCustomPathNamespaceValid(path.Path, path.Origin) {
-			return nil, fmt.Errorf("path %q does not use the namespace form required by origin %q", path.Path, path.Origin)
-		}
-		if err := validateGNMIProductPathPolicy("path "+path.Path, contract, GNMIPathOptionsConfig{
-			StreamMode:        path.StreamMode,
-			SampleInterval:    path.SampleInterval,
-			HeartbeatInterval: path.HeartbeatInterval,
-			SuppressRedundant: path.SuppressRedundant,
-		}); err != nil {
-			return nil, err
-		}
-		pathTarget, pathOrigin := "", ""
-		if !contract.RequestPolicy.UsePathPrefix {
-			pathTarget = path.PathTarget
+	for _, path := range stream.Paths {
+		pathOrigin := ""
+		if target.Platform == gnmiPlatformNXOS {
 			pathOrigin = path.Origin
 		}
-		if !contract.RequestPolicy.AllowWildcards && gnmiPathContainsWildcard(*path) {
-			return nil, fmt.Errorf("path %q contains an explicit asterisk wildcard that is not qualified on product %q", path.Path, contract.Product)
-		}
-		protoPath, err := sharedGNMIPathToProto(pathTarget, pathOrigin, path.Path)
+		protoPath, err := sharedGNMIPathToProto(pathOrigin, path.Path)
 		if err != nil {
 			return nil, fmt.Errorf("path %q: %w", path.Path, err)
 		}
@@ -1101,13 +1032,7 @@ func buildSharedGNMISubscribeRequest(target GNMITargetConfig, stream sharedGNMIS
 		}
 		list.Subscription = append(list.Subscription, subscription)
 	}
-	request := &gnmipb.SubscribeRequest{Request: &gnmipb.SubscribeRequest_Subscribe{Subscribe: list}}
-	if stream.GNMIExtensions.Depth != nil {
-		request.Extension = []*gnmiextpb.Extension{{Ext: &gnmiextpb.Extension_Depth{
-			Depth: &gnmiextpb.Depth{Level: *stream.GNMIExtensions.Depth},
-		}}}
-	}
-	return request, nil
+	return &gnmipb.SubscribeRequest{Request: &gnmipb.SubscribeRequest_Subscribe{Subscribe: list}}, nil
 }
 
 func sharedGNMISubscriptionMode(mode string) (gnmipb.SubscriptionMode, error) {
@@ -1126,10 +1051,6 @@ func sharedGNMISubscriptionMode(mode string) (gnmipb.SubscriptionMode, error) {
 func sharedGNMIPathToProto(origin, path string) (*gnmipb.Path, error) {
 	parsed, err := internalgnmi.ParsePath("", origin, path)
 	if err != nil {
-		return nil, err
-	}
-	parsed.PathTarget = pathTarget
-	if err := internalgnmi.ValidatePath(parsed); err != nil {
 		return nil, err
 	}
 	return parsed.ToProto(), nil

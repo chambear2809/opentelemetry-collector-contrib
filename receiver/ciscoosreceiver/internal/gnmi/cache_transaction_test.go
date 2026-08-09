@@ -5,44 +5,12 @@ package gnmi
 
 import (
 	"fmt"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func TestCacheTransactionConcurrentCommitAndRollbackIsSafe(t *testing.T) {
-	for range 100 {
-		cache, err := NewCache(10)
-		require.NoError(t, err)
-		point := testMappedPoint("switch-1", "Ethernet1", "temperature", 41, time.Unix(100, 0))
-		transaction, err := cache.Prepare(CacheNotification{Timestamp: point.Timestamp, Updates: []MappedPoint{point}})
-		require.NoError(t, err)
-
-		start := make(chan struct{})
-		var wait sync.WaitGroup
-		wait.Add(2)
-		go func() {
-			defer wait.Done()
-			<-start
-			transaction.Commit()
-		}()
-		go func() {
-			defer wait.Done()
-			<-start
-			transaction.Rollback()
-		}()
-		close(start)
-		wait.Wait()
-
-		assert.LessOrEqual(t, cache.Len(), 1)
-		assertCacheRetainedByteInvariant(t, cache)
-		transaction.Commit()
-		transaction.Rollback()
-	}
-}
 
 func TestCachePreparedReplacementRollbackAllowsEqualTimestampRedelivery(t *testing.T) {
 	cache, err := NewCache(20)

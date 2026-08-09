@@ -21,6 +21,12 @@
         "applyIfExists": true
       },
       {
+        "property": "host.ip",
+        "alias": "Controller IP",
+        "description": "Catalyst 9800 controller address.",
+        "applyIfExists": true
+      },
+      {
         "property": "cisco.wlc.ap.name",
         "alias": "AP",
         "description": "Wireless access point name.",
@@ -128,7 +134,7 @@
           "secondary_visualization": "Sparkline",
           "name": "AP Join And CAPWAP State",
           "description": "Value: finds APs that are not joined or have unhealthy CAPWAP state. Interpretation: 1 or healthy state means the AP is connected; 0 or failed/disconnected state rows should be checked before RF or client analysis.",
-          "signalflow": "data('cisco.wlc.ap.join.status').mean(by=['host.name', 'cisco.wlc.ap.name', 'cisco.wlc.ap.mac']).publish(label='AP joined'); data('cisco.wlc.ap.capwap.state').mean(by=['host.name', 'cisco.wlc.ap.mac', 'state']).publish(label='CAPWAP state')",
+          "signalflow": "data('cisco.wlc.ap.join.status').mean(by=['host.name', 'cisco.wlc.ap.name', 'cisco.wlc.ap.mac', 'state']).publish(label='AP joined'); data('cisco.wlc.ap.capwap.state').mean(by=['host.name', 'cisco.wlc.ap.name', 'cisco.wlc.ap.mac', 'state']).publish(label='CAPWAP state')",
           "legend_dimension": "cisco.wlc.ap.name"
         },
         {
@@ -140,14 +146,14 @@
         {
           "name": "RF Channel Utilization And Noise",
           "description": "Value: shows whether user symptoms line up with busy RF channels, non-Wi-Fi interference, or poor noise floor. Interpretation: high utilization or noise changes around the incident often explain low throughput even when APs remain joined.",
-          "signalflow": "data('cisco.wlc.rf.channel.utilization').mean(by=['host.name', 'cisco.wlc.ap.mac', 'cisco.wlc.radio.slot', 'utilization.type']).publish(label='RF utilization'); data('cisco.wlc.rf.noise_floor').mean(by=['host.name', 'cisco.wlc.ap.mac', 'cisco.wlc.radio.slot']).publish(label='Noise floor')",
-          "legend_dimension": "cisco.wlc.ap.mac"
+          "signalflow": "data('cisco.wlc.rf.channel.utilization').mean(by=['host.name', 'cisco.wlc.ap.name', 'cisco.wlc.radio.slot', 'utilization.type']).publish(label='RF utilization'); data('cisco.wlc.rf.noise_floor').mean(by=['host.name', 'cisco.wlc.ap.name', 'cisco.wlc.radio.slot']).publish(label='Noise floor')",
+          "legend_dimension": "cisco.wlc.ap.name"
         },
         {
           "name": "RF Client Load And Channel Changes",
           "description": "Value: correlates client concentration and RRM channel changes with reported wireless instability. Interpretation: spikes in client count, repeated channel changes, or a controller recommending new channels can explain roaming and throughput symptoms.",
-          "signalflow": "data('cisco.wlc.rf.client.count').mean(by=['host.name', 'cisco.wlc.ap.mac', 'cisco.wlc.radio.slot']).publish(label='RF clients'); data('cisco.wlc.rf.channel.change.count').rate().sum(by=['host.name', 'cisco.wlc.ap.mac', 'cisco.wlc.radio.slot']).publish(label='Channel changes/sec'); data('cisco.wlc.rf.channel.recommended').mean(by=['host.name', 'cisco.wlc.ap.mac', 'cisco.wlc.radio.slot']).publish(label='Recommended channel')",
-          "legend_dimension": "cisco.wlc.ap.mac"
+          "signalflow": "data('cisco.wlc.rf.client.count').mean(by=['host.name', 'cisco.wlc.ap.name', 'cisco.wlc.radio.slot']).publish(label='RF clients'); data('cisco.wlc.rf.channel.change.count').rate().sum(by=['host.name', 'cisco.wlc.ap.name', 'cisco.wlc.radio.slot']).publish(label='Channel changes/sec'); data('cisco.wlc.rf.channel.recommended').mean(by=['host.name', 'cisco.wlc.ap.name', 'cisco.wlc.radio.slot']).publish(label='Recommended channel')",
+          "legend_dimension": "cisco.wlc.ap.name"
         }
       ]
     },
@@ -169,14 +175,14 @@
           "type": "List",
           "secondary_visualization": "Sparkline",
           "name": "Client Connection State",
-          "description": "Value: identifies clients that are disconnected, stuck, or in an unexpected controller state. Interpretation: group by client MAC, then use auth failures, RADIUS, RSSI, and SNR to explain why.",
-          "signalflow": "data('cisco.wlc.client.connection.state').mean(by=['host.name', 'cisco.wlc.client.mac', 'state']).publish(label='Connection state')",
+          "description": "Value: identifies clients that are disconnected, stuck, or in an unexpected controller state. Interpretation: group by client MAC and SSID, then use auth failures, RADIUS, RSSI, and SNR to explain why.",
+          "signalflow": "data('cisco.wlc.client.connection.state').mean(by=['host.name', 'cisco.wlc.client.mac', 'cisco.wlc.ssid', 'state']).publish(label='Connection state')",
           "legend_dimension": "cisco.wlc.client.mac"
         },
         {
           "name": "Client RSSI And SNR",
-          "description": "Value: shows whether client experience degraded because of RF quality rather than authentication or policy. Interpretation: low RSSI or SNR by client points toward RF coverage, interference, or client placement issues.",
-          "signalflow": "data('cisco.wlc.client.wireless.rssi').mean(by=['host.name', 'cisco.wlc.client.mac']).publish(label='RSSI'); data('cisco.wlc.client.wireless.snr').mean(by=['host.name', 'cisco.wlc.client.mac']).publish(label='SNR')",
+          "description": "Value: shows whether client experience degraded because of RF quality rather than authentication or policy. Interpretation: low RSSI or SNR by client, AP, or SSID points toward RF coverage, interference, or client placement issues.",
+          "signalflow": "data('cisco.wlc.client.wireless.rssi').mean(by=['host.name', 'cisco.wlc.client.mac', 'cisco.wlc.ap.name', 'cisco.wlc.ssid']).publish(label='RSSI'); data('cisco.wlc.client.wireless.snr').mean(by=['host.name', 'cisco.wlc.client.mac', 'cisco.wlc.ap.name', 'cisco.wlc.ssid']).publish(label='SNR')",
           "legend_dimension": "cisco.wlc.client.mac"
         },
         {
@@ -194,7 +200,7 @@
         {
           "name": "Client Auth Failures And Network IO",
           "description": "Value: ties client auth-failure reasons to whether clients still pass bytes and packets after association. Interpretation: auth failures explain access denial; byte or packet silence after successful state can point toward policy, VLAN, upstream, or DHCP issues.",
-          "signalflow": "data('cisco.wlc.client.auth.failure.reason.info').sum(by=['host.name', 'cisco.wlc.client.mac', 'failure.reason']).publish(label='Auth failure reason'); data('cisco.wlc.client.network.io').rate().sum(by=['host.name', 'cisco.wlc.client.mac', 'direction']).publish(label='Client bytes/sec'); data('cisco.wlc.client.network.packets').rate().sum(by=['host.name', 'cisco.wlc.client.mac', 'direction']).publish(label='Client packets/sec')",
+          "signalflow": "data('cisco.wlc.client.auth.failure.reason.info').sum(by=['host.name', 'cisco.wlc.client.mac', 'cisco.wlc.ssid', 'failure.reason']).publish(label='Auth failure reason'); data('cisco.wlc.client.network.io').rate().sum(by=['host.name', 'cisco.wlc.client.mac', 'cisco.wlc.ssid', 'direction']).publish(label='Client bytes/sec'); data('cisco.wlc.client.network.packets').rate().sum(by=['host.name', 'cisco.wlc.client.mac', 'cisco.wlc.ssid', 'direction']).publish(label='Client packets/sec')",
           "legend_dimension": "cisco.wlc.client.mac"
         }
       ]
@@ -224,7 +230,7 @@
         {
           "name": "Roams Handoffs And Failures",
           "description": "Value: shows whether client movement or mobility handoff failures line up with user complaints. Interpretation: rising roam counts are expected with movement; rising roam or handoff failures point to mobility, RF, policy, or controller-state issues.",
-          "signalflow": "data('cisco.wlc.client.roam.count').rate().sum(by=['host.name', 'cisco.wlc.mobility.node_ip', 'roam.layer']).publish(label='Client roams/sec'); data('cisco.wlc.client.roam.failure.count').rate().sum(by=['host.name', 'cisco.wlc.ssid']).publish(label='Roam failures/sec'); data('cisco.wlc.mobility.handoff.failure.count').rate().sum(by=['host.name', 'handoff.type']).publish(label='Handoff failures/sec')",
+          "signalflow": "data('cisco.wlc.client.roam.count').rate().sum(by=['host.name', 'cisco.wlc.ssid', 'roam.type', 'roam.layer']).publish(label='Client roams/sec'); data('cisco.wlc.client.roam.failure.count').rate().sum(by=['host.name', 'cisco.wlc.ssid']).publish(label='Roam failures/sec'); data('cisco.wlc.mobility.handoff.failure.count').rate().sum(by=['host.name', 'handoff.type']).publish(label='Handoff failures/sec')",
           "legend_dimension": "host.name"
         },
         {
@@ -232,7 +238,7 @@
           "secondary_visualization": "Sparkline",
           "name": "HA State And Enabled",
           "description": "Value: confirms whether controller HA is enabled and whether local or peer state is healthy. Interpretation: failed, standby, disabled, or unexpected peer-state rows should be investigated before planned maintenance or failover.",
-          "signalflow": "data('cisco.wlc.ha.state').mean(by=['host.name', 'ha.role', 'state']).publish(label='HA state'); data('cisco.wlc.ha.enabled').mean(by=['host.name']).publish(label='HA enabled')",
+          "signalflow": "data('cisco.wlc.ha.state').mean(by=['host.name', 'ha.role', 'state']).publish(label='HA state'); data('cisco.wlc.ha.enabled').mean(by=['host.name', 'state']).publish(label='HA enabled')",
           "legend_dimension": "host.name"
         },
         {

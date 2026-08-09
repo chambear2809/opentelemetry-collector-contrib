@@ -20,14 +20,13 @@ receivers:
             password: ${env:CISCO_GNMI_PASSWORD}
           tls:
             ca_file: /etc/otel/cisco-ca.pem
-            # Keep false in production. Set true only in an isolated lab when
-            # the certificate cannot be verified with a trusted CA bundle.
-            insecure_skip_verify: false
             min_version: "1.2"
             server_name_override: nexus01.example.net
             reload_interval: 1h
           profiles:
             identity:
+              enabled: true
+            system:
               enabled: true
             interfaces:
               enabled: true

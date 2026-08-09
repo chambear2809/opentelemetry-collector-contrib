@@ -1,5 +1,4 @@
 ciscoos:
-  storage: file_storage/cisco_os
   collection_interval: 60s
   timeout: 30s
   scrapers:
@@ -99,15 +98,12 @@ ciscoos:
       enabled: false
     cisco.wlc.client.*:
       enabled: false
-    cisco.iosxr.yang.__v1.*:
+    cisco.iosxr.yang.cisco_ios_xr_ip_rib_ipv4_oper.*:
       enabled: false
   meraki:
     auth:
       api_key: "meraki-key"
     base_url: "https://api.meraki.com/api/v1"
-    insecure_skip_verify: true
-    switch_transceivers:
-      enabled: true
     organizations:
       - organization_id: "123456"
         network_ids: ["N_1"]
@@ -203,7 +199,6 @@ ciscoos:
   nexus_dashboard:
     enabled: true
     endpoint: "https://nexus-dashboard.example.com"
-    api_profile: "unified"
     insecure_skip_verify: true
     user_agent: "ciscoosreceiver-test"
     page_size: 75
@@ -257,13 +252,6 @@ ciscoos:
     faults:
       enabled: true
       max_results: 300
-    logs:
-      faults:
-        enabled: true
-      audit:
-        enabled: true
-      events:
-        enabled: false
     endpoints:
       enabled: true
       max_results: 400
@@ -297,9 +285,6 @@ ciscoos:
     sessions:
       enabled: true
       max_results: 750
-    session_details:
-      enabled: true
-      max_results: 125
     auth_failures:
       enabled: true
       max_results: 300
@@ -310,9 +295,6 @@ ciscoos:
       enabled: true
       node_name: "otel-collector"
       password: "pxgrid-secret"
-      cert_file: "/etc/otelcol/pxgrid.crt"
-      key_file: "/etc/otelcol/pxgrid.key"
-      key_password: "pxgrid-key-password"
       streaming: true
       max_results: 250
       subscriptions:
@@ -384,7 +366,6 @@ ciscoos:
         - sources: ["10.0.0.20"]
           node_ids: ["campus-wlc-1"]
       max_streams_per_client: 16
-      stream_idle_timeout: 30m
       rate_limiting:
         enabled: true
         requests_per_second: 100
@@ -432,7 +413,6 @@ ciscoos:
         - sources: ["10.0.0.10"]
           node_ids: ["core-asr9k-1"]
       max_streams_per_client: 16
-      stream_idle_timeout: 30m
       rate_limiting:
         enabled: true
         requests_per_second: 100

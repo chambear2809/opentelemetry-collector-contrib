@@ -32,10 +32,10 @@ GigabitEthernet0/0 is up, line protocol is up
   5 minute input rate 1000 bits/sec, 2 packets/sec
   5 minute output rate 2000 bits/sec, 3 packets/sec
      12345 packets input, 9876543 bytes, 0 no buffer
-     Received 150 broadcasts (25 IP multicasts)
+     Received 150 broadcasts (75 IP multicasts)
      0 runts, 0 giants, 0 throttles
      10 input errors, 0 CRC, 0 frame, 0 overrun, 0 ignored
-     0 watchdog, 75 multicast, 0 pause input
+     0 watchdog, 25 multicast, 0 pause input
      20 packets output, 1234567 bytes, 0 underruns
      5 output errors, 0 collisions, 1 interface resets
      0 unknown protocol drops
@@ -72,10 +72,7 @@ TenGigabitEthernet1/0/1 is down, line protocol is down (notconnect)
 	assert.Equal(t, int64(5), gig0.OutputErrors)
 	assert.Equal(t, int64(0), gig0.InputDrops)
 	assert.Equal(t, int64(5), gig0.OutputDrops)
-	assert.Equal(t, int64(150), gig0.InputBroadcastMulticast)
-	assert.Equal(t, int64(75), gig0.InputBroadcast)
-	assert.Equal(t, int64(25), gig0.InputIPMulticast)
-	assert.Equal(t, int64(75), gig0.InputTotalMulticast)
+	assert.Equal(t, int64(150), gig0.InputBroadcast)
 	assert.Equal(t, int64(75), gig0.InputMulticast)
 	assert.Equal(t, int64(12345), gig0.InputPackets)
 	assert.Equal(t, int64(20), gig0.OutputPackets)
@@ -99,49 +96,6 @@ TenGigabitEthernet1/0/1 is down, line protocol is down (notconnect)
 	assert.Equal(t, int64(3), ten1.OutputErrors)
 	assert.Equal(t, int64(2), ten1.InputDrops)
 	assert.Equal(t, int64(10), ten1.OutputDrops)
-}
-
-func TestParseInterfaces_IOSXEReceiveMulticastPrecedence(t *testing.T) {
-	tests := []struct {
-		name               string
-		output             string
-		wantIPMulticast    int64
-		wantTotalMulticast int64
-	}{
-		{
-			name: "explicit zero IP multicast",
-			output: `GigabitEthernet1/0/1 is up, line protocol is up
-  100 packets input, 10000 bytes
-  Received 50 broadcasts (0 IP multicasts)
-  0 watchdog, 30 multicast, 0 pause input`,
-			wantIPMulticast:    0,
-			wantTotalMulticast: 30,
-		},
-		{
-			name: "divergent counters in reverse order",
-			output: `GigabitEthernet1/0/1 is up, line protocol is up
-  100 packets input, 10000 bytes
-  0 watchdog, 30 multicast, 0 pause input
-  Received 50 broadcasts (20 IP multicasts)`,
-			wantIPMulticast:    20,
-			wantTotalMulticast: 30,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			interfaces := parseInterfaces(tt.output, zaptest.NewLogger(t))
-
-			require.Len(t, interfaces, 1)
-			intf := interfaces[0]
-			assert.Equal(t, int64(50), intf.InputBroadcastMulticast)
-			assert.Equal(t, int64(20), intf.InputBroadcast)
-			assert.Equal(t, tt.wantIPMulticast, intf.InputIPMulticast)
-			assert.Equal(t, tt.wantTotalMulticast, intf.InputTotalMulticast)
-			assert.Equal(t, tt.wantTotalMulticast, intf.InputMulticast)
-			assert.Equal(t, invalidCounterValue, intf.InputUnicast)
-		})
-	}
 }
 
 func TestParseInterfaces_NXOS(t *testing.T) {
@@ -385,7 +339,7 @@ admin state is up, Dedicated Interface
 	assert.Equal(t, int64(2), intf.OutputRatePackets)
 	assert.Equal(t, int64(7), intf.Counters["input_jumbo_packets"])
 	assert.Equal(t, int64(8), intf.Counters["input_storm_suppression_packets"])
-	assert.Equal(t, invalidCounterValue, intf.OutputUnicast)
+	assert.Zero(t, intf.OutputUnicast)
 	assert.Equal(t, int64(2), intf.InputErrors)
 	assert.Equal(t, int64(16), intf.InputDrops)
 	assert.Equal(t, int64(17), intf.OutputErrors)
@@ -453,11 +407,8 @@ Vlan100 is up, line protocol is up
 	assert.Equal(t, int64(1), vlan.OutputErrors)
 	assert.Equal(t, int64(1), vlan.InputDrops)
 	assert.Equal(t, int64(2), vlan.OutputDrops)
-	assert.Equal(t, int64(30), vlan.InputBroadcastMulticast)
-	assert.Equal(t, invalidCounterValue, vlan.InputBroadcast)
-	assert.Equal(t, int64(15), vlan.InputIPMulticast)
-	assert.Equal(t, invalidCounterValue, vlan.InputTotalMulticast)
-	assert.Equal(t, invalidCounterValue, vlan.InputMulticast)
+	assert.Equal(t, int64(30), vlan.InputBroadcast)
+	assert.Equal(t, int64(15), vlan.InputMulticast)
 }
 
 func TestParseInterfaces_AdminDown(t *testing.T) {

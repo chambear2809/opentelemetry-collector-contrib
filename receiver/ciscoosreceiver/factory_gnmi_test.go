@@ -106,10 +106,9 @@ func TestMultiLogsReceiverStartRollsBackStartedReceivers(t *testing.T) {
 func factoryGNMITestConfig() *Config {
 	cfg := NewFactory().CreateDefaultConfig().(*Config)
 	cfg.GNMI.Targets = []GNMITargetConfig{{
-		Name:            "edge-1",
-		Endpoint:        "edge-1.example.test:57400",
-		Product:         gnmiProductCatalyst9800,
-		SoftwareVersion: "17.18.1",
+		Name:     "edge-1",
+		Endpoint: "edge-1.example.test:57400",
+		Platform: gnmiPlatformIOSXE,
 		Credentials: GNMICredentialsConfig{
 			Username: "telemetry",
 			Password: configopaque.String("secret"),

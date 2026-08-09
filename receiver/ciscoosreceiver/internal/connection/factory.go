@@ -90,7 +90,7 @@ func EstablishDeviceConnection(ctx context.Context, device DeviceConfig, timeout
 		return nil, fmt.Errorf("failed to build auth methods: %w", err)
 	}
 
-	hostKeyCallback, err := buildHostKeyCallback(device.Auth)
+	hostKeyCallback, err := buildHostKeyCallback(device.Auth, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build host key callback: %w", err)
 	}
@@ -122,19 +122,12 @@ func EstablishDeviceConnection(ctx context.Context, device DeviceConfig, timeout
 		network:        "tcp",
 		address:        address,
 		config:         sshConfig,
-		metadataStore:  device.MetadataStore,
 	}
 
-	// When enable-mode shell execution is configured, each command session
-	// already runs "terminal length 0" before the show command. Skipping the
-	// standalone exec here avoids breaking IOS XE targets that drop the
-	// connection after that one-off request.
-	if !sshClient.usesInteractiveShell() {
-		// Disable CLI pagination once per connection so all subsequent show
-		// commands return full output without interactive page prompts.
-		if disablePagingErr := sshClient.DisablePaging(ctx); disablePagingErr != nil {
-			logger.Warn("Failed to disable CLI pagination; output may be truncated", zap.Error(disablePagingErr))
-		}
+	// Disable CLI pagination once per connection so all subsequent show
+	// commands return full output without interactive page prompts.
+	if disablePagingErr := sshClient.DisablePaging(ctx); disablePagingErr != nil {
+		logger.Warn("Failed to disable CLI pagination; output may be truncated", zap.Error(disablePagingErr))
 	}
 
 	deviceMetadata, err := sshClient.DetectDeviceMetadata(ctx)
@@ -142,7 +135,6 @@ func EstablishDeviceConnection(ctx context.Context, device DeviceConfig, timeout
 		conn.Close()
 		return nil, fmt.Errorf("OS detection failed: %w", err)
 	}
-	sshClient.storeDeviceMetadata(deviceMetadata)
 
 	rpcClient := &RPCClient{
 		SSHClient:      sshClient,
@@ -157,7 +149,7 @@ func EstablishDeviceConnection(ctx context.Context, device DeviceConfig, timeout
 
 // buildHostKeyCallback returns an SSH HostKeyCallback based on the auth config.
 // Requires either KnownHostsFile or InsecureSkipVerify to be set.
-func buildHostKeyCallback(auth AuthConfig) (cryptossh.HostKeyCallback, error) {
+func buildHostKeyCallback(auth AuthConfig, logger *zap.Logger) (cryptossh.HostKeyCallback, error) {
 	if auth.KnownHostsFile != "" {
 		cb, err := knownhosts.New(auth.KnownHostsFile)
 		if err != nil {
@@ -166,6 +158,7 @@ func buildHostKeyCallback(auth AuthConfig) (cryptossh.HostKeyCallback, error) {
 		return cb, nil
 	}
 	if auth.InsecureSkipVerify {
+		logger.Warn("SSH host key verification is disabled (insecure_skip_verify=true); this is insecure outside of isolated lab environments")
 		return cryptossh.InsecureIgnoreHostKey(), nil // #nosec G106
 	}
 	return nil, errors.New("SSH host key verification is not configured: set auth.known_hosts_file or set auth.insecure_skip_verify: true (lab only)")

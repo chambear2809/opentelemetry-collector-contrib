@@ -47,34 +47,6 @@ func String(obj Object, keys ...string) string {
 	return ""
 }
 
-// ScalarString returns the first non-empty scalar string value for the provided keys.
-// Unlike String, it never formats maps or arrays into labels.
-func ScalarString(obj Object, keys ...string) string {
-	for _, key := range keys {
-		value, ok := obj[key]
-		if !ok || value == nil {
-			continue
-		}
-		switch typed := value.(type) {
-		case string:
-			if typed != "" {
-				return typed
-			}
-		case bool:
-			return strconv.FormatBool(typed)
-		case json.Number:
-			if typed.String() != "" {
-				return typed.String()
-			}
-		case fmt.Stringer:
-			if typed.String() != "" {
-				return typed.String()
-			}
-		}
-	}
-	return ""
-}
-
 // StringSlice returns a string slice value for a key.
 func StringSlice(obj Object, key string) []string {
 	value, ok := obj[key]

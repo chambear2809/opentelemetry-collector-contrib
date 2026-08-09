@@ -301,11 +301,8 @@ func parseLACPCounters(output string) ([]lacpPacketCounter, []lacpErrorCounter) 
 		secondIndex := secondPacketIndex
 		if secondIndex == -1 {
 			secondIndex = len(fields) - 1
-			if hasPacketErrorColumn {
-				secondIndex--
-			}
 		}
-		if secondIndex <= firstPacketIndex || secondIndex >= len(fields) || !interfaceFieldLooksNumeric(fields[secondIndex]) {
+		if secondIndex >= len(fields) || !interfaceFieldLooksNumeric(fields[secondIndex]) {
 			continue
 		}
 		packets = append(packets,

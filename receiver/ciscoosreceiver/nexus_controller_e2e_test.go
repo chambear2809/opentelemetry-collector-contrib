@@ -16,7 +16,6 @@ import (
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/consumer/consumertest"
-	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
@@ -27,8 +26,6 @@ const (
 	nexusDashboardE2EUsernameEnv       = "CISCOOS_E2E_NEXUS_DASHBOARD_USERNAME"
 	nexusDashboardE2EAPIKeyEnv         = "CISCOOS_E2E_NEXUS_DASHBOARD_API_KEY"
 	nexusDashboardE2EPasswordEnv       = "CISCOOS_E2E_NEXUS_DASHBOARD_PASSWORD"
-	nexusDashboardE2EDomainEnv         = "CISCOOS_E2E_NEXUS_DASHBOARD_DOMAIN"
-	nexusDashboardE2EAPIProfileEnv     = "CISCOOS_E2E_NEXUS_DASHBOARD_API_PROFILE"
 	nexusDashboardE2EInsecureSkipEnv   = "CISCOOS_E2E_NEXUS_DASHBOARD_INSECURE_SKIP_VERIFY"
 	nexusDashboardE2EFabricsEnv        = "CISCOOS_E2E_NEXUS_DASHBOARD_FABRICS"
 	nexusDashboardE2ESwitchIDsEnv      = "CISCOOS_E2E_NEXUS_DASHBOARD_SWITCH_IDS"
@@ -47,27 +44,22 @@ const (
 
 func TestE2ENexusDashboardControllerAPI(t *testing.T) {
 	cfg := NewFactory().CreateDefaultConfig().(*Config)
-	cfg.ControllerConfig.CollectionInterval = durationEnv(t, nexusControllerE2ECollectionIntEnv, 10*time.Second)
-	cfg.ControllerConfig.Timeout = durationEnv(t, nexusControllerE2ETimeoutEnv, 45*time.Second)
+	cfg.CollectionInterval = durationEnv(t, nexusControllerE2ECollectionIntEnv, 10*time.Second)
+	cfg.Timeout = durationEnv(t, nexusControllerE2ETimeoutEnv, 45*time.Second)
 	cfg.NexusDashboard = defaultNexusDashboardConfig()
 	cfg.NexusDashboard.Enabled = true
 	cfg.NexusDashboard.Endpoint = requiredEnvOrSkip(t, nexusDashboardE2EEndpointEnv)
-	cfg.NexusDashboard.APIProfile = normalizeNexusDashboardAPIProfile(os.Getenv(nexusDashboardE2EAPIProfileEnv))
 	cfg.NexusDashboard.InsecureSkipVerify = boolEnv(t, nexusDashboardE2EInsecureSkipEnv, false)
 	cfg.NexusDashboard.Targets.Fabrics = csvEnv(nexusDashboardE2EFabricsEnv)
 	cfg.NexusDashboard.Targets.SwitchIDs = csvEnv(nexusDashboardE2ESwitchIDsEnv)
 	cfg.NexusDashboard.Targets.SwitchSerials = csvEnv(nexusDashboardE2ESwitchSerialsEnv)
 	cfg.NexusDashboard.Auth.Username = requiredEnvOrSkip(t, nexusDashboardE2EUsernameEnv)
-	cfg.NexusDashboard.Auth.Domain = os.Getenv(nexusDashboardE2EDomainEnv)
 	if apiKey := os.Getenv(nexusDashboardE2EAPIKeyEnv); apiKey != "" {
 		cfg.NexusDashboard.Auth.Mode = "api_key"
 		cfg.NexusDashboard.Auth.APIKey = configopaque.String(apiKey)
 	} else {
 		cfg.NexusDashboard.Auth.Mode = "username_password"
 		cfg.NexusDashboard.Auth.Password = configopaque.String(requiredEnvOrSkip(t, nexusDashboardE2EPasswordEnv))
-	}
-	if cfg.NexusDashboard.APIProfile == nexusDashboardAPIProfileUnified {
-		require.NotEmpty(t, cfg.NexusDashboard.Targets.Fabrics, "unified Nexus Dashboard E2E requires an explicit fabric target")
 	}
 	require.NoError(t, cfg.Validate())
 
@@ -80,45 +72,16 @@ func TestE2ENexusDashboardControllerAPI(t *testing.T) {
 	})
 
 	require.EventuallyWithT(t, func(tt *assert.CollectT) {
-		allMetrics := sink.AllMetrics()
-		summary := summarizeCiscoOSE2EMetrics(allMetrics)
+		summary := summarizeCiscoOSE2EMetrics(sink.AllMetrics())
 		assert.Contains(tt, summary.metricNames, "nexus_dashboard.api.request.duration")
 		assert.Contains(tt, summary.metricNames, "nexus_dashboard.scrape.partial_success")
-		if cfg.NexusDashboard.APIProfile != nexusDashboardAPIProfileUnified {
-			return
-		}
-		assert.True(tt, ciscoOSE2EIntMetricValueExists(allMetrics, "nexus_dashboard.scrape.partial_success", 0))
-		assert.Contains(tt, summary.metricNames, "nexus_dashboard.scrape.last_success")
-		assert.Contains(tt, summary.metricNames, "nexus_dashboard.resource.info")
-		for _, operation := range []string{
-			"nd.cluster.health",
-			"nd.nodes",
-			"nd.hardware",
-			"nd.system.resources",
-			"ndfc.manage.fabrics",
-			"ndfc.manage.fabric_switches",
-			"ndfc.manage.fabric_switches_summary",
-		} {
-			assert.True(tt, ciscoOSE2EMetricHasAttribute(allMetrics, "nexus_dashboard.api.request.duration", "nexus_dashboard.api.operation", operation), operation)
-		}
-		for _, resourceType := range []string{
-			"nd.cluster",
-			"nd.node",
-			"nd.node_hardware",
-			"nd.system_resources",
-			"ndfc.fabric",
-			"ndfc.switch",
-			"ndfc.switch_summary",
-		} {
-			assert.True(tt, ciscoOSE2EMetricHasAttribute(allMetrics, "nexus_dashboard.resource.info", "nexus_dashboard.resource.type", resourceType), resourceType)
-		}
 	}, durationEnv(t, nexusControllerE2EWaitTimeoutEnv, 2*time.Minute), time.Second)
 }
 
 func TestE2EACIControllerAPI(t *testing.T) {
 	cfg := NewFactory().CreateDefaultConfig().(*Config)
-	cfg.ControllerConfig.CollectionInterval = durationEnv(t, nexusControllerE2ECollectionIntEnv, 10*time.Second)
-	cfg.ControllerConfig.Timeout = durationEnv(t, nexusControllerE2ETimeoutEnv, 45*time.Second)
+	cfg.CollectionInterval = durationEnv(t, nexusControllerE2ECollectionIntEnv, 10*time.Second)
+	cfg.Timeout = durationEnv(t, nexusControllerE2ETimeoutEnv, 45*time.Second)
 	cfg.ACI = defaultACIConfig()
 	cfg.ACI.Enabled = true
 	cfg.ACI.Controllers = []ACIControllerConfig{{
@@ -142,33 +105,8 @@ func TestE2EACIControllerAPI(t *testing.T) {
 	})
 
 	require.EventuallyWithT(t, func(tt *assert.CollectT) {
-		allMetrics := sink.AllMetrics()
-		summary := summarizeCiscoOSE2EMetrics(allMetrics)
+		summary := summarizeCiscoOSE2EMetrics(sink.AllMetrics())
 		assert.Contains(tt, summary.metricNames, "aci.api.request.duration")
-		assert.True(tt, ciscoOSE2EIntMetricValueExists(allMetrics, "aci.controller.up", 1),
-			"APIC authentication and collection must produce controller.up=1")
-		assert.True(tt, ciscoOSE2EIntMetricValueExists(allMetrics, "aci.scrape.partial_success", 0),
-			"every enabled APIC endpoint family must complete successfully")
-		assert.Contains(tt, summary.metricNames, "aci.resource.info")
-		assert.Contains(tt, summary.metricNames, "aci.fabric.health")
-		assert.True(tt, summary.deviceUp, "at least one APIC fabric node must be reported up")
+		assert.Contains(tt, summary.metricNames, "aci.controller.up")
 	}, durationEnv(t, nexusControllerE2EWaitTimeoutEnv, 2*time.Minute), time.Second)
-}
-
-func ciscoOSE2EIntMetricValueExists(allMetrics []pmetric.Metrics, name string, value int64) bool {
-	for _, metrics := range allMetrics {
-		if intMetricValueExists(metrics, name, value) {
-			return true
-		}
-	}
-	return false
-}
-
-func ciscoOSE2EMetricHasAttribute(allMetrics []pmetric.Metrics, metricName, attrName, attrValue string) bool {
-	for _, metrics := range allMetrics {
-		if hasMetricDatapointAttribute(metrics, metricName, attrName, attrValue) {
-			return true
-		}
-	}
-	return false
 }

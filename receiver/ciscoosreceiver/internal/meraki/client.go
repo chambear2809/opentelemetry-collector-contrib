@@ -4,9 +4,7 @@
 package meraki // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/meraki"
 
 import (
-	"bytes"
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"math/rand/v2"
@@ -21,20 +19,18 @@ import (
 )
 
 const (
-	defaultBaseURL               = "https://api.meraki.com/api/v1"
-	defaultUserAgent             = "opentelemetry-collector-contrib-ciscoosreceiver"
-	defaultRequestTimeout        = 30 * time.Second
-	insecureSkipVerifyConfigPath = "meraki.insecure_skip_verify"
+	defaultBaseURL        = "https://api.meraki.com/api/v1"
+	defaultUserAgent      = "opentelemetry-collector-contrib-ciscoosreceiver"
+	defaultRequestTimeout = 30 * time.Second
 )
 
 // Config controls the Meraki Dashboard API client.
 type Config struct {
-	APIKey             string
-	BaseURL            string
-	UserAgent          string
-	Timeout            time.Duration
-	MaxRetries         int
-	InsecureSkipVerify bool
+	APIKey     string
+	BaseURL    string
+	UserAgent  string
+	Timeout    time.Duration
+	MaxRetries int
 }
 
 // RequestStat describes a single API request attempt.
@@ -99,16 +95,12 @@ func NewClient(cfg Config) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid meraki max retries: %w", err)
 	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	if cfg.InsecureSkipVerify {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-	}
 
 	return &Client{
 		apiKey:        cfg.APIKey,
 		baseURL:       parsed,
 		userAgent:     userAgent,
-		client:        &http.Client{Transport: transport, Timeout: timeout, CheckRedirect: merakiRedirectPolicy(parsed, cfg.APIKey)},
+		client:        &http.Client{Timeout: timeout, CheckRedirect: httpclient.SameOriginRedirectPolicy(parsed)},
 		retries:       retries,
 		sourceLimiter: newLimiter(100),
 		orgLimiters:   map[string]*limiter{},
@@ -123,7 +115,7 @@ func (c *Client) CloseIdleConnections() {
 // GetJSON fetches a single JSON document.
 func GetJSON[T any](ctx context.Context, c *Client, organizationID, operation, path string, query url.Values) (T, error) {
 	var out T
-	body, _, _, err := c.do(ctx, organizationID, operation, path, query)
+	body, _, err := c.do(ctx, organizationID, operation, path, query)
 	if err != nil {
 		return out, err
 	}
@@ -131,24 +123,6 @@ func GetJSON[T any](ctx context.Context, c *Client, organizationID, operation, p
 		return out, fmt.Errorf("decode meraki %s response: %w", operation, err)
 	}
 	return out, nil
-}
-
-// GetOptionalJSON fetches a single JSON document and treats an empty successful
-// response (for example HTTP 204) as an expected no-data result. Callers should
-// use this only for endpoints whose API contract explicitly allows no content.
-func GetOptionalJSON[T any](ctx context.Context, c *Client, organizationID, operation, path string, query url.Values) (T, bool, error) {
-	var out T
-	body, _, _, err := c.do(ctx, organizationID, operation, path, query)
-	if err != nil {
-		return out, false, err
-	}
-	if len(bytes.TrimSpace(body)) == 0 {
-		return out, false, nil
-	}
-	if err := httpclient.DecodeJSON(body, &out); err != nil {
-		return out, false, fmt.Errorf("decode meraki %s response: %w", operation, err)
-	}
-	return out, true, nil
 }
 
 // GetPaginatedJSON fetches all pages for an array-returning JSON endpoint.
@@ -161,7 +135,7 @@ func GetPaginatedJSON[T any](ctx context.Context, c *Client, organizationID, ope
 	var byteBudget httpclient.PaginationByteBudget
 	for {
 		pages++
-		body, header, responseURL, err := c.do(ctx, organizationID, operation, nextPath, nextQuery)
+		body, header, err := c.do(ctx, organizationID, operation, nextPath, nextQuery)
 		if err != nil {
 			return results, err
 		}
@@ -182,7 +156,7 @@ func GetPaginatedJSON[T any](ctx context.Context, c *Client, organizationID, ope
 		if nextURL == "" {
 			return results, nil
 		}
-		nextPath, nextQuery, err = c.splitNextURL(nextURL, responseURL)
+		nextPath, nextQuery, err = c.splitNextURL(nextURL)
 		if err != nil {
 			return results, fmt.Errorf("invalid meraki %s pagination link: %w", operation, err)
 		}
@@ -208,7 +182,7 @@ func GetPaginatedItemsJSON[T any](ctx context.Context, c *Client, organizationID
 	var byteBudget httpclient.PaginationByteBudget
 	for {
 		pages++
-		body, header, responseURL, err := c.do(ctx, organizationID, operation, nextPath, nextQuery)
+		body, header, err := c.do(ctx, organizationID, operation, nextPath, nextQuery)
 		if err != nil {
 			return results, err
 		}
@@ -231,7 +205,7 @@ func GetPaginatedItemsJSON[T any](ctx context.Context, c *Client, organizationID
 		if nextURL == "" {
 			return results, nil
 		}
-		nextPath, nextQuery, err = c.splitNextURL(nextURL, responseURL)
+		nextPath, nextQuery, err = c.splitNextURL(nextURL)
 		if err != nil {
 			return results, fmt.Errorf("invalid meraki %s pagination link: %w", operation, err)
 		}
@@ -246,7 +220,7 @@ func GetPaginatedItemsJSON[T any](ctx context.Context, c *Client, organizationID
 	}
 }
 
-func (c *Client) do(ctx context.Context, organizationID, operation, path string, query url.Values) ([]byte, http.Header, *url.URL, error) {
+func (c *Client) do(ctx context.Context, organizationID, operation, path string, query url.Values) ([]byte, http.Header, error) {
 	if query == nil {
 		query = url.Values{}
 	}
@@ -254,18 +228,18 @@ func (c *Client) do(ctx context.Context, organizationID, operation, path string,
 	attempts := c.retries + 1
 	for attempt := range attempts {
 		if err := c.sourceLimiter.wait(ctx); err != nil {
-			return nil, nil, nil, err
+			return nil, nil, err
 		}
 		if organizationID != "" {
 			if err := c.orgLimiter(organizationID).wait(ctx); err != nil {
-				return nil, nil, nil, err
+				return nil, nil, err
 			}
 		}
 
 		reqURL := c.buildURL(path, query)
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, http.NoBody)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, err
 		}
 		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 		req.Header.Set("Accept", "application/json")
@@ -275,7 +249,6 @@ func (c *Client) do(ctx context.Context, organizationID, operation, path string,
 		resp, err := c.client.Do(req)
 		duration := time.Since(start)
 		if err != nil {
-			err = httpclient.DecorateCertificateVerificationError(err, "", insecureSkipVerifyConfigPath)
 			lastErr = err
 			c.record(RequestStat{
 				OrganizationID: organizationID,
@@ -286,17 +259,11 @@ func (c *Client) do(ctx context.Context, organizationID, operation, path string,
 				Duration:       duration,
 				Err:            err,
 			})
-			if ctx.Err() != nil {
-				return nil, nil, nil, ctx.Err()
-			}
-			if httpclient.IsCertificateVerificationError(err) {
-				return nil, nil, nil, err
-			}
 			if attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, -1) {
 				if ctx.Err() != nil {
-					return nil, nil, nil, ctx.Err()
+					return nil, nil, ctx.Err()
 				}
-				return nil, nil, nil, err
+				return nil, nil, err
 			}
 			continue
 		}
@@ -312,27 +279,12 @@ func (c *Client) do(ctx context.Context, organizationID, operation, path string,
 				Outcome:        "error",
 				StatusCode:     resp.StatusCode,
 				Duration:       duration,
-				RateLimited:    resp.StatusCode == http.StatusTooManyRequests,
 				Err:            readErr,
 			})
-			lastErr = readErr
-			statusRetryable := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 && resp.StatusCode <= 599
-			retryable := httpclient.IsResponseBodyReadError(readErr) &&
-				(resp.StatusCode >= 200 && resp.StatusCode < 300 || statusRetryable)
-			delay := time.Duration(-1)
-			if statusRetryable {
-				delay = retryAfter(resp.Header.Get("Retry-After"))
-			}
-			if !retryable || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, delay) {
-				if ctx.Err() != nil {
-					return nil, resp.Header, resp.Request.URL, ctx.Err()
-				}
-				return nil, resp.Header, resp.Request.URL, readErr
-			}
-			continue
+			return nil, resp.Header, readErr
 		}
 		if closeErr != nil {
-			return nil, resp.Header, resp.Request.URL, closeErr
+			return nil, resp.Header, closeErr
 		}
 
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
@@ -345,7 +297,7 @@ func (c *Client) do(ctx context.Context, organizationID, operation, path string,
 				StatusCode:     resp.StatusCode,
 				Duration:       duration,
 			})
-			return body, resp.Header, resp.Request.URL, nil
+			return body, resp.Header, nil
 		}
 
 		apiErr := &APIError{StatusCode: resp.StatusCode}
@@ -363,25 +315,22 @@ func (c *Client) do(ctx context.Context, organizationID, operation, path string,
 			Err:            apiErr,
 		})
 		if resp.StatusCode != http.StatusTooManyRequests && (resp.StatusCode < 500 || resp.StatusCode > 599) {
-			return nil, resp.Header, resp.Request.URL, apiErr
+			return nil, resp.Header, apiErr
 		}
 		if attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(resp.Header.Get("Retry-After"))) {
 			if ctx.Err() != nil {
-				return nil, resp.Header, resp.Request.URL, ctx.Err()
+				return nil, resp.Header, ctx.Err()
 			}
-			return nil, resp.Header, resp.Request.URL, apiErr
+			return nil, resp.Header, apiErr
 		}
 	}
-	return nil, nil, nil, lastErr
+	return nil, nil, lastErr
 }
 
 func (c *Client) buildURL(path string, query url.Values) string {
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
 		u, err := url.Parse(path)
 		if err == nil {
-			if query != nil {
-				u.RawQuery = query.Encode()
-			}
 			return u.String()
 		}
 	}
@@ -487,94 +436,16 @@ func sleepBeforeRetry(ctx context.Context, attempt int, serverDelay time.Duratio
 	}
 }
 
-func (c *Client) splitNextURL(next string, responseURL *url.URL) (string, url.Values, error) {
+func (c *Client) splitNextURL(next string) (string, url.Values, error) {
 	u, err := url.Parse(next)
 	if err != nil {
 		return "", nil, err
 	}
-	base := c.baseURL
-	if responseURL != nil {
-		base = responseURL
-	}
-	resolved := base.ResolveReference(u)
-	if !allowedMerakiURL(c.baseURL, resolved) {
+	resolved := c.baseURL.ResolveReference(u)
+	if !httpclient.SameOrigin(c.baseURL, resolved) {
 		return "", nil, fmt.Errorf("cross-origin URL %q", next)
 	}
-	if !httpclient.SameOrigin(c.baseURL, resolved) {
-		query := resolved.Query()
-		resolved.RawQuery = ""
-		resolved.Fragment = ""
-		return resolved.String(), query, nil
-	}
 	return resolved.Path, resolved.Query(), nil
-}
-
-func merakiRedirectPolicy(origin *url.URL, apiKey string) func(*http.Request, []*http.Request) error {
-	configuredOrigin := *origin
-	return func(req *http.Request, via []*http.Request) error {
-		if len(via) >= 10 {
-			return errors.New("stopped after 10 redirects")
-		}
-		if !allowedMerakiURL(&configuredOrigin, req.URL) {
-			return http.ErrUseLastResponse
-		}
-		if !httpclient.SameOrigin(&configuredOrigin, req.URL) {
-			// Go deliberately strips Authorization on cross-host redirects. Cisco
-			// documents that Dashboard API clients must preserve it, so restore it
-			// only for verified HTTPS hosts controlled by Meraki. Custom base URLs
-			// remain restricted to their exact origin.
-			req.Header.Set("Authorization", "Bearer "+apiKey)
-		}
-		return nil
-	}
-}
-
-func allowedMerakiURL(origin, target *url.URL) bool {
-	if origin == nil || target == nil || target.User != nil {
-		return false
-	}
-	if httpclient.SameOrigin(origin, target) {
-		return true
-	}
-	domain, ok := officialMerakiAPIDomain(origin)
-	return ok && trustedMerakiHTTPSURL(target, domain)
-}
-
-func officialMerakiAPIDomain(u *url.URL) (string, bool) {
-	if !validMerakiHTTPSAPIURL(u) {
-		return "", false
-	}
-	host := strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
-	domain, ok := map[string]string{
-		"api.meraki.com":     "meraki.com",
-		"api.meraki.ca":      "meraki.ca",
-		"api.meraki.cn":      "meraki.cn",
-		"api.meraki.in":      "meraki.in",
-		"api.gov-meraki.com": "gov-meraki.com",
-	}[host]
-	return domain, ok
-}
-
-func trustedMerakiHTTPSURL(u *url.URL, domain string) bool {
-	if !validMerakiHTTPSAPIURL(u) {
-		return false
-	}
-	host := strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
-	domain = strings.ToLower(strings.TrimSuffix(domain, "."))
-	return domain != "" && (host == domain || strings.HasSuffix(host, "."+domain))
-}
-
-func validMerakiHTTPSAPIURL(u *url.URL) bool {
-	if u == nil || u.User != nil || !strings.EqualFold(u.Scheme, "https") {
-		return false
-	}
-	if port := u.Port(); port != "" && port != "443" {
-		return false
-	}
-	if u.Path != "/api" && !strings.HasPrefix(u.Path, "/api/") {
-		return false
-	}
-	return u.Hostname() != ""
 }
 
 func cloneValues(values url.Values) url.Values {

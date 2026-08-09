@@ -39,7 +39,7 @@ func TestIOSXRDefaultConfigIsConservative(t *testing.T) {
 	assert.Equal(t, iosXRSubscribeModeStream, cfg.IOSXR.Subscription.Mode)
 	assert.Equal(t, iosXRStreamModeSample, cfg.IOSXR.Subscription.StreamMode)
 	assert.Equal(t, time.Minute, cfg.IOSXR.Subscription.SampleInterval)
-	assert.Nil(t, cfg.IOSXR.Subscription.HeartbeatInterval)
+	assert.Equal(t, time.Minute, cfg.IOSXR.Subscription.HeartbeatInterval)
 	assert.True(t, cfg.IOSXR.Subscription.suppressRedundant())
 	assert.False(t, cfg.IOSXR.Subscription.updatesOnly())
 	assert.False(t, cfg.IOSXR.Subscription.allowAggregation())
@@ -242,33 +242,6 @@ func TestIOSXRTargetSubscriptionBooleanInheritance(t *testing.T) {
 	assert.False(t, explicitFalse.Subscription.suppressRedundant())
 	assert.False(t, explicitFalse.Subscription.updatesOnly())
 	assert.False(t, explicitFalse.Subscription.allowAggregation())
-}
-
-func TestIOSXRTargetHeartbeatExplicitZeroDoesNotInherit(t *testing.T) {
-	parent := defaultIOSXRConfig()
-	heartbeat := 30 * time.Second
-	parent.Subscription.HeartbeatInterval = &heartbeat
-
-	inherited := (IOSXRTargetConfig{}).withDefaults(parent)
-	require.NotNil(t, inherited.Subscription.HeartbeatInterval)
-	assert.Equal(t, heartbeat, inherited.Subscription.heartbeatInterval())
-
-	zero := time.Duration(0)
-	explicitZero := (IOSXRTargetConfig{Subscription: IOSXRSubscriptionConfig{
-		HeartbeatInterval: &zero,
-	}}).withDefaults(parent)
-	require.NotNil(t, explicitZero.Subscription.HeartbeatInterval)
-	assert.Zero(t, explicitZero.Subscription.heartbeatInterval())
-}
-
-func TestIOSXRSubscriptionExplicitZeroHeartbeatUnmarshalsAsPresent(t *testing.T) {
-	var sub IOSXRSubscriptionConfig
-	require.NoError(t, confmap.NewFromStringMap(map[string]any{
-		"heartbeat_interval": "0s",
-	}).Unmarshal(&sub))
-
-	require.NotNil(t, sub.HeartbeatInterval)
-	assert.Zero(t, sub.heartbeatInterval())
 }
 
 func TestIOSXRSubscriptionExplicitFalseUnmarshalsAsPresent(t *testing.T) {

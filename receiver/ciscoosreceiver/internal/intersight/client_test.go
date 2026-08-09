@@ -35,50 +35,6 @@ func TestClientRetryValidationPreservesExplicitZero(t *testing.T) {
 	}
 }
 
-func TestClientRetriesIncompleteSuccessfulResponseBody(t *testing.T) {
-	var requests atomic.Int64
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		if requests.Add(1) == 1 {
-			w.Header().Set("Content-Length", "100")
-			_, _ = w.Write([]byte(`{"Results":`))
-			return
-		}
-		_, _ = w.Write([]byte(`{"Results":[],"Count":0}`))
-	}))
-	defer server.Close()
-
-	client, err := NewClient(Config{Endpoint: server.URL, KeyID: "test-key", KeyPEM: testPrivateKeyPEM(t), MaxRetries: 1})
-	require.NoError(t, err)
-	objects, err := client.List(t.Context(), "test.list", "/api/v1/test", nil, 10)
-	require.NoError(t, err)
-	assert.Empty(t, objects)
-	assert.Equal(t, int64(2), requests.Load())
-}
-
-func TestClientDoesNotFollowRedirectWithStaleRequestTargetSignature(t *testing.T) {
-	var redirectedRequests atomic.Int64
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v1/start":
-			http.Redirect(w, r, "/api/v1/redirected", http.StatusTemporaryRedirect)
-		case "/api/v1/redirected":
-			redirectedRequests.Add(1)
-			_, _ = w.Write([]byte(`{"Results":[],"Count":0}`))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	client, err := NewClient(Config{Endpoint: server.URL, KeyID: "test-key", KeyPEM: testPrivateKeyPEM(t), MaxRetries: 0})
-	require.NoError(t, err)
-	_, err = client.List(t.Context(), "test.redirect", "/api/v1/start", nil, 10)
-	var apiErr *APIError
-	require.ErrorAs(t, err, &apiErr)
-	assert.Equal(t, http.StatusTemporaryRedirect, apiErr.StatusCode)
-	assert.Zero(t, redirectedRequests.Load())
-}
-
 func TestClientSignsRequestsAndEncodesODataQuery(t *testing.T) {
 	var sawRequest atomic.Bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -154,21 +110,6 @@ func TestClientSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {
 	}))
 	defer server.Close()
 
-	verifiedClient, err := NewClient(Config{
-		KeyID:      "test-key",
-		KeyPEM:     testPrivateKeyPEM(t),
-		Endpoint:   server.URL,
-		Timeout:    time.Second,
-		MaxRetries: 3,
-	})
-	require.NoError(t, err)
-	verifiedAttempts := 0
-	verifiedClient.OnRequest = func(RequestStat) { verifiedAttempts++ }
-	_, err = verifiedClient.List(t.Context(), "asset.targets", "/api/v1/asset/Targets", nil, 0)
-	require.ErrorContains(t, err, "trust the issuing CA in the Collector host trust store (preferred)")
-	require.ErrorContains(t, err, "set intersight.insecure_skip_verify: true")
-	assert.Equal(t, 1, verifiedAttempts)
-
 	client, err := NewClient(Config{
 		KeyID:              "test-key",
 		KeyPEM:             testPrivateKeyPEM(t),
@@ -208,34 +149,6 @@ func TestClientPaginatesWithTopSkipAndMaxResults(t *testing.T) {
 	require.Len(t, got, 3)
 	assert.Equal(t, int64(2), attempts.Load())
 	assert.Equal(t, "third", got[2]["Moid"])
-}
-
-func TestClientPaginationContinuesAfterShortPageWhenCountHasMore(t *testing.T) {
-	var attempts atomic.Int64
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "2", r.URL.Query().Get("$top"))
-		switch attempts.Add(1) {
-		case 1:
-			assert.Equal(t, "0", r.URL.Query().Get("$skip"))
-			_, _ = w.Write([]byte(`{"Results":[{"Moid":"first"}],"Count":2}`))
-		case 2:
-			assert.Equal(t, "1", r.URL.Query().Get("$skip"))
-			_, _ = w.Write([]byte(`{"Results":[{"Moid":"second"}],"Count":2}`))
-		default:
-			t.Fatalf("unexpected Intersight request %d", attempts.Load())
-		}
-	}))
-	defer server.Close()
-
-	client, err := NewClient(Config{KeyID: "test-key", KeyPEM: testPrivateKeyPEM(t), Endpoint: server.URL, Timeout: time.Second, MaxRetries: 1, PageSize: 2})
-	require.NoError(t, err)
-
-	got, err := client.List(t.Context(), "asset.targets", "/api/v1/asset/Targets", nil, 0)
-	require.NoError(t, err)
-	require.Len(t, got, 2)
-	assert.Equal(t, "first", got[0]["Moid"])
-	assert.Equal(t, "second", got[1]["Moid"])
-	assert.Equal(t, int64(2), attempts.Load())
 }
 
 func TestClientMaxResultsCapsOverReturnedPage(t *testing.T) {

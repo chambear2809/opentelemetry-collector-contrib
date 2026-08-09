@@ -21,13 +21,6 @@ func NewResourceBuilder(rac ResourceAttributesConfig) *ResourceBuilder {
 	}
 }
 
-// SetCiscoOsBootMode sets provided value as "cisco.os.boot_mode" attribute.
-func (rb *ResourceBuilder) SetCiscoOsBootMode(val string) {
-	if rb.config.CiscoOsBootMode.Enabled {
-		rb.res.Attributes().PutStr("cisco.os.boot_mode", val)
-	}
-}
-
 // SetCiscoOsName sets provided value as "cisco.os.name" attribute.
 func (rb *ResourceBuilder) SetCiscoOsName(val string) {
 	if rb.config.CiscoOsName.Enabled {
@@ -42,31 +35,10 @@ func (rb *ResourceBuilder) SetCiscoPlatformFamily(val string) {
 	}
 }
 
-// SetCiscoProductFamily sets provided value as "cisco.product.family" attribute.
-func (rb *ResourceBuilder) SetCiscoProductFamily(val string) {
-	if rb.config.CiscoProductFamily.Enabled {
-		rb.res.Attributes().PutStr("cisco.product.family", val)
-	}
-}
-
 // SetCiscoTelemetryTransport sets provided value as "cisco.telemetry.transport" attribute.
 func (rb *ResourceBuilder) SetCiscoTelemetryTransport(val string) {
 	if rb.config.CiscoTelemetryTransport.Enabled {
 		rb.res.Attributes().PutStr("cisco.telemetry.transport", val)
-	}
-}
-
-// SetDeviceManufacturer sets provided value as "device.manufacturer" attribute.
-func (rb *ResourceBuilder) SetDeviceManufacturer(val string) {
-	if rb.config.DeviceManufacturer.Enabled {
-		rb.res.Attributes().PutStr("device.manufacturer", val)
-	}
-}
-
-// SetDeviceModelIdentifier sets provided value as "device.model.identifier" attribute.
-func (rb *ResourceBuilder) SetDeviceModelIdentifier(val string) {
-	if rb.config.DeviceModelIdentifier.Enabled {
-		rb.res.Attributes().PutStr("device.model.identifier", val)
 	}
 }
 
@@ -102,13 +74,6 @@ func (rb *ResourceBuilder) SetHwType(val string) {
 func (rb *ResourceBuilder) SetOsName(val string) {
 	if rb.config.OsName.Enabled {
 		rb.res.Attributes().PutStr("os.name", val)
-	}
-}
-
-// SetOsVersion sets provided value as "os.version" attribute.
-func (rb *ResourceBuilder) SetOsVersion(val string) {
-	if rb.config.OsVersion.Enabled {
-		rb.res.Attributes().PutStr("os.version", val)
 	}
 }
 

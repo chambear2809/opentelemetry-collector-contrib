@@ -78,12 +78,12 @@
         {
           "name": "API Request Errors",
           "description": "Value: surfaces failed Catalyst Center API calls by operation and HTTP status. Interpretation: non-zero values explain missing inventory, health, topology, issue, or detail data.",
-          "signalflow": "data('catalyst_center.api.request.errors').rate().sum(by=['catalyst_center.api.operation', 'http.response.status_code', 'catalyst_center.api.outcome']).publish(label='API errors/sec')",
+          "signalflow": "data('catalyst_center.api.request.errors').sum(by=['catalyst_center.api.operation', 'http.response.status_code', 'catalyst_center.api.outcome']).publish(label='API errors')",
           "legend_dimension": "catalyst_center.api.operation",
           "publish_label_options": [
             {
-              "label": "API errors/sec",
-              "displayName": "API errors/sec",
+              "label": "API errors",
+              "displayName": "API errors",
               "paletteIndex": 5
             }
           ]
@@ -103,8 +103,8 @@
         },
         {
           "name": "API Rate Limits",
-          "description": "Value: shows the rate of Catalyst Center 429 responses. Interpretation: repeated rate limits mean polling volume, page size, or enabled groups may need tuning.",
-          "signalflow": "data('catalyst_center.api.rate_limited').rate().sum(by=['catalyst_center.api.operation', 'http.response.status_code']).publish(label='Rate limited/sec')",
+          "description": "Value: confirms whether Catalyst Center returned 429 responses. Interpretation: repeated rate limits mean polling volume, page size, or enabled groups may need tuning.",
+          "signalflow": "data('catalyst_center.api.rate_limited').sum(by=['catalyst_center.api.operation', 'http.response.status_code']).publish(label='Rate limited')",
           "legend_dimension": "catalyst_center.api.operation"
         },
         {
