@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/consumer/consumertest"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
 
@@ -46,6 +47,9 @@ func TestIOSXRHealthCountersSaturateAndIgnoreNegativeValues(t *testing.T) {
 	health.addTargetReconnects("xr-1", 1)
 	health.addDroppedDatapoints(math.MaxInt64)
 	health.addDroppedDatapoints(1)
+	health.addCompactGPBPayloads(5)
+	health.addCompactGPBPayloads(-10)
+	health.addCompactGPBPayloads(math.MaxInt64)
 
 	snapshot := health.snapshotForTarget("xr-1")
 	assert.Equal(t, int64(math.MaxInt64), snapshot.updatesReceived)
@@ -55,6 +59,16 @@ func TestIOSXRHealthCountersSaturateAndIgnoreNegativeValues(t *testing.T) {
 	assert.Equal(t, int64(math.MaxInt64), snapshot.reconnects)
 	assert.Equal(t, int64(math.MaxInt64), snapshot.targetReconnects)
 	assert.Equal(t, int64(math.MaxInt64), snapshot.droppedDatapoints)
+	assert.Equal(t, int64(math.MaxInt64), snapshot.compactGPBPayloads)
+}
+
+func TestMetricNumericTotalSaturatesAndIgnoresNegativeValues(t *testing.T) {
+	metric := pmetric.NewMetric()
+	dps := metric.SetEmptyGauge().DataPoints()
+	for _, value := range []int64{-5, math.MaxInt64, 1} {
+		dps.AppendEmpty().SetIntValue(value)
+	}
+	assert.Equal(t, int64(math.MaxInt64), metricNumericTotal(metric))
 }
 
 func TestIOSXRNormalizingConsumerRenamesDialOutMetricsAndAttributes(t *testing.T) {
@@ -78,13 +92,9 @@ func TestIOSXRNormalizingConsumerRenamesDialOutMetricsAndAttributes(t *testing.T
 	require.Len(t, sink.AllMetrics(), 1)
 
 	md := sink.AllMetrics()[0]
-	metricName := mustDialOutDynamicYANGName(t, "cisco.iosxr.yang", "Cisco-IOS-XR-infra-statsd-oper",
-		"Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/generic-counters", "interface/statistics/rx-pkts", dynamicYANGMetricVariantNumber)
-	metric := mustFindIOSXRMetric(t, md, metricName)
-	require.Equal(t, pmetric.MetricTypeSum, metric.Type())
-	assert.True(t, metric.Sum().IsMonotonic())
-	assert.Equal(t, pmetric.AggregationTemporalityCumulative, metric.Sum().AggregationTemporality())
-	assert.Equal(t, int64(7), metric.Sum().DataPoints().At(0).IntValue())
+	metric := mustFindIOSXRMetric(t, md, "cisco.iosxr.yang.cisco_ios_xr_infra_statsd_oper.interface.statistics.rx_pkts")
+	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+	assert.Equal(t, 7.0, metric.Gauge().DataPoints().At(0).DoubleValue())
 
 	resourceAttrs := md.ResourceMetrics().At(0).Resource().Attributes()
 	assert.Equal(t, "xr-1", attrValue(t, resourceAttrs, "host.name"))
@@ -100,7 +110,7 @@ func TestIOSXRNormalizingConsumerRenamesDialOutMetricsAndAttributes(t *testing.T
 	assert.False(t, hasResourcePath)
 	assert.Equal(t, "xr-1", attrValue(t, resourceAttrs, "cisco.node.id"))
 
-	dpAttrs := metric.Sum().DataPoints().At(0).Attributes()
+	dpAttrs := metric.Gauge().DataPoints().At(0).Attributes()
 	assert.Equal(t, "mdt_grpc_dial_out", attrValue(t, dpAttrs, "cisco.telemetry.transport"))
 	assert.Equal(t, "Cisco-IOS-XR-infra-statsd-oper", attrValue(t, dpAttrs, "cisco.yang.module"))
 	assert.Equal(t, "HundredGigE0/0/0/0", attrValue(t, dpAttrs, "network.interface.name"))
@@ -121,34 +131,28 @@ func TestIOSXRNormalizingConsumerCoalescesStreamsAndPreservesIntDatapoints(t *te
 	raw := pmetric.NewMetrics()
 	rm := raw.ResourceMetrics().AppendEmpty()
 	rm.Resource().Attributes().PutStr("cisco.node_id", "xr-1")
-	rm.Resource().Attributes().PutStr("cisco.encoding_path", "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/generic-counters")
+	rm.Resource().Attributes().PutStr("cisco.encoding_path", "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/latest/generic-counters")
 	sm := rm.ScopeMetrics().AppendEmpty()
 	for iface, value := range map[string]int64{
 		"GigabitEthernet0/0": math.MaxInt64,
 		"GigabitEthernet0/1": 42,
-		"Null0":              0,
-		"srte_c_100_ep_1":    7,
 	} {
 		metric := sm.Metrics().AppendEmpty()
 		metric.SetName("cisco.interface.statistics.rx-pkts")
 		dp := metric.SetEmptyGauge().DataPoints().AppendEmpty()
 		dp.SetIntValue(value)
-		dp.Attributes().PutStr("interface-name", iface)
-		dp.Attributes().PutStr("cisco.yang.source_path", "interface/statistics/rx-pkts")
+		dp.Attributes().PutStr("interface", iface)
 	}
 
 	require.NoError(t, normalizer.ConsumeMetrics(t.Context(), raw))
 	require.Len(t, sink.AllMetrics(), 1)
-	name := mustDialOutDynamicYANGName(t, "cisco.iosxr.yang", "Cisco-IOS-XR-infra-statsd-oper",
-		"Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/generic-counters", "interface/statistics/rx-pkts", dynamicYANGMetricVariantNumber)
+	const name = "cisco.iosxr.yang.cisco_ios_xr_infra_statsd_oper.interface.statistics.rx_pkts"
 	md := sink.AllMetrics()[0]
 	assert.Equal(t, 1, metricCountNamed(md, name))
 	metric := mustFindIOSXRMetric(t, md, name)
-	require.Equal(t, pmetric.MetricTypeSum, metric.Type())
-	assert.True(t, metric.Sum().IsMonotonic())
-	assert.Equal(t, pmetric.AggregationTemporalityCumulative, metric.Sum().AggregationTemporality())
-	dps := metric.Sum().DataPoints()
-	require.Equal(t, 4, dps.Len())
+	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+	dps := metric.Gauge().DataPoints()
+	require.Equal(t, 2, dps.Len())
 	values := make(map[string]int64, dps.Len())
 	for i := 0; i < dps.Len(); i++ {
 		dp := dps.At(i)
@@ -158,12 +162,10 @@ func TestIOSXRNormalizingConsumerCoalescesStreamsAndPreservesIntDatapoints(t *te
 	assert.Equal(t, map[string]int64{
 		"GigabitEthernet0/0": math.MaxInt64,
 		"GigabitEthernet0/1": 42,
-		"Null0":              0,
-		"srte_c_100_ep_1":    7,
 	}, values)
 }
 
-func TestIOSXRNormalizingConsumerKeepsCounterContainerStateAsGauge(t *testing.T) {
+func TestIOSXRNormalizingConsumerPreservesCollidingRawSourcePaths(t *testing.T) {
 	sink := &consumertest.MetricsSink{}
 	normalizer := newIOSXRNormalizingConsumer(
 		sink,
@@ -172,14 +174,30 @@ func TestIOSXRNormalizingConsumerKeepsCounterContainerStateAsGauge(t *testing.T)
 		iosXRTelemetryTransportDialOut,
 		&iosXRHealth{},
 	)
-	raw := rawIOSXRDialOutMetrics("cisco.seconds-since-packet-received", 12)
+
+	raw := pmetric.NewMetrics()
+	rm := raw.ResourceMetrics().AppendEmpty()
+	rm.Resource().Attributes().PutStr("cisco.node_id", "xr-1")
+	rm.Resource().Attributes().PutStr("cisco.encoding_path", "openconfig-system:system/state")
+	sm := rm.ScopeMetrics().AppendEmpty()
+	for index, source := range []string{"foo-bar", "foo_bar"} {
+		metric := sm.Metrics().AppendEmpty()
+		metric.SetName("cisco." + source)
+		dp := metric.SetEmptyGauge().DataPoints().AppendEmpty()
+		dp.SetIntValue(int64(index + 1))
+		dp.Attributes().PutStr("cisco.yang.source_path", source)
+	}
 
 	require.NoError(t, normalizer.ConsumeMetrics(t.Context(), raw))
-	metricName := mustDialOutDynamicYANGName(t, "cisco.iosxr.yang", "Cisco-IOS-XR-infra-statsd-oper",
-		"Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/generic-counters", "seconds-since-packet-received", dynamicYANGMetricVariantNumber)
-	metric := mustFindIOSXRMetric(t, sink.AllMetrics()[0], metricName)
-	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
-	assert.Equal(t, 12.0, metric.Gauge().DataPoints().At(0).DoubleValue())
+	require.Len(t, sink.AllMetrics(), 1)
+	metric := mustFindIOSXRMetric(t, sink.AllMetrics()[0], "cisco.iosxr.yang.openconfig_system.foo_bar")
+	dps := metric.Gauge().DataPoints()
+	require.Equal(t, 2, dps.Len())
+	paths := map[string]struct{}{}
+	for index := 0; index < dps.Len(); index++ {
+		paths[attrValue(t, dps.At(index).Attributes(), "cisco.yang.source_path")] = struct{}{}
+	}
+	assert.Equal(t, map[string]struct{}{"foo-bar": {}, "foo_bar": {}}, paths)
 }
 
 func TestIOSXRNormalizingConsumerPreservesEscapedDeviceKeysForOwnedAttributes(t *testing.T) {
@@ -201,15 +219,17 @@ func TestIOSXRNormalizingConsumerPreservesEscapedDeviceKeysForOwnedAttributes(t 
 	metric.SetName("cisco.state")
 	dp := metric.SetEmptyGauge().DataPoints().AppendEmpty()
 	dp.SetIntValue(1)
-	dp.Attributes().PutStr("cisco.yang.source_path", "state")
 	dp.Attributes().PutStr("cisco.key.cisco.yang.path", "device-path")
 	dp.Attributes().PutStr("cisco.key.cisco.yang.module", "device-module")
 	dp.Attributes().PutStr("cisco.key.cisco.telemetry.transport", "device-transport")
 
 	require.NoError(t, normalizer.ConsumeMetrics(t.Context(), raw))
 	require.Len(t, sink.AllMetrics(), 1)
-	metricName := mustDialOutDynamicYANGName(t, "cisco.iosxr.yang", "openconfig-system", "openconfig-system:system/state", "state", dynamicYANGMetricVariantNumber)
-	attrs := mustFindIOSXRMetric(t, sink.AllMetrics()[0], metricName).Gauge().DataPoints().At(0).Attributes()
+	attrs := mustFindIOSXRMetric(
+		t,
+		sink.AllMetrics()[0],
+		"cisco.iosxr.yang.openconfig_system.state",
+	).Gauge().DataPoints().At(0).Attributes()
 	assert.Equal(t, "device-path", attrValue(t, attrs, "cisco.key.cisco.yang.path"))
 	assert.Equal(t, "device-module", attrValue(t, attrs, "cisco.key.cisco.yang.module"))
 	assert.Equal(t, "device-transport", attrValue(t, attrs, "cisco.key.cisco.telemetry.transport"))
@@ -232,9 +252,9 @@ func TestIOSXRNormalizingConsumerAppliesDeviceSelection(t *testing.T) {
 
 func TestIOSXRNormalizingConsumerAllowsRootMetricFilteringAfterRename(t *testing.T) {
 	sink := &consumertest.MetricsSink{}
-	metricName := mustDialOutDynamicYANGName(t, "cisco.iosxr.yang", "Cisco-IOS-XR-infra-statsd-oper",
-		"Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/generic-counters", "interface/statistics/rx-pkts", dynamicYANGMetricVariantNumber)
-	filter := newMetricFilteringConsumer(sink, &Config{Metrics: map[string]MetricConfig{metricName: {Enabled: false}}})
+	filter := newMetricFilteringConsumer(sink, &Config{Metrics: map[string]MetricConfig{
+		"cisco.iosxr.yang.cisco_ios_xr_infra_statsd_oper.interface.statistics.rx_pkts": {Enabled: false},
+	}})
 	normalizer := newIOSXRNormalizingConsumer(filter, defaultIOSXRConfig(), newDeviceSelectionMatcher(DeviceSelectionConfig{}), iosXRTelemetryTransportDialOut, &iosXRHealth{})
 
 	err := normalizer.ConsumeMetrics(t.Context(), rawIOSXRDialOutMetrics("cisco.interface.statistics.rx-pkts", 7))
@@ -242,33 +262,18 @@ func TestIOSXRNormalizingConsumerAllowsRootMetricFilteringAfterRename(t *testing
 	assert.Empty(t, sink.AllMetrics())
 }
 
-func TestIOSXRNormalizingConsumerPreservesPerMessageCompactGPBDiagnostic(t *testing.T) {
+func TestIOSXRNormalizingConsumerRenamesCompactGPBDiagnostic(t *testing.T) {
 	sink := &consumertest.MetricsSink{}
 	health := &iosXRHealth{}
 	normalizer := newIOSXRNormalizingConsumer(sink, defaultIOSXRConfig(), newDeviceSelectionMatcher(DeviceSelectionConfig{}), iosXRTelemetryTransportDialOut, health)
 
-	for index, observation := range []struct {
-		target string
-		value  float64
-	}{
-		{target: "xr-a", value: 3},
-		{target: "xr-b", value: 2},
-		{target: "xr-a", value: 1},
-		{target: "", value: 4},
-	} {
-		raw := rawCompactGPBDiagnostic(observation.target, "test-module:state", int64(observation.value))
-		require.NoError(t, normalizer.ConsumeMetrics(t.Context(), raw))
-		require.Len(t, sink.AllMetrics(), index+1)
-		md := sink.AllMetrics()[index]
-		resourceAttrs := md.ResourceMetrics().At(0).Resource().Attributes()
-		if observation.target == "" {
-			_, present := resourceAttrs.Get("host.name")
-			assert.False(t, present)
-		} else {
-			assert.Equal(t, observation.target, attrValue(t, resourceAttrs, "host.name"))
-		}
-		assertSingleIntGaugeMetric(t, md, "cisco.iosxr.receiver.compact_gpb_payloads", int64(observation.value))
-	}
+	err := normalizer.ConsumeMetrics(t.Context(), rawIOSXRDialOutMetrics("cisco.yang_grpc.compact_gpb_payloads", 3))
+	require.NoError(t, err)
+	require.Len(t, sink.AllMetrics(), 1)
+
+	metric := mustFindIOSXRMetric(t, sink.AllMetrics()[0], "cisco.iosxr.receiver.compact_gpb_payloads")
+	assert.Equal(t, 3.0, metric.Gauge().DataPoints().At(0).DoubleValue())
+	assert.Equal(t, int64(3), health.snapshot().compactGPBPayloads)
 }
 
 func TestIOSXRNormalizingConsumerEnforcesDatapointLimit(t *testing.T) {
@@ -282,11 +287,9 @@ func TestIOSXRNormalizingConsumerEnforcesDatapointLimit(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, sink.AllMetrics(), 1)
 
-	metricName := mustDialOutDynamicYANGName(t, "cisco.iosxr.yang", "Cisco-IOS-XR-infra-statsd-oper",
-		"Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/generic-counters", "interface/statistics/rx-pkts", dynamicYANGMetricVariantNumber)
-	metric := mustFindIOSXRMetric(t, sink.AllMetrics()[0], metricName)
-	require.Equal(t, pmetric.MetricTypeSum, metric.Type())
-	assert.Equal(t, 2, metric.Sum().DataPoints().Len())
+	metric := mustFindIOSXRMetric(t, sink.AllMetrics()[0], "cisco.iosxr.yang.cisco_ios_xr_infra_statsd_oper.interface.statistics.rx_pkts")
+	require.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+	assert.Equal(t, 2, metric.Gauge().DataPoints().Len())
 	assert.Equal(t, int64(1), health.snapshot().droppedDatapoints)
 }
 
@@ -299,8 +302,7 @@ func TestIOSXRNormalizingConsumerBudgetsLongPathBeforeDatapointCopy(t *testing.T
 	transport := iosXRTelemetryTransportDialOut
 	perDatapointBytes := len("cisco.yang.module") + len("test-module") +
 		len("cisco.yang.path") + len(path) +
-		len("cisco.telemetry.transport") + len(transport) +
-		len("cisco.yang.source_path") + len("interface/statistics/rx-pkts")
+		len("cisco.telemetry.transport") + len(transport)
 	normalizer := newIOSXRNormalizingConsumer(
 		sink,
 		cfg,
@@ -317,14 +319,13 @@ func TestIOSXRNormalizingConsumerBudgetsLongPathBeforeDatapointCopy(t *testing.T
 
 	require.NoError(t, normalizer.ConsumeMetrics(t.Context(), raw))
 	require.Len(t, sink.AllMetrics(), 1)
-	metricName := mustDialOutDynamicYANGName(t, "cisco.iosxr.yang", "test-module", path, "interface/statistics/rx-pkts", dynamicYANGMetricVariantNumber)
-	metric := mustFindIOSXRMetric(t, sink.AllMetrics()[0], metricName)
-	require.Equal(t, 1, metric.Sum().DataPoints().Len())
-	assert.Equal(t, path, attrValue(t, metric.Sum().DataPoints().At(0).Attributes(), "cisco.yang.path"))
+	metric := mustFindIOSXRMetric(t, sink.AllMetrics()[0], "cisco.iosxr.yang.test_module.interface.statistics.rx_pkts")
+	require.Equal(t, 1, metric.Gauge().DataPoints().Len())
+	assert.Equal(t, path, attrValue(t, metric.Gauge().DataPoints().At(0).Attributes(), "cisco.yang.path"))
 	assert.Equal(t, int64(2), health.snapshot().droppedDatapoints)
 }
 
-func TestIOSXRNormalizingConsumerRejectsNonNumberDynamicDatapoints(t *testing.T) {
+func TestIOSXRNormalizingConsumerPreservesAndBudgetsNonNumberDatapoints(t *testing.T) {
 	sink := &consumertest.MetricsSink{}
 	health := &iosXRHealth{}
 	cfg := defaultIOSXRConfig()
@@ -338,8 +339,18 @@ func TestIOSXRNormalizingConsumerRejectsNonNumberDynamicDatapoints(t *testing.T)
 	)
 
 	require.NoError(t, normalizer.ConsumeMetrics(t.Context(), rawDialOutNonNumberMetrics("xr-1")))
-	assert.Empty(t, sink.AllMetrics())
-	assert.Equal(t, int64(3), health.snapshot().droppedDatapoints)
+	require.Len(t, sink.AllMetrics(), 1)
+	md := sink.AllMetrics()[0]
+	for _, name := range []string{
+		"cisco.iosxr.yang.test_module.histogram",
+		"cisco.iosxr.yang.test_module.exponential_histogram",
+		"cisco.iosxr.yang.test_module.summary",
+	} {
+		metric := mustFindIOSXRMetric(t, md, name)
+		assert.Equal(t, "test-module", attrValue(t, firstMetricDatapointAttrs(t, metric), "cisco.yang.module"))
+	}
+	assert.Equal(t, 3, md.DataPointCount())
+	assert.Zero(t, health.snapshot().droppedDatapoints)
 
 	limitedSink := &consumertest.MetricsSink{}
 	limitedHealth := &iosXRHealth{}
@@ -352,8 +363,9 @@ func TestIOSXRNormalizingConsumerRejectsNonNumberDynamicDatapoints(t *testing.T)
 		limitedHealth,
 	)
 	require.NoError(t, limited.ConsumeMetrics(t.Context(), rawDialOutNonNumberMetrics("xr-1")))
-	assert.Empty(t, limitedSink.AllMetrics())
-	assert.Equal(t, int64(3), limitedHealth.snapshot().droppedDatapoints)
+	require.Len(t, limitedSink.AllMetrics(), 1)
+	assert.Equal(t, 2, limitedSink.AllMetrics()[0].DataPointCount())
+	assert.Equal(t, int64(1), limitedHealth.snapshot().droppedDatapoints)
 }
 
 func TestIOSXRNormalizingConsumerRejectsNestedIdentityAttributeBeforeStringConversion(t *testing.T) {
@@ -389,8 +401,8 @@ func TestIOSXRNormalizingConsumerEnforcesFinalAttributeShapeAfterAnnotations(t *
 		wantFinalAttrs int
 		wantDropped    int64
 	}{
-		{name: "exactly 64 attributes", sourceAttrs: 60, wantDelivered: true, wantFinalAttrs: 64},
-		{name: "annotation exceeds 64 attributes", sourceAttrs: 61, wantDropped: 1},
+		{name: "exactly 64 attributes", sourceAttrs: 61, wantDelivered: true, wantFinalAttrs: 64},
+		{name: "annotation exceeds 64 attributes", sourceAttrs: 62, wantDropped: 1},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			sink := &consumertest.MetricsSink{}
@@ -409,10 +421,8 @@ func TestIOSXRNormalizingConsumerEnforcesFinalAttributeShapeAfterAnnotations(t *
 			require.NoError(t, normalizer.ConsumeMetrics(t.Context(), raw))
 			if test.wantDelivered {
 				require.Len(t, sink.AllMetrics(), 1)
-				metricName := mustDialOutDynamicYANGName(t, "cisco.iosxr.yang", "Cisco-IOS-XR-infra-statsd-oper",
-					"Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/generic-counters", "interface/state", dynamicYANGMetricVariantNumber)
-				metric := mustFindIOSXRMetric(t, sink.AllMetrics()[0], metricName)
-				assert.Equal(t, test.wantFinalAttrs, metric.Sum().DataPoints().At(0).Attributes().Len())
+				metric := mustFindIOSXRMetric(t, sink.AllMetrics()[0], "cisco.iosxr.yang.cisco_ios_xr_infra_statsd_oper.interface.state")
+				assert.Equal(t, test.wantFinalAttrs, metric.Gauge().DataPoints().At(0).Attributes().Len())
 			} else {
 				assert.Empty(t, sink.AllMetrics())
 			}
@@ -489,13 +499,12 @@ func rawIOSXRDialOutMetrics(metricName string, value float64) pmetric.Metrics {
 	md := pmetric.NewMetrics()
 	rm := md.ResourceMetrics().AppendEmpty()
 	rm.Resource().Attributes().PutStr("cisco.node_id", "xr-1")
-	rm.Resource().Attributes().PutStr("cisco.encoding_path", "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/generic-counters")
+	rm.Resource().Attributes().PutStr("cisco.encoding_path", "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/latest/generic-counters")
 	sm := rm.ScopeMetrics().AppendEmpty()
 	metric := sm.Metrics().AppendEmpty()
 	metric.SetName(metricName)
 	dp := metric.SetEmptyGauge().DataPoints().AppendEmpty()
 	dp.SetDoubleValue(value)
-	dp.Attributes().PutStr("cisco.yang.source_path", strings.ReplaceAll(strings.TrimPrefix(metricName, "cisco."), ".", "/"))
 	return md
 }
 
@@ -505,7 +514,6 @@ func rawIOSXRDialOutMultiDatapointMetric() pmetric.Metrics {
 	for _, value := range []float64{2, 3} {
 		dp := dps.AppendEmpty()
 		dp.SetDoubleValue(value)
-		dp.Attributes().PutStr("cisco.yang.source_path", "interface/statistics/rx-pkts")
 	}
 	return md
 }
@@ -519,34 +527,33 @@ func rawDialOutNonNumberMetrics(nodeID string) pmetric.Metrics {
 
 	histogram := metrics.AppendEmpty()
 	histogram.SetName("cisco.histogram")
-	histogramAttrs := histogram.SetEmptyHistogram().DataPoints().AppendEmpty().Attributes()
-	histogramAttrs.PutStr("source", "histogram")
-	histogramAttrs.PutStr("cisco.yang.source_path", "histogram")
+	histogram.SetEmptyHistogram().DataPoints().AppendEmpty().Attributes().PutStr("source", "histogram")
 
 	exponential := metrics.AppendEmpty()
 	exponential.SetName("cisco.exponential-histogram")
-	exponentialAttrs := exponential.SetEmptyExponentialHistogram().DataPoints().AppendEmpty().Attributes()
-	exponentialAttrs.PutStr("source", "exponential")
-	exponentialAttrs.PutStr("cisco.yang.source_path", "exponential-histogram")
+	exponential.SetEmptyExponentialHistogram().DataPoints().AppendEmpty().Attributes().PutStr("source", "exponential")
 
 	summary := metrics.AppendEmpty()
 	summary.SetName("cisco.summary")
-	summaryAttrs := summary.SetEmptySummary().DataPoints().AppendEmpty().Attributes()
-	summaryAttrs.PutStr("source", "summary")
-	summaryAttrs.PutStr("cisco.yang.source_path", "summary")
+	summary.SetEmptySummary().DataPoints().AppendEmpty().Attributes().PutStr("source", "summary")
 	return md
 }
 
-func rawCompactGPBDiagnostic(nodeID, encodingPath string, value int64) pmetric.Metrics {
-	md := pmetric.NewMetrics()
-	rm := md.ResourceMetrics().AppendEmpty()
-	rm.Resource().Attributes().PutStr("cisco.node_id", nodeID)
-	rm.Resource().Attributes().PutStr("cisco.encoding_path", encodingPath)
-	metric := rm.ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
-	metric.SetName("cisco.yang_grpc.compact_gpb_payloads")
-	dp := metric.SetEmptyGauge().DataPoints().AppendEmpty()
-	dp.SetIntValue(value)
-	dp.Attributes().PutStr("node_id", nodeID)
-	dp.Attributes().PutStr("encoding_path", encodingPath)
-	return md
+func firstMetricDatapointAttrs(t *testing.T, metric pmetric.Metric) pcommon.Map {
+	t.Helper()
+	switch metric.Type() {
+	case pmetric.MetricTypeGauge:
+		return metric.Gauge().DataPoints().At(0).Attributes()
+	case pmetric.MetricTypeSum:
+		return metric.Sum().DataPoints().At(0).Attributes()
+	case pmetric.MetricTypeHistogram:
+		return metric.Histogram().DataPoints().At(0).Attributes()
+	case pmetric.MetricTypeExponentialHistogram:
+		return metric.ExponentialHistogram().DataPoints().At(0).Attributes()
+	case pmetric.MetricTypeSummary:
+		return metric.Summary().DataPoints().At(0).Attributes()
+	default:
+		require.FailNow(t, "metric has no datapoints", "type: %v", metric.Type())
+		return pcommon.NewMap()
+	}
 }

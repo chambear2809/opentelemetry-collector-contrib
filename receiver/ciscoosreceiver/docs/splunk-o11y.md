@@ -25,7 +25,7 @@ Use these dimensions as dashboard variables:
 | `host.name` | Device selector. |
 | `host.id` | Stable device identity, normally the serial number. |
 | `host.type` | Platform or model grouping. |
-| `host.ip` | Reachability and inventory lookup only after verifying the exported type: SSH metadata is scalar while direct/API paths can emit a string slice, so the pre-built bundles do not use it as a global variable. |
+| `host.ip` | Reachability and inventory lookup. |
 | `os.name` | IOS, IOS XE, or NX-OS grouping. |
 | `network.interface.name` | Interface selector. |
 | `network.io.direction` | Receive/transmit selector for link and queue symptoms. |
@@ -55,22 +55,18 @@ Use these dimensions as dashboard variables:
 | `sdwan.tloc.color` | Catalyst SD-WAN transport color selector. |
 | `sdwan.application` | Application selector for app-route, SaaS, and AI/model path views. |
 | `sdwan.sla_class` | SLA class selector for application-aware routing views. |
-| `cisco.controller.type` | API source selector, such as SD-WAN Manager, Nexus Dashboard, APIC, or FMC. |
+| `cisco.controller.type` | API source selector, such as SD-WAN Manager, Nexus Dashboard, or APIC. |
 | `cisco.controller.endpoint` | Controller endpoint selector for API trust views. |
 | `cisco.fabric.name` | Fabric selector for NDFC, Insights, NDO, and ACI workflows. |
 | `cisco.site.name` | Nexus Dashboard site selector. |
 | `cisco.switch.serial` | Nexus switch serial for cross-source API, SSH, and MDT correlation. |
 | `aci.node.id` | ACI node selector. |
-| `fmc.controller.name` | Secure Firewall Management Center selector. |
-| `fmc.domain.uuid` | FMC domain selector. |
-| `fmc.resource.type` | Managed firewall, interface, policy, deployment, VPN, HA, or evidence object type. |
-| `fmc.policy.name` | FMC access, NAT, prefilter, or related policy selector when present. |
 | `ndfc.switch.id` | NDFC switch ID selector for interface/performance drilldowns. |
 | `nd.service.name` | Nexus Dashboard service/app selector. |
 | `ise.node.name` | ISE node/persona selector. |
-| `ise.network_device.name` | ISE network access device selector for logs and inventory evidence; aggregate failure-count metrics intentionally omit it. |
-| `ise.endpoint.mac` | ISE endpoint MAC selector for logs and inventory evidence; aggregate posture/session metrics intentionally omit it. |
-| `user.name` | User selector for ISE logs and audit records; aggregate authentication/session metrics intentionally omit it. |
+| `ise.network_device.name` | ISE network access device selector. |
+| `ise.endpoint.mac` | ISE endpoint MAC selector for posture/session investigations. |
+| `user.name` | User selector for ISE auth/session evidence and audit records. |
 | `ise.protocol` | RADIUS/TACACS or authentication protocol selector. |
 | `ise.policy.set` | ISE network-access or device-admin policy set selector. |
 | `cisco.yang.module` | Direct telemetry YANG module selector for Catalyst 9800 and IOS XR model coverage. |
@@ -124,14 +120,14 @@ Charts:
 | Optical power drift | `cisco.transceiver.sensor` filtered to `rx_power` and `tx_power`, time-series | Low RX power or high TX power before errors. |
 | Hardware temperature | `cisco.hardware.temperature` by component or slot, time-series | Temperature crosses platform threshold or anomaly baseline. |
 | Hardware status | `cisco.hardware.status` by component, name, slot, state, list with sparkline | Status is critical or warning. |
-| Intersight API health | `intersight.api.request.duration`, rates of `intersight.api.request.errors` and `intersight.api.rate_limited`, `intersight.scrape.partial_success`, and `intersight.scrape.last_success` by operation | API errors, signing failures, 429s, partial coverage, or stale full-success time repeat. |
+| Intersight API health | `intersight.api.request.duration`, `intersight.api.request.errors`, and `intersight.api.rate_limited` by operation, time-series | API errors, signing failures, or 429s repeat. |
 | Intersight active alarms | `intersight.alarm.count` by severity, status, resource type, and acknowledgement, stacked time-series | Critical active alarms are present or increasing. |
 | Intersight advisory exposure | `intersight.advisory.count` by severity and resource type, stacked time-series | New critical security or field advisory exposure appears. |
 | Intersight HCL/compliance | `intersight.hcl.status` by host and status, list with sparkline | Any required host is unsupported or degraded. |
 | Intersight workflow/task failures | `intersight.workflow.status` and `intersight.task.status` by status and resource type, list with sparkline | A workflow or task is failed, stalled, or waiting on user action. |
 | UCS power, thermal, and fan telemetry | `intersight.ucs.host.power`, `intersight.ucs.temperature`, `intersight.ucs.fan.speed`, and `intersight.ucs.voltage`, time-series | Thermal or power values move outside expected bands. |
 | Storage and HyperFlex health | `intersight.storage.*`, `intersight.hyperflex.*`, and `intersight.fault.count` by cluster, host, and resource type | Disk life, predictive failures, media errors, IOPS, or latency degrade. |
-| Catalyst Center API health | `catalyst_center.api.request.duration`, rates of `catalyst_center.api.request.errors` and `catalyst_center.api.rate_limited`, `catalyst_center.scrape.partial_success`, and `catalyst_center.scrape.last_success` by operation | API errors, authorization failures, rate limits, partial coverage, or stale full-success time repeat. |
+| Catalyst Center API health | `catalyst_center.api.request.duration`, `catalyst_center.api.request.errors`, `catalyst_center.api.rate_limited`, and `catalyst_center.scrape.partial_success` by operation | Catalyst Center API errors, authorization failures, rate limits, or partial scrape repeat. |
 | Catalyst Center device inventory | `cisco.device.up`, `catalyst_center.device.reachability.status`, `catalyst_center.device.collection.status`, and `catalyst_center.inventory.device.count` by device, family, role, and site | Catalyst Center sees devices as unreachable, unmanaged, or unexpectedly missing. |
 | Catalyst Center Assurance health | `catalyst_center.network.health.score`, `catalyst_center.network.health.entity.score`, `catalyst_center.site.network_device.health.percentage`, `catalyst_center.site.client.health.percentage`, `catalyst_center.site.client.count`, and `catalyst_center.site.network_device.count` by entity and site | Campus or site health degrades and the operator can see how many clients or devices are represented by the score. |
 | Catalyst Center issues and topology | `catalyst_center.issue.active.count`, `catalyst_center.site.issue.count`, `catalyst_center.topology.node.count`, and `catalyst_center.topology.link.count` by severity, priority, category, node type, and link status | Assurance issues or topology discovery changes explain campus symptoms. |
@@ -143,14 +139,10 @@ Charts:
 | SD-WAN events and change evidence | `sdwan.event.count` plus SD-WAN logs by alarm/event/audit type, severity, user, policy, system IP, and site | Alarms, audit/config changes, policy deployments, or security events appear in the incident window. |
 | SD-WAN end-user impact | `sdwan.app_route.*`, `sdwan.app_route.sla.status`, `sdwan.bfd.session.status`, `system.network.interface.status`, `system.network.errors`, `system.network.packet.dropped`, and `sdwan.event.count` by site, application, SLA class, color, interface, and event type | Service desk, app owners, and incident commanders can see which sites/apps/users are likely affected and what symptom class to escalate. |
 | ISE identity and access evidence | `ise.api.request.errors`, `ise.scrape.partial_success`, `ise.radius.failure.count`, `ise.tacacs.failure.count`, `ise.session.active.count`, `ise.endpoint.posture.count`, `ise.policy.object.count`, `ise.trustsec.resource.count`, pxGrid metrics, Data Connect metrics, and ISE logs | Authentication, authorization, posture, TrustSec, or policy-change evidence aligns with network, wireless, SD-WAN, or firewall symptoms. |
-| FMC API and collection trust | `fmc.manager.up`, `fmc.api.request.duration`, rates of `fmc.api.request.errors`, `fmc.api.endpoint.error`, and `fmc.api.rate_limited`, plus `fmc.scrape.partial_success` and `fmc.scrape.last_success` by controller and operation | FMC access, permissions, rate limits, or endpoint failures explain missing managed-firewall evidence. |
-| Managed firewall and interface health | `cisco.device.up`, `system.network.interface.status`, `fmc.health.status`, `fmc.health.event.count`, and `fmc.resource.status` by controller, firewall, interface, type, status, and severity | A firewall, chassis, interface, or health module is degraded independently of the FMC polling path. |
-| FMC VPN and HA availability | `fmc.vpn.tunnel.status` and `fmc.ha.status` by firewall, VPN/HA object type, status, and severity | Tunnel, remote-access gateway, HA pair, cluster, monitored interface, or failover state explains the outage. |
-| FMC policy, deployment, and change evidence | `fmc.policy.object.count`, `fmc.deployment.status`, `fmc.deployment.pending.count`, `fmc.audit.record.count`, and FMC logs by policy, operation, status, severity, and user | Policy drift, an undeployed or failed change, or an administrative action precedes impact. |
 | Catalyst 9800 WLC telemetry trust | `cisco.catalyst9800.receiver.*` and `cisco.wlc.controller.*` by controller and transport | Active subscriptions drop, decode errors rise, paths are unsupported, datapoints are dropped, or controller CPU/memory pressure appears. |
 | Catalyst 9800 wireless user impact | `cisco.wlc.ap.*`, `cisco.wlc.rf.*`, `cisco.wlc.ssid.*`, `cisco.wlc.client.*`, `cisco.wlc.auth.radius.*`, `cisco.wlc.mobility.*`, and `cisco.wlc.ha.*` by AP, SSID, client, and controller | AP joins fail, RF utilization/noise rises, clients fail auth or roam, RADIUS rejects/timeouts appear, mobility peers fail, or HA changes. |
-| IOS XR telemetry trust and model coverage | `cisco.iosxr.receiver.*` plus common `cisco.iosxr.yang.__v1.*` interface and model leaves by router, transport, YANG module, and path | Subscriptions stop, updates stall, decode/model errors rise, or common interface/routing/optics path groups stop producing data. |
-| Nexus Dashboard API health | `nexus_dashboard.api.request.duration`, rates of `nexus_dashboard.api.request.errors`, `nexus_dashboard.api.endpoint.error`, and `nexus_dashboard.api.rate_limited`, plus `nexus_dashboard.scrape.partial_success` and `nexus_dashboard.scrape.last_success` by operation | Controller API errors, authorization failures, unavailable apps, partial coverage, or stale full-success time repeat. |
+| IOS XR telemetry trust and model coverage | `cisco.iosxr.receiver.*` plus common `cisco.iosxr.yang.*` interface and model leaves by router, transport, YANG module, and path | Subscriptions stop, updates stall, decode/model errors rise, or common interface/routing/optics path groups stop producing data. |
+| Nexus Dashboard API health | `nexus_dashboard.api.request.duration`, `nexus_dashboard.api.request.errors`, `nexus_dashboard.api.rate_limited`, and `nexus_dashboard.scrape.partial_success` by operation | Controller API errors, authorization failures, unavailable apps, or partial scrape repeat. |
 | Nexus Dashboard service coverage | `nexus_dashboard.service.unavailable` and `nexus_dashboard.service.skipped` by product and group | NDFC, Insights, NDO, or Data Broker is unavailable, unauthorized, not installed, or missing target filters. |
 | Nexus Dashboard change and event evidence | `nexus_dashboard.audit.record.count` and `nexus_dashboard.event.count` by product, operation, status, and severity | Controller-side changes, events, anomalies, advisories, alerts, or root causes appear near the incident window. |
 | NDFC fabric and switch health | `nexus_dashboard.fabric.health`, `nexus_dashboard.resource.status`, and `cisco.device.up` by fabric, switch, role, and serial | Fabric or leaf/spine health degrades from the controller view. |
@@ -158,22 +150,12 @@ Charts:
 | Insights anomalies and root cause | `nexus_dashboard.insights.anomaly.count`, `nexus_dashboard.insights.score`, and `nexus_dashboard.insights.confidence` by site/fabric/severity | Insights points to a root-cause candidate or advisory during the incident window. |
 | NDO/OneManage deployment drift | `nexus_dashboard.orchestrator.deployment.status` and `nexus_dashboard.orchestrator.policy_delta.count` by site/schema | Multi-site deployment or policy sync fails. |
 | Data Broker visibility health | `nexus_dashboard.data_broker.status`, `nexus_dashboard.data_broker.rule.count`, and `nexus_dashboard.data_broker.session.count` | TAP/SPAN/rule/session state prevents packet visibility during troubleshooting. |
-| APIC API health | `aci.api.request.duration`, rates of `aci.api.request.errors`, `aci.api.endpoint.error`, and `aci.api.rate_limited`, plus `aci.controller.up`, `aci.scrape.partial_success`, and `aci.scrape.last_success` by controller | APIC access, class-query coverage, or full-success freshness is degraded. |
+| APIC API health | `aci.api.request.duration`, `aci.api.request.errors`, `aci.controller.up`, and `aci.scrape.partial_success` by controller | APIC access or class-query coverage is degraded. |
 | ACI active faults | `aci.fault.count` and `aci.fault.active` by severity, code, domain, type, node, and DN | Active ACI faults explain fabric, tenant, endpoint, or interface symptoms. |
 | ACI change and event evidence | `aci.audit.record.count` and `aci.event.count` by operation, status, and severity | APIC audit or event activity appears near the fault window without high-cardinality event text in metric labels. |
 | ACI tenant impact | `aci.tenant.status`, `aci.tenant.object.count`, and `aci.fabric.health` by tenant, VRF, BD, EPG, and L3Out | Tenant policy or health changed near affected workloads. |
 | ACI endpoint presence | `aci.endpoint.present` and `aci.endpoint.count` by tenant, EPG, MAC, IP, and node | Workload endpoint disappeared, moved, or churned. |
-| ACI topology and interface symptoms | `system.network.interface.status`, `cisco.interface.io.rate`, `cisco.interface.packet.rate`, `cisco.interface.drop.rate`, `cisco.interface.utilization`, `system.network.io`, `system.network.packet.count`, `system.network.errors`, `system.network.packet.dropped`, and `cisco.topology.neighbor.info` by node/interface/direction/protocol | Leaf/spine interface traffic, errors, drops, or adjacency change precedes endpoint impact. |
-
-Nexus Dashboard selector omissions are coverage failures when the owning group is enabled. In the `legacy` profile,
-`fabrics` is required for NDFC fabric switch-overview and endpoint operations, `switch_serials` for policy deployment,
-and `switch_ids` for interface statistics. In the `unified` profile, `fabrics` is required for fabric-scoped switch
-inventory and switch-summary operations. The receiver reports those omissions with
-`nexus_dashboard.service.skipped` and `nexus_dashboard.scrape.partial_success=1`. A legacy platform-only deployment
-should explicitly disable `ndfc`, `insights`, `orchestrator`, `data_broker`, and `performance` so successful platform
-scrapes can advance `nexus_dashboard.scrape.last_success`. The unified catalog currently registers only platform and
-NDFC metrics; nested hardware and summary values provide API-health and generic resource-presence evidence, and no
-unified log endpoints are registered yet.
+| ACI topology and interface symptoms | `system.network.interface.status`, `cisco.interface.io.rate`, and `cisco.topology.neighbor.info` by node/interface/protocol | Leaf/spine interface or adjacency change precedes endpoint impact. |
 
 Autopsy questions:
 
@@ -188,10 +170,9 @@ Autopsy questions:
 - Did Catalyst Center show API partial success, site health degradation, active Assurance issues, topology changes, or poor targeted client health?
 - Did Catalyst 9800 show stale telemetry, AP join/CAPWAP failures, RF noise or utilization, RADIUS rejects/timeouts, client roam failures, mobility peer loss, or HA events for the affected SSID or site?
 - Did SD-WAN show Manager/API partial success, unreachable WAN Edge devices, control/BFD loss, TLOC color degradation, app-route SLA violations, Cloud OnRamp/vQoE issues, policy/security drops, cellular failover, or audit/config changes for the affected site or application?
-- Did FMC show API coverage loss, managed-firewall or interface failure, VPN/HA degradation, pending deployment state, or an audit/configuration change before the outage?
 - From the end-user perspective, which sites and applications are affected, what symptom is most visible to users (loss, latency, jitter, outage, drops, errors, or change), and which team should own the next action?
 - Did Nexus Dashboard show NDFC config drift, deployment failure, fabric health degradation, Insights root-cause evidence, NDO policy deltas, or Data Broker visibility changes?
-- Did APIC show active faults, tenant, EPG, contract, or L3Out impact, endpoint disappearance, interface state changes, or topology churn for the affected workload?
+- Did APIC show active faults, tenant/EPG/contract/L3Out impact, endpoint disappearance, interface state changes, or topology churn for the affected workload?
 - Did IOS XR telemetry show subscription loss, unsupported paths, interface state/counter changes, optics drift, routing neighbor loss, FIB drops, BFD changes, MPLS/SR state changes, or time-sync issues?
 
 Switch-side coverage:
@@ -224,9 +205,9 @@ Start with these detectors before adding organization-specific thresholds:
 | QFP dataplane drops | Rate of `cisco.qfp.drops` or `cisco.qfp.interface.drops` | New or rising drop reasons. |
 | Intersight critical alarm | `intersight.alarm.count` | Critical or fatal alarms greater than 0 for one or more scrapes. |
 | Intersight workflow failure | `intersight.workflow.status` or `intersight.task.status` | Encoded status is failed/error for 1-2 scrapes. |
-| Intersight API degraded | Rate of `intersight.api.request.errors`, `intersight.scrape.partial_success`, or `intersight.scrape.last_success` | Errors or partial success repeat, or the last full-success timestamp becomes stale. |
+| Intersight API degraded | `intersight.api.request.errors` or `intersight.scrape.partial_success` | Errors or partial success repeat for 2-3 scrapes. |
 | Intersight storage risk | `intersight.storage.predictive_failure.count` or `intersight.storage.life_left` | Predictive failures appear or SSD life falls below policy. |
-| Catalyst Center API degraded | Rate of `catalyst_center.api.request.errors`, `catalyst_center.scrape.partial_success`, or `catalyst_center.scrape.last_success` | Errors or partial success repeat, or the last full-success timestamp becomes stale. |
+| Catalyst Center API degraded | `catalyst_center.api.request.errors` or `catalyst_center.scrape.partial_success` | Errors or partial success repeat for 2-3 scrapes. |
 | Catalyst Center site unhealthy | `catalyst_center.site.network_device.health.percentage` or `catalyst_center.site.client.health.percentage` | Site health falls below policy or drops sharply from baseline. |
 | Catalyst Center active issues | `catalyst_center.issue.active.count` | P1/P2 or high-severity issue counts are greater than 0. |
 | Catalyst 9800 telemetry degraded | `cisco.catalyst9800.receiver.decode_errors`, `cisco.catalyst9800.receiver.unsupported_paths`, or `cisco.catalyst9800.receiver.dropped_datapoints` | Decode, model coverage, or cardinality guardrail counters rise for 2-3 scrapes. |
@@ -237,18 +218,14 @@ Start with these detectors before adding organization-specific thresholds:
 | SD-WAN app SLA violation | `sdwan.app_route.latency`, `sdwan.app_route.jitter`, `sdwan.app_route.loss`, or `sdwan.app_route.sla.status` | Critical app, SaaS, or AI/model path exceeds SLA thresholds or enters failed/degraded state. |
 | SD-WAN WAN interface issue | `system.network.interface.status`, `sdwan.transport.interface.status`, `system.network.errors`, or `system.network.packet.dropped` | Admin-up WAN interfaces are down, erroring, dropping, or showing sudden traffic silence. |
 | SD-WAN change evidence | `sdwan.event.count` and SD-WAN logs | Critical alarm, audit/config change, policy deployment, or security event appears in the incident window. |
-| FMC API degraded | Rates of `fmc.api.request.errors`, `fmc.api.endpoint.error`, or `fmc.api.rate_limited`; `fmc.scrape.partial_success`; and `fmc.scrape.last_success` | Errors, rate limits, partial coverage, or a stale full-success timestamp persist for 2-3 scrapes. |
-| Managed firewall or interface down | `cisco.device.up` or `system.network.interface.status` with `cisco.controller.type=fmc` | A required managed firewall or interface reports down for 2-3 scrapes. |
-| FMC VPN or HA degraded | `fmc.vpn.tunnel.status` or `fmc.ha.status` with product-specific status attributes | A required tunnel, gateway, HA pair, cluster, monitored interface, or failover role enters an unhealthy state. |
-| FMC deployment risk | `fmc.deployment.status` or `fmc.deployment.pending.count` | A deployment fails or pending changes remain unexpectedly during an incident window. |
-| Nexus Dashboard API degraded | Rates of `nexus_dashboard.api.request.errors` and `nexus_dashboard.api.endpoint.error`, `nexus_dashboard.scrape.partial_success`, or `nexus_dashboard.scrape.last_success` | Errors, unavailable services, skipped endpoint families, partial coverage, or stale full-success time repeat. |
+| Nexus Dashboard API degraded | `nexus_dashboard.api.request.errors` or `nexus_dashboard.scrape.partial_success` | Errors, unavailable services, skipped endpoint families, or partial success repeat. |
 | NDFC fabric unhealthy | `nexus_dashboard.fabric.health` or `nexus_dashboard.resource.status` | Fabric, site, or switch health score/status degrades. |
 | Insights critical anomaly | `nexus_dashboard.insights.anomaly.count` | Critical anomalies or advisories greater than 0. |
 | NDO deployment failure | `nexus_dashboard.orchestrator.deployment.status` | Deployment, schema, template, or site sync state is failed/degraded. |
 | APIC fault present | `aci.fault.count` | Critical or major faults greater than 0. |
 | ACI endpoint missing | `aci.endpoint.present` or `aci.endpoint.count` | Important endpoint is missing or endpoint count drops unexpectedly. |
 | IOS XR telemetry stale | `cisco.iosxr.receiver.updates`, `cisco.iosxr.receiver.last_success_timestamp`, or `cisco.iosxr.receiver.reconnects` | Update rate stops, last success stops advancing, or reconnects rise. |
-| IOS XR interface issue | Common `cisco.iosxr.yang.__v1.m1.s21_openconfig_2Dinterfaces.*` state, error, discard, and octet streams | Admin-up/oper-down, traffic silence, error/discard growth, or one-way traffic appears. |
+| IOS XR interface issue | Common `cisco.iosxr.yang.openconfig_interfaces.*` state, error, discard, and octet counters | Admin-up/oper-down, traffic silence, error/discard growth, or one-way traffic appears. |
 
 ## Incident Autopsy Workflow
 
@@ -263,7 +240,7 @@ Use this sequence when reconstructing an outage:
 7. Check physical health: review hardware status, temperature, and transceiver sensors.
 8. Check congestion: inspect PFC pause frames, QoS queue drops, policy drops, WRED/ECN signals, QFP drops, and forwarding drops.
 9. Check wireless evidence: review Catalyst 9800 AP joins, CAPWAP state, RF utilization/noise, RADIUS outcomes, client state, roaming, mobility peers, and HA state for the same site, SSID, AP, or client.
-10. Check controller and policy evidence: review Intersight alarms/advisories/workflows, Catalyst Center Assurance health/issues/client detail, Nexus Dashboard/NDFC/Insights/NDO/Data Broker evidence, APIC faults/audits/events, ISE identity/policy evidence, and FMC health/VPN/HA/deployment/audit evidence for the same device, site, fabric, tenant, endpoint, user, or workload.
+10. Check controller evidence: review Intersight alarms/advisories/workflows, Catalyst Center Assurance health/issues/client detail, Nexus Dashboard/NDFC/Insights/NDO/Data Broker evidence, and APIC faults/audits/events for the same switch serial, site, fabric, tenant, endpoint, or workload.
 11. Check IOS XR service evidence: review subscription freshness, interface counters, optics, routing/BFD/MPLS/SR state, FIB drops, and time-sync breadcrumbs for affected routers.
 12. Correlate AI pod impact: align UCS/FI/HyperFlex health with Kubernetes namespace/workload, accelerator, Catalyst Center site/client context, ACI tenant/EPG, NDFC fabric, and switch telemetry.
 
@@ -274,8 +251,7 @@ For a fuller autopsy, pair these metrics with syslog or config-change events in 
 - [Splunk Observability Cloud OTLP/HTTP exporter](https://help.splunk.com/en/splunk-observability-cloud/manage-data/splunk-distribution-of-the-opentelemetry-collector/get-started-with-the-splunk-distribution-of-the-opentelemetry-collector/collector-components/exporters/otlphttp-exporter) for the `metrics_endpoint` and `X-SF-Token` configuration pattern.
 - [Splunk Observability Cloud Chart Builder](https://help.splunk.com/en/splunk-observability-cloud/create-dashboards-and-charts/create-charts/plot-metrics-and-events-using-chart-builder) for chart signals, filters, dimensions, and analytics.
 - [Splunk Observability Cloud detector best practices](https://help.splunk.com/en/splunk-observability-cloud/create-alerts-detectors-and-service-level-objectives/create-alerts-and-detectors/best-practices-for-creating-detectors) for threshold, duration, and population-style detector design.
-- [Splunk Observability Cloud Charts API](https://dev.splunk.com/observability/reference/api/charts/latest) and [Dashboards API](https://dev.splunk.com/observability/reference/api/dashboards/latest/) for the import payload contract used by the pre-built bundles.
 - [Cisco Data Center Networking Blueprint for AI/ML Applications](https://www.cisco.com/c/en/us/td/docs/dcn/whitepapers/cisco-data-center-networking-blueprint-for-ai-ml-applications.html) for RoCEv2, PFC, ECN, and AI/ML data center fabric design context.
 - [Cisco Nexus 9000 NX-OS Priority Flow Control configuration guide](https://www.cisco.com/c/en/us/td/docs/switches/datacenter/nexus9000/sw/102x/qos/configuration/guide/cisco-nexus-9000-nx-os-quality-of-service-configuration-guide-102x/m-configuring-priority-flow-control.html) for PFC and PFC watchdog behavior.
-- [NVIDIA RoCE documentation](https://docs.nvidia.com/networking/display/mlnxofedv23102131201lts/rdma-over-converged-ethernet-roce.pdf) for RDMA, RoCE, ECN, CNP, and RoCE congestion management context.
-- [NVIDIA flow control documentation](https://docs.nvidia.com/networking/display/mlnxenv23102131201lts/flow-control.pdf) for global pause, PFC, and ECN behavior relevant to RoCE fabrics.
+- [NVIDIA RoCE documentation](https://docs.nvidia.com/networking/display/Onyxv3104006/RDMA%2BOver%2BConverged%2BEthernet%2B%28RoCE%29) for RDMA, RoCE, ECN, CNP, and RoCE congestion management context.
+- [NVIDIA flow control documentation](https://docs.nvidia.com/networking/display/FREEBSDv371/Flow%2BControl) for global pause, PFC, and ECN behavior relevant to RoCE fabrics.

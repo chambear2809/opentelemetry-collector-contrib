@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -21,9 +20,7 @@ import (
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/pmetric"
-	receiverapi "go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/collector/receiver/receivertest"
-	"go.opentelemetry.io/otel/sdk/metric"
 
 	internalgnmi "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/gnmi"
 	componentmetadata "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
@@ -78,453 +75,10 @@ func TestProcessNotificationAtomicReplacementRefusalPreservesPriorState(t *testi
 	assert.Equal(t, []string{"Ethernet3"}, deliveryTestSnapshotInterfaces(target.cache.Snapshot()))
 }
 
-func TestProcessNotificationAtomicSemanticFailureWithdrawsAndWatermarksSnapshot(t *testing.T) {
-	tests := []struct {
-		name         string
-		profile      string
-		metric       string
-		notification func(*testing.T, time.Time, bool) *gnmipb.Notification
-		assertPoint  func(*testing.T, internalgnmi.MappedPoint)
-	}{
-		{
-			name:    "interface enum",
-			profile: builtinGNMIProfileInterfaces,
-			metric:  "system.network.interface.status",
-			notification: func(t *testing.T, timestamp time.Time, invalid bool) *gnmipb.Notification {
-				state := "UP"
-				if invalid {
-					state = "FUTURE_STATE"
-				}
-				return deliveryTestSwitchInterfaceStateNotification(t, timestamp, state)
-			},
-			assertPoint: func(t *testing.T, point internalgnmi.MappedPoint) {
-				assert.Equal(t, int64(1), point.IntValue)
-			},
-		},
-		{
-			name:    "utilization range",
-			profile: builtinGNMIProfileSystem,
-			metric:  "system.cpu.utilization",
-			notification: func(t *testing.T, timestamp time.Time, invalid bool) *gnmipb.Notification {
-				value := uint64(70)
-				if invalid {
-					value = 255
-				}
-				return deliveryTestSwitchCPUNotification(t, timestamp, value)
-			},
-			assertPoint: func(t *testing.T, point internalgnmi.MappedPoint) {
-				assert.InDelta(t, .7, point.DoubleValue, 0.0001)
-			},
-		},
-		{
-			name:    "undecodable typed value",
-			profile: builtinGNMIProfileSystem,
-			metric:  "system.cpu.utilization",
-			notification: func(t *testing.T, timestamp time.Time, invalid bool) *gnmipb.Notification {
-				value := &gnmipb.TypedValue{Value: &gnmipb.TypedValue_UintVal{UintVal: 70}}
-				if invalid {
-					value = &gnmipb.TypedValue{Value: &gnmipb.TypedValue_DoubleVal{DoubleVal: math.NaN()}}
-				}
-				return deliveryTestSwitchCPUValueNotification(t, timestamp, true, value)
-			},
-			assertPoint: func(t *testing.T, point internalgnmi.MappedPoint) {
-				assert.InDelta(t, .7, point.DoubleValue, 0.0001)
-			},
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			reader := metric.NewManualReader()
-			provider := metric.NewMeterProvider(metric.WithReader(reader))
-			t.Cleanup(func() { require.NoError(t, provider.Shutdown(context.WithoutCancel(t.Context()))) })
-			settings := receivertest.NewNopSettings(componentmetadata.Type)
-			settings.MeterProvider = provider
-			targetConfig := GNMITargetConfig{
-				Name: "atomic-semantic", Product: gnmiProductCatalyst9300, SoftwareVersion: "17.18.1",
-				AllowUnqualified: true, MaxStreams: 1, Profiles: subscriptionProfilesOnly(test.profile),
-			}
-			receiver, target, stream := newDeliveryTestReceiverWithSettings(
-				t, settings, targetConfig, 10, consumertest.NewNop(),
-			)
-			t1 := time.Now().Add(-time.Minute).Truncate(time.Millisecond)
-			t2 := t1.Add(time.Second)
-			t3 := t2.Add(time.Second)
-
-			require.NoError(t, receiver.processNotification(t.Context(), target, stream, test.notification(t, t1, false)))
-			require.Len(t, target.cache.Snapshot(), 1)
-			lastSuccess := runtimeTestTelemetryIntGauge(
-				t, reader, "otelcol_ciscoosreceiver_gnmi_last_success_unixtime",
-			)
-
-			synced, err := receiver.handleSubscribeResponse(t.Context(), target, stream, &gnmipb.SubscribeResponse{
-				Response: &gnmipb.SubscribeResponse_Update{
-					Update: test.notification(t, t3, true),
-				},
-			})
-			require.NoError(t, err)
-			assert.False(t, synced)
-			assert.Empty(t, target.cache.Snapshot(), "invalid atomic state must withdraw the entire prior snapshot")
-			assert.Positive(t, target.cache.Usage().InvalidationWatermarks)
-			target.qualificationMu.Lock()
-			assert.False(t, target.anyProgress, "malformed atomic state must not satisfy stream qualification")
-			assert.Contains(t, target.degradedQualification, stream.Profile)
-			target.qualificationMu.Unlock()
-			assert.Equal(t, lastSuccess, runtimeTestTelemetryIntGauge(
-				t, reader, "otelcol_ciscoosreceiver_gnmi_last_success_unixtime",
-			), "committing the semantic watermark must not advance last-success telemetry")
-
-			require.ErrorIs(
-				t,
-				receiver.processNotification(t.Context(), target, stream, test.notification(t, t2, false)),
-				errSharedGNMIStaleIgnored,
-			)
-			assert.Empty(t, target.cache.Snapshot(), "the semantic watermark must reject a delayed older atomic snapshot")
-
-			require.NoError(t, receiver.processNotification(t.Context(), target, stream, test.notification(t, t3, false)))
-			snapshot := target.cache.Snapshot()
-			require.Len(t, snapshot, 1, "a valid same-timestamp correction must replace the local semantic watermark")
-			assert.Equal(t, test.metric, snapshot[0].Metric.Name)
-			test.assertPoint(t, snapshot[0])
-			assert.Zero(t, target.cache.Usage().InvalidationWatermarks)
-			assert.Equal(t, int64(1), runtimeTestTelemetryIntSum(
-				t, reader, "otelcol_ciscoosreceiver_gnmi_out_of_order_updates",
-			))
-		})
-	}
-}
-
-//nolint:staticcheck // The regression covers invalid deprecated decimal wire variants.
-func TestProcessNotificationNonAtomicUndecodableMappedValueWithdrawsAndStaysDegraded(t *testing.T) {
-	tests := []struct {
-		name                     string
-		value                    func() *gnmipb.TypedValue
-		wantUnsupportedTelemetry int64
-	}{
-		{name: "nil TypedValue", value: func() *gnmipb.TypedValue { return nil }},
-		{name: "empty TypedValue", value: func() *gnmipb.TypedValue { return &gnmipb.TypedValue{} }},
-		{name: "non-finite float", value: func() *gnmipb.TypedValue {
-			return &gnmipb.TypedValue{Value: &gnmipb.TypedValue_FloatVal{FloatVal: float32(math.NaN())}}
-		}},
-		{name: "non-finite double", value: func() *gnmipb.TypedValue {
-			return &gnmipb.TypedValue{Value: &gnmipb.TypedValue_DoubleVal{DoubleVal: math.Inf(1)}}
-		}},
-		{name: "nil decimal", value: func() *gnmipb.TypedValue {
-			return &gnmipb.TypedValue{Value: &gnmipb.TypedValue_DecimalVal{}}
-		}},
-		{name: "invalid decimal precision", value: func() *gnmipb.TypedValue {
-			return &gnmipb.TypedValue{Value: &gnmipb.TypedValue_DecimalVal{
-				DecimalVal: &gnmipb.Decimal64{Digits: 1, Precision: 309},
-			}}
-		}},
-		{name: "decoded value outside mapping bounds", value: func() *gnmipb.TypedValue {
-			return &gnmipb.TypedValue{Value: &gnmipb.TypedValue_UintVal{UintVal: 255}}
-		}},
-		{
-			name: "unsupported bytes",
-			value: func() *gnmipb.TypedValue {
-				return &gnmipb.TypedValue{Value: &gnmipb.TypedValue_BytesVal{BytesVal: []byte{1}}}
-			},
-			wantUnsupportedTelemetry: 1,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			reader := metric.NewManualReader()
-			provider := metric.NewMeterProvider(metric.WithReader(reader))
-			t.Cleanup(func() { require.NoError(t, provider.Shutdown(context.WithoutCancel(t.Context()))) })
-			settings := receivertest.NewNopSettings(componentmetadata.Type)
-			settings.MeterProvider = provider
-			targetConfig := GNMITargetConfig{
-				Name: "non-atomic-undecodable", Product: gnmiProductCatalyst9300, SoftwareVersion: "17.18.1",
-				AllowUnqualified: true, MaxStreams: 1, Profiles: subscriptionProfilesOnly(builtinGNMIProfileSystem),
-			}
-			sink := &consumertest.MetricsSink{}
-			receiver, target, stream := newDeliveryTestReceiverWithSettings(t, settings, targetConfig, 10, sink)
-			t1 := time.Now().Add(-time.Minute).Truncate(time.Millisecond)
-			t2 := t1.Add(time.Second)
-
-			require.NoError(t, receiver.processNotification(
-				t.Context(),
-				target,
-				stream,
-				deliveryTestSwitchCPUValueNotification(
-					t,
-					t1,
-					false,
-					&gnmipb.TypedValue{Value: &gnmipb.TypedValue_UintVal{UintVal: 70}},
-				),
-			))
-			require.Len(t, target.cache.Snapshot(), 1)
-			receiver.telemetry.success(t.Context(), target.config.Name, stream.Profile, time.Unix(123, 0))
-			assert.Equal(t, int64(123), runtimeTestTelemetryIntGauge(
-				t, reader, "otelcol_ciscoosreceiver_gnmi_last_success_unixtime",
-			))
-
-			synced, err := receiver.handleSubscribeResponse(t.Context(), target, stream, &gnmipb.SubscribeResponse{
-				Response: &gnmipb.SubscribeResponse_Update{Update: deliveryTestSwitchCPUValueNotification(
-					t, t2, false, test.value(),
-				)},
-			})
-			require.NoError(t, err)
-			assert.False(t, synced)
-			assert.Empty(t, target.cache.Snapshot())
-			assert.Equal(t, 1, target.cache.Usage().InvalidationWatermarks)
-			target.qualificationMu.Lock()
-			assert.False(t, target.anyProgress, "a rejected value must not satisfy stream qualification")
-			assert.Contains(t, target.degradedQualification, stream.Profile)
-			target.qualificationMu.Unlock()
-			assert.False(t, target.sessionUp.Load(), "a rejected value must not advance target availability")
-			assert.Zero(t, runtimeTestMetricPointCountAll(sink.AllMetrics(), "cisco.device.up"))
-			assert.Equal(t, int64(123), runtimeTestTelemetryIntGauge(
-				t, reader, "otelcol_ciscoosreceiver_gnmi_last_success_unixtime",
-			))
-			assert.Equal(t, int64(1), runtimeTestTelemetryIntSum(
-				t, reader, "otelcol_ciscoosreceiver_gnmi_decode_errors",
-			))
-			assert.Equal(t, test.wantUnsupportedTelemetry, runtimeTestTelemetryIntSum(
-				t, reader, "otelcol_ciscoosreceiver_gnmi_unsupported_value_kinds",
-			))
-			assert.Equal(t, int64(1), runtimeTestTelemetryIntGauge(
-				t, reader, "otelcol_ciscoosreceiver_gnmi_profile_degraded",
-			))
-
-			synced, err = receiver.handleSubscribeResponse(t.Context(), target, stream, &gnmipb.SubscribeResponse{
-				Response: &gnmipb.SubscribeResponse_Update{Update: deliveryTestSwitchCPUValueNotification(
-					t,
-					t2,
-					false,
-					&gnmipb.TypedValue{Value: &gnmipb.TypedValue_UintVal{UintVal: 80}},
-				)},
-			})
-			require.NoError(t, err)
-			assert.False(t, synced)
-			snapshot := target.cache.Snapshot()
-			require.Len(t, snapshot, 1)
-			assert.InDelta(t, .8, snapshot[0].DoubleValue, 0.0001)
-			assert.Zero(t, target.cache.Usage().InvalidationWatermarks)
-			target.qualificationMu.Lock()
-			assert.True(t, target.anyProgress)
-			assert.Contains(t, target.degradedQualification, stream.Profile,
-				"a valid correction must not clear session-sticky curated degradation")
-			target.qualificationMu.Unlock()
-			assert.False(t, target.sessionUp.Load())
-			assert.Zero(t, runtimeTestMetricPointCountAll(sink.AllMetrics(), "cisco.device.up"))
-		})
-	}
-}
-
-func TestProcessNotificationNegativeMonotonicCounterWithdrawsAndStaysDegraded(t *testing.T) {
-	reader := metric.NewManualReader()
-	provider := metric.NewMeterProvider(metric.WithReader(reader))
-	t.Cleanup(func() { require.NoError(t, provider.Shutdown(context.WithoutCancel(t.Context()))) })
-	settings := receivertest.NewNopSettings(componentmetadata.Type)
-	settings.MeterProvider = provider
-	targetConfig := GNMITargetConfig{
-		Name: "negative-counter", Product: gnmiProductCatalyst9300, SoftwareVersion: "17.18.1",
-		AllowUnqualified: true, MaxStreams: 1, Profiles: subscriptionProfilesOnly(builtinGNMIProfileInterfaces),
-	}
-	sink := &consumertest.MetricsSink{}
-	receiver, target, stream := newDeliveryTestReceiverWithSettings(t, settings, targetConfig, 10, sink)
-	t1 := time.Now().Add(-time.Minute).Truncate(time.Millisecond)
-	t2 := t1.Add(time.Second)
-
-	require.NoError(t, receiver.processNotification(
-		t.Context(),
-		target,
-		stream,
-		deliveryTestSwitchInterfaceCounterNotification(
-			t,
-			t1,
-			&gnmipb.TypedValue{Value: &gnmipb.TypedValue_UintVal{UintVal: 5}},
-		),
-	))
-	seed := target.cache.Snapshot()
-	require.Len(t, seed, 1)
-	assert.Equal(t, "system.network.io", seed[0].Metric.Name)
-	assert.Equal(t, int64(5), seed[0].IntValue)
-	require.Equal(t, 1, runtimeTestMetricPointCountAll(sink.AllMetrics(), "system.network.io"))
-	receiver.telemetry.success(t.Context(), target.config.Name, stream.Profile, time.Unix(123, 0))
-	require.Equal(t, int64(123), runtimeTestTelemetryIntGauge(
-		t, reader, "otelcol_ciscoosreceiver_gnmi_last_success_unixtime",
-	))
-
-	synced, err := receiver.handleSubscribeResponse(t.Context(), target, stream, &gnmipb.SubscribeResponse{
-		Response: &gnmipb.SubscribeResponse_Update{Update: deliveryTestSwitchInterfaceCounterNotification(
-			t,
-			t2,
-			&gnmipb.TypedValue{Value: &gnmipb.TypedValue_IntVal{IntVal: -1}},
-		)},
-	})
-	require.NoError(t, err)
-	assert.False(t, synced)
-	assert.Empty(t, target.cache.Snapshot(), "a negative cumulative counter must withdraw its exact prior series")
-	assert.Equal(t, 1, target.cache.Usage().InvalidationWatermarks)
-	assert.Equal(t, 1, runtimeTestMetricPointCountAll(sink.AllMetrics(), "system.network.io"),
-		"the rejected negative counter must not reach downstream delivery")
-	assert.Equal(t, int64(123), runtimeTestTelemetryIntGauge(
-		t, reader, "otelcol_ciscoosreceiver_gnmi_last_success_unixtime",
-	), "committing the semantic withdrawal must not advance last-success telemetry")
-	assert.Equal(t, int64(1), runtimeTestTelemetryIntSum(
-		t, reader, "otelcol_ciscoosreceiver_gnmi_decode_errors",
-	))
-	assert.Equal(t, int64(1), runtimeTestTelemetryIntGauge(
-		t, reader, "otelcol_ciscoosreceiver_gnmi_profile_degraded",
-	))
-	target.qualificationMu.Lock()
-	assert.False(t, target.anyProgress, "a rejected counter must not satisfy stream qualification")
-	assert.Contains(t, target.degradedQualification, stream.Profile)
-	target.qualificationMu.Unlock()
-	assert.False(t, target.sessionUp.Load())
-	assert.Zero(t, runtimeTestMetricPointCountAll(sink.AllMetrics(), "cisco.device.up"))
-
-	synced, err = receiver.handleSubscribeResponse(t.Context(), target, stream, &gnmipb.SubscribeResponse{
-		Response: &gnmipb.SubscribeResponse_Update{Update: deliveryTestSwitchInterfaceCounterNotification(
-			t,
-			t2,
-			&gnmipb.TypedValue{Value: &gnmipb.TypedValue_UintVal{UintVal: 6}},
-		)},
-	})
-	require.NoError(t, err)
-	assert.False(t, synced)
-	correction := target.cache.Snapshot()
-	require.Len(t, correction, 1)
-	assert.Equal(t, int64(6), correction[0].IntValue)
-	assert.Zero(t, target.cache.Usage().InvalidationWatermarks)
-	assert.Equal(t, 2, runtimeTestMetricPointCountAll(sink.AllMetrics(), "system.network.io"))
-	target.qualificationMu.Lock()
-	assert.True(t, target.anyProgress)
-	assert.Contains(t, target.degradedQualification, stream.Profile,
-		"a valid same-timestamp correction must not clear session-sticky curated degradation")
-	target.qualificationMu.Unlock()
-	assert.False(t, target.sessionUp.Load())
-	assert.Zero(t, runtimeTestMetricPointCountAll(sink.AllMetrics(), "cisco.device.up"))
-}
-
-func TestProcessNotificationAggregateJSONCommitsValidSiblingAndWithdrawsInvalidDescendant(t *testing.T) {
-	reader := metric.NewManualReader()
-	provider := metric.NewMeterProvider(metric.WithReader(reader))
-	t.Cleanup(func() { require.NoError(t, provider.Shutdown(context.WithoutCancel(t.Context()))) })
-	settings := receivertest.NewNopSettings(componentmetadata.Type)
-	settings.MeterProvider = provider
-	targetConfig := GNMITargetConfig{
-		Name: "aggregate-descendant", Product: gnmiProductCatalyst9300, SoftwareVersion: "17.18.1",
-		AllowUnqualified: true, MaxStreams: 1, Profiles: subscriptionProfilesOnly(builtinGNMIProfileInterfaces),
-	}
-	sink := &consumertest.MetricsSink{}
-	receiver, target, stream := newDeliveryTestReceiverWithSettings(t, settings, targetConfig, 10, sink)
-	t1 := time.Now().Add(-time.Minute).Truncate(time.Millisecond)
-	t2 := t1.Add(time.Second)
-
-	require.NoError(t, receiver.processNotification(
-		t.Context(),
-		target,
-		stream,
-		deliveryTestSwitchInterfaceStateValueNotification(t, t1, true, "UP"),
-	))
-	seed := target.cache.Snapshot()
-	require.Len(t, seed, 1)
-	assert.Equal(t, "system.network.interface.status", seed[0].Metric.Name)
-	receiver.telemetry.success(t.Context(), target.config.Name, stream.Profile, time.Unix(123, 0))
-	assert.Equal(t, int64(123), runtimeTestTelemetryIntGauge(
-		t, reader, "otelcol_ciscoosreceiver_gnmi_last_success_unixtime",
-	))
-
-	synced, err := receiver.handleSubscribeResponse(t.Context(), target, stream, &gnmipb.SubscribeResponse{
-		Response: &gnmipb.SubscribeResponse_Update{
-			Update: deliveryTestSwitchInterfaceAggregateNotification(t, t2),
-		},
-	})
-	require.NoError(t, err)
-	assert.False(t, synced)
-	snapshot := target.cache.Snapshot()
-	require.Len(t, snapshot, 1,
-		"the valid aggregate sibling must commit while the invalid mapped descendant is withdrawn")
-	assert.Equal(t, "system.network.io", snapshot[0].Metric.Name)
-	assert.Equal(t, int64(5), snapshot[0].IntValue)
-	assert.Equal(t, "receive", snapshot[0].Attributes["network.io.direction"])
-	assert.Equal(t, 1, target.cache.Usage().InvalidationWatermarks)
-	assert.Equal(t, 1, runtimeTestMetricPointCountAll(sink.AllMetrics(), "system.network.io"))
-	target.qualificationMu.Lock()
-	assert.False(t, target.anyProgress, "a partially rejected aggregate must not satisfy stream qualification")
-	assert.Contains(t, target.degradedQualification, stream.Profile)
-	target.qualificationMu.Unlock()
-	assert.False(t, target.sessionUp.Load())
-	assert.Zero(t, runtimeTestMetricPointCountAll(sink.AllMetrics(), "cisco.device.up"))
-	assert.Equal(t, int64(123), runtimeTestTelemetryIntGauge(
-		t, reader, "otelcol_ciscoosreceiver_gnmi_last_success_unixtime",
-	))
-	assert.Equal(t, int64(1), runtimeTestTelemetryIntSum(
-		t, reader, "otelcol_ciscoosreceiver_gnmi_decode_errors",
-	))
-
-	synced, err = receiver.handleSubscribeResponse(t.Context(), target, stream, &gnmipb.SubscribeResponse{
-		Response: &gnmipb.SubscribeResponse_Update{
-			Update: deliveryTestSwitchInterfaceStateValueNotification(t, t2, false, "UP"),
-		},
-	})
-	require.NoError(t, err)
-	assert.False(t, synced)
-	snapshot = target.cache.Snapshot()
-	require.Len(t, snapshot, 2)
-	assert.Zero(t, target.cache.Usage().InvalidationWatermarks)
-	assert.Contains(t, []string{snapshot[0].Metric.Name, snapshot[1].Metric.Name}, "system.network.interface.status")
-	assert.Contains(t, []string{snapshot[0].Metric.Name, snapshot[1].Metric.Name}, "system.network.io")
-	target.qualificationMu.Lock()
-	assert.True(t, target.anyProgress)
-	assert.Contains(t, target.degradedQualification, stream.Profile,
-		"a valid same-timestamp correction must not clear curated session degradation")
-	target.qualificationMu.Unlock()
-	assert.False(t, target.sessionUp.Load())
-	assert.Zero(t, runtimeTestMetricPointCountAll(sink.AllMetrics(), "cisco.device.up"))
-}
-
-func TestProcessNotificationRejectsInvalidTimestampWithoutPoisoningCache(t *testing.T) {
-	reader := metric.NewManualReader()
-	provider := metric.NewMeterProvider(metric.WithReader(reader))
-	t.Cleanup(func() { require.NoError(t, provider.Shutdown(context.WithoutCancel(t.Context()))) })
-	settings := receivertest.NewNopSettings(componentmetadata.Type)
-	settings.MeterProvider = provider
-	mapping := runtimeTestMapping("interfaces/interface/state/value", "delivery.timestamp")
-	mapping.PathKeys = map[string]string{"interface.name": "network.interface.name"}
-	targetConfig := runtimeTestTarget("127.0.0.1:57400", "", gnmiModeStream, mapping)
-	receiver, target, stream := newDeliveryTestReceiverWithSettings(
-		t, settings, targetConfig, 10, consumertest.NewNop(),
-	)
-	t1 := time.Now().Add(-time.Minute).Truncate(time.Millisecond)
-	t2 := t1.Add(time.Second)
-
-	require.NoError(t, receiver.processNotification(
-		t.Context(), target, stream,
-		deliveryTestInterfaceNotification(t, t1, false, "", "Ethernet1"),
-	))
-	require.Len(t, target.cache.Snapshot(), 1)
-
-	future := deliveryTestInterfaceNotification(t, time.Now().Add(23*time.Hour), false, "", "Ethernet1")
-	require.ErrorIs(t, receiver.processNotification(t.Context(), target, stream, future), errSharedGNMINotificationIgnored)
-	snapshot := target.cache.Snapshot()
-	require.Len(t, snapshot, 1)
-	assert.True(t, snapshot[0].Timestamp.Equal(t1))
-
-	require.NoError(t, receiver.processNotification(
-		t.Context(), target, stream,
-		deliveryTestInterfaceNotification(t, t2, false, "", "Ethernet1"),
-	))
-	snapshot = target.cache.Snapshot()
-	require.Len(t, snapshot, 1)
-	assert.True(t, snapshot[0].Timestamp.Equal(t2),
-		"the first valid update after a rejected future timestamp must apply immediately")
-	assert.Equal(t, int64(1), runtimeTestTelemetryIntSum(
-		t, reader, "otelcol_ciscoosreceiver_gnmi_invalid_timestamps",
-	))
-	assert.Zero(t, runtimeTestTelemetryIntSum(t, reader, "otelcol_ciscoosreceiver_gnmi_out_of_order_updates"))
-}
-
 func TestProcessNXOpticsRefusalRollsBackCacheSensorAndPresenceState(t *testing.T) {
 	consumer := &deliveryTestScriptedConsumer{failCalls: map[int]struct{}{1: {}}}
 	targetConfig := GNMITargetConfig{
-		Name: "nx-delivery", Product: gnmiProductNexus9000, SoftwareVersion: "10.6(1)", MaxStreams: 1,
+		Name: "nx-delivery", Platform: gnmiPlatformNXOS, MaxStreams: 1,
 		Profiles: subscriptionProfilesOnly(builtinGNMIProfileOptics),
 	}
 	receiver, target, stream := newDeliveryTestReceiver(t, targetConfig, 10, consumer)
@@ -564,7 +118,7 @@ func TestProcessNXOpticsRefusalRollsBackCacheSensorAndPresenceState(t *testing.T
 
 func TestProcessNXOpticsFitsAuxiliaryMultiplierAtOneCachedSeries(t *testing.T) {
 	targetConfig := GNMITargetConfig{
-		Name: "nx-minimum-budget", Product: gnmiProductNexus9000, SoftwareVersion: "10.6(1)", MaxStreams: 1,
+		Name: "nx-minimum-budget", Platform: gnmiPlatformNXOS, MaxStreams: 1,
 		Profiles: subscriptionProfilesOnly(builtinGNMIProfileOptics),
 	}
 	config := createDefaultConfig().(*Config)
@@ -604,7 +158,7 @@ func TestProcessNXOpticsFitsAuxiliaryMultiplierAtOneCachedSeries(t *testing.T) {
 
 func TestProcessNXOpticsCombinesCrossComponentReplacementDeltasAtCapacity(t *testing.T) {
 	targetConfig := GNMITargetConfig{
-		Name: "nx-combined-budget", Product: gnmiProductNexus9000, SoftwareVersion: "10.6(1)", MaxStreams: 1,
+		Name: "nx-combined-budget", Platform: gnmiPlatformNXOS, MaxStreams: 1,
 		Profiles: subscriptionProfilesOnly(builtinGNMIProfileOptics),
 	}
 	receiver, target, stream := newDeliveryTestReceiver(t, targetConfig, 10, consumertest.NewNop())
@@ -663,7 +217,7 @@ func TestPendingNXTransactionsDoNotHoldGlobalBudgetLock(t *testing.T) {
 		cache, err := internalgnmi.NewCache(10)
 		require.NoError(t, err)
 		target, err := newSharedGNMITargetRuntimeWithBudget(GNMITargetConfig{
-			Name: name, Product: gnmiProductNexus9000, SoftwareVersion: "10.6(1)", MaxStreams: 1,
+			Name: name, Platform: gnmiPlatformNXOS, MaxStreams: 1,
 			Profiles: subscriptionProfilesOnly(builtinGNMIProfileOptics),
 		}, cache, budget)
 		require.NoError(t, err)
@@ -883,22 +437,6 @@ func newDeliveryTestReceiver(
 	maxDatapoints int,
 	next consumer.Metrics,
 ) (*sharedGNMIReceiver, *sharedGNMITargetRuntime, sharedGNMIRuntimeStream) {
-	return newDeliveryTestReceiverWithSettings(
-		t,
-		receivertest.NewNopSettings(componentmetadata.Type),
-		targetConfig,
-		maxDatapoints,
-		next,
-	)
-}
-
-func newDeliveryTestReceiverWithSettings(
-	t *testing.T,
-	settings receiverapi.Settings,
-	targetConfig GNMITargetConfig,
-	maxDatapoints int,
-	next consumer.Metrics,
-) (*sharedGNMIReceiver, *sharedGNMITargetRuntime, sharedGNMIRuntimeStream) {
 	t.Helper()
 	config := createDefaultConfig().(*Config)
 	config.GNMI = GNMIConfig{
@@ -906,118 +444,13 @@ func newDeliveryTestReceiverWithSettings(
 		MaxCachedSeries:       100,
 		Targets:               []GNMITargetConfig{targetConfig},
 	}
-	created, err := newSharedGNMIReceiver(settings, config, next)
+	created, err := newSharedGNMIReceiver(receivertest.NewNopSettings(componentmetadata.Type), config, next)
 	require.NoError(t, err)
 	receiver := created.(*sharedGNMIReceiver)
 	t.Cleanup(func() { require.NoError(t, receiver.Shutdown(context.WithoutCancel(t.Context()))) })
 	require.Len(t, receiver.targets, 1)
 	require.Len(t, receiver.targets[0].streams, 1)
 	return receiver, receiver.targets[0], receiver.targets[0].streams[0]
-}
-
-func deliveryTestSwitchInterfaceStateNotification(
-	t *testing.T,
-	timestamp time.Time,
-	state string,
-) *gnmipb.Notification {
-	return deliveryTestSwitchInterfaceStateValueNotification(t, timestamp, true, state)
-}
-
-func deliveryTestSwitchInterfaceStateValueNotification(
-	t *testing.T,
-	timestamp time.Time,
-	atomic bool,
-	state string,
-) *gnmipb.Notification {
-	t.Helper()
-	return &gnmipb.Notification{
-		Timestamp: timestamp.UnixNano(),
-		Atomic:    atomic,
-		Prefix: &gnmipb.Path{
-			Origin: builtinGNMIOriginRFC7951,
-			Elem:   []*gnmipb.PathElem{{Name: "openconfig-interfaces:interfaces"}},
-		},
-		Update: []*gnmipb.Update{{
-			Path: runtimeTestProtoPath(t, "interface[name=GigabitEthernet1/0/1]/state/oper-status"),
-			Val:  &gnmipb.TypedValue{Value: &gnmipb.TypedValue_StringVal{StringVal: state}},
-		}},
-	}
-}
-
-func deliveryTestSwitchInterfaceAggregateNotification(
-	t *testing.T,
-	timestamp time.Time,
-) *gnmipb.Notification {
-	t.Helper()
-	return &gnmipb.Notification{
-		Timestamp: timestamp.UnixNano(),
-		Prefix: &gnmipb.Path{
-			Origin: builtinGNMIOriginRFC7951,
-			Elem:   []*gnmipb.PathElem{{Name: "openconfig-interfaces:interfaces"}},
-		},
-		Update: []*gnmipb.Update{{
-			Path: runtimeTestProtoPath(t, "interface[name=GigabitEthernet1/0/1]/state"),
-			Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonIetfVal{JsonIetfVal: []byte(
-				`{"oper-status":null,"counters":{"in-octets":5}}`,
-			)}},
-		}},
-	}
-}
-
-func deliveryTestSwitchCPUNotification(
-	t *testing.T,
-	timestamp time.Time,
-	value uint64,
-) *gnmipb.Notification {
-	return deliveryTestSwitchCPUValueNotification(
-		t,
-		timestamp,
-		true,
-		&gnmipb.TypedValue{Value: &gnmipb.TypedValue_UintVal{UintVal: value}},
-	)
-}
-
-func deliveryTestSwitchCPUValueNotification(
-	t *testing.T,
-	timestamp time.Time,
-	atomic bool,
-	value *gnmipb.TypedValue,
-) *gnmipb.Notification {
-	t.Helper()
-	return &gnmipb.Notification{
-		Timestamp: timestamp.UnixNano(),
-		Atomic:    atomic,
-		Prefix: &gnmipb.Path{
-			Origin: builtinGNMIOriginRFC7951,
-			Elem: []*gnmipb.PathElem{
-				{Name: "Cisco-IOS-XE-process-cpu-oper:cpu-usage"},
-				{Name: "cpu-utilization"},
-			},
-		},
-		Update: []*gnmipb.Update{{
-			Path: &gnmipb.Path{Elem: []*gnmipb.PathElem{{Name: "five-seconds"}}},
-			Val:  value,
-		}},
-	}
-}
-
-func deliveryTestSwitchInterfaceCounterNotification(
-	t *testing.T,
-	timestamp time.Time,
-	value *gnmipb.TypedValue,
-) *gnmipb.Notification {
-	t.Helper()
-	return &gnmipb.Notification{
-		Timestamp: timestamp.UnixNano(),
-		Prefix: &gnmipb.Path{
-			Origin: builtinGNMIOriginRFC7951,
-			Elem:   []*gnmipb.PathElem{{Name: "openconfig-interfaces:interfaces"}},
-		},
-		Update: []*gnmipb.Update{{
-			Path: runtimeTestProtoPath(t, "interface[name=GigabitEthernet1/0/1]/state/counters/in-octets"),
-			Val:  value,
-		}},
-	}
 }
 
 func deliveryTestInterfaceNotification(

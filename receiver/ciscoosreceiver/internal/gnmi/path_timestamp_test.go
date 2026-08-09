@@ -19,11 +19,8 @@ func TestParsePathKeepsOriginSeparateAndRoundTrips(t *testing.T) {
 	assert.Equal(t, "Ethernet1/1", path.Elements[2].Keys["id"])
 	assert.Equal(t, `sys/intf/phys-[id="Ethernet1/1"][role=leaf]/sensor`, path.String())
 
-	wirePath := path.Clone()
-	wirePath.Target = ""
-	wirePath.PathTarget = "DME-target"
-	roundTrip := PathFromProto(wirePath.ToProto())
-	assert.Equal(t, wirePath, roundTrip)
+	roundTrip := PathFromProto(path.ToProto())
+	assert.Equal(t, path, roundTrip)
 
 	rfc7951, err := ParsePath("wlc-1", "rfc7951", "Cisco-IOS-XE-platform-oper:components/component/state")
 	require.NoError(t, err)
@@ -37,17 +34,11 @@ func TestJoinPathsRejectsTargetAndOriginConflicts(t *testing.T) {
 	relative, err := ParsePath("xr-2", "Cisco-IOS-XR-otu", "port/state")
 	require.NoError(t, err)
 	_, err = JoinPaths(prefix, relative)
-	require.ErrorContains(t, err, "conflicting configured targets")
+	require.ErrorContains(t, err, "conflicting path targets")
 
 	relative.Target = "xr-1"
 	_, err = JoinPaths(prefix, relative)
 	require.ErrorContains(t, err, "conflicting path origins")
-
-	relative.Origin = prefix.Origin
-	prefix.PathTarget = "OC-YANG"
-	relative.PathTarget = "OTHERS"
-	_, err = JoinPaths(prefix, relative)
-	require.ErrorContains(t, err, "conflicting gNMI path targets")
 }
 
 func TestPathHasPrefixAllowsUnkeyedBranchSelectors(t *testing.T) {
@@ -59,18 +50,6 @@ func TestPathHasPrefixAllowsUnkeyedBranchSelectors(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, path.HasPrefix(allInterfaces))
 	assert.False(t, path.HasPrefix(otherInterface))
-}
-
-func TestPathHasPrefixRequiresEmptyValuedSelectorKeyToExist(t *testing.T) {
-	selector, err := ParsePath("switch", "openconfig", "interfaces/interface[name=]")
-	require.NoError(t, err)
-	missing, err := ParsePath("switch", "openconfig", "interfaces/interface/state")
-	require.NoError(t, err)
-	present, err := ParsePath("switch", "openconfig", "interfaces/interface[name=]/state")
-	require.NoError(t, err)
-
-	assert.False(t, missing.HasPrefix(selector))
-	assert.True(t, present.HasPrefix(selector))
 }
 
 func TestNormalizeTimestampMagnitudesAndBounds(t *testing.T) {
@@ -99,21 +78,7 @@ func TestNormalizeTimestampMagnitudesAndBounds(t *testing.T) {
 		})
 	}
 
-	atReceipt, valid := NormalizeTimestamp(receipt.UnixNano(), receipt)
-	require.True(t, valid)
-	assert.Equal(t, receipt, atReceipt)
-	for _, skew := range []time.Duration{time.Nanosecond, maximumFutureClockSkew} {
-		clamped, clampedValid := NormalizeTimestamp(receipt.Add(skew).UnixNano(), receipt)
-		require.True(t, clampedValid)
-		assert.Equal(t, receipt, clamped)
-	}
-
-	for _, raw := range []int64{
-		0,
-		time.Date(1999, 1, 1, 0, 0, 0, 0, time.UTC).Unix(),
-		receipt.Add(maximumFutureClockSkew + time.Nanosecond).UnixNano(),
-		receipt.Add(23 * time.Hour).UnixNano(),
-	} {
+	for _, raw := range []int64{0, time.Date(1999, 1, 1, 0, 0, 0, 0, time.UTC).Unix(), receipt.Add(25 * time.Hour).UnixNano()} {
 		got, valid := NormalizeTimestamp(raw, receipt)
 		assert.False(t, valid)
 		assert.Equal(t, receipt, got)

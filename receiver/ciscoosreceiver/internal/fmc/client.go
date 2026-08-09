@@ -22,11 +22,10 @@ import (
 )
 
 const (
-	defaultUserAgent                 = "opentelemetry-collector-contrib-ciscoosreceiver"
-	defaultRequestTimeout            = 30 * time.Second
-	defaultPageSize                  = 100
-	restInsecureSkipVerifyConfigPath = "fmc.insecure_skip_verify"
-	tokenRefreshAfter                = 25 * time.Minute
+	defaultUserAgent      = "opentelemetry-collector-contrib-ciscoosreceiver"
+	defaultRequestTimeout = 30 * time.Second
+	defaultPageSize       = 100
+	tokenRefreshAfter     = 25 * time.Minute
 )
 
 // Config controls the Cisco Secure Firewall Management Center REST API client.
@@ -284,19 +283,7 @@ func (c *Client) list(ctx context.Context, method, operation, path string, query
 			return results, fmt.Errorf("decode fmc %s response: %w", operation, err)
 		}
 		results = append(results, pageObjects...)
-		complete := len(pageObjects) == 0
-		if !complete {
-			switch {
-			case next != "":
-				// An explicit continuation link is authoritative even when the
-				// controller returned fewer objects than requested.
-				complete = false
-			case total >= 0:
-				complete = len(results) >= total
-			default:
-				complete = len(pageObjects) < pageSize
-			}
-		}
+		complete := len(pageObjects) == 0 || len(pageObjects) < pageSize || total > -1 && len(results) >= total || next == "" && total < 0
 		truncated := len(results) > resultLimit
 		if len(results) >= resultLimit {
 			results = results[:resultLimit]
@@ -321,12 +308,6 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 			return body, header, nil
 		}
 		lastErr = err
-		if ctx.Err() != nil {
-			return nil, nil, ctx.Err()
-		}
-		if httpclient.IsCertificateVerificationError(err) {
-			return nil, nil, err
-		}
 		if requestToken.accessToken == "" {
 			// Authentication already consumed its configured retry budget. Do not
 			// multiply it by the data-request retry loop; the shared circuit is the
@@ -357,9 +338,7 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 		if header != nil {
 			retryHeader = header.Get("Retry-After")
 		}
-		retryable := retryableStatus(status) ||
-			httpclient.IsResponseBodyReadError(err) && status >= 200 && status < 300
-		if !retryable || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
+		if !retryableStatus(status) || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
 			if ctx.Err() != nil {
 				return nil, nil, ctx.Err()
 			}
@@ -397,14 +376,13 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 	resp, err := c.client.Do(req)
 	duration := time.Since(start)
 	if err != nil {
-		err = httpclient.DecorateCertificateVerificationError(err, "", restInsecureSkipVerifyConfigPath)
 		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", Duration: duration, Err: err})
 		return nil, nil, 0, requestToken, err
 	}
 	bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
-		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, RateLimited: resp.StatusCode == http.StatusTooManyRequests, Err: readErr})
+		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
 		return nil, resp.Header, resp.StatusCode, requestToken, readErr
 	}
 	if closeErr != nil {
@@ -511,9 +489,6 @@ func (c *Client) acquireToken(ctx context.Context, refreshToken string, refreshe
 		if ctx.Err() != nil {
 			return tokenBundle{}, status, ctx.Err()
 		}
-		if httpclient.IsCertificateVerificationError(err) {
-			return tokenBundle{}, status, err
-		}
 	}
 	return c.retryAuthentication(ctx, func() (tokenBundle, http.Header, int, error) {
 		return c.generateTokenOnce(ctx)
@@ -531,19 +506,11 @@ func (c *Client) retryAuthentication(ctx context.Context, request func() (tokenB
 		}
 		lastErr = err
 		lastStatus = status
-		if ctx.Err() != nil {
-			return tokenBundle{}, status, ctx.Err()
-		}
-		if httpclient.IsCertificateVerificationError(err) {
-			return tokenBundle{}, status, err
-		}
 		retryHeader := ""
 		if header != nil {
 			retryHeader = header.Get("Retry-After")
 		}
-		retryable := retryableStatus(status) ||
-			httpclient.IsResponseBodyReadError(err) && status >= 200 && status < 300
-		if !retryable || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
+		if !retryableStatus(status) || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
 			if ctx.Err() != nil {
 				return tokenBundle{}, status, ctx.Err()
 			}
@@ -570,14 +537,13 @@ func (c *Client) generateTokenOnce(ctx context.Context) (tokenBundle, http.Heade
 	resp, err := c.client.Do(req)
 	duration := time.Since(start)
 	if err != nil {
-		err = httpclient.DecorateCertificateVerificationError(err, "", restInsecureSkipVerifyConfigPath)
 		c.record(RequestStat{Controller: c.name, Operation: "auth.generatetoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/generatetoken", Outcome: "error", Duration: duration, Err: err})
 		return tokenBundle{}, nil, 0, err
 	}
 	_, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
-		c.record(RequestStat{Controller: c.name, Operation: "auth.generatetoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/generatetoken", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, RateLimited: resp.StatusCode == http.StatusTooManyRequests, Err: readErr})
+		c.record(RequestStat{Controller: c.name, Operation: "auth.generatetoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/generatetoken", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
 		return tokenBundle{}, resp.Header, resp.StatusCode, readErr
 	}
 	if closeErr != nil {
@@ -622,14 +588,13 @@ func (c *Client) refreshOnce(ctx context.Context, refreshToken string) (tokenBun
 	resp, err := c.client.Do(req)
 	duration := time.Since(start)
 	if err != nil {
-		err = httpclient.DecorateCertificateVerificationError(err, "", restInsecureSkipVerifyConfigPath)
 		c.record(RequestStat{Controller: c.name, Operation: "auth.refreshtoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/refreshtoken", Outcome: "error", Duration: duration, Err: err})
 		return tokenBundle{}, nil, 0, err
 	}
 	_, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
-		c.record(RequestStat{Controller: c.name, Operation: "auth.refreshtoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/refreshtoken", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, RateLimited: resp.StatusCode == http.StatusTooManyRequests, Err: readErr})
+		c.record(RequestStat{Controller: c.name, Operation: "auth.refreshtoken", Method: http.MethodPost, Path: "/api/fmc_platform/v1/auth/refreshtoken", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
 		return tokenBundle{}, resp.Header, resp.StatusCode, readErr
 	}
 	if closeErr != nil {

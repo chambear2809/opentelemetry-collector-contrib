@@ -75,7 +75,6 @@ type ISEPxGridConfig struct {
 	Password              configopaque.String         `mapstructure:"password"`
 	CertFile              string                      `mapstructure:"cert_file"`
 	KeyFile               string                      `mapstructure:"key_file"`
-	KeyPassword           configopaque.String         `mapstructure:"key_password"`
 	CAFile                string                      `mapstructure:"ca_file"`
 	ServerName            string                      `mapstructure:"server_name"`
 	InsecureSkipVerify    bool                        `mapstructure:"insecure_skip_verify"`
@@ -99,8 +98,6 @@ type ISEDataConnectConfig struct {
 	Username           string                    `mapstructure:"username"`
 	Password           configopaque.String       `mapstructure:"password"`
 	WalletDir          string                    `mapstructure:"wallet_dir"`
-	CAFile             string                    `mapstructure:"ca_file"`
-	ServerName         string                    `mapstructure:"server_name"`
 	SSL                bool                      `mapstructure:"ssl"`
 	SSLVerify          bool                      `mapstructure:"ssl_verify"`
 	Lookback           time.Duration             `mapstructure:"lookback"`
@@ -132,7 +129,6 @@ type ISEConfig struct {
 	NetworkDevices     ISEGroupConfig       `mapstructure:"network_devices"`
 	Endpoints          ISEGroupConfig       `mapstructure:"endpoints"`
 	Sessions           ISEGroupConfig       `mapstructure:"sessions"`
-	SessionDetails     ISEGroupConfig       `mapstructure:"session_details"`
 	AuthFailures       ISEGroupConfig       `mapstructure:"auth_failures"`
 	Accounting         ISEGroupConfig       `mapstructure:"accounting"`
 	Policy             ISEGroupConfig       `mapstructure:"policy"`
@@ -154,10 +150,6 @@ func defaultISEGroupConfig(maxResults int) ISEGroupConfig {
 	}
 }
 
-func defaultISEOptInGroupConfig(maxResults int) ISEGroupConfig {
-	return ISEGroupConfig{MaxResults: maxResults}
-}
-
 func defaultISEConfig() ISEConfig {
 	return ISEConfig{
 		UserAgent:       "opentelemetry-collector-contrib-ciscoosreceiver",
@@ -166,21 +158,20 @@ func defaultISEConfig() ISEConfig {
 		EventLookback:   24 * time.Hour,
 		SessionLookback: 15 * time.Minute,
 		MaxResults:      1000,
-		Deployment:      defaultISEOptInGroupConfig(1000),
-		NetworkDevices:  defaultISEOptInGroupConfig(5000),
-		Endpoints:       defaultISEOptInGroupConfig(5000),
+		Deployment:      defaultISEGroupConfig(1000),
+		NetworkDevices:  defaultISEGroupConfig(5000),
+		Endpoints:       defaultISEGroupConfig(5000),
 		Sessions:        defaultISEGroupConfig(5000),
-		SessionDetails:  defaultISEOptInGroupConfig(5000),
-		AuthFailures:    defaultISEOptInGroupConfig(5000),
-		Accounting:      defaultISEOptInGroupConfig(5000),
-		Policy:          defaultISEOptInGroupConfig(5000),
-		Posture:         defaultISEOptInGroupConfig(5000),
-		Profiler:        defaultISEOptInGroupConfig(5000),
-		TrustSec:        defaultISEOptInGroupConfig(5000),
-		Alarms:          defaultISEOptInGroupConfig(1000),
-		Certificates:    defaultISEOptInGroupConfig(1000),
-		Licensing:       defaultISEOptInGroupConfig(1000),
-		Webhooks:        defaultISEOptInGroupConfig(1000),
+		AuthFailures:    defaultISEGroupConfig(5000),
+		Accounting:      defaultISEGroupConfig(5000),
+		Policy:          defaultISEGroupConfig(5000),
+		Posture:         defaultISEGroupConfig(5000),
+		Profiler:        defaultISEGroupConfig(5000),
+		TrustSec:        defaultISEGroupConfig(5000),
+		Alarms:          defaultISEGroupConfig(1000),
+		Certificates:    defaultISEGroupConfig(1000),
+		Licensing:       defaultISEGroupConfig(1000),
+		Webhooks:        defaultISEGroupConfig(1000),
 		PxGrid: ISEPxGridConfig{
 			Subscriptions: ISEPxGridSubscriptionConfig{
 				Session:        true,
@@ -236,8 +227,7 @@ func (cfg ISEPxGridConfig) hasTarget() bool {
 		cfg.NodeName != "" ||
 		cfg.Password != "" ||
 		cfg.CertFile != "" ||
-		cfg.KeyFile != "" ||
-		cfg.KeyPassword != ""
+		cfg.KeyFile != ""
 }
 
 func (cfg ISEDataConnectConfig) hasTarget() bool {
@@ -246,9 +236,7 @@ func (cfg ISEDataConnectConfig) hasTarget() bool {
 		cfg.ServiceName != "" ||
 		cfg.Username != "" ||
 		cfg.Password != "" ||
-		cfg.WalletDir != "" ||
-		cfg.CAFile != "" ||
-		cfg.ServerName != ""
+		cfg.WalletDir != ""
 }
 
 func (cfg *Config) validateISE() error {
@@ -315,7 +303,6 @@ func (cfg ISEConfig) withDefaults() ISEConfig {
 	cfg.NetworkDevices = cfg.NetworkDevices.withDefault(defaults.NetworkDevices)
 	cfg.Endpoints = cfg.Endpoints.withDefault(defaults.Endpoints)
 	cfg.Sessions = cfg.Sessions.withDefault(defaults.Sessions)
-	cfg.SessionDetails = cfg.SessionDetails.withDefault(defaults.SessionDetails)
 	cfg.AuthFailures = cfg.AuthFailures.withDefault(defaults.AuthFailures)
 	cfg.Accounting = cfg.Accounting.withDefault(defaults.Accounting)
 	cfg.Policy = cfg.Policy.withDefault(defaults.Policy)
@@ -376,7 +363,6 @@ func (cfg ISEConfig) groups() map[string]ISEGroupConfig {
 		"network_devices": cfg.NetworkDevices,
 		"endpoints":       cfg.Endpoints,
 		"sessions":        cfg.Sessions,
-		"session_details": cfg.SessionDetails,
 		"auth_failures":   cfg.AuthFailures,
 		"accounting":      cfg.Accounting,
 		"policy":          cfg.Policy,
@@ -458,9 +444,6 @@ func validateISEPxGrid(cfg ISEPxGridConfig) error {
 	if (cfg.CertFile == "") != (cfg.KeyFile == "") {
 		err = multierr.Append(err, errors.New("ise.pxgrid.cert_file and ise.pxgrid.key_file must be provided together"))
 	}
-	if cfg.KeyPassword != "" && (cfg.CertFile == "" || cfg.KeyFile == "") {
-		err = multierr.Append(err, errors.New("ise.pxgrid.key_password requires both ise.pxgrid.cert_file and ise.pxgrid.key_file"))
-	}
 	if cfg.Streaming && !cfg.Enabled {
 		err = multierr.Append(err, errors.New("ise.pxgrid.streaming requires ise.pxgrid.enabled"))
 	}
@@ -495,31 +478,6 @@ func validateISEDataConnect(cfg ISEDataConnectConfig) error {
 		if !cfg.SSL {
 			err = multierr.Append(err, errors.New("ise.data_connect.ssl must be true because Data Connect credentials require TLS"))
 		}
-	}
-	if cfg.WalletDir != strings.TrimSpace(cfg.WalletDir) {
-		err = multierr.Append(err, errors.New("ise.data_connect.wallet_dir must not contain surrounding whitespace"))
-	} else if cfg.WalletDir != "" && strings.IndexByte(cfg.WalletDir, 0) >= 0 {
-		err = multierr.Append(err, errors.New("ise.data_connect.wallet_dir must be a valid directory path"))
-	}
-	if cfg.CAFile != strings.TrimSpace(cfg.CAFile) {
-		err = multierr.Append(err, errors.New("ise.data_connect.ca_file must not contain surrounding whitespace"))
-	} else if cfg.CAFile != "" && strings.IndexByte(cfg.CAFile, 0) >= 0 {
-		err = multierr.Append(err, errors.New("ise.data_connect.ca_file must be a valid file path"))
-	}
-	serverName := strings.TrimSpace(cfg.ServerName)
-	if cfg.ServerName != serverName {
-		err = multierr.Append(err, errors.New("ise.data_connect.server_name must not contain surrounding whitespace"))
-	} else if serverName != "" && !validHostOrIP(serverName) {
-		err = multierr.Append(err, errors.New("ise.data_connect.server_name must be a valid hostname or IP address without a scheme or port"))
-	}
-	if cfg.WalletDir != "" && cfg.CAFile != "" {
-		err = multierr.Append(err, errors.New("ise.data_connect.wallet_dir cannot be combined with ca_file; use either an Oracle wallet or a PEM CA bundle"))
-	}
-	if !cfg.SSLVerify && cfg.CAFile != "" {
-		err = multierr.Append(err, errors.New("ise.data_connect.ca_file requires ssl_verify to be true"))
-	}
-	if !cfg.SSLVerify && cfg.ServerName != "" {
-		err = multierr.Append(err, errors.New("ise.data_connect.server_name requires ssl_verify to be true"))
 	}
 	if cfg.Lookback < 0 {
 		err = multierr.Append(err, errors.New("ise.data_connect.lookback must not be negative"))

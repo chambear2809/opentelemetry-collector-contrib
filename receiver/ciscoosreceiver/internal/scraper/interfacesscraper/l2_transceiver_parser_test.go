@@ -96,19 +96,6 @@ Gi1/0/3     20           18   0           0           0                    0    
 	assert.Equal(t, int64(2), errors[0].Value)
 }
 
-func TestParseLACPCountersRxTxWithPacketErrorColumn(t *testing.T) {
-	packets, errors := parseLACPCounters(`Port LACPDUs Rx LACPDUs Tx Pkts Err
-Gi1/0/1 10 12 2`)
-
-	require.Len(t, packets, 2)
-	assert.Equal(t, "receive", packets[0].Direction)
-	assert.Equal(t, int64(10), packets[0].Value)
-	assert.Equal(t, "transmit", packets[1].Direction)
-	assert.Equal(t, int64(12), packets[1].Value)
-	require.Len(t, errors, 1)
-	assert.Equal(t, int64(2), errors[0].Value)
-}
-
 func TestParseErrDisabledInterfaces(t *testing.T) {
 	output := `Port      Name               Status       Reason
 This interface is errdisabled because of a test

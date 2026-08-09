@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,7 +15,6 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,13 +24,9 @@ import (
 )
 
 const (
-	defaultUserAgent             = "opentelemetry-collector-contrib-ciscoosreceiver"
-	defaultRequestTimeout        = 30 * time.Second
-	defaultPageSize              = 100
-	refreshDeadlineDivisor       = 2
-	caFileConfigPath             = "aci.ca_file"
-	serverNameConfigPath         = "aci.server_name"
-	insecureSkipVerifyConfigPath = "aci.insecure_skip_verify"
+	defaultUserAgent      = "opentelemetry-collector-contrib-ciscoosreceiver"
+	defaultRequestTimeout = 30 * time.Second
+	defaultPageSize       = 100
 )
 
 // Config controls the Cisco APIC API client.
@@ -46,8 +40,6 @@ type Config struct {
 	Timeout            time.Duration
 	MaxRetries         int
 	PageSize           int
-	CAFile             string
-	ServerName         string
 	InsecureSkipVerify bool
 }
 
@@ -67,7 +59,6 @@ type RequestStat struct {
 // APIError is returned for non-success APIC API responses.
 type APIError struct {
 	StatusCode int
-	body       []byte
 }
 
 func (e *APIError) Error() string {
@@ -87,55 +78,19 @@ type Client struct {
 	pageSize   int
 	controller string
 
-	tokenMu                  sync.Mutex
-	token                    string
-	refreshTimeout           time.Duration
-	refreshDeadline          time.Time
-	sessionExpiry            time.Time
-	tokenAccepted            bool
-	tokenGeneration          uint64
-	generationRejected       bool
-	rejectedGeneration       uint64
-	generationRejectedSignal chan struct{}
-	loginInflight            chan struct{}
-	lastAuthErr              error
-	lastAuthAt               time.Time
-	authFailures             int
-	lastRefreshErr           error
-	refreshRetryAt           time.Time
-	refreshFailures          int
+	tokenMu       sync.Mutex
+	token         string
+	loginInflight chan struct{}
+	lastAuthErr   error
+	lastAuthAt    time.Time
+	authFailures  int
 
 	OnRequest func(RequestStat)
 }
 
-type tokenSnapshot struct {
-	value          string
-	generation     uint64
-	refreshTimeout time.Duration
-	sessionExpiry  time.Time
-}
-
-type tokenRecovery struct {
-	done       chan struct{}
-	generation uint64
-}
-
-type tokenRejection struct {
-	retry    bool
-	joined   bool
-	recovery *tokenRecovery
-}
-
-type authSession struct {
-	token           string
-	refreshTimeout  time.Duration
-	refreshDeadline time.Time
-	sessionExpiry   time.Time
-}
-
 // authBackoffSchedule defines the wait that ensureToken honors after a failed
-// login or a token rejected by a data request. It avoids hammering the APIC and
-// locking out the user account when credentials are wrong.
+// login. It avoids hammering the APIC and locking out the user account when
+// credentials are wrong.
 var authBackoffSchedule = []time.Duration{
 	1 * time.Second,
 	5 * time.Second,
@@ -182,13 +137,9 @@ func NewClient(cfg Config) (*Client, error) {
 	if pageSize <= 0 {
 		pageSize = defaultPageSize
 	}
-	tlsConfig, err := clientTLSConfig(cfg)
-	if err != nil {
-		return nil, err
-	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-	if tlsConfig != nil {
-		transport.TLSClientConfig = tlsConfig
+	if cfg.InsecureSkipVerify {
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 	name := cfg.Name
 	if name == "" {
@@ -207,42 +158,6 @@ func NewClient(cfg Config) (*Client, error) {
 		pageSize:   pageSize,
 		controller: parsed.Host,
 	}, nil
-}
-
-func clientTLSConfig(cfg Config) (*tls.Config, error) {
-	if cfg.CAFile == "" && cfg.ServerName == "" && !cfg.InsecureSkipVerify {
-		return nil, nil
-	}
-	tlsConfig := &tls.Config{
-		ServerName:         cfg.ServerName,
-		InsecureSkipVerify: cfg.InsecureSkipVerify,
-	}
-	if cfg.CAFile == "" {
-		return tlsConfig, nil
-	}
-
-	caBytes, err := os.ReadFile(cfg.CAFile)
-	if err != nil {
-		return nil, fmt.Errorf("read APIC CA file %q: %w", cfg.CAFile, err)
-	}
-	rootCAs, err := x509.SystemCertPool()
-	if err != nil || rootCAs == nil {
-		rootCAs = x509.NewCertPool()
-	}
-	if !rootCAs.AppendCertsFromPEM(caBytes) {
-		return nil, fmt.Errorf("%s %q did not contain PEM certificates", caFileConfigPath, cfg.CAFile)
-	}
-	tlsConfig.RootCAs = rootCAs
-	return tlsConfig, nil
-}
-
-func decorateCertificateVerificationError(err error) error {
-	decorated := httpclient.DecorateCertificateVerificationError(err, caFileConfigPath, insecureSkipVerifyConfigPath)
-	var hostnameErr x509.HostnameError
-	if errors.As(err, &hostnameErr) {
-		return fmt.Errorf("configure %s with a DNS name or IP address present in the APIC certificate SAN: %w", serverNameConfigPath, decorated)
-	}
-	return decorated
 }
 
 // CloseIdleConnections closes idle HTTP connections held by the client.
@@ -273,29 +188,16 @@ func Query(values map[string]string) url.Values {
 
 // ListClass fetches all pages from an APIC class query endpoint.
 func (c *Client) ListClass(ctx context.Context, operation, className string, query url.Values, maxResults int) ([]Object, error) {
-	return c.ListClassFiltered(ctx, operation, className, query, maxResults, nil)
-}
-
-// ListClassFiltered fetches APIC class query pages until maxResults objects
-// accepted by include have been collected. The predicate is applied before the
-// result limit so selective filters do not silently discard matches that occur
-// after the first maxResults raw objects.
-func (c *Client) ListClassFiltered(ctx context.Context, operation, className string, query url.Values, maxResults int, include func(Object) bool) ([]Object, error) {
 	path := "/api/class/" + strings.TrimSuffix(strings.TrimPrefix(className, "/"), ".json") + ".json"
-	return c.list(ctx, operation, path, query, maxResults, include)
+	return c.List(ctx, operation, path, query, maxResults)
 }
 
 // List fetches all pages for an APIC endpoint.
 func (c *Client) List(ctx context.Context, operation, path string, query url.Values, maxResults int) ([]Object, error) {
-	return c.list(ctx, operation, path, query, maxResults, nil)
-}
-
-func (c *Client) list(ctx context.Context, operation, path string, query url.Values, maxResults int, include func(Object) bool) ([]Object, error) {
 	if query == nil {
 		query = url.Values{}
 	}
 	var results []Object
-	rawResults := 0
 	resultLimit, hardResultLimit := httpclient.EffectivePaginationResultLimit(maxResults)
 	page := 0
 	pages := 0
@@ -313,7 +215,7 @@ func (c *Client) list(ctx context.Context, operation, path string, query url.Val
 		}
 		pageQuery := cloneValues(query)
 		pageSize := c.pageSize
-		if remaining := resultLimit - len(results); include == nil && remaining < pageSize {
+		if remaining := resultLimit - len(results); remaining < pageSize {
 			pageSize = remaining
 		}
 		if _, ok := pageQuery["page-size"]; !ok {
@@ -339,38 +241,14 @@ func (c *Client) list(ctx context.Context, operation, path string, query url.Val
 		if err != nil {
 			return results, fmt.Errorf("decode apic %s response: %w", operation, err)
 		}
-		rawResults += len(pageObjects)
-		if include == nil {
-			results = append(results, pageObjects...)
-		} else {
-			for _, object := range pageObjects {
-				if include(object) {
-					results = append(results, object)
-				}
-			}
-		}
+		results = append(results, pageObjects...)
 		next := httpclient.NextLink(header.Get("Link"))
-		complete := len(pageObjects) == 0
-		if !complete {
-			switch {
-			case next != "":
-				// An explicit continuation link is authoritative even when the
-				// controller returned fewer objects than requested.
-				complete = false
-			case total >= 0:
-				complete = rawResults >= total
-			default:
-				complete = len(pageObjects) < pageSize
-			}
-		}
+		complete := len(pageObjects) == 0 || len(pageObjects) < pageSize || total > -1 && len(results) >= total || total < 0 && next == ""
 		truncated := len(results) > resultLimit
 		if len(results) >= resultLimit {
 			results = results[:resultLimit]
-			if truncated || !complete {
-				if hardResultLimit {
-					return results, httpclient.NewPaginationLimitError(operation, "result", resultLimit, len(results))
-				}
-				return results, httpclient.NewConfiguredPaginationLimitError(operation, "result", resultLimit, len(results))
+			if hardResultLimit && (truncated || !complete) {
+				return results, httpclient.NewPaginationLimitError(operation, "result", resultLimit, len(results))
 			}
 			return results, nil
 		}
@@ -382,86 +260,43 @@ func (c *Client) list(ctx context.Context, operation, path string, query url.Val
 }
 
 func (c *Client) do(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, http.Header, error) {
-	retryAttempt := 0
-	authRecoveryUsed := false
-	joinedRecovery := false
-	var joinedGeneration uint64
-	for {
-		body, header, status, requestToken, err := c.doOnce(ctx, method, operation, path, query, payload)
-		if joinedRecovery && requestToken.value != "" {
-			// Joining an inflight refresh spends this request's bounded recovery
-			// only if that operation actually produced a replacement generation.
-			if requestToken.generation != joinedGeneration {
-				authRecoveryUsed = true
-			}
-			joinedRecovery = false
-		}
+	var lastErr error
+	attempts := c.retries + 1
+	for attempt := range attempts {
+		body, header, status, err := c.doOnce(ctx, method, operation, path, query, payload)
 		if err == nil {
-			c.markTokenSuccess(requestToken)
 			return body, header, nil
 		}
-		if ctx.Err() != nil {
-			return nil, nil, ctx.Err()
-		}
-		if httpclient.IsCertificateVerificationError(err) {
-			return nil, nil, err
-		}
-		if requestToken.value == "" {
-			// login owns the configured authentication retry budget. A failed
-			// login must not be multiplied by the outer data-request retry loop;
-			// this is especially important for rejected credentials.
-			return nil, nil, err
-		}
-		if authorizationDenied(err) {
-			// APIC can return either 401 or 403 for RBAC and security-domain
-			// denials. A structured authorization error proves this generation
-			// authenticated, but must not retire it or poison authentication backoff.
-			c.markTokenSuccess(requestToken)
-			return nil, nil, err
-		}
-		if status == http.StatusForbidden && !authenticationRejected(err) {
-			// Only an APIC error that specifically identifies an invalid session
-			// turns a 403 into an authentication failure.
-			return nil, nil, err
-		}
-		if authenticationRejected(err) {
-			// Only a token generation already accepted by a data request can be
-			// treated as expired and recovered inline. A freshly issued token that
-			// APIC rejects still enters the shared authentication backoff.
-			rejection := c.rejectToken(requestToken, err, !authRecoveryUsed)
-			if !rejection.retry {
-				return nil, nil, err
-			}
-			if rejection.joined {
-				joinedRecovery = true
-				joinedGeneration = requestToken.generation
-			} else {
-				authRecoveryUsed = true
-			}
-			if rejection.recovery != nil {
-				if recoveryErr := c.recoverToken(ctx, *rejection.recovery); recoveryErr != nil {
-					return nil, nil, recoveryErr
-				}
-			}
-			continue
-		}
-		retryHeader := ""
-		if header != nil {
-			retryHeader = header.Get("Retry-After")
-		}
-		retryable := retryableStatus(status) ||
-			httpclient.IsResponseBodyReadError(err) && status >= 200 && status < 300
-		if !retryable || retryAttempt == c.retries || !sleepBeforeRetry(ctx, retryAttempt, retryAfter(retryHeader)) {
+		lastErr = err
+		if status == http.StatusUnauthorized || status == http.StatusForbidden {
+			// Drop the token but do not retry inline — a bad credential would
+			// otherwise loop login → fail → login on every attempt and risk
+			// locking the APIC user account. ensureToken applies a backoff so
+			// the next scrape is the next retry boundary.
+			c.clearToken()
 			if ctx.Err() != nil {
 				return nil, nil, ctx.Err()
 			}
 			return nil, nil, err
 		}
-		retryAttempt++
+		retryHeader := ""
+		if header != nil {
+			retryHeader = header.Get("Retry-After")
+		}
+		if !retryableStatus(status) || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
+			if ctx.Err() != nil {
+				return nil, nil, ctx.Err()
+			}
+			return nil, nil, err
+		}
 	}
+	if lastErr == nil {
+		lastErr = errors.New("apic request failed")
+	}
+	return nil, nil, lastErr
 }
 
-func (c *Client) doOnce(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, http.Header, int, tokenSnapshot, error) {
+func (c *Client) doOnce(ctx context.Context, method, operation, path string, query url.Values, payload []byte) ([]byte, http.Header, int, error) {
 	reqURL := c.buildURL(path, query)
 	var body io.Reader
 	if payload != nil {
@@ -469,7 +304,7 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 	}
 	req, err := http.NewRequestWithContext(ctx, method, reqURL, body)
 	if err != nil {
-		return nil, nil, 0, tokenSnapshot{}, err
+		return nil, nil, 0, err
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", c.userAgent)
@@ -478,39 +313,31 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 	}
 	token, err := c.ensureToken(ctx)
 	if err != nil {
-		return nil, nil, 0, tokenSnapshot{}, err
+		return nil, nil, 0, err
 	}
-	req.AddCookie(&http.Cookie{Name: "APIC-cookie", Value: token.value})
+	req.AddCookie(&http.Cookie{Name: "APIC-cookie", Value: token})
 
 	start := time.Now()
 	resp, err := c.client.Do(req)
 	duration := time.Since(start)
 	if err != nil {
-		err = decorateCertificateVerificationError(err)
 		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", Duration: duration, Err: err})
-		return nil, nil, 0, token, err
+		return nil, nil, 0, err
 	}
 	bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
-		responseErr := readErr
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			// Preserve the response status even when the body is truncated. In
-			// particular, callers must still retire an established session rejected
-			// by a 401 response while retaining the underlying read failure.
-			responseErr = errors.Join(&APIError{StatusCode: resp.StatusCode}, readErr)
-		}
-		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, RateLimited: resp.StatusCode == http.StatusTooManyRequests, Err: responseErr})
-		return nil, resp.Header, resp.StatusCode, token, responseErr
+		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
+		return nil, resp.Header, resp.StatusCode, readErr
 	}
 	if closeErr != nil {
-		return nil, resp.Header, resp.StatusCode, token, closeErr
+		return nil, resp.Header, resp.StatusCode, closeErr
 	}
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "success", StatusCode: resp.StatusCode, Duration: duration})
-		return bodyBytes, resp.Header, resp.StatusCode, token, nil
+		return bodyBytes, resp.Header, resp.StatusCode, nil
 	}
-	apiErr := &APIError{StatusCode: resp.StatusCode, body: bodyBytes}
+	apiErr := &APIError{StatusCode: resp.StatusCode}
 	c.record(RequestStat{
 		Controller:  c.name,
 		Operation:   operation,
@@ -522,148 +349,66 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 		RateLimited: resp.StatusCode == http.StatusTooManyRequests,
 		Err:         apiErr,
 	})
-	return nil, resp.Header, resp.StatusCode, token, apiErr
+	return nil, resp.Header, resp.StatusCode, apiErr
 }
 
-func (c *Client) ensureToken(ctx context.Context) (tokenSnapshot, error) {
+func (c *Client) ensureToken(ctx context.Context) (string, error) {
 	for {
 		c.tokenMu.Lock()
-		now := time.Now()
-		tokenUsable := c.token != "" && (c.sessionExpiry.IsZero() || now.Before(c.sessionExpiry))
-		if tokenUsable && (now.Before(c.refreshDeadline) || now.Before(c.refreshRetryAt)) {
-			tok := c.tokenSnapshotLocked()
+		if c.token != "" {
+			tok := c.token
 			c.tokenMu.Unlock()
 			return tok, nil
 		}
-		// Concurrent callers wait on the same login or refresh. Waiting does not
-		// bypass backoff if that shared authentication attempt fails.
-		if c.loginInflight != nil {
-			ch := c.loginInflight
-			c.tokenMu.Unlock()
-			select {
-			case <-ch:
-			case <-ctx.Done():
-				return tokenSnapshot{}, ctx.Err()
-			}
-			continue
-		}
-		if c.token != "" && now.Before(c.refreshRetryAt) {
-			err := c.lastRefreshErr
-			c.tokenMu.Unlock()
-			if err == nil {
-				err = errors.New("apic session refresh in backoff")
-			}
-			return tokenSnapshot{}, err
-		}
-		// If a backoff window is active after a recent failed authentication,
-		// return the cached error without hitting the wire. Expired-session
-		// recovery claims ownership before entering this path.
+		// If a backoff window is active after a recent failed login, return
+		// the cached error without hitting the wire.
 		if c.authFailures > 0 && time.Since(c.lastAuthAt) < authBackoffFor(c.authFailures) {
 			err := c.lastAuthErr
 			c.tokenMu.Unlock()
 			if err == nil {
 				err = errors.New("apic auth in backoff")
 			}
-			return tokenSnapshot{}, err
+			return "", err
+		}
+		// Concurrent callers wait on the inflight channel rather than racing
+		// the login.
+		if c.loginInflight != nil {
+			ch := c.loginInflight
+			c.tokenMu.Unlock()
+			select {
+			case <-ch:
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+			continue
 		}
 		ch := make(chan struct{})
 		c.loginInflight = ch
-		refreshToken := c.tokenSnapshotLocked()
-		refreshing := refreshToken.value != ""
-		refreshAccepted := c.tokenAccepted
 		c.tokenMu.Unlock()
 
-		var session authSession
-		var err error
-		refreshRejected := false
-		refreshGenerationRejected := false
-		replacementLogin := false
-		tokenLockHeld := false
-		if refreshing {
-			session, err = c.refresh(ctx, refreshToken)
-			refreshRejected = err != nil && refreshAccepted && authenticationRejected(err)
-			refreshExpired := !refreshToken.sessionExpiry.IsZero() && !time.Now().Before(refreshToken.sessionExpiry)
-			if err != nil && refreshAccepted && !refreshRejected && !refreshExpired {
-				// Keep the rejection check and completion of a failed proactive
-				// refresh atomic. A data request that rejects this generation either
-				// joins this owner before it completes, or claims recovery itself
-				// after loginInflight is cleared; it must never resend the rejected
-				// generation under refresh backoff.
-				c.tokenMu.Lock()
-				tokenLockHeld = true
-				refreshGenerationRejected = c.generationRejectedLocked(refreshToken.generation)
-			}
-			replacementLogin = err != nil && refreshAccepted && ctx.Err() == nil &&
-				(refreshRejected || refreshExpired || refreshGenerationRejected)
-			if replacementLogin {
-				// An established session can expire before refresh reaches APIC or
-				// be rejected by a data request while proactive refresh is in flight.
-				// Recover with one full login while retaining ownership of the
-				// inflight operation.
-				if tokenLockHeld {
-					c.tokenMu.Unlock()
-					tokenLockHeld = false
-				}
-				session, err = c.login(ctx)
-			}
-		} else {
-			session, err = c.login(ctx)
-		}
+		token, err := c.login(ctx)
 
-		if !tokenLockHeld {
-			c.tokenMu.Lock()
-		}
+		c.tokenMu.Lock()
 		c.loginInflight = nil
 		if err != nil {
-			sameRefreshGeneration := refreshing && c.tokenGeneration == refreshToken.generation && c.token == refreshToken.value
-			retireRefresh := refreshRejected || refreshGenerationRejected || replacementLogin
-			if retireRefresh && sameRefreshGeneration {
-				// APIC or a data request definitively rejected this session, or its
-				// locally expired generation failed replacement login. Retire it even
-				// when the owner was canceled so a waiter can take over safely.
-				c.clearTokenLocked()
-			}
-			if ctx.Err() == nil {
-				if sameRefreshGeneration && refreshAccepted && !retireRefresh && !authenticationRejected(err) {
-					// A bounded proactive refresh failed for a non-authentication
-					// reason. Keep the accepted token usable until its real expiry and
-					// schedule a separate bounded refresh retry.
-					c.recordRefreshFailureLocked(err)
-					snapshot := c.tokenSnapshotLocked()
-					usable := c.sessionExpiry.IsZero() || time.Now().Before(c.sessionExpiry)
-					close(ch)
-					c.tokenMu.Unlock()
-					if usable {
-						return snapshot, nil
-					}
-					return tokenSnapshot{}, err
-				}
-				if sameRefreshGeneration && !retireRefresh && authenticationRejected(err) {
-					c.clearTokenLocked()
-				}
-				c.recordAuthFailureLocked(err)
-			}
-			close(ch)
-			c.tokenMu.Unlock()
-			if ctx.Err() != nil {
-				return tokenSnapshot{}, ctx.Err()
-			}
-			return tokenSnapshot{}, err
+			c.authFailures++
+			c.lastAuthErr = err
+			c.lastAuthAt = time.Now()
+		} else {
+			c.token = token
+			c.authFailures = 0
+			c.lastAuthErr = nil
 		}
-		if refreshing && (c.tokenGeneration != refreshToken.generation || c.token != refreshToken.value) {
-			close(ch)
-			c.tokenMu.Unlock()
-			continue
-		}
-		c.installSessionLocked(session)
-		snapshot := c.tokenSnapshotLocked()
 		close(ch)
 		c.tokenMu.Unlock()
-		return snapshot, nil
+		if err != nil {
+			return "", err
+		}
+		return token, nil
 	}
 }
 
-func (c *Client) login(ctx context.Context) (authSession, error) {
+func (c *Client) login(ctx context.Context) (string, error) {
 	loginName := c.username
 	if c.domain != "" && c.domain != "local" {
 		loginName = "apic:" + c.domain + `\` + c.username
@@ -677,292 +422,50 @@ func (c *Client) login(ctx context.Context) (authSession, error) {
 		},
 	})
 	if err != nil {
-		return authSession{}, err
+		return "", err
 	}
-	return c.retrySessionRequest(ctx, func() (authSession, http.Header, int, error) {
-		return c.loginOnce(ctx, payload)
-	})
-}
-
-func (c *Client) refresh(ctx context.Context, token tokenSnapshot) (authSession, error) {
-	return c.retrySessionRequest(ctx, func() (authSession, http.Header, int, error) {
-		return c.refreshOnce(ctx, token)
-	})
-}
-
-func (c *Client) retrySessionRequest(ctx context.Context, request func() (authSession, http.Header, int, error)) (authSession, error) {
-	var lastErr error
-	for attempt := range c.retries + 1 {
-		session, header, status, err := request()
-		if err == nil {
-			return session, nil
-		}
-		lastErr = err
-		if ctx.Err() != nil {
-			return authSession{}, ctx.Err()
-		}
-		if httpclient.IsCertificateVerificationError(err) {
-			return authSession{}, err
-		}
-		retryable := retryableStatus(status) ||
-			httpclient.IsResponseBodyReadError(err) && status >= 200 && status < 300
-		retryDelay := time.Duration(-1)
-		if header != nil {
-			retryDelay = retryAfter(header.Get("Retry-After"))
-		}
-		if !retryable || attempt == c.retries || !sleepBeforeRetry(ctx, attempt, retryDelay) {
-			if ctx.Err() != nil {
-				return authSession{}, ctx.Err()
-			}
-			return authSession{}, err
-		}
-	}
-	return authSession{}, lastErr
-}
-
-func (c *Client) loginOnce(ctx context.Context, payload []byte) (authSession, http.Header, int, error) {
-	return c.sessionRequestOnce(ctx, http.MethodPost, "aaaLogin", "/api/aaaLogin.json", payload, tokenSnapshot{})
-}
-
-func (c *Client) refreshOnce(ctx context.Context, token tokenSnapshot) (authSession, http.Header, int, error) {
-	return c.sessionRequestOnce(ctx, http.MethodGet, "aaaRefresh", "/api/aaaRefresh.json", nil, token)
-}
-
-// sessionRequestOnce deliberately performs a raw authentication request. In
-// particular, aaaRefresh must use its captured cookie rather than recursively
-// entering ensureToken.
-func (c *Client) sessionRequestOnce(ctx context.Context, method, operation, path string, payload []byte, token tokenSnapshot) (authSession, http.Header, int, error) {
-	reqURL := c.buildURL(path, nil)
-	var body io.Reader
-	if payload != nil {
-		body = bytes.NewReader(payload)
-	}
-	req, err := http.NewRequestWithContext(ctx, method, reqURL, body)
+	reqURL := c.buildURL("/api/aaaLogin.json", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(payload))
 	if err != nil {
-		return authSession{}, nil, 0, err
+		return "", err
 	}
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", c.userAgent)
-	if payload != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	if token.value != "" {
-		req.AddCookie(&http.Cookie{Name: "APIC-cookie", Value: token.value})
-	}
 	start := time.Now()
 	resp, err := c.client.Do(req)
 	duration := time.Since(start)
 	if err != nil {
-		err = decorateCertificateVerificationError(err)
-		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", Duration: duration, Err: err})
-		return authSession{}, nil, 0, err
+		c.record(RequestStat{Controller: c.name, Operation: "aaaLogin", Method: http.MethodPost, Path: "/api/aaaLogin.json", Outcome: "error", Duration: duration, Err: err})
+		return "", err
 	}
 	bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
-		responseErr := readErr
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			responseErr = errors.Join(&APIError{StatusCode: resp.StatusCode}, readErr)
-		}
-		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, RateLimited: resp.StatusCode == http.StatusTooManyRequests, Err: responseErr})
-		return authSession{}, resp.Header, resp.StatusCode, responseErr
+		c.record(RequestStat{Controller: c.name, Operation: "aaaLogin", Method: http.MethodPost, Path: "/api/aaaLogin.json", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
+		return "", readErr
 	}
 	if closeErr != nil {
-		return authSession{}, resp.Header, resp.StatusCode, closeErr
+		return "", closeErr
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		apiErr := &APIError{StatusCode: resp.StatusCode, body: bodyBytes}
-		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: apiErr})
-		return authSession{}, resp.Header, resp.StatusCode, apiErr
+		apiErr := &APIError{StatusCode: resp.StatusCode}
+		c.record(RequestStat{Controller: c.name, Operation: "aaaLogin", Method: http.MethodPost, Path: "/api/aaaLogin.json", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: apiErr})
+		return "", apiErr
 	}
-	var session authSession
-	if token.value == "" {
-		session, err = parseLoginSession(bodyBytes)
-	} else {
-		session, err = parseRefreshSession(bodyBytes, token.refreshTimeout)
-	}
+	token, err := loginToken(bodyBytes)
 	if err != nil {
-		c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: err})
-		return authSession{}, resp.Header, resp.StatusCode, err
+		c.record(RequestStat{Controller: c.name, Operation: "aaaLogin", Method: http.MethodPost, Path: "/api/aaaLogin.json", Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: err})
+		return "", err
 	}
-	session.refreshDeadline = safeRefreshDeadline(start, session.refreshTimeout)
-	session.sessionExpiry = start.Add(session.refreshTimeout)
-	c.record(RequestStat{Controller: c.name, Operation: operation, Method: method, Path: path, Outcome: "success", StatusCode: resp.StatusCode, Duration: duration})
-	return session, resp.Header, resp.StatusCode, nil
+	c.record(RequestStat{Controller: c.name, Operation: "aaaLogin", Method: http.MethodPost, Path: "/api/aaaLogin.json", Outcome: "success", StatusCode: resp.StatusCode, Duration: duration})
+	return token, nil
 }
 
-func (c *Client) rejectToken(token tokenSnapshot, authErr error, allowRecovery bool) tokenRejection {
-	if token.value == "" {
-		return tokenRejection{}
-	}
+func (c *Client) clearToken() {
 	c.tokenMu.Lock()
 	defer c.tokenMu.Unlock()
-	if c.tokenGeneration != token.generation || c.token != token.value {
-		// A newer generation already exists, or an accepted generation was
-		// atomically retired by a recovery owner. Share that replacement only
-		// while this request still has its one recovery attempt available.
-		if allowRecovery && (c.token != "" || c.loginInflight != nil) {
-			return tokenRejection{retry: true, joined: true}
-		}
-		return tokenRejection{}
-	}
-	if c.loginInflight != nil {
-		if c.tokenAccepted && allowRecovery {
-			// Tell the refresh owner that APIC rejected its captured generation.
-			// A successful refresh can still install its replacement, but any
-			// failure must retire this generation and hand off or perform the one
-			// bounded login without letting a caller resend it.
-			c.markGenerationRejectedLocked(token.generation)
-			return tokenRejection{retry: true, joined: true}
-		}
-		if c.tokenAccepted {
-			return tokenRejection{}
-		}
-		// A never-accepted token remains a credential/authentication failure
-		// even if a refresh happened to start concurrently.
-		c.clearTokenLocked()
-		if authErr == nil {
-			authErr = errors.New("apic authentication rejected")
-		}
-		c.recordAuthFailureLocked(authErr)
-		return tokenRejection{}
-	}
-	accepted := c.tokenAccepted
-	c.clearTokenLocked()
-	if authErr == nil {
-		authErr = errors.New("apic authentication rejected")
-	}
-	if !accepted || !allowRecovery {
-		// Fresh token rejection and rejection of the one bounded replacement
-		// remain immediate authentication failures. Expiry of an established
-		// generation is recorded only if its recovery login actually fails, so
-		// cancellation can hand ownership to a waiter without poisoning backoff.
-		c.recordAuthFailureLocked(authErr)
-		return tokenRejection{}
-	}
-
-	done := make(chan struct{})
-	c.loginInflight = done
-	return tokenRejection{
-		retry: true,
-		recovery: &tokenRecovery{
-			done:       done,
-			generation: c.tokenGeneration,
-		},
-	}
-}
-
-func (c *Client) recoverToken(ctx context.Context, recovery tokenRecovery) error {
-	session, err := c.login(ctx)
-
-	c.tokenMu.Lock()
-	if c.loginInflight != recovery.done {
-		c.tokenMu.Unlock()
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		return err
-	}
-	c.loginInflight = nil
-	if err != nil {
-		if ctx.Err() == nil {
-			c.recordAuthFailureLocked(err)
-		}
-		close(recovery.done)
-		c.tokenMu.Unlock()
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		return err
-	}
-	if c.tokenGeneration == recovery.generation && c.token == "" {
-		c.installSessionLocked(session)
-	}
-	close(recovery.done)
-	c.tokenMu.Unlock()
-	return nil
-}
-
-func (c *Client) markTokenSuccess(token tokenSnapshot) {
-	if token.value == "" {
-		return
-	}
-	c.tokenMu.Lock()
-	defer c.tokenMu.Unlock()
-	if c.tokenGeneration != token.generation || c.token != token.value {
-		return
-	}
-	c.tokenAccepted = true
-	c.authFailures = 0
-	c.lastAuthErr = nil
-	c.lastAuthAt = time.Time{}
-}
-
-func (c *Client) recordAuthFailureLocked(err error) {
-	c.authFailures++
-	c.lastAuthErr = err
-	c.lastAuthAt = time.Now()
-}
-
-func (c *Client) recordRefreshFailureLocked(err error) {
-	c.refreshFailures++
-	c.lastRefreshErr = err
-	now := time.Now()
-	retryAt := now.Add(authBackoffFor(c.refreshFailures))
-	if !c.sessionExpiry.IsZero() && now.Before(c.sessionExpiry) && retryAt.After(c.sessionExpiry) {
-		retryAt = c.sessionExpiry
-	}
-	c.refreshRetryAt = retryAt
-}
-
-func (c *Client) generationRejectedLocked(generation uint64) bool {
-	return c.generationRejected && c.rejectedGeneration == generation
-}
-
-func (c *Client) markGenerationRejectedLocked(generation uint64) {
-	if c.tokenGeneration != generation || c.generationRejectedLocked(generation) {
-		return
-	}
-	c.generationRejected = true
-	c.rejectedGeneration = generation
-	if c.generationRejectedSignal == nil {
-		c.generationRejectedSignal = make(chan struct{})
-	}
-	close(c.generationRejectedSignal)
-}
-
-func (c *Client) clearTokenLocked() {
-	c.tokenGeneration++
 	c.token = ""
-	c.refreshTimeout = 0
-	c.refreshDeadline = time.Time{}
-	c.sessionExpiry = time.Time{}
-	c.tokenAccepted = false
-	c.generationRejected = false
-	c.rejectedGeneration = 0
-	c.generationRejectedSignal = nil
-	c.lastRefreshErr = nil
-	c.refreshRetryAt = time.Time{}
-	c.refreshFailures = 0
-}
-
-func (c *Client) installSessionLocked(session authSession) {
-	c.tokenGeneration++
-	c.token = session.token
-	c.refreshTimeout = session.refreshTimeout
-	c.refreshDeadline = session.refreshDeadline
-	c.sessionExpiry = session.sessionExpiry
-	c.tokenAccepted = false
-	c.generationRejected = false
-	c.rejectedGeneration = 0
-	c.generationRejectedSignal = make(chan struct{})
-	c.lastRefreshErr = nil
-	c.refreshRetryAt = time.Time{}
-	c.refreshFailures = 0
-}
-
-func (c *Client) tokenSnapshotLocked() tokenSnapshot {
-	return tokenSnapshot{value: c.token, generation: c.tokenGeneration, refreshTimeout: c.refreshTimeout, sessionExpiry: c.sessionExpiry}
 }
 
 func (c *Client) buildURL(path string, query url.Values) string {
@@ -982,138 +485,23 @@ func (c *Client) record(stat RequestStat) {
 	}
 }
 
-func parseLoginSession(body []byte) (authSession, error) {
-	return parseAuthSession(body, 0)
-}
-
-func parseRefreshSession(body []byte, previousTimeout time.Duration) (authSession, error) {
-	return parseAuthSession(body, previousTimeout)
-}
-
-// parseAuthSession accepts both response classes because APIC can return either
-// aaaLogin or aaaRefresh from both authentication endpoints. Only refresh may
-// reuse a prior timeout when APIC returns the documented zero value.
-func parseAuthSession(body []byte, zeroTimeoutFallback time.Duration) (authSession, error) {
+func loginToken(body []byte) (string, error) {
 	var envelope struct {
 		IMData []map[string]struct {
-			Attributes map[string]any `json:"attributes"`
+			Attributes map[string]string `json:"attributes"`
 		} `json:"imdata"`
 	}
-	if err := httpclient.DecodeJSON(body, &envelope); err != nil {
-		return authSession{}, err
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return "", err
 	}
 	for _, item := range envelope.IMData {
-		for _, className := range []string{"aaaLogin", "aaaRefresh"} {
-			response, ok := item[className]
-			if !ok {
-				continue
+		if login, ok := item["aaaLogin"]; ok {
+			if token := login.Attributes["token"]; token != "" {
+				return token, nil
 			}
-			attributes := Object(response.Attributes)
-			token := String(attributes, "token")
-			if token == "" {
-				return authSession{}, errors.New("apic authentication response did not include a token")
-			}
-			timeoutValue := String(attributes, "refreshTimeoutSeconds")
-			seconds, err := strconv.ParseInt(timeoutValue, 10, 64)
-			maxDurationSeconds := int64((time.Duration(1<<63 - 1)) / time.Second)
-			if err != nil || seconds < 0 || seconds > maxDurationSeconds {
-				return authSession{}, fmt.Errorf("apic authentication response included invalid refreshTimeoutSeconds %q", timeoutValue)
-			}
-			refreshTimeout := time.Duration(seconds) * time.Second
-			if refreshTimeout == 0 {
-				if zeroTimeoutFallback <= 0 {
-					return authSession{}, fmt.Errorf("apic authentication response included invalid refreshTimeoutSeconds %q", timeoutValue)
-				}
-				refreshTimeout = zeroTimeoutFallback
-			}
-			return authSession{token: token, refreshTimeout: refreshTimeout}, nil
 		}
 	}
-	return authSession{}, errors.New("apic authentication response did not include aaaLogin or aaaRefresh")
-}
-
-func safeRefreshDeadline(start time.Time, timeout time.Duration) time.Time {
-	return start.Add(timeout / refreshDeadlineDivisor)
-}
-
-func authenticationRejected(err error) bool {
-	var apiErr *APIError
-	if !errors.As(err, &apiErr) {
-		return false
-	}
-	if apiErr.StatusCode == http.StatusUnauthorized {
-		// Unknown and unstructured 401 responses retain the original expired-
-		// session recovery behavior. Only an explicit authorization denial is
-		// excluded.
-		text, ok := apicErrorText(apiErr)
-		return !ok || !authorizationDeniedText(text)
-	}
-	if apiErr.StatusCode != http.StatusForbidden {
-		return false
-	}
-	text, ok := apicErrorText(apiErr)
-	if !ok {
-		return false
-	}
-	return invalidSessionText(text)
-}
-
-func authorizationDenied(err error) bool {
-	var apiErr *APIError
-	if !errors.As(err, &apiErr) || (apiErr.StatusCode != http.StatusUnauthorized && apiErr.StatusCode != http.StatusForbidden) {
-		return false
-	}
-	text, ok := apicErrorText(apiErr)
-	return ok && !invalidSessionText(text) && authorizationDeniedText(text)
-}
-
-func invalidSessionText(text string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(text))
-	return strings.HasPrefix(normalized, "token was invalid") ||
-		strings.HasPrefix(normalized, "invalid session") ||
-		strings.HasPrefix(normalized, "session is invalid")
-}
-
-func authorizationDeniedText(text string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(text))
-	if strings.Contains(normalized, "rbac") || strings.Contains(normalized, "security domain") ||
-		strings.Contains(normalized, "not authorized") || strings.Contains(normalized, "authorization denied") ||
-		strings.Contains(normalized, "access denied") {
-		return true
-	}
-	if strings.Contains(normalized, "privilege") {
-		return strings.Contains(normalized, "insufficient") || strings.Contains(normalized, "does not have") ||
-			strings.Contains(normalized, "lacks")
-	}
-	return strings.Contains(normalized, "permission") &&
-		(strings.Contains(normalized, "denied") || strings.Contains(normalized, "does not have") || strings.Contains(normalized, "lacks"))
-}
-
-func apicErrorText(apiErr *APIError) (string, bool) {
-	var envelope struct {
-		IMData []map[string]struct {
-			Attributes map[string]any `json:"attributes"`
-		} `json:"imdata"`
-	}
-	if apiErr == nil || httpclient.DecodeJSON(apiErr.body, &envelope) != nil {
-		return "", false
-	}
-	for _, item := range envelope.IMData {
-		response, ok := item["error"]
-		if !ok {
-			continue
-		}
-		attributes := Object(response.Attributes)
-		code := String(attributes, "code")
-		if code != "" && code != strconv.Itoa(apiErr.StatusCode) {
-			continue
-		}
-		text := String(attributes, "text")
-		if text != "" {
-			return text, true
-		}
-	}
-	return "", false
+	return "", errors.New("apic login response did not include a token")
 }
 
 func decodeObjects(body []byte) ([]Object, int, error) {
@@ -1169,7 +557,12 @@ func cloneValues(values url.Values) url.Values {
 }
 
 func retryableStatus(status int) bool {
-	return status == 0 || status == http.StatusTooManyRequests || status >= 500
+	switch status {
+	case 0, http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	default:
+		return false
+	}
 }
 
 func retryAfter(value string) time.Duration {

@@ -6,7 +6,6 @@ package fmc
 import (
 	"bytes"
 	"context"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -38,33 +37,6 @@ func TestClientRetryValidationPreservesExplicitZero(t *testing.T) {
 	}
 }
 
-func TestClientRetriesIncompleteSuccessfulResponseBody(t *testing.T) {
-	var requests atomic.Int64
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/fmc_platform/v1/auth/generatetoken" {
-			w.Header().Set("X-auth-access-token", "access-token")
-			w.Header().Set("DOMAIN_UUID", "domain-1")
-			_, _ = w.Write([]byte(`{}`))
-			return
-		}
-		if requests.Add(1) == 1 {
-			w.Header().Set("Content-Length", "100")
-			w.Header().Set("Retry-After", "0")
-			_, _ = w.Write([]byte(`{"items":`))
-			return
-		}
-		_, _ = w.Write([]byte(`{"items":[],"paging":{"count":0}}`))
-	}))
-	defer server.Close()
-
-	client, err := NewClient(Config{Endpoint: server.URL, Username: "admin", Password: "password", MaxRetries: 1})
-	require.NoError(t, err)
-	objects, err := client.List(t.Context(), "test.list", "/api/fmc_config/v1/domain/domain-1/test", nil, 10)
-	require.NoError(t, err)
-	assert.Empty(t, objects)
-	assert.Equal(t, int64(2), requests.Load())
-}
-
 func TestClientAuthenticationRetryPolicy(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -93,20 +65,6 @@ func TestClientAuthenticationRetryPolicy(t *testing.T) {
 			authenticate: func(w http.ResponseWriter, attempt int64) {
 				if attempt == 1 {
 					http.Error(w, "unavailable", http.StatusServiceUnavailable)
-					return
-				}
-				w.Header().Set("X-auth-access-token", "access-1")
-				w.WriteHeader(http.StatusNoContent)
-			},
-			wantAuthRequests: 2,
-		},
-		{
-			name: "incomplete successful authentication body",
-			authenticate: func(w http.ResponseWriter, attempt int64) {
-				if attempt == 1 {
-					w.Header().Set("Content-Length", "100")
-					w.Header().Set("Retry-After", "0")
-					_, _ = w.Write([]byte(`{`))
 					return
 				}
 				w.Header().Set("X-auth-access-token", "access-1")
@@ -530,47 +488,6 @@ func TestClientTokenAndPagination(t *testing.T) {
 	assert.True(t, sawToken)
 }
 
-func TestClientPaginationContinuesAfterShortPageWhenNextLinkExists(t *testing.T) {
-	var requests atomic.Int64
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/fmc_platform/v1/auth/generatetoken" {
-			w.Header().Set("X-auth-access-token", "access-1")
-			w.Header().Set("DOMAIN_UUID", "domain-1")
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		assert.Equal(t, "/events", r.URL.Path)
-		assert.Equal(t, "2", r.URL.Query().Get("limit"))
-		requests.Add(1)
-		switch r.URL.Query().Get("offset") {
-		case "0":
-			_, _ = w.Write([]byte(`{"items":[{"id":"event-1"}],"paging":{"next":"/events?offset=1"}}`))
-		case "1":
-			_, _ = w.Write([]byte(`{"items":[{"id":"event-2"}],"paging":{}}`))
-		default:
-			t.Fatalf("unexpected FMC offset %q", r.URL.Query().Get("offset"))
-		}
-	}))
-	defer server.Close()
-
-	client, err := NewClient(Config{
-		Endpoint:   server.URL,
-		Username:   "admin",
-		Password:   "password",
-		Timeout:    time.Second,
-		MaxRetries: 0,
-		PageSize:   2,
-	})
-	require.NoError(t, err)
-
-	got, err := client.List(t.Context(), "events", "/events", nil, 0)
-	require.NoError(t, err)
-	require.Len(t, got, 2)
-	assert.Equal(t, "event-1", String(got[0], "id"))
-	assert.Equal(t, "event-2", String(got[1], "id"))
-	assert.Equal(t, int64(2), requests.Load())
-}
-
 func TestClientSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/api/fmc_platform/v1/auth/generatetoken", r.URL.Path)
@@ -580,26 +497,6 @@ func TestClientSupportsSelfSignedTLSWithInsecureSkipVerify(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer server.Close()
-
-	verifiedClient, err := NewClient(Config{
-		Endpoint:   server.URL,
-		Username:   "admin",
-		Password:   "password",
-		Timeout:    time.Second,
-		MaxRetries: 3,
-	})
-	require.NoError(t, err)
-	verifiedAttempts := 0
-	verifiedClient.OnRequest = func(RequestStat) { verifiedAttempts++ }
-	// A deterministic refresh certificate failure must not fall through to a
-	// second generate-token attempt against the same endpoint.
-	verifiedClient.tokenMu.Lock()
-	verifiedClient.refreshToken = "refresh-1"
-	verifiedClient.tokenMu.Unlock()
-	_, err = verifiedClient.DomainUUID(t.Context())
-	require.ErrorContains(t, err, "trust the issuing CA in the Collector host trust store (preferred)")
-	require.ErrorContains(t, err, "set fmc.insecure_skip_verify: true")
-	assert.Equal(t, 1, verifiedAttempts)
 
 	client, err := NewClient(Config{
 		Endpoint:           server.URL,
@@ -697,7 +594,8 @@ func TestClientPaginationAdvancesByOverReturnedObjectCount(t *testing.T) {
 }
 
 func TestDecodeEStreamerBundle(t *testing.T) {
-	eventPayload := encodeEStreamerRecord(0, 400, time.Time{}, []byte(`{"EventType":"ConnectionEvent","InitiatorIP":"10.0.0.1","ResponderIP":"10.0.0.2"}`))
+	eventPayload := make([]byte, 8)
+	eventPayload = append(eventPayload, []byte(`{"EventType":"ConnectionEvent","InitiatorIP":"10.0.0.1","ResponderIP":"10.0.0.2"}`)...)
 	eventMessage := encodeEStreamerMessage(estreamerMessageEventV3, eventPayload)
 	bundle := make([]byte, 8)
 	bundle = append(bundle, eventMessage...)
@@ -718,16 +616,16 @@ func TestFMCGenericDecodersPreserveLargeIntegers(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "9007199254740993", number.String())
 
-	eventPayload := encodeEStreamerRecord(0, 400, time.Time{}, []byte(`{"EventType":"ConnectionEvent","counter":9007199254740993}`))
-	event, err := decodeEStreamerEvent("fmc-1", eventPayload)
-	require.NoError(t, err)
+	eventPayload := make([]byte, 8)
+	eventPayload = append(eventPayload, []byte(`{"EventType":"ConnectionEvent","counter":9007199254740993}`)...)
+	event := decodeEStreamerEvent("fmc-1", eventPayload)
 	number, ok = event.Body["counter"].(json.Number)
 	require.True(t, ok)
 	assert.Equal(t, "9007199254740993", number.String())
 }
 
 func TestDecodeEStreamerBundleRejectsMoreThanHardRecordLimit(t *testing.T) {
-	eventHeader := encodeEStreamerMessage(estreamerMessageEventV3, encodeEStreamerRecord(0, 400, time.Time{}, nil))
+	eventHeader := encodeEStreamerMessage(estreamerMessageEventV3, nil)
 	bundle := make([]byte, 8, 8+len(eventHeader)*(estreamerMaxBundleRecords+1))
 	bundle = append(bundle, bytes.Repeat(eventHeader, estreamerMaxBundleRecords+1)...)
 
@@ -780,16 +678,8 @@ func TestNewEStreamerClientEnforcesHardMessageLimit(t *testing.T) {
 	}
 }
 
-func TestNewEStreamerClientAddsDefaultPortToIPv6Address(t *testing.T) {
-	client, err := NewEStreamerClient(EStreamerConfig{Address: "2001:db8::10"})
-	require.NoError(t, err)
-	assert.Equal(t, "[2001:db8::10]:8302", client.Address())
-}
-
 func TestDecodeEStreamerEventDoesNotForwardMalformedRawPayload(t *testing.T) {
-	payload := encodeEStreamerRecord(0, 400, time.Time{}, []byte(`{"password":"do-not-export"`))
-	event, err := decodeEStreamerEvent("fmc-1", payload)
-	require.NoError(t, err)
+	event := decodeEStreamerEvent("fmc-1", []byte(`{"password":"do-not-export"`))
 	assert.Equal(t, "decode_error", event.EventType)
 	assert.Empty(t, event.Raw)
 	assert.Equal(t, true, event.Body["decode_error"])
@@ -798,9 +688,7 @@ func TestDecodeEStreamerEventDoesNotForwardMalformedRawPayload(t *testing.T) {
 }
 
 func TestDecodeEStreamerEventDoesNotRetainSuccessfulFramingText(t *testing.T) {
-	payload := encodeEStreamerRecord(0, 400, time.Time{}, []byte(`password=prefix-secret {"EventType":"ConnectionEvent","id":"event-1"} password=suffix-secret`))
-	event, err := decodeEStreamerEvent("fmc-1", payload)
-	require.NoError(t, err)
+	event := decodeEStreamerEvent("fmc-1", []byte(`12345678password=prefix-secret {"EventType":"ConnectionEvent","id":"event-1"} password=suffix-secret`))
 	assert.Equal(t, "connection_event", event.EventType)
 	assert.Empty(t, event.Raw)
 	assert.Equal(t, "event-1", String(event.Body, "id"))
@@ -808,66 +696,10 @@ func TestDecodeEStreamerEventDoesNotRetainSuccessfulFramingText(t *testing.T) {
 	assert.NotContains(t, fmt.Sprint(event.Body), "suffix-secret")
 }
 
-func TestDecodeEStreamerExtendedRecordUsesDeclaredContentLength(t *testing.T) {
-	timestamp := time.Unix(1_800_000_123, 0).UTC()
-	payload := encodeEStreamerRecord(17, 401, timestamp, []byte(`{"EventType":"IntrusionEvent","id":"event-1"}`))
-
-	event, err := decodeEStreamerEvent("fmc-1", payload)
-	require.NoError(t, err)
-	assert.Equal(t, uint32(401), event.RecordType)
-	assert.Equal(t, timestamp, event.Timestamp)
-	assert.Equal(t, "intrusion_event", event.EventType)
-	assert.Equal(t, "event-1", String(event.Body, "id"))
-}
-
-func TestDecodeEStreamerEventRejectsMalformedRecordFraming(t *testing.T) {
-	payload := encodeEStreamerRecord(17, 401, time.Unix(1_800_000_123, 0), []byte(`{"id":"event-1"}`))
-
-	_, err := decodeEStreamerEvent("fmc-1", payload[:estreamerExtendedRecordHeaderLen-1])
-	require.ErrorContains(t, err, "extended event record header is truncated")
-
-	binary.BigEndian.PutUint32(payload[4:8], uint32(len(payload)))
-	_, err = decodeEStreamerEvent("fmc-1", payload)
-	require.ErrorContains(t, err, "record length")
-}
-
-func encodeEStreamerRecord(netmapID, recordType uint16, timestamp time.Time, data []byte) []byte {
-	headerLength := estreamerRecordHeaderLen
-	if !timestamp.IsZero() {
-		headerLength = estreamerExtendedRecordHeaderLen
-		netmapID |= estreamerExtendedRecordFlag
-	}
-	payload := make([]byte, headerLength+len(data))
-	binary.BigEndian.PutUint16(payload[0:2], netmapID)
-	binary.BigEndian.PutUint16(payload[2:4], recordType)
-	binary.BigEndian.PutUint32(payload[4:8], uint32(len(data)))
-	if headerLength == estreamerExtendedRecordHeaderLen {
-		binary.BigEndian.PutUint32(payload[8:12], uint32(timestamp.Unix()))
-	}
-	copy(payload[headerLength:], data)
-	return payload
-}
-
-func TestNormalizeEStreamerEventTypesSupportsOperationalAliases(t *testing.T) {
+func TestNormalizeFQEEventTypesSupportsOperationalAliases(t *testing.T) {
 	assert.Equal(t,
 		[]string{"connection", "file", "intrusion_packet"},
-		NormalizeEStreamerEventTypes([]string{"security_intelligence", "malware", "IntrusionPacket"}),
-	)
-	assert.Equal(t,
-		[]string{"connection"},
-		NormalizeEStreamerEventTypes([]string{"traffic", "security_intelligence", "SI", "connection_event"}),
-	)
-	assert.Equal(t,
-		[]string{"file"},
-		NormalizeEStreamerEventTypes([]string{"malware", "malware_event", "file_event", "file_malware", "file_malware_event"}),
-	)
-	assert.Equal(t,
-		[]string{"intrusion", "intrusion_packet"},
-		NormalizeEStreamerEventTypes([]string{"intrusion_event", "intrusion_packet_event"}),
-	)
-	assert.Equal(t,
-		[]string{"connection", "file", "intrusion", "intrusion_packet"},
-		NormalizeEStreamerEventTypes(nil),
+		normalizeFQEEventTypes([]string{"security_intelligence", "malware", "IntrusionPacket"}),
 	)
 }
 
@@ -887,17 +719,15 @@ func TestEStreamerRunCancellationInterruptsIdleRead(t *testing.T) {
 	requestReceived := make(chan struct{})
 	serverDone := make(chan error, 1)
 	go func() {
-		for range 2 {
-			headerBytes := make([]byte, estreamerMessageHeaderLen)
-			if _, readErr := io.ReadFull(serverConn, headerBytes); readErr != nil {
-				serverDone <- readErr
-				return
-			}
-			header := decodeHeader(headerBytes)
-			if _, readErr := io.CopyN(io.Discard, serverConn, int64(header.length)); readErr != nil {
-				serverDone <- readErr
-				return
-			}
+		headerBytes := make([]byte, estreamerMessageHeaderLen)
+		if _, readErr := io.ReadFull(serverConn, headerBytes); readErr != nil {
+			serverDone <- readErr
+			return
+		}
+		header := decodeHeader(headerBytes)
+		if _, readErr := io.CopyN(io.Discard, serverConn, int64(header.length)); readErr != nil {
+			serverDone <- readErr
+			return
 		}
 		close(requestReceived)
 		var payload [1]byte
@@ -930,20 +760,6 @@ func TestEStreamerRunCancellationInterruptsIdleRead(t *testing.T) {
 	}
 }
 
-func TestEStreamerCertificateFailureNamesTrustAndOptInPaths(t *testing.T) {
-	client, err := NewEStreamerClient(EStreamerConfig{Address: "fmc.example.test:8302"})
-	require.NoError(t, err)
-	cause := x509.UnknownAuthorityError{Cert: &x509.Certificate{}}
-	client.dialContext = func(context.Context, string, string) (net.Conn, error) {
-		return nil, cause
-	}
-
-	err = client.Run(t.Context(), func(EStreamerEvent) error { return nil })
-	require.ErrorContains(t, err, "configure fmc.estreamer.tls.ca_file with the issuing CA (preferred)")
-	require.ErrorContains(t, err, "set fmc.estreamer.tls.insecure_skip_verify: true")
-	assert.ErrorIs(t, err, cause)
-}
-
 func TestEStreamerWriteRequestHandlesShortWritesAndUsesResumeCursor(t *testing.T) {
 	client, err := NewEStreamerClient(EStreamerConfig{Address: "fmc.example.test:8302"})
 	require.NoError(t, err)
@@ -952,39 +768,13 @@ func TestEStreamerWriteRequestHandlesShortWritesAndUsesResumeCursor(t *testing.T
 
 	require.NoError(t, client.writeRequest(writer, resume))
 	written := writer.Bytes()
-	reader := bytes.NewReader(written)
-
-	headerBytes := make([]byte, estreamerMessageHeaderLen)
-	require.NoError(t, readFull(reader, headerBytes))
-	header := decodeHeader(headerBytes)
+	require.GreaterOrEqual(t, len(written), estreamerMessageHeaderLen+8)
+	header := decodeHeader(written[:estreamerMessageHeaderLen])
 	assert.Equal(t, estreamerMessageRequest, header.messageType)
-	assert.Equal(t, uint32(8), header.length)
-	initializer := make([]byte, header.length)
-	require.NoError(t, readFull(reader, initializer))
-	assert.Equal(t, uint32(resume.Unix()), binary.BigEndian.Uint32(initializer[:4]))
-	assert.Zero(t, binary.BigEndian.Uint32(initializer[4:8]))
-
-	require.NoError(t, readFull(reader, headerBytes))
-	header = decodeHeader(headerBytes)
-	assert.Equal(t, estreamerMessageRequest, header.messageType)
-	payload := make([]byte, header.length)
-	require.NoError(t, readFull(reader, payload))
+	assert.Equal(t, uint32(len(written)-estreamerMessageHeaderLen), header.length)
+	payload := written[estreamerMessageHeaderLen:]
 	assert.Equal(t, uint32(resume.Unix()), binary.BigEndian.Uint32(payload[:4]))
 	assert.Equal(t, estreamerRequestBitExtendedHeader, binary.BigEndian.Uint32(payload[4:8]))
-	assert.JSONEq(t, string(mustJSON(t, defaultFQERequest(nil))), string(payload[8:]))
-	assert.Zero(t, reader.Len())
-}
-
-func readFull(reader io.Reader, payload []byte) error {
-	_, err := io.ReadFull(reader, payload)
-	return err
-}
-
-func mustJSON(t *testing.T, value any) []byte {
-	t.Helper()
-	payload, err := json.Marshal(value)
-	require.NoError(t, err)
-	return payload
 }
 
 type chunkWriter struct {

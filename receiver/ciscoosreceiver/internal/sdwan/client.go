@@ -23,14 +23,13 @@ import (
 )
 
 const (
-	defaultUserAgent             = "opentelemetry-collector-contrib-ciscoosreceiver"
-	defaultRequestTimeout        = 30 * time.Second
-	defaultPageSize              = 500
-	defaultRequestSpacing        = 10 * time.Millisecond
-	defaultMaxPages              = 100
-	defaultMaxResults            = 100000
-	maxPageSize                  = 10000
-	insecureSkipVerifyConfigPath = "sdwan.insecure_skip_verify"
+	defaultUserAgent      = "opentelemetry-collector-contrib-ciscoosreceiver"
+	defaultRequestTimeout = 30 * time.Second
+	defaultPageSize       = 500
+	defaultRequestSpacing = 10 * time.Millisecond
+	defaultMaxPages       = 100
+	defaultMaxResults     = 100000
+	maxPageSize           = 10000
 )
 
 // Config controls the Catalyst SD-WAN Manager API client.
@@ -325,15 +324,12 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 			return body, header, nil
 		}
 		lastErr = err
-		if ctx.Err() != nil {
-			return nil, nil, ctx.Err()
-		}
-		if httpclient.IsCertificateVerificationError(err) {
-			return nil, nil, err
-		}
 		if !requestAuth.complete(c.authMode) {
 			// ensureAuth owns the configured authentication retry budget. Do not
 			// multiply it through the outer data-request retry loop.
+			if ctx.Err() != nil {
+				return nil, nil, ctx.Err()
+			}
 			return nil, nil, err
 		}
 		if status == http.StatusUnauthorized {
@@ -357,9 +353,7 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 		if header != nil {
 			retryHeader = header.Get("Retry-After")
 		}
-		retryable := retryableStatus(status) ||
-			httpclient.IsResponseBodyReadError(err) && status >= 200 && status < 300
-		if !retryable || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
+		if !retryableStatus(status) || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
 			if ctx.Err() != nil {
 				return nil, nil, ctx.Err()
 			}
@@ -399,7 +393,6 @@ func (c *Client) doOnce(ctx context.Context, method, operation, path string, que
 	duration := time.Since(start)
 	stat := RequestStat{Operation: operation, Method: method, Path: path, Duration: duration}
 	if err != nil {
-		err = httpclient.DecorateCertificateVerificationError(err, "", insecureSkipVerifyConfigPath)
 		stat.Outcome = "error"
 		stat.Err = err
 		c.emit(stat)
@@ -502,19 +495,11 @@ func (c *Client) performLoginWithRetry(ctx context.Context) (authBundle, error) 
 			return bundle, nil
 		}
 		lastErr = err
-		if ctx.Err() != nil {
-			return authBundle{}, ctx.Err()
-		}
-		if httpclient.IsCertificateVerificationError(err) {
-			return authBundle{}, err
-		}
 		retryHeader := ""
 		if header != nil {
 			retryHeader = header.Get("Retry-After")
 		}
-		retryable := retryableStatus(status) ||
-			httpclient.IsResponseBodyReadError(err) && status >= 200 && status < 300
-		if !retryable || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
+		if !retryableStatus(status) || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, retryAfter(retryHeader)) {
 			if ctx.Err() != nil {
 				return authBundle{}, ctx.Err()
 			}
@@ -565,7 +550,6 @@ func (c *Client) loginJWT(ctx context.Context) (authBundle, http.Header, int, er
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.client.Do(req)
 	if err != nil {
-		err = httpclient.DecorateCertificateVerificationError(err, "", insecureSkipVerifyConfigPath)
 		return authBundle{}, nil, 0, err
 	}
 	defer resp.Body.Close()
@@ -599,7 +583,6 @@ func (c *Client) loginSession(ctx context.Context) (authBundle, http.Header, int
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := c.client.Do(req)
 	if err != nil {
-		err = httpclient.DecorateCertificateVerificationError(err, "", insecureSkipVerifyConfigPath)
 		return authBundle{}, nil, 0, err
 	}
 	defer resp.Body.Close()
@@ -627,7 +610,6 @@ func (c *Client) loginSession(ctx context.Context) (authBundle, http.Header, int
 	tokenReq.Header.Set("Cookie", "JSESSIONID="+jsessionID)
 	tokenResp, err := c.client.Do(tokenReq)
 	if err != nil {
-		err = httpclient.DecorateCertificateVerificationError(err, "", insecureSkipVerifyConfigPath)
 		return authBundle{}, nil, 0, err
 	}
 	defer tokenResp.Body.Close()

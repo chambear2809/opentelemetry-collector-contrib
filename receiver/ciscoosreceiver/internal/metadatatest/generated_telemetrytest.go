@@ -37,40 +37,10 @@ func AssertEqualCiscoosreceiverGnmiAuthenticationFailures(t *testing.T, tt *comp
 	metricdatatest.AssertEqual(t, want, got, opts...)
 }
 
-func AssertEqualCiscoosreceiverGnmiAuxiliaryStateUtilization(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[float64], opts ...metricdatatest.Option) {
-	want := metricdata.Metrics{
-		Name:        "otelcol_ciscoosreceiver_gnmi_auxiliary_state_utilization",
-		Description: "Maximum of the retained-entry and retained-byte utilization for the target's gNMI auxiliary-state partition [Development]",
-		Unit:        "1",
-		Data: metricdata.Gauge[float64]{
-			DataPoints: dps,
-		},
-	}
-	got, err := tt.GetMetric("otelcol_ciscoosreceiver_gnmi_auxiliary_state_utilization")
-	require.NoError(t, err)
-	metricdatatest.AssertEqual(t, want, got, opts...)
-}
-
-func AssertEqualCiscoosreceiverGnmiCacheOwnerResets(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
-	want := metricdata.Metrics{
-		Name:        "otelcol_ciscoosreceiver_gnmi_cache_owner_resets",
-		Description: "Number of silent owner-scoped gNMI cache resets performed before an updates-only stream reconnects [Development]",
-		Unit:        "{reset}",
-		Data: metricdata.Sum[int64]{
-			Temporality: metricdata.CumulativeTemporality,
-			IsMonotonic: true,
-			DataPoints:  dps,
-		},
-	}
-	got, err := tt.GetMetric("otelcol_ciscoosreceiver_gnmi_cache_owner_resets")
-	require.NoError(t, err)
-	metricdatatest.AssertEqual(t, want, got, opts...)
-}
-
 func AssertEqualCiscoosreceiverGnmiCacheUtilization(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[float64], opts ...metricdatatest.Option) {
 	want := metricdata.Metrics{
 		Name:        "otelcol_ciscoosreceiver_gnmi_cache_utilization",
-		Description: "Maximum of the retained-entry and retained-byte utilization for the target's gNMI cache partition [Development]",
+		Description: "Fraction of the configured retained gNMI state cache currently in use, including mapped series, atomic baselines, and delete tombstones [Development]",
 		Unit:        "1",
 		Data: metricdata.Gauge[float64]{
 			DataPoints: dps,
@@ -98,7 +68,7 @@ func AssertEqualCiscoosreceiverGnmiConnections(t *testing.T, tt *componenttest.T
 func AssertEqualCiscoosreceiverGnmiConsumerRefusals(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
 	want := metricdata.Metrics{
 		Name:        "otelcol_ciscoosreceiver_gnmi_consumer_refusals",
-		Description: "Number of metric chunks refused by the downstream consumer before the affected gNMI profile reconnects [Development]",
+		Description: "Number of metric chunks refused by the downstream consumer and dropped without device reconnect [Development]",
 		Unit:        "{refusal}",
 		Data: metricdata.Sum[int64]{
 			Temporality: metricdata.CumulativeTemporality,
@@ -162,7 +132,7 @@ func AssertEqualCiscoosreceiverGnmiDuplicateUpdates(t *testing.T, tt *componentt
 func AssertEqualCiscoosreceiverGnmiInvalidTimestamps(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
 	want := metricdata.Metrics{
 		Name:        "otelcol_ciscoosreceiver_gnmi_invalid_timestamps",
-		Description: "Number of invalid or excessively future-dated Cisco timestamps rejected before cache mutation [Development]",
+		Description: "Number of invalid Cisco timestamps replaced with receipt time [Development]",
 		Unit:        "{timestamp}",
 		Data: metricdata.Sum[int64]{
 			Temporality: metricdata.CumulativeTemporality,
@@ -185,52 +155,6 @@ func AssertEqualCiscoosreceiverGnmiLastSuccessUnixtime(t *testing.T, tt *compone
 		},
 	}
 	got, err := tt.GetMetric("otelcol_ciscoosreceiver_gnmi_last_success_unixtime")
-	require.NoError(t, err)
-	metricdatatest.AssertEqual(t, want, got, opts...)
-}
-
-func AssertEqualCiscoosreceiverGnmiOutOfOrderUpdates(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
-	want := metricdata.Metrics{
-		Name:        "otelcol_ciscoosreceiver_gnmi_out_of_order_updates",
-		Description: "Number of stale gNMI cache operations suppressed by source timestamp ordering [Development]",
-		Unit:        "{update}",
-		Data: metricdata.Sum[int64]{
-			Temporality: metricdata.CumulativeTemporality,
-			IsMonotonic: true,
-			DataPoints:  dps,
-		},
-	}
-	got, err := tt.GetMetric("otelcol_ciscoosreceiver_gnmi_out_of_order_updates")
-	require.NoError(t, err)
-	metricdatatest.AssertEqual(t, want, got, opts...)
-}
-
-func AssertEqualCiscoosreceiverGnmiPreflightFailures(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
-	want := metricdata.Metrics{
-		Name:        "otelcol_ciscoosreceiver_gnmi_preflight_failures",
-		Description: "Number of terminal gNMI product-contract preflight compatibility failures. This metric emits only identity_missing, identity_ambiguous, product_mismatch, release_mismatch, missing_model, unsupported_model_version, unsupported_encoding, unsupported_gnmi_version, unsupported_boot_mode, or malformed_identity; profile-degradation reasons in the shared attribute catalog are not emitted here. [Development]",
-		Unit:        "{failure}",
-		Data: metricdata.Sum[int64]{
-			Temporality: metricdata.CumulativeTemporality,
-			IsMonotonic: true,
-			DataPoints:  dps,
-		},
-	}
-	got, err := tt.GetMetric("otelcol_ciscoosreceiver_gnmi_preflight_failures")
-	require.NoError(t, err)
-	metricdatatest.AssertEqual(t, want, got, opts...)
-}
-
-func AssertEqualCiscoosreceiverGnmiProductVerified(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
-	want := metricdata.Metrics{
-		Name:        "otelcol_ciscoosreceiver_gnmi_product_verified",
-		Description: "Whether the gNMI target passed product, model, release, required boot-mode, and capability verification [Development]",
-		Unit:        "1",
-		Data: metricdata.Gauge[int64]{
-			DataPoints: dps,
-		},
-	}
-	got, err := tt.GetMetric("otelcol_ciscoosreceiver_gnmi_product_verified")
 	require.NoError(t, err)
 	metricdatatest.AssertEqual(t, want, got, opts...)
 }
@@ -291,22 +215,6 @@ func AssertEqualCiscoosreceiverGnmiUnmappedValues(t *testing.T, tt *componenttes
 		},
 	}
 	got, err := tt.GetMetric("otelcol_ciscoosreceiver_gnmi_unmapped_values")
-	require.NoError(t, err)
-	metricdatatest.AssertEqual(t, want, got, opts...)
-}
-
-func AssertEqualCiscoosreceiverGnmiUnsupportedValueKinds(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
-	want := metricdata.Metrics{
-		Name:        "otelcol_ciscoosreceiver_gnmi_unsupported_value_kinds",
-		Description: "Number of bounded opaque or aggregate gNMI TypedValues ignored by kind [Development]",
-		Unit:        "{value}",
-		Data: metricdata.Sum[int64]{
-			Temporality: metricdata.CumulativeTemporality,
-			IsMonotonic: true,
-			DataPoints:  dps,
-		},
-	}
-	got, err := tt.GetMetric("otelcol_ciscoosreceiver_gnmi_unsupported_value_kinds")
 	require.NoError(t, err)
 	metricdatatest.AssertEqual(t, want, got, opts...)
 }

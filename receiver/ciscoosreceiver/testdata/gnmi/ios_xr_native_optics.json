@@ -5,11 +5,12 @@
         {
           "name": "HundredGigE0/0/0/0",
           "optics-info": {
-            "temperature": 4425,
-            "voltage": 331,
-            "total-rx-power": -310,
-            "total-tx-power": -105,
-            "optics-present": true
+            "temperature": "44.25",
+            "rx-power": "-3.1",
+            "q-margin": "2.5",
+            "osnr": "31.2",
+            "dgd": "4.1",
+            "chromatic-dispersion": "120.0"
           }
         }
       ]

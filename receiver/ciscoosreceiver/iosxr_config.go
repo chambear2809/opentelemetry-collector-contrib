@@ -6,6 +6,7 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 import (
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -65,7 +66,7 @@ type IOSXRSubscriptionConfig struct {
 	Mode              string                        `mapstructure:"mode"`
 	StreamMode        string                        `mapstructure:"stream_mode"`
 	SampleInterval    time.Duration                 `mapstructure:"sample_interval"`
-	HeartbeatInterval *time.Duration                `mapstructure:"heartbeat_interval"`
+	HeartbeatInterval time.Duration                 `mapstructure:"heartbeat_interval"`
 	PollInterval      time.Duration                 `mapstructure:"poll_interval"`
 	SuppressRedundant configoptional.Optional[bool] `mapstructure:"suppress_redundant"`
 	UpdatesOnly       configoptional.Optional[bool] `mapstructure:"updates_only"`
@@ -112,15 +113,9 @@ type IOSXRDialOutConfig struct {
 	IdentityBindings     []GNMIDialOutIdentityBindingConfig `mapstructure:"identity_bindings"`
 	// MaxStreamsPerClient bounds concurrent dial-out streams from one source IP.
 	// Zero selects the smaller of 16 and MaxConcurrentStreams.
-	MaxStreamsPerClient uint32 `mapstructure:"max_streams_per_client"`
-	// StreamIdleTimeout closes a dial-out stream that sends no telemetry frame
-	// for this duration. Zero selects the production default of 30 minutes.
-	StreamIdleTimeout time.Duration `mapstructure:"stream_idle_timeout"`
-	// ModulePaths contains up to 64 regular .yang files or directories. Startup
-	// bounds traversal to 100,000 entries, 10,000 files, 16 MiB per file, and
-	// 128 MiB of module data across all configured paths.
-	ModulePaths  []string                            `mapstructure:"module_paths"`
-	RateLimiting yanggrpcreceiver.RateLimitingConfig `mapstructure:"rate_limiting"`
+	MaxStreamsPerClient uint32                              `mapstructure:"max_streams_per_client"`
+	ModulePaths         []string                            `mapstructure:"module_paths"`
+	RateLimiting        yanggrpcreceiver.RateLimitingConfig `mapstructure:"rate_limiting"`
 }
 
 // IOSXRConfig defines IOS XR gNMI/MDT telemetry settings.
@@ -153,7 +148,6 @@ func defaultIOSXRConfig() IOSXRConfig {
 		DialOut: IOSXRDialOutConfig{
 			ServerConfig:         server,
 			IdentityVerification: gnmiDialOutIdentityLegacy,
-			StreamIdleTimeout:    defaultGNMIDialOutStreamIdle,
 			RateLimiting: yanggrpcreceiver.RateLimitingConfig{
 				RequestsPerSecond: 100,
 				BurstSize:         10,
@@ -189,6 +183,7 @@ func defaultIOSXRSubscriptionConfig() IOSXRSubscriptionConfig {
 		Mode:              iosXRSubscribeModeStream,
 		StreamMode:        iosXRStreamModeSample,
 		SampleInterval:    time.Minute,
+		HeartbeatInterval: time.Minute,
 		SuppressRedundant: configoptional.Some(true),
 		UpdatesOnly:       configoptional.Some(false),
 		AllowAggregation:  configoptional.Some(false),
@@ -240,8 +235,8 @@ func (cfg *Config) validateIOSXR() error {
 		}
 		if strings.TrimSpace(target.Endpoint) == "" {
 			err = multierr.Append(err, fmt.Errorf("%s.endpoint cannot be empty", prefix))
-		} else if _, endpointErr := canonicalGNMIDialInEndpoint(target.Endpoint); endpointErr != nil {
-			err = multierr.Append(err, fmt.Errorf("%s.endpoint %w", prefix, endpointErr))
+		} else if _, _, splitErr := net.SplitHostPort(target.Endpoint); splitErr != nil {
+			err = multierr.Append(err, fmt.Errorf("%s.endpoint must be host:port", prefix))
 		}
 		if grpcErr := target.Validate(); grpcErr != nil {
 			err = multierr.Append(err, fmt.Errorf("%s: %w", prefix, grpcErr))
@@ -275,9 +270,6 @@ func (cfg *Config) validateIOSXR() error {
 		); validationErr != nil {
 			err = multierr.Append(err, fmt.Errorf("ios_xr.dial_out: %w", validationErr))
 		}
-		if validationErr := validateGNMIDialOutStreamIdleTimeout(iosxr.DialOut.StreamIdleTimeout); validationErr != nil {
-			err = multierr.Append(err, fmt.Errorf("ios_xr.dial_out: %w", validationErr))
-		}
 	}
 
 	return err
@@ -303,9 +295,6 @@ func (cfg IOSXRConfig) withDefaults() IOSXRConfig {
 	}
 	if cfg.DialOut.MaxStreamsPerClient == 0 {
 		cfg.DialOut.MaxStreamsPerClient = effectiveGNMIDialOutMaxStreamsPerClient(0, cfg.DialOut.MaxConcurrentStreams)
-	}
-	if cfg.DialOut.StreamIdleTimeout == 0 {
-		cfg.DialOut.StreamIdleTimeout = defaults.DialOut.StreamIdleTimeout
 	}
 	if cfg.DialOut.IdentityVerification == "" {
 		cfg.DialOut.IdentityVerification = defaults.DialOut.IdentityVerification
@@ -344,7 +333,7 @@ func (sub IOSXRSubscriptionConfig) withDefaults(defaults IOSXRSubscriptionConfig
 	if sub.SampleInterval == 0 {
 		sub.SampleInterval = defaults.SampleInterval
 	}
-	if sub.HeartbeatInterval == nil {
+	if sub.HeartbeatInterval == 0 {
 		sub.HeartbeatInterval = defaults.HeartbeatInterval
 	}
 	if !sub.SuppressRedundant.HasValue() {
@@ -365,13 +354,6 @@ func (sub IOSXRSubscriptionConfig) withDefaults(defaults IOSXRSubscriptionConfig
 func (sub IOSXRSubscriptionConfig) suppressRedundant() bool {
 	value := sub.SuppressRedundant.Get()
 	return value != nil && *value
-}
-
-func (sub IOSXRSubscriptionConfig) heartbeatInterval() time.Duration {
-	if sub.HeartbeatInterval == nil {
-		return 0
-	}
-	return *sub.HeartbeatInterval
 }
 
 func (sub IOSXRSubscriptionConfig) updatesOnly() bool {
@@ -423,7 +405,7 @@ func validateIOSXRSubscription(prefix string, sub IOSXRSubscriptionConfig, targe
 	if sub.SampleInterval < 0 {
 		err = multierr.Append(err, fmt.Errorf("%s.sample_interval must not be negative", prefix))
 	}
-	if sub.HeartbeatInterval != nil && *sub.HeartbeatInterval < 0 {
+	if sub.HeartbeatInterval < 0 {
 		err = multierr.Append(err, fmt.Errorf("%s.heartbeat_interval must not be negative", prefix))
 	}
 	if sub.PollInterval < 0 {

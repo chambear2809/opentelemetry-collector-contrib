@@ -6,6 +6,7 @@ package ciscoosreceiver // import "github.com/open-telemetry/opentelemetry-colle
 import (
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -98,15 +99,9 @@ type Catalyst9800DialOutConfig struct {
 	IdentityBindings     []GNMIDialOutIdentityBindingConfig `mapstructure:"identity_bindings"`
 	// MaxStreamsPerClient bounds concurrent dial-out streams from one source IP.
 	// Zero selects the smaller of 16 and MaxConcurrentStreams.
-	MaxStreamsPerClient uint32 `mapstructure:"max_streams_per_client"`
-	// StreamIdleTimeout closes a dial-out stream that sends no telemetry frame
-	// for this duration. Zero selects the production default of 30 minutes.
-	StreamIdleTimeout time.Duration `mapstructure:"stream_idle_timeout"`
-	// ModulePaths contains up to 64 regular .yang files or directories. Startup
-	// bounds traversal to 100,000 entries, 10,000 files, 16 MiB per file, and
-	// 128 MiB of module data across all configured paths.
-	ModulePaths  []string                            `mapstructure:"module_paths"`
-	RateLimiting yanggrpcreceiver.RateLimitingConfig `mapstructure:"rate_limiting"`
+	MaxStreamsPerClient uint32                              `mapstructure:"max_streams_per_client"`
+	ModulePaths         []string                            `mapstructure:"module_paths"`
+	RateLimiting        yanggrpcreceiver.RateLimitingConfig `mapstructure:"rate_limiting"`
 }
 
 // Catalyst9800Config defines direct Catalyst 9800 WLC telemetry settings.
@@ -139,7 +134,6 @@ func defaultCatalyst9800Config() Catalyst9800Config {
 		DialOut: Catalyst9800DialOutConfig{
 			ServerConfig:         server,
 			IdentityVerification: gnmiDialOutIdentityLegacy,
-			StreamIdleTimeout:    defaultGNMIDialOutStreamIdle,
 			RateLimiting: yanggrpcreceiver.RateLimitingConfig{
 				RequestsPerSecond: 100,
 				BurstSize:         10,
@@ -229,8 +223,8 @@ func (cfg *Config) validateCatalyst9800() error {
 		}
 		if strings.TrimSpace(target.Endpoint) == "" {
 			err = multierr.Append(err, fmt.Errorf("%s.endpoint cannot be empty", prefix))
-		} else if _, endpointErr := canonicalGNMIDialInEndpoint(target.Endpoint); endpointErr != nil {
-			err = multierr.Append(err, fmt.Errorf("%s.endpoint %w", prefix, endpointErr))
+		} else if _, _, splitErr := net.SplitHostPort(target.Endpoint); splitErr != nil {
+			err = multierr.Append(err, fmt.Errorf("%s.endpoint must be host:port", prefix))
 		}
 		if grpcErr := target.Validate(); grpcErr != nil {
 			err = multierr.Append(err, fmt.Errorf("%s: %w", prefix, grpcErr))
@@ -264,9 +258,6 @@ func (cfg *Config) validateCatalyst9800() error {
 		); validationErr != nil {
 			err = multierr.Append(err, fmt.Errorf("catalyst_9800.dial_out: %w", validationErr))
 		}
-		if validationErr := validateGNMIDialOutStreamIdleTimeout(wlc.DialOut.StreamIdleTimeout); validationErr != nil {
-			err = multierr.Append(err, fmt.Errorf("catalyst_9800.dial_out: %w", validationErr))
-		}
 	}
 
 	return err
@@ -292,9 +283,6 @@ func (cfg Catalyst9800Config) withDefaults() Catalyst9800Config {
 	}
 	if cfg.DialOut.MaxStreamsPerClient == 0 {
 		cfg.DialOut.MaxStreamsPerClient = effectiveGNMIDialOutMaxStreamsPerClient(0, cfg.DialOut.MaxConcurrentStreams)
-	}
-	if cfg.DialOut.StreamIdleTimeout == 0 {
-		cfg.DialOut.StreamIdleTimeout = defaults.DialOut.StreamIdleTimeout
 	}
 	if cfg.DialOut.IdentityVerification == "" {
 		cfg.DialOut.IdentityVerification = defaults.DialOut.IdentityVerification

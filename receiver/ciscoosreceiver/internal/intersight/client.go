@@ -24,11 +24,10 @@ import (
 )
 
 const (
-	defaultEndpoint              = "https://intersight.com"
-	defaultUserAgent             = "opentelemetry-collector-contrib-ciscoosreceiver"
-	defaultRequestTimeout        = 30 * time.Second
-	defaultPageSize              = 100
-	insecureSkipVerifyConfigPath = "intersight.insecure_skip_verify"
+	defaultEndpoint       = "https://intersight.com"
+	defaultUserAgent      = "opentelemetry-collector-contrib-ciscoosreceiver"
+	defaultRequestTimeout = 30 * time.Second
+	defaultPageSize       = 100
 )
 
 // Config controls the Cisco Intersight API client.
@@ -124,18 +123,9 @@ func NewClient(cfg Config) (*Client, error) {
 		signer:    requestSigner,
 		endpoint:  parsed,
 		userAgent: userAgent,
-		// The HTTP signature covers (request-target). net/http copies the original
-		// Authorization header across same-origin redirects without re-signing the
-		// changed URI, so expose redirects as ordinary 3xx responses instead.
-		client: &http.Client{
-			Timeout:   timeout,
-			Transport: transport,
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
-		},
-		retries:  retries,
-		pageSize: pageSize,
+		client:    &http.Client{Timeout: timeout, Transport: transport, CheckRedirect: httpclient.SameOriginRedirectPolicy(parsed)},
+		retries:   retries,
+		pageSize:  pageSize,
 	}, nil
 }
 
@@ -199,12 +189,12 @@ func (c *Client) List(ctx context.Context, operation, path string, query url.Val
 		}
 		pages++
 
-		page, total, hasTotal, err := decodeListPage(body)
+		page, err := decodeList(body)
 		if err != nil {
 			return results, fmt.Errorf("decode intersight %s page: %w", operation, err)
 		}
 		results = append(results, page...)
-		complete := len(page) == 0 || hasTotal && int64(len(results)) >= total || !hasTotal && len(page) < pageSize
+		complete := len(page) < pageSize
 		truncated := len(results) > resultLimit
 		if len(results) >= resultLimit {
 			results = results[:resultLimit]
@@ -263,15 +253,8 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 		resp, err := c.client.Do(req)
 		duration := time.Since(start)
 		if err != nil {
-			err = httpclient.DecorateCertificateVerificationError(err, "", insecureSkipVerifyConfigPath)
 			lastErr = err
 			c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", Duration: duration, Err: err})
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-			if httpclient.IsCertificateVerificationError(err) {
-				return nil, err
-			}
 			if attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, -1) {
 				if ctx.Err() != nil {
 					return nil, ctx.Err()
@@ -284,21 +267,8 @@ func (c *Client) do(ctx context.Context, method, operation, path string, query u
 		bodyBytes, readErr := httpclient.ReadResponseBody(resp.Body)
 		closeErr := resp.Body.Close()
 		if readErr != nil {
-			c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, RateLimited: resp.StatusCode == http.StatusTooManyRequests, Err: readErr})
-			lastErr = readErr
-			retryable := httpclient.IsResponseBodyReadError(readErr) &&
-				(resp.StatusCode >= 200 && resp.StatusCode < 300 || retryableStatus(resp.StatusCode))
-			delay := time.Duration(-1)
-			if retryableStatus(resp.StatusCode) {
-				delay = retryAfter(resp.Header.Get("Retry-After"))
-			}
-			if !retryable || attempt == attempts-1 || !sleepBeforeRetry(ctx, attempt, delay) {
-				if ctx.Err() != nil {
-					return nil, ctx.Err()
-				}
-				return nil, readErr
-			}
-			continue
+			c.record(RequestStat{Operation: operation, Method: method, Path: path, Outcome: "error", StatusCode: resp.StatusCode, Duration: duration, Err: readErr})
+			return nil, readErr
 		}
 		if closeErr != nil {
 			return nil, closeErr
@@ -386,27 +356,19 @@ func (c *Client) record(stat RequestStat) {
 }
 
 func decodeList(body []byte) ([]Object, error) {
-	objects, _, _, err := decodeListPage(body)
-	return objects, err
-}
-
-func decodeListPage(body []byte) ([]Object, int64, bool, error) {
 	var envelope struct {
 		Results []Object `json:"Results"`
-		Count   *int64   `json:"Count"`
+		Count   int64    `json:"Count"`
 	}
 	if err := httpclient.DecodeJSON(body, &envelope); err == nil && envelope.Results != nil {
-		if envelope.Count != nil && *envelope.Count >= 0 {
-			return envelope.Results, *envelope.Count, true, nil
-		}
-		return envelope.Results, 0, false, nil
+		return envelope.Results, nil
 	}
 
 	var array []Object
 	if err := httpclient.DecodeJSON(body, &array); err != nil {
-		return nil, 0, false, err
+		return nil, err
 	}
-	return array, 0, false, nil
+	return array, nil
 }
 
 func cloneValues(values url.Values) url.Values {

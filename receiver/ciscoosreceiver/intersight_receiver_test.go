@@ -7,7 +7,6 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/x509"
-	"encoding/json"
 	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
@@ -23,7 +22,6 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/intersight"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
 )
 
@@ -88,11 +86,6 @@ func TestIntersightScrapeEmitsTroubleshootingMetrics(t *testing.T) {
 		"intersight.ucs.power_supply.output_power",
 		"intersight.ucs.power_supply.status",
 		"intersight.ucs.signal_power.receive",
-		"intersight.hyperflex.read.iops",
-		"intersight.hyperflex.write.iops",
-		"intersight.hyperflex.read.latency",
-		"intersight.hyperflex.write.latency",
-		"intersight.telemetry.query.rows",
 	} {
 		assert.Contains(t, names, name)
 	}
@@ -100,71 +93,6 @@ func TestIntersightScrapeEmitsTroubleshootingMetrics(t *testing.T) {
 	assert.True(t, hasResourceHostID(md, "FDO1234"))
 	assert.True(t, intMetricValueExists(md, "intersight.scrape.partial_success", 0))
 	assert.True(t, doubleMetricValueExists(md, "intersight.ucs.fan.speed", 12000))
-	assert.True(t, doubleMetricValueExists(md, "intersight.hyperflex.read.iops", 900))
-	assert.True(t, doubleMetricValueExists(md, "intersight.hyperflex.write.iops", 700))
-	assert.True(t, doubleMetricValueExists(md, "intersight.hyperflex.read.latency", 3.2))
-	assert.True(t, doubleMetricValueExists(md, "intersight.hyperflex.write.latency", 4.4))
-}
-
-func TestIntersightObjectsWithSharedSerialRemainDistinctByMoid(t *testing.T) {
-	builder := newIntersightMetricsBuilder(time.Unix(1_800_000_000, 0), "https://intersight.example.test", nil)
-	endpoint := intersightEndpoint{
-		group:      "equipment",
-		operation:  "equipment.fans",
-		objectType: "equipment.Fan",
-	}
-	for _, moid := range []string{"fan-1", "fan-2"} {
-		builder.recordObject(endpoint, intersight.Object{
-			"Moid":       moid,
-			"ObjectType": "equipment.Fan",
-			"Name":       "Fan 1",
-			"Serial":     "SHARED-SERIAL",
-			"OperState":  "operable",
-		})
-	}
-
-	md := builder.emit()
-	require.Equal(t, 2, md.ResourceMetrics().Len())
-	assert.Equal(t, 2, metricNames(md)["intersight.resource.info"])
-	fanResources := map[string]string{}
-	for i := 0; i < md.ResourceMetrics().Len(); i++ {
-		attrs := md.ResourceMetrics().At(i).Resource().Attributes()
-		resourceType, ok := attrs.Get("intersight.resource.type")
-		if !ok || resourceType.Str() != "equipment.Fan" {
-			continue
-		}
-		moid, ok := attrs.Get("intersight.moid")
-		require.True(t, ok)
-		hostID, ok := attrs.Get("host.id")
-		require.True(t, ok)
-		fanResources[moid.Str()] = hostID.Str()
-	}
-
-	assert.Equal(t, map[string]string{
-		"fan-1": "SHARED-SERIAL",
-		"fan-2": "SHARED-SERIAL",
-	}, fanResources)
-}
-
-func TestIntersightMetricsCollectAuditCounts(t *testing.T) {
-	server := newIntersightFixtureServer(t, map[string]string{
-		"/api/v1/aaa/AuditRecords": `{"Results":[
-			{"Moid":"audit-1","ObjectType":"aaa.AuditRecord","UserIdOrEmail":"operator@example.com","CreateTime":"2026-05-25T10:01:00Z"},
-			{"Moid":"audit-2","ObjectType":"aaa.AuditRecord","UserIdOrEmail":"operator@example.com","CreateTime":"2026-05-25T10:02:00Z"}
-		]}`,
-		"/api/v1/telemetry/GroupBys": `[]`,
-	}, nil)
-	defer server.Close()
-
-	receiver := newTestIntersightMetricsReceiver(t, server.URL, nil)
-	md, err := receiver.scrape(t.Context())
-	require.NoError(t, err)
-
-	assert.True(t, intMetricValueWithAttributesExists(md, "intersight.audit.record.count", 2, map[string]string{
-		"intersight.audit.user": "operator@example.com",
-	}))
-	assert.True(t, hasMetricDatapointAttribute(md, "intersight.api.request.duration", "intersight.api.operation", "aaa.audit_records"))
-	assert.True(t, intMetricValueExists(md, "intersight.scrape.partial_success", 0))
 }
 
 func TestIntersightScrapeAppliesTargetFilters(t *testing.T) {
@@ -232,223 +160,20 @@ func TestIntersightTelemetryRespectsSharedDeviceSelection(t *testing.T) {
 		fieldName:   "hw.fan.speed-Mean",
 		metricName:  "intersight.ucs.fan.speed",
 		description: "Mean fan speed from Intersight telemetry.",
-		unit:        "1/min",
+		unit:        "rpm",
 	}
 	response := []any{
 		map[string]any{"event": map[string]any{"host.name": "ucs-server-1", "deviceId": "included-device", "hw.fan.speed-Mean": 12000}},
 		map[string]any{"event": map[string]any{"host.name": "ucs-server-9", "deviceId": "excluded-device", "hw.fan.speed-Mean": 9000}},
 	}
 
-	builder.recordTelemetry(query, response, selector, 0)
+	builder.recordTelemetry(query, response, selector)
 	md := builder.emit()
 
 	assert.True(t, hasResourceHostID(md, "ucs-server-1"))
 	assert.False(t, hasResourceHostID(md, "ucs-server-9"))
 	assert.True(t, doubleMetricValueExists(md, "intersight.ucs.fan.speed", 12000))
 	assert.False(t, doubleMetricValueExists(md, "intersight.ucs.fan.speed", 9000))
-}
-
-func TestIntersightTelemetryMaxResultsCapsEachQuery(t *testing.T) {
-	builder := newIntersightMetricsBuilder(time.Unix(1_800_000_000, 0), "https://intersight.example.test", nil)
-	query := intersightTelemetryQuery{
-		name:        "fan_speed",
-		dataSource:  "PhysicalEntities",
-		instrument:  "hw.fan",
-		dimensions:  []string{"host.name"},
-		fieldName:   "hw.fan.speed-Mean",
-		metricName:  "intersight.ucs.fan.speed",
-		description: "Mean fan speed from Intersight telemetry.",
-		unit:        "1/min",
-	}
-	response := []any{
-		map[string]any{"event": map[string]any{"host.name": "host-1", "hw.fan.speed-Mean": 1000}},
-		map[string]any{"event": map[string]any{"host.name": "host-2", "hw.fan.speed-Mean": 2000}},
-		map[string]any{"event": map[string]any{"host.name": "host-3", "hw.fan.speed-Mean": 3000}},
-	}
-
-	builder.recordTelemetry(query, response, deviceSelectionMatcher{}, 2)
-	md := builder.emit()
-
-	assert.Equal(t, 2, metricDataPointCount(md, "intersight.ucs.fan.speed"))
-	assert.True(t, intMetricValueWithAttributesExists(md, "intersight.telemetry.query.rows", 2, map[string]string{
-		"intersight.telemetry.query":   "fan_speed",
-		"intersight.telemetry.outcome": "emitted",
-	}))
-	assert.True(t, intMetricValueWithAttributesExists(md, "intersight.telemetry.query.rows", 1, map[string]string{
-		"intersight.telemetry.query":   "fan_speed",
-		"intersight.telemetry.outcome": "max_results",
-	}))
-}
-
-func TestIntersightTelemetryClassifiesEveryRow(t *testing.T) {
-	builder := newIntersightMetricsBuilder(time.Unix(1_800_000_000, 0), "https://intersight.example.test", nil)
-	selector := newDeviceSelectionMatcher(DeviceSelectionConfig{
-		Include: DeviceSelectionMatchConfig{HostNames: []string{"included"}},
-	})
-	query := intersightTelemetryQuery{
-		name:        "fan_speed",
-		dataSource:  "PhysicalEntities",
-		instrument:  "hw.fan",
-		dimensions:  []string{"host.name"},
-		fieldName:   "hw.fan.speed-Mean",
-		metricName:  "intersight.ucs.fan.speed",
-		description: "Mean fan speed from Intersight telemetry.",
-		unit:        "1/min",
-	}
-	response := []any{
-		map[string]any{"event": map[string]any{"host.name": "included", "hw.fan.speed-Mean": 1000.0}},
-		map[string]any{"event": map[string]any{"host.name": "included", "hw.fan.speed-Mean": "2000"}},
-		map[string]any{"event": map[string]any{"host.name": "included", "hw.fan.speed-Mean": json.Number("3000")}},
-		map[string]any{"event": map[string]any{"host.name": "included", "hw.fan.speed-Mean": nil}},
-		map[string]any{"event": map[string]any{"host.name": "included"}},
-		map[string]any{"event": map[string]any{"host.name": "included", "hw.fan.speed-Mean": "invalid"}},
-		map[string]any{"event": map[string]any{"host.name": "excluded", "hw.fan.speed-Mean": 4000}},
-		map[string]any{"event": "invalid"},
-		"invalid",
-	}
-
-	builder.recordTelemetry(query, response, selector, 0)
-	md := builder.emit()
-
-	assert.Equal(t, 3, metricDataPointCount(md, "intersight.ucs.fan.speed"))
-	for outcome, value := range map[string]int64{
-		"emitted":         3,
-		"device_filtered": 1,
-		"null_value":      1,
-		"missing_value":   1,
-		"invalid_value":   1,
-		"malformed_row":   2,
-	} {
-		assert.True(t, intMetricValueWithAttributesExists(md, "intersight.telemetry.query.rows", value, map[string]string{
-			"intersight.telemetry.query":   "fan_speed",
-			"intersight.telemetry.outcome": outcome,
-		}), outcome)
-	}
-}
-
-func TestIntersightTelemetryRejectsNonArrayResponse(t *testing.T) {
-	server := newIntersightFixtureServer(t, map[string]string{
-		"/api/v1/telemetry/GroupBys": `{}`,
-	}, nil)
-	defer server.Close()
-
-	receiver := newTestIntersightMetricsReceiver(t, server.URL, nil)
-	md, err := receiver.scrape(t.Context())
-	require.NoError(t, err)
-
-	assert.True(t, intMetricValueExists(md, "intersight.scrape.partial_success", 1))
-}
-
-func TestIntersightLiveEmptyDomainsHaveMetricContracts(t *testing.T) {
-	tests := []struct {
-		name     string
-		endpoint intersightEndpoint
-		object   intersight.Object
-		want     map[string]int64
-	}{
-		{
-			name:     "advisory instance",
-			endpoint: intersightEndpoint{group: "events", operation: "tam.advisory_instances", objectType: "tam.AdvisoryInstance"},
-			object:   intersight.Object{"Moid": "advisory-instance-1", "ObjectType": "tam.AdvisoryInstance", "State": "Active"},
-			want:     map[string]int64{"intersight.advisory.active": 1, "intersight.advisory.count": 1},
-		},
-		{
-			name:     "security advisory",
-			endpoint: intersightEndpoint{group: "events", operation: "tam.security_advisories", objectType: "tam.SecurityAdvisory"},
-			object:   intersight.Object{"Moid": "security-advisory-1", "ObjectType": "tam.SecurityAdvisory", "Status": "Active", "Severity": "Critical"},
-			want:     map[string]int64{"intersight.advisory.active": 1, "intersight.advisory.count": 1},
-		},
-		{
-			name:     "workflow",
-			endpoint: intersightEndpoint{group: "events", operation: "workflow.workflow_infos", objectType: "workflow.WorkflowInfo"},
-			object:   intersight.Object{"Moid": "workflow-1", "ObjectType": "workflow.WorkflowInfo", "Status": "Failed"},
-			want:     map[string]int64{"intersight.workflow.status": 4, "intersight.workflow.count": 1},
-		},
-		{
-			name:     "task",
-			endpoint: intersightEndpoint{group: "events", operation: "workflow.task_infos", objectType: "workflow.TaskInfo"},
-			object:   intersight.Object{"Moid": "task-1", "ObjectType": "workflow.TaskInfo", "Status": "Failed"},
-			want:     map[string]int64{"intersight.task.status": 4, "intersight.task.count": 1},
-		},
-		{
-			name:     "tech support",
-			endpoint: intersightEndpoint{group: "events", operation: "techsupportmanagement.techsupport_statuses", objectType: "techsupportmanagement.TechSupportStatus"},
-			object:   intersight.Object{"Moid": "techsupport-1", "ObjectType": "techsupportmanagement.TechSupportStatus", "Status": "CollectionComplete"},
-			want:     map[string]int64{"intersight.techsupport.status": 1, "intersight.techsupport.count": 1},
-		},
-		{
-			name:     "equipment chassis",
-			endpoint: intersightEndpoint{group: "equipment", operation: "equipment.chasses", objectType: "equipment.Chassis"},
-			object:   intersight.Object{"Moid": "chassis-1", "ObjectType": "equipment.Chassis", "OperState": "ok", "FaultSummary": 2},
-			want:     map[string]int64{"intersight.target.connection_status": 1, "intersight.fault.count": 2},
-		},
-		{
-			name:     "firmware summary",
-			endpoint: intersightEndpoint{group: "firmware", operation: "firmware.firmware_summaries", objectType: "firmware.FirmwareSummary"},
-			object:   intersight.Object{"Moid": "firmware-1", "ObjectType": "firmware.FirmwareSummary", "BundleVersion": "5.0(1)"},
-			want:     map[string]int64{"intersight.firmware.bundle.info": 1},
-		},
-		{
-			name:     "storage controller",
-			endpoint: intersightEndpoint{group: "storage", operation: "storage.controllers", objectType: "storage.Controller"},
-			object:   intersight.Object{"Moid": "controller-1", "ObjectType": "storage.Controller", "ControllerStatus": "ok", "RebuildRatePercent": 42},
-			want:     map[string]int64{"intersight.storage.rebuild.rate": 42, "intersight.storage.status": 1},
-		},
-		{
-			name:     "physical disk",
-			endpoint: intersightEndpoint{group: "storage", operation: "storage.physical_disks", objectType: "storage.PhysicalDisk"},
-			object:   intersight.Object{"Moid": "disk-1", "ObjectType": "storage.PhysicalDisk", "DriveState": "ok", "MediaErrorCount": 3, "PredictiveFailureCount": 1, "PercentLifeLeft": 82, "OperatingTemperature": 38, "PowerOnHours": 100},
-			want:     map[string]int64{"intersight.storage.media_error.count": 3, "intersight.storage.predictive_failure.count": 1, "intersight.storage.life_left": 82, "intersight.storage.temperature": 38, "intersight.storage.power_on.hours": 100, "intersight.storage.status": 1},
-		},
-		{
-			name:     "virtual drive",
-			endpoint: intersightEndpoint{group: "storage", operation: "storage.virtual_drives", objectType: "storage.VirtualDrive"},
-			object:   intersight.Object{"Moid": "virtual-drive-1", "ObjectType": "storage.VirtualDrive", "DriveState": "ok"},
-			want:     map[string]int64{"intersight.storage.status": 1},
-		},
-		{
-			name:     "hyperflex cluster",
-			endpoint: intersightEndpoint{group: "hyperflex", operation: "hyperflex.clusters", objectType: "hyperflex.Cluster"},
-			object:   intersight.Object{"Moid": "hx-cluster-1", "ObjectType": "hyperflex.Cluster", "Status": "Healthy", "VmCount": 24, "FltAggr": 1},
-			want:     map[string]int64{"intersight.virtual_machine.count": 24, "intersight.fault.count": 1, "intersight.hyperflex.status": 1},
-		},
-		{
-			name:     "hyperflex node",
-			endpoint: intersightEndpoint{group: "hyperflex", operation: "hyperflex.nodes", objectType: "hyperflex.Node"},
-			object:   intersight.Object{"Moid": "hx-node-1", "ObjectType": "hyperflex.Node", "Status": "Healthy"},
-			want:     map[string]int64{"intersight.hyperflex.status": 1},
-		},
-		{
-			name:     "kubernetes cluster",
-			endpoint: intersightEndpoint{group: "kubernetes", operation: "kubernetes.clusters", objectType: "kubernetes.Cluster"},
-			object:   intersight.Object{"Moid": "k8s-cluster-1", "ObjectType": "kubernetes.Cluster", "ConnectionStatus": "Connected"},
-			want:     map[string]int64{"intersight.kubernetes.cluster.connection_status": 1},
-		},
-		{
-			name:     "kubernetes node",
-			endpoint: intersightEndpoint{group: "kubernetes", operation: "kubernetes.nodes", objectType: "kubernetes.Node"},
-			object:   intersight.Object{"Moid": "k8s-node-1", "ObjectType": "kubernetes.Node", "Status": "Ready"},
-			want:     map[string]int64{"intersight.kubernetes.cluster.connection_status": 1},
-		},
-		{
-			name:     "virtual machine",
-			endpoint: intersightEndpoint{group: "virtualization", operation: "virtualization.virtual_machines", objectType: "virtualization.VirtualMachine"},
-			object:   intersight.Object{"Moid": "vm-1", "ObjectType": "virtualization.VirtualMachine", "PowerState": "PoweredOn", "Cpu": 8, "Memory": 32768},
-			want:     map[string]int64{"intersight.virtual_machine.cpu.count": 8, "intersight.virtual_machine.memory": 32768, "intersight.virtual_machine.power_state": 1},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			builder := newIntersightMetricsBuilder(time.Unix(1_800_000_000, 0), "https://intersight.example.test", nil)
-			builder.recordObject(tt.endpoint, tt.object)
-			builder.flushCounts()
-			md := builder.emit()
-			for metricName, value := range tt.want {
-				assert.True(t, intMetricValueExists(md, metricName, value), "%s=%d", metricName, value)
-			}
-		})
-	}
 }
 
 func TestIntersightScrapeRecordsPartialSuccess(t *testing.T) {
@@ -478,20 +203,8 @@ func TestIntersightLogsEmitEventEvidenceAndDeduplicate(t *testing.T) {
 		"/api/v1/cond/Alarms": `{"Results":[
 			{"Moid":"alarm-1","ObjectType":"cond.Alarm","AffectedMoDisplayName":"ucs-server-1","AffectedMoId":"server-1","Severity":"Critical","Acknowledge":"None","CreationTime":"2026-05-25T10:00:00Z","Description":"Thermal threshold exceeded"}
 		]}`,
-		"/api/v1/tam/AdvisoryInstances": `{"Results":[
-			{"Moid":"advisory-instance-1","ObjectType":"tam.AdvisoryInstance","AffectedObjectMoid":"server-1","AffectedObjectType":"compute.PhysicalSummary","State":"Active","CreateTime":"2026-05-25T10:00:00Z"}
-		]}`,
-		"/api/v1/tam/SecurityAdvisories": `{"Results":[
-			{"Moid":"security-advisory-1","ObjectType":"tam.SecurityAdvisory","Name":"Security advisory","Severity":"Critical","Status":"Active","CreateTime":"2026-05-25T10:00:00Z"}
-		]}`,
-		"/api/v1/workflow/WorkflowInfos": `{"Results":[
-			{"Moid":"workflow-1","ObjectType":"workflow.WorkflowInfo","Name":"Firmware workflow","Status":"Failed","CreateTime":"2026-05-25T10:00:00Z"}
-		]}`,
 		"/api/v1/workflow/TaskInfos": `{"Results":[
 			{"Moid":"task-1","ObjectType":"workflow.TaskInfo","Name":"Firmware update","Status":"Failed","FailureReason":"Image download failed","CreateTime":"2026-05-25T10:00:00Z"}
-		]}`,
-		"/api/v1/techsupportmanagement/TechSupportStatuses": `{"Results":[
-			{"Moid":"techsupport-1","ObjectType":"techsupportmanagement.TechSupportStatus","Status":"CollectionComplete","CreateTime":"2026-05-25T10:00:00Z"}
 		]}`,
 	}, nil)
 	defer server.Close()
@@ -499,14 +212,10 @@ func TestIntersightLogsEmitEventEvidenceAndDeduplicate(t *testing.T) {
 	receiver := newTestIntersightLogsReceiver(t, server.URL)
 	ld, err := receiver.scrape(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, 7, ld.LogRecordCount())
+	assert.Equal(t, 3, ld.LogRecordCount())
 	assert.True(t, hasLogRecordAttribute(ld, "event.name", "aaa.audit_records"))
 	assert.True(t, hasLogRecordAttribute(ld, "event.name", "cond.alarms"))
-	assert.True(t, hasLogRecordAttribute(ld, "event.name", "tam.advisory_instances"))
-	assert.True(t, hasLogRecordAttribute(ld, "event.name", "tam.security_advisories"))
-	assert.True(t, hasLogRecordAttribute(ld, "event.name", "workflow.workflow_infos"))
 	assert.True(t, hasLogRecordAttribute(ld, "event.name", "workflow.task_infos"))
-	assert.True(t, hasLogRecordAttribute(ld, "event.name", "techsupportmanagement.techsupport_statuses"))
 	assert.True(t, hasLogRecordAttribute(ld, "user.email", "operator@example.com"))
 
 	ld, err = receiver.scrape(t.Context())
@@ -551,45 +260,6 @@ func TestIntersightEndpointQueriesIncludeSelectAndLookback(t *testing.T) {
 	auditQuery := endpointQuery(intersightLogEndpoints()[0], cfg, now)
 	assert.Equal(t, "CreateTime gt 2026-05-24T12:00:00Z", auditQuery.Get("$filter"))
 	assert.Contains(t, auditQuery.Get("$select"), "UserIdOrEmail")
-
-	for _, endpoint := range intersightLogEndpoints() {
-		switch endpoint.operation {
-		case "tam.advisory_instances", "tam.security_advisories", "workflow.workflow_infos", "workflow.task_infos", "techsupportmanagement.techsupport_statuses":
-			assert.Equal(t, "CreateTime gt 2026-05-24T12:00:00Z", endpointQuery(endpoint, cfg, now).Get("$filter"), endpoint.operation)
-		}
-	}
-
-	for _, endpoint := range intersightMetricEndpoints() {
-		if endpoint.operation == "hyperflex.clusters" {
-			assert.Contains(t, endpoint.selectFields, "Status")
-		}
-	}
-}
-
-func TestIntersightAuditEndpointIsInBothSignalCatalogs(t *testing.T) {
-	var metricEndpoints, logEndpoints []intersightEndpoint
-	for _, endpoint := range intersightMetricEndpoints() {
-		if endpoint.operation == "aaa.audit_records" {
-			metricEndpoints = append(metricEndpoints, endpoint)
-		}
-	}
-	for _, endpoint := range intersightLogEndpoints() {
-		if endpoint.operation == "aaa.audit_records" {
-			logEndpoints = append(logEndpoints, endpoint)
-		}
-	}
-	require.Len(t, metricEndpoints, 1)
-	require.Len(t, logEndpoints, 1)
-
-	metricEndpoint := metricEndpoints[0]
-	logEndpoint := logEndpoints[0]
-	assert.Equal(t, logEndpoint.group, metricEndpoint.group)
-	assert.Equal(t, logEndpoint.path, metricEndpoint.path)
-	assert.Equal(t, logEndpoint.objectType, metricEndpoint.objectType)
-	assert.Equal(t, logEndpoint.selectFields, metricEndpoint.selectFields)
-	cfg := createDefaultConfig().(*Config)
-	now := time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)
-	assert.Equal(t, endpointQuery(logEndpoint, cfg, now), endpointQuery(metricEndpoint, cfg, now))
 }
 
 func TestIntersightCatalogCoversTroubleshootingDomains(t *testing.T) {
@@ -718,7 +388,7 @@ func TestIntersightCatalogCoversTroubleshootingDomains(t *testing.T) {
 func newTestIntersightMetricsReceiver(t *testing.T, endpoint string, mutate func(*Config)) *intersightMetricsReceiver {
 	t.Helper()
 	cfg := createDefaultConfig().(*Config)
-	cfg.ControllerConfig.Timeout = 5 * time.Second
+	cfg.Timeout = 5 * time.Second
 	cfg.Intersight = defaultIntersightConfig()
 	cfg.Intersight.Enabled = true
 	cfg.Intersight.Endpoint = endpoint
@@ -737,7 +407,7 @@ func newTestIntersightMetricsReceiver(t *testing.T, endpoint string, mutate func
 func newTestIntersightLogsReceiver(t *testing.T, endpoint string) *intersightLogsReceiver {
 	t.Helper()
 	cfg := createDefaultConfig().(*Config)
-	cfg.ControllerConfig.Timeout = 5 * time.Second
+	cfg.Timeout = 5 * time.Second
 	cfg.Intersight = defaultIntersightConfig()
 	cfg.Intersight.Enabled = true
 	cfg.Intersight.Endpoint = endpoint
@@ -850,40 +520,6 @@ func doubleMetricValueExists(md pmetric.Metrics, name string, value float64) boo
 				points := metric.Gauge().DataPoints()
 				for l := 0; l < points.Len(); l++ {
 					if points.At(l).DoubleValue() == value {
-						return true
-					}
-				}
-			}
-		}
-	}
-	return false
-}
-
-func intMetricValueWithAttributesExists(md pmetric.Metrics, name string, value int64, attrs map[string]string) bool {
-	for i := 0; i < md.ResourceMetrics().Len(); i++ {
-		rm := md.ResourceMetrics().At(i)
-		for j := 0; j < rm.ScopeMetrics().Len(); j++ {
-			sm := rm.ScopeMetrics().At(j)
-			for k := 0; k < sm.Metrics().Len(); k++ {
-				metric := sm.Metrics().At(k)
-				if metric.Name() != name || metric.Type() != pmetric.MetricTypeGauge {
-					continue
-				}
-				points := metric.Gauge().DataPoints()
-				for l := 0; l < points.Len(); l++ {
-					point := points.At(l)
-					if point.IntValue() != value {
-						continue
-					}
-					matches := true
-					for key, want := range attrs {
-						got, ok := point.Attributes().Get(key)
-						if !ok || got.Str() != want {
-							matches = false
-							break
-						}
-					}
-					if matches {
 						return true
 					}
 				}

@@ -202,24 +202,10 @@ func valueForKey(obj Object, key string) (any, bool) {
 }
 
 func decodeObject(body []byte) (Object, error) {
-	var raw any
-	jsonErr := httpclient.DecodeJSON(body, &raw)
+	var obj Object
+	jsonErr := httpclient.DecodeJSON(body, &obj)
 	if jsonErr == nil {
-		normalized := normalizeJSON(raw)
-		switch typed := normalized.(type) {
-		case Object:
-			return typed, nil
-		case nil:
-			return Object{}, nil
-		case string, json.Number, float64, bool:
-			// Several documented ISE GET endpoints return a top-level scalar
-			// (for example TrustSec preview counts and workload service state).
-			// Preserve it under a stable field so the receiver can represent the
-			// response without pretending it was a list.
-			return Object{"value": typed}, nil
-		default:
-			return nil, fmt.Errorf("decode ise response: expected a JSON object or scalar, got %T", normalized)
-		}
+		return obj, nil
 	}
 	var limitErr *httpclient.JSONComplexityLimitError
 	if errors.As(jsonErr, &limitErr) {
@@ -276,24 +262,6 @@ func extractObjects(value any) []Object {
 	case []Object:
 		return typed
 	case Object:
-		// MnT list containers include count attributes alongside zero or more
-		// rows. Treat an empty container as an empty list instead of turning its
-		// count attribute into a synthetic session object. Current ISE releases
-		// use activeList/AuthList; older releases used activeSessionList.
-		for _, key := range []string{"activeSessionList", "activeList", "authSessionList", "authList", "authStatusOutputList", "authStatusList", "acctStatusOutputList", "acctStatusList"} {
-			if nested, ok := typed[key]; ok {
-				container, ok := nestedObject(nested)
-				if !ok {
-					return nil
-				}
-				for _, rowKey := range []string{"activeSession", "authSession", "authStatusElements", "acctStatusElements", "sessionParameters"} {
-					if rows, exists := container[rowKey]; exists {
-						return extractObjects(rows)
-					}
-				}
-				return nil
-			}
-		}
 		for _, key := range []string{"response", "Response", "data", "Data", "items", "Items", "content", "Content", "results", "Results", "records", "Records", "entries", "Entries", "resources", "Resources", "resource", "Resource"} {
 			if nested, ok := typed[key]; ok {
 				return extractObjects(nested)
@@ -309,7 +277,7 @@ func extractObjects(value any) []Object {
 				return extractObjects(nested)
 			}
 		}
-		for _, key := range []string{"sessionCount"} {
+		for _, key := range []string{"sessionCount", "activeSessionList", "authSessionList", "authStatusOutputList", "authStatusList", "acctStatusOutputList", "acctStatusList"} {
 			if nested, ok := typed[key]; ok {
 				return extractObjects(nested)
 			}
@@ -326,17 +294,6 @@ func extractObjects(value any) []Object {
 		return extractObjects(Object(typed))
 	default:
 		return nil
-	}
-}
-
-func nestedObject(value any) (Object, bool) {
-	switch typed := value.(type) {
-	case Object:
-		return typed, true
-	case map[string]any:
-		return Object(typed), true
-	default:
-		return nil, false
 	}
 }
 
@@ -361,7 +318,7 @@ func extractTotal(value any) int {
 				return int(total)
 			}
 		}
-		for _, key := range []string{"SearchResult", "searchResult", "activeSessionList", "activeList", "authSessionList", "authList"} {
+		for _, key := range []string{"SearchResult", "searchResult", "activeSessionList", "authSessionList"} {
 			if nested, ok := typed[key]; ok {
 				if total := extractTotal(nested); total >= 0 {
 					return total

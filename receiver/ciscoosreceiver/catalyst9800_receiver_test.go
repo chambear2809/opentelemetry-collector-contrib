@@ -6,7 +6,6 @@ package ciscoosreceiver
 import (
 	"context"
 	"errors"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -21,8 +20,6 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	componentmetadata "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver/internal/metadata"
 )
@@ -71,59 +68,14 @@ func TestCatalyst9800DialInReceiverUsesLegacySharedSession(t *testing.T) {
 	}.withDefaults(cfg)
 
 	require.NoError(t, receiver.subscribeTarget(t.Context(), target))
-	metricName := mustDynamicYANGName(t, "cisco.catalyst9800.yang", "wireless-ap-global-oper",
-		[]string{"ap-global-oper-data", "ap-join-stats", "ap-join-info", "is-joined"}, dynamicYANGMetricVariantNumber)
-	data := metricsBatchWithName(t, sink.AllMetrics(), metricName)
-	assertMetricExists(t, data, metricName)
+	data := metricsBatchWithName(t, sink.AllMetrics(), "cisco.catalyst9800.yang.wireless_ap_global_oper.ap_global_oper_data.ap_join_stats.ap_join_info.is_joined")
+	assertMetricExists(t, data, "cisco.catalyst9800.yang.wireless_ap_global_oper.ap_global_oper_data.ap_join_stats.ap_join_info.is_joined")
 	assertMetricExists(t, data, "cisco.wlc.ap.join.status")
 
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
 	assert.Equal(t, "admin", firstMetadataValue(fake.capabilitiesMD, "username"))
 	assert.Equal(t, "password", firstMetadataValue(fake.subscribeMD, "password"))
-}
-
-func TestCatalyst9800DialInReceiverSanitizesRemoteStatus(t *testing.T) {
-	const remoteStatusMessage = "device-echoed password=catalyst-runtime-secret"
-	fake := &fakeGNMIServer{
-		caps: &gnmi.CapabilityResponse{
-			SupportedModels:    []*gnmi.ModelData{{Name: "Cisco-IOS-XE-wireless-ap-global-oper"}},
-			SupportedEncodings: []gnmi.Encoding{gnmi.Encoding_JSON_IETF},
-		},
-		sendUpdate:   func(grpc.BidiStreamingServer[gnmi.SubscribeRequest, gnmi.SubscribeResponse]) error { return nil },
-		afterSyncErr: status.Error(codes.PermissionDenied, remoteStatusMessage),
-	}
-	endpoint := startFakeGNMIServer(t, fake)
-
-	cfg := defaultCatalyst9800Config()
-	cfg.Enabled = true
-	for name := range cfg.PathGroups {
-		cfg.PathGroups[name] = Catalyst9800PathGroupConfig{}
-	}
-	cfg.Paths.Include = []string{"wireless-ap-global-oper:ap-global-oper-data/ap-join-stats"}
-	receiver := &catalyst9800DialInReceiver{
-		settings: receivertest.NewNopSettings(componentmetadata.Type),
-		config:   cfg,
-		consumer: consumertest.NewNop(),
-		health:   &catalyst9800Health{},
-		host:     componenttest.NewNopHost(),
-	}
-	target := Catalyst9800TargetConfig{
-		ClientConfig: mustCatalyst9800ClientConfig(endpoint),
-		Name:         "wlc-1",
-		Credentials: Catalyst9800CredentialsConfig{
-			Username: "admin",
-			Password: configopaque.String("password"),
-		},
-		Subscription: Catalyst9800SubscriptionConfig{Mode: iosXRSubscribeModeOnce},
-	}.withDefaults(cfg)
-
-	err := receiver.subscribeTarget(t.Context(), target)
-	require.Error(t, err)
-	assert.Equal(t, codes.PermissionDenied, status.Code(err))
-	assert.ErrorContains(t, err, "code=PermissionDenied")
-	assert.NotContains(t, err.Error(), "device-echoed")
-	assert.NotContains(t, err.Error(), "catalyst-runtime-secret")
 }
 
 func TestCatalyst9800ResolveTargetPathsAcceptsCiscoModuleAliases(t *testing.T) {
@@ -351,9 +303,7 @@ func TestCatalyst9800NormalizingConsumerRenamesDialOutMetricsAndAddsAliases(t *t
 	require.Len(t, sink.AllMetrics(), 1)
 
 	md := sink.AllMetrics()[0]
-	metricName := mustDialOutDynamicYANGName(t, "cisco.catalyst9800.yang", "wireless-rrm-oper",
-		"wireless-rrm-oper:rrm-oper-data/rrm-measurement", "rrm-oper-data/rrm-measurement/cca-util-percentage", dynamicYANGMetricVariantNumber)
-	assertMetricExists(t, md, metricName)
+	assertMetricExists(t, md, "cisco.catalyst9800.yang.wireless_rrm_oper.rrm_oper_data.rrm_measurement.cca_util_percentage")
 	assertMetricExists(t, md, "cisco.wlc.rf.channel.utilization")
 
 	resourceAttrs := md.ResourceMetrics().At(0).Resource().Attributes()
@@ -364,7 +314,7 @@ func TestCatalyst9800NormalizingConsumerRenamesDialOutMetricsAndAddsAliases(t *t
 	assert.Equal(t, "mdt_grpc_dial_out", attrValue(t, resourceAttrs, "cisco.telemetry.transport"))
 	_, hasResourceModule := resourceAttrs.Get("cisco.yang.module")
 	assert.False(t, hasResourceModule)
-	metric := requireMetricByName(t, md, metricName)
+	metric := requireMetricByName(t, md, "cisco.catalyst9800.yang.wireless_rrm_oper.rrm_oper_data.rrm_measurement.cca_util_percentage")
 	assert.Equal(t, "wireless-rrm-oper", attrValue(t, metric.Gauge().DataPoints().At(0).Attributes(), "cisco.yang.module"))
 }
 
@@ -386,9 +336,7 @@ func TestCatalyst9800NormalizingConsumerAllowsRootMetricPatternFilteringAfterAli
 	require.Len(t, sink.AllMetrics(), 1)
 
 	md := sink.AllMetrics()[0]
-	metricName := mustDialOutDynamicYANGName(t, "cisco.catalyst9800.yang", "wireless-rrm-oper",
-		"wireless-rrm-oper:rrm-oper-data/rrm-measurement", "rrm-oper-data/rrm-measurement/cca-util-percentage", dynamicYANGMetricVariantNumber)
-	assertMetricExists(t, md, metricName)
+	assertMetricExists(t, md, "cisco.catalyst9800.yang.wireless_rrm_oper.rrm_oper_data.rrm_measurement.cca_util_percentage")
 	assert.NotContains(t, metricNames(md), "cisco.wlc.rf.channel.utilization")
 }
 
@@ -402,6 +350,5 @@ func rawCatalyst9800DialOutMetrics(metricName string, value float64, nodeID stri
 	metric.SetName(metricName)
 	dp := metric.SetEmptyGauge().DataPoints().AppendEmpty()
 	dp.SetDoubleValue(value)
-	dp.Attributes().PutStr("cisco.yang.source_path", strings.ReplaceAll(strings.TrimPrefix(metricName, "cisco."), ".", "/"))
 	return md
 }

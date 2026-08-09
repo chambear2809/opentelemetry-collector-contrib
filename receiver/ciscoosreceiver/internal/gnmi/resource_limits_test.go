@@ -104,58 +104,6 @@ func TestDecodeNotificationEnforcesAggregateLimits(t *testing.T) {
 		require.ErrorContains(t, err, "exceeds 2 points")
 	})
 
-	t.Run("decoded and undecodable points share one limit", func(t *testing.T) {
-		limits := base
-		limits.maxPoints = 1
-		_, _, err := decodeNotificationWithLimits("switch-1", &gnmipb.Notification{
-			Prefix: protoPath("root"),
-			Update: []*gnmipb.Update{{
-				Path: protoPath("state"),
-				Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonIetfVal{JsonIetfVal: []byte(
-					`{"invalid":null,"valid":1}`,
-				)}},
-			}},
-		}, timestamp, limits)
-		require.ErrorContains(t, err, "exceeds 1 points")
-	})
-
-	t.Run("empty JSON descendants consume invalid path cardinality", func(t *testing.T) {
-		limits := base
-		limits.maxPoints = 1
-		_, _, err := decodeNotificationWithLimits("switch-1", &gnmipb.Notification{
-			Prefix: protoPath("root"),
-			Update: []*gnmipb.Update{{
-				Path: protoPath("state"),
-				Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonIetfVal{JsonIetfVal: []byte(
-					`{"empty-list":[],"empty-object":{}}`,
-				)}},
-			}},
-		}, timestamp, limits)
-		require.ErrorContains(t, err, "exceeds 1 points")
-	})
-
-	t.Run("exact mapped container mismatch shares the point limit", func(t *testing.T) {
-		limits := base
-		limits.maxPoints = 1
-		registry, err := NewRegistry(Mapping{
-			Source:    SourcePath{Origin: "openconfig", Elements: []string{"root"}, Leaf: "value"},
-			Metric:    MetricMetadata{Name: "root.value", Description: "Root value.", Unit: "1"},
-			Scale:     1,
-			GaugeType: GaugeInt,
-		})
-		require.NoError(t, err)
-		_, _, err = decodeNotificationWithOptions("switch-1", &gnmipb.Notification{
-			Prefix: &gnmipb.Path{Origin: "openconfig", Elem: []*gnmipb.PathElem{{Name: "root"}}},
-			Update: []*gnmipb.Update{{
-				Path: protoPath("value"),
-				Val: &gnmipb.TypedValue{Value: &gnmipb.TypedValue_JsonIetfVal{
-					JsonIetfVal: []byte(`{"child":1}`),
-				}},
-			}},
-		}, timestamp, limits, registry.jsonListKeys, registry)
-		require.ErrorContains(t, err, "exceeds 1 points")
-	})
-
 	t.Run("path and string bytes", func(t *testing.T) {
 		limits := base
 		limits.maxPathStringBytes = 512
@@ -296,52 +244,5 @@ func assertCacheRetainedByteInvariant(t *testing.T, cache *Cache) {
 	for key := range cache.tombstone {
 		expected += cache.tombstone[key].retainedBytes
 	}
-	expected += cache.ownerIndexRetainedBytesLocked()
 	assert.Equal(t, expected, cache.retainedBytes)
-}
-
-func TestCacheFullActiveSeriesCapacityRejectsNewDeleteAndInvalidationState(t *testing.T) {
-	timestamp := time.Unix(100, 0)
-	point := testMappedPoint("switch-1", "Ethernet1", "temperature", 41, timestamp)
-	unmatchedDelete, err := ParsePath("switch-1", "openconfig", "interfaces/interface[name=Ethernet2]/state/enabled")
-	require.NoError(t, err)
-	unmatchedInvalidation, err := ParsePath("switch-1", "openconfig", "interfaces/interface[name=Ethernet3]/state/oper-status")
-	require.NoError(t, err)
-
-	for _, test := range []struct {
-		name         string
-		notification CacheNotification
-	}{
-		{
-			name: "authoritative delete tombstone",
-			notification: CacheNotification{
-				OwnerID: "owner-a", Timestamp: timestamp.Add(time.Second), Deletes: []Path{unmatchedDelete},
-			},
-		},
-		{
-			name: "semantic invalidation watermark",
-			notification: CacheNotification{
-				OwnerID: "owner-a", Timestamp: timestamp.Add(time.Second), Invalidates: []Path{unmatchedInvalidation},
-			},
-		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			cache, cacheErr := NewCache(1)
-			require.NoError(t, cacheErr)
-			_, cacheErr = cache.Apply(CacheNotification{
-				OwnerID: "owner-a", Timestamp: timestamp, Updates: []MappedPoint{point},
-			})
-			require.NoError(t, cacheErr)
-			beforeBytes := cache.RetainedBytes()
-
-			_, cacheErr = cache.Apply(test.notification)
-			var capacity *CapacityError
-			require.ErrorAs(t, cacheErr, &capacity)
-			assert.Equal(t, 1, capacity.Limit)
-			assert.Equal(t, 2, capacity.Requested)
-			assert.Equal(t, CacheUsage{Entries: 1, Total: 1, Limit: 1}, cache.Usage())
-			assert.Equal(t, beforeBytes, cache.RetainedBytes())
-			assertCacheRetainedByteInvariant(t, cache)
-		})
-	}
 }
