@@ -533,6 +533,8 @@ $defs:
     description: GNMICustomSubscriptionConfig defines explicitly mapped custom scalar paths. Origin is independent of every path; raw origin:path strings are rejected by the path parser.
     type: object
     properties:
+      encoding:
+        type: string
       mappings:
         type: array
         items:
@@ -563,6 +565,31 @@ $defs:
         type: array
         items:
           type: string
+  gnmi_group_config:
+    description: GNMIGroupConfig controls one catalog-declared group within a normalized profile. Selectors are exact matches on catalog-declared keys.
+    type: object
+    properties:
+      enabled:
+        x-pointer: true
+        type: boolean
+      max_entities:
+        type: integer
+      required:
+        type: boolean
+      sample_interval:
+        type: string
+        format: duration
+      selectors:
+        type: object
+        additionalProperties:
+          type: array
+          items:
+            type: string
+      stream_mode:
+        type: string
+      sync_timeout:
+        type: string
+        format: duration
   gnmi_keepalive_config:
     description: GNMIKeepaliveConfig controls client-side HTTP/2 keepalive without exposing the Collector gRPC ClientConfig or arbitrary request headers.
     type: object
@@ -605,24 +632,58 @@ $defs:
       enabled:
         x-pointer: true
         type: boolean
+      groups:
+        type: object
+        additionalProperties:
+          $ref: gnmi_group_config
       required:
         type: boolean
       sample_interval:
         type: string
         format: duration
+      stream_mode:
+        type: string
   gnmi_profiles_config:
     description: GNMIProfilesConfig contains the normalized profile set.
     type: object
     properties:
+      acl:
+        $ref: gnmi_profile_config
+      asic:
+        $ref: gnmi_profile_config
       catalyst_9800_wireless:
+        $ref: gnmi_profile_config
+      environment:
+        $ref: gnmi_profile_config
+      high_availability:
         $ref: gnmi_profile_config
       identity:
         $ref: gnmi_profile_config
       interfaces:
         $ref: gnmi_profile_config
+      inventory:
+        $ref: gnmi_profile_config
+      l2:
+        $ref: gnmi_profile_config
+      mpls:
+        $ref: gnmi_profile_config
       optics:
         $ref: gnmi_profile_config
+      overlay:
+        $ref: gnmi_profile_config
+      poe:
+        $ref: gnmi_profile_config
+      qos:
+        $ref: gnmi_profile_config
+      routing:
+        $ref: gnmi_profile_config
       system:
+        $ref: gnmi_profile_config
+      telemetry_self:
+        $ref: gnmi_profile_config
+      time_sync:
+        $ref: gnmi_profile_config
+      topology:
         $ref: gnmi_profile_config
   gnmi_target_config:
     description: GNMITargetConfig identifies one statically owned dial-in target.
@@ -640,6 +701,10 @@ $defs:
         type: array
         items:
           $ref: gnmi_custom_subscription_config
+      encoding_preference:
+        type: array
+        items:
+          type: string
       endpoint:
         type: string
       keepalive:
@@ -652,8 +717,13 @@ $defs:
         type: string
       platform:
         type: string
+      product_family:
+        type: string
       profiles:
         $ref: gnmi_profiles_config
+      sync_timeout:
+        type: string
+        format: duration
       tls:
         $ref: gnmitls_config
   gnmitls_config:

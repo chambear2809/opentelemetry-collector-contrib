@@ -134,6 +134,21 @@ func TestMetricsBuilderConfig(t *testing.T) {
 						AggregationStrategy: AggregationStrategyAvg,
 						EnabledAttributes:   []CiscoOpticsVoltageMetricAttributeKey{CiscoOpticsVoltageMetricAttributeKeyNetworkInterfaceName, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsLane, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsExperimental},
 					},
+					CiscoWlcApJoinStatus: CiscoWlcApJoinStatusMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoWlcApJoinStatusMetricAttributeKey{CiscoWlcApJoinStatusMetricAttributeKeyCiscoWlcApMac},
+					},
+					CiscoWlcRfChannelUtilization: CiscoWlcRfChannelUtilizationMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoWlcRfChannelUtilizationMetricAttributeKey{CiscoWlcRfChannelUtilizationMetricAttributeKeyCiscoWlcApMac, CiscoWlcRfChannelUtilizationMetricAttributeKeyCiscoWlcRadioSlot},
+					},
+					CiscoWlcSsidClientCount: CiscoWlcSsidClientCountMetricConfig{
+						Enabled:             true,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoWlcSsidClientCountMetricAttributeKey{CiscoWlcSsidClientCountMetricAttributeKeyCiscoWlcApMac, CiscoWlcSsidClientCountMetricAttributeKeyCiscoWlcWlanID},
+					},
 					SystemCPUUtilization: SystemCPUUtilizationMetricConfig{
 						Enabled: true,
 					},
@@ -293,6 +308,21 @@ func TestMetricsBuilderConfig(t *testing.T) {
 						AggregationStrategy: AggregationStrategyAvg,
 						EnabledAttributes:   []CiscoOpticsVoltageMetricAttributeKey{CiscoOpticsVoltageMetricAttributeKeyNetworkInterfaceName, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsLane, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsExperimental},
 					},
+					CiscoWlcApJoinStatus: CiscoWlcApJoinStatusMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoWlcApJoinStatusMetricAttributeKey{CiscoWlcApJoinStatusMetricAttributeKeyCiscoWlcApMac},
+					},
+					CiscoWlcRfChannelUtilization: CiscoWlcRfChannelUtilizationMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoWlcRfChannelUtilizationMetricAttributeKey{CiscoWlcRfChannelUtilizationMetricAttributeKeyCiscoWlcApMac, CiscoWlcRfChannelUtilizationMetricAttributeKeyCiscoWlcRadioSlot},
+					},
+					CiscoWlcSsidClientCount: CiscoWlcSsidClientCountMetricConfig{
+						Enabled:             false,
+						AggregationStrategy: AggregationStrategyAvg,
+						EnabledAttributes:   []CiscoWlcSsidClientCountMetricAttributeKey{CiscoWlcSsidClientCountMetricAttributeKeyCiscoWlcApMac, CiscoWlcSsidClientCountMetricAttributeKeyCiscoWlcWlanID},
+					},
 					SystemCPUUtilization: SystemCPUUtilizationMetricConfig{
 						Enabled: false,
 					},
@@ -344,7 +374,7 @@ func TestMetricsBuilderConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := loadMetricsBuilderConfig(t, tt.name)
-			diff := cmp.Diff(tt.want, cfg, cmpopts.IgnoreUnexported(CiscoDeviceUpMetricConfig{}, CiscoInterfaceAdminStatusMetricConfig{}, CiscoInterfaceIoRateMetricConfig{}, CiscoInterfacePacketRateMetricConfig{}, CiscoInterfaceSpeedMetricConfig{}, CiscoInterfaceUtilizationMetricConfig{}, CiscoOpticsChromaticDispersionMetricConfig{}, CiscoOpticsDgdMetricConfig{}, CiscoOpticsEsnrMetricConfig{}, CiscoOpticsLaserBiasCurrentMetricConfig{}, CiscoOpticsOsnrMetricConfig{}, CiscoOpticsPreFecBerMetricConfig{}, CiscoOpticsPresentMetricConfig{}, CiscoOpticsQFactorMetricConfig{}, CiscoOpticsQMarginMetricConfig{}, CiscoOpticsRxPowerMetricConfig{}, CiscoOpticsTdecqMetricConfig{}, CiscoOpticsTecCurrentMetricConfig{}, CiscoOpticsTecUtilizationMetricConfig{}, CiscoOpticsTemperatureMetricConfig{}, CiscoOpticsTxPowerMetricConfig{}, CiscoOpticsVoltageMetricConfig{}, SystemCPUUtilizationMetricConfig{}, SystemMemoryUtilizationMetricConfig{}, SystemNetworkErrorsMetricConfig{}, SystemNetworkInterfaceStatusMetricConfig{}, SystemNetworkIoMetricConfig{}, SystemNetworkPacketCountMetricConfig{}, SystemNetworkPacketDroppedMetricConfig{}, SystemUptimeMetricConfig{}, ResourceAttributeConfig{}))
+			diff := cmp.Diff(tt.want, cfg, cmpopts.IgnoreUnexported(CiscoDeviceUpMetricConfig{}, CiscoInterfaceAdminStatusMetricConfig{}, CiscoInterfaceIoRateMetricConfig{}, CiscoInterfacePacketRateMetricConfig{}, CiscoInterfaceSpeedMetricConfig{}, CiscoInterfaceUtilizationMetricConfig{}, CiscoOpticsChromaticDispersionMetricConfig{}, CiscoOpticsDgdMetricConfig{}, CiscoOpticsEsnrMetricConfig{}, CiscoOpticsLaserBiasCurrentMetricConfig{}, CiscoOpticsOsnrMetricConfig{}, CiscoOpticsPreFecBerMetricConfig{}, CiscoOpticsPresentMetricConfig{}, CiscoOpticsQFactorMetricConfig{}, CiscoOpticsQMarginMetricConfig{}, CiscoOpticsRxPowerMetricConfig{}, CiscoOpticsTdecqMetricConfig{}, CiscoOpticsTecCurrentMetricConfig{}, CiscoOpticsTecUtilizationMetricConfig{}, CiscoOpticsTemperatureMetricConfig{}, CiscoOpticsTxPowerMetricConfig{}, CiscoOpticsVoltageMetricConfig{}, CiscoWlcApJoinStatusMetricConfig{}, CiscoWlcRfChannelUtilizationMetricConfig{}, CiscoWlcSsidClientCountMetricConfig{}, SystemCPUUtilizationMetricConfig{}, SystemMemoryUtilizationMetricConfig{}, SystemNetworkErrorsMetricConfig{}, SystemNetworkInterfaceStatusMetricConfig{}, SystemNetworkIoMetricConfig{}, SystemNetworkPacketCountMetricConfig{}, SystemNetworkPacketDroppedMetricConfig{}, SystemUptimeMetricConfig{}, ResourceAttributeConfig{}))
 			require.Emptyf(t, diff, "Config mismatch (-expected +actual):\n%s", diff)
 		})
 	}
@@ -598,6 +628,42 @@ func TestCiscoOpticsVoltageMetricsConfig_Validate(t *testing.T) {
 	require.ErrorContains(t, cfg.Validate(), "metric cisco.optics.voltage doesn't have an attribute invalid, valid attributes: [network.interface.name, cisco.optics.lane, cisco.optics.sensor, cisco.optics.profile, cisco.optics.experimental]")
 
 	cfg = DefaultMetricsConfig().CiscoOpticsVoltage
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoWlcApJoinStatusMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoWlcApJoinStatus
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoWlcApJoinStatusMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.wlc.ap.join.status doesn't have an attribute invalid, valid attributes: [cisco.wlc.ap.mac]")
+
+	cfg = DefaultMetricsConfig().CiscoWlcApJoinStatus
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoWlcRfChannelUtilizationMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoWlcRfChannelUtilization
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoWlcRfChannelUtilizationMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.wlc.rf.channel.utilization doesn't have an attribute invalid, valid attributes: [cisco.wlc.ap.mac, cisco.wlc.radio.slot]")
+
+	cfg = DefaultMetricsConfig().CiscoWlcRfChannelUtilization
+	cfg.AggregationStrategy = "invalid"
+	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
+}
+
+func TestCiscoWlcSsidClientCountMetricsConfig_Validate(t *testing.T) {
+	cfg := DefaultMetricsConfig().CiscoWlcSsidClientCount
+	require.NoError(t, cfg.Validate())
+
+	cfg.EnabledAttributes = []CiscoWlcSsidClientCountMetricAttributeKey{"invalid"}
+	require.ErrorContains(t, cfg.Validate(), "metric cisco.wlc.ssid.client.count doesn't have an attribute invalid, valid attributes: [cisco.wlc.ap.mac, cisco.wlc.wlan.id]")
+
+	cfg = DefaultMetricsConfig().CiscoWlcSsidClientCount
 	cfg.AggregationStrategy = "invalid"
 	require.ErrorContains(t, cfg.Validate(), "invalid aggregation strategy")
 }

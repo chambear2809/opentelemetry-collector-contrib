@@ -380,6 +380,50 @@ Optical module supply voltage
 | cisco.optics.profile | The optical telemetry profile that produced the reading | Str: ``dom``, ``vdm``, ``coherent`` | Recommended | - |
 | cisco.optics.experimental | Whether the source platform and optical profile still require physical-hardware qualification | Any Bool | Recommended | - |
 
+### cisco.wlc.ap.join.status
+
+Catalyst 9800 access point join status
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.wlc.ap.mac | Device-reported MAC address of a Catalyst wireless access point | Any Str | Recommended | - |
+
+### cisco.wlc.rf.channel.utilization
+
+Catalyst 9800 RF channel utilization ratio
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| 1 | Gauge | Double | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.wlc.ap.mac | Device-reported MAC address of a Catalyst wireless access point | Any Str | Recommended | - |
+| cisco.wlc.radio.slot | Device-reported radio slot identifier on a Catalyst wireless access point | Any Str | Recommended | - |
+
+### cisco.wlc.ssid.client.count
+
+Catalyst 9800 associated client count
+
+| Unit | Metric Type | Value Type | Stability |
+| ---- | ----------- | ---------- | --------- |
+| {client} | Gauge | Int | Development |
+
+#### Attributes
+
+| Name | Description | Values | Requirement Level | Semantic Convention |
+| ---- | ----------- | ------ | ----------------- | ------------------- |
+| cisco.wlc.ap.mac | Device-reported MAC address of a Catalyst wireless access point | Any Str | Recommended | - |
+| cisco.wlc.wlan.id | Device-reported Catalyst wireless LAN identifier | Any Str | Recommended | - |
+
 ### system.cpu.utilization
 
 Percentage of CPU time in use.
@@ -484,11 +528,11 @@ The time the Cisco device has been running
 | Name | Description | Values | Enabled | Semantic Convention | Stability |
 | ---- | ----------- | ------ | ------- | ------------------- | --------- |
 | cisco.os.name | Normalized Cisco operating-system family | Any Str | true | - | - |
-| cisco.platform.family | Configured Cisco platform family for the gNMI target | Any Str | true | - | - |
+| cisco.platform.family | Normalized Cisco platform or generated-catalog product family | Any Str | true | - | - |
 | cisco.telemetry.transport | Cisco telemetry transport that produced the metrics | Any Str | true | - | - |
-| host.id | Stable configured identity of the Cisco target | Any Str | true | - | - |
+| host.id | Stable identity of the Cisco resource, preferring device serial identity when available | Any Str | true | - | - |
 | host.ip | Management IP of the Cisco target when the endpoint uses an IP literal | Any Str | true | - | - |
-| host.name | Configured name of the Cisco target | Any Str | true | - | - |
+| host.name | Cisco resource hostname or configured display name | Any Str | true | - | - |
 | hw.type | Type of the physical hardware | Any Str | true | - | - |
 | os.name | Human-readable Cisco operating-system name | Any Str | true | - | - |
 
@@ -636,7 +680,7 @@ Whether a gNMI profile is degraded (1 = degraded, 0 = healthy)
 | ---- | ----------- | ------ | ------------------- |
 | cisco.gnmi.target | Static gNMI target name from the receiver configuration | Any Str | - |
 | cisco.gnmi.profile | gNMI subscription profile name | Any Str | - |
-| cisco.gnmi.reason | Bounded reason for a gNMI health or degradation event | Str: ``bisection_limit``, ``cache_limit``, ``incompatible_path_group``, ``unsupported_path`` | - |
+| cisco.gnmi.reason | Bounded reason for a gNMI health or degradation event | Str: ``bisection_limit``, ``cache_limit``, ``decode_error``, ``entity_accounting``, ``entity_limit``, ``incompatible_path_group``, ``sync_timeout``, ``unsupported_path`` | - |
 
 ### otelcol_ciscoosreceiver_gnmi_reconnects
 

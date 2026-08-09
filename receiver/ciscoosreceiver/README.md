@@ -593,11 +593,20 @@ ise:
 
 ### Production gNMI Dial-In
 
-The root `gnmi` section is the normalized, fork-first dial-in path for IOS XE, IOS XR, and NX-OS. It maintains a static
-target inventory and uses only gNMI Capabilities and Subscribe. It never issues Set and does not need Get. Existing
-`ios_xr.dial_out` and `catalyst_9800.dial_out` modes remain available, subject to the production hardening below;
-legacy dial-in targets retain their legacy decoder and metric behavior for one fork release and must not duplicate an
-endpoint in `gnmi.targets`.
+The root `gnmi` section is the normalized, fork-first dial-in path for IOS XE, IOS XR, and NX-OS. Endpoints remain a
+static inventory, but product identity and catalog selection are automatic. Every session calls Capabilities and then
+uses internal Subscribe-ONCE identity probes to discover the OS family, model/PID, software version, and available
+identity details before operational subscriptions are planned. It never issues Get or Set. SupportedModels is only an
+eligibility filter; it is not proof that an operational path works. Existing `ios_xr.dial_out` and
+`catalyst_9800.dial_out` modes remain available, subject to the production hardening below; legacy dial-in targets
+retain their legacy decoder and metric behavior for one fork release and must not duplicate an endpoint in
+`gnmi.targets`.
+
+Coverage claims are exact-row claims. Only a product/release/domain row marked **Live Qualified** in the generated
+[product and domain coverage matrix](docs/gnmi-coverage.md) is supported. `Cataloged`, `Implemented`, fixture-passed,
+and `Findings` rows are not support claims, and neither a Capabilities response nor a qualified sibling SKU promotes a
+row. The generated [metric catalog](docs/gnmi-metrics.md) records metric contracts and catalog uses independently of
+live product qualification.
 
 Across `gnmi.targets`, `ios_xr.dial_in.targets`, and `catalyst_9800.dial_in.targets`, at most 256 target definitions may
 be configured. Dial-in targets admitted by `device_selection` and both enabled dial-out servers share one 512 MiB
@@ -609,7 +618,8 @@ ceiling but do not consume the runtime envelope.
 | Setting | Type | Required | Description |
 |---------|------|----------|-------------|
 | `gnmi.targets` | list | Yes | Static targets with unique names and endpoints. Each target has exactly one active collector owner; this list and both deprecated dial-in target lists may contain at most 256 definitions in total. |
-| `gnmi.targets[].platform` | string | Yes | `ios_xe`, `ios_xr`, or `nx_os`. |
+| `gnmi.targets[].platform` | string | No | Optional expected OS family: `ios_xe`, `ios_xr`, or `nx_os`. Omit it for automatic identity discovery; an explicit mismatch fails the target. |
+| `gnmi.targets[].product_family` | string | Conditional | Optional expected generated-catalog family: `ios_xr`, `ios_xe_routing`, `ios_xe_switching`, `ios_xe_wireless`, or `nx_os`. An explicit mismatch fails the target. Required when `max_streams` is greater than 4. |
 | `gnmi.targets[].credentials.mode` | string | No | `username_password`, `mtls`, or `mtls_username_password`. |
 | `gnmi.targets[].credentials.username` | string | Mode-dependent | Read-only AAA service account. |
 | `gnmi.targets[].credentials.password` | string | Mode-dependent | Password, normally supplied through environment expansion. |
@@ -617,9 +627,14 @@ ceiling but do not consume the runtime envelope.
 | `gnmi.targets[].tls.cert_file` / `key_file` | string | mTLS only | Short-lived client identity assigned per collector shard. |
 | `gnmi.targets[].tls.min_version` | string | No | Minimum TLS version; `1.2` or newer. Insecure TLS and verification bypasses are rejected. |
 | `gnmi.targets[].tls.reload_interval` | duration | No | Reload client certificate/key material for later TLS handshakes. CA changes require a reconnect or rollout. |
+| `gnmi.targets[].encoding_preference` | list | No | Ordered concrete encodings chosen after intersection with the exact product/path capabilities: `proto`, `json_ietf`, and `json`. Defaults to `[json_ietf, json]`. Qualified scalar PROTO does not enable opaque NX DME PROTO. |
+| `gnmi.targets[].sync_timeout` | duration | No | Deadline for identity and initial subscription synchronization. Defaults to `2m`, must be positive, and cannot exceed `30m`; a group may override it. |
 | `gnmi.targets[].max_recv_msg_size_mib` | int | No | Per-target receive limit, from 1 through 16 MiB. Defaults to `16`; larger single notifications are rejected before protobuf object expansion can exhaust the collector. All selected dial-in targets and enabled dial-out servers must fit the combined 512 MiB envelope described above. |
-| `gnmi.targets[].max_streams` | int | No | Compatible-stream cap; defaults to 4 and may be raised to at most 8 after qualification. IOS XR with optics needs 6. |
-| `gnmi.targets[].profiles` | map | No | `identity`, `system`, `interfaces`, `optics`, and fork-only `catalyst_9800_wireless`. |
+| `gnmi.targets[].max_streams` | int | No | Compatible-stream cap from 1 through 16; defaults to 4. Values above 4 require `product_family` and cannot exceed that generated family ceiling (4 for the current IOS catalog families, 16 for `nx_os`). A catalog ceiling is not live qualification or proof that the device is configured for that concurrency. |
+| `gnmi.targets[].profiles` | map | No | Existing `identity`, `system`, `interfaces`, `optics`, and `catalyst_9800_wireless` profiles plus opt-in `inventory`, `environment`, `l2`, `routing`, `mpls`, `overlay`, `qos`, `acl`, `topology`, `poe`, `time_sync`, `high_availability`, `asic`, and `telemetry_self`. |
+| `gnmi.targets[].profiles.*` | map | No | Profile controls: `enabled`, `required`, `sample_interval`, `stream_mode`, and catalog-declared `groups`. Stream mode is `auto`, `sample`, `on_change`, or `target_defined`. |
+| `gnmi.targets[].profiles.*.groups.*` | map | No | Group overrides: `enabled`, `required`, `sample_interval`, `stream_mode`, `sync_timeout`, `max_entities`, and exact-match `selectors`. A catalog group defaults enabled within an enabled profile; interval/mode inherit the profile, sync timeout inherits the target, and `required` defaults false. Group and selector keys must be declared by the catalog. High-cardinality groups require a positive `max_entities`; wildcard selectors are rejected. `max_entities` bounds both selector request expansion and distinct catalog entity identities in committed cache state; overflow is rolled back before delivery. |
+| `gnmi.targets[].custom_subscriptions[].encoding` | string | No | `auto`, `proto`, `json_ietf`, or `json`; defaults to `auto`. A concrete value remains subject to target capabilities and a declared safe decoder. |
 | `gnmi.max_datapoints_per_chunk` | int | No | Lossless consumer-call chunk bound. Defaults to `10000`. |
 | `gnmi.max_cached_series` | int | No | Receiver-wide count ceiling for mapped series, atomic baselines, and delete tombstones. Defaults to `500000`. The separate auxiliary entry ceiling is four times this value so each cached NX optical series can retain a sensor identity plus optical source, presence-count, and attribute entries. Both count ceilings are deterministically partitioned across selected targets. |
 
@@ -646,9 +661,11 @@ all chunks are accepted. A refusal aborts staged state and reconnects the subscr
 redelivery. When a later chunk is refused after earlier chunks were accepted, the complete notification is retried and
 those earlier chunks are intentionally at-least-once; downstream consumers must tolerate duplicate datapoints.
 
-Identity defaults to a five-minute interval, system and interfaces to 60 seconds, and optics to 30 seconds. Safe
-baseline profiles default on. Optics is explicitly enabled because it is high-cardinality and dependent on the device,
-line card, and optic.
+Identity defaults to a five-minute interval, system and interfaces to 60 seconds, and optics to 30 seconds. Identity,
+system, and interfaces retain their existing enabled defaults and SAMPLE mode. Optics, `catalyst_9800_wireless`, and
+every newly added normalized profile are disabled by default. Enabling a profile does not turn a cataloged or Findings
+row into supported coverage; use the generated coverage matrix to verify its exact disposition. Startup also rejects an
+enabled profile for which the generated catalog has no implemented path on the expected platform.
 
 The baseline profiles reuse `cisco.device.up`, `system.cpu.utilization`, `system.memory.utilization`, `system.uptime`,
 the existing `system.network.*` interface state/traffic/error/drop metrics, and the existing `cisco.interface.*`
@@ -669,7 +686,8 @@ account per collector shard. Optional mTLS uses one short-lived client identity 
 authorization is validated. Management VRFs, ACLs, NetworkPolicies, and firewalls are defense in depth, not substitutes
 for TLS and AAA.
 
-See the [complete security, operations, metric, and qualification guide](docs/gnmi-dial-in.md) and the
+See the [complete security, operations, metric, and qualification guide](docs/gnmi-dial-in.md), generated
+[coverage matrix](docs/gnmi-coverage.md), generated [metric catalog](docs/gnmi-metrics.md),
 [secure configuration](examples/gnmi-secure.yaml), [Kubernetes shard](examples/kubernetes-gnmi-shard.yaml), and
 [systemd shard](examples/cisco-os-gnmi.service) references.
 

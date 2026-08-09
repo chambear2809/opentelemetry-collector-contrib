@@ -1,0 +1,11 @@
+change_type: enhancement
+component: receiver/cisco_os
+note: Add an evidence-gated Cisco gNMI product, path, and metric catalog.
+issues: [42647]
+subtext: |
+  Generates immutable receiver mappings and public coverage documentation from a validated offline manifest. Adds
+  Subscribe-only product identity discovery, exact PID/release selection, bounded per-profile controls, per-stream
+  encoding and synchronization behavior, schema-declared JSON list identities, and required-stream readiness. Only
+  exact rows with recorded live and CLI evidence are rendered as supported; the initial catalog makes no live support
+  claims while product and physical-hardware qualification remains pending.
+change_logs: [user]

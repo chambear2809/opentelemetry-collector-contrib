@@ -66,6 +66,15 @@ all_set:
     cisco.optics.voltage:
       enabled: true
       attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.wlc.ap.join.status:
+      enabled: true
+      attributes: ["cisco.wlc.ap.mac"]
+    cisco.wlc.rf.channel.utilization:
+      enabled: true
+      attributes: ["cisco.wlc.ap.mac","cisco.wlc.radio.slot"]
+    cisco.wlc.ssid.client.count:
+      enabled: true
+      attributes: ["cisco.wlc.ap.mac","cisco.wlc.wlan.id"]
     system.cpu.utilization:
       enabled: true
     system.memory.utilization:
@@ -169,6 +178,15 @@ reaggregate_set:
       enabled: true
       attributes: []
     cisco.optics.voltage:
+      enabled: true
+      attributes: []
+    cisco.wlc.ap.join.status:
+      enabled: true
+      attributes: []
+    cisco.wlc.rf.channel.utilization:
+      enabled: true
+      attributes: []
+    cisco.wlc.ssid.client.count:
       enabled: true
       attributes: []
     system.cpu.utilization:
@@ -276,6 +294,15 @@ none_set:
     cisco.optics.voltage:
       enabled: false
       attributes: ["network.interface.name","cisco.optics.lane","cisco.optics.sensor","cisco.optics.profile","cisco.optics.experimental"]
+    cisco.wlc.ap.join.status:
+      enabled: false
+      attributes: ["cisco.wlc.ap.mac"]
+    cisco.wlc.rf.channel.utilization:
+      enabled: false
+      attributes: ["cisco.wlc.ap.mac","cisco.wlc.radio.slot"]
+    cisco.wlc.ssid.client.count:
+      enabled: false
+      attributes: ["cisco.wlc.ap.mac","cisco.wlc.wlan.id"]
     system.cpu.utilization:
       enabled: false
     system.memory.utilization:

@@ -34,9 +34,10 @@ const (
 	scaleCacheApplyBatch    = 10_000
 	scaleDatapointsPerChunk = 10_000
 
-	scaleIntervalLatencyLimit = 5 * time.Second
-	scaleIntervalCadence      = time.Second
-	scaleRSSLimitBytes        = uint64(32 * 1024 * 1024 * 1024 / 10) // 3.2 GiB.
+	scaleCacheRetainedByteLimit = 5 * DefaultMaxCacheRetainedBytes // 1.25 GiB.
+	scaleIntervalLatencyLimit   = 5 * time.Second
+	scaleIntervalCadence        = time.Second
+	scaleRSSLimitBytes          = uint64(32 * 1024 * 1024 * 1024 / 10) // 3.2 GiB.
 )
 
 // TestInternalGNMIScaleQualification_100Targets5000Ports500KSeries is an
@@ -67,8 +68,9 @@ func TestInternalGNMIScaleQualification_100Targets5000Ports500KSeries(t *testing
 	runtime.ReadMemStats(&processStart)
 	populationStarted := time.Now()
 	registry := newScaleRegistry(t)
-	cache, err := NewCache(scaleActiveSeries)
+	cache, err := NewCacheWithLimits(scaleActiveSeries, scaleCacheRetainedByteLimit)
 	require.NoError(t, err)
+	require.Equal(t, scaleCacheRetainedByteLimit, cache.RetainedByteCapacity())
 	intervalInput := make([]Point, 0, scaleIntervalPoints)
 	intervalTargetCounts := make(map[string]int, scaleTargetCount)
 	batch := make([]MappedPoint, 0, scaleCacheApplyBatch)
@@ -120,6 +122,9 @@ func TestInternalGNMIScaleQualification_100Targets5000Ports500KSeries(t *testing
 	require.Equal(t, scaleActiveSeries, cache.Len())
 	require.Len(t, intervalInput, scaleIntervalPoints)
 	require.Len(t, intervalTargetCounts, scaleTargetCount)
+	populationRetainedBytes := cache.RetainedBytes()
+	require.Positive(t, populationRetainedBytes)
+	require.LessOrEqual(t, populationRetainedBytes, scaleCacheRetainedByteLimit)
 	populationElapsed := time.Since(populationStarted)
 
 	// Stabilize the heap before measuring the steady-state mapped interval. The
@@ -163,6 +168,9 @@ func TestInternalGNMIScaleQualification_100Targets5000Ports500KSeries(t *testing
 	}
 	assert.Len(t, chunkTargets, scaleTargetCount, "the steady-state interval must exercise every target identity")
 	assert.Equal(t, scaleActiveSeries, cache.Len(), "steady-state updates must not grow or evict the bounded cache")
+	finalRetainedBytes := cache.RetainedBytes()
+	assert.Equal(t, populationRetainedBytes, finalRetainedBytes, "steady-state updates must not grow retained cache state")
+	assert.LessOrEqual(t, finalRetainedBytes, scaleCacheRetainedByteLimit)
 	assert.Less(t, intervalElapsed, scaleIntervalLatencyLimit)
 
 	intervalAllocated := intervalAfter.TotalAlloc - intervalBefore.TotalAlloc
@@ -189,10 +197,12 @@ func TestInternalGNMIScaleQualification_100Targets5000Ports500KSeries(t *testing
 	t.Logf(
 		"internal_gnmi_scale targets=%d ports=%d lanes_per_port=%d active_series=%d interval_datapoints=%d chunks=%d "+
 			"population_elapsed=%s interval_elapsed=%s interval_alloc_bytes=%d interval_mallocs=%d total_alloc_bytes=%d "+
-			"heap_alloc_bytes=%d heap_sys_bytes=%d rss_bytes=%d rss_source=%s burst_cpu_percent=%.2f one_second_cadence_cpu_percent=%.2f",
+			"cache_retained_bytes=%d cache_retained_limit_bytes=%d heap_alloc_bytes=%d heap_sys_bytes=%d rss_bytes=%d rss_source=%s "+
+			"burst_cpu_percent=%.2f one_second_cadence_cpu_percent=%.2f",
 		scaleTargetCount, scalePortCount, scaleLanesPerPort, cache.Len(), scaleIntervalPoints, len(chunks),
 		populationElapsed, intervalElapsed, intervalAllocated, intervalMallocs, processAllocated,
-		intervalAfter.HeapAlloc, intervalAfter.HeapSys, rssBytes, rssSource, burstCPUPercent, oneSecondCadenceCPUPercent,
+		finalRetainedBytes, scaleCacheRetainedByteLimit, intervalAfter.HeapAlloc, intervalAfter.HeapSys,
+		rssBytes, rssSource, burstCPUPercent, oneSecondCadenceCPUPercent,
 	)
 }
 

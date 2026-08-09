@@ -3,14 +3,13 @@
 package metadata
 
 import (
-	"slices"
-	"time"
-
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/filter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver"
+	"slices"
+	"time"
 )
 
 const (
@@ -27,7 +26,11 @@ const (
 	_ AttributeCiscoGnmiReason = iota
 	AttributeCiscoGnmiReasonBisectionLimit
 	AttributeCiscoGnmiReasonCacheLimit
+	AttributeCiscoGnmiReasonDecodeError
+	AttributeCiscoGnmiReasonEntityAccounting
+	AttributeCiscoGnmiReasonEntityLimit
 	AttributeCiscoGnmiReasonIncompatiblePathGroup
+	AttributeCiscoGnmiReasonSyncTimeout
 	AttributeCiscoGnmiReasonUnsupportedPath
 )
 
@@ -38,8 +41,16 @@ func (av AttributeCiscoGnmiReason) String() string {
 		return "bisection_limit"
 	case AttributeCiscoGnmiReasonCacheLimit:
 		return "cache_limit"
+	case AttributeCiscoGnmiReasonDecodeError:
+		return "decode_error"
+	case AttributeCiscoGnmiReasonEntityAccounting:
+		return "entity_accounting"
+	case AttributeCiscoGnmiReasonEntityLimit:
+		return "entity_limit"
 	case AttributeCiscoGnmiReasonIncompatiblePathGroup:
 		return "incompatible_path_group"
+	case AttributeCiscoGnmiReasonSyncTimeout:
+		return "sync_timeout"
 	case AttributeCiscoGnmiReasonUnsupportedPath:
 		return "unsupported_path"
 	}
@@ -50,7 +61,11 @@ func (av AttributeCiscoGnmiReason) String() string {
 var MapAttributeCiscoGnmiReason = map[string]AttributeCiscoGnmiReason{
 	"bisection_limit":         AttributeCiscoGnmiReasonBisectionLimit,
 	"cache_limit":             AttributeCiscoGnmiReasonCacheLimit,
+	"decode_error":            AttributeCiscoGnmiReasonDecodeError,
+	"entity_accounting":       AttributeCiscoGnmiReasonEntityAccounting,
+	"entity_limit":            AttributeCiscoGnmiReasonEntityLimit,
 	"incompatible_path_group": AttributeCiscoGnmiReasonIncompatiblePathGroup,
+	"sync_timeout":            AttributeCiscoGnmiReasonSyncTimeout,
 	"unsupported_path":        AttributeCiscoGnmiReasonUnsupportedPath,
 }
 
@@ -228,6 +243,18 @@ var MetricsInfo = metricsInfo{
 		Name:       "cisco.optics.voltage",
 		Attributes: []string{"network.interface.name", "cisco.optics.lane", "cisco.optics.sensor", "cisco.optics.profile", "cisco.optics.experimental"},
 	},
+	CiscoWlcApJoinStatus: metricInfo{
+		Name:       "cisco.wlc.ap.join.status",
+		Attributes: []string{"cisco.wlc.ap.mac"},
+	},
+	CiscoWlcRfChannelUtilization: metricInfo{
+		Name:       "cisco.wlc.rf.channel.utilization",
+		Attributes: []string{"cisco.wlc.ap.mac", "cisco.wlc.radio.slot"},
+	},
+	CiscoWlcSsidClientCount: metricInfo{
+		Name:       "cisco.wlc.ssid.client.count",
+		Attributes: []string{"cisco.wlc.ap.mac", "cisco.wlc.wlan.id"},
+	},
 	SystemCPUUtilization: metricInfo{
 		Name: "system.cpu.utilization",
 	},
@@ -282,6 +309,9 @@ type metricsInfo struct {
 	CiscoOpticsTemperature         metricInfo
 	CiscoOpticsTxPower             metricInfo
 	CiscoOpticsVoltage             metricInfo
+	CiscoWlcApJoinStatus           metricInfo
+	CiscoWlcRfChannelUtilization   metricInfo
+	CiscoWlcSsidClientCount        metricInfo
 	SystemCPUUtilization           metricInfo
 	SystemMemoryUtilization        metricInfo
 	SystemNetworkErrors            metricInfo
@@ -2414,6 +2444,279 @@ func newMetricCiscoOpticsVoltage(cfg CiscoOpticsVoltageMetricConfig) metricCisco
 	return m
 }
 
+type metricCiscoWlcApJoinStatus struct {
+	data          pmetric.Metric                   // data buffer for generated metric.
+	config        CiscoWlcApJoinStatusMetricConfig // metric config provided by user.
+	capacity      int                              // max observed number of data points added to the metric.
+	aggDataPoints []int64                          // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.wlc.ap.join.status metric with initial data.
+func (m *metricCiscoWlcApJoinStatus) init() {
+	m.data.SetName("cisco.wlc.ap.join.status")
+	m.data.SetDescription("Catalyst 9800 access point join status")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoWlcApJoinStatus) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoWlcApMacAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoWlcApJoinStatusMetricAttributeKeyCiscoWlcApMac) {
+		dp.Attributes().PutStr("cisco.wlc.ap.mac", ciscoWlcApMacAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcApJoinStatus) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcApJoinStatus) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetIntValue(m.data.Gauge().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcApJoinStatus(cfg CiscoWlcApJoinStatusMetricConfig) metricCiscoWlcApJoinStatus {
+	m := metricCiscoWlcApJoinStatus{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcRfChannelUtilization struct {
+	data          pmetric.Metric                           // data buffer for generated metric.
+	config        CiscoWlcRfChannelUtilizationMetricConfig // metric config provided by user.
+	capacity      int                                      // max observed number of data points added to the metric.
+	aggDataPoints []float64                                // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.wlc.rf.channel.utilization metric with initial data.
+func (m *metricCiscoWlcRfChannelUtilization) init() {
+	m.data.SetName("cisco.wlc.rf.channel.utilization")
+	m.data.SetDescription("Catalyst 9800 RF channel utilization ratio")
+	m.data.SetUnit("1")
+	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoWlcRfChannelUtilization) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val float64, ciscoWlcApMacAttributeValue string, ciscoWlcRadioSlotAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoWlcRfChannelUtilizationMetricAttributeKeyCiscoWlcApMac) {
+		dp.Attributes().PutStr("cisco.wlc.ap.mac", ciscoWlcApMacAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoWlcRfChannelUtilizationMetricAttributeKeyCiscoWlcRadioSlot) {
+		dp.Attributes().PutStr("cisco.wlc.radio.slot", ciscoWlcRadioSlotAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetDoubleValue(dpi.DoubleValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.DoubleValue() > val {
+					dpi.SetDoubleValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.DoubleValue() < val {
+					dpi.SetDoubleValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetDoubleValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcRfChannelUtilization) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcRfChannelUtilization) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetDoubleValue(m.data.Gauge().DataPoints().At(i).DoubleValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcRfChannelUtilization(cfg CiscoWlcRfChannelUtilizationMetricConfig) metricCiscoWlcRfChannelUtilization {
+	m := metricCiscoWlcRfChannelUtilization{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
+type metricCiscoWlcSsidClientCount struct {
+	data          pmetric.Metric                      // data buffer for generated metric.
+	config        CiscoWlcSsidClientCountMetricConfig // metric config provided by user.
+	capacity      int                                 // max observed number of data points added to the metric.
+	aggDataPoints []int64                             // slice containing number of aggregated datapoints at each index
+}
+
+// init fills cisco.wlc.ssid.client.count metric with initial data.
+func (m *metricCiscoWlcSsidClientCount) init() {
+	m.data.SetName("cisco.wlc.ssid.client.count")
+	m.data.SetDescription("Catalyst 9800 associated client count")
+	m.data.SetUnit("{client}")
+	m.data.SetEmptyGauge()
+	m.data.Gauge().DataPoints().EnsureCapacity(m.capacity)
+	m.aggDataPoints = m.aggDataPoints[:0]
+}
+
+func (m *metricCiscoWlcSsidClientCount) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64, ciscoWlcApMacAttributeValue string, ciscoWlcWlanIDAttributeValue string) {
+	if !m.config.Enabled {
+		return
+	}
+
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	if slices.Contains(m.config.EnabledAttributes, CiscoWlcSsidClientCountMetricAttributeKeyCiscoWlcApMac) {
+		dp.Attributes().PutStr("cisco.wlc.ap.mac", ciscoWlcApMacAttributeValue)
+	}
+	if slices.Contains(m.config.EnabledAttributes, CiscoWlcSsidClientCountMetricAttributeKeyCiscoWlcWlanID) {
+		dp.Attributes().PutStr("cisco.wlc.wlan.id", ciscoWlcWlanIDAttributeValue)
+	}
+
+	var s string
+	dps := m.data.Gauge().DataPoints()
+	for i := 0; i < dps.Len(); i++ {
+		dpi := dps.At(i)
+		if dp.Attributes().Equal(dpi.Attributes()) && dp.StartTimestamp() == dpi.StartTimestamp() && dp.Timestamp() == dpi.Timestamp() {
+			switch s = m.config.AggregationStrategy; s {
+			case AggregationStrategySum, AggregationStrategyAvg:
+				dpi.SetIntValue(dpi.IntValue() + val)
+				m.aggDataPoints[i] += 1
+				return
+			case AggregationStrategyMin:
+				if dpi.IntValue() > val {
+					dpi.SetIntValue(val)
+				}
+				return
+			case AggregationStrategyMax:
+				if dpi.IntValue() < val {
+					dpi.SetIntValue(val)
+				}
+				return
+			}
+		}
+	}
+
+	dp.SetIntValue(val)
+	m.aggDataPoints = append(m.aggDataPoints, 1)
+	dp.MoveTo(dps.AppendEmpty())
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricCiscoWlcSsidClientCount) updateCapacity() {
+	if m.data.Gauge().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Gauge().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricCiscoWlcSsidClientCount) emit(metrics pmetric.MetricSlice) {
+	if m.config.Enabled && m.data.Gauge().DataPoints().Len() > 0 {
+		if m.config.AggregationStrategy == AggregationStrategyAvg {
+			for i, aggCount := range m.aggDataPoints {
+				m.data.Gauge().DataPoints().At(i).SetIntValue(m.data.Gauge().DataPoints().At(i).IntValue() / aggCount)
+			}
+		}
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricCiscoWlcSsidClientCount(cfg CiscoWlcSsidClientCountMetricConfig) metricCiscoWlcSsidClientCount {
+	m := metricCiscoWlcSsidClientCount{config: cfg}
+
+	if cfg.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
 type metricSystemCPUUtilization struct {
 	data     pmetric.Metric                   // data buffer for generated metric.
 	config   SystemCPUUtilizationMetricConfig // metric config provided by user.
@@ -3064,6 +3367,9 @@ type MetricsBuilder struct {
 	metricCiscoOpticsTemperature         metricCiscoOpticsTemperature
 	metricCiscoOpticsTxPower             metricCiscoOpticsTxPower
 	metricCiscoOpticsVoltage             metricCiscoOpticsVoltage
+	metricCiscoWlcApJoinStatus           metricCiscoWlcApJoinStatus
+	metricCiscoWlcRfChannelUtilization   metricCiscoWlcRfChannelUtilization
+	metricCiscoWlcSsidClientCount        metricCiscoWlcSsidClientCount
 	metricSystemCPUUtilization           metricSystemCPUUtilization
 	metricSystemMemoryUtilization        metricSystemMemoryUtilization
 	metricSystemNetworkErrors            metricSystemNetworkErrors
@@ -3119,6 +3425,9 @@ func NewMetricsBuilder(mbc MetricsBuilderConfig, settings receiver.Settings, opt
 		metricCiscoOpticsTemperature:         newMetricCiscoOpticsTemperature(mbc.Metrics.CiscoOpticsTemperature),
 		metricCiscoOpticsTxPower:             newMetricCiscoOpticsTxPower(mbc.Metrics.CiscoOpticsTxPower),
 		metricCiscoOpticsVoltage:             newMetricCiscoOpticsVoltage(mbc.Metrics.CiscoOpticsVoltage),
+		metricCiscoWlcApJoinStatus:           newMetricCiscoWlcApJoinStatus(mbc.Metrics.CiscoWlcApJoinStatus),
+		metricCiscoWlcRfChannelUtilization:   newMetricCiscoWlcRfChannelUtilization(mbc.Metrics.CiscoWlcRfChannelUtilization),
+		metricCiscoWlcSsidClientCount:        newMetricCiscoWlcSsidClientCount(mbc.Metrics.CiscoWlcSsidClientCount),
 		metricSystemCPUUtilization:           newMetricSystemCPUUtilization(mbc.Metrics.SystemCPUUtilization),
 		metricSystemMemoryUtilization:        newMetricSystemMemoryUtilization(mbc.Metrics.SystemMemoryUtilization),
 		metricSystemNetworkErrors:            newMetricSystemNetworkErrors(mbc.Metrics.SystemNetworkErrors),
@@ -3269,6 +3578,9 @@ func (mb *MetricsBuilder) EmitForResource(options ...ResourceMetricsOption) {
 	mb.metricCiscoOpticsTemperature.emit(ils.Metrics())
 	mb.metricCiscoOpticsTxPower.emit(ils.Metrics())
 	mb.metricCiscoOpticsVoltage.emit(ils.Metrics())
+	mb.metricCiscoWlcApJoinStatus.emit(ils.Metrics())
+	mb.metricCiscoWlcRfChannelUtilization.emit(ils.Metrics())
+	mb.metricCiscoWlcSsidClientCount.emit(ils.Metrics())
 	mb.metricSystemCPUUtilization.emit(ils.Metrics())
 	mb.metricSystemMemoryUtilization.emit(ils.Metrics())
 	mb.metricSystemNetworkErrors.emit(ils.Metrics())
@@ -3416,6 +3728,21 @@ func (mb *MetricsBuilder) RecordCiscoOpticsTxPowerDataPoint(ts pcommon.Timestamp
 // RecordCiscoOpticsVoltageDataPoint adds a data point to cisco.optics.voltage metric.
 func (mb *MetricsBuilder) RecordCiscoOpticsVoltageDataPoint(ts pcommon.Timestamp, val float64, networkInterfaceNameAttributeValue string, ciscoOpticsLaneAttributeValue string, ciscoOpticsSensorAttributeValue string, ciscoOpticsProfileAttributeValue AttributeCiscoOpticsProfile, ciscoOpticsExperimentalAttributeValue bool) {
 	mb.metricCiscoOpticsVoltage.recordDataPoint(mb.startTime, ts, val, networkInterfaceNameAttributeValue, ciscoOpticsLaneAttributeValue, ciscoOpticsSensorAttributeValue, ciscoOpticsProfileAttributeValue.String(), ciscoOpticsExperimentalAttributeValue)
+}
+
+// RecordCiscoWlcApJoinStatusDataPoint adds a data point to cisco.wlc.ap.join.status metric.
+func (mb *MetricsBuilder) RecordCiscoWlcApJoinStatusDataPoint(ts pcommon.Timestamp, val int64, ciscoWlcApMacAttributeValue string) {
+	mb.metricCiscoWlcApJoinStatus.recordDataPoint(mb.startTime, ts, val, ciscoWlcApMacAttributeValue)
+}
+
+// RecordCiscoWlcRfChannelUtilizationDataPoint adds a data point to cisco.wlc.rf.channel.utilization metric.
+func (mb *MetricsBuilder) RecordCiscoWlcRfChannelUtilizationDataPoint(ts pcommon.Timestamp, val float64, ciscoWlcApMacAttributeValue string, ciscoWlcRadioSlotAttributeValue string) {
+	mb.metricCiscoWlcRfChannelUtilization.recordDataPoint(mb.startTime, ts, val, ciscoWlcApMacAttributeValue, ciscoWlcRadioSlotAttributeValue)
+}
+
+// RecordCiscoWlcSsidClientCountDataPoint adds a data point to cisco.wlc.ssid.client.count metric.
+func (mb *MetricsBuilder) RecordCiscoWlcSsidClientCountDataPoint(ts pcommon.Timestamp, val int64, ciscoWlcApMacAttributeValue string, ciscoWlcWlanIDAttributeValue string) {
+	mb.metricCiscoWlcSsidClientCount.recordDataPoint(mb.startTime, ts, val, ciscoWlcApMacAttributeValue, ciscoWlcWlanIDAttributeValue)
 }
 
 // RecordSystemCPUUtilizationDataPoint adds a data point to system.cpu.utilization metric.

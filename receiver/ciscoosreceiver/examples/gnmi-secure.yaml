@@ -1,13 +1,19 @@
 receivers:
   cisco_os:
     gnmi:
+      # This demonstrates secure configuration, not product qualification.
+      # Enable a domain only when its exact PID/release row is Live Qualified
+      # in docs/gnmi-coverage.md for the intended deployment.
       max_datapoints_per_chunk: 10000
       max_cached_series: 500000
       targets:
         - name: nexus-shard-01
           endpoint: nexus01.example.net:50051
           platform: nx_os
+          product_family: nx_os
           max_recv_msg_size_mib: 16
+          sync_timeout: 2m
+          encoding_preference: [json, json_ietf]
           credentials:
             mode: username_password
             username: otel-telemetry
@@ -28,6 +34,7 @@ receivers:
               enabled: true
               required: true
               sample_interval: 30s
+              stream_mode: sample
 
 processors:
   memory_limiter:

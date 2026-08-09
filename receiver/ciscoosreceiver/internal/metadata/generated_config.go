@@ -1103,6 +1103,152 @@ func (ms *CiscoOpticsVoltageMetricConfig) Validate() error {
 	return nil
 }
 
+// CiscoWlcApJoinStatusMetricAttributeKey specifies the key of an attribute for the cisco.wlc.ap.join.status metric.
+type CiscoWlcApJoinStatusMetricAttributeKey string
+
+const (
+	CiscoWlcApJoinStatusMetricAttributeKeyCiscoWlcApMac CiscoWlcApJoinStatusMetricAttributeKey = "cisco.wlc.ap.mac"
+)
+
+// CiscoWlcApJoinStatusMetricConfig provides config for the cisco.wlc.ap.join.status metric.
+type CiscoWlcApJoinStatusMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                   `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoWlcApJoinStatusMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoWlcApJoinStatusMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoWlcApJoinStatusMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoWlcApJoinStatusMetricAttributeKeyCiscoWlcApMac:
+		default:
+			return fmt.Errorf("metric cisco.wlc.ap.join.status doesn't have an attribute %v, valid attributes: [cisco.wlc.ap.mac]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoWlcRfChannelUtilizationMetricAttributeKey specifies the key of an attribute for the cisco.wlc.rf.channel.utilization metric.
+type CiscoWlcRfChannelUtilizationMetricAttributeKey string
+
+const (
+	CiscoWlcRfChannelUtilizationMetricAttributeKeyCiscoWlcApMac     CiscoWlcRfChannelUtilizationMetricAttributeKey = "cisco.wlc.ap.mac"
+	CiscoWlcRfChannelUtilizationMetricAttributeKeyCiscoWlcRadioSlot CiscoWlcRfChannelUtilizationMetricAttributeKey = "cisco.wlc.radio.slot"
+)
+
+// CiscoWlcRfChannelUtilizationMetricConfig provides config for the cisco.wlc.rf.channel.utilization metric.
+type CiscoWlcRfChannelUtilizationMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                           `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoWlcRfChannelUtilizationMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoWlcRfChannelUtilizationMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoWlcRfChannelUtilizationMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoWlcRfChannelUtilizationMetricAttributeKeyCiscoWlcApMac, CiscoWlcRfChannelUtilizationMetricAttributeKeyCiscoWlcRadioSlot:
+		default:
+			return fmt.Errorf("metric cisco.wlc.rf.channel.utilization doesn't have an attribute %v, valid attributes: [cisco.wlc.ap.mac, cisco.wlc.radio.slot]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
+// CiscoWlcSsidClientCountMetricAttributeKey specifies the key of an attribute for the cisco.wlc.ssid.client.count metric.
+type CiscoWlcSsidClientCountMetricAttributeKey string
+
+const (
+	CiscoWlcSsidClientCountMetricAttributeKeyCiscoWlcApMac  CiscoWlcSsidClientCountMetricAttributeKey = "cisco.wlc.ap.mac"
+	CiscoWlcSsidClientCountMetricAttributeKeyCiscoWlcWlanID CiscoWlcSsidClientCountMetricAttributeKey = "cisco.wlc.wlan.id"
+)
+
+// CiscoWlcSsidClientCountMetricConfig provides config for the cisco.wlc.ssid.client.count metric.
+type CiscoWlcSsidClientCountMetricConfig struct {
+	Enabled          bool `mapstructure:"enabled"`
+	enabledSetByUser bool
+
+	AggregationStrategy string                                      `mapstructure:"aggregation_strategy"`
+	EnabledAttributes   []CiscoWlcSsidClientCountMetricAttributeKey `mapstructure:"attributes"`
+}
+
+func (ms *CiscoWlcSsidClientCountMetricConfig) Unmarshal(parser *confmap.Conf) error {
+	if parser == nil {
+		return nil
+	}
+
+	err := parser.Unmarshal(ms)
+	if err != nil {
+		return err
+	}
+
+	ms.enabledSetByUser = parser.IsSet("enabled")
+	return nil
+}
+
+func (ms *CiscoWlcSsidClientCountMetricConfig) Validate() error {
+	for _, val := range ms.EnabledAttributes {
+		switch val {
+		case CiscoWlcSsidClientCountMetricAttributeKeyCiscoWlcApMac, CiscoWlcSsidClientCountMetricAttributeKeyCiscoWlcWlanID:
+		default:
+			return fmt.Errorf("metric cisco.wlc.ssid.client.count doesn't have an attribute %v, valid attributes: [cisco.wlc.ap.mac, cisco.wlc.wlan.id]", val)
+		}
+	}
+
+	switch ms.AggregationStrategy {
+	case AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax:
+	default:
+		return fmt.Errorf("invalid aggregation strategy %q, valid strategies: [%s, %s, %s, %s]", ms.AggregationStrategy, AggregationStrategySum, AggregationStrategyAvg, AggregationStrategyMin, AggregationStrategyMax)
+	}
+
+	return nil
+}
+
 // SystemCPUUtilizationMetricConfig provides config for the system.cpu.utilization metric.
 type SystemCPUUtilizationMetricConfig struct {
 	Enabled          bool `mapstructure:"enabled"`
@@ -1432,6 +1578,9 @@ type MetricsConfig struct {
 	CiscoOpticsTemperature         CiscoOpticsTemperatureMetricConfig         `mapstructure:"cisco.optics.temperature"`
 	CiscoOpticsTxPower             CiscoOpticsTxPowerMetricConfig             `mapstructure:"cisco.optics.tx_power"`
 	CiscoOpticsVoltage             CiscoOpticsVoltageMetricConfig             `mapstructure:"cisco.optics.voltage"`
+	CiscoWlcApJoinStatus           CiscoWlcApJoinStatusMetricConfig           `mapstructure:"cisco.wlc.ap.join.status"`
+	CiscoWlcRfChannelUtilization   CiscoWlcRfChannelUtilizationMetricConfig   `mapstructure:"cisco.wlc.rf.channel.utilization"`
+	CiscoWlcSsidClientCount        CiscoWlcSsidClientCountMetricConfig        `mapstructure:"cisco.wlc.ssid.client.count"`
 	SystemCPUUtilization           SystemCPUUtilizationMetricConfig           `mapstructure:"system.cpu.utilization"`
 	SystemMemoryUtilization        SystemMemoryUtilizationMetricConfig        `mapstructure:"system.memory.utilization"`
 	SystemNetworkErrors            SystemNetworkErrorsMetricConfig            `mapstructure:"system.network.errors"`
@@ -1551,6 +1700,21 @@ func DefaultMetricsConfig() MetricsConfig {
 			Enabled:             true,
 			AggregationStrategy: AggregationStrategyAvg,
 			EnabledAttributes:   []CiscoOpticsVoltageMetricAttributeKey{CiscoOpticsVoltageMetricAttributeKeyNetworkInterfaceName, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsLane, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsSensor, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsProfile, CiscoOpticsVoltageMetricAttributeKeyCiscoOpticsExperimental},
+		},
+		CiscoWlcApJoinStatus: CiscoWlcApJoinStatusMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoWlcApJoinStatusMetricAttributeKey{CiscoWlcApJoinStatusMetricAttributeKeyCiscoWlcApMac},
+		},
+		CiscoWlcRfChannelUtilization: CiscoWlcRfChannelUtilizationMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoWlcRfChannelUtilizationMetricAttributeKey{CiscoWlcRfChannelUtilizationMetricAttributeKeyCiscoWlcApMac, CiscoWlcRfChannelUtilizationMetricAttributeKeyCiscoWlcRadioSlot},
+		},
+		CiscoWlcSsidClientCount: CiscoWlcSsidClientCountMetricConfig{
+			Enabled:             true,
+			AggregationStrategy: AggregationStrategyAvg,
+			EnabledAttributes:   []CiscoWlcSsidClientCountMetricAttributeKey{CiscoWlcSsidClientCountMetricAttributeKeyCiscoWlcApMac, CiscoWlcSsidClientCountMetricAttributeKeyCiscoWlcWlanID},
 		},
 		SystemCPUUtilization: SystemCPUUtilizationMetricConfig{
 			Enabled: true,

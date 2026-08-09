@@ -1,6 +1,8 @@
 # Reference only: replace documentation addresses, image, secret provisioning,
-# target hostnames, and exporter endpoint before deployment. The empty Secrets
-# are ownership stubs for an external secret controller; never commit values.
+# target hostnames, and exporter endpoint before deployment. Enable a domain
+# only when its exact PID/release row is Live Qualified in gnmi-coverage.md.
+# The empty Secrets are ownership stubs for an external secret controller;
+# never commit values.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -52,7 +54,10 @@ data:
             - name: nexus-shard-01
               endpoint: nexus01.example.net:50051
               platform: nx_os
+              product_family: nx_os
               max_recv_msg_size_mib: 16
+              sync_timeout: 2m
+              encoding_preference: [json, json_ietf]
               credentials:
                 mode: username_password
                 username: otel-telemetry-shard-01
@@ -73,6 +78,7 @@ data:
                   enabled: true
                   required: true
                   sample_interval: 30s
+                  stream_mode: sample
     processors:
       memory_limiter:
         check_interval: 1s
@@ -108,9 +114,13 @@ data:
             - name: xr-shard-02
               endpoint: xr01.example.net:50051
               platform: ios_xr
+              product_family: ios_xr
               max_recv_msg_size_mib: 16
-              # Three native system origins, interfaces, and two optical origins.
-              max_streams: 6
+              # This optics shard uses one interface and two optical-origin
+              # streams, within the current IOS XR catalog ceiling of four.
+              max_streams: 4
+              sync_timeout: 2m
+              encoding_preference: [json_ietf, json]
               credentials:
                 mode: username_password
                 username: otel-telemetry-shard-02
@@ -124,13 +134,14 @@ data:
                 identity:
                   enabled: true
                 system:
-                  enabled: true
+                  enabled: false
                 interfaces:
                   enabled: true
                 optics:
                   enabled: true
                   required: true
                   sample_interval: 30s
+                  stream_mode: sample
     processors:
       memory_limiter:
         check_interval: 1s

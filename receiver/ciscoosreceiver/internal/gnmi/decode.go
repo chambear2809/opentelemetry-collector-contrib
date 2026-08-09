@@ -28,7 +28,91 @@ const (
 	maxDecodedNotificationPoints    = 50_000
 	maxDecodedNotificationJSONNodes = 100_000
 	maxDecodedNotificationBytes     = 16 * 1024 * 1024
+	maxJSONListKeySchemaEntries     = 4_096
 )
+
+// JSONListKeySpec declares the complete key set for one JSON-encoded YANG list.
+// Origin and Elements identify the list by its exact canonical path after the
+// notification prefix and update path have been joined. Keys are canonical YANG
+// key names. An unqualified key also accepts an RFC7951 module-qualified JSON
+// member with the same local name.
+type JSONListKeySpec struct {
+	Origin   string
+	Elements []string
+	Keys     []string
+}
+
+// JSONListKeySchema is an immutable, validated set of JSON list identities.
+// Its contents can only be constructed through NewJSONListKeySchema, which
+// copies all caller-owned slices.
+type JSONListKeySchema struct {
+	keysByPath map[string][]string
+}
+
+// NewJSONListKeySchema validates and copies exact JSON list-key declarations.
+func NewJSONListKeySchema(specs ...JSONListKeySpec) (*JSONListKeySchema, error) {
+	if len(specs) > maxJSONListKeySchemaEntries {
+		return nil, fmt.Errorf("JSON list-key schema exceeds %d entries", maxJSONListKeySchemaEntries)
+	}
+	schema := &JSONListKeySchema{keysByPath: make(map[string][]string, len(specs))}
+	for index := range specs {
+		spec := &specs[index]
+		if len(spec.Elements) == 0 {
+			return nil, fmt.Errorf("JSON list-key schema entry %d has an empty element path", index)
+		}
+		path := Path{Origin: spec.Origin, Elements: make([]PathElem, len(spec.Elements))}
+		for elementIndex, element := range spec.Elements {
+			path.Elements[elementIndex] = PathElem{Name: element}
+		}
+		if _, err := validatePath(path); err != nil {
+			return nil, fmt.Errorf("JSON list-key schema entry %d path: %w", index, err)
+		}
+		if len(spec.Keys) == 0 {
+			return nil, fmt.Errorf("JSON list-key schema entry %d has no keys", index)
+		}
+		if len(spec.Keys) > maxPathKeysPerElement {
+			return nil, fmt.Errorf("JSON list-key schema entry %d exceeds %d keys", index, maxPathKeysPerElement)
+		}
+		keys := make([]string, len(spec.Keys))
+		seen := make(map[string]struct{}, len(spec.Keys))
+		for keyIndex, key := range spec.Keys {
+			if key == "" {
+				return nil, fmt.Errorf("JSON list-key schema entry %d contains an empty key", index)
+			}
+			if len(key) > maxPathNameBytes {
+				return nil, fmt.Errorf("JSON list-key schema entry %d key %q exceeds %d bytes", index, key, maxPathNameBytes)
+			}
+			if _, duplicate := seen[key]; duplicate {
+				return nil, fmt.Errorf("JSON list-key schema entry %d duplicates key %q", index, key)
+			}
+			seen[key] = struct{}{}
+			keys[keyIndex] = key
+		}
+		pathKey := jsonListKeySchemaPathKey(path.Origin, path.Elements)
+		if _, duplicate := schema.keysByPath[pathKey]; duplicate {
+			return nil, fmt.Errorf("JSON list-key schema entry %d duplicates origin and element path", index)
+		}
+		schema.keysByPath[pathKey] = keys
+	}
+	return schema, nil
+}
+
+func (s *JSONListKeySchema) keysFor(path Path) ([]string, bool) {
+	if s == nil {
+		return nil, false
+	}
+	keys, ok := s.keysByPath[jsonListKeySchemaPathKey(path.Origin, path.Elements)]
+	return keys, ok
+}
+
+func jsonListKeySchemaPathKey(origin string, elements []PathElem) string {
+	var key strings.Builder
+	appendKeyPart(&key, origin)
+	for index := range elements {
+		appendKeyPart(&key, elements[index].Name)
+	}
+	return key.String()
+}
 
 type notificationDecodeLimits struct {
 	maxWireOperations  int
@@ -90,15 +174,39 @@ func (b *notificationDecodeBudget) visitJSONNode() error {
 
 // DecodeNotification decodes one wire notification to canonical leaves. It is
 // intentionally schema-neutral: unsupported wire values are counted and
-// omitted, never converted into dynamically named metrics.
+// omitted, never converted into dynamically named metrics. JSON arrays are not
+// assigned inferred identities; use DecodeNotificationWithSchema when a
+// catalog declares their exact list keys.
 func DecodeNotification(target string, notification *gnmipb.Notification, receipt time.Time) (DecodedNotification, DecodeStats, error) {
 	return decodeNotificationWithLimits(target, notification, receipt, defaultNotificationDecodeLimits())
+}
+
+// DecodeNotificationWithSchema decodes one wire notification using only the
+// exact JSON list identities declared by schema. A malformed list identity
+// rejects the complete notification; no partially decoded result is returned.
+func DecodeNotificationWithSchema(
+	target string,
+	notification *gnmipb.Notification,
+	receipt time.Time,
+	schema *JSONListKeySchema,
+) (DecodedNotification, DecodeStats, error) {
+	return decodeNotificationWithSchemaAndLimits(target, notification, receipt, schema, defaultNotificationDecodeLimits())
 }
 
 func decodeNotificationWithLimits(
 	target string,
 	notification *gnmipb.Notification,
 	receipt time.Time,
+	limits notificationDecodeLimits,
+) (DecodedNotification, DecodeStats, error) {
+	return decodeNotificationWithSchemaAndLimits(target, notification, receipt, nil, limits)
+}
+
+func decodeNotificationWithSchemaAndLimits(
+	target string,
+	notification *gnmipb.Notification,
+	receipt time.Time,
+	schema *JSONListKeySchema,
 	limits notificationDecodeLimits,
 ) (DecodedNotification, DecodeStats, error) {
 	var stats DecodeStats
@@ -222,7 +330,7 @@ func decodeNotificationWithLimits(
 			return DecodedNotification{}, stats, err
 		}
 		out.Touched = append(out.Touched, full.Clone())
-		points, unmapped, err := decodeValue(full, update.GetVal(), timestamp, budget)
+		points, unmapped, err := decodeValue(full, update.GetVal(), timestamp, budget, schema)
 		stats.UnmappedValues += unmapped
 		if err != nil {
 			return DecodedNotification{}, stats, err
@@ -233,7 +341,13 @@ func decodeNotificationWithLimits(
 }
 
 //nolint:staticcheck // gNMI still defines deprecated float and decimal wire variants that must be decoded.
-func decodeValue(path Path, typed *gnmipb.TypedValue, timestamp time.Time, budget *notificationDecodeBudget) ([]Point, int, error) {
+func decodeValue(
+	path Path,
+	typed *gnmipb.TypedValue,
+	timestamp time.Time,
+	budget *notificationDecodeBudget,
+	schema *JSONListKeySchema,
+) ([]Point, int, error) {
 	if typed == nil {
 		return nil, 1, nil
 	}
@@ -279,17 +393,26 @@ func decodeValue(path Path, typed *gnmipb.TypedValue, timestamp time.Time, budge
 	case *gnmipb.TypedValue_AsciiVal:
 		return appendScalar(StringValue(value.AsciiVal))
 	case *gnmipb.TypedValue_JsonVal:
-		return decodeJSON(path, value.JsonVal, timestamp, budget)
+		return decodeJSON(path, value.JsonVal, timestamp, budget, schema)
 	case *gnmipb.TypedValue_JsonIetfVal:
-		return decodeJSON(path, value.JsonIetfVal, timestamp, budget)
+		return decodeJSON(path, value.JsonIetfVal, timestamp, budget, schema)
 	default:
 		// bytes, proto_bytes, leaf-lists, Any, and future value kinds require
 		// an explicit decoder and are never promoted to ad-hoc metrics.
+		if schema != nil {
+			return nil, 0, fmt.Errorf("decode catalog path %q: unsupported typed value %T has no declared decoder", pathString(path), value)
+		}
 		return nil, 1, nil
 	}
 }
 
-func decodeJSON(path Path, raw []byte, timestamp time.Time, budget *notificationDecodeBudget) ([]Point, int, error) {
+func decodeJSON(
+	path Path,
+	raw []byte,
+	timestamp time.Time,
+	budget *notificationDecodeBudget,
+	schema *JSONListKeySchema,
+) ([]Point, int, error) {
 	if len(raw) > maxJSONTypedValueBytes {
 		return nil, 0, fmt.Errorf("decode JSON value: payload exceeds hard limit of %d bytes", maxJSONTypedValueBytes)
 	}
@@ -304,7 +427,7 @@ func decodeJSON(path Path, raw []byte, timestamp time.Time, budget *notification
 		return nil, 0, fmt.Errorf("decode JSON value: %w", err)
 	}
 	var points []Point
-	unmapped, err := walkJSON(path, value, timestamp, &points, budget)
+	unmapped, err := walkJSON(path, value, timestamp, &points, budget, schema)
 	return points, unmapped, err
 }
 
@@ -315,6 +438,7 @@ func validateJSONNodeCount(raw []byte, current, maximum int) error {
 	type container struct {
 		object    bool
 		expectKey bool
+		keys      map[string]struct{}
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
@@ -339,7 +463,7 @@ func validateJSONNodeCount(raw []byte, current, maximum int) error {
 			switch value {
 			case '{':
 				nodes++
-				containers = append(containers, container{object: true, expectKey: true})
+				containers = append(containers, container{object: true, expectKey: true, keys: map[string]struct{}{}})
 			case '[':
 				nodes++
 				containers = append(containers, container{})
@@ -353,6 +477,14 @@ func validateJSONNodeCount(raw []byte, current, maximum int) error {
 			if len(containers) > 0 {
 				current := &containers[len(containers)-1]
 				if current.object && current.expectKey {
+					key, ok := value.(string)
+					if !ok {
+						return errors.New("JSON object member name is not a string")
+					}
+					if _, duplicate := current.keys[key]; duplicate {
+						return fmt.Errorf("duplicate JSON object member %q", key)
+					}
+					current.keys[key] = struct{}{}
 					current.expectKey = false
 					continue
 				}
@@ -366,7 +498,14 @@ func validateJSONNodeCount(raw []byte, current, maximum int) error {
 	}
 }
 
-func walkJSON(path Path, value any, timestamp time.Time, points *[]Point, budget *notificationDecodeBudget) (int, error) {
+func walkJSON(
+	path Path,
+	value any,
+	timestamp time.Time,
+	points *[]Point,
+	budget *notificationDecodeBudget,
+	schema *JSONListKeySchema,
+) (int, error) {
 	if err := budget.visitJSONNode(); err != nil {
 		return 0, err
 	}
@@ -388,7 +527,7 @@ func walkJSON(path Path, value any, timestamp time.Time, points *[]Point, budget
 			if budgetErr := budget.reservePathStringBytes(appendedBytes); budgetErr != nil {
 				return 0, budgetErr
 			}
-			childUnmapped, err := walkJSON(path.AppendElements(key), value[key], timestamp, points, budget)
+			childUnmapped, err := walkJSON(path.AppendElements(key), value[key], timestamp, points, budget, schema)
 			if err != nil {
 				return 0, err
 			}
@@ -396,37 +535,39 @@ func walkJSON(path Path, value any, timestamp time.Time, points *[]Point, budget
 		}
 		return unmapped, nil
 	case []any:
-		unmapped := 0
-		for _, item := range value {
-			switch item := item.(type) {
-			case map[string]any:
-				keyed, keyedBytes, err := withJSONListKeys(path, item)
-				if err != nil {
-					return 0, err
-				}
-				if keyedBytes > 0 {
-					if budgetErr := budget.reservePathStringBytes(keyedBytes); budgetErr != nil {
-						return 0, budgetErr
-					}
-				}
-				itemUnmapped, err := walkJSON(keyed, item, timestamp, points, budget)
-				if err != nil {
-					return 0, err
-				}
-				unmapped += itemUnmapped
-			case []any:
-				itemUnmapped, err := walkJSON(path, item, timestamp, points, budget)
-				if err != nil {
-					return 0, err
-				}
-				unmapped += itemUnmapped
-			default:
-				// A scalar JSON array is a leaf-list, not a scalar leaf.
-				if err := budget.visitJSONNode(); err != nil {
-					return 0, err
-				}
-				unmapped++
+		declaredKeys, declared := schema.keysFor(path)
+		if !declared {
+			if schema != nil {
+				return 0, fmt.Errorf("decode JSON list path %q: list identity is absent from the catalog schema", pathString(path))
 			}
+			unmapped := 0
+			for _, item := range value {
+				itemUnmapped, err := visitUnmappedJSONValue(item, budget)
+				if err != nil {
+					return 0, err
+				}
+				unmapped += itemUnmapped
+			}
+			return unmapped, nil
+		}
+		unmapped := 0
+		for itemIndex, item := range value {
+			object, ok := item.(map[string]any)
+			if !ok {
+				return 0, fmt.Errorf("decode JSON list path %q: item %d is not an object", pathString(path), itemIndex)
+			}
+			keyed, keyedBytes, err := withDeclaredJSONListKeys(path, object, declaredKeys)
+			if err != nil {
+				return 0, err
+			}
+			if budgetErr := budget.reservePathStringBytes(keyedBytes); budgetErr != nil {
+				return 0, budgetErr
+			}
+			itemUnmapped, err := walkJSON(keyed, object, timestamp, points, budget, schema)
+			if err != nil {
+				return 0, err
+			}
+			unmapped += itemUnmapped
 		}
 		return unmapped, nil
 	case nil:
@@ -448,55 +589,74 @@ func walkJSON(path Path, value any, timestamp time.Time, points *[]Point, budget
 	}
 }
 
-var jsonListKeyNames = map[string]struct{}{
-	"name": {}, "id": {}, "index": {}, "interface": {}, "interface-name": {},
-	"port": {}, "port-id": {}, "lane": {}, "lane-id": {}, "slot": {},
-	"slot-id": {}, "lane-index": {}, "radio-slot-id": {}, "wlan-id": {}, "wtp-mac": {},
-	"sensor": {}, "sensor-id": {}, "channel": {}, "channel-id": {},
-	"component": {}, "component-name": {}, "node": {}, "node-id": {},
-	"neighbor": {}, "neighbor-address": {}, "address": {}, "serial": {},
+// visitUnmappedJSONValue charges the full decoded-node budget while refusing to
+// materialize an array whose list identity is not catalog-declared. Scalar
+// leaves are counted as unmapped; no canonical series is produced.
+func visitUnmappedJSONValue(value any, budget *notificationDecodeBudget) (int, error) {
+	if err := budget.visitJSONNode(); err != nil {
+		return 0, err
+	}
+	switch value := value.(type) {
+	case map[string]any:
+		unmapped := 0
+		for _, child := range value {
+			childUnmapped, err := visitUnmappedJSONValue(child, budget)
+			if err != nil {
+				return 0, err
+			}
+			unmapped += childUnmapped
+		}
+		return unmapped, nil
+	case []any:
+		unmapped := 0
+		for _, child := range value {
+			childUnmapped, err := visitUnmappedJSONValue(child, budget)
+			if err != nil {
+				return 0, err
+			}
+			unmapped += childUnmapped
+		}
+		return unmapped, nil
+	default:
+		return 1, nil
+	}
 }
 
-// withJSONListKeys derives stable list identity from common direct key leaves.
-// RFC7951-qualified key names are matched by their suffix and stored without
-// the module qualifier, matching their PathElem key representation.
-func withJSONListKeys(path Path, object map[string]any) (Path, int, error) {
+func withDeclaredJSONListKeys(path Path, object map[string]any, declaredKeys []string) (Path, int, error) {
 	if len(path.Elements) == 0 {
-		return path, 0, nil
+		return Path{}, 0, errors.New("decode JSON list path has no element")
 	}
-	keys := map[string]string{}
+	keys := make(map[string]string, len(declaredKeys))
 	names := make([]string, 0, len(object))
 	for name := range object {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	for _, qualified := range names {
-		name := qualified
-		for i := len(qualified) - 1; i >= 0; i-- {
-			if qualified[i] == ':' {
-				name = qualified[i+1:]
-				break
+	for _, declaredKey := range declaredKeys {
+		found := false
+		for _, memberName := range names {
+			if !jsonMemberMatchesDeclaredKey(memberName, declaredKey) {
+				continue
 			}
-		}
-		name = strings.ToLower(strings.ReplaceAll(name, "_", "-"))
-		if _, recognized := jsonListKeyNames[name]; !recognized {
-			continue
-		}
-		if value, ok := jsonKeyString(object[qualified]); ok {
-			if previous, duplicate := keys[name]; duplicate {
+			value, scalar := jsonKeyString(object[memberName])
+			if !scalar {
+				return Path{}, 0, fmt.Errorf("decode JSON path: list key %q has a non-scalar value", declaredKey)
+			}
+			if previous, duplicate := keys[declaredKey]; duplicate {
 				if previous != value {
-					return Path{}, 0, fmt.Errorf("decode JSON path: conflicting values for normalized list key %q", name)
+					return Path{}, 0, fmt.Errorf("decode JSON path: conflicting values for list key %q", declaredKey)
 				}
 				continue
 			}
 			if len(value) > maxPathKeyValueBytes {
-				return Path{}, 0, fmt.Errorf("decode JSON path: key %q value exceeds %d bytes", name, maxPathKeyValueBytes)
+				return Path{}, 0, fmt.Errorf("decode JSON path: key %q value exceeds %d bytes", declaredKey, maxPathKeyValueBytes)
 			}
-			keys[name] = value
+			keys[declaredKey] = value
+			found = true
 		}
-	}
-	if len(keys) == 0 {
-		return path, 0, nil
+		if !found {
+			return Path{}, 0, fmt.Errorf("decode JSON path: required list key %q is missing", declaredKey)
+		}
 	}
 	mergedKeys := make(map[string]string, len(path.Elements[len(path.Elements)-1].Keys)+len(keys))
 	maps.Copy(mergedKeys, path.Elements[len(path.Elements)-1].Keys)
@@ -517,6 +677,29 @@ func withJSONListKeys(path Path, object map[string]any) (Path, int, error) {
 	last := &out.Elements[len(out.Elements)-1]
 	last.Keys = mergedKeys
 	return out, pathBytes, nil
+}
+
+func jsonMemberMatchesDeclaredKey(memberName, declaredKey string) bool {
+	if memberName == declaredKey {
+		return true
+	}
+	if strings.Contains(declaredKey, ":") {
+		return false
+	}
+	separator := strings.IndexByte(memberName, ':')
+	return separator > 0 && memberName[separator+1:] == declaredKey
+}
+
+func pathString(path Path) string {
+	elements := make([]string, len(path.Elements))
+	for index := range path.Elements {
+		elements[index] = path.Elements[index].Name
+	}
+	joined := strings.Join(elements, "/")
+	if path.Origin == "" {
+		return joined
+	}
+	return path.Origin + ":" + joined
 }
 
 func jsonKeyString(value any) (string, bool) {

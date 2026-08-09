@@ -4,7 +4,7 @@ attributes:
     type: string
   cisco.gnmi.reason:
     description: Bounded reason for a gNMI health or degradation event
-    enum: [bisection_limit, cache_limit, incompatible_path_group, unsupported_path]
+    enum: [bisection_limit, cache_limit, decode_error, entity_accounting, entity_limit, incompatible_path_group, sync_timeout, unsupported_path]
     type: string
   cisco.gnmi.target:
     description: Static gNMI target name from the receiver configuration
@@ -21,6 +21,15 @@ attributes:
     type: string
   cisco.optics.sensor:
     description: The normalized, allowlisted device sensor description; raw unknown sensor identifiers are not emitted
+    type: string
+  cisco.wlc.ap.mac:
+    description: Device-reported MAC address of a Catalyst wireless access point
+    type: string
+  cisco.wlc.radio.slot:
+    description: Device-reported radio slot identifier on a Catalyst wireless access point
+    type: string
+  cisco.wlc.wlan.id:
+    description: Device-reported Catalyst wireless LAN identifier
     type: string
   network.interface.name:
     description: The name of the network interface
@@ -220,6 +229,30 @@ metrics:
       value_type: double
     stability: development
     unit: V
+  cisco.wlc.ap.join.status:
+    attributes: [cisco.wlc.ap.mac]
+    description: Catalyst 9800 access point join status
+    enabled: true
+    gauge:
+      value_type: int
+    stability: development
+    unit: "1"
+  cisco.wlc.rf.channel.utilization:
+    attributes: [cisco.wlc.ap.mac, cisco.wlc.radio.slot]
+    description: Catalyst 9800 RF channel utilization ratio
+    enabled: true
+    gauge:
+      value_type: double
+    stability: development
+    unit: "1"
+  cisco.wlc.ssid.client.count:
+    attributes: [cisco.wlc.ap.mac, cisco.wlc.wlan.id]
+    description: Catalyst 9800 associated client count
+    enabled: true
+    gauge:
+      value_type: int
+    stability: development
+    unit: "{client}"
   system.cpu.utilization:
     description: Percentage of CPU time in use.
     enabled: true
@@ -295,7 +328,7 @@ resource_attributes:
     enabled: true
     type: string
   cisco.platform.family:
-    description: Configured Cisco platform family for the gNMI target
+    description: Normalized Cisco platform or generated-catalog product family
     enabled: true
     type: string
   cisco.telemetry.transport:
@@ -303,7 +336,7 @@ resource_attributes:
     enabled: true
     type: string
   host.id:
-    description: Stable configured identity of the Cisco target
+    description: Stable identity of the Cisco resource, preferring device serial identity when available
     enabled: true
     type: string
   host.ip:
@@ -311,7 +344,7 @@ resource_attributes:
     enabled: true
     type: string
   host.name:
-    description: Configured name of the Cisco target
+    description: Cisco resource hostname or configured display name
     enabled: true
     type: string
   hw.type:

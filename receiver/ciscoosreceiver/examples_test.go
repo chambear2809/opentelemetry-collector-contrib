@@ -4,12 +4,18 @@
 package ciscoosreceiver
 
 import (
+	"errors"
+	"io"
+	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
+	"go.yaml.in/yaml/v3"
 )
 
 func TestShippedCiscoOSReceiverExamplesUnmarshalAndValidate(t *testing.T) {
@@ -24,7 +30,11 @@ func TestShippedCiscoOSReceiverExamplesUnmarshalAndValidate(t *testing.T) {
 			path: filepath.Join("examples", "gnmi-secure.yaml"),
 			assertion: func(t *testing.T, cfg *Config) {
 				require.Len(t, cfg.GNMI.Targets, 1)
-				assert.Equal(t, "nexus-shard-01", cfg.GNMI.Targets[0].Name)
+				target := cfg.GNMI.Targets[0].withDefaults()
+				assert.Equal(t, "nexus-shard-01", target.Name)
+				assert.Equal(t, "nx_os", target.ProductFamily)
+				assert.Equal(t, 2*time.Minute, target.SyncTimeout)
+				assert.Equal(t, []string{"json", "json_ietf"}, target.EncodingPreference)
 			},
 		},
 		{
@@ -61,4 +71,45 @@ func TestShippedCiscoOSReceiverExamplesUnmarshalAndValidate(t *testing.T) {
 			tt.assertion(t, cfg)
 		})
 	}
+}
+
+func TestKubernetesGNMIShardEmbeddedConfigsValidate(t *testing.T) {
+	file, err := os.Open(filepath.Join("examples", "kubernetes-gnmi-shard.yaml"))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, file.Close()) })
+
+	decoder := yaml.NewDecoder(file)
+	validated := 0
+	for {
+		var manifest struct {
+			Kind     string `yaml:"kind"`
+			Metadata struct {
+				Name string `yaml:"name"`
+			} `yaml:"metadata"`
+			Data map[string]string `yaml:"data"`
+		}
+		err = decoder.Decode(&manifest)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err)
+		collectorYAML, ok := manifest.Data["collector.yaml"]
+		if manifest.Kind != "ConfigMap" || !ok {
+			continue
+		}
+
+		t.Run(manifest.Metadata.Name, func(t *testing.T) {
+			var raw map[string]any
+			require.NoError(t, yaml.Unmarshal([]byte(collectorYAML), &raw))
+			collectorConf := confmap.NewFromStringMap(raw)
+			receiverConf, subErr := collectorConf.Sub("receivers::cisco_os")
+			require.NoError(t, subErr)
+
+			cfg := NewFactory().CreateDefaultConfig().(*Config)
+			require.NoError(t, cfg.Unmarshal(receiverConf))
+			require.NoError(t, cfg.Validate())
+		})
+		validated++
+	}
+	require.Equal(t, 2, validated, "every collector ConfigMap must be validated")
 }

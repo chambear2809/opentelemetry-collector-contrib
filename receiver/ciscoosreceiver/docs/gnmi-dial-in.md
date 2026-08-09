@@ -1,9 +1,17 @@
 # Production gNMI Dial-In
 
-The shared `cisco_os.gnmi` client collects normalized metrics from IOS XE, IOS XR, and NX-OS. It is a static-inventory,
-read-only client: it uses Capabilities and Subscribe, never Set, and does not require Get. SONiC, target discovery, gNMI
-Set, and dial-out metric semantics are outside this feature's scope; receiver-wide transport hardening also applies to
-the existing dial-out servers as described below.
+The shared `cisco_os.gnmi` client collects normalized metrics from IOS XE, IOS XR, and NX-OS. Endpoint ownership is a
+static inventory, while product identity and exact catalog-row selection are automatic. Each session uses Capabilities
+followed by internal Subscribe-ONCE identity probes; it never uses Get or Set. SupportedModels can filter the identity
+probes attempted, but model presence and a successful Capabilities response do not prove any operational path. SONiC,
+dynamic endpoint discovery, configuration mutation, and dial-out metric semantics remain outside this feature's scope;
+receiver-wide transport hardening also applies to the existing dial-out servers as described below.
+
+The generated [product and domain coverage matrix](gnmi-coverage.md) is the source of truth for support claims. Only an
+exact product/release/domain row marked **Live Qualified** is supported. `Cataloged`, `Implemented`, fixture-passed, and
+`Findings` states are not support, and evidence from a sibling PID is not inherited. The generated
+[metric catalog](gnmi-metrics.md) records metric definitions and catalog use; a metric appearing there does not promote
+a product row to Live Qualified.
 
 The fake-server and synthetic implementation gates can be completed without physical devices. Upstream submission still
 requires human code-owner agreement on the configuration, security model, metric contract, and hardware plan. CML,
@@ -24,8 +32,13 @@ receivers:
       targets:
         - name: nexus-shard-01
           endpoint: nexus01.example.net:50051
+          # Optional expectations. Omit both for automatic identity discovery.
           platform: nx_os
+          product_family: nx_os
           max_recv_msg_size_mib: 16
+          max_streams: 4
+          encoding_preference: [json, json_ietf]
+          sync_timeout: 2m
           credentials:
             mode: username_password
             username: otel-telemetry
@@ -46,22 +59,40 @@ receivers:
               enabled: true
               required: true
               sample_interval: 30s
+              stream_mode: sample
 ```
 
-`platform` is `ios_xe`, `ios_xr`, or `nx_os`. The available profiles are `identity`, `system`, `interfaces`, `optics`,
-and the fork-only `catalyst_9800_wireless`. Identity defaults to five minutes, system and interfaces to 60 seconds, and
-optics to 30 seconds. Safe baseline profiles default on. Optics is opt-in because lane telemetry is high-cardinality and
-hardware-dependent.
+`platform` is an optional expected OS family (`ios_xe`, `ios_xr`, or `nx_os`), not the source of discovered identity.
+`product_family` is an optional expected generated-catalog family (`ios_xr`, `ios_xe_routing`, `ios_xe_switching`,
+`ios_xe_wireless`, or `nx_os`). If either assertion disagrees with Subscribe-ONCE identity, the target fails instead of
+silently selecting a sibling row. The bootstrap stages identity leaves until a true sync response and clean ONCE-stream
+completion, applies the target `sync_timeout`, and publishes no partial identity.
+
+Profiles are `identity`, `system`, `interfaces`, `optics`, `catalyst_9800_wireless`, `inventory`, `environment`, `l2`,
+`routing`, `mpls`, `overlay`, `qos`, `acl`, `topology`, `poe`, `time_sync`, `high_availability`, `asic`, and
+`telemetry_self`. Identity defaults to five minutes, system and interfaces to 60 seconds, and optics to 30 seconds.
+Identity, system, and interfaces preserve their existing enabled defaults. Optics, wireless, and every new normalized
+profile are disabled by default.
+
+The new profile names are a stable opt-in configuration surface for staged catalog expansion. Startup rejects an
+enabled profile that has no implemented path definition for the expected platform; a product/domain row in the
+coverage registry does not create a subscription by itself.
 
 Credentials modes are `username_password`, `mtls`, and `mtls_username_password`. mTLS modes also require
 `tls.cert_file` and `tls.key_file`. Verified TLS is mandatory: `tls.insecure`, `tls.insecure_skip_verify`, and TLS
 versions below 1.2 are rejected. Arbitrary metadata headers are not supported.
 
-Targets normally use no more than four compatible subscription streams. A target may explicitly raise its maximum to
-eight only after that device platform and release have been qualified. Origins remain separate from paths: IOS XE uses
-RFC7951 prefixing, IOS XR uses the module origin, and NX-OS assigns `DME`, device, or OpenConfig origin per path.
-IOS XR with the optics profile currently requires `max_streams: 6` because its native system and optical modules use
-separate origins.
+`encoding_preference` is an ordered list of concrete `proto`, `json_ietf`, and `json` choices and defaults to
+`[json_ietf, json]`. Selection happens only after intersecting the preference with the exact catalog path and target
+capabilities. IOS XE scalar PROTO is eligible only on qualified product/release rows; opaque NX DME PROTO remains
+ineligible without a schema decoder. `sync_timeout` defaults to two minutes, must be positive, and cannot exceed 30
+minutes. A group may override it.
+
+Targets normally use no more than four compatible subscription streams. `max_streams` accepts 1 through 16 and defaults
+to 4. A value above 4 requires an explicit `product_family` and cannot exceed its generated catalog ceiling: the current
+IOS catalog families remain capped at 4 and `nx_os` permits at most 16. These are configuration ceilings, not support claims; the exact row and
+device configuration still require live qualification at that concurrency. Origins remain separate from paths: IOS XE
+uses RFC7951 prefixing, IOS XR uses the module origin, and NX-OS assigns `DME`, device, or OpenConfig origin per path.
 
 `max_recv_msg_size_mib` cannot exceed 16 MiB. Larger frames are rejected at transport level, and in-limit responses
 receive a schema-aware raw-wire complexity scan before protobuf objects are materialized; narrow or split device
@@ -79,11 +110,28 @@ subscription is intentionally broad because NX-OS does not provide a portable re
 family. Keep NX optics experimental until the deployed release and hardware have been qualified for returned object
 volume, path shape, and sensor descriptions.
 
+Each profile accepts `enabled`, `required`, `sample_interval`, `stream_mode`, and `groups`. Stream mode is `auto`,
+`sample`, `on_change`, or `target_defined`; existing profiles retain SAMPLE defaults. A group can override `enabled`,
+`required`, `sample_interval`, `stream_mode`, and `sync_timeout`, and can set `max_entities` plus `selectors`. Group names
+and selector keys must be declared by the generated platform/profile catalog. Selector values are exact matches: empty values,
+duplicates, and wildcard syntax are rejected. Enabling a catalog-marked high-cardinality group requires a positive
+`max_entities`. Within an enabled profile, a catalog group is enabled unless its group override sets `enabled: false`;
+sample interval and stream mode inherit the profile, sync timeout inherits the target, and `required` defaults to false.
+For selectors, `max_entities` bounds the configured Cartesian request expansion before any stream starts.
+It also bounds distinct catalog entity identities retained in committed cache state. An entity may own several metric
+leaves while consuming one slot. Overflow rolls back the notification before OTLP delivery. An optional affected
+packed group stream degrades independently; a required group keeps the target unavailable. Deletes and atomic
+replacement release entity capacity transactionally.
+
 Custom subscriptions are accepted only when each scalar numeric source path has an explicit mapping with a metric name,
-description, UCUM unit, scale, gauge type, and path-key-to-attribute mappings. Unmapped paths, custom sums, arbitrary
-JSON-to-metric conversion, and dynamic `_info` metrics are rejected.
+description, UCUM unit, scale, gauge type, and path-key-to-attribute mappings. Their `encoding` is `auto`, `proto`,
+`json_ietf`, or `json` and defaults to `auto`; a concrete choice remains subject to target capabilities and a declared
+safe decoder. Unmapped paths, custom sums, arbitrary JSON-to-metric conversion, and dynamic `_info` metrics are rejected.
 
 ## Metric contract
+
+The generated [metric catalog](gnmi-metrics.md) is the complete public mapping inventory for the dated catalog snapshot.
+The summary below describes the existing baseline contracts; catalog presence is not a product support claim.
 
 The identity, system, and interfaces profiles reuse the receiver's existing normalized metrics instead of creating
 platform-specific duplicates:
@@ -200,7 +248,7 @@ by assigning the same target to two active collectors.
 
 ## Alerts and runbook
 
-Alert on target inactivity beyond two sample intervals, required-profile degradation, authentication failures,
+Alert on target inactivity beyond two sample intervals, required profile or group degradation, authentication failures,
 decode/unmapped growth, cache use above 80 percent, stream churn, consumer refusal, and device or collector certificate
 expiry.
 
@@ -211,25 +259,34 @@ identify the profile and series growth, then split the static inventory without 
 
 ## Acceptance gates
 
-Unit and fake-server coverage must include configuration validation, origin/path construction, all typed encodings,
-scaling and units, atomic/delete behavior, timestamps and out-of-order updates, cache/batch bounds, POLL sequencing,
-reconnect classification, shutdown rollback, TLS trust/SAN/mTLS cases, credentials on every RPC, denied credentials,
-and proof that zero Set/Get calls occur.
+Unit and fake-server coverage must include configuration validation, Capabilities followed by Subscribe-ONCE identity,
+expected-family mismatches, origin/path construction, per-stream encodings and modes, sync timeouts, scaling and units,
+atomic/delete behavior, timestamps and out-of-order updates, cache/batch bounds, POLL sequencing, reconnect and upgrade
+reselection, shutdown rollback, TLS trust/SAN/mTLS cases, credentials on every RPC, denied credentials, and proof that
+zero Set/Get calls occur.
 
-CML qualification covers IOS XE 17.15+, IOS XR 24.3+, and NX-OS 10.5+ for secure transport, Capabilities, baseline
-profiles, reconnects, and supported subscriptions. Treat the IOS XE management-VRF restriction as 17.18.2+, IOS XR
-Subscribe as 24.2.1+, and NX advanced VDM as 10.6(1)+ on supported hardware. CML does not qualify optics.
+Virtual labs can qualify common control-plane behavior only when Cisco documents that behavior across the exact family.
+They do not qualify optics, PoE, environmental sensors, ASICs, supervisors, line cards, stacks, or attached wireless
+hardware. A catalog row, successful fixture, model advertisement, or passing virtual test remains `Findings` or another
+non-live disposition until the exact PID/release/domain row completes live validation. Consult the generated
+[coverage matrix](gnmi-coverage.md); only its Live Qualified rows are supported.
 
-Physical qualification is mandatory for NX-OS 10.6(1)+ on the deployed Nexus SKU with CMIS/VDM optics and IOS XR
-24.3+ on 8201/NCS hardware with coherent optics. Capture sanitized Capabilities and SubscribeResponse fixtures and
-record release, SKU, optic PID, firmware, origin, path, description, unit, and raw value. Compare simultaneous gNMI and
-CLI/device readings within one documented source resolution. Exercise insert/remove, link failure, reboot, AAA outage
-and recovery, both certificate rotations, supervisor switchover, and a 24-hour soak at 30 seconds.
+Physical qualification is mandatory for hardware-dependent domains. Capture sanitized Capabilities and
+SubscribeResponse fixtures tied to the selected model revision and path variant; record the exact PID, release, role,
+hardware class, relevant firmware, origin, path, description, unit, and raw value. Compare representative emitted
+metrics with simultaneous CLI or device-state readings within one documented source resolution. Exercise state
+transitions and deletions, reconnect, AAA outage and recovery, certificate rotations, applicable supervisor or stack
+failover, backend delivery, and a 24-hour soak. Record the tested scale envelope on the exact qualified row.
 
 The scale gate is a synthetic TLS test with at least 100 targets, 5,000 optical ports, up to eight lanes, 500,000 active
 mapped series, and about 16,700 datapoints/second. On 4 vCPU and 4 GiB, require CPU at or below 80 percent, RSS at or
 below 3.2 GiB, p95 notification-to-consumer latency below five seconds, no receiver loss with an accepting consumer,
 bounded cache, and reconnect recovery within 60 seconds.
+
+Product-specific qualification adds a 64,000-client wireless scenario, the NX-OS documented 250,000 aggregate-MO
+boundary, and bounded large RIB/FIB, MAC-table, ACL-rule, and QoS-class detail cases. Each run must record the enabled
+features, selected path-set variants, selector and entity limits, retained-state peak, device control-plane impact, and
+the exact PID/release envelope. Passing one scale case does not qualify a different product, hardware class, or domain.
 
 An opt-in data-plane harness is included for the 100-target/500,000-series/16,700-point cache, mapping, and lossless
 chunking portion:
@@ -239,9 +296,14 @@ CISCOOS_GNMI_RUN_SCALE_QUALIFICATION=1 GOMAXPROCS=4 go test ./internal/gnmi \
   -run '^TestInternalGNMIScaleQualification_100Targets5000Ports500KSeries$' -count=1 -v
 ```
 
-The local qualification run populated 500,000 series in 2.12 seconds and processed the interval in 105 ms, with 1.41 GB
-RSS, 25.03 percent four-core burst CPU, and 2.64 percent four-core CPU at the modeled one-second cadence; chunks
-contained 10,000 and 6,700 datapoints with no loss. That harness does not
+This opt-in harness uses an explicit 1.25 GiB retained-accounting limit for its deliberately high-overhead synthetic
+series shape. Production retains the fixed 256 MiB cache ceiling described above; that byte ceiling is independent of
+the 500,000-series count ceiling and stops this synthetic shape before all 500,000 series can be retained.
+
+The local qualification run populated 500,000 series in 3.50 seconds and processed the interval in 150 ms, with a
+1,100,820,000-byte conservative retained-state estimate, 1.32 GB RSS, 24.16 percent four-core burst CPU, and 3.63
+percent four-core CPU at the modeled one-second cadence; chunks contained 10,000 and 6,700 datapoints with no loss.
+That harness does not
 exercise 100 TLS listeners, reconnect recovery, exporter queues, or hardware. Those portions of the scale gate remain
 mandatory in the deployment environment.
 

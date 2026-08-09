@@ -9,6 +9,7 @@ import (
 	"math"
 	"net"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -33,6 +34,21 @@ const (
 	gnmiModeOnce   = "once"
 	gnmiModePoll   = "poll"
 
+	gnmiStreamModeAuto          = "auto"
+	gnmiStreamModeSample        = "sample"
+	gnmiStreamModeOnChange      = "on_change"
+	gnmiStreamModeTargetDefined = "target_defined"
+
+	gnmiEncodingAuto     = "auto"
+	gnmiEncodingProto    = "proto"
+	gnmiEncodingJSONIETF = "json_ietf"
+	gnmiEncodingJSON     = "json"
+
+	gnmiDefaultSyncTimeout = 2 * time.Minute
+	gnmiMaximumSyncTimeout = 30 * time.Minute
+	gnmiDefaultMaxStreams  = 4
+	gnmiMaximumStreams     = 16
+
 	// grpc-go buffers the frame before the forced response codec can scan its
 	// wire complexity and build protobuf objects. Keep a hard frame ceiling
 	// aligned with the receiver's other network payload limits to prevent
@@ -47,6 +63,7 @@ const (
 var (
 	normalizedMetricNamePattern    = regexp.MustCompile(`^[a-z][a-z0-9_.]*$`)
 	normalizedAttributeNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_.-]*$`)
+	normalizedGNMIGroupNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 	gnmiUCUMAnnotationPattern      = regexp.MustCompile(`^\{[A-Za-z][A-Za-z0-9_.-]*\}$`)
 )
 
@@ -114,9 +131,35 @@ type GNMIKeepaliveConfig struct {
 type GNMIProfileConfig struct {
 	_ struct{} `mapstructure:"-"`
 
-	Enabled        *bool         `mapstructure:"enabled"`
-	Required       bool          `mapstructure:"required"`
-	SampleInterval time.Duration `mapstructure:"sample_interval"`
+	Enabled        *bool                      `mapstructure:"enabled"`
+	Required       bool                       `mapstructure:"required"`
+	SampleInterval time.Duration              `mapstructure:"sample_interval"`
+	StreamMode     string                     `mapstructure:"stream_mode"`
+	Groups         map[string]GNMIGroupConfig `mapstructure:"groups"`
+	// streamModeDefaulted preserves whether sample came from the public default
+	// so catalog-only paths (notably bootstrap identity) can conservatively
+	// select their sole declared mode without treating a user-specified sample
+	// as implicit.
+	streamModeDefaulted bool
+}
+
+// GNMIGroupConfig controls one catalog-declared group within a normalized
+// profile. Selectors are exact matches on catalog-declared keys.
+type GNMIGroupConfig struct {
+	_ struct{} `mapstructure:"-"`
+
+	Enabled        *bool               `mapstructure:"enabled"`
+	Required       bool                `mapstructure:"required"`
+	SampleInterval time.Duration       `mapstructure:"sample_interval"`
+	StreamMode     string              `mapstructure:"stream_mode"`
+	SyncTimeout    time.Duration       `mapstructure:"sync_timeout"`
+	MaxEntities    int                 `mapstructure:"max_entities"`
+	Selectors      map[string][]string `mapstructure:"selectors"`
+	// streamModeDefaulted records that stream_mode inherited the profile
+	// value. Runtime stream planning uses it to conservatively select a sole
+	// catalog-declared mode without treating the inherited value as an
+	// explicit request.
+	streamModeDefaulted bool
 }
 
 // GNMIProfilesConfig contains the normalized profile set.
@@ -128,6 +171,20 @@ type GNMIProfilesConfig struct {
 	Interfaces           GNMIProfileConfig `mapstructure:"interfaces"`
 	Optics               GNMIProfileConfig `mapstructure:"optics"`
 	Catalyst9800Wireless GNMIProfileConfig `mapstructure:"catalyst_9800_wireless"`
+	Inventory            GNMIProfileConfig `mapstructure:"inventory"`
+	Environment          GNMIProfileConfig `mapstructure:"environment"`
+	L2                   GNMIProfileConfig `mapstructure:"l2"`
+	Routing              GNMIProfileConfig `mapstructure:"routing"`
+	MPLS                 GNMIProfileConfig `mapstructure:"mpls"`
+	Overlay              GNMIProfileConfig `mapstructure:"overlay"`
+	QoS                  GNMIProfileConfig `mapstructure:"qos"`
+	ACL                  GNMIProfileConfig `mapstructure:"acl"`
+	Topology             GNMIProfileConfig `mapstructure:"topology"`
+	PoE                  GNMIProfileConfig `mapstructure:"poe"`
+	TimeSync             GNMIProfileConfig `mapstructure:"time_sync"`
+	HighAvailability     GNMIProfileConfig `mapstructure:"high_availability"`
+	ASIC                 GNMIProfileConfig `mapstructure:"asic"`
+	TelemetrySelf        GNMIProfileConfig `mapstructure:"telemetry_self"`
 }
 
 // GNMIMetricMappingConfig is a complete scalar-to-gauge mapping. PathKeys maps
@@ -156,6 +213,7 @@ type GNMICustomSubscriptionConfig struct {
 	SampleInterval time.Duration             `mapstructure:"sample_interval"`
 	PollInterval   time.Duration             `mapstructure:"poll_interval"`
 	Required       bool                      `mapstructure:"required"`
+	Encoding       string                    `mapstructure:"encoding"`
 	Mappings       []GNMIMetricMappingConfig `mapstructure:"mappings"`
 }
 
@@ -166,10 +224,13 @@ type GNMITargetConfig struct {
 	Name                string                         `mapstructure:"name"`
 	Endpoint            string                         `mapstructure:"endpoint"`
 	Platform            string                         `mapstructure:"platform"`
+	ProductFamily       string                         `mapstructure:"product_family"`
 	MaxRecvMsgSizeMiB   int                            `mapstructure:"max_recv_msg_size_mib"`
 	MaxStreams          int                            `mapstructure:"max_streams"`
 	ConnectTimeout      time.Duration                  `mapstructure:"connect_timeout"`
 	CapabilitiesTimeout time.Duration                  `mapstructure:"capabilities_timeout"`
+	SyncTimeout         time.Duration                  `mapstructure:"sync_timeout"`
+	EncodingPreference  []string                       `mapstructure:"encoding_preference"`
 	Credentials         GNMICredentialsConfig          `mapstructure:"credentials"`
 	TLS                 GNMITLSConfig                  `mapstructure:"tls"`
 	Keepalive           GNMIKeepaliveConfig            `mapstructure:"keepalive"`
@@ -199,7 +260,7 @@ func boolValue(value *bool, fallback bool) bool {
 	return *value
 }
 
-func (profile GNMIProfileConfig) withDefaults(enabled bool, interval time.Duration) GNMIProfileConfig {
+func (profile GNMIProfileConfig) withDefaults(enabled bool, interval, syncTimeout time.Duration) GNMIProfileConfig {
 	if profile.Enabled == nil {
 		profile.Enabled = new(bool)
 		*profile.Enabled = enabled
@@ -207,30 +268,74 @@ func (profile GNMIProfileConfig) withDefaults(enabled bool, interval time.Durati
 	if profile.SampleInterval == 0 {
 		profile.SampleInterval = interval
 	}
+	if profile.StreamMode == "" {
+		profile.StreamMode = gnmiStreamModeSample
+		profile.streamModeDefaulted = true
+	}
+	if profile.Groups != nil {
+		groups := make(map[string]GNMIGroupConfig, len(profile.Groups))
+		for name, group := range profile.Groups {
+			if group.SampleInterval == 0 {
+				group.SampleInterval = profile.SampleInterval
+			}
+			if group.StreamMode == "" {
+				group.StreamMode = profile.StreamMode
+				group.streamModeDefaulted = profile.streamModeDefaulted
+			}
+			if group.SyncTimeout == 0 {
+				group.SyncTimeout = syncTimeout
+			}
+			groups[name] = group
+		}
+		profile.Groups = groups
+	}
 	return profile
 }
 
-func (profiles GNMIProfilesConfig) withDefaults() GNMIProfilesConfig {
-	profiles.Identity = profiles.Identity.withDefaults(true, 5*time.Minute)
-	profiles.System = profiles.System.withDefaults(true, time.Minute)
-	profiles.Interfaces = profiles.Interfaces.withDefaults(true, time.Minute)
-	profiles.Optics = profiles.Optics.withDefaults(false, 30*time.Second)
-	profiles.Catalyst9800Wireless = profiles.Catalyst9800Wireless.withDefaults(false, time.Minute)
+func (profiles GNMIProfilesConfig) withDefaults(syncTimeout time.Duration) GNMIProfilesConfig {
+	profiles.Identity = profiles.Identity.withDefaults(true, 5*time.Minute, syncTimeout)
+	profiles.System = profiles.System.withDefaults(true, time.Minute, syncTimeout)
+	profiles.Interfaces = profiles.Interfaces.withDefaults(true, time.Minute, syncTimeout)
+	profiles.Optics = profiles.Optics.withDefaults(false, 30*time.Second, syncTimeout)
+	profiles.Catalyst9800Wireless = profiles.Catalyst9800Wireless.withDefaults(false, time.Minute, syncTimeout)
+	profiles.Inventory = profiles.Inventory.withDefaults(false, time.Minute, syncTimeout)
+	profiles.Environment = profiles.Environment.withDefaults(false, time.Minute, syncTimeout)
+	profiles.L2 = profiles.L2.withDefaults(false, time.Minute, syncTimeout)
+	profiles.Routing = profiles.Routing.withDefaults(false, time.Minute, syncTimeout)
+	profiles.MPLS = profiles.MPLS.withDefaults(false, time.Minute, syncTimeout)
+	profiles.Overlay = profiles.Overlay.withDefaults(false, time.Minute, syncTimeout)
+	profiles.QoS = profiles.QoS.withDefaults(false, time.Minute, syncTimeout)
+	profiles.ACL = profiles.ACL.withDefaults(false, time.Minute, syncTimeout)
+	profiles.Topology = profiles.Topology.withDefaults(false, time.Minute, syncTimeout)
+	profiles.PoE = profiles.PoE.withDefaults(false, time.Minute, syncTimeout)
+	profiles.TimeSync = profiles.TimeSync.withDefaults(false, time.Minute, syncTimeout)
+	profiles.HighAvailability = profiles.HighAvailability.withDefaults(false, time.Minute, syncTimeout)
+	profiles.ASIC = profiles.ASIC.withDefaults(false, time.Minute, syncTimeout)
+	profiles.TelemetrySelf = profiles.TelemetrySelf.withDefaults(false, time.Minute, syncTimeout)
 	return profiles
 }
 
 func (target GNMITargetConfig) withDefaults() GNMITargetConfig {
+	target.ProductFamily = strings.ToLower(strings.TrimSpace(target.ProductFamily))
 	if target.MaxRecvMsgSizeMiB == 0 {
 		target.MaxRecvMsgSizeMiB = 16
 	}
 	if target.MaxStreams == 0 {
-		target.MaxStreams = 4
+		target.MaxStreams = gnmiDefaultMaxStreams
 	}
 	if target.ConnectTimeout == 0 {
 		target.ConnectTimeout = 15 * time.Second
 	}
 	if target.CapabilitiesTimeout == 0 {
 		target.CapabilitiesTimeout = 15 * time.Second
+	}
+	if target.SyncTimeout == 0 {
+		target.SyncTimeout = gnmiDefaultSyncTimeout
+	}
+	if len(target.EncodingPreference) == 0 {
+		target.EncodingPreference = []string{gnmiEncodingJSONIETF, gnmiEncodingJSON}
+	} else {
+		target.EncodingPreference = append([]string(nil), target.EncodingPreference...)
 	}
 	if target.Credentials.Mode == "" {
 		target.Credentials.Mode = gnmiCredentialUsernamePassword
@@ -248,7 +353,7 @@ func (target GNMITargetConfig) withDefaults() GNMITargetConfig {
 		target.Keepalive.PermitWithoutStream = new(bool)
 		*target.Keepalive.PermitWithoutStream = true
 	}
-	target.Profiles = target.Profiles.withDefaults()
+	target.Profiles = target.Profiles.withDefaults(target.SyncTimeout)
 	for i := range target.CustomSubscriptions {
 		if target.CustomSubscriptions[i].Mode == "" {
 			target.CustomSubscriptions[i].Mode = gnmiModeStream
@@ -258,6 +363,9 @@ func (target GNMITargetConfig) withDefaults() GNMITargetConfig {
 		}
 		if target.CustomSubscriptions[i].PollInterval == 0 {
 			target.CustomSubscriptions[i].PollInterval = target.CustomSubscriptions[i].SampleInterval
+		}
+		if target.CustomSubscriptions[i].Encoding == "" {
+			target.CustomSubscriptions[i].Encoding = gnmiEncodingAuto
 		}
 	}
 	return target
@@ -320,7 +428,7 @@ func (cfg *Config) validateGNMI() error {
 		err = multierr.Append(err, validateGNMITarget(prefix, target))
 		if selector.allows(sharedGNMITargetIdentity(target)) &&
 			target.MaxRecvMsgSizeMiB > 0 && target.MaxRecvMsgSizeMiB <= gnmiMaxRecvMsgSizeMiB &&
-			target.MaxStreams > 0 && target.MaxStreams <= 8 {
+			target.MaxStreams > 0 && target.MaxStreams <= gnmiMaximumStreams {
 			selectedTargets++
 		}
 	}
@@ -352,7 +460,7 @@ func (cfg *Config) validateGNMITelemetryResourceLimits() error {
 		target := cfg.GNMI.Targets[i].withDefaults()
 		if selector.allows(sharedGNMITargetIdentity(target)) &&
 			target.MaxRecvMsgSizeMiB > 0 && target.MaxRecvMsgSizeMiB <= gnmiMaxRecvMsgSizeMiB &&
-			target.MaxStreams > 0 && target.MaxStreams <= 8 {
+			target.MaxStreams > 0 && target.MaxStreams <= gnmiMaximumStreams {
 			aggregateInFlightMiB += uint64(target.MaxRecvMsgSizeMiB) * uint64(target.MaxStreams)
 		}
 	}
@@ -395,26 +503,45 @@ func (cfg *Config) validateGNMITelemetryResourceLimits() error {
 func validateGNMITarget(prefix string, target GNMITargetConfig) error {
 	var err error
 	switch target.Platform {
-	case gnmiPlatformIOSXE, gnmiPlatformIOSXR, gnmiPlatformNXOS:
+	case "", gnmiPlatformIOSXE, gnmiPlatformIOSXR, gnmiPlatformNXOS:
 	default:
-		err = multierr.Append(err, fmt.Errorf("%s.platform must be ios_xe, ios_xr, or nx_os", prefix))
+		err = multierr.Append(err, fmt.Errorf("%s.platform must be empty, ios_xe, ios_xr, or nx_os", prefix))
 	}
 	if target.MaxRecvMsgSizeMiB <= 0 {
 		err = multierr.Append(err, fmt.Errorf("%s.max_recv_msg_size_mib must be positive", prefix))
 	} else if target.MaxRecvMsgSizeMiB > gnmiMaxRecvMsgSizeMiB {
 		err = multierr.Append(err, fmt.Errorf("%s.max_recv_msg_size_mib must not exceed %d", prefix, gnmiMaxRecvMsgSizeMiB))
 	}
-	if target.MaxStreams < 1 || target.MaxStreams > 8 {
-		err = multierr.Append(err, fmt.Errorf("%s.max_streams must be between 1 and 8", prefix))
+	switch {
+	case target.MaxStreams < 1 || target.MaxStreams > gnmiMaximumStreams:
+		err = multierr.Append(err, fmt.Errorf("%s.max_streams must be between 1 and %d", prefix, gnmiMaximumStreams))
+	case target.MaxStreams > gnmiDefaultMaxStreams && strings.TrimSpace(target.ProductFamily) == "":
+		err = multierr.Append(err, fmt.Errorf("%s.product_family is required when max_streams exceeds %d", prefix, gnmiDefaultMaxStreams))
+	case strings.TrimSpace(target.ProductFamily) != "":
+		family, ok := gnmiCatalogProductFamily(target.ProductFamily)
+		if !ok {
+			err = multierr.Append(err, fmt.Errorf("%s.product_family %q is not present in the generated gNMI catalog", prefix, target.ProductFamily))
+		} else {
+			if target.Platform != "" && target.Platform != family.Platform {
+				err = multierr.Append(err, fmt.Errorf("%s.product_family %q belongs to platform %q, not configured platform %q", prefix, target.ProductFamily, family.Platform, target.Platform))
+			}
+			if target.MaxStreams > family.MaxStreams {
+				err = multierr.Append(err, fmt.Errorf("%s.max_streams %d exceeds generated catalog limit %d for product_family %q", prefix, target.MaxStreams, family.MaxStreams, target.ProductFamily))
+			}
+		}
 	}
 	if target.ConnectTimeout <= 0 || target.CapabilitiesTimeout <= 0 {
 		err = multierr.Append(err, fmt.Errorf("%s connection and capabilities timeouts must be positive", prefix))
+	}
+	if target.SyncTimeout <= 0 || target.SyncTimeout > gnmiMaximumSyncTimeout {
+		err = multierr.Append(err, fmt.Errorf("%s.sync_timeout must be positive and not exceed %s", prefix, gnmiMaximumSyncTimeout))
 	}
 	if target.Keepalive.Time <= 0 || target.Keepalive.Timeout <= 0 {
 		err = multierr.Append(err, fmt.Errorf("%s.keepalive time and timeout must be positive", prefix))
 	}
 	err = multierr.Append(err, validateGNMICredentials(prefix, target))
 	err = multierr.Append(err, validateGNMITLS(prefix, target.TLS))
+	err = multierr.Append(err, validateGNMIEncodingPreference(prefix+".encoding_preference", target.EncodingPreference))
 	err = multierr.Append(err, validateGNMIProfiles(prefix, target))
 	err = multierr.Append(err, validateGNMICustomSubscriptions(prefix, target))
 	if streams := estimateGNMIStreams(target); streams == 0 {
@@ -481,19 +608,198 @@ func validateGNMIProfiles(prefix string, target GNMITargetConfig) error {
 		{"interfaces", target.Profiles.Interfaces},
 		{"optics", target.Profiles.Optics},
 		{"catalyst_9800_wireless", target.Profiles.Catalyst9800Wireless},
+		{"inventory", target.Profiles.Inventory},
+		{"environment", target.Profiles.Environment},
+		{"l2", target.Profiles.L2},
+		{"routing", target.Profiles.Routing},
+		{"mpls", target.Profiles.MPLS},
+		{"overlay", target.Profiles.Overlay},
+		{"qos", target.Profiles.QoS},
+		{"acl", target.Profiles.ACL},
+		{"topology", target.Profiles.Topology},
+		{"poe", target.Profiles.PoE},
+		{"time_sync", target.Profiles.TimeSync},
+		{"high_availability", target.Profiles.HighAvailability},
+		{"asic", target.Profiles.ASIC},
+		{"telemetry_self", target.Profiles.TelemetrySelf},
 	}
+	platforms := gnmiCatalogPlatformsForTarget(target)
 	var err error
 	for _, item := range profiles {
 		enabled := boolValue(item.profile.Enabled, false)
+		profilePrefix := prefix + ".profiles." + item.name
+		cataloged := false
+		for _, platform := range platforms {
+			if _, ok := builtinGNMIProfile(platform, item.name); ok {
+				cataloged = true
+				break
+			}
+		}
+		if enabled && !cataloged {
+			err = multierr.Append(err, fmt.Errorf("%s has no implemented paths in the generated catalog for the expected platform", profilePrefix))
+		}
 		if item.profile.Required && !enabled {
-			err = multierr.Append(err, fmt.Errorf("%s.profiles.%s cannot be required when disabled", prefix, item.name))
+			err = multierr.Append(err, fmt.Errorf("%s cannot be required when disabled", profilePrefix))
 		}
 		if enabled && item.profile.SampleInterval <= 0 {
-			err = multierr.Append(err, fmt.Errorf("%s.profiles.%s.sample_interval must be positive", prefix, item.name))
+			err = multierr.Append(err, fmt.Errorf("%s.sample_interval must be positive", profilePrefix))
+		}
+		if !validGNMIStreamMode(item.profile.StreamMode) {
+			err = multierr.Append(err, fmt.Errorf("%s.stream_mode must be auto, sample, on_change, or target_defined", profilePrefix))
+		}
+		err = multierr.Append(err, validateGNMIGroups(profilePrefix, item.name, platforms, enabled, item.profile))
+	}
+	if boolValue(target.Profiles.Catalyst9800Wireless.Enabled, false) && target.Platform != "" && target.Platform != gnmiPlatformIOSXE {
+		err = multierr.Append(err, fmt.Errorf("%s.profiles.catalyst_9800_wireless is supported only on ios_xe", prefix))
+	}
+	return err
+}
+
+func gnmiCatalogPlatformsForTarget(target GNMITargetConfig) []string {
+	if family := strings.ToLower(strings.TrimSpace(target.ProductFamily)); family != "" {
+		for _, definition := range builtinGNMICatalogProductFamilies {
+			if definition.ID == family {
+				return []string{definition.Platform}
+			}
 		}
 	}
-	if boolValue(target.Profiles.Catalyst9800Wireless.Enabled, false) && target.Platform != gnmiPlatformIOSXE {
-		err = multierr.Append(err, fmt.Errorf("%s.profiles.catalyst_9800_wireless is supported only on ios_xe", prefix))
+	if target.Platform != "" {
+		return []string{target.Platform}
+	}
+	return []string{gnmiPlatformIOSXE, gnmiPlatformIOSXR, gnmiPlatformNXOS}
+}
+
+func validateGNMIGroups(
+	profilePrefix string,
+	profileName string,
+	platforms []string,
+	profileEnabled bool,
+	profile GNMIProfileConfig,
+) error {
+	var err error
+	catalogGroups := make(map[string]gnmiCatalogGroupDefinition)
+	for _, platform := range platforms {
+		for _, definition := range builtinGNMIProfileGroups(platform, profileName) {
+			merged := catalogGroups[definition.Name]
+			merged.Name = definition.Name
+			merged.HighCardinality = merged.HighCardinality || definition.HighCardinality
+			merged.RequiresMaxEntities = merged.RequiresMaxEntities || definition.RequiresMaxEntities
+			merged.SelectorKeys = append(merged.SelectorKeys, definition.SelectorKeys...)
+			slices.Sort(merged.SelectorKeys)
+			merged.SelectorKeys = slices.Compact(merged.SelectorKeys)
+			catalogGroups[definition.Name] = merged
+		}
+	}
+	catalogGroupNames := make([]string, 0, len(catalogGroups))
+	for name := range catalogGroups {
+		catalogGroupNames = append(catalogGroupNames, name)
+	}
+	sort.Strings(catalogGroupNames)
+	for _, name := range catalogGroupNames {
+		definition := catalogGroups[name]
+		configured, exists := profile.Groups[name]
+		groupEnabled := profileEnabled && (!exists || boolValue(configured.Enabled, true))
+		if groupEnabled && definition.RequiresMaxEntities && (!exists || configured.MaxEntities <= 0) {
+			err = multierr.Append(err, fmt.Errorf(
+				"%s.groups.%s.max_entities must be positive when enabling a high-cardinality catalog group",
+				profilePrefix,
+				name,
+			))
+		}
+	}
+	configuredGroupNames := make([]string, 0, len(profile.Groups))
+	for name := range profile.Groups {
+		configuredGroupNames = append(configuredGroupNames, name)
+	}
+	sort.Strings(configuredGroupNames)
+	for _, name := range configuredGroupNames {
+		group := profile.Groups[name]
+		groupPrefix := profilePrefix + ".groups." + name
+		if !normalizedGNMIGroupNamePattern.MatchString(name) {
+			err = multierr.Append(err, fmt.Errorf("%s group name must use lowercase letters, numbers, and underscores", groupPrefix))
+		}
+		enabled := profileEnabled && boolValue(group.Enabled, true)
+		if group.Required && !enabled {
+			err = multierr.Append(err, fmt.Errorf("%s cannot be required when disabled", groupPrefix))
+		}
+		if enabled && group.SampleInterval <= 0 {
+			err = multierr.Append(err, fmt.Errorf("%s.sample_interval must be positive", groupPrefix))
+		}
+		if !validGNMIStreamMode(group.StreamMode) {
+			err = multierr.Append(err, fmt.Errorf("%s.stream_mode must be auto, sample, on_change, or target_defined", groupPrefix))
+		}
+		if group.SyncTimeout <= 0 || group.SyncTimeout > gnmiMaximumSyncTimeout {
+			err = multierr.Append(err, fmt.Errorf("%s.sync_timeout must be positive and not exceed %s", groupPrefix, gnmiMaximumSyncTimeout))
+		}
+		if group.MaxEntities < 0 {
+			err = multierr.Append(err, fmt.Errorf("%s.max_entities must not be negative", groupPrefix))
+		}
+		if enabled && len(group.Selectors) > 0 && group.MaxEntities <= 0 {
+			err = multierr.Append(err, fmt.Errorf("%s.max_entities must be positive when selectors are configured", groupPrefix))
+		}
+		catalogGroup, cataloged := catalogGroups[name]
+		selectorKeys := make(map[string]struct{}, len(catalogGroup.SelectorKeys))
+		for _, selector := range catalogGroup.SelectorKeys {
+			selectorKeys[selector] = struct{}{}
+		}
+		if !cataloged {
+			err = multierr.Append(err, fmt.Errorf("%s is not declared by the generated catalog for profile %q and the expected platform", groupPrefix, profileName))
+		}
+		for selector, values := range group.Selectors {
+			selectorPrefix := groupPrefix + ".selectors." + selector
+			if !normalizedAttributeNamePattern.MatchString(selector) {
+				err = multierr.Append(err, fmt.Errorf("%s key must be a normalized catalog selector", selectorPrefix))
+			}
+			if _, ok := selectorKeys[selector]; cataloged && !ok {
+				err = multierr.Append(err, fmt.Errorf("%s is not declared by the generated catalog group", selectorPrefix))
+			}
+			if len(values) == 0 {
+				err = multierr.Append(err, fmt.Errorf("%s must contain at least one exact value", selectorPrefix))
+				continue
+			}
+			seen := make(map[string]struct{}, len(values))
+			for index, value := range values {
+				if strings.TrimSpace(value) == "" || strings.TrimSpace(value) != value {
+					err = multierr.Append(err, fmt.Errorf("%s[%d] must be a non-empty exact value without surrounding whitespace", selectorPrefix, index))
+					continue
+				}
+				if strings.ContainsAny(value, "*?") {
+					err = multierr.Append(err, fmt.Errorf("%s[%d] must be an exact value, not a wildcard", selectorPrefix, index))
+				}
+				if _, duplicate := seen[value]; duplicate {
+					err = multierr.Append(err, fmt.Errorf("%s[%d] duplicates another selector value", selectorPrefix, index))
+				}
+				seen[value] = struct{}{}
+			}
+		}
+	}
+	return err
+}
+
+func validGNMIStreamMode(value string) bool {
+	switch value {
+	case gnmiStreamModeAuto, gnmiStreamModeSample, gnmiStreamModeOnChange, gnmiStreamModeTargetDefined:
+		return true
+	default:
+		return false
+	}
+}
+
+func validateGNMIEncodingPreference(prefix string, values []string) error {
+	if len(values) == 0 {
+		return fmt.Errorf("%s must include at least one encoding", prefix)
+	}
+	var err error
+	seen := make(map[string]struct{}, len(values))
+	for index, value := range values {
+		if value != gnmiEncodingProto && value != gnmiEncodingJSONIETF && value != gnmiEncodingJSON {
+			err = multierr.Append(err, fmt.Errorf("%s[%d] must be proto, json_ietf, or json", prefix, index))
+			continue
+		}
+		if _, duplicate := seen[value]; duplicate {
+			err = multierr.Append(err, fmt.Errorf("%s[%d] duplicates encoding %q", prefix, index, value))
+		}
+		seen[value] = struct{}{}
 	}
 	return err
 }
@@ -519,6 +825,9 @@ func validateGNMICustomSubscriptions(prefix string, target GNMITargetConfig) err
 		}
 		if subscription.Mode != gnmiModeStream && subscription.Mode != gnmiModeOnce && subscription.Mode != gnmiModePoll {
 			err = multierr.Append(err, fmt.Errorf("%s.mode must be stream, once, or poll", itemPrefix))
+		}
+		if subscription.Encoding != gnmiEncodingAuto && subscription.Encoding != gnmiEncodingProto && subscription.Encoding != gnmiEncodingJSONIETF && subscription.Encoding != gnmiEncodingJSON {
+			err = multierr.Append(err, fmt.Errorf("%s.encoding must be auto, proto, json_ietf, or json", itemPrefix))
 		}
 		if target.Platform == gnmiPlatformIOSXE && subscription.Mode != gnmiModeStream {
 			err = multierr.Append(err, fmt.Errorf("%s.mode %s is not supported on ios_xe", itemPrefix, subscription.Mode))
@@ -642,7 +951,8 @@ func validateGNMICustomSubscriptions(prefix string, target GNMITargetConfig) err
 
 func isBuiltinGNMIProfileName(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(name)) {
-	case builtinGNMIProfileIdentity, builtinGNMIProfileSystem, builtinGNMIProfileInterfaces, builtinGNMIProfileOptics, builtinGNMIProfileCatalyst9800Wireless:
+	case builtinGNMIProfileIdentity, builtinGNMIProfileSystem, builtinGNMIProfileInterfaces, builtinGNMIProfileOptics, builtinGNMIProfileCatalyst9800Wireless,
+		"inventory", "environment", "l2", "routing", "mpls", "overlay", "qos", "acl", "topology", "poe", "time_sync", "high_availability", "asic", "telemetry_self":
 		return true
 	default:
 		return false
@@ -674,7 +984,8 @@ func validateGNMIMetricContracts(rawTargets []GNMITargetConfig) error {
 	for _, platform := range []string{gnmiPlatformIOSXE, gnmiPlatformIOSXR, gnmiPlatformNXOS} {
 		for _, profile := range builtinGNMIProfiles(platform) {
 			mappings := append([]builtinGNMIMapping(nil), profile.SyntheticMappings...)
-			for _, path := range profile.Paths {
+			for pathIndex := range profile.Paths {
+				path := profile.Paths[pathIndex]
 				mappings = append(mappings, path.Mappings...)
 			}
 			for i := range mappings {
@@ -774,6 +1085,22 @@ func validGNMIUCUMTerm(term string) bool {
 }
 
 func estimateGNMIStreams(target GNMITargetConfig) int {
+	planningTarget := target
+	if planningTarget.Platform == "" && planningTarget.ProductFamily != "" {
+		if family, ok := gnmiCatalogProductFamily(planningTarget.ProductFamily); ok {
+			planningTarget.Platform = family.Platform
+		}
+	}
+	if planningTarget.Platform != "" {
+		// Count the actual compatibility plan, including group overrides. The
+		// caller compares the result with the configured limit; use a planning
+		// ceiling here so buildSharedGNMIStreams can return the complete plan.
+		planningTarget.MaxStreams = math.MaxInt
+		if planned, err := buildSharedGNMIStreams(planningTarget); err == nil {
+			return len(planned)
+		}
+	}
+
 	streams := 0
 	if boolValue(target.Profiles.Identity.Enabled, false) && target.Platform != gnmiPlatformIOSXR {
 		streams++
@@ -797,6 +1124,26 @@ func estimateGNMIStreams(target GNMITargetConfig) int {
 	}
 	if boolValue(target.Profiles.Catalyst9800Wireless.Enabled, false) {
 		streams++
+	}
+	for _, profile := range []GNMIProfileConfig{
+		target.Profiles.Inventory,
+		target.Profiles.Environment,
+		target.Profiles.L2,
+		target.Profiles.Routing,
+		target.Profiles.MPLS,
+		target.Profiles.Overlay,
+		target.Profiles.QoS,
+		target.Profiles.ACL,
+		target.Profiles.Topology,
+		target.Profiles.PoE,
+		target.Profiles.TimeSync,
+		target.Profiles.HighAvailability,
+		target.Profiles.ASIC,
+		target.Profiles.TelemetrySelf,
+	} {
+		if boolValue(profile.Enabled, false) {
+			streams++
+		}
 	}
 	streams += len(target.CustomSubscriptions)
 	return streams

@@ -134,15 +134,11 @@ func (t *gnmiTelemetry) success(ctx context.Context, target, profile string, whe
 	}
 }
 
-func (t *gnmiTelemetry) degraded(ctx context.Context, target, profile, reason string, degraded bool) {
+func (t *gnmiTelemetry) degraded(ctx context.Context, target, profile, reason string) {
 	if t == nil || t.builder == nil {
 		return
 	}
-	value := int64(0)
-	if degraded {
-		value = 1
-	}
-	t.builder.CiscoosreceiverGnmiProfileDegraded.Record(ctx, value, metric.WithAttributes(
+	t.builder.CiscoosreceiverGnmiProfileDegraded.Record(ctx, 1, metric.WithAttributes(
 		attribute.String("cisco.gnmi.target", target),
 		attribute.String("cisco.gnmi.profile", profile),
 		attribute.String("cisco.gnmi.reason", reason),

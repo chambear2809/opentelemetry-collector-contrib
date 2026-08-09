@@ -1,0 +1,1246 @@
+schema_version: 1
+snapshot_date: 2026-07-04
+
+sources:
+  - id: openconfig_scope
+    title: OpenConfig model scope
+    url: https://openconfig.net/projects/models/
+    accessed: 2026-07-04
+  - id: ios_xr_platforms
+    title: Cisco IOS XR platforms
+    url: https://www.cisco.com/site/us/en/products/networking/software/ios-xr/index.html
+    accessed: 2026-07-04
+  - id: ios_xr_recommended
+    title: Recommended Releases for IOS XR Routers
+    url: https://www.cisco.com/c/en/us/support/docs/ios-nx-os-software/ios-xr-software/222669-recommended-releases-for-ios-xr-routers.html
+    published_or_updated: 2025-05-27
+    accessed: 2026-07-04
+  - id: cisco_8000_models
+    title: Cisco 8000 Series Routers supported models
+    url: https://www.cisco.com/c/en/us/support/routers/8000-series-routers/series.html
+    accessed: 2026-07-04
+  - id: ios_xe_gnmi
+    title: Cisco IOS XE Programmability Configuration Guide - gNMI
+    url: https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/prog/configuration/1718/b-1718-programmability-cg/gnmi.html
+    accessed: 2026-07-04
+  - id: ios_xe_1715_telemetry
+    title: Cisco IOS XE 17.15 model-driven telemetry
+    url: https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/prog/configuration/1715/b_1715_programmability_cg/m_1715_prog_ietf_telemetry.html
+    published_or_updated: 2024-08-14
+    accessed: 2026-07-04
+  - id: ios_xe_routing_recommended
+    title: Stable Cisco IOS XE releases for enterprise routing platforms
+    url: https://www.cisco.com/c/en/us/support/docs/ios-nx-os-software/ios-xe-16/215567-recommended-releases-for-asr1000-isr400.html
+    published_or_updated: 2026-06-15
+    accessed: 2026-07-04
+  - id: csr1000v_support
+    title: Cisco CSR1000V support and end-of-life status
+    url: https://www.cisco.com/c/en/us/support/routers/cloud-services-router-1000v-series/series.html
+    accessed: 2026-07-04
+  - id: catalyst_recommended
+    title: Recommended Releases for Catalyst 9000 Switches
+    url: https://www.cisco.com/c/en/us/support/docs/switches/catalyst-9300-series-switches/214814-recommended-releases-for-catalyst-9200-9.html
+    published_or_updated: 2026-04-16
+    accessed: 2026-07-04
+  - id: wireless_release
+    title: Catalyst 9800 Wireless Controller 17.18.3 Release Notes
+    url: https://www.cisco.com/c/en/us/td/docs/wireless/controller/9800/17-18/release-notes/rn-17-18-3-9800.html
+    accessed: 2026-07-04
+  - id: wireless_recommended
+    title: TAC Recommended IOS XE Builds for Catalyst 9800
+    url: https://www.cisco.com/c/en/us/support/docs/wireless/catalyst-9800-series-wireless-controllers/214749-tac-recommended-ios-xe-builds-for-wirele.html
+    published_or_updated: 2026-05-20
+    accessed: 2026-07-04
+  - id: wireless_streaming_telemetry
+    title: Catalyst 9800 17.18 streaming telemetry configuration
+    url: https://www.cisco.com/c/en/us/td/docs/wireless/controller/9800/17-18/config-guide/b_wl_17_18_cg/streaming-telemetry-on-Cisco-Catalyst-9800-series-wireless-controller.html
+    published_or_updated: 2025-12-19
+    accessed: 2026-07-04
+  - id: nx_platforms
+    title: Cisco Nexus Platform Support Matrix
+    url: https://www.cisco.com/c/en/us/td/docs/Website/datacenter/platform/platform.html
+    accessed: 2026-07-04
+  - id: nx_recommended
+    title: Minimum and Recommended NX-OS Releases for Nexus 3000
+    url: https://www.cisco.com/c/en/us/td/docs/switches/datacenter/nexus3000/sw/recommended_release/b_Minimum_and_Recommended_Cisco_NX-OS_Releases_for_Cisco_Nexus_3000_Series_Switches.html
+    published_or_updated: 2026-06-04
+    accessed: 2026-07-04
+  - id: nx9000_recommended
+    title: Minimum and Recommended NX-OS Releases for Nexus 9000
+    url: https://www.cisco.com/c/en/us/td/docs/switches/datacenter/nexus9000/sw/recommended_release/b_Minimum_and_Recommended_Cisco_NX-OS_Releases_for_Cisco_Nexus_9000_Series_Switches.html
+    published_or_updated: 2026-06-04
+    accessed: 2026-07-04
+  - id: nx_gnmi
+    title: Cisco Nexus 9000 NX-OS gNMI Guide
+    url: https://www.cisco.com/c/en/us/td/docs/dcn/nx-os/nexus9000/106x/programmability/cisco-nexus-9000-series-nx-os-programmability-guide-106x/m-gnmi.html
+    accessed: 2026-07-04
+  - id: nexus9000v_guide
+    title: Cisco Nexus 9000v, 9300v, and 9500v platform guide
+    url: https://www.cisco.com/c/en/us/td/docs/dcn/nx-os/nexus9000/106x/configuration/n9000v-9300v-9500v/cisco-nexus-9000v-9300v-9500v-guide-release-106x/m-overview.html
+    accessed: 2026-07-04
+  - id: otel_hardware_conventions
+    title: OpenTelemetry hardware semantic conventions
+    url: https://opentelemetry.io/docs/specs/semconv/hardware/common/
+    accessed: 2026-07-04
+
+domains:
+  - identity
+  - system
+  - interfaces
+  - optics
+  - inventory
+  - environment
+  - l2
+  - routing
+  - mpls
+  - overlay
+  - qos
+  - acl
+  - topology
+  - poe
+  - time_sync
+  - high_availability
+  - asic
+  - telemetry_self
+  - catalyst_9800_wireless
+
+product_families:
+  - {id: ios_xr, platform: ios_xr, max_streams: 4}
+  - {id: ios_xe_routing, platform: ios_xe, max_streams: 4}
+  - {id: ios_xe_switching, platform: ios_xe, max_streams: 4}
+  - {id: ios_xe_wireless, platform: ios_xe, max_streams: 4}
+  - {id: nx_os, platform: nx_os, max_streams: 16}
+
+# These selectors are dated inventory/implementation candidates, not support
+# claims. Recommended releases establish the row snapshot but never prove an
+# operational path. Every current row remains Findings until exact PID/release
+# fixtures, a live run, and simultaneous CLI/device-state evidence are recorded.
+products:
+  - id: ios_xr_asr9000_exr
+    family: ios_xr
+    pid_patterns: ['^ASR-9[0-9]{3}(?:-[A-Z0-9]+)*$']
+    release_patterns: ['^25\.2\.21$']
+    sources: [ios_xr_platforms, ios_xr_recommended]
+    runtime_eligible: false
+    control_planes: [exr]
+    hardware_classes: [chassis, route_processor, line_card, asic, optics, environment]
+    findings: The dated release is recommended, but eXR control-plane identity and every modular hardware class remain unverified.
+    coverage: &all_findings
+      identity: findings
+      system: findings
+      interfaces: findings
+      optics: findings
+      inventory: findings
+      environment: findings
+      l2: findings
+      routing: findings
+      mpls: findings
+      overlay: findings
+      qos: findings
+      acl: findings
+      topology: findings
+      poe: findings
+      time_sync: findings
+      high_availability: findings
+      asic: findings
+      telemetry_self: findings
+      catalyst_9800_wireless: findings
+  - id: ios_xr_ncs540
+    family: ios_xr
+    pid_patterns: ['^(?:NCS-?540|N540)[A-Z0-9-]*$']
+    release_patterns: ['^25\.2\.21$']
+    sources: [ios_xr_platforms, ios_xr_recommended]
+    runtime_eligible: true
+    hardware_classes: [chassis, asic, optics, environment]
+    findings: Exact NCS 540 PID and hardware-class fixture/live qualification is pending.
+    coverage: *all_findings
+  - id: ios_xr_ncs560
+    family: ios_xr
+    pid_patterns: ['^(?:NCS-?560|N560)[A-Z0-9-]*$']
+    release_patterns: ['^25\.2\.21$']
+    sources: [ios_xr_platforms, ios_xr_recommended]
+    runtime_eligible: true
+    hardware_classes: [chassis, route_processor, line_card, asic, optics, environment]
+    findings: Exact NCS 560 PID and modular hardware-class fixture/live qualification is pending.
+    coverage: *all_findings
+  - id: ios_xr_ncs5500
+    family: ios_xr
+    pid_patterns: ['^NCS-55[A-Z0-9-]+$']
+    release_patterns: ['^25\.2\.21$']
+    sources: [ios_xr_platforms, ios_xr_recommended]
+    runtime_eligible: true
+    hardware_classes: [chassis, route_processor, line_card, asic, optics, environment]
+    findings: Exact NCS 5500 PID and modular hardware-class fixture/live qualification is pending.
+    coverage: *all_findings
+  - id: ios_xr_ncs5700
+    family: ios_xr
+    pid_patterns: ['^NCS-57[A-Z0-9-]+$']
+    release_patterns: ['^25\.2\.21$']
+    sources: [ios_xr_platforms, ios_xr_recommended]
+    runtime_eligible: true
+    hardware_classes: [chassis, route_processor, line_card, asic, optics, environment]
+    findings: Exact NCS 5700 PID and modular hardware-class fixture/live qualification is pending.
+    coverage: *all_findings
+  - id: ios_xr_8000_8010
+    family: ios_xr
+    pid_patterns: ['^80(?:10|11)[A-Z0-9-]*$']
+    release_patterns: ['^25\.2\.21$']
+    sources: [ios_xr_platforms, ios_xr_recommended, cisco_8000_models]
+    runtime_eligible: true
+    hardware_classes: [chassis, asic, optics, environment]
+    findings: Exact 8010-family PID and hardware-class fixture/live qualification is pending.
+    coverage: *all_findings
+  - id: ios_xr_8000_8100
+    family: ios_xr
+    pid_patterns: ['^81[0-9]{2}[A-Z0-9-]*$']
+    release_patterns: ['^25\.2\.21$']
+    sources: [ios_xr_platforms, ios_xr_recommended, cisco_8000_models]
+    runtime_eligible: true
+    hardware_classes: [chassis, asic, optics, environment]
+    findings: Exact 8100-family PID and hardware-class fixture/live qualification is pending.
+    coverage: *all_findings
+  - id: ios_xr_8000_8200
+    family: ios_xr
+    pid_patterns: ['^82[0-9]{2}[A-Z0-9-]*$']
+    release_patterns: ['^25\.2\.21$']
+    sources: [ios_xr_platforms, ios_xr_recommended, cisco_8000_models]
+    runtime_eligible: true
+    hardware_classes: [chassis, asic, optics, environment]
+    findings: Exact 8200-family PID and hardware-class fixture/live qualification is pending.
+    coverage: *all_findings
+  - id: ios_xr_8000_8400
+    family: ios_xr
+    pid_patterns: ['^84[0-9]{2}[A-Z0-9-]*$']
+    release_patterns: ['^25\.2\.21$']
+    sources: [ios_xr_platforms, ios_xr_recommended, cisco_8000_models]
+    runtime_eligible: true
+    hardware_classes: [chassis, route_processor, line_card, asic, optics, environment]
+    findings: Exact 8400-family PID and modular hardware-class fixture/live qualification is pending.
+    coverage: *all_findings
+  - id: ios_xr_8000_8500
+    family: ios_xr
+    pid_patterns: ['^85[0-9]{2}[A-Z0-9-]*$']
+    release_patterns: ['^25\.2\.21$']
+    sources: [ios_xr_platforms, ios_xr_recommended, cisco_8000_models]
+    runtime_eligible: true
+    hardware_classes: [chassis, asic, optics, environment]
+    findings: Exact 8500-family PID and hardware-class fixture/live qualification is pending.
+    coverage: *all_findings
+  - id: ios_xr_8000_8600
+    family: ios_xr
+    pid_patterns: ['^86[0-9]{2}[A-Z0-9-]*$']
+    release_patterns: ['^25\.2\.21$']
+    sources: [ios_xr_platforms, ios_xr_recommended, cisco_8000_models]
+    runtime_eligible: true
+    hardware_classes: [chassis, route_processor, line_card, asic, optics, environment]
+    findings: Exact 8600-family PID and modular hardware-class fixture/live qualification is pending.
+    coverage: *all_findings
+  - id: ios_xr_8000_8700
+    family: ios_xr
+    pid_patterns: ['^87[0-9]{2}[A-Z0-9-]*$']
+    release_patterns: ['^25\.2\.21$']
+    sources: [ios_xr_platforms, ios_xr_recommended, cisco_8000_models]
+    runtime_eligible: true
+    hardware_classes: [chassis, asic, optics, environment]
+    findings: Exact 8700-family PID and hardware-class fixture/live qualification is pending.
+    coverage: *all_findings
+  - id: ios_xr_8000_8800
+    family: ios_xr
+    pid_patterns: ['^88[0-9]{2}[A-Z0-9-]*$']
+    release_patterns: ['^25\.2\.21$']
+    sources: [ios_xr_platforms, ios_xr_recommended, cisco_8000_models]
+    runtime_eligible: true
+    hardware_classes: [chassis, route_processor, line_card, asic, optics, environment]
+    findings: Exact 8800-family PID and modular hardware-class fixture/live qualification is pending.
+    coverage: *all_findings
+  - id: ios_xr_xrv9000
+    family: ios_xr
+    pid_patterns: ['^(?:XRv9000|XRV9K)$']
+    release_patterns: ['^25\.2\.21$']
+    sources: [ios_xr_platforms, ios_xr_recommended]
+    runtime_eligible: true
+    hardware_classes: [virtual_control_plane]
+    findings: Exact XRv9000 release fixtures and live control-plane comparison are pending; virtual evidence cannot qualify physical hardware domains.
+    coverage: *all_findings
+  - id: ios_xr_xrd
+    family: ios_xr
+    pid_patterns: ['^XRd$']
+    release_patterns: ['^25\.2\.21$']
+    sources: [ios_xr_platforms, ios_xr_recommended]
+    runtime_eligible: true
+    hardware_classes: [containerized_control_plane]
+    findings: Exact XRd release fixtures and live control-plane comparison are pending; container evidence cannot qualify physical hardware domains.
+    coverage: *all_findings
+
+  - id: ios_xe_routing_catalyst8000
+    family: ios_xe_routing
+    pid_patterns: ['^(?:C8200L?-[A-Z0-9-]+|C8300-[A-Z0-9-]+|C8500L?-[A-Z0-9-]+|C8000V)$']
+    release_patterns: ['^(?:17\.12\.7b|17\.15\.5)$']
+    sources: [ios_xe_gnmi, ios_xe_routing_recommended]
+    runtime_eligible: true
+    hardware_classes: [chassis, asic, optics, environment]
+    findings: The release recommendation is dated; exact PID/path fixtures, configured features, and hardware evidence remain pending.
+    coverage: *all_findings
+  - id: ios_xe_routing_asr1000_rp3
+    family: ios_xe_routing
+    pid_patterns: ['^ASR100[0-9A-Z/-]+$']
+    release_patterns: ['^17\.15\.5$']
+    sources: [ios_xe_gnmi, ios_xe_routing_recommended]
+    runtime_eligible: false
+    hardware_classes: [rp3, chassis, line_card, asic, optics, environment]
+    findings: RP3 inventory is an unresolved required predicate; exact chassis/RP/path evidence is pending.
+    coverage: *all_findings
+  - id: ios_xe_routing_asr1000_rp2
+    family: ios_xe_routing
+    pid_patterns: ['^ASR100[0-9A-Z/-]+$']
+    release_patterns: ['^17\.9\.8$']
+    sources: [ios_xe_gnmi, ios_xe_routing_recommended]
+    runtime_eligible: false
+    hardware_classes: [rp2, chassis, line_card, asic, optics, environment]
+    findings: RP2/ASR1001-X/ASR1002-X inventory is an unresolved required predicate; exact path evidence is pending.
+    coverage: *all_findings
+  - id: ios_xe_routing_isr4461
+    family: ios_xe_routing
+    pid_patterns: ['^ISR4461(?:-[A-Z0-9]+)?(?:/K9)?$']
+    release_patterns: ['^(?:17\.12\.6|17\.15\.4c)$']
+    sources: [ios_xe_gnmi, ios_xe_routing_recommended]
+    runtime_eligible: true
+    hardware_classes: [chassis, module, asic, optics, environment]
+    findings: Exact PID/release/path fixtures and attached hardware evidence are pending.
+    coverage: *all_findings
+  - id: ios_xe_routing_isr4200_4400
+    family: ios_xe_routing
+    pid_patterns: ['^ISR(?:42[0-9]{2}|43[0-9]{2}|4431|4451)(?:-[A-Z0-9]+)?(?:/K9)?$']
+    release_patterns: ['^(?:17\.9\.8|17\.12\.7b)$']
+    sources: [ios_xe_gnmi, ios_xe_routing_recommended]
+    runtime_eligible: true
+    hardware_classes: [chassis, module, asic, optics, environment]
+    findings: Exact PID/release/path fixtures and attached hardware evidence are pending.
+    coverage: *all_findings
+  - id: ios_xe_routing_isr1100
+    family: ios_xe_routing
+    pid_patterns: ['^(?:ISR11[A-Z0-9/-]+|C11[A-Z0-9/-]+)$']
+    release_patterns: ['^(?:17\.12\.7b|17\.15\.5)$']
+    sources: [ios_xe_gnmi, ios_xe_routing_recommended]
+    runtime_eligible: true
+    hardware_classes: [chassis, module, asic, optics, environment]
+    findings: Exact C11xx/ISR1100 PID/release/path fixtures and hardware evidence are pending.
+    coverage: *all_findings
+  - id: ios_xe_routing_asr900_ncs_access_pending
+    family: ios_xe_routing
+    pid_patterns: ['^(?:ASR-?9(?:00|03|20)[A-Z0-9/-]*|NCS-?42(?:01|02|16)[A-Z0-9/-]*|N520[A-Z0-9/-]*)$']
+    release_patterns: ['^17\.[0-9A-Za-z.]+$']
+    sources: [ios_xe_gnmi]
+    runtime_eligible: false
+    hardware_classes: [chassis, module, asic, optics, environment]
+    findings: Inventory is in scope, but a product-specific current recommendation/LDoS snapshot and exact gNMI evidence are still required.
+    coverage: *all_findings
+  - id: ios_xe_routing_industrial_embedded_pending
+    family: ios_xe_routing
+    pid_patterns: ['^(?:IR1101|IE3[234]00|ESR6300|ESS3300)[A-Z0-9/-]*$']
+    release_patterns: ['^17\.[0-9A-Za-z.]+$']
+    sources: [ios_xe_gnmi]
+    runtime_eligible: false
+    hardware_classes: [chassis, module, asic, poe, optics, environment]
+    findings: Candidate industrial/embedded PIDs require exact gNMI Subscribe, release, and lifecycle source verification before runtime selection.
+    coverage: *all_findings
+  - id: ios_xe_routing_csr1000v_out_of_scope
+    family: ios_xe_routing
+    pid_patterns: ['^CSR1000V$']
+    release_patterns: ['^17\.3\.2$']
+    sources: [csr1000v_support]
+    runtime_eligible: false
+    hardware_classes: [virtual_control_plane]
+    findings: Cisco lists CSR1000V beyond its last date of support and support ending with IOS XE 17.3.2; it is retained only as an evidence-backed N/A row.
+    coverage: &all_na
+      identity: n_a
+      system: n_a
+      interfaces: n_a
+      optics: n_a
+      inventory: n_a
+      environment: n_a
+      l2: n_a
+      routing: n_a
+      mpls: n_a
+      overlay: n_a
+      qos: n_a
+      acl: n_a
+      topology: n_a
+      poe: n_a
+      time_sync: n_a
+      high_availability: n_a
+      asic: n_a
+      telemetry_self: n_a
+      catalyst_9800_wireless: n_a
+
+  - id: ios_xe_switching_c9200
+    family: ios_xe_switching
+    pid_patterns: ['^C9200(?:CX|L)?-[A-Z0-9-]+$']
+    release_patterns: ['^17\.15\.5$']
+    sources: [ios_xe_gnmi, ios_xe_1715_telemetry, catalyst_recommended]
+    runtime_eligible: true
+    hardware_classes: [standalone, stackwise, asic, poe, optics, environment]
+    findings: Exact model, stack form, PoE/optic/ASIC class, path fixture, and live comparison are pending.
+    coverage: *all_findings
+  - id: ios_xe_switching_c9300
+    family: ios_xe_switching
+    pid_patterns: ['^C9300(?:L|LM|X)?-[A-Z0-9-]+$']
+    release_patterns: ['^17\.15\.5$']
+    sources: [ios_xe_gnmi, ios_xe_1715_telemetry, catalyst_recommended]
+    runtime_eligible: true
+    hardware_classes: [standalone, stackwise, stackwise_virtual, asic, poe, optics, environment]
+    findings: Exact model, stack form, PoE/optic/ASIC class, path fixture, and live comparison are pending.
+    coverage: *all_findings
+  - id: ios_xe_switching_c9400_sup1
+    family: ios_xe_switching
+    pid_patterns: ['^C940[47]R$']
+    release_patterns: ['^17\.15\.5$']
+    sources: [ios_xe_gnmi, ios_xe_1715_telemetry, catalyst_recommended]
+    runtime_eligible: false
+    hardware_classes: [sup1, sup1xl, sup1xl_y, chassis, line_card, asic, poe, optics, environment]
+    findings: The chassis PID cannot establish the required SUP-1 variant; supervisor, line-card, and failover evidence are pending.
+    coverage: *all_findings
+  - id: ios_xe_switching_c9400x_sup2
+    family: ios_xe_switching
+    pid_patterns: ['^C94(?:07|10)R$']
+    release_patterns: ['^17\.15\.5$']
+    sources: [ios_xe_gnmi, ios_xe_1715_telemetry, catalyst_recommended]
+    runtime_eligible: false
+    hardware_classes: [sup2, sup2xl, chassis, line_card, asic, poe, optics, environment]
+    findings: The chassis PID cannot establish the required SUP2 variant; supervisor, line-card, and failover evidence are pending.
+    coverage: *all_findings
+  - id: ios_xe_switching_c9500
+    family: ios_xe_switching
+    pid_patterns: ['^C9500-[A-Z0-9-]+$']
+    release_patterns: ['^17\.15\.5$']
+    sources: [ios_xe_gnmi, ios_xe_1715_telemetry, catalyst_recommended]
+    runtime_eligible: true
+    hardware_classes: [standalone, stackwise_virtual, asic, optics, environment]
+    findings: Exact model, StackWise Virtual form, optic/ASIC class, path fixture, and live comparison are pending.
+    coverage: *all_findings
+  - id: ios_xe_switching_c9500x
+    family: ios_xe_switching
+    pid_patterns: ['^C9500X-[A-Z0-9-]+$']
+    release_patterns: ['^17\.15\.5$']
+    sources: [ios_xe_gnmi, ios_xe_1715_telemetry, catalyst_recommended]
+    runtime_eligible: true
+    hardware_classes: [standalone, stackwise_virtual, asic, optics, environment]
+    findings: Exact model, StackWise Virtual form, optic/ASIC class, path fixture, and live comparison are pending.
+    coverage: *all_findings
+  - id: ios_xe_switching_c9600_sup1
+    family: ios_xe_switching
+    pid_patterns: ['^C9606R$']
+    release_patterns: ['^17\.15\.5$']
+    sources: [ios_xe_gnmi, ios_xe_1715_telemetry, catalyst_recommended]
+    runtime_eligible: false
+    hardware_classes: [sup1, chassis, line_card, asic, poe, optics, environment]
+    findings: The chassis PID cannot establish the required SUP-1 variant; supervisor, line-card, and failover evidence are pending.
+    coverage: *all_findings
+  - id: ios_xe_switching_c9600x_sup2
+    family: ios_xe_switching
+    pid_patterns: ['^C9606R$']
+    release_patterns: ['^17\.15\.5$']
+    sources: [ios_xe_gnmi, ios_xe_1715_telemetry, catalyst_recommended]
+    runtime_eligible: false
+    hardware_classes: [sup2, chassis, line_card, asic, poe, optics, environment]
+    findings: The chassis PID cannot establish the required SUP2 variant; supervisor, line-card, and failover evidence are pending.
+    coverage: *all_findings
+
+  - id: ios_xe_wireless_c9800_1715
+    family: ios_xe_wireless
+    pid_patterns: ['^C9800-(?:L|40|80|CL)$']
+    release_patterns: ['^17\.15\.5$']
+    sources: [ios_xe_gnmi, wireless_recommended, wireless_streaming_telemetry]
+    runtime_eligible: true
+    hardware_classes: [controller, ha, wifi5_ap, wifi6_ap, wifi6e_ap]
+    findings: Controller form, HA role, attached AP generation, path fixtures, and live comparison are pending; Wi-Fi 7 is not inherited by this row.
+    coverage: *all_findings
+  - id: ios_xe_wireless_c9800_wifi7_1718
+    family: ios_xe_wireless
+    pid_patterns: ['^C9800-(?:L|40|80|CL)$']
+    release_patterns: ['^17\.18\.3$']
+    sources: [ios_xe_gnmi, wireless_release, wireless_recommended, wireless_streaming_telemetry]
+    runtime_eligible: true
+    hardware_classes: [controller, ha, wifi7_ap]
+    findings: Runtime PID/release selection cannot establish the attached CW917x generation; exact controller/AP combination evidence is pending.
+    coverage: *all_findings
+  - id: ios_xe_wireless_cw9800l
+    family: ios_xe_wireless
+    pid_patterns: ['^CW9800L$']
+    release_patterns: ['^17\.18\.3$']
+    sources: [wireless_release, wireless_recommended, wireless_streaming_telemetry]
+    runtime_eligible: true
+    hardware_classes: [controller, ha, wifi7_ap]
+    findings: CW9800L requires 17.18 or newer; exact controller/AP path fixtures, HA, and live evidence are pending.
+    coverage: *all_findings
+  - id: ios_xe_wireless_cw9800_1715
+    family: ios_xe_wireless
+    pid_patterns: ['^CW9800(?:M|H1|H2)$']
+    release_patterns: ['^17\.15\.5$']
+    sources: [wireless_recommended, wireless_streaming_telemetry]
+    runtime_eligible: true
+    hardware_classes: [controller, ha, wifi5_ap, wifi6_ap, wifi6e_ap]
+    findings: Exact controller/AP path fixtures, HA, and live evidence are pending; Wi-Fi 7 is not inherited by this row.
+    coverage: *all_findings
+  - id: ios_xe_wireless_cw9800_wifi7_1718
+    family: ios_xe_wireless
+    pid_patterns: ['^CW9800(?:M|H1|H2)$']
+    release_patterns: ['^17\.18\.3$']
+    sources: [wireless_release, wireless_recommended, wireless_streaming_telemetry]
+    runtime_eligible: true
+    hardware_classes: [controller, ha, wifi7_ap]
+    findings: Runtime PID/release selection cannot establish the attached CW917x generation; exact controller/AP evidence is pending.
+    coverage: *all_findings
+  - id: ios_xe_wireless_ewc_pending
+    family: ios_xe_wireless
+    pid_patterns: ['^(?:C9[23456][A-Z0-9-]+|C9[0-9]{3}AX[A-Z0-9-]*)$']
+    release_patterns: ['^17\.15\.5$']
+    sources: [wireless_recommended, wireless_streaming_telemetry]
+    runtime_eligible: false
+    roles: [ewc]
+    hardware_classes: [catalyst_switch, access_point]
+    findings: EWC is a role, not a PID; underlying switch/AP identity, release-specific eligibility, fixtures, and live evidence are pending.
+    coverage: *all_findings
+
+  - id: nx_os_nexus3500_3600_105
+    family: nx_os
+    pid_patterns: ['^N3K-C3[56][A-Z0-9-]+$']
+    release_patterns: ['^10\.5\(5\)M$']
+    sources: [nx_platforms, nx_recommended, nx_gnmi]
+    runtime_eligible: false
+    operating_modes: [nxos]
+    hardware_classes: [chassis, asic, optics, environment]
+    findings: Exact PID compatibility with 10.5 and NX-OS mode must be mapped from the platform matrix before runtime selection.
+    coverage: *all_findings
+  - id: nx_os_nexus3000_legacy_93
+    family: nx_os
+    pid_patterns: ['^N3K-[A-Z0-9-]+$']
+    release_patterns: ['^9\.3\(16\)$']
+    sources: [nx_platforms, nx_recommended, nx_gnmi]
+    runtime_eligible: false
+    operating_modes: [nxos]
+    hardware_classes: [chassis, asic, optics, environment]
+    findings: Exact 3000/3100/3200/3400-S/3500/3600 PID compatibility and LDoS must be mapped before runtime selection.
+    coverage: *all_findings
+  - id: nx_os_nexus9000_105
+    family: nx_os
+    pid_patterns: ['^N9K-[A-Z0-9-]+$']
+    release_patterns: ['^10\.5\(5\)M$']
+    sources: [nx_platforms, nx9000_recommended, nx_gnmi]
+    runtime_eligible: false
+    operating_modes: [nxos]
+    hardware_classes: [chassis, supervisor, line_card, asic, optics, environment]
+    findings: Exact PID compatibility with 10.5 and NX-OS mode must be mapped from the platform matrix before runtime selection.
+    coverage: *all_findings
+  - id: nx_os_nexus9000_104
+    family: nx_os
+    pid_patterns: ['^N9K-[A-Z0-9-]+$']
+    release_patterns: ['^10\.4\(7\)M$']
+    sources: [nx_platforms, nx9000_recommended, nx_gnmi]
+    runtime_eligible: false
+    operating_modes: [nxos]
+    hardware_classes: [chassis, supervisor, line_card, asic, optics, environment]
+    findings: Exact PIDs unsupported on 10.5 but supported on 10.4 and NX-OS mode must be mapped before runtime selection.
+    coverage: *all_findings
+  - id: nx_os_nexus9000_ex_103
+    family: nx_os
+    pid_patterns: ['^N9K-[A-Z0-9-]*EX[A-Z0-9-]*$']
+    release_patterns: ['^10\.3\(8\)M$']
+    sources: [nx_platforms, nx9000_recommended, nx_gnmi]
+    runtime_eligible: false
+    operating_modes: [nxos]
+    hardware_classes: [chassis, supervisor, line_card, asic, optics, environment]
+    findings: Exact EX PID compatibility and NX-OS mode must be mapped before runtime selection.
+    coverage: *all_findings
+  - id: nx_os_nexus9000_legacy_93
+    family: nx_os
+    pid_patterns: ['^N9K-[A-Z0-9-]+$']
+    release_patterns: ['^9\.3\(16\)$']
+    sources: [nx_platforms, nx9000_recommended, nx_gnmi]
+    runtime_eligible: false
+    operating_modes: [nxos]
+    hardware_classes: [chassis, supervisor, line_card, asic, optics, environment]
+    findings: Exact non-10.x PID compatibility, LDoS, and NX-OS mode must be mapped before runtime selection.
+    coverage: *all_findings
+  - id: nx_os_nexus9300v
+    family: nx_os
+    pid_patterns: ['^N9K-C9300v$']
+    release_patterns: ['^10\.5\(5\)M$']
+    sources: [nx9000_recommended, nx_gnmi, nexus9000v_guide]
+    runtime_eligible: true
+    hardware_classes: [virtual_control_plane]
+    findings: Exact virtual release/path fixtures and live control-plane comparison are pending; virtual evidence cannot qualify physical hardware.
+    coverage: &nexus_virtual_findings
+      identity: findings
+      system: findings
+      interfaces: findings
+      optics: n_a
+      inventory: findings
+      environment: n_a
+      l2: findings
+      routing: findings
+      mpls: findings
+      overlay: findings
+      qos: findings
+      acl: findings
+      topology: findings
+      poe: n_a
+      time_sync: findings
+      high_availability: findings
+      asic: n_a
+      telemetry_self: findings
+      catalyst_9800_wireless: n_a
+  - id: nx_os_nexus9500v
+    family: nx_os
+    pid_patterns: ['^N9K-C9500v$']
+    release_patterns: ['^10\.5\(5\)M$']
+    sources: [nx9000_recommended, nx_gnmi, nexus9000v_guide]
+    runtime_eligible: true
+    hardware_classes: [virtual_control_plane]
+    findings: Exact virtual release/path fixtures and live control-plane comparison are pending; virtual evidence cannot qualify physical hardware.
+    coverage: *nexus_virtual_findings
+
+# No Cisco/OpenConfig YANG bundle was supplied with this catalog snapshot.
+# A refresh may replace this pending row with verified module records, but each
+# record must come from a local directory and include its real revision/file
+# digest. The generator never downloads models or invents hashes.
+model_bundles:
+  - id: local_yang_snapshot
+    disposition: pending
+    findings: No local YANG/model bundle was supplied; module revisions and digests remain explicitly unverified.
+    modules: []
+
+fixtures:
+  - id: atomic_interface_counters
+    file: testdata/gnmi/atomic_interface_counters.json
+    sha256: 9ddf23ec18c572ddde670cab2973ddd17d8dfd4dd27cc9bb665d928248a63d9d
+    covers:
+      - {platform: ios_xr, profile: interfaces, path: interfaces.openconfig}
+  - id: delete_interface_counter
+    file: testdata/gnmi/delete_interface_counter.json
+    sha256: c4c35abe62dadc7b7cef5c8566d664e40681ffbd59981547776eed17fdf3fbb5
+    covers:
+      - {platform: ios_xr, profile: interfaces, path: interfaces.openconfig}
+  - id: ios_xe_rfc7951_dom
+    file: testdata/gnmi/ios_xe_rfc7951_dom.json
+    sha256: 35fcb071a789690035c756e3ec36ba967f1388fbb352875b6f573e10bbe5ea9e
+    covers:
+      - {platform: ios_xe, profile: optics, path: optics.dom}
+  - id: ios_xr_native_optics
+    file: testdata/gnmi/ios_xr_native_optics.json
+    sha256: fb7e5ac90f16fa2069c85d4cc09f667ba474d2468516bba27755b9ef48ec5985
+    covers:
+      - {platform: ios_xr, profile: optics, path: optics.controllers}
+      - {platform: ios_xr, profile: optics, path: optics.coherent}
+  - id: ios_xr_otu_scalar
+    file: testdata/gnmi/ios_xr_otu_scalar.json
+    sha256: ee0842e1e78cfa0058df19f787f39dee4bf9a25bdfcbe05aee8e198bac5f4ab6
+    covers:
+      - {platform: ios_xr, profile: optics, path: optics.otu}
+  - id: nx_dme_sensors
+    file: testdata/gnmi/nx_dme_sensors.json
+    sha256: a8e797d1e02cbd33deaebb224ab9f5d47d3eea40c7e5bd05cea613036c1d03ef
+    covers:
+      - {platform: nx_os, profile: optics, path: optics.dme.sensors}
+
+mapping_sets:
+  - id: interfaces
+    mappings:
+      - {relative_elements: [state], leaf: oper-status, metric: system.network.interface.status, scale: 1, keys: [{element: interface, key: name, attribute: network.interface.name}]}
+      - {relative_elements: [state], leaf: admin-status, metric: cisco.interface.admin.status, scale: 1, keys: [{element: interface, key: name, attribute: network.interface.name}]}
+      - {relative_elements: [state], leaf: speed, metric: cisco.interface.speed, scale: 1, keys: [{element: interface, key: name, attribute: network.interface.name}]}
+      - {relative_elements: [state], leaf: in-bps, metric: cisco.interface.io.rate, scale: 1, keys: [{element: interface, key: name, attribute: network.interface.name}], attributes: {network.io.direction: receive}}
+      - {relative_elements: [state], leaf: out-bps, metric: cisco.interface.io.rate, scale: 1, keys: [{element: interface, key: name, attribute: network.interface.name}], attributes: {network.io.direction: transmit}}
+      - {relative_elements: [state], leaf: in-pps, metric: cisco.interface.packet.rate, scale: 1, keys: [{element: interface, key: name, attribute: network.interface.name}], attributes: {network.io.direction: receive}}
+      - {relative_elements: [state], leaf: out-pps, metric: cisco.interface.packet.rate, scale: 1, keys: [{element: interface, key: name, attribute: network.interface.name}], attributes: {network.io.direction: transmit}}
+      - {relative_elements: [state], leaf: in-utilization, metric: cisco.interface.utilization, scale: 0.01, keys: [{element: interface, key: name, attribute: network.interface.name}], attributes: {network.io.direction: receive}}
+      - {relative_elements: [state], leaf: out-utilization, metric: cisco.interface.utilization, scale: 0.01, keys: [{element: interface, key: name, attribute: network.interface.name}], attributes: {network.io.direction: transmit}}
+      - {relative_elements: [state, counters], leaf: in-octets, metric: system.network.io, scale: 1, keys: [{element: interface, key: name, attribute: network.interface.name}], attributes: {network.io.direction: receive}}
+      - {relative_elements: [state, counters], leaf: out-octets, metric: system.network.io, scale: 1, keys: [{element: interface, key: name, attribute: network.interface.name}], attributes: {network.io.direction: transmit}}
+      - {relative_elements: [state, counters], leaf: in-errors, metric: system.network.errors, scale: 1, keys: [{element: interface, key: name, attribute: network.interface.name}], attributes: {network.io.direction: receive}}
+      - {relative_elements: [state, counters], leaf: out-errors, metric: system.network.errors, scale: 1, keys: [{element: interface, key: name, attribute: network.interface.name}], attributes: {network.io.direction: transmit}}
+      - {relative_elements: [state, counters], leaf: in-discards, metric: system.network.packet.dropped, scale: 1, keys: [{element: interface, key: name, attribute: network.interface.name}], attributes: {network.io.direction: receive}}
+      - {relative_elements: [state, counters], leaf: out-discards, metric: system.network.packet.dropped, scale: 1, keys: [{element: interface, key: name, attribute: network.interface.name}], attributes: {network.io.direction: transmit}}
+      - {relative_elements: [state, counters], leaf: in-unicast-pkts, metric: system.network.packet.count, scale: 1, keys: [{element: interface, key: name, attribute: network.interface.name}], attributes: {network.io.direction: receive, network.packet.type: unicast}}
+      - {relative_elements: [state, counters], leaf: in-multicast-pkts, metric: system.network.packet.count, scale: 1, keys: [{element: interface, key: name, attribute: network.interface.name}], attributes: {network.io.direction: receive, network.packet.type: multicast}}
+      - {relative_elements: [state, counters], leaf: in-broadcast-pkts, metric: system.network.packet.count, scale: 1, keys: [{element: interface, key: name, attribute: network.interface.name}], attributes: {network.io.direction: receive, network.packet.type: broadcast}}
+      - {relative_elements: [state, counters], leaf: out-unicast-pkts, metric: system.network.packet.count, scale: 1, keys: [{element: interface, key: name, attribute: network.interface.name}], attributes: {network.io.direction: transmit, network.packet.type: unicast}}
+      - {relative_elements: [state, counters], leaf: out-multicast-pkts, metric: system.network.packet.count, scale: 1, keys: [{element: interface, key: name, attribute: network.interface.name}], attributes: {network.io.direction: transmit, network.packet.type: multicast}}
+      - {relative_elements: [state, counters], leaf: out-broadcast-pkts, metric: system.network.packet.count, scale: 1, keys: [{element: interface, key: name, attribute: network.interface.name}], attributes: {network.io.direction: transmit, network.packet.type: broadcast}}
+  - id: dom_transceiver
+    mappings:
+      - {leaf: temperature, metric: cisco.optics.temperature, scale: 1, keys: [{element: transceiver, key: name, attribute: network.interface.name}], attributes: {cisco.optics.profile: dom, cisco.optics.sensor: temperature, cisco.optics.experimental: "false"}}
+      - {leaf: voltage, metric: cisco.optics.voltage, scale: 1, keys: [{element: transceiver, key: name, attribute: network.interface.name}], attributes: {cisco.optics.profile: dom, cisco.optics.sensor: voltage, cisco.optics.experimental: "false"}}
+      - {leaf: laser-bias-current, metric: cisco.optics.laser_bias_current, scale: 1, keys: [{element: transceiver, key: name, attribute: network.interface.name}], attributes: {cisco.optics.profile: dom, cisco.optics.sensor: laser_bias_current, cisco.optics.experimental: "false"}}
+      - {leaf: rx-power, metric: cisco.optics.rx_power, scale: 1, keys: [{element: transceiver, key: name, attribute: network.interface.name}], attributes: {cisco.optics.profile: dom, cisco.optics.sensor: rx_power, cisco.optics.experimental: "false"}}
+      - {leaf: tx-power, metric: cisco.optics.tx_power, scale: 1, keys: [{element: transceiver, key: name, attribute: network.interface.name}], attributes: {cisco.optics.profile: dom, cisco.optics.sensor: tx_power, cisco.optics.experimental: "false"}}
+      - {leaf: present, metric: cisco.optics.present, scale: 1, keys: [{element: transceiver, key: name, attribute: network.interface.name}], attributes: {cisco.optics.profile: dom, cisco.optics.experimental: "false"}}
+  - id: dom_optics_port
+    mappings:
+      - {leaf: temperature, metric: cisco.optics.temperature, scale: 1, keys: [{element: optics-port, key: name, attribute: network.interface.name}], attributes: {cisco.optics.profile: dom, cisco.optics.sensor: temperature, cisco.optics.experimental: "false"}}
+      - {leaf: voltage, metric: cisco.optics.voltage, scale: 1, keys: [{element: optics-port, key: name, attribute: network.interface.name}], attributes: {cisco.optics.profile: dom, cisco.optics.sensor: voltage, cisco.optics.experimental: "false"}}
+      - {leaf: laser-bias-current, metric: cisco.optics.laser_bias_current, scale: 1, keys: [{element: optics-port, key: name, attribute: network.interface.name}], attributes: {cisco.optics.profile: dom, cisco.optics.sensor: laser_bias_current, cisco.optics.experimental: "false"}}
+      - {leaf: rx-power, metric: cisco.optics.rx_power, scale: 1, keys: [{element: optics-port, key: name, attribute: network.interface.name}], attributes: {cisco.optics.profile: dom, cisco.optics.sensor: rx_power, cisco.optics.experimental: "false"}}
+      - {leaf: tx-power, metric: cisco.optics.tx_power, scale: 1, keys: [{element: optics-port, key: name, attribute: network.interface.name}], attributes: {cisco.optics.profile: dom, cisco.optics.sensor: tx_power, cisco.optics.experimental: "false"}}
+      - {leaf: present, metric: cisco.optics.present, scale: 1, keys: [{element: optics-port, key: name, attribute: network.interface.name}], attributes: {cisco.optics.profile: dom, cisco.optics.experimental: "false"}}
+  - id: dom_optics_lane
+    mappings:
+      - {leaf: temperature, metric: cisco.optics.temperature, scale: 1, keys: &lane_keys [{element: optics-port, key: name, attribute: network.interface.name}, {element: optics-lane-info, key: lane-index, attribute: cisco.optics.lane}], attributes: {cisco.optics.profile: dom, cisco.optics.sensor: temperature, cisco.optics.experimental: "false"}}
+      - {leaf: voltage, metric: cisco.optics.voltage, scale: 1, keys: *lane_keys, attributes: {cisco.optics.profile: dom, cisco.optics.sensor: voltage, cisco.optics.experimental: "false"}}
+      - {leaf: laser-bias-current, metric: cisco.optics.laser_bias_current, scale: 1, keys: *lane_keys, attributes: {cisco.optics.profile: dom, cisco.optics.sensor: laser_bias_current, cisco.optics.experimental: "false"}}
+      - {leaf: rx-power, metric: cisco.optics.rx_power, scale: 1, keys: *lane_keys, attributes: {cisco.optics.profile: dom, cisco.optics.sensor: rx_power, cisco.optics.experimental: "false"}}
+      - {leaf: tx-power, metric: cisco.optics.tx_power, scale: 1, keys: *lane_keys, attributes: {cisco.optics.profile: dom, cisco.optics.sensor: tx_power, cisco.optics.experimental: "false"}}
+      - {leaf: present, metric: cisco.optics.present, scale: 1, keys: *lane_keys, attributes: {cisco.optics.profile: dom, cisco.optics.experimental: "false"}}
+  - id: coherent_optics
+    mappings:
+      - {leaf: q-margin, metric: cisco.optics.q_margin, scale: 1, keys: &port_keys [{element: optics-port, key: name, attribute: network.interface.name}], attributes: {cisco.optics.profile: coherent, cisco.optics.sensor: q_margin, cisco.optics.experimental: "true"}}
+      - {leaf: osnr, metric: cisco.optics.osnr, scale: 1, keys: *port_keys, attributes: {cisco.optics.profile: coherent, cisco.optics.sensor: osnr, cisco.optics.experimental: "true"}}
+      - {leaf: dgd, metric: cisco.optics.dgd, scale: 1, keys: *port_keys, attributes: {cisco.optics.profile: coherent, cisco.optics.sensor: dgd, cisco.optics.experimental: "true"}}
+      - {leaf: chromatic-dispersion, metric: cisco.optics.chromatic_dispersion, scale: 1, keys: *port_keys, attributes: {cisco.optics.profile: coherent, cisco.optics.sensor: chromatic_dispersion, cisco.optics.experimental: "true"}}
+  - id: otu
+    mappings:
+      - {leaf: q-factor, metric: cisco.optics.q_factor, scale: 1, keys: &controller_keys [{element: controller, key: name, attribute: network.interface.name}], attributes: {cisco.optics.profile: coherent, cisco.optics.sensor: q_factor, cisco.optics.experimental: "true"}}
+      - {leaf: pre-fec-ber, metric: cisco.optics.pre_fec_ber, scale: 1, keys: *controller_keys, attributes: {cisco.optics.profile: coherent, cisco.optics.sensor: pre_fec_ber, cisco.optics.experimental: "true"}}
+  - id: nx_dme_sensors
+    mappings:
+      - {leaf: temperature, metric: cisco.optics.temperature, scale: 1, keys: &nx_sensor_keys [{element: phys, key: id, attribute: network.interface.name}, {element: lane, key: id, attribute: cisco.optics.lane}], attributes: {cisco.optics.profile: dom, cisco.optics.sensor: temperature, cisco.optics.experimental: "false"}}
+      - {leaf: voltage, metric: cisco.optics.voltage, scale: 1, keys: *nx_sensor_keys, attributes: {cisco.optics.profile: dom, cisco.optics.sensor: voltage, cisco.optics.experimental: "false"}}
+      - {leaf: laser-bias-current, metric: cisco.optics.laser_bias_current, scale: 1, keys: *nx_sensor_keys, attributes: {cisco.optics.profile: dom, cisco.optics.sensor: laser_bias_current, cisco.optics.experimental: "false"}}
+      - {leaf: rx-power, metric: cisco.optics.rx_power, scale: 1, keys: *nx_sensor_keys, attributes: {cisco.optics.profile: dom, cisco.optics.sensor: rx_power, cisco.optics.experimental: "false"}}
+      - {leaf: tx-power, metric: cisco.optics.tx_power, scale: 1, keys: *nx_sensor_keys, attributes: {cisco.optics.profile: dom, cisco.optics.sensor: tx_power, cisco.optics.experimental: "false"}}
+      - {leaf: esnr, metric: cisco.optics.esnr, scale: 1, keys: *nx_sensor_keys, attributes: {cisco.optics.profile: vdm, cisco.optics.sensor: esnr, cisco.optics.experimental: "true"}}
+      - {leaf: tdecq, metric: cisco.optics.tdecq, scale: 1, keys: *nx_sensor_keys, attributes: {cisco.optics.profile: vdm, cisco.optics.sensor: tdecq, cisco.optics.experimental: "true"}}
+      - {leaf: pre-fec-ber, metric: cisco.optics.pre_fec_ber, scale: 1, keys: *nx_sensor_keys, attributes: {cisco.optics.profile: vdm, cisco.optics.sensor: pre_fec_ber, cisco.optics.experimental: "true"}}
+      - {leaf: tec-current, metric: cisco.optics.tec_current, scale: 1, keys: *nx_sensor_keys, attributes: {cisco.optics.profile: vdm, cisco.optics.sensor: tec_current, cisco.optics.experimental: "true"}}
+      - {leaf: tec-utilization, metric: cisco.optics.tec_utilization, scale: 1, keys: *nx_sensor_keys, attributes: {cisco.optics.profile: vdm, cisco.optics.sensor: tec_utilization, cisco.optics.experimental: "true"}}
+
+profiles:
+  - platform: ios_xe
+    name: identity
+    default_enabled: true
+    default_interval: 5m
+    synthetic_mappings:
+      - {origin: cisco_os, elements: [target, ios_xe], leaf: up, metric: cisco.device.up, scale: 1}
+    paths:
+      - id: identity.system
+        group: inventory
+        path_set_id: identity.system
+        variant_id: openconfig
+        variant_order: 1
+        source_preference: openconfig
+        origin: rfc7951
+        path: 'openconfig-system:system/state'
+        encodings: [json_ietf, json]
+        stream_modes: [target_defined]
+        sample_interval: 5m
+        feature_prerequisites: [gnmi_subscribe]
+        selector_keys: []
+        high_cardinality: false
+        requires_max_entities: false
+        model_provenance: pending
+        disposition: findings
+        findings: Model revision, fixture, and live identity evidence are pending.
+  - platform: ios_xe
+    name: system
+    default_enabled: true
+    default_interval: 1m
+    paths:
+      - id: system.cpu
+        group: cpu
+        path_set_id: system.cpu
+        variant_id: native
+        variant_order: 1
+        source_preference: native
+        origin: rfc7951
+        path: 'Cisco-IOS-XE-process-cpu-oper:cpu-usage/cpu-utilization'
+        encodings: [json_ietf, json]
+        stream_modes: [sample, target_defined]
+        sample_interval: 1m
+        feature_prerequisites: [gnmi_subscribe, system_operational_data]
+        selector_keys: []
+        high_cardinality: false
+        requires_max_entities: false
+        model_provenance: pending
+        disposition: findings
+        findings: Model revision and fixture evidence are pending.
+        mappings:
+          - {elements: ['Cisco-IOS-XE-process-cpu-oper:cpu-usage', cpu-utilization], leaf: five-seconds, metric: system.cpu.utilization, scale: 0.01}
+      - id: system.memory
+        group: memory
+        path_set_id: system.memory
+        variant_id: native
+        variant_order: 1
+        source_preference: native
+        origin: rfc7951
+        path: 'Cisco-IOS-XE-memory-oper:memory-statistics/memory-statistic'
+        encodings: [json_ietf, json]
+        stream_modes: [sample, target_defined]
+        sample_interval: 1m
+        feature_prerequisites: [gnmi_subscribe, system_operational_data]
+        selector_keys: []
+        high_cardinality: false
+        requires_max_entities: false
+        model_provenance: pending
+        disposition: findings
+        findings: Model revision, list-key schema, and fixture evidence are pending.
+        mappings:
+          - {elements: ['Cisco-IOS-XE-memory-oper:memory-statistics', memory-statistic], leaf: used-memory-percent, metric: system.memory.utilization, scale: 0.01}
+      - id: system.uptime
+        group: uptime
+        path_set_id: system.uptime
+        variant_id: native
+        variant_order: 1
+        source_preference: native
+        origin: rfc7951
+        path: 'Cisco-IOS-XE-platform-software-oper:cisco-platform-software/control-processes/control-process'
+        encodings: [json_ietf, json]
+        stream_modes: [sample, target_defined]
+        sample_interval: 1m
+        feature_prerequisites: [gnmi_subscribe, system_operational_data]
+        selector_keys: []
+        high_cardinality: false
+        requires_max_entities: false
+        model_provenance: pending
+        disposition: findings
+        findings: Model revision and fixture evidence are pending.
+        mappings:
+          - {elements: ['Cisco-IOS-XE-platform-software-oper:cisco-platform-software', control-processes, control-process], leaf: uptime, metric: system.uptime, scale: 1}
+  - platform: ios_xe
+    name: interfaces
+    default_enabled: true
+    default_interval: 1m
+    paths:
+      - id: interfaces.openconfig
+        group: state
+        path_set_id: interfaces.state
+        variant_id: openconfig
+        variant_order: 1
+        source_preference: openconfig
+        origin: rfc7951
+        path: 'openconfig-interfaces:interfaces/interface/state'
+        encodings: [json_ietf, json]
+        stream_modes: [sample, target_defined]
+        sample_interval: 1m
+        feature_prerequisites: [gnmi_subscribe, interface_operational_data]
+        selector_keys: [network.interface.name]
+        high_cardinality: false
+        requires_max_entities: false
+        model_provenance: pending
+        disposition: findings
+        findings: Exact product/release fixture and live evidence are pending.
+        base_elements: ['openconfig-interfaces:interfaces', interface]
+        list_keys: [{elements: ['openconfig-interfaces:interfaces', interface], keys: [name]}]
+        entity_joins: [{entity: network.interface, elements: ['openconfig-interfaces:interfaces', interface], keys: [name]}]
+        mapping_set: interfaces
+  - platform: ios_xe
+    name: optics
+    default_enabled: false
+    default_interval: 30s
+    paths:
+      - id: optics.dom
+        group: dom
+        path_set_id: optics.dom
+        variant_id: native
+        variant_order: 1
+        source_preference: native
+        origin: rfc7951
+        path: 'Cisco-IOS-XE-transceiver-oper:transceiver-oper-data/transceiver'
+        encodings: [json_ietf, json]
+        stream_modes: [sample, target_defined]
+        sample_interval: 30s
+        feature_prerequisites: [gnmi_subscribe, optics_operational_data]
+        selector_keys: [network.interface.name]
+        high_cardinality: false
+        requires_max_entities: false
+        model_provenance: pending
+        disposition: findings
+        findings: A sanitized fixture exists; exact hardware live qualification is pending.
+        base_elements: ['Cisco-IOS-XE-transceiver-oper:transceiver-oper-data', transceiver]
+        list_keys: [{elements: ['Cisco-IOS-XE-transceiver-oper:transceiver-oper-data', transceiver], keys: [name]}]
+        entity_joins: [{entity: network.interface, elements: ['Cisco-IOS-XE-transceiver-oper:transceiver-oper-data', transceiver], keys: [name]}]
+        mapping_set: dom_transceiver
+        fixtures: [ios_xe_rfc7951_dom]
+  - platform: ios_xe
+    name: catalyst_9800_wireless
+    default_enabled: false
+    default_interval: 1m
+    paths:
+      - id: wireless.ap.join
+        group: ap_capwap
+        path_set_id: wireless.ap.join
+        variant_id: native
+        variant_order: 1
+        source_preference: native
+        origin: rfc7951
+        path: 'Cisco-IOS-XE-wireless-ap-global-oper:ap-global-oper-data/ap-join-stats'
+        encodings: [json_ietf, json]
+        stream_modes: [sample, target_defined]
+        sample_interval: 1m
+        feature_prerequisites: [gnmi_subscribe, wireless_ap_operational_data]
+        selector_keys: [cisco.wlc.ap.mac]
+        high_cardinality: true
+        requires_max_entities: true
+        model_provenance: pending
+        disposition: findings
+        findings: Model revision, fixture, and live controller/AP evidence are pending.
+        list_keys: [{elements: ['Cisco-IOS-XE-wireless-ap-global-oper:ap-global-oper-data', ap-join-stats], keys: [wtp-mac]}]
+        entity_joins: [{entity: wireless.ap, elements: ['Cisco-IOS-XE-wireless-ap-global-oper:ap-global-oper-data', ap-join-stats], keys: [wtp-mac]}]
+        mappings:
+          - {elements: ['Cisco-IOS-XE-wireless-ap-global-oper:ap-global-oper-data', ap-join-stats], leaf: is-joined, metric: cisco.wlc.ap.join.status, scale: 1, keys: [{element: ap-join-stats, key: wtp-mac, attribute: cisco.wlc.ap.mac}]}
+      - id: wireless.rf
+        group: rf_rrm
+        path_set_id: wireless.rf
+        variant_id: native
+        variant_order: 1
+        source_preference: native
+        origin: rfc7951
+        path: 'Cisco-IOS-XE-wireless-rrm-oper:rrm-oper-data/rrm-measurement'
+        encodings: [json_ietf, json]
+        stream_modes: [sample, target_defined]
+        sample_interval: 1m
+        feature_prerequisites: [gnmi_subscribe, wireless_rrm_operational_data]
+        selector_keys: [cisco.wlc.ap.mac, cisco.wlc.radio.slot]
+        high_cardinality: true
+        requires_max_entities: true
+        model_provenance: pending
+        disposition: findings
+        findings: Model revision, fixture, and live controller/AP evidence are pending.
+        list_keys: [{elements: ['Cisco-IOS-XE-wireless-rrm-oper:rrm-oper-data', rrm-measurement], keys: [wtp-mac, radio-slot-id]}]
+        entity_joins: [{entity: wireless.radio, elements: ['Cisco-IOS-XE-wireless-rrm-oper:rrm-oper-data', rrm-measurement], keys: [wtp-mac, radio-slot-id]}]
+        mappings:
+          - {elements: ['Cisco-IOS-XE-wireless-rrm-oper:rrm-oper-data', rrm-measurement], leaf: cca-util-percentage, metric: cisco.wlc.rf.channel.utilization, scale: 0.01, keys: [{element: rrm-measurement, key: wtp-mac, attribute: cisco.wlc.ap.mac}, {element: rrm-measurement, key: radio-slot-id, attribute: cisco.wlc.radio.slot}]}
+      - id: wireless.ssid
+        group: wlan_ssid
+        path_set_id: wireless.ssid
+        variant_id: native
+        variant_order: 1
+        source_preference: native
+        origin: rfc7951
+        path: 'Cisco-IOS-XE-wireless-access-point-oper:access-point-oper-data/ssid-counters'
+        encodings: [json_ietf, json]
+        stream_modes: [sample, target_defined]
+        sample_interval: 1m
+        feature_prerequisites: [gnmi_subscribe, wireless_wlan_operational_data]
+        selector_keys: [cisco.wlc.ap.mac, cisco.wlc.wlan.id]
+        high_cardinality: true
+        requires_max_entities: true
+        model_provenance: pending
+        disposition: findings
+        findings: Model revision, fixture, and live controller/AP evidence are pending.
+        list_keys: [{elements: ['Cisco-IOS-XE-wireless-access-point-oper:access-point-oper-data', ssid-counters], keys: [wtp-mac, wlan-id]}]
+        entity_joins: [{entity: wireless.ssid, elements: ['Cisco-IOS-XE-wireless-access-point-oper:access-point-oper-data', ssid-counters], keys: [wtp-mac, wlan-id]}]
+        mappings:
+          - {elements: ['Cisco-IOS-XE-wireless-access-point-oper:access-point-oper-data', ssid-counters], leaf: num-assoc-clients, metric: cisco.wlc.ssid.client.count, scale: 1, keys: [{element: ssid-counters, key: wtp-mac, attribute: cisco.wlc.ap.mac}, {element: ssid-counters, key: wlan-id, attribute: cisco.wlc.wlan.id}]}
+  - platform: ios_xr
+    name: identity
+    default_enabled: true
+    default_interval: 5m
+    synthetic_mappings:
+      - {origin: cisco_os, elements: [target, ios_xr], leaf: up, metric: cisco.device.up, scale: 1}
+  - platform: ios_xr
+    name: system
+    default_enabled: true
+    default_interval: 1m
+    paths:
+      - id: system.cpu
+        group: cpu
+        path_set_id: system.cpu
+        variant_id: native
+        variant_order: 1
+        source_preference: native
+        origin: Cisco-IOS-XR-wdsysmon-fd-oper
+        path: system-monitoring/cpu-utilization
+        encodings: [json_ietf, json]
+        stream_modes: [sample, target_defined]
+        sample_interval: 1m
+        feature_prerequisites: [gnmi_subscribe, system_operational_data]
+        selector_keys: []
+        high_cardinality: false
+        requires_max_entities: false
+        model_provenance: pending
+        disposition: findings
+        findings: Model revision and fixture evidence are pending.
+        mappings:
+          - {elements: [system-monitoring, cpu-utilization], leaf: total-cpu-one-minute, metric: system.cpu.utilization, scale: 0.01}
+      - id: system.memory
+        group: memory
+        path_set_id: system.memory
+        variant_id: native
+        variant_order: 1
+        source_preference: native
+        origin: Cisco-IOS-XR-nto-misc-oper
+        path: memory-summary/nodes/node/summary
+        encodings: [json_ietf, json]
+        stream_modes: [sample, target_defined]
+        sample_interval: 1m
+        feature_prerequisites: [gnmi_subscribe, system_operational_data]
+        selector_keys: []
+        high_cardinality: false
+        requires_max_entities: false
+        model_provenance: pending
+        disposition: findings
+        findings: Model revision and fixture evidence are pending.
+        mappings:
+          - {elements: [memory-summary, nodes, node, summary], leaf: memory-utilization, metric: system.memory.utilization, scale: 0.01}
+      - id: system.uptime
+        group: uptime
+        path_set_id: system.uptime
+        variant_id: openconfig
+        variant_order: 1
+        source_preference: openconfig
+        origin: openconfig-system
+        path: system/state
+        encodings: [json_ietf, json]
+        stream_modes: [sample, target_defined]
+        sample_interval: 1m
+        feature_prerequisites: [gnmi_subscribe, system_operational_data]
+        selector_keys: []
+        high_cardinality: false
+        requires_max_entities: false
+        model_provenance: pending
+        disposition: findings
+        findings: Model revision and fixture evidence are pending.
+        mappings:
+          - {elements: [system, state], leaf: uptime, metric: system.uptime, scale: 1}
+  - platform: ios_xr
+    name: interfaces
+    default_enabled: true
+    default_interval: 1m
+    paths:
+      - id: interfaces.openconfig
+        group: state
+        path_set_id: interfaces.state
+        variant_id: openconfig
+        variant_order: 1
+        source_preference: openconfig
+        origin: openconfig-interfaces
+        path: interfaces/interface/state
+        encodings: [json_ietf, json]
+        stream_modes: [sample, target_defined]
+        sample_interval: 1m
+        feature_prerequisites: [gnmi_subscribe, interface_operational_data]
+        selector_keys: [network.interface.name]
+        high_cardinality: false
+        requires_max_entities: false
+        model_provenance: pending
+        disposition: findings
+        findings: Counter fixtures exist; complete path and live evidence are pending.
+        base_elements: [interfaces, interface]
+        list_keys: [{elements: [interfaces, interface], keys: [name]}]
+        entity_joins: [{entity: network.interface, elements: [interfaces, interface], keys: [name]}]
+        mapping_set: interfaces
+        fixtures: [atomic_interface_counters, delete_interface_counter]
+  - platform: ios_xr
+    name: optics
+    default_enabled: false
+    default_interval: 30s
+    paths:
+      - id: optics.controllers
+        group: dom
+        path_set_id: optics.dom
+        variant_id: native
+        variant_order: 1
+        source_preference: native
+        origin: Cisco-IOS-XR-controller-optics-oper
+        path: optics-oper/optics-ports/optics-port/optics-info
+        encodings: [json_ietf, json]
+        stream_modes: [sample, target_defined]
+        sample_interval: 30s
+        feature_prerequisites: [gnmi_subscribe, optics_operational_data]
+        selector_keys: [network.interface.name]
+        high_cardinality: false
+        requires_max_entities: false
+        model_provenance: pending
+        disposition: findings
+        findings: A partial sanitized fixture exists; exact hardware live qualification is pending.
+        base_elements: [optics-oper, optics-ports, optics-port, optics-info]
+        list_keys: [{elements: [optics-oper, optics-ports, optics-port], keys: [name]}]
+        entity_joins: [{entity: network.interface, elements: [optics-oper, optics-ports, optics-port], keys: [name]}]
+        mapping_set: dom_optics_port
+        fixtures: [ios_xr_native_optics]
+      - id: optics.lanes
+        group: lanes
+        path_set_id: optics.lanes
+        variant_id: native
+        variant_order: 1
+        source_preference: native
+        origin: Cisco-IOS-XR-controller-optics-oper
+        path: optics-oper/optics-ports/optics-port/optics-lane-info
+        encodings: [json_ietf, json]
+        stream_modes: [sample, target_defined]
+        sample_interval: 30s
+        feature_prerequisites: [gnmi_subscribe, optics_operational_data]
+        selector_keys: [network.interface.name, cisco.optics.lane]
+        high_cardinality: false
+        requires_max_entities: false
+        model_provenance: pending
+        disposition: findings
+        findings: Model revision, lane fixture, and exact hardware live qualification are pending.
+        base_elements: [optics-oper, optics-ports, optics-port, optics-lane-info]
+        list_keys:
+          - {elements: [optics-oper, optics-ports, optics-port], keys: [name]}
+          - {elements: [optics-oper, optics-ports, optics-port, optics-lane-info], keys: [lane-index]}
+        entity_joins:
+          - {entity: network.interface, elements: [optics-oper, optics-ports, optics-port], keys: [name]}
+          - {entity: optics.lane, elements: [optics-oper, optics-ports, optics-port, optics-lane-info], keys: [lane-index]}
+        mapping_set: dom_optics_lane
+      - id: optics.coherent
+        group: coherent
+        path_set_id: optics.coherent
+        variant_id: native
+        variant_order: 1
+        source_preference: native
+        origin: Cisco-IOS-XR-controller-optics-oper
+        path: optics-oper/optics-ports/optics-port/optics-info
+        encodings: [json_ietf, json]
+        stream_modes: [sample, target_defined]
+        sample_interval: 30s
+        feature_prerequisites: [gnmi_subscribe, coherent_optics_operational_data]
+        selector_keys: [network.interface.name]
+        high_cardinality: false
+        requires_max_entities: false
+        model_provenance: pending
+        experimental: true
+        disposition: findings
+        findings: A partial sanitized fixture exists; exact coherent hardware live qualification is pending.
+        base_elements: [optics-oper, optics-ports, optics-port, optics-info]
+        list_keys: [{elements: [optics-oper, optics-ports, optics-port], keys: [name]}]
+        entity_joins: [{entity: network.interface, elements: [optics-oper, optics-ports, optics-port], keys: [name]}]
+        mapping_set: coherent_optics
+        fixtures: [ios_xr_native_optics]
+      - id: optics.otu
+        group: otu
+        path_set_id: optics.otu
+        variant_id: native
+        variant_order: 1
+        source_preference: native
+        origin: Cisco-IOS-XR-controller-otu-oper
+        path: otu/controllers/controller/info
+        encodings: [json_ietf, json]
+        stream_modes: [sample, target_defined]
+        sample_interval: 30s
+        feature_prerequisites: [gnmi_subscribe, coherent_optics_operational_data]
+        selector_keys: [network.interface.name]
+        high_cardinality: false
+        requires_max_entities: false
+        model_provenance: pending
+        experimental: true
+        disposition: findings
+        findings: A scalar fixture exists; exact coherent hardware live qualification is pending.
+        base_elements: [otu, controllers, controller, info]
+        list_keys: [{elements: [otu, controllers, controller], keys: [name]}]
+        entity_joins: [{entity: network.interface, elements: [otu, controllers, controller], keys: [name]}]
+        mapping_set: otu
+        fixtures: [ios_xr_otu_scalar]
+  - platform: nx_os
+    name: identity
+    default_enabled: true
+    default_interval: 5m
+    synthetic_mappings:
+      - {origin: cisco_os, elements: [target, nx_os], leaf: up, metric: cisco.device.up, scale: 1}
+    paths:
+      - id: identity.system
+        group: inventory
+        path_set_id: identity.system
+        variant_id: openconfig
+        variant_order: 1
+        source_preference: openconfig
+        origin: openconfig-system
+        path: system/state
+        encodings: [json_ietf, json]
+        stream_modes: [target_defined]
+        sample_interval: 5m
+        feature_prerequisites: [gnmi_subscribe]
+        selector_keys: []
+        high_cardinality: false
+        requires_max_entities: false
+        model_provenance: pending
+        disposition: findings
+        findings: Model revision, fixture, and live identity evidence are pending.
+  - platform: nx_os
+    name: system
+    default_enabled: true
+    default_interval: 1m
+    paths:
+      - id: system.device
+        group: device
+        path_set_id: system.device
+        variant_id: native
+        variant_order: 1
+        source_preference: native
+        origin: Cisco-NX-OS-device
+        path: System/systemTable/sysEntry
+        encodings: [json]
+        stream_modes: [sample, target_defined]
+        sample_interval: 1m
+        feature_prerequisites: [gnmi_subscribe, system_operational_data]
+        selector_keys: []
+        high_cardinality: false
+        requires_max_entities: false
+        model_provenance: pending
+        disposition: findings
+        findings: Model revision and exact product/release fixture evidence are pending.
+        mappings:
+          - {elements: [System, systemTable, sysEntry], leaf: cpu-utilization, metric: system.cpu.utilization, scale: 0.01}
+          - {elements: [System, systemTable, sysEntry], leaf: memory-utilization, metric: system.memory.utilization, scale: 0.01}
+          - {elements: [System, systemTable, sysEntry], leaf: uptime, metric: system.uptime, scale: 1}
+  - platform: nx_os
+    name: interfaces
+    default_enabled: true
+    default_interval: 1m
+    paths:
+      - id: interfaces.openconfig
+        group: state
+        path_set_id: interfaces.state
+        variant_id: openconfig
+        variant_order: 1
+        source_preference: openconfig
+        origin: openconfig-interfaces
+        path: interfaces/interface/state
+        encodings: [json_ietf, json]
+        stream_modes: [sample, target_defined]
+        sample_interval: 1m
+        feature_prerequisites: [gnmi_subscribe, interface_operational_data]
+        selector_keys: [network.interface.name]
+        high_cardinality: false
+        requires_max_entities: false
+        model_provenance: pending
+        disposition: findings
+        findings: Exact product/release fixture and live evidence are pending.
+        base_elements: [interfaces, interface]
+        list_keys: [{elements: [interfaces, interface], keys: [name]}]
+        entity_joins: [{entity: network.interface, elements: [interfaces, interface], keys: [name]}]
+        mapping_set: interfaces
+  - platform: nx_os
+    name: optics
+    default_enabled: false
+    default_interval: 30s
+    paths:
+      - id: optics.dme.sensors
+        group: vdm
+        path_set_id: optics.dme.sensors
+        variant_id: native
+        variant_order: 1
+        source_preference: native
+        origin: DME
+        path: sys/intf
+        encodings: [json]
+        stream_modes: [sample, target_defined]
+        sample_interval: 30s
+        feature_prerequisites: [gnmi_subscribe, dme_operational_data, optics_operational_data]
+        selector_keys: [network.interface.name, cisco.optics.lane]
+        high_cardinality: false
+        requires_max_entities: false
+        model_provenance: pending
+        experimental: true
+        disposition: findings
+        findings: A partial sensor fixture exists; exact Nexus PID, release, and physical-optics evidence are pending.
+        base_elements: [sys, intf, phys, phys, fcotdd, lane, sensor]
+        list_keys:
+          - {elements: [sys, intf, phys], keys: [id]}
+          - {elements: [sys, intf, phys, phys, fcotdd, lane], keys: [id]}
+        entity_joins:
+          - {entity: network.interface, elements: [sys, intf, phys], keys: [id]}
+          - {entity: optics.lane, elements: [sys, intf, phys, phys, fcotdd, lane], keys: [id]}
+        mapping_set: nx_dme_sensors
+        fixtures: [nx_dme_sensors]

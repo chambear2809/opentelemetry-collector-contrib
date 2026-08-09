@@ -88,6 +88,9 @@ func TestMetricsBuilder(t *testing.T) {
 			aggMap["cisco.optics.temperature"] = mb.metricCiscoOpticsTemperature.config.AggregationStrategy
 			aggMap["cisco.optics.tx_power"] = mb.metricCiscoOpticsTxPower.config.AggregationStrategy
 			aggMap["cisco.optics.voltage"] = mb.metricCiscoOpticsVoltage.config.AggregationStrategy
+			aggMap["cisco.wlc.ap.join.status"] = mb.metricCiscoWlcApJoinStatus.config.AggregationStrategy
+			aggMap["cisco.wlc.rf.channel.utilization"] = mb.metricCiscoWlcRfChannelUtilization.config.AggregationStrategy
+			aggMap["cisco.wlc.ssid.client.count"] = mb.metricCiscoWlcSsidClientCount.config.AggregationStrategy
 			aggMap["system.network.errors"] = mb.metricSystemNetworkErrors.config.AggregationStrategy
 			aggMap["system.network.interface.status"] = mb.metricSystemNetworkInterfaceStatus.config.AggregationStrategy
 			aggMap["system.network.io"] = mb.metricSystemNetworkIo.config.AggregationStrategy
@@ -232,6 +235,24 @@ func TestMetricsBuilder(t *testing.T) {
 			}
 			defaultMetricsCount++
 			allMetricsCount++
+			mb.RecordCiscoWlcApJoinStatusDataPoint(ts, 1, "cisco.wlc.ap.mac-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoWlcApJoinStatusDataPoint(ts, 3, "cisco.wlc.ap.mac-val-2")
+			}
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcRfChannelUtilizationDataPoint(ts, 1, "cisco.wlc.ap.mac-val", "cisco.wlc.radio.slot-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoWlcRfChannelUtilizationDataPoint(ts, 3, "cisco.wlc.ap.mac-val-2", "cisco.wlc.radio.slot-val-2")
+			}
+			defaultMetricsCount++
+			allMetricsCount++
+			mb.RecordCiscoWlcSsidClientCountDataPoint(ts, 1, "cisco.wlc.ap.mac-val", "cisco.wlc.wlan.id-val")
+			if tt.name == "reaggregate_set" {
+				mb.RecordCiscoWlcSsidClientCountDataPoint(ts, 3, "cisco.wlc.ap.mac-val-2", "cisco.wlc.wlan.id-val-2")
+			}
+			defaultMetricsCount++
+			allMetricsCount++
 			mb.RecordSystemCPUUtilizationDataPoint(ts, 1)
 			defaultMetricsCount++
 			allMetricsCount++
@@ -303,6 +324,9 @@ func TestMetricsBuilder(t *testing.T) {
 				assert.Empty(t, mb.metricCiscoOpticsTemperature.aggDataPoints)
 				assert.Empty(t, mb.metricCiscoOpticsTxPower.aggDataPoints)
 				assert.Empty(t, mb.metricCiscoOpticsVoltage.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoWlcApJoinStatus.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoWlcRfChannelUtilization.aggDataPoints)
+				assert.Empty(t, mb.metricCiscoWlcSsidClientCount.aggDataPoints)
 				assert.Empty(t, mb.metricSystemNetworkErrors.aggDataPoints)
 				assert.Empty(t, mb.metricSystemNetworkInterfaceStatus.aggDataPoints)
 				assert.Empty(t, mb.metricSystemNetworkIo.aggDataPoints)
@@ -1515,6 +1539,136 @@ func TestMetricsBuilder(t *testing.T) {
 						_, ok = dp.Attributes().Get("cisco.optics.profile")
 						assert.False(t, ok)
 						_, ok = dp.Attributes().Get("cisco.optics.experimental")
+						assert.False(t, ok)
+					}
+				case "cisco.wlc.ap.join.status":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.wlc.ap.join.status"], "Found a duplicate in the metrics slice: cisco.wlc.ap.join.status")
+						validatedMetrics["cisco.wlc.ap.join.status"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Catalyst 9800 access point join status", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, int64(1), dp.IntValue())
+						ciscoWlcApMacAttrVal, ok := dp.Attributes().Get("cisco.wlc.ap.mac")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.wlc.ap.mac-val", ciscoWlcApMacAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.wlc.ap.join.status"], "Found a duplicate in the metrics slice: cisco.wlc.ap.join.status")
+						validatedMetrics["cisco.wlc.ap.join.status"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Catalyst 9800 access point join status", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						switch aggMap["cisco.wlc.ap.join.status"] {
+						case "sum":
+							assert.Equal(t, int64(4), dp.IntValue())
+						case "avg":
+							assert.Equal(t, int64(2), dp.IntValue())
+						case "min":
+							assert.Equal(t, int64(1), dp.IntValue())
+						case "max":
+							assert.Equal(t, int64(3), dp.IntValue())
+						}
+						_, ok := dp.Attributes().Get("cisco.wlc.ap.mac")
+						assert.False(t, ok)
+					}
+				case "cisco.wlc.rf.channel.utilization":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.wlc.rf.channel.utilization"], "Found a duplicate in the metrics slice: cisco.wlc.rf.channel.utilization")
+						validatedMetrics["cisco.wlc.rf.channel.utilization"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Catalyst 9800 RF channel utilization ratio", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+						assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+						ciscoWlcApMacAttrVal, ok := dp.Attributes().Get("cisco.wlc.ap.mac")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.wlc.ap.mac-val", ciscoWlcApMacAttrVal.Str())
+						ciscoWlcRadioSlotAttrVal, ok := dp.Attributes().Get("cisco.wlc.radio.slot")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.wlc.radio.slot-val", ciscoWlcRadioSlotAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.wlc.rf.channel.utilization"], "Found a duplicate in the metrics slice: cisco.wlc.rf.channel.utilization")
+						validatedMetrics["cisco.wlc.rf.channel.utilization"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Catalyst 9800 RF channel utilization ratio", mi.Description())
+						assert.Equal(t, "1", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeDouble, dp.ValueType())
+						switch aggMap["cisco.wlc.rf.channel.utilization"] {
+						case "sum":
+							assert.InDelta(t, float64(4), dp.DoubleValue(), 0.01)
+						case "avg":
+							assert.InDelta(t, float64(2), dp.DoubleValue(), 0.01)
+						case "min":
+							assert.InDelta(t, float64(1), dp.DoubleValue(), 0.01)
+						case "max":
+							assert.InDelta(t, float64(3), dp.DoubleValue(), 0.01)
+						}
+						_, ok := dp.Attributes().Get("cisco.wlc.ap.mac")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.wlc.radio.slot")
+						assert.False(t, ok)
+					}
+				case "cisco.wlc.ssid.client.count":
+					if tt.name != "reaggregate_set" {
+						assert.False(t, validatedMetrics["cisco.wlc.ssid.client.count"], "Found a duplicate in the metrics slice: cisco.wlc.ssid.client.count")
+						validatedMetrics["cisco.wlc.ssid.client.count"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Catalyst 9800 associated client count", mi.Description())
+						assert.Equal(t, "{client}", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						assert.Equal(t, int64(1), dp.IntValue())
+						ciscoWlcApMacAttrVal, ok := dp.Attributes().Get("cisco.wlc.ap.mac")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.wlc.ap.mac-val", ciscoWlcApMacAttrVal.Str())
+						ciscoWlcWlanIDAttrVal, ok := dp.Attributes().Get("cisco.wlc.wlan.id")
+						assert.True(t, ok)
+						assert.Equal(t, "cisco.wlc.wlan.id-val", ciscoWlcWlanIDAttrVal.Str())
+					} else {
+						assert.False(t, validatedMetrics["cisco.wlc.ssid.client.count"], "Found a duplicate in the metrics slice: cisco.wlc.ssid.client.count")
+						validatedMetrics["cisco.wlc.ssid.client.count"] = true
+						assert.Equal(t, pmetric.MetricTypeGauge, mi.Type())
+						assert.Equal(t, 1, mi.Gauge().DataPoints().Len())
+						assert.Equal(t, "Catalyst 9800 associated client count", mi.Description())
+						assert.Equal(t, "{client}", mi.Unit())
+						dp := mi.Gauge().DataPoints().At(0)
+						assert.Equal(t, start, dp.StartTimestamp())
+						assert.Equal(t, ts, dp.Timestamp())
+						assert.Equal(t, pmetric.NumberDataPointValueTypeInt, dp.ValueType())
+						switch aggMap["cisco.wlc.ssid.client.count"] {
+						case "sum":
+							assert.Equal(t, int64(4), dp.IntValue())
+						case "avg":
+							assert.Equal(t, int64(2), dp.IntValue())
+						case "min":
+							assert.Equal(t, int64(1), dp.IntValue())
+						case "max":
+							assert.Equal(t, int64(3), dp.IntValue())
+						}
+						_, ok := dp.Attributes().Get("cisco.wlc.ap.mac")
+						assert.False(t, ok)
+						_, ok = dp.Attributes().Get("cisco.wlc.wlan.id")
 						assert.False(t, ok)
 					}
 				case "system.cpu.utilization":

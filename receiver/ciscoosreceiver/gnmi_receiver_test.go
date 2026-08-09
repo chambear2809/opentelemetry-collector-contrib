@@ -150,8 +150,8 @@ func TestSharedGNMIAvailabilityStartsAfterSubscriptionProgress(t *testing.T) {
 
 	releaseOnce.Do(func() { close(releaseSync) })
 	runtimeTestWaitDone(t, receiver)
-	assert.Equal(t, 1, runtimeTestMetricPointCountAll(sink.AllMetrics(), "cisco.device.up"),
-		"a non-health-only target must report up after its first sync")
+	assert.Equal(t, []int64{1, 0}, runtimeTestIntGaugeValues(sink.AllMetrics(), "cisco.device.up"),
+		"a terminal target must report up after sync and down when the session exits")
 }
 
 func TestSharedGNMIAvailabilityRefusalReleasesGateAndRetries(t *testing.T) {
@@ -361,7 +361,11 @@ func TestSharedGNMIRuntimeBisectionIsolatesBadPathOnOneConnection(t *testing.T) 
 	)
 	sink := &consumertest.MetricsSink{}
 	receiver := runtimeTestStartReceiver(t, receivertest.NewNopSettings(componentmetadata.Type), target, 10, sink)
-	runtimeTestWaitDone(t, receiver)
+	require.Eventually(t, func() bool {
+		return fake.snapshot().subscribeCalls == 4 &&
+			runtimeTestMetricPointCountAll(sink.AllMetrics(), "runtime.good.value") == 1 &&
+			receiver.targets[0].pathIsolated(sharedGNMIPath{Origin: runtimeTestOrigin, Path: "bad/value"})
+	}, 5*time.Second, 20*time.Millisecond)
 
 	assert.Equal(t, int64(1), listener.accepts.Load(), "bisection must reuse the target connection")
 	snapshot := fake.snapshot()
@@ -375,6 +379,10 @@ func TestSharedGNMIRuntimeBisectionIsolatesBadPathOnOneConnection(t *testing.T) 
 	assert.Equal(t, 1, runtimeTestMetricPointCountAll(sink.AllMetrics(), "runtime.good.value"))
 	assert.Zero(t, runtimeTestMetricPointCountAll(sink.AllMetrics(), "runtime.bad.value"))
 	assert.True(t, receiver.targets[0].pathIsolated(sharedGNMIPath{Origin: runtimeTestOrigin, Path: "bad/value"}))
+
+	shutdownCtx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	require.NoError(t, receiver.Shutdown(shutdownCtx))
 }
 
 func TestSharedGNMIRuntimeBisectionAtStreamLimitDoesNotDeadlock(t *testing.T) {
@@ -1346,23 +1354,30 @@ type runtimeTestGNMIServer struct {
 
 	mu                   sync.Mutex
 	capabilitiesCalls    int
+	identityCalls        int
 	subscribeCalls       int
 	getCalls             int
 	setCalls             int
 	capabilitiesMetadata grpcmetadata.MD
+	identityMetadata     []grpcmetadata.MD
 	subscribeMetadata    []grpcmetadata.MD
+	identityRequests     []*gnmipb.SubscribeRequest
 	requests             []*gnmipb.SubscribeRequest
 	capabilities         func(context.Context) (*gnmipb.CapabilityResponse, error)
+	identity             func(*gnmipb.SubscribeRequest) (*gnmipb.Notification, error)
 	subscribe            func(grpc.BidiStreamingServer[gnmipb.SubscribeRequest, gnmipb.SubscribeResponse]) error
 }
 
 type runtimeTestGNMISnapshot struct {
 	capabilitiesCalls    int
+	identityCalls        int
 	subscribeCalls       int
 	getCalls             int
 	setCalls             int
 	capabilitiesMetadata grpcmetadata.MD
+	identityMetadata     []grpcmetadata.MD
 	subscribeMetadata    []grpcmetadata.MD
+	identityRequests     []*gnmipb.SubscribeRequest
 	requests             []*gnmipb.SubscribeRequest
 }
 
@@ -1376,11 +1391,39 @@ func (s *runtimeTestGNMIServer) Capabilities(ctx context.Context, _ *gnmipb.Capa
 	if fn != nil {
 		return fn(ctx)
 	}
-	return &gnmipb.CapabilityResponse{SupportedEncodings: []gnmipb.Encoding{gnmipb.Encoding_JSON_IETF}}, nil
+	return &gnmipb.CapabilityResponse{SupportedEncodings: []gnmipb.Encoding{gnmipb.Encoding_JSON_IETF, gnmipb.Encoding_JSON}}, nil
 }
 
 func (s *runtimeTestGNMIServer) Subscribe(stream grpc.BidiStreamingServer[gnmipb.SubscribeRequest, gnmipb.SubscribeResponse]) error {
 	metadata, _ := grpcmetadata.FromIncomingContext(stream.Context())
+	request, err := stream.Recv()
+	if err != nil {
+		return err
+	}
+	if runtimeTestIsIOSXRIdentityRequest(request) || runtimeTestIsNXOSIdentityRequest(request) {
+		s.mu.Lock()
+		s.identityCalls++
+		s.identityMetadata = append(s.identityMetadata, metadata.Copy())
+		s.identityRequests = append(s.identityRequests, request)
+		identityFn := s.identity
+		s.mu.Unlock()
+		notification := runtimeTestIOSXRIdentityNotification("XRv9000", "25.2.21")
+		if runtimeTestIsNXOSIdentityRequest(request) {
+			notification = runtimeTestNXOSIdentityNotification()
+		}
+		if identityFn != nil {
+			notification, err = identityFn(request)
+			if err != nil {
+				return err
+			}
+		}
+		if err := stream.Send(identityProbeUpdateResponse(notification)); err != nil {
+			return err
+		}
+		return stream.Send(&gnmipb.SubscribeResponse{
+			Response: &gnmipb.SubscribeResponse_SyncResponse{SyncResponse: true},
+		})
+	}
 	s.mu.Lock()
 	s.subscribeCalls++
 	s.subscribeMetadata = append(s.subscribeMetadata, metadata.Copy())
@@ -1389,7 +1432,7 @@ func (s *runtimeTestGNMIServer) Subscribe(stream grpc.BidiStreamingServer[gnmipb
 	if fn == nil {
 		return status.Error(codes.Unimplemented, "test Subscribe behavior not configured")
 	}
-	return fn(stream)
+	return fn(&runtimeTestPrefetchedSubscribeServer{BidiStreamingServer: stream, first: request})
 }
 
 func (s *runtimeTestGNMIServer) Get(context.Context, *gnmipb.GetRequest) (*gnmipb.GetResponse, error) {
@@ -1417,12 +1460,80 @@ func (s *runtimeTestGNMIServer) snapshot() runtimeTestGNMISnapshot {
 	defer s.mu.Unlock()
 	return runtimeTestGNMISnapshot{
 		capabilitiesCalls:    s.capabilitiesCalls,
+		identityCalls:        s.identityCalls,
 		subscribeCalls:       s.subscribeCalls,
 		getCalls:             s.getCalls,
 		setCalls:             s.setCalls,
 		capabilitiesMetadata: s.capabilitiesMetadata.Copy(),
+		identityMetadata:     append([]grpcmetadata.MD(nil), s.identityMetadata...),
 		subscribeMetadata:    append([]grpcmetadata.MD(nil), s.subscribeMetadata...),
+		identityRequests:     append([]*gnmipb.SubscribeRequest(nil), s.identityRequests...),
 		requests:             append([]*gnmipb.SubscribeRequest(nil), s.requests...),
+	}
+}
+
+type runtimeTestPrefetchedSubscribeServer struct {
+	grpc.BidiStreamingServer[gnmipb.SubscribeRequest, gnmipb.SubscribeResponse]
+	first *gnmipb.SubscribeRequest
+}
+
+func (s *runtimeTestPrefetchedSubscribeServer) Recv() (*gnmipb.SubscribeRequest, error) {
+	if s.first != nil {
+		request := s.first
+		s.first = nil
+		return request, nil
+	}
+	return s.BidiStreamingServer.Recv()
+}
+
+func runtimeTestIsIOSXRIdentityRequest(request *gnmipb.SubscribeRequest) bool {
+	subscribe := request.GetSubscribe()
+	return subscribe != nil &&
+		subscribe.GetMode() == gnmipb.SubscriptionList_ONCE &&
+		subscribe.GetPrefix().GetOrigin() == "Cisco-IOS-XR-install-oper" &&
+		slices.Equal(runtimeTestSubscribedPaths(request), []string{"install/version"})
+}
+
+func runtimeTestIsNXOSIdentityRequest(request *gnmipb.SubscribeRequest) bool {
+	subscribe := request.GetSubscribe()
+	return subscribe != nil &&
+		subscribe.GetMode() == gnmipb.SubscriptionList_ONCE &&
+		slices.Equal(runtimeTestSubscribedPaths(request), []string{"components/component/state"}) &&
+		len(subscribe.GetSubscription()) == 1 &&
+		subscribe.GetSubscription()[0].GetPath().GetOrigin() == "openconfig-platform"
+}
+
+func runtimeTestIOSXRIdentityNotification(model, version string) *gnmipb.Notification {
+	return &gnmipb.Notification{
+		Timestamp: time.Now().UnixNano(),
+		Prefix:    &gnmipb.Path{Origin: "Cisco-IOS-XR-install-oper"},
+		Update: []*gnmipb.Update{
+			identityProbeStringUpdate([]string{"install", "version", "chassis-pid"}, model),
+			identityProbeStringUpdate([]string{"install", "version", "label"}, version),
+			identityProbeStringUpdate([]string{"install", "version", "serial-number"}, "XR-SERIAL-1"),
+			identityProbeStringUpdate([]string{"install", "version", "hostname"}, "xrv9k-lab"),
+			identityProbeStringUpdate([]string{"install", "version", "platform"}, "XR Virtual Router"),
+		},
+	}
+}
+
+func runtimeTestNXOSIdentityNotification() *gnmipb.Notification {
+	path := func(leaf string) *gnmipb.Path {
+		return &gnmipb.Path{Elem: []*gnmipb.PathElem{
+			{Name: "components"},
+			{Name: "component", Key: map[string]string{"name": "Chassis"}},
+			{Name: "state"},
+			{Name: leaf},
+		}}
+	}
+	return &gnmipb.Notification{
+		Timestamp: time.Now().UnixNano(),
+		Prefix:    &gnmipb.Path{Origin: "openconfig-platform"},
+		Update: []*gnmipb.Update{
+			{Path: path("type"), Val: identityProbeStringValue("openconfig-platform-types:CHASSIS")},
+			{Path: path("model-name"), Val: identityProbeStringValue("N9K-C9300v")},
+			{Path: path("software-version"), Val: identityProbeStringValue("10.5(5)M")},
+		},
 	}
 }
 
