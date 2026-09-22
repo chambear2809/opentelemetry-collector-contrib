@@ -294,6 +294,7 @@ module-sets:
       - github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kafkametricsreceiver
       - github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kafkareceiver
       - github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kubeletstatsreceiver
+      - github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kvmreceiver
       - github.com/open-telemetry/opentelemetry-collector-contrib/receiver/libhoneyreceiver
       - github.com/open-telemetry/opentelemetry-collector-contrib/receiver/lokireceiver
       - github.com/open-telemetry/opentelemetry-collector-contrib/receiver/macosunifiedloggingreceiver

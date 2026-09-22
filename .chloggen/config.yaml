@@ -298,6 +298,7 @@ components:
     - receiver/kafka
     - receiver/kafka_metrics
     - receiver/kubelet_stats
+    - receiver/kvm
     - receiver/libhoney
     - receiver/loki
     - receiver/macos_unified_logging

@@ -1,0 +1,6 @@
+change_type: new_component
+component: receiver/kvm
+note: Add a development KVM receiver for libvirt domain, disk, and virtual network metrics.
+issues: [0]
+subtext:
+change_logs: [user]

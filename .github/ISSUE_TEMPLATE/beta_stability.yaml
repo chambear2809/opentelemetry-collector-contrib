@@ -318,6 +318,7 @@ body:
       - receiver/kafka
       - receiver/kafkametrics
       - receiver/kubeletstats
+      - receiver/kvm
       - receiver/libhoney
       - receiver/loki
       - receiver/macosunifiedlogging

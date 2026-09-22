@@ -1,0 +1,228 @@
+display_name: KVM Receiver
+type: kvm
+
+description: |
+  The KVM receiver collects virtual-machine metrics through the libvirt RPC
+  interface. It supports local and remote libvirt URIs.
+
+status:
+  class: receiver
+  stability:
+    development: [metrics]
+  distributions: [contrib]
+  codeowners:
+    active: [alecchamberlain]
+
+resource_attributes:
+  kvm.domain.name:
+    description: The libvirt domain name.
+    enabled: true
+    type: string
+  kvm.domain.uuid:
+    description: The stable UUID assigned to the libvirt domain.
+    enabled: true
+    type: string
+
+attributes:
+  device:
+    description: The guest-visible disk or network device name.
+    type: string
+    requirement_level: recommended
+  state:
+    description: The current libvirt domain state.
+    type: string
+    requirement_level: recommended
+    enum:
+      - nostate
+      - running
+      - blocked
+      - paused
+      - shutdown
+      - shutoff
+      - crashed
+      - pmsuspended
+      - unknown
+
+metrics:
+  kvm.domain.cpu.count:
+    description: Number of virtual CPUs currently configured for the domain.
+    enabled: true
+    stability: development
+    unit: "{cpu}"
+    gauge:
+      value_type: int
+  kvm.domain.cpu.time:
+    description: Total CPU time consumed by the domain.
+    enabled: true
+    stability: development
+    unit: ns
+    sum:
+      aggregation_temporality: cumulative
+      monotonic: true
+      value_type: int
+  kvm.domain.disk.errors:
+    description: Total disk I/O errors reported for the domain disk device.
+    enabled: true
+    stability: development
+    unit: "{error}"
+    sum:
+      aggregation_temporality: cumulative
+      monotonic: true
+      value_type: int
+    attributes:
+      - device
+  kvm.domain.disk.read.bytes:
+    description: Total bytes read by the domain disk device.
+    enabled: true
+    stability: development
+    unit: By
+    sum:
+      aggregation_temporality: cumulative
+      monotonic: true
+      value_type: int
+    attributes:
+      - device
+  kvm.domain.disk.read.operations:
+    description: Total read operations issued to the domain disk device.
+    enabled: true
+    stability: development
+    unit: "{operation}"
+    sum:
+      aggregation_temporality: cumulative
+      monotonic: true
+      value_type: int
+    attributes:
+      - device
+  kvm.domain.disk.write.bytes:
+    description: Total bytes written by the domain disk device.
+    enabled: true
+    stability: development
+    unit: By
+    sum:
+      aggregation_temporality: cumulative
+      monotonic: true
+      value_type: int
+    attributes:
+      - device
+  kvm.domain.disk.write.operations:
+    description: Total write operations issued to the domain disk device.
+    enabled: true
+    stability: development
+    unit: "{operation}"
+    sum:
+      aggregation_temporality: cumulative
+      monotonic: true
+      value_type: int
+    attributes:
+      - device
+  kvm.domain.memory.current:
+    description: Current memory assigned to the domain.
+    enabled: true
+    stability: development
+    unit: By
+    gauge:
+      value_type: int
+  kvm.domain.memory.maximum:
+    description: Maximum memory configured for the domain.
+    enabled: true
+    stability: development
+    unit: By
+    gauge:
+      value_type: int
+  kvm.domain.network.receive.bytes:
+    description: Total bytes received by the domain network interface.
+    enabled: true
+    stability: development
+    unit: By
+    sum:
+      aggregation_temporality: cumulative
+      monotonic: true
+      value_type: int
+    attributes:
+      - device
+  kvm.domain.network.receive.drops:
+    description: Total received packets dropped for the domain network interface.
+    enabled: true
+    stability: development
+    unit: "{packet}"
+    sum:
+      aggregation_temporality: cumulative
+      monotonic: true
+      value_type: int
+    attributes:
+      - device
+  kvm.domain.network.receive.errors:
+    description: Total receive errors reported for the domain network interface.
+    enabled: true
+    stability: development
+    unit: "{error}"
+    sum:
+      aggregation_temporality: cumulative
+      monotonic: true
+      value_type: int
+    attributes:
+      - device
+  kvm.domain.network.receive.packets:
+    description: Total packets received by the domain network interface.
+    enabled: true
+    stability: development
+    unit: "{packet}"
+    sum:
+      aggregation_temporality: cumulative
+      monotonic: true
+      value_type: int
+    attributes:
+      - device
+  kvm.domain.network.transmit.bytes:
+    description: Total bytes transmitted by the domain network interface.
+    enabled: true
+    stability: development
+    unit: By
+    sum:
+      aggregation_temporality: cumulative
+      monotonic: true
+      value_type: int
+    attributes:
+      - device
+  kvm.domain.network.transmit.drops:
+    description: Total transmitted packets dropped for the domain network interface.
+    enabled: true
+    stability: development
+    unit: "{packet}"
+    sum:
+      aggregation_temporality: cumulative
+      monotonic: true
+      value_type: int
+    attributes:
+      - device
+  kvm.domain.network.transmit.errors:
+    description: Total transmit errors reported for the domain network interface.
+    enabled: true
+    stability: development
+    unit: "{error}"
+    sum:
+      aggregation_temporality: cumulative
+      monotonic: true
+      value_type: int
+    attributes:
+      - device
+  kvm.domain.network.transmit.packets:
+    description: Total packets transmitted by the domain network interface.
+    enabled: true
+    stability: development
+    unit: "{packet}"
+    sum:
+      aggregation_temporality: cumulative
+      monotonic: true
+      value_type: int
+    attributes:
+      - device
+  kvm.domain.state:
+    description: Current state of the domain, represented as one for the state attribute.
+    enabled: true
+    stability: development
+    unit: "{state}"
+    gauge:
+      value_type: int
+    attributes:
+      - state

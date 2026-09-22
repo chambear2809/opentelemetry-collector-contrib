@@ -1,0 +1,192 @@
+default:
+all_set:
+  metrics:
+    kvm.domain.cpu.count:
+      enabled: true
+    kvm.domain.cpu.time:
+      enabled: true
+    kvm.domain.disk.errors:
+      enabled: true
+      attributes: ["device"]
+    kvm.domain.disk.read.bytes:
+      enabled: true
+      attributes: ["device"]
+    kvm.domain.disk.read.operations:
+      enabled: true
+      attributes: ["device"]
+    kvm.domain.disk.write.bytes:
+      enabled: true
+      attributes: ["device"]
+    kvm.domain.disk.write.operations:
+      enabled: true
+      attributes: ["device"]
+    kvm.domain.memory.current:
+      enabled: true
+    kvm.domain.memory.maximum:
+      enabled: true
+    kvm.domain.network.receive.bytes:
+      enabled: true
+      attributes: ["device"]
+    kvm.domain.network.receive.drops:
+      enabled: true
+      attributes: ["device"]
+    kvm.domain.network.receive.errors:
+      enabled: true
+      attributes: ["device"]
+    kvm.domain.network.receive.packets:
+      enabled: true
+      attributes: ["device"]
+    kvm.domain.network.transmit.bytes:
+      enabled: true
+      attributes: ["device"]
+    kvm.domain.network.transmit.drops:
+      enabled: true
+      attributes: ["device"]
+    kvm.domain.network.transmit.errors:
+      enabled: true
+      attributes: ["device"]
+    kvm.domain.network.transmit.packets:
+      enabled: true
+      attributes: ["device"]
+    kvm.domain.state:
+      enabled: true
+      attributes: ["state"]
+  resource_attributes:
+    kvm.domain.name:
+      enabled: true
+    kvm.domain.uuid:
+      enabled: true
+reaggregate_set:
+  metrics:
+    kvm.domain.cpu.count:
+      enabled: true
+    kvm.domain.cpu.time:
+      enabled: true
+    kvm.domain.disk.errors:
+      enabled: true
+      attributes: []
+    kvm.domain.disk.read.bytes:
+      enabled: true
+      attributes: []
+    kvm.domain.disk.read.operations:
+      enabled: true
+      attributes: []
+    kvm.domain.disk.write.bytes:
+      enabled: true
+      attributes: []
+    kvm.domain.disk.write.operations:
+      enabled: true
+      attributes: []
+    kvm.domain.memory.current:
+      enabled: true
+    kvm.domain.memory.maximum:
+      enabled: true
+    kvm.domain.network.receive.bytes:
+      enabled: true
+      attributes: []
+    kvm.domain.network.receive.drops:
+      enabled: true
+      attributes: []
+    kvm.domain.network.receive.errors:
+      enabled: true
+      attributes: []
+    kvm.domain.network.receive.packets:
+      enabled: true
+      attributes: []
+    kvm.domain.network.transmit.bytes:
+      enabled: true
+      attributes: []
+    kvm.domain.network.transmit.drops:
+      enabled: true
+      attributes: []
+    kvm.domain.network.transmit.errors:
+      enabled: true
+      attributes: []
+    kvm.domain.network.transmit.packets:
+      enabled: true
+      attributes: []
+    kvm.domain.state:
+      enabled: true
+      attributes: []
+  resource_attributes:
+    kvm.domain.name:
+      enabled: true
+    kvm.domain.uuid:
+      enabled: true
+none_set:
+  metrics:
+    kvm.domain.cpu.count:
+      enabled: false
+    kvm.domain.cpu.time:
+      enabled: false
+    kvm.domain.disk.errors:
+      enabled: false
+      attributes: ["device"]
+    kvm.domain.disk.read.bytes:
+      enabled: false
+      attributes: ["device"]
+    kvm.domain.disk.read.operations:
+      enabled: false
+      attributes: ["device"]
+    kvm.domain.disk.write.bytes:
+      enabled: false
+      attributes: ["device"]
+    kvm.domain.disk.write.operations:
+      enabled: false
+      attributes: ["device"]
+    kvm.domain.memory.current:
+      enabled: false
+    kvm.domain.memory.maximum:
+      enabled: false
+    kvm.domain.network.receive.bytes:
+      enabled: false
+      attributes: ["device"]
+    kvm.domain.network.receive.drops:
+      enabled: false
+      attributes: ["device"]
+    kvm.domain.network.receive.errors:
+      enabled: false
+      attributes: ["device"]
+    kvm.domain.network.receive.packets:
+      enabled: false
+      attributes: ["device"]
+    kvm.domain.network.transmit.bytes:
+      enabled: false
+      attributes: ["device"]
+    kvm.domain.network.transmit.drops:
+      enabled: false
+      attributes: ["device"]
+    kvm.domain.network.transmit.errors:
+      enabled: false
+      attributes: ["device"]
+    kvm.domain.network.transmit.packets:
+      enabled: false
+      attributes: ["device"]
+    kvm.domain.state:
+      enabled: false
+      attributes: ["state"]
+  resource_attributes:
+    kvm.domain.name:
+      enabled: false
+    kvm.domain.uuid:
+      enabled: false
+filter_set_include:
+  resource_attributes:
+    kvm.domain.name:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
+    kvm.domain.uuid:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
+filter_set_exclude:
+  resource_attributes:
+    kvm.domain.name:
+      enabled: true
+      metrics_exclude:
+        - strict: "kvm.domain.name-val"
+    kvm.domain.uuid:
+      enabled: true
+      metrics_exclude:
+        - strict: "kvm.domain.uuid-val"
