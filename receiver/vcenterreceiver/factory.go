@@ -24,6 +24,7 @@ func NewFactory() receiver.Factory {
 		metadata.Type,
 		createDefaultConfig,
 		receiver.WithMetrics(createMetricsReceiver, metadata.MetricsStability),
+		receiver.WithLogs(createLogsReceiver, metadata.LogsStability),
 	)
 }
 
@@ -67,5 +68,42 @@ func createMetricsReceiver(
 		params,
 		consumer,
 		scraperhelper.AddMetricsScraper(metadata.Type, s),
+	)
+}
+
+func createLogsReceiver(
+	_ context.Context,
+	params receiver.Settings,
+	rConf component.Config,
+	logsConsumer consumer.Logs,
+) (receiver.Logs, error) {
+	cfg, ok := rConf.(*Config)
+	if !ok {
+		return nil, errConfigNotVcenter
+	}
+	vr := newVmwareVcenterScraper(params.Logger, cfg, params)
+
+	s, err := scraper.NewLogs(
+		vr.scrapeNetworkHints,
+		scraper.WithStart(vr.Start),
+		scraper.WithShutdown(vr.Shutdown),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	scraperFactory := scraper.NewFactory(
+		metadata.Type,
+		nil,
+		scraper.WithLogs(func(context.Context, scraper.Settings, component.Config) (scraper.Logs, error) {
+			return s, nil
+		}, metadata.LogsStability),
+	)
+
+	return scraperhelper.NewLogsController(
+		&cfg.ControllerConfig,
+		params,
+		logsConsumer,
+		scraperhelper.AddFactoryWithConfig(scraperFactory, nil),
 	)
 }

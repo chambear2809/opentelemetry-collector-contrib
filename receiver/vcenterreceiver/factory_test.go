@@ -50,3 +50,41 @@ func TestCreateMetrics(t *testing.T) {
 		t.Run(testCase.desc, testCase.testFn)
 	}
 }
+
+func TestCreateLogs(t *testing.T) {
+	testCases := []struct {
+		desc   string
+		testFn func(t *testing.T)
+	}{
+		{
+			desc: "Default config",
+			testFn: func(t *testing.T) {
+				t.Parallel()
+				_, err := createLogsReceiver(
+					t.Context(),
+					receivertest.NewNopSettings(metadata.Type),
+					createDefaultConfig(),
+					consumertest.NewNop(),
+				)
+				require.NoError(t, err)
+			},
+		},
+		{
+			desc: "Nil config",
+			testFn: func(t *testing.T) {
+				t.Parallel()
+				_, err := createLogsReceiver(
+					t.Context(),
+					receivertest.NewNopSettings(metadata.Type),
+					nil,
+					consumertest.NewNop(),
+				)
+				require.ErrorIs(t, err, errConfigNotVcenter)
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.desc, testCase.testFn)
+	}
+}

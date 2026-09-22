@@ -1,0 +1,6 @@
+change_type: enhancement
+component: receiver/vcenter
+note: Add structured log snapshots for VMware CDP and LLDP network hints.
+issues: [0]
+subtext: QueryNetworkHint is read-only and uses explicit physical NIC devices; existing metrics are unchanged.
+change_logs: [user]
