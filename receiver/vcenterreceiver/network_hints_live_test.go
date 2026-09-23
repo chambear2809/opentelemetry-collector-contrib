@@ -41,9 +41,6 @@ func TestLiveNetworkHints(t *testing.T) {
 	scraper := newVmwareVcenterScraper(zap.NewNop(), cfg, settings)
 	defer func() {
 		shutdownErr := scraper.Shutdown(context.Background())
-		if scraper.client != nil && scraper.client.vimDriver != nil {
-			scraper.client.vimDriver.CloseIdleConnections()
-		}
 		require.NoError(t, shutdownErr)
 	}()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)

@@ -101,10 +101,14 @@ func (vc *vcenterClient) EnsureConnection(ctx context.Context) error {
 
 // Disconnect will logout of the authenticated session
 func (vc *vcenterClient) Disconnect(ctx context.Context) error {
+	var logoutErr error
 	if vc.sessionManager != nil {
-		return vc.sessionManager.Logout(ctx)
+		logoutErr = vc.sessionManager.Logout(ctx)
 	}
-	return nil
+	if vc.vimDriver != nil {
+		vc.vimDriver.CloseIdleConnections()
+	}
+	return logoutErr
 }
 
 // Datacenters returns the Datacenters of the vSphere SDK
